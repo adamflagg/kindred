@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { renderHook } from '@testing-library/react'
-import React, { createRef } from 'react'
+import { type MouseEvent, createRef } from 'react'
 
 // Existing exports (sanity check)
 import { getNiceTicks, calculateBarSizing, useChartTooltip } from './cssChartUtils'
@@ -212,7 +212,7 @@ describe('useVerticalColumnTooltip', () => {
     const mockEvent = {
       clientX: 200,
       clientY: 150,
-    } as React.MouseEvent
+    } as MouseEvent
 
     act(() => {
       result.current.handleColumnEnter(0, mockRect)
@@ -237,7 +237,7 @@ describe('useVerticalColumnTooltip', () => {
     const { result } = renderHook(() => useVerticalColumnTooltip<MyItem>())
     const mockRect = { right: 100, left: 50 } as DOMRect
     const item: MyItem = { name: 'Test', value: 42 }
-    const mockEvent = { clientX: 100, clientY: 100 } as React.MouseEvent
+    const mockEvent = { clientX: 100, clientY: 100 } as MouseEvent
 
     act(() => {
       result.current.handleColumnEnter(0, mockRect)

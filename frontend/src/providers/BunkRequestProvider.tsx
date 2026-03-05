@@ -1,4 +1,4 @@
-import React from 'react'
+import { type ReactNode, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,7 +9,7 @@ import { isAgePreferenceSatisfied } from '../utils/agePreferenceSatisfaction'
 
 interface BunkRequestProviderProps {
   sessionCmId: number
-  children: React.ReactNode
+  children: ReactNode
 }
 
 export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProviderProps) {
@@ -73,14 +73,12 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
 
   // Cache bunk person sets to avoid recreating for each camper in the bunk
   // Key: bunkCmId, Value: Set of person CM IDs
-  const bunkPersonSetCache = React.useRef<Map<number, { set: Set<number>; size: number }>>(
-    new Map()
-  )
+  const bunkPersonSetCache = useRef<Map<number, { set: Set<number>; size: number }>>(new Map())
 
   const getBunkPersonSet = (bunkCmId: number, campersInBunk: BunkmateInfo[]): Set<number> => {
     const cached = bunkPersonSetCache.current.get(bunkCmId)
     // Invalidate if camper count changed
-    if (cached && cached.size === campersInBunk.length) {
+    if (cached?.size === campersInBunk.length) {
       return cached.set
     }
     const set = new Set(campersInBunk.map((c) => c.cmId))
@@ -162,7 +160,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     getRequestsForCamper,
     getSatisfiedRequestInfo,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 
   return <BunkRequestContext.Provider value={value}>{children}</BunkRequestContext.Provider>

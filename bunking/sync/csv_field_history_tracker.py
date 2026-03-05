@@ -9,9 +9,9 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from bunking.sync.sync_logging import setup_logging
 
@@ -22,7 +22,7 @@ class CSVFieldHistoryTracker:
     """Track CSV field changes at a granular level to preserve manually resolved requests"""
 
     # Map CSV fields to the request types they generate
-    FIELD_TO_REQUEST_TYPE = {
+    FIELD_TO_REQUEST_TYPE: ClassVar[dict[str, str | list[str]]] = {
         "Share Bunk With": "bunk_with",
         "Do Not Share Bunk With": "not_bunk_with",
         "RetParent-Socializewithbest": "age_preference",
@@ -288,7 +288,7 @@ class CSVFieldHistoryTracker:
             retention_days: Number of days to keep history
         """
         try:
-            cutoff = datetime.now() - timedelta(days=retention_days)
+            cutoff = datetime.now(tz=UTC) - timedelta(days=retention_days)
             cleaned = 0
 
             # Find and remove old files

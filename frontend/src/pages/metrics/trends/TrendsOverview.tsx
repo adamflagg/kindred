@@ -103,7 +103,7 @@ function buildGroupedChartData(
     const categorySeries = categoryDisplayNames.map((name, i) => ({
       key: name,
       label: name,
-      color: (YEAR_PALETTE[i % YEAR_PALETTE.length] ?? 'hsl(0, 0%, 50%)') as string,
+      color: YEAR_PALETTE[i % YEAR_PALETTE.length] ?? 'hsl(0, 0%, 50%)',
     }))
     return { chartData, series: categorySeries }
   }

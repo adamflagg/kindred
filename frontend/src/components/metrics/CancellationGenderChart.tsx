@@ -132,7 +132,7 @@ export function CancellationGenderChart({
     active?: boolean
     payload?: Array<{ payload: InnerDatum | OuterDatum; value: number }>
   }) => {
-    if (active && payload && payload.length && payload[0]) {
+    if (active && payload?.length && payload[0]) {
       const item = payload[0].payload
       const pct = total > 0 ? ((item.value / total) * 100).toFixed(0) : '0'
       return (

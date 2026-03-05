@@ -11,11 +11,11 @@ export default function ProgramLandingPage() {
   const handleProgramSelect = (program: 'summer' | 'family' | 'metrics') => {
     setProgram(program)
     if (program === 'summer') {
-      navigate('/summer/sessions')
+      void navigate('/summer/sessions')
     } else if (program === 'family') {
-      navigate('/family/')
+      void navigate('/family/')
     } else {
-      navigate('/metrics')
+      void navigate('/metrics')
     }
   }
 

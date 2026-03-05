@@ -37,7 +37,7 @@ describe('SessionHeader', () => {
       // Sort logic extracted from SessionView
       const parseSession = (name: string): [number, string] => {
         const match = name.match(/session\s+(\d+)([a-z])?/i)
-        if (match && match[1]) return [parseInt(match[1], 10), match[2]?.toLowerCase() || '']
+        if (match?.[1]) return [parseInt(match[1], 10), match[2]?.toLowerCase() || '']
         return [0, name.toLowerCase()]
       }
 

@@ -190,7 +190,7 @@ export function PopulateFromPreviousYear() {
       }
 
       // Create threshold
-      if (preview.threshold && preview.threshold.existingValue === null) {
+      if (preview.threshold?.existingValue === null) {
         await pb.collection('config').create({
           category: 'session_availability',
           subcategory: String(currentYear),

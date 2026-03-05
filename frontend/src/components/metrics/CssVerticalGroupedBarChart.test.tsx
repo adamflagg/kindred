@@ -63,7 +63,7 @@ describe('CssVerticalGroupedBarChart rendering', () => {
 
   it('should render without a title when not provided', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
-    const headings = container.querySelectorAll('h3')
+    const headings = container.querySelectorAll<HTMLElement>('h3')
     expect(headings.length).toBe(0)
   })
 
@@ -116,19 +116,19 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
   it('should render N bars per column (one per series)', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     // Each bar has z-[1] class — N series * M data items
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     expect(bars.length).toBe(sampleData.length * series.length)
   })
 
   it('should render bars with transition-all duration-300', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
-    const transitionBars = container.querySelectorAll('.transition-all.duration-300')
+    const transitionBars = container.querySelectorAll<HTMLElement>('.transition-all.duration-300')
     expect(transitionBars.length).toBe(sampleData.length * series.length)
   })
 
   it('should apply series colors to bars', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={singleItem} series={series} />)
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     // First bar: male color hsl(200, 70%, 50%) => rgb(38, 157, 217)
     expect(bars[0]!.style.backgroundColor).toBe('rgb(38, 157, 217)')
     // Second bar: female color hsl(350, 70%, 50%) => rgb(217, 38, 68)
@@ -137,7 +137,7 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
 
   it('should set minHeight 4px for non-zero values', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={singleItem} series={series} />)
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     expect(bars[0]!.style.minHeight).toBe('4px')
     expect(bars[1]!.style.minHeight).toBe('4px')
   })
@@ -145,14 +145,14 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
   it('should not render bars for zero-value data', () => {
     const zeroData = [{ name: 'Zero', male: 0, female: 0 }]
     const { container } = render(<CssVerticalGroupedBarChart data={zeroData} series={series} />)
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     expect(bars.length).toBe(0)
   })
 
   it('should arrange bars side-by-side with flex-row and items-end', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     // The bar group container should have flex, flex-row, items-end
-    const barGroups = container.querySelectorAll('.flex.flex-row.items-end')
+    const barGroups = container.querySelectorAll<HTMLElement>('.flex.flex-row.items-end')
     expect(barGroups.length).toBe(sampleData.length)
   })
 })
@@ -324,7 +324,7 @@ describe('CssVerticalGroupedBarChart click handling', () => {
       <CssVerticalGroupedBarChart data={singleItem} series={series} onBarClick={onClick} />
     )
     // Click the first individual bar (rounded-t)
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     fireEvent.click(bars[0]!)
     expect(onClick).toHaveBeenCalledTimes(1)
     // Should receive the data item and the series key
@@ -337,7 +337,7 @@ describe('CssVerticalGroupedBarChart click handling', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={singleItem} series={series} onBarClick={onClick} />
     )
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     // Click second bar (female)
     fireEvent.click(bars[1]!)
     expect(onClick.mock.calls[0]![1]).toBe('female')
@@ -363,11 +363,15 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
     ]
     const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     // maxWidth should be on inner visual div, not on the outer flex-1 wrapper
-    const innerDivsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
+    const innerDivsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(innerDivsWithMaxWidth.length).toBe(sparseData.length)
     // Outer wrappers (direct children of barsArea) should NOT have maxWidth
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const outerWithMaxWidth = barsArea.querySelectorAll(':scope > [style*="max-width"]')
+    const outerWithMaxWidth = barsArea.querySelectorAll<HTMLElement>(
+      ':scope > [style*="max-width"]'
+    )
     expect(outerWithMaxWidth.length).toBe(0)
   })
 
@@ -388,7 +392,9 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
       female: 8 + i,
     }))
     const { container } = render(<CssVerticalGroupedBarChart data={normalData} series={series} />)
-    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
+    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -507,7 +513,7 @@ describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sampleData} series={series} barWidthPercent={75} />
     )
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     // All bars should have maxWidth style
     for (const bar of bars) {
       expect(bar.style.maxWidth).toBe('75%')
@@ -516,7 +522,7 @@ describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
 
   it('should not apply max-width to bars when barWidthPercent is not provided', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     for (const bar of bars) {
       expect(bar.style.maxWidth).toBe('')
     }
@@ -542,7 +548,7 @@ describe('CssVerticalGroupedBarChart y-axis scaling', () => {
       { name: 'B', male: 180, female: 170 },
     ]
     const { container } = render(<CssVerticalGroupedBarChart data={data} series={series} />)
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     const heights = Array.from(bars).map((b) => parseFloat(b.style.height))
     const tallestBar = Math.max(...heights)
     // height=300, xAxisHeight=34 (2 items, no rotation), topPadding=16

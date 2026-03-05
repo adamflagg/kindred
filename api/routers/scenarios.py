@@ -190,7 +190,7 @@ async def create_scenario(request: CreateScenarioRequest) -> SavedScenario:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create scenario: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create scenario: {e!s}")
 
 
 @router.get("")
@@ -214,27 +214,24 @@ async def list_scenarios(
             pb.collection("saved_scenarios").get_full_list, query_params={"filter": filter_str}
         )
 
-        result: list[SavedScenario] = []
-        for s in scenarios:
-            result.append(
-                SavedScenario(
-                    id=s.id,
-                    name=str(getattr(s, "name", "")),
-                    session_cm_id=int(getattr(s, "session_cm_id", 0)),
-                    year=int(getattr(s, "year", ctx.year)),
-                    is_active=bool(getattr(s, "is_active", True)),
-                    description=str(getattr(s, "description", "")),
-                    created_by=str(getattr(s, "created_by", "")),
-                )
+        return [
+            SavedScenario(
+                id=s.id,
+                name=str(getattr(s, "name", "")),
+                session_cm_id=int(getattr(s, "session_cm_id", 0)),
+                year=int(getattr(s, "year", ctx.year)),
+                is_active=bool(getattr(s, "is_active", True)),
+                description=str(getattr(s, "description", "")),
+                created_by=str(getattr(s, "created_by", "")),
             )
-
-        return result
+            for s in scenarios
+        ]
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error listing scenarios: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list scenarios: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list scenarios: {e!s}")
 
 
 @router.get("/score")
@@ -370,7 +367,7 @@ async def evaluate_score(
 
     except Exception as e:
         logger.error(f"Error evaluating score: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to evaluate score: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to evaluate score: {e!s}")
 
 
 @router.get("/{scenario_id}")
@@ -453,7 +450,7 @@ async def update_scenario(scenario_id: str, request: UpdateScenarioRequest) -> S
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error updating scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update scenario: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update scenario: {e!s}")
 
 
 @router.delete("/{scenario_id}")
@@ -482,7 +479,7 @@ async def delete_scenario(scenario_id: str) -> dict[str, str]:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete scenario: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete scenario: {e!s}")
 
 
 # ========================================
@@ -634,7 +631,7 @@ async def update_scenario_assignment(scenario_id: str, update: ScenarioAssignmen
         logger.error(f"Update data: {update}")
         if "existing" in locals():
             logger.error(f"Existing assignments: {existing}")
-        raise HTTPException(status_code=500, detail=f"Failed to update assignment: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update assignment: {e!s}")
 
 
 # ========================================

@@ -257,10 +257,9 @@ def _create_age_preference_satisfaction_var(
         person_in_bunk = ctx.assignments[(person_idx, bunk_idx)]
 
         # Collect "bunk has bad grade" variables for this bunk
-        bad_grade_present_vars = []
-        for bad_grade in bad_grades:
-            if (bunk_idx, bad_grade) in bunk_has_grade:
-                bad_grade_present_vars.append(bunk_has_grade[(bunk_idx, bad_grade)])
+        bad_grade_present_vars = [
+            bunk_has_grade[(bunk_idx, bad_grade)] for bad_grade in bad_grades if (bunk_idx, bad_grade) in bunk_has_grade
+        ]
 
         if not bad_grade_present_vars:
             # No bad grades possible in this bunk - satisfied if person is here

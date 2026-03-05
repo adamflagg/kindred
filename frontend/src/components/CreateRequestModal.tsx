@@ -137,7 +137,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
       return pb.collection<BunkRequestsResponse>('bunk_requests').create(newRequest)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       toast.success('Request created successfully')
       onClose()
     },

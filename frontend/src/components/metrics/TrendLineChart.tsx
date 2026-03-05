@@ -130,7 +130,7 @@ export function TrendLineChart({
     payload?: Array<{ name: string; value: number; color: string }>
     label?: string
   }) => {
-    if (active && payload && payload.length) {
+    if (active && payload?.length) {
       return (
         <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
           <p className="text-foreground mb-2 font-medium">{label}</p>

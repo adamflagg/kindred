@@ -231,7 +231,7 @@ export function buildPreview(
       (m) => m.previousSession && String(m.previousSession.cm_id) === prevCmId
     )
 
-    if (!match || !match.previousSession) continue
+    if (!match?.previousSession) continue
 
     // Skip previous config with all-null values — nothing meaningful to copy
     if (isEmptyValue(prev.value)) continue
@@ -243,7 +243,7 @@ export function buildPreview(
 
     gradeItems.push({
       sessionName: match.currentSession.name,
-      matchType: match.matchType as 'cm_id' | 'alias' | 'unmatched',
+      matchType: match.matchType,
       previousSessionName: match.matchType === 'alias' ? match.previousSession.name : null,
       previousValue: prev.value,
       newConfigKey: newKey,
@@ -261,7 +261,7 @@ export function buildPreview(
       (m) => m.previousSession && String(m.previousSession.cm_id) === prevCmIdStr
     )
 
-    if (!match || !match.previousSession) continue
+    if (!match?.previousSession) continue
 
     // Skip previous config with all-null values
     if (isEmptyValue(prev.value)) continue
@@ -273,7 +273,7 @@ export function buildPreview(
 
     budgetItems.push({
       sessionName: match.currentSession.name,
-      matchType: match.matchType as 'cm_id' | 'alias' | 'unmatched',
+      matchType: match.matchType,
       previousSessionName: match.matchType === 'alias' ? match.previousSession.name : null,
       previousValue: prev.value,
       newConfigKey: newKey,

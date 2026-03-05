@@ -569,10 +569,12 @@ func (s *PersonsSync) transformPersonToPB(
 			pbData["preferred_name"] = s.fixAllCapsName(preferred)
 		}
 
-		if pbData["first_name"] == "" || strings.HasPrefix(pbData["first_name"].(string), "MISSING_") {
+		fnStr, _ := pbData["first_name"].(string)
+		if fnStr == "" || strings.HasPrefix(fnStr, "MISSING_") {
 			s.missingDataStats["missing_name"]++
 		}
-		if pbData["last_name"] == "" || strings.HasPrefix(pbData["last_name"].(string), "MISSING_") {
+		lnStr, _ := pbData["last_name"].(string)
+		if lnStr == "" || strings.HasPrefix(lnStr, "MISSING_") {
 			s.missingDataStats["missing_name"]++
 		}
 	}

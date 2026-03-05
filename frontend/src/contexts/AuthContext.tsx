@@ -62,14 +62,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    fetchAuthConfig()
+    void fetchAuthConfig()
   }, [])
 
   // Stable auth change handler using useEffectEvent
   // This callback always sees the latest state without causing effect re-runs
   const handleAuthChange = useEffectEvent((_token: string | null, model: RecordModel | null) => {
     // Reject admin tokens in production mode
-    if (model && model.collectionName === '_superusers') {
+    if (model?.collectionName === '_superusers') {
       console.log('Production mode: rejecting admin token in auth change')
       pb.authStore.clear()
       setUser(null)
@@ -109,7 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // In production mode, reject admin tokens (from bypass mode cache)
       // Only accept tokens from the 'users' collection (OIDC auth)
-      if (currentUser && currentUser.collectionName === '_superusers') {
+      if (currentUser?.collectionName === '_superusers') {
         console.log('Production mode: clearing cached admin token, requires OIDC login')
         pb.authStore.clear()
         setUser(null)
@@ -148,7 +148,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       unsubscribe = onAuthChange(handleAuthChange)
     }
 
-    initAuth()
+    void initAuth()
 
     return () => {
       abortController.abort()

@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 
-@pytest.fixture()
+@pytest.fixture
 def client():
     """Create a test client with the app, skipping PB auth."""
     with patch.dict("os.environ", {"SKIP_PB_AUTH": "true"}):

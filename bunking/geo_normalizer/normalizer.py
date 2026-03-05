@@ -184,7 +184,7 @@ def normalize_city_value(city: str) -> str:
 
     if match:
         # Found a close match - return canonical spelling
-        matched_key, score, _ = match
+        matched_key, _score, _ = match
         return lookup[matched_key]
 
     # No match in lookup - fall back to title case

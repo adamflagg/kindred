@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, Activity } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { toast } from 'react-hot-toast'
-import type { Camper } from '../types/app-types'
 import { socialGraphService } from '../services/socialGraph'
 import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
@@ -138,7 +137,7 @@ export default function SessionView() {
   // Load scenarios when session changes
   useEffect(() => {
     if (session?.cm_id) {
-      loadScenarios(session.cm_id)
+      void loadScenarios(session.cm_id)
     }
   }, [session?.cm_id, loadScenarios])
 
@@ -238,7 +237,7 @@ export default function SessionView() {
         onSessionChange={(sessionCmId) => {
           const selectedSess = allSessionsForLookup.find((s) => s.cm_id.toString() === sessionCmId)
           if (selectedSess) {
-            navigate(`/summer/session/${sessionNameToUrl(selectedSess.name)}`)
+            void navigate(`/summer/session/${sessionNameToUrl(selectedSess.name)}`)
           }
         }}
         onRunSolver={handleRunSolver}
@@ -307,7 +306,7 @@ export default function SessionView() {
           <CampersView
             sessionId={selectedSession}
             session={session}
-            campers={campers as Camper[]}
+            campers={campers}
             bunks={bunks}
           />
         </Activity>

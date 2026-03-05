@@ -125,7 +125,7 @@ class SolverSessionBoundaryTester:
                 return None
 
         except Exception as e:
-            self.errors.append(f"Error creating scenario for {session_info['name']}: {str(e)}")
+            self.errors.append(f"Error creating scenario for {session_info['name']}: {e!s}")
             return None
 
     def clear_scenario_assignments(self, scenario_id: str) -> None:
@@ -137,7 +137,7 @@ class SolverSessionBoundaryTester:
             else:
                 self.warnings.append(f"Failed to clear scenario: {response.text}")
         except Exception as e:
-            self.warnings.append(f"Error clearing scenario: {str(e)}")
+            self.warnings.append(f"Error clearing scenario: {e!s}")
 
     def run_solver_test(self, scenario: dict[str, Any], session_info: dict[str, Any]) -> None:
         """Run solver on the scenario and validate results."""
@@ -206,7 +206,7 @@ class SolverSessionBoundaryTester:
                 self.errors.append(f"Solver failed to start for {session_info['name']}: {response.text}")
 
         except Exception as e:
-            self.errors.append(f"Error running solver for {session_info['name']}: {str(e)}")
+            self.errors.append(f"Error running solver for {session_info['name']}: {e!s}")
 
     def get_session_bunks(self, session_info: dict[str, Any]) -> list[Any]:
         """Get appropriate bunks for the session type."""
@@ -254,8 +254,8 @@ class SolverSessionBoundaryTester:
         self.stats[f"solver_{session_info['type']}_unassigned"] = unassigned_count
 
         # Validate each assignment
-        valid_bunk_ids = set(b.campminder_id for b in bunks)
-        attendee_ids = set(a.person_cm_id for a in attendees)
+        valid_bunk_ids = {b.campminder_id for b in bunks}
+        attendee_ids = {a.person_cm_id for a in attendees}
 
         for assignment in assignments:
             # Check person is in correct session
@@ -324,7 +324,7 @@ class SolverSessionBoundaryTester:
                         self.stats["cross_session_prevention"] = "success"
 
                 except Exception as e:
-                    self.warnings.append(f"Could not test cross-session assignment: {str(e)}")
+                    self.warnings.append(f"Could not test cross-session assignment: {e!s}")
 
     def test_scenario_based_solving(self):
         """Test solving with existing assignments and locks."""
@@ -370,7 +370,7 @@ class SolverSessionBoundaryTester:
                     self.warnings.append(f"Failed to create locked assignment: {response.text}")
 
             except Exception as e:
-                self.warnings.append(f"Error creating locked assignment: {str(e)}")
+                self.warnings.append(f"Error creating locked assignment: {e!s}")
 
         # Run solver
         logger.info("  Running solver with locked assignments...")
@@ -433,7 +433,7 @@ class SolverSessionBoundaryTester:
                 if response.status_code == 200:
                     logger.info(f"  ✓ Deleted test scenario: {scenario_id}")
             except Exception as e:
-                logger.warning(f"  Error deleting scenario {scenario_id}: {str(e)}")
+                logger.warning(f"  Error deleting scenario {scenario_id}: {e!s}")
 
     def print_summary(self):
         """Print test summary."""

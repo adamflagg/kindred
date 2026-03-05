@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query
@@ -70,7 +70,7 @@ async def get_session_social_graph(
     """
     try:
         if year is None:
-            year = datetime.now().year
+            year = datetime.now(tz=UTC).year
 
         logger.info(f"Building social graph for session {session_cm_id}, year {year}")
 
@@ -310,7 +310,7 @@ async def get_bunk_social_graph(bunk_cm_id: int, session_cm_id: int, year: int |
     """
     try:
         if year is None:
-            year = datetime.now().year
+            year = datetime.now(tz=UTC).year
 
         logger.info(f"Building bunk social graph for bunk {bunk_cm_id}, session {session_cm_id}, year {year}")
 
@@ -585,7 +585,7 @@ async def get_person_ego_network(
         Ego network with person's social metrics
     """
     try:
-        year = datetime.now().year
+        year = datetime.now(tz=UTC).year
 
         logger.info(f"Building ego network for person {person_cm_id}, radius {radius}")
 
@@ -727,7 +727,7 @@ async def update_camper_position(
     """
     try:
         if year is None:
-            year = datetime.now().year
+            year = datetime.now(tz=UTC).year
 
         logger.info(f"Updating position for person {person_cm_id} to bunk {update.new_bunk_cm_id}")
 

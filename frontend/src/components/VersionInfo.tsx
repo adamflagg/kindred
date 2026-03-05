@@ -1,4 +1,4 @@
-import React from 'react'
+import type { FC } from 'react'
 import { Github } from 'lucide-react'
 
 interface VersionInfoProps {
@@ -7,7 +7,7 @@ interface VersionInfoProps {
 
 const GITHUB_REPO_URL = 'https://github.com/adamflagg/kindred'
 
-export const VersionInfo: React.FC<VersionInfoProps> = ({ className = '' }) => {
+export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
   const version = import.meta.env.VITE_APP_VERSION
 
   return (

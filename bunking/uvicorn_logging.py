@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 
 class UvicornAccessFilter(logging.Filter):
@@ -23,7 +23,7 @@ class UvicornAccessFilter(logging.Filter):
     to reduce log noise from Docker health checks.
     """
 
-    HEALTH_PATHS = {"/health", "/api/health"}
+    HEALTH_PATHS: ClassVar[set[str]] = {"/health", "/api/health"}
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Filter out health check requests unless DEBUG is enabled."""

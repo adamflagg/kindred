@@ -1,4 +1,4 @@
-import React from 'react'
+import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,7 +9,7 @@ import { CamperHistoryContext } from '../contexts/CamperHistoryContext'
 interface CamperHistoryProviderProps {
   sessionCmId: number
   camperPersonIds: number[]
-  children: React.ReactNode
+  children: ReactNode
 }
 
 interface BunkAssignmentExpanded {
@@ -146,7 +146,7 @@ export function CamperHistoryProvider({
   const value = {
     getLastYearHistory,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 
   return <CamperHistoryContext.Provider value={value}>{children}</CamperHistoryContext.Provider>

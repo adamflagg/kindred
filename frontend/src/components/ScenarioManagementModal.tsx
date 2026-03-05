@@ -256,9 +256,9 @@ export default function ScenarioManagementModal({
               <button
                 onClick={() => {
                   if (confirmAction.type === 'delete') {
-                    handleDelete(confirmAction.scenario)
+                    void handleDelete(confirmAction.scenario)
                   } else {
-                    handleClear(confirmAction.scenario)
+                    void handleClear(confirmAction.scenario)
                   }
                 }}
                 className="bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-lodge flex-1 rounded-xl px-4 py-2.5 font-semibold transition-all disabled:opacity-50"

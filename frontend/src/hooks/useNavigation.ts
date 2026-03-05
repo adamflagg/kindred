@@ -34,7 +34,7 @@ export function useNavigation() {
   // Navigate to a session
   const navigateToSession = useCallback(
     (sessionId: string, tab?: string) => {
-      navigate(getSessionUrl(sessionId, tab))
+      void navigate(getSessionUrl(sessionId, tab))
     },
     [navigate]
   )
@@ -42,43 +42,43 @@ export function useNavigation() {
   // Navigate to a camper detail
   const navigateToCamper = useCallback(
     (camperId: string | number) => {
-      navigate(getCamperUrl(camperId))
+      void navigate(getCamperUrl(camperId))
     },
     [navigate]
   )
 
   // Navigate to all campers view
   const navigateToAllCampers = useCallback(() => {
-    navigate(getAllCampersUrl())
+    void navigate(getAllCampersUrl())
   }, [navigate])
 
   // Navigate to sessions list
   const navigateToSessions = useCallback(() => {
-    navigate(getSessionsListUrl())
+    void navigate(getSessionsListUrl())
   }, [navigate])
 
   // Navigate to admin
   const navigateToAdmin = useCallback(() => {
-    navigate(getAdminUrl())
+    void navigate(getAdminUrl())
   }, [navigate])
 
   // Navigate to users
   const navigateToUsers = useCallback(() => {
-    navigate(getUsersUrl())
+    void navigate(getUsersUrl())
   }, [navigate])
 
   // Navigate to user profile
   const navigateToUser = useCallback(() => {
-    navigate(getUserUrl())
+    void navigate(getUserUrl())
   }, [navigate])
 
   // Navigate within current program
   const navigateInProgram = useCallback(
     (path: string) => {
       if (activeProgram === 'summer') {
-        navigate(getSummerUrl(path))
+        void navigate(getSummerUrl(path))
       } else {
-        navigate(getFamilyUrl(path))
+        void navigate(getFamilyUrl(path))
       }
     },
     [navigate, activeProgram]
@@ -88,11 +88,11 @@ export function useNavigation() {
   const switchProgram = useCallback(
     (program: 'summer' | 'family' | 'metrics') => {
       if (program === 'summer') {
-        navigate('/summer/sessions')
+        void navigate('/summer/sessions')
       } else if (program === 'family') {
-        navigate('/family/')
+        void navigate('/family/')
       } else {
-        navigate('/metrics')
+        void navigate('/metrics')
       }
     },
     [navigate]

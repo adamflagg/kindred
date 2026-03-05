@@ -234,7 +234,8 @@ class TestRankedCandidatePassthrough:
         )
 
         # Get ranked candidates
-        assert isinstance(result, tuple) and len(result) == 2
+        assert isinstance(result, tuple)
+        assert len(result) == 2
         auto_result, ranked_candidates = result
 
         # Take top 5 (simulating the [:5] slice in Phase 3)

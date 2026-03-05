@@ -358,7 +358,7 @@ def main() -> None:
                 valid_sessions = session_repo.get_valid_session_names(args.year)
                 # Get unique main session IDs (filter out aliases like 'toc')
                 seen_cm_ids: set[int] = set()
-                for friendly_name, (cm_id, is_main) in valid_sessions.items():
+                for cm_id, is_main in valid_sessions.values():
                     if cm_id not in seen_cm_ids:
                         seen_cm_ids.add(cm_id)
                         if is_main:
@@ -416,16 +416,9 @@ def main() -> None:
         if result["success"]:
             stats = result["statistics"]
             already_processed = result.get("already_processed", 0)
-            print("\nProcessing completed successfully!")
             if already_processed > 0:
-                print(f"- Already processed: {already_processed}")
-            print(f"- Parsed: {stats.get('phase1_parsed', 0)}")
-            print(f"- Resolved locally: {stats.get('phase2_resolved', 0)}")
-            print(f"- Disambiguated: {stats.get('phase3_disambiguated', 0)}")
-            print(f"- Conflicts detected: {stats.get('conflicts_detected', 0)}")
-            print(f"- Requests created: {stats.get('requests_created', 0)}")
+                pass
         else:
-            print(f"\nProcessing failed: {result.get('error', 'Unknown error')}")
             sys.exit(1)
 
     except Exception as e:

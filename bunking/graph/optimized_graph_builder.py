@@ -97,7 +97,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                 expand = getattr(assignment, "expand", {}) or {}
                 bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
                 bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
-            except Exception:
+            except Exception:  # noqa: S110 — intentional silent handling
                 pass
 
             node_attrs = {

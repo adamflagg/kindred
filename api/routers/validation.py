@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -56,10 +56,8 @@ def calculate_age(birthdate_str: str) -> float:
     if not birthdate_str:
         return 0.0
     try:
-        from datetime import date
-
-        birthdate = datetime.fromisoformat(birthdate_str.replace("Z", "+00:00")).date()
-        today = date.today()
+        birthdate = datetime.fromisoformat(birthdate_str).date()
+        today = datetime.now(tz=UTC).date()
 
         years = today.year - birthdate.year
         months = today.month - birthdate.month
@@ -388,6 +386,6 @@ async def validate_bunking(request: ValidateBunkingRequest) -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Error during bunking validation: {e}", exc_info=True)
         if os.environ.get("ENV", "development") == "development":
-            raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Validation error: {e!s}")
         else:
             raise HTTPException(status_code=500, detail="Failed to validate bunking")

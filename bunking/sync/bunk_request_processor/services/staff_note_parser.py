@@ -104,10 +104,7 @@ def parse_multi_staff_notes(note_text: str | None) -> list[dict[str, Any]]:
             timestamp = match.group(3).strip()
 
             # Filter out non-name words (Roman numerals from "SESSION II", etc.)
-            name_words = []
-            for word in [first_name, last_name]:
-                if word.upper() not in NON_NAME_WORDS:
-                    name_words.append(word)
+            name_words = [word for word in [first_name, last_name] if word.upper() not in NON_NAME_WORDS]
 
             if len(name_words) == 2:
                 # Proper-case the staff name (FIRST LAST -> First Last)

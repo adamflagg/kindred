@@ -64,7 +64,7 @@ export function getGenderDisplayName(raw: string): string {
 /** Convert retention gender data to pie chart format (returned counts with percentages). */
 export function genderToPieData(
   data: RetentionByGender[] | undefined
-): { name: string; value: number; percentage: number; id: string }[] {
+): Array<{ name: string; value: number; percentage: number; id: string }> {
   if (!data?.length) return []
   const total = data.reduce((sum, d) => sum + d.returned_count, 0)
   return data.map((d) => ({

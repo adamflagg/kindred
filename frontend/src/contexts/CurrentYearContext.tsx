@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { type ReactNode, useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import { CurrentYearContext } from '../hooks/useCurrentYear'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
@@ -34,7 +34,7 @@ function getDefaultYear(availableYears: number[], baseYear: number): number {
   return availableYears[0] ?? baseYear
 }
 
-export function CurrentYearProvider({ children }: { children: React.ReactNode }) {
+export function CurrentYearProvider({ children }: { children: ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [isTransitioning, setIsTransitioning] = useState(false)
 

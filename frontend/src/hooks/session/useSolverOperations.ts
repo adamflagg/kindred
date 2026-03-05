@@ -149,7 +149,7 @@ export function useSolverOperations({
 
             // Apply with timeout if configured
             if (autoApplyTimeout > 0) {
-              setTimeout(applyResults, autoApplyTimeout * 1000)
+              setTimeout(() => void applyResults(), autoApplyTimeout * 1000)
             } else {
               await applyResults()
             }

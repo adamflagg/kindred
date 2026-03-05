@@ -463,7 +463,7 @@ class DebugParseRepository:
             return {}
 
         # Initialize result with all False
-        result: dict[str, tuple[bool, bool]] = {rid: (False, False) for rid in original_request_ids}
+        result: dict[str, tuple[bool, bool]] = dict.fromkeys(original_request_ids, (False, False))
 
         try:
             # Collect debug IDs from batched queries

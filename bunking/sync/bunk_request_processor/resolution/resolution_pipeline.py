@@ -96,9 +96,8 @@ class ResolutionPipeline:
                 if result.is_ambiguous and not best_result.is_ambiguous:
                     best_result = result
 
-            except Exception as e:
+            except Exception:  # noqa: S112 — intentional continue on error
                 # Log error but continue with other strategies
-                print(f"Error in {strategy.name} strategy: {e}")
                 continue
 
         # Apply minimum confidence threshold

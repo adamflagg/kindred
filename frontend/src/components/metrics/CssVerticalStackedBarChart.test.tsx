@@ -60,7 +60,7 @@ describe('CssVerticalStackedBarChart rendering', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sampleData} segments={segments} />
     )
-    const headings = container.querySelectorAll('h3')
+    const headings = container.querySelectorAll<HTMLElement>('h3')
     expect(headings.length).toBe(0)
   })
 
@@ -117,7 +117,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
       <CssVerticalStackedBarChart data={sampleData} segments={segments} />
     )
     // Each column container has flex-col and items-center classes
-    const columns = container.querySelectorAll('.flex-col.items-center')
+    const columns = container.querySelectorAll<HTMLElement>('.flex-col.items-center')
     expect(columns.length).toBe(sampleData.length)
   })
 
@@ -129,7 +129,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
     const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
     expect(stackedBar).not.toBeNull()
     // Should have children divs for each segment with data
-    const segmentDivs = stackedBar.querySelectorAll(':scope > div')
+    const segmentDivs = stackedBar.querySelectorAll<HTMLElement>(':scope > div')
     expect(segmentDivs.length).toBe(2) // both female_count and male_count are > 0
   })
 
@@ -138,7 +138,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
       <CssVerticalStackedBarChart data={singleItem} segments={segments} />
     )
     const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
-    const segmentDivs = stackedBar.querySelectorAll(':scope > div') as NodeListOf<HTMLElement>
+    const segmentDivs = stackedBar.querySelectorAll<HTMLElement>(':scope > div')
     // Each segment should have a flex value
     for (const div of segmentDivs) {
       expect(div.style.flex).not.toBe('')
@@ -149,7 +149,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
     const zeroData = [{ name: 'Test', total: 10, male_count: 10, female_count: 0 }]
     const { container } = render(<CssVerticalStackedBarChart data={zeroData} segments={segments} />)
     const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
-    const segmentDivs = stackedBar.querySelectorAll(':scope > div')
+    const segmentDivs = stackedBar.querySelectorAll<HTMLElement>(':scope > div')
     expect(segmentDivs.length).toBe(1) // only male_count > 0
   })
 
@@ -221,7 +221,7 @@ describe('CssVerticalStackedBarChart percent mode', () => {
       <CssVerticalStackedBarChart data={data} segments={segments} percentMode />
     )
     // Total label (17) should NOT appear
-    const labels = container.querySelectorAll('.tabular-nums')
+    const labels = container.querySelectorAll<HTMLElement>('.tabular-nums')
     // The tabular-nums elements should only be Y-axis ticks, not bar labels
     let foundTotal = false
     labels.forEach((el) => {
@@ -463,7 +463,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     const xAxisWrapper = container.querySelector('.border-t.justify-center')
     expect(xAxisWrapper).toBeInTheDocument()
     // X-axis labels should have maxWidth matching columns
-    const xAxisLabels = xAxisWrapper?.querySelectorAll('[style*="max-width: 120px"]')
+    const xAxisLabels = xAxisWrapper?.querySelectorAll<HTMLElement>('[style*="max-width: 120px"]')
     expect(xAxisLabels?.length).toBe(3)
   })
 
@@ -486,7 +486,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     )
     // Sparse mode columns (in bars area, which has border-l) should have maxWidth style
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 120px"]')
+    const columns = barsArea.querySelectorAll<HTMLElement>(':scope > [style*="max-width: 120px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 
@@ -541,7 +541,9 @@ describe('CssVerticalStackedBarChart column sizing', () => {
       <CssVerticalStackedBarChart data={normalData} segments={segments} />
     )
     // Normal mode should NOT have maxWidth on columns
-    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
+    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -567,9 +569,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
       <CssVerticalStackedBarChart data={sparseData} segments={segments} />
     )
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(
-      ':scope > [style*="max-width"]'
-    ) as NodeListOf<HTMLElement>
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]')
     // Hover over first column
     fireEvent.mouseEnter(columns[0]!)
     expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
@@ -603,7 +603,7 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
     }
     // If tooltip renders, Female segment (value 0) should not be shown
     // The tooltip should only show Male (value 10)
-    const tooltipLabels = container.querySelectorAll('.text-muted-foreground.text-sm')
+    const tooltipLabels = container.querySelectorAll<HTMLElement>('.text-muted-foreground.text-sm')
     const labelTexts = Array.from(tooltipLabels).map((el) => el.textContent)
     // Should NOT find "Female:" with "0 (0%)" in tooltip
     const hasFemaleZero = labelTexts.some((t) => t?.includes('Female:') && t?.includes('0 (0%)'))
@@ -634,7 +634,7 @@ describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
     )
     const barsArea = container.querySelector('.border-l') as HTMLElement
     // Should have maxWidth on columns
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 100px"]')
+    const columns = barsArea.querySelectorAll<HTMLElement>(':scope > [style*="max-width: 100px"]')
     expect(columns.length).toBe(5)
     // Should center columns (sparse-like behavior)
     expect(barsArea.className).toContain('justify-center')
@@ -651,7 +651,7 @@ describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
       <CssVerticalStackedBarChart data={normalData} segments={segments} />
     )
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]')
+    const columns = barsArea.querySelectorAll<HTMLElement>(':scope > [style*="max-width"]')
     // Normal mode (5 items) has no maxWidth by default
     expect(columns.length).toBe(0)
   })

@@ -271,12 +271,7 @@ class InputSanitizer:
 
     def _remove_control_chars(self, text: str) -> str:
         """Remove control characters except newlines and tabs."""
-        result = []
-        for char in text:
-            # Keep printable chars, newlines, and tabs
-            if char in ("\n", "\t") or not unicodedata.category(char).startswith("C"):
-                result.append(char)
-        return "".join(result)
+        return "".join(char for char in text if char in ("\n", "\t") or not unicodedata.category(char).startswith("C"))
 
     def _normalize_whitespace(self, text: str) -> str:
         """Normalize excessive whitespace."""

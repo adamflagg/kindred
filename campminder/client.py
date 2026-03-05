@@ -4,7 +4,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import requests
@@ -18,7 +18,7 @@ load_dotenv()
 def get_current_season() -> int:
     """Get current season from environment or default to current year."""
     season_id = os.getenv("CAMPMINDER_SEASON_ID")
-    return int(season_id) if season_id else datetime.now().year
+    return int(season_id) if season_id else datetime.now(tz=UTC).year
 
 
 @dataclass
@@ -100,7 +100,8 @@ class CampMinderClient:
                 try:
                     # JWT tokens have format: header.payload.signature
                     # Payload contains 'exp' field with expiry timestamp
-                    assert self.jwt_token is not None  # Just set above
+                    if self.jwt_token is None:  # pragma: no cover
+                        raise ValueError("JWT token unexpectedly None")
                     payload_part = self.jwt_token.split(".")[1]
                     # Add padding if needed for base64 decoding
                     payload_part += "=" * (4 - len(payload_part) % 4)
@@ -130,7 +131,7 @@ class CampMinderClient:
                             match = re.search(r"Try again in (\d+) seconds", error_data["message"])
                             if match:
                                 wait_time = int(match.group(1)) + 1  # Add 1 second buffer
-                    except Exception:
+                    except Exception:  # noqa: S110 — best-effort retry delay parsing
                         pass
 
                     if retry < max_retries - 1:
@@ -163,7 +164,7 @@ class CampMinderClient:
                     time.sleep(wait_time)
                     continue
                 else:
-                    raise Exception(f"Authentication error: {str(e)}")
+                    raise Exception(f"Authentication error: {e!s}")
 
         # This should never be reached, but satisfies type checker
         raise Exception("Authentication failed: unexpected error in retry loop")
@@ -194,12 +195,9 @@ class CampMinderClient:
                             logger.info(
                                 f"Loaded cached CampMinder token (expires in {int((cache['expiry'] - time.time()) / 60)} minutes)"
                             )
-                        except Exception:
-                            print(
-                                f"Loaded cached CampMinder token (expires in {int((cache['expiry'] - time.time()) / 60)} minutes)"
-                            )
-        except Exception:
-            # Silently ignore cache load errors and authenticate normally
+                        except Exception:  # noqa: S110 — best-effort log message
+                            pass
+        except Exception:  # noqa: S110 — cache load is optional, authenticate normally
             pass
 
     def _save_cached_token(self) -> None:
@@ -217,8 +215,7 @@ class CampMinderClient:
             # Set file permissions to be readable only by owner
             os.chmod(self.token_cache_file, 0o600)
 
-        except Exception:
-            # Silently ignore cache save errors
+        except Exception:  # noqa: S110 — cache save is optional
             pass
 
     def _make_request(
@@ -292,7 +289,7 @@ class CampMinderClient:
             else:
                 raise Exception(f"API request failed: {e.response.status_code} - {e.response.text}")
         except Exception as e:
-            raise Exception(f"Request error: {str(e)}")
+            raise Exception(f"Request error: {e!s}")
 
     def get_campers(self, page_size: int = 100) -> list[CamperData]:
         """Fetch all campers for the configured season."""
@@ -364,8 +361,6 @@ class CampMinderClient:
         This method returns an empty dict as a placeholder.
         Real cabin assignments would need to come from custom fields or another source.
         """
-        print("⚠️  Note: Bunk assignment endpoints not available in API")
-        print("   Cabin assignments would need to be retrieved from custom fields or external source")
 
         # Return empty dict as placeholder
         # In a real implementation, this might parse cabin info from custom fields
@@ -385,26 +380,18 @@ class CampMinderClient:
         params = {"clientid": self.config.client_id}
 
         try:
-            print(f"Fetching attendees for session {session_id}, season {season_id}")
-            print(f"Endpoint: {endpoint}")
-            print(f"Params: {params}")
             data = self._make_request("GET", endpoint, params=params)
-            print(f"Response type: {type(data)}")
             if data:
-                print(f"Response keys: {list(data.keys()) if isinstance(data, dict) else 'LIST'}")
+                pass
             # Check if this endpoint returns paginated results or direct array
             if isinstance(data, dict) and "Results" in data:
                 results = cast(list[dict[str, Any]], data.get("Results", []))
-                print(f"Found {len(results)} attendees in Results")
                 return results
             elif isinstance(data, list):
-                print(f"Found {len(data)} attendees as list")
                 return data
             else:
-                print(f"Unexpected response format for session {session_id} attendees: {type(data)}")
                 return []
-        except Exception as e:
-            print(f"Error fetching attendees for session {session_id}: {e}")
+        except Exception:
             import traceback
 
             traceback.print_exc()
@@ -483,18 +470,14 @@ class CampMinderClient:
 
     def fetch_all_data(self, fetch_custom_fields: bool = True) -> list[CamperData]:
         """Fetch all camper data including custom fields and bunk assignments."""
-        print("Fetching campers...")
         campers = self.get_campers()
-        print(f"Found {len(campers)} campers")
 
         # Get bunk assignments (using placeholder - real API doesn't support this)
-        print("Fetching bunk assignments...")
         person_to_bunk = self.get_bunk_assignments_placeholder()
 
         # Get custom field definitions if needed
         field_mapping = {}
         if fetch_custom_fields:
-            print("Fetching custom field definitions...")
             field_mapping = self.get_custom_field_definitions()
 
         # Update campers with assignments and custom fields
@@ -505,7 +488,7 @@ class CampMinderClient:
             # Fetch custom fields
             if fetch_custom_fields:
                 if i % 10 == 0:
-                    print(f"Fetching custom fields for camper {i + 1}/{len(campers)}...")
+                    pass
 
                 try:
                     raw_fields = self.get_custom_fields(camper.person_id)
@@ -514,8 +497,8 @@ class CampMinderClient:
                         field_id = int(field_key.split("_")[1])
                         field_name = field_mapping.get(field_id, field_key)
                         camper.custom_fields[field_name] = value
-                except Exception as e:
-                    print(f"Error fetching custom fields for {camper.name}: {e}")
+                except Exception:  # noqa: S110 — skip malformed custom field keys
+                    pass
 
         return campers
 
@@ -596,12 +579,10 @@ class CampMinderClient:
                 param_strings.append(f"{key}={value}")
 
         # Add multiple bunk plan IDs
-        for bunk_plan_id in bunk_plan_ids:
-            param_strings.append(f"bunkplanids={bunk_plan_id}")
+        param_strings.extend(f"bunkplanids={bunk_plan_id}" for bunk_plan_id in bunk_plan_ids)
 
         # Add multiple bunk IDs
-        for bunk_id in bunk_ids:
-            param_strings.append(f"bunkids={bunk_id}")
+        param_strings.extend(f"bunkids={bunk_id}" for bunk_id in bunk_ids)
 
         # Make the request with the full URL
         full_url = f"{base_url}?{'&'.join(param_strings)}"
@@ -664,19 +645,14 @@ def load_config_from_env() -> CampMinderConfig | None:
     client_id = os.getenv("CAMPMINDER_CLIENT_ID")
     season_id = os.getenv("CAMPMINDER_SEASON_ID")
 
-    if not all([api_key, subscription_key, client_id]):
+    if not api_key or not subscription_key or not client_id:
         return None
-
-    # All values validated above
-    assert api_key is not None
-    assert subscription_key is not None
-    assert client_id is not None
 
     return CampMinderConfig(
         api_key=api_key,
         subscription_key=subscription_key,
         client_id=int(client_id),
-        season_id=int(season_id) if season_id else datetime.now().year,
+        season_id=int(season_id) if season_id else datetime.now(tz=UTC).year,
     )
 
 

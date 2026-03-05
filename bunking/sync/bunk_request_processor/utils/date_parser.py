@@ -78,7 +78,7 @@ def parse_temporal_date(date_str: str | None, reference_year: int = 2025) -> dat
         month = int(match.group(1))
         day = int(match.group(2))
         try:
-            return datetime(reference_year, month, day)
+            return datetime(reference_year, month, day)  # noqa: DTZ001 — naive datetime for date-only arithmetic
         except ValueError:
             return None  # Invalid date
 
@@ -91,7 +91,7 @@ def parse_temporal_date(date_str: str | None, reference_year: int = 2025) -> dat
         month_num = month_name_to_num(month_name)
         if month_num is not None:
             try:
-                return datetime(reference_year, month_num, day)
+                return datetime(reference_year, month_num, day)  # noqa: DTZ001 — naive datetime for date-only arithmetic
             except ValueError:
                 return None  # Invalid date
 

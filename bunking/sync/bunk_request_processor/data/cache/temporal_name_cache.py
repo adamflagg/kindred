@@ -308,7 +308,7 @@ class TemporalNameCache:
 
                 # Add historical data if available
                 if cm_id in self._historical_bunking:
-                    for year, _year_data in self._historical_bunking[cm_id].items():
+                    for year in self._historical_bunking[cm_id]:
                         year_str = str(year)
                         if year_str not in self._name_to_cm_id[normalized]["historical"]:
                             self._name_to_cm_id[normalized]["historical"][year_str] = []

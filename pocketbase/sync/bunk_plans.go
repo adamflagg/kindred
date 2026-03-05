@@ -216,7 +216,7 @@ func (s *BunkPlansSync) syncBunkPlans(ctx context.Context) error {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("bunk plans sync cancelled: %w", ctx.Err())
 		default:
 		}
 

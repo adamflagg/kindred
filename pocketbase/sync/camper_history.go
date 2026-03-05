@@ -246,7 +246,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	for _, attendee := range attendees {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("camper history sync cancelled: %w", ctx.Err())
 		default:
 		}
 

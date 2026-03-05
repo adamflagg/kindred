@@ -90,18 +90,18 @@ export const AppLayout = () => {
     setIsUserMenuOpen(false)
     setIsMobileMenuOpen(false)
     logout()
-    navigate('/login')
+    void navigate('/login')
   }
 
   const handleProgramSwitch = (program: 'summer' | 'family' | 'metrics') => {
     setProgram(program)
     setIsProgramMenuOpen(false)
     if (program === 'summer') {
-      navigate('/summer/sessions')
+      void navigate('/summer/sessions')
     } else if (program === 'family') {
-      navigate('/family/')
+      void navigate('/family/')
     } else {
-      navigate('/metrics')
+      void navigate('/metrics')
     }
   }
 
@@ -221,7 +221,7 @@ export const AppLayout = () => {
                       onClick={() => {
                         clearProgram()
                         setIsProgramMenuOpen(false)
-                        navigate('/')
+                        void navigate('/')
                       }}
                       className="hover:bg-muted/50 text-muted-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
                     >

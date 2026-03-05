@@ -235,7 +235,7 @@ export function useSessionHierarchy(
   useEffect(() => {
     if (enableRedirects && session && sessionId && isNumericSessionId(sessionId)) {
       const friendlyUrl = sessionNameToUrl(session.name)
-      navigate(`/summer/session/${friendlyUrl}${tabPath ? `/${tabPath}` : '/board'}`, {
+      void navigate(`/summer/session/${friendlyUrl}${tabPath ? `/${tabPath}` : '/board'}`, {
         replace: true,
       })
     }
@@ -244,7 +244,7 @@ export function useSessionHierarchy(
   // Redirect to default tab if no tab specified
   useEffect(() => {
     if (enableRedirects && session && sessionId && !tabPath) {
-      navigate(`/summer/session/${sessionId}/bunks`, { replace: true })
+      void navigate(`/summer/session/${sessionId}/bunks`, { replace: true })
     }
   }, [enableRedirects, session, sessionId, tabPath, navigate])
 

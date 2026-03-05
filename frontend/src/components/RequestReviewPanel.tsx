@@ -37,7 +37,6 @@ import CamperDetailsPanel from './CamperDetailsPanel'
 import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
-import type { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
 
 interface RequestReviewPanelProps {
   sessionId: number
@@ -480,7 +479,7 @@ export default function RequestReviewPanel({
       return pb.collection('bunk_requests').update(id, updates)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       toast.success('Request updated')
     },
     onError: () => {
@@ -499,7 +498,7 @@ export default function RequestReviewPanel({
       return Promise.all(ids.map((id) => pb.collection('bunk_requests').update(id, updates)))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       toast.success('Requests updated')
       setSelectedRequests(new Set())
     },
@@ -585,8 +584,7 @@ export default function RequestReviewPanel({
       // Only validate if changing target or type (potential conflict fields)
       if (updates.requestee_id !== undefined || updates.request_type !== undefined) {
         const newRequesteeId = updates.requestee_id ?? request.requestee_id ?? 0
-        const newType = (updates.request_type ??
-          request.request_type) as BunkRequestsRequestTypeOptions
+        const newType = updates.request_type ?? request.request_type
 
         validateChange({
           requestId: request.id,

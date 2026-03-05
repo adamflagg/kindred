@@ -54,7 +54,7 @@ describe('CssVerticalBarChart rendering', () => {
 
   it('should render without a title when not provided', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    const headings = container.querySelectorAll('h3')
+    const headings = container.querySelectorAll<HTMLElement>('h3')
     expect(headings.length).toBe(0)
   })
 
@@ -105,19 +105,19 @@ describe('CssVerticalBarChart bar rendering', () => {
   it('should render one column per data item', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} />)
     // Each column is a flex-col child of the bars area
-    const bars = container.querySelectorAll('.flex-col.items-center')
+    const bars = container.querySelectorAll<HTMLElement>('.flex-col.items-center')
     expect(bars.length).toBe(sampleData.length)
   })
 
   it('should render bars with rounded-t class', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    const roundedBars = container.querySelectorAll('.rounded-t')
+    const roundedBars = container.querySelectorAll<HTMLElement>('.rounded-t')
     expect(roundedBars.length).toBe(sampleData.length)
   })
 
   it('should render bars with transition-all duration-300', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    const transitionBars = container.querySelectorAll('.transition-all.duration-300')
+    const transitionBars = container.querySelectorAll<HTMLElement>('.transition-all.duration-300')
     expect(transitionBars.length).toBe(sampleData.length)
   })
 
@@ -131,7 +131,7 @@ describe('CssVerticalBarChart bar rendering', () => {
   it('should apply custom color from colorFn', () => {
     const colorFn = (item: CssVerticalBarItem) => (item.value > 50 ? 'red' : 'green')
     const { container } = render(<CssVerticalBarChart data={sampleData} colorFn={colorFn} />)
-    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.rounded-t')
     // Alpha: 40 => green, Beta: 70 => red, Gamma: 100 => red
     expect(bars[0]!.style.backgroundColor).toBe('green')
     expect(bars[1]!.style.backgroundColor).toBe('red')
@@ -333,7 +333,7 @@ describe('CssVerticalBarChart column sizing', () => {
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
     // Scope to bars area (border-l) to exclude x-axis labels
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 120px"]')
+    const columns = barsArea.querySelectorAll<HTMLElement>(':scope > [style*="max-width: 120px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 
@@ -373,7 +373,9 @@ describe('CssVerticalBarChart column sizing', () => {
       value: 10 + i,
     }))
     const { container } = render(<CssVerticalBarChart data={normalData} />)
-    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
+    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -395,9 +397,7 @@ describe('CssVerticalBarChart column sizing', () => {
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(
-      ':scope > [style*="max-width"]'
-    ) as NodeListOf<HTMLElement>
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]')
     fireEvent.mouseEnter(columns[0]!)
     expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
     expect(columns[1]!.className).not.toContain('bg-foreground/[0.06]')
@@ -438,7 +438,7 @@ describe('CssVerticalBarChart barWidthPercent', () => {
 
   it('should apply barWidthPercent to all bars', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} barWidthPercent={55} />)
-    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.rounded-t')
     expect(bars.length).toBe(sampleData.length)
     for (const bar of bars) {
       expect(bar.style.width).toBe('55%')
@@ -580,7 +580,7 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     const { container } = render(
       <CssVerticalRetentionBarChart data={data} title="Thin" barWidthPercent={60} />
     )
-    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    const bars = container.querySelectorAll<HTMLElement>('.rounded-t')
     for (const bar of bars) {
       expect(bar.style.width).toBe('60%')
     }

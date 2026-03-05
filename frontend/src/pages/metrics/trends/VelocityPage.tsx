@@ -13,7 +13,7 @@
  * - Week-over-week delta table with prior-year columns
  */
 
-import React, { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -690,7 +690,7 @@ export default function VelocityPage() {
 
               {/* Prior year bars */}
               {data.prior_years.map((py) => (
-                <React.Fragment key={py.year}>
+                <Fragment key={py.year}>
                   <Bar
                     dataKey={`weekly_new_${py.year}`}
                     name={`New ${py.year}`}
@@ -705,7 +705,7 @@ export default function VelocityPage() {
                     stackId={`prior_${py.year}`}
                     opacity={0.6}
                   />
-                </React.Fragment>
+                </Fragment>
               ))}
             </BarChart>
           ) : (
@@ -807,7 +807,7 @@ export default function VelocityPage() {
                   />
                   {/* Prior year gender lines (dashed) */}
                   {selectedPriorYears.slice(0, 1).map((year) => (
-                    <React.Fragment key={year}>
+                    <Fragment key={year}>
                       <Line
                         type="monotone"
                         dataKey={
@@ -838,7 +838,7 @@ export default function VelocityPage() {
                         opacity={0.6}
                         connectNulls={false}
                       />
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                 </>
               ) : (

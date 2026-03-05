@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/big"
 	"strings"
@@ -122,7 +123,10 @@ func (w *RateLimitedSheetsWriter) GetSheetMetadata(
 		[]*rate.Limiter{w.readLimiter}, func() error {
 			var innerErr error
 			result, innerErr = w.inner.GetSheetMetadata(ctx, spreadsheetID)
-			return innerErr
+			if innerErr != nil {
+				return fmt.Errorf("getting sheet metadata: %w", innerErr)
+			}
+			return nil
 		})
 	return result, err
 }
@@ -158,7 +162,7 @@ func (w *RateLimitedSheetsWriter) executeWithRetry(
 	// Wait on all applicable rate limiters before the initial attempt
 	for _, limiter := range limiters {
 		if err := limiter.Wait(ctx); err != nil {
-			return err
+			return fmt.Errorf("%s rate limit wait: %w", opName, err)
 		}
 	}
 
@@ -186,14 +190,14 @@ func (w *RateLimitedSheetsWriter) executeWithRetry(
 		// Sleep with context awareness
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("%s retry cancelled: %w", opName, ctx.Err())
 		case <-time.After(sleepDuration):
 		}
 
 		// Wait on rate limiters again before retry
 		for _, limiter := range limiters {
 			if err := limiter.Wait(ctx); err != nil {
-				return err
+				return fmt.Errorf("%s retry rate limit wait: %w", opName, err)
 			}
 		}
 

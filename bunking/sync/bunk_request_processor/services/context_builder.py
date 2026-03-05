@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from ..core.models import Person
@@ -300,8 +300,7 @@ class ContextBuilder:
             if (
                 first_name.startswith(target_first_3)
                 or (len(first_name_3) >= 3 and first_name_3 == target_first_3)
-                or len(first_name) >= 2
-                and target_first.startswith(first_name[: min(3, len(first_name))])
+                or (len(first_name) >= 2 and target_first.startswith(first_name[: min(3, len(first_name))]))
                 or first_name in target_nicknames
             ):
                 is_match = True
@@ -360,7 +359,7 @@ class ContextBuilder:
                 ai_config = self.config_service.get_ai_config()
                 context_config = ai_config.get("context_building", {})
                 max_age_diff_months = context_config.get("max_age_difference_months", 24)
-            except Exception:
+            except Exception:  # noqa: S110 — intentional silent handling
                 pass
 
         # Use repository's age-filtered method
@@ -496,8 +495,7 @@ class ContextBuilder:
             if (
                 target_parts[0] in first_name
                 or first_name in target_parts[0]
-                or len(target_parts) > 1
-                and (target_parts[-1] in last_name or last_name in target_parts[-1])
+                or (len(target_parts) > 1 and (target_parts[-1] in last_name or last_name in target_parts[-1]))
             ):
                 relevant.append(attendee)
 
@@ -510,15 +508,13 @@ class ContextBuilder:
             return None
 
         try:
-            from datetime import datetime
-
             # Handle both string and datetime inputs
             if isinstance(birth_date, str):
                 birth = datetime.strptime(birth_date[:10], "%Y-%m-%d")
             else:
                 birth = birth_date
 
-            today = datetime.now()
+            today = datetime.now(tz=UTC)
             age = today.year - birth.year
             if today.month < birth.month or (today.month == birth.month and today.day < birth.day):
                 age -= 1

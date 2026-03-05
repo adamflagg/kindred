@@ -85,8 +85,8 @@ export function useMultiWorkbookExport() {
         })
       }
       // Invalidate workbooks to show status change
-      queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error) => {
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -120,7 +120,7 @@ export function useRefreshMasterIndex() {
           borderLeft: '4px solid hsl(160, 100%, 21%)',
         },
       })
-      queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
+      void queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
     },
     onError: (error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'

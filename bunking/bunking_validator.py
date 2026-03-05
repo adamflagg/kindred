@@ -183,10 +183,9 @@ class BunkingValidator:
 
         # Check for unassigned campers
         if stats.unassigned_campers > 0:
-            unassigned_ids = []
-            for person in persons:
-                if person.campminder_id not in assignments_by_person:
-                    unassigned_ids.append(person.campminder_id)
+            unassigned_ids = [
+                person.campminder_id for person in persons if person.campminder_id not in assignments_by_person
+            ]
 
             issues.append(
                 ValidationIssue(
@@ -235,10 +234,9 @@ class BunkingValidator:
             if request.requested_person_cm_id:
                 persons_with_requests.add(request.requested_person_cm_id)
 
-        campers_no_requests = []
-        for person in persons:
-            if person.campminder_id not in persons_with_requests:
-                campers_no_requests.append(person.campminder_id)
+        campers_no_requests = [
+            person.campminder_id for person in persons if person.campminder_id not in persons_with_requests
+        ]
 
         stats.campers_with_no_requests = len(campers_no_requests)
         if stats.campers_with_no_requests > 0:
@@ -511,7 +509,7 @@ class BunkingValidator:
                             stats.field_stats[field]["satisfied"] += 1
 
         # Calculate per-field satisfaction rates
-        for field_key, field_data in stats.field_stats.items():
+        for field_data in stats.field_stats.values():
             if field_data["total"] > 0:
                 field_data["satisfaction_rate"] = field_data["satisfied"] / field_data["total"]
 
@@ -680,11 +678,9 @@ class BunkingValidator:
                         continue
 
             # Calculate age spread in months
-            ages_in_months = []
-            for person in bunk_persons:
-                if hasattr(person, "age") and person.age is not None:
-                    # Age is in years, convert to months
-                    ages_in_months.append(int(person.age * 12))
+            ages_in_months = [
+                int(person.age * 12) for person in bunk_persons if hasattr(person, "age") and person.age is not None
+            ]
 
             age_spread = max(ages_in_months) - min(ages_in_months) if ages_in_months else 0
 
@@ -1135,16 +1131,16 @@ class BunkingValidator:
         # Update statistics
         stats.age_flow_violations = len(flow_violations)
 
-        for violation in flow_violations:
-            issues.append(
-                ValidationIssue(
-                    severity=ValidationSeverity.WARNING,
-                    type="age_flow_inversion",
-                    message=f"{violation['lower_bunk']} (avg age {violation['lower_avg_age']}) has older campers than {violation['higher_bunk']} (avg age {violation['higher_avg_age']})",
-                    details=violation,
-                    affected_ids=[],
-                )
+        issues.extend(
+            ValidationIssue(
+                severity=ValidationSeverity.WARNING,
+                type="age_flow_inversion",
+                message=f"{violation['lower_bunk']} (avg age {violation['lower_avg_age']}) has older campers than {violation['higher_bunk']} (avg age {violation['higher_avg_age']})",
+                details=violation,
+                affected_ids=[],
             )
+            for violation in flow_violations
+        )
 
     def _validate_isolation_risk(
         self,

@@ -13,7 +13,7 @@ from pocketbase.models.utils.list_result import ListResult
 from pocketbase.services.record_service import RecordService
 
 # Import TRACE constant and ensure trace method is available
-from bunking.logging_config import TRACE  # noqa: F401
+from bunking.logging_config import TRACE
 from pocketbase import PocketBase
 
 logger = logging.getLogger(__name__)
@@ -80,8 +80,7 @@ class WrappedRecordService(RecordService):
             items = []
             if "items" in response_data:
                 response_data["items"] = response_data["items"] or []
-                for item in response_data["items"]:
-                    items.append(self.decode(item))
+                items = [self.decode(item) for item in response_data["items"]]
 
             return ListResult(
                 response_data.get("page", 1),

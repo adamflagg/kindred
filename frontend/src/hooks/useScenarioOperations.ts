@@ -35,7 +35,7 @@ export function useUpdateScenario() {
     },
     onSuccess: () => {
       // Invalidate scenarios query to refetch
-      queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
+      void queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
       // Note: We can't easily get the session CM ID from the update response
       // So we invalidate all scenario queries to be safe
     },
@@ -66,7 +66,7 @@ export function useClearScenario() {
     },
     onSuccess: () => {
       // Invalidate any queries that might be affected
-      queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
     },
   })
 }

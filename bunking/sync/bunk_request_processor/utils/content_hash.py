@@ -30,7 +30,7 @@ def calculate_content_hash(content: str | None) -> str:
     if content is None:
         content = ""
 
-    return hashlib.md5(content.encode("utf-8")).hexdigest()
+    return hashlib.md5(content.encode("utf-8")).hexdigest()  # noqa: S324 — content dedup, not security
 
 
 def content_changed(new_content: str | None, stored_hash: str | None) -> bool:

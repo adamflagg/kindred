@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -119,7 +120,7 @@ func main() {
 			// Initialize sync service
 			slog.Info("Initializing Kindred sync service")
 			if err := sync.InitializeSyncService(app, e); err != nil {
-				return err
+				return fmt.Errorf("initializing sync service: %w", err)
 			}
 
 			return e.Next()

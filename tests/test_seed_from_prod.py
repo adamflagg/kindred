@@ -204,7 +204,7 @@ def _create_prod_db(db_path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def dev_and_prod(tmp_path: Path) -> tuple[str, str]:
     """Create a dev DB and a prod DB, returning their paths."""
     dev_path = str(tmp_path / "data.db")
@@ -214,7 +214,7 @@ def dev_and_prod(tmp_path: Path) -> tuple[str, str]:
     return dev_path, prod_path
 
 
-@pytest.fixture()
+@pytest.fixture
 def seed_module():
     """Import the seed_from_prod module."""
     import importlib

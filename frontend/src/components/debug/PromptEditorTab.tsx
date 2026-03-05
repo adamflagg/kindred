@@ -208,7 +208,7 @@ export function PromptEditorTab() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        handleSave()
+        void handleSave()
       }
     }
     window.addEventListener('keydown', handleKeyDown)

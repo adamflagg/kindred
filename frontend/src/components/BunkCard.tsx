@@ -1,4 +1,4 @@
-import React from 'react'
+import { Fragment } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
@@ -346,7 +346,7 @@ function BunkCard({
                   ) : gradeDistribution.type === 'multiple' ? (
                     <div className="flex flex-wrap items-center text-xs">
                       {gradeDistribution.grades?.map((g, index) => (
-                        <React.Fragment key={g.grade}>
+                        <Fragment key={g.grade}>
                           {index > 0 && <span className="mx-1">|</span>}
                           <span
                             className={clsx(
@@ -356,7 +356,7 @@ function BunkCard({
                           >
                             {formatGradeOrdinal(g.grade)}: {g.count}
                           </span>
-                        </React.Fragment>
+                        </Fragment>
                       ))}
                     </div>
                   ) : null}

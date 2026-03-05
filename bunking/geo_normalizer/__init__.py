@@ -19,7 +19,7 @@ from bunking.geo_normalizer.normalizer import (
 
 __all__ = [
     "normalize_cities",
-    "normalize_schools",
     "normalize_congregations",
+    "normalize_schools",
     "normalize_values",
 ]

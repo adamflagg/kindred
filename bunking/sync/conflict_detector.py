@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class ConflictDetector:
 
                 conflict = RequestConflict(
                     conflict_type="opposing_directions",
-                    conflict_group_id=f"conflict_{person_a}_{person_b}_{datetime.now().timestamp()}",
+                    conflict_group_id=f"conflict_{person_a}_{person_b}_{datetime.now(tz=UTC).timestamp()}",
                     person_a=person_a,
                     person_b=person_b,
                     request_a_id=positive_request["id"],
@@ -197,7 +197,7 @@ class ConflictDetector:
                 if age_pref.get("source_detail") == "explicit" and bunk_request.get("priority", 0) >= 8:
                     conflict = RequestConflict(
                         conflict_type="age_vs_explicit",
-                        conflict_group_id=f"age_conflict_{person_id}_{datetime.now().timestamp()}",
+                        conflict_group_id=f"age_conflict_{person_id}_{datetime.now(tz=UTC).timestamp()}",
                         person_a=person_id,
                         person_b=target_person,
                         request_a_id=age_pref["id"],
@@ -228,7 +228,7 @@ class ConflictDetector:
                         if target in group:
                             conflict = RequestConflict(
                                 conflict_type="friend_group_conflict",
-                                conflict_group_id=f"group_conflict_{person_id}_{target}_{datetime.now().timestamp()}",
+                                conflict_group_id=f"group_conflict_{person_id}_{target}_{datetime.now(tz=UTC).timestamp()}",
                                 person_a=person_id,
                                 person_b=target,
                                 request_a_id=request["id"],

@@ -9,9 +9,9 @@ from .resolution_pipeline import ResolutionPipeline
 from .strategies import ExactMatchStrategy, FuzzyMatchStrategy
 
 __all__ = [
-    "ResolutionResult",
-    "ResolutionStrategy",
-    "ResolutionPipeline",
     "ExactMatchStrategy",
     "FuzzyMatchStrategy",
+    "ResolutionPipeline",
+    "ResolutionResult",
+    "ResolutionStrategy",
 ]

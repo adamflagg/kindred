@@ -291,7 +291,7 @@ jobs:
     - name: Security audit (govulncheck)
       if: needs.detect-changes.outputs.backend == 'true'
       working-directory: ./pocketbase
-      run: govulncheck ./... || echo "::warning::govulncheck found vulnerabilities"
+      run: govulncheck ./...
 
     # PocketBase JS linting (migrations and hooks)
     - name: Install PocketBase JS linting dependencies
@@ -421,7 +421,7 @@ jobs:
     # Backend tests (Go) - tools pre-installed
     - name: Run Go tests
       working-directory: ./pocketbase
-      run: go test ./... -v
+      run: go test -race ./... -v
 
     # Migration smoke test - catches self-reference, dependency, and schema issues
     - name: Migration smoke test (fresh database)

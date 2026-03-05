@@ -63,14 +63,14 @@ const LoginPage = () => {
     }
 
     if (!user) {
-      fetchProviders()
+      void fetchProviders()
     }
   }, [user])
 
   useEffect(() => {
     // If user is already logged in, redirect them away from login page
     if (user) {
-      navigate(from, { replace: true })
+      void navigate(from, { replace: true })
       return
     }
 
@@ -78,7 +78,7 @@ const LoginPage = () => {
     if (providers.length === 1 && !autoLoginAttemptedRef.current && !error && providers[0]) {
       autoLoginAttemptedRef.current = true
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time auto-login action
-      handleProviderLogin(providers[0])
+      void handleProviderLogin(providers[0])
     }
   }, [user, navigate, from, providers, error, handleProviderLogin])
 

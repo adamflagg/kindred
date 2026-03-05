@@ -113,7 +113,7 @@ export function buildCampersFromData(
     if (assignment) {
       // Try to get bunk from assignment expand first
       if (assignment.expand?.bunk && typeof assignment.expand.bunk === 'object') {
-        bunk = assignment.expand.bunk as BunksResponse
+        bunk = assignment.expand.bunk
       }
       // Fallback to bunk map lookup using CM ID
       else {

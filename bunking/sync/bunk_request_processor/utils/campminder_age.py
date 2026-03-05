@@ -11,7 +11,7 @@ Examples:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 
 class CampMinderAge:
@@ -76,7 +76,7 @@ class CampMinderAge:
             CampMinderAge instance
         """
         if reference_date is None:
-            reference_date = date.today()
+            reference_date = datetime.now(tz=UTC).date()
 
         # Calculate years
         years = reference_date.year - birthdate.year

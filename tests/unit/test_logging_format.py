@@ -58,7 +58,7 @@ class TestISO8601Formatter:
         assert timestamp_str.endswith("Z"), f"Timestamp '{timestamp_str}' should end with Z"
 
         # Verify it's a valid ISO8601 timestamp
-        parsed = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(timestamp_str)
         assert parsed is not None
 
     def test_different_log_levels(self):

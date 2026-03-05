@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -437,7 +438,8 @@ func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category 
 
 	// Call Python normalizer
 	program, args := buildPythonNormalizerCommand(category, string(valuesJSON))
-	cmd := exec.Command(program, args...) // #nosec G204 -- arguments are from internal sync logic, not user input
+	// #nosec G204 -- arguments are from internal sync logic, not user input
+	cmd := exec.CommandContext(context.Background(), program, args...)
 	cmd.Dir = projectRoot
 	cmd.Env = append(os.Environ(),
 		"PYTHONPATH="+projectRoot,
@@ -445,7 +447,8 @@ func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category 
 
 	output, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			slog.Warn("Python normalizer failed",
 				"category", category,
 				"stderr", string(exitErr.Stderr),
@@ -739,11 +742,13 @@ func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	newData map[string]any,
 ) bool {
 	// Compare normalized_value
-	if existing.GetString("normalized_value") != newData["normalized_value"].(string) {
+	newNormalized, _ := newData["normalized_value"].(string)
+	if existing.GetString("normalized_value") != newNormalized {
 		return true
 	}
 	// Compare original_value
-	if existing.GetString("original_value") != newData["original_value"].(string) {
+	newOriginal, _ := newData["original_value"].(string)
+	if existing.GetString("original_value") != newOriginal {
 		return true
 	}
 	// Compare confidence with epsilon for float precision
@@ -752,7 +757,7 @@ func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	if c, ok := existing.Get("confidence").(float64); ok {
 		existingConf = c
 	}
-	newConf := newData["confidence"].(float64)
+	newConf, _ := newData["confidence"].(float64)
 	return math.Abs(existingConf-newConf) > epsilon
 }
 

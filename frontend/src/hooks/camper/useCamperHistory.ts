@@ -152,6 +152,6 @@ export function useCamperHistory(
   return {
     camperHistory,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

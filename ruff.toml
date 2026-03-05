@@ -29,13 +29,19 @@ line-length = 120
 select = [
     "E",    # pycodestyle errors
     "F",    # pyflakes
-    # "W",    # pycodestyle warnings (disabled for now due to whitespace issues)
-    "I",    # isort (enable for CI compatibility)
-    # "N",    # pep8-naming
-    "UP",   # pyupgrade - catches deprecated Python syntax
-    "B",    # flake8-bugbear - catches real bugs and design problems
-    # "C4",   # flake8-comprehensions
-    "SIM",  # flake8-simplify - simplification suggestions
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "RUF",  # ruff-specific rules
+    "T20",  # flake8-print
+    "N",    # pep8-naming
+    "FURB", # refurb (modernization)
+    "PT",   # flake8-pytest-style
+    "PERF", # perflint (performance anti-patterns)
+    "DTZ",  # flake8-datetimez (timezone safety)
+    "S",    # flake8-bandit (security)
 ]
 
 # Ignore specific rules
@@ -49,6 +55,10 @@ ignore = [
     "SIM105", # try-except-pass vs contextlib.suppress (style preference)
     "SIM108", # if-else-block-instead-of-if-exp (readability preference)
     "SIM117", # multiple-with-statements (readability preference)
+    "RUF001", # ambiguous-unicode-character-string (deliberate × symbol)
+    "RUF002", # ambiguous-unicode-character-docstring
+    "RUF003", # ambiguous-unicode-character-comment
+    "DTZ007", # strptime without %z - codebase uses naive datetimes for date-only arithmetic
 ]
 
 # Allow unused variables when underscore-prefixed
@@ -56,11 +66,17 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 # Per-file ignores
 [lint.per-file-ignores]
-"tests/**/*.py" = ["E402"]  # Allow imports after sys.path modifications in tests
-"scripts/cleanup_orphaned_configs.py" = ["E402"]  # Allow imports after sys.path modifications
-"scripts/populate_new_solver_config.py" = ["E402"]  # Allow imports after sys.path modifications
-"test_solver_hang.py" = ["E402"]  # Allow imports after sys.path modifications
-"test_solver_without_isolation.py" = ["E402"]  # Allow imports after sys.path modifications
+"tests/**/*.py" = ["E402", "T201", "N806", "RUF005", "RUF059", "S101", "S105", "S106", "S107", "S108", "S110", "S112", "S113", "S311", "S324", "S603", "S607", "DTZ001", "DTZ005", "PT011", "PERF401"]
+"scripts/**/*.py" = ["T20", "S", "DTZ005", "PERF401"]
+"scripts/cleanup_orphaned_configs.py" = ["E402"]
+"scripts/populate_new_solver_config.py" = ["E402"]
+"test_solver_hang.py" = ["E402"]
+"test_solver_without_isolation.py" = ["E402"]
+"docs/**/*.py" = ["S"]
+"api/services/test_*.py" = ["S101", "DTZ005"]
+"bunking/sync/bunk_request_processor/resolution/strategies/school_disambiguation.py" = ["S101"]
+"bunking/sync/bunk_request_processor/processing/deduplicator.py" = ["S101"]
+"api/services/metrics_sql_repository.py" = ["S608"]  # f-string SQL uses parameterized ?'s only
 
 # Allow fix for all enabled rules when using --fix
 fixable = ["ALL"]

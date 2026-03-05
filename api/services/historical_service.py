@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -54,7 +54,7 @@ class HistoricalService:
         """
         if years is None:
             season_id = os.environ.get("CAMPMINDER_SEASON_ID", "")
-            current_year = int(season_id) if season_id.isdigit() else datetime.now().year
+            current_year = int(season_id) if season_id.isdigit() else datetime.now(tz=UTC).year
             years = list(range(current_year - 4, current_year + 1))
 
         # If session_cm_id provided, get the session name to filter by

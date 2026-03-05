@@ -209,5 +209,5 @@ async def run_solver_task_v2(
                     "error_message": str(e),
                 },
             )
-        except Exception:
+        except Exception:  # noqa: S110 — intentional silent handling
             pass

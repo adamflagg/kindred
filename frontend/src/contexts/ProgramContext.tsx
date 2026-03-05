@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { type ReactNode, createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 export type Program = 'summer' | 'family' | 'metrics'
 
@@ -12,7 +12,7 @@ const ProgramContext = createContext<ProgramContextType | undefined>(undefined)
 
 const STORAGE_KEY = 'bunking-program-selection'
 
-export function ProgramProvider({ children }: { children: React.ReactNode }) {
+export function ProgramProvider({ children }: { children: ReactNode }) {
   const [currentProgram, setCurrentProgram] = useState<Program | null>(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored === 'summer' || stored === 'family' || stored === 'metrics') {

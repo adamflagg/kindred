@@ -6,7 +6,16 @@
  * other vertical/horizontal CSS charts.
  */
 
-import React, { useState, useCallback, useRef, type ReactNode } from 'react'
+import {
+  type MouseEvent,
+  type RefObject,
+  type ReactNode,
+  createElement,
+  Fragment,
+  useState,
+  useCallback,
+  useRef,
+} from 'react'
 
 /** Height for straight x-axis labels (px). */
 export const X_AXIS_HEIGHT_STRAIGHT = 34
@@ -120,7 +129,7 @@ export function useChartTooltip<T>() {
     item: null,
   })
 
-  const handleMouseMove = useCallback((e: React.MouseEvent, item: T) => {
+  const handleMouseMove = useCallback((e: MouseEvent, item: T) => {
     let x = e.clientX + 12
     let y = e.clientY - 12
     const tt = tooltipRef.current
@@ -212,7 +221,7 @@ export function useVerticalColumnTooltip<T>() {
   }, [])
 
   const handleColumnMove = useCallback(
-    (e: React.MouseEvent, item: T) => {
+    (e: MouseEvent, item: T) => {
       const chart = chartRef.current
       const tt = tooltipRef.current
       const colRect = hoveredColRect
@@ -275,13 +284,13 @@ interface HorizontalGridlinesProps {
  * Must be placed inside the bars container (position: relative).
  */
 export function HorizontalGridlines({ ticks, axisMax, drawingHeight }: HorizontalGridlinesProps) {
-  return React.createElement(
-    React.Fragment,
+  return createElement(
+    Fragment,
     null,
     ticks
       .filter((tick) => tick > 0)
       .map((tick) =>
-        React.createElement('div', {
+        createElement('div', {
           key: `grid-${tick}`,
           className:
             'pointer-events-none absolute left-0 right-0 z-0 border-t border-dashed border-foreground/10',
@@ -316,14 +325,14 @@ export function VerticalYAxis({
   width = 'w-8',
   formatTick = String,
 }: VerticalYAxisProps) {
-  return React.createElement(
+  return createElement(
     'div',
     {
       className: `relative mr-2 ${width} shrink-0`,
       style: { height: barsHeight },
     },
     ticks.map((tick) =>
-      React.createElement(
+      createElement(
         'span',
         {
           key: tick,
@@ -378,20 +387,20 @@ export function VerticalXAxis({
   // Used for line charts where data points span 0% to 100% of the plot area.
   if (edgeAligned && labels.length > 1) {
     const n = labels.length
-    return React.createElement(
+    return createElement(
       'div',
       {
         className: 'border-foreground/40 border-t pt-1',
         style: { ...(marginLeft ? { marginLeft } : {}) },
       },
-      React.createElement(
+      createElement(
         'div',
         {
           className: 'relative',
           style: { marginRight: `${rightPadding}px`, height: '20px' },
         },
         labels.map((label, i) =>
-          React.createElement(
+          createElement(
             'span',
             {
               key: i,
@@ -415,7 +424,7 @@ export function VerticalXAxis({
     : undefined
 
   if (rotated) {
-    return React.createElement(
+    return createElement(
       'div',
       {
         className: `border-foreground/40 flex border-t ${justifyClass}`,
@@ -427,7 +436,7 @@ export function VerticalXAxis({
         },
       },
       labels.map((label, i) =>
-        React.createElement(
+        createElement(
           'div',
           {
             key: i,
@@ -435,12 +444,12 @@ export function VerticalXAxis({
             style: sparseStyle,
           },
           // Tick mark: 6px vertical line from x-axis, centered on column
-          React.createElement('div', {
+          createElement('div', {
             className: 'border-foreground/40 absolute left-1/2 top-0 border-l',
             style: { height: '6px' },
           }),
           // Label: text-end anchored near the tick (matches Recharts textAnchor="end")
-          React.createElement(
+          createElement(
             'span',
             {
               className: 'text-muted-foreground absolute top-[6px] text-xs',
@@ -462,7 +471,7 @@ export function VerticalXAxis({
   }
 
   // Straight labels
-  return React.createElement(
+  return createElement(
     'div',
     {
       className: `border-foreground/40 flex border-t pt-1 ${justifyClass}`,
@@ -473,14 +482,14 @@ export function VerticalXAxis({
       },
     },
     labels.map((label, i) =>
-      React.createElement(
+      createElement(
         'div',
         {
           key: i,
           className: `text-center ${isSparse ? '' : 'flex-1'}`,
           style: sparseStyle,
         },
-        React.createElement('span', { className: 'text-muted-foreground text-sm' }, label)
+        createElement('span', { className: 'text-muted-foreground text-sm' }, label)
       )
     )
   )
@@ -513,7 +522,7 @@ export function ColumnHoverOverlay({
 
   if (gap === 0) {
     // Simple case: no gap, columns divide evenly
-    return React.createElement('div', {
+    return createElement('div', {
       className:
         'pointer-events-none absolute left-0 z-0 rounded bg-foreground/[0.06] transition-[transform,opacity] duration-150',
       style: {
@@ -533,7 +542,7 @@ export function ColumnHoverOverlay({
   const pctPart = (idx / itemCount) * 100
   const pxPart = idx * gap - (idx / itemCount) * totalGap
 
-  return React.createElement('div', {
+  return createElement('div', {
     className:
       'pointer-events-none absolute z-0 rounded bg-foreground/[0.06] transition-[left,opacity] duration-150',
     style: {
@@ -549,7 +558,7 @@ interface VerticalTooltipShellProps {
   visible: boolean
   x: number
   y: number
-  tooltipRef: React.RefObject<HTMLDivElement | null>
+  tooltipRef: RefObject<HTMLDivElement | null>
   children: ReactNode
 }
 
@@ -565,7 +574,7 @@ export function VerticalTooltipShell({
   children,
 }: VerticalTooltipShellProps) {
   if (!visible) return null
-  return React.createElement(
+  return createElement(
     'div',
     {
       ref: tooltipRef,

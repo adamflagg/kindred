@@ -47,5 +47,5 @@ async def get_session_availability(
         logger.error(f"Error calculating session availability: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error calculating session availability: {str(e)}",
+            detail=f"Error calculating session availability: {e!s}",
         )

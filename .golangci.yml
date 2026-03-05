@@ -31,6 +31,14 @@ linters:
     - gosec
     - lll
     - revive
+    # Safety linters
+    - nilerr
+    - noctx
+    - errorlint
+    - forcetypeassert
+    - usetesting
+    - exhaustive
+    - wrapcheck
 
   settings:
     govet:
@@ -52,6 +60,15 @@ linters:
       max-func-lines: 30
     dupl:
       threshold: 100
+    wrapcheck:
+      ignore-package-globs:
+        # PocketBase router event methods (e.JSON, e.NoContent, etc.) are terminal HTTP responses
+        - github.com/pocketbase/pocketbase/tools/router
+        # CampMinder client errors are wrapped by callers (ExecuteWithRetry adds context)
+        - github.com/camp/kindred/pocketbase/campminder
+      ignore-sig-regexps:
+        # context.Err() returns well-known sentinels (context.Canceled, context.DeadlineExceeded)
+        - "context\\.Context"
     gocritic:
       enabled-tags:
         - diagnostic
@@ -82,6 +99,7 @@ linters:
           - errcheck
           - dupl
           - gosec
+          - forcetypeassert
       - path: _test\.go
         linters:
           - revive

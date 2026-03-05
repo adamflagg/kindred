@@ -97,9 +97,11 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     # Only get age preference vars for campers with NO bunk requests (or if fallback enabled)
     age_only_requests: dict[int, list[DirectBunkRequest]] = {}
     if fallback_to_age:
-        for person_cm_id, age_reqs in age_requests_by_person.items():
-            if person_cm_id not in bunk_requests_by_person:
-                age_only_requests[person_cm_id] = age_reqs
+        age_only_requests = {
+            person_cm_id: age_reqs
+            for person_cm_id, age_reqs in age_requests_by_person.items()
+            if person_cm_id not in bunk_requests_by_person
+        }
 
     age_sat_vars, _ = add_age_preference_satisfaction_vars(ctx, age_only_requests)
 
@@ -191,14 +193,10 @@ def _filter_and_categorize_requests(
             bunk_requests.append(request)
         elif request.request_type == "age_preference":
             # Only include age preferences from explicit CSV fields (not socialize_preference)
-            if (
-                request_csv_fields
-                and "socialize_preference" not in request_csv_fields
-                or (
-                    not request_csv_fields
-                    and hasattr(request, "source_field")
-                    and request.source_field != "socialize_preference"
-                )
+            if (request_csv_fields and "socialize_preference" not in request_csv_fields) or (
+                not request_csv_fields
+                and hasattr(request, "source_field")
+                and request.source_field != "socialize_preference"
             ):
                 age_requests.append(request)
 

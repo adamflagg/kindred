@@ -362,7 +362,7 @@ export default function AllCampersView() {
               </div>
             </Listbox>
 
-            <Listbox value={filterSex} onChange={(v) => setFilterSex(v as 'all' | 'M' | 'F')}>
+            <Listbox value={filterSex} onChange={(v) => setFilterSex(v)}>
               <div className="relative">
                 <ListboxButton className="listbox-button-compact">
                   <span>{filterSex === 'all' ? 'All' : filterSex === 'M' ? 'Boys' : 'Girls'}</span>

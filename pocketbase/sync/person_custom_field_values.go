@@ -339,7 +339,8 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 				}
 
 				// Value or lastUpdated changed - update record
-				if existing.GetString("value") != pbData["value"].(string) || existingLastUpdated != newLastUpdated {
+				newValue, _ := pbData["value"].(string)
+				if existing.GetString("value") != newValue || existingLastUpdated != newLastUpdated {
 					for key, val := range pbData {
 						existing.Set(key, val)
 					}

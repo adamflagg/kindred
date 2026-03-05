@@ -48,17 +48,17 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         self.builder._add_classmate_edges(2025, 1234)
 
         # Verify edges were created based on school match
-        self.assertTrue(self.builder.graph.has_edge(1, 2))  # Same school, city, state, grade
-        self.assertFalse(self.builder.graph.has_edge(1, 3))  # Different schools/cities
-        self.assertFalse(self.builder.graph.has_edge(1, 4))  # Same school but grade diff > 1
+        assert self.builder.graph.has_edge(1, 2)  # Same school, city, state, grade
+        assert not self.builder.graph.has_edge(1, 3)  # Different schools/cities
+        assert not self.builder.graph.has_edge(1, 4)  # Same school but grade diff > 1
 
         # Check edge attributes
         edge_data = self.builder.graph.get_edge_data(1, 2)
-        self.assertEqual(edge_data["edge_type"], "school")
-        self.assertEqual(edge_data["weight"], 0.3)
-        self.assertEqual(edge_data["metadata"]["school"], "Lincoln Elementary")
-        self.assertEqual(edge_data["metadata"]["city"], "Boston")
-        self.assertEqual(edge_data["metadata"]["state"], "MA")
+        assert edge_data["edge_type"] == "school"
+        assert edge_data["weight"] == 0.3
+        assert edge_data["metadata"]["school"] == "Lincoln Elementary"
+        assert edge_data["metadata"]["city"] == "Boston"
+        assert edge_data["metadata"]["state"] == "MA"
 
     def test_add_classmate_edges_same_state(self):
         """Test that same state alone doesn't create edges - need school match."""
@@ -79,7 +79,7 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         self.builder._add_classmate_edges(2025, 1234)
 
         # Verify NO edge was created (different schools, different cities)
-        self.assertFalse(self.builder.graph.has_edge(1, 2))
+        assert not self.builder.graph.has_edge(1, 2)
 
     def test_no_duplicate_edges(self):
         """Test that existing edges are not duplicated."""
@@ -101,10 +101,10 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         self.builder._add_classmate_edges(2025, 1234)
 
         # Verify edge still exists but wasn't replaced
-        self.assertTrue(self.builder.graph.has_edge(1, 2))
+        assert self.builder.graph.has_edge(1, 2)
         edge_data = self.builder.graph.get_edge_data(1, 2)
-        self.assertEqual(edge_data["edge_type"], "request")  # Original type preserved
-        self.assertEqual(edge_data["weight"], 1.0)  # Original weight preserved
+        assert edge_data["edge_type"] == "request"  # Original type preserved
+        assert edge_data["weight"] == 1.0  # Original weight preserved
 
     def test_missing_address_data(self):
         """Test that campers without address data are skipped."""
@@ -127,8 +127,8 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         self.builder._add_classmate_edges(2025, 1234)
 
         # Verify no edges were created for nodes without addresses
-        self.assertFalse(self.builder.graph.has_edge(1, 2))
-        self.assertFalse(self.builder.graph.has_edge(1, 3))
+        assert not self.builder.graph.has_edge(1, 2)
+        assert not self.builder.graph.has_edge(1, 3)
 
     def test_case_insensitive_location_matching(self):
         """Test that location matching is case-insensitive."""
@@ -149,7 +149,7 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         self.builder._add_classmate_edges(2025, 1234)
 
         # Verify edge was created despite case differences
-        self.assertTrue(self.builder.graph.has_edge(1, 2))
+        assert self.builder.graph.has_edge(1, 2)
 
     def test_grade_difference_boundary(self):
         """Test grade difference boundary conditions."""
@@ -172,9 +172,9 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         self.builder._add_classmate_edges(2025, 1234)
 
         # Verify edges based on grade differences
-        self.assertTrue(self.builder.graph.has_edge(1, 2))  # Grade diff = 1 ✓
-        self.assertFalse(self.builder.graph.has_edge(1, 3))  # Grade diff = 2 ✗
-        self.assertTrue(self.builder.graph.has_edge(1, 4))  # Grade diff = 1 ✓
+        assert self.builder.graph.has_edge(1, 2)  # Grade diff = 1 ✓
+        assert not self.builder.graph.has_edge(1, 3)  # Grade diff = 2 ✗
+        assert self.builder.graph.has_edge(1, 4)  # Grade diff = 1 ✓
 
     @patch("bunking.graph.social_graph_builder.logger")
     def test_logging_output(self, mock_logger):

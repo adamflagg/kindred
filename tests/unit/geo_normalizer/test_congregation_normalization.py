@@ -86,7 +86,7 @@ class TestCongregationNormalizationWithLookup:
             return  # Skip if no data
 
         # Find a congregation with a prefix like "Temple" or "Congregation"
-        for key, canonical in lookup.items():
+        for canonical in lookup.values():
             if canonical.startswith("Congregation ") or canonical.startswith("Temple "):
                 # Try matching without the prefix
                 short_name = canonical.split(" ", 1)[1] if " " in canonical else canonical

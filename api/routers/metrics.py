@@ -65,12 +65,12 @@ async def get_retention_metrics(
     """
     from api.services.retention_service import RetentionService
 
-    cache_params = dict(
-        base_year=base_year,
-        compare_year=compare_year,
-        session_types=session_types,
-        session_cm_id=session_cm_id,
-    )
+    cache_params = {
+        "base_year": base_year,
+        "compare_year": compare_year,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+    }
     cached: RetentionMetricsResponse | None = metrics_cache.get("retention", **cache_params)
     if cached is not None:
         return cached
@@ -121,12 +121,12 @@ async def get_registration_metrics(
 
     from api.services.registration_service import RegistrationService
 
-    cache_params = dict(
-        year=year,
-        session_types=session_types,
-        statuses=statuses,
-        session_cm_id=session_cm_id,
-    )
+    cache_params = {
+        "year": year,
+        "session_types": session_types,
+        "statuses": statuses,
+        "session_cm_id": session_cm_id,
+    }
     cached: RegistrationMetricsResponse | None = metrics_cache.get("registration", **cache_params)
     if cached is not None:
         return cached
@@ -161,7 +161,7 @@ async def get_comparison_metrics(
     """
     from api.services.comparison_service import ComparisonService
 
-    cache_params = dict(year_a=year_a, year_b=year_b, session_types=session_types)
+    cache_params = {"year_a": year_a, "year_b": year_b, "session_types": session_types}
     cached: ComparisonMetricsResponse | None = metrics_cache.get("comparison", **cache_params)
     if cached is not None:
         return cached
@@ -203,7 +203,7 @@ async def get_historical_trends(
     """
     from api.services.historical_service import HistoricalService
 
-    cache_params = dict(years=years, session_types=session_types, session_cm_id=session_cm_id)
+    cache_params = {"years": years, "session_types": session_types, "session_cm_id": session_cm_id}
     cached: HistoricalTrendsResponse | None = metrics_cache.get("historical", **cache_params)
     if cached is not None:
         return cached
@@ -253,12 +253,12 @@ async def get_retention_trends(
 
     from api.services.retention_trends_service import RetentionTrendsService
 
-    cache_params = dict(
-        current_year=current_year,
-        num_years=num_years,
-        session_types=session_types,
-        session_cm_id=session_cm_id,
-    )
+    cache_params = {
+        "current_year": current_year,
+        "num_years": num_years,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+    }
     cached: RetentionTrendsResponse | None = metrics_cache.get("retention_trends", **cache_params)
     if cached is not None:
         return cached
@@ -304,7 +304,7 @@ async def get_waitlist_metrics(
 
     from api.services.waitlist_service import WaitlistService
 
-    cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
+    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id}
     cached: WaitlistMetricsResponse | None = metrics_cache.get("waitlist", **cache_params)
     if cached is not None:
         return cached
@@ -347,7 +347,7 @@ async def get_cancellation_metrics(
     """
     from api.services.cancellation_service import CancellationService
 
-    cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
+    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id}
     cached: CancellationMetricsResponse | None = metrics_cache.get("cancellations", **cache_params)
     if cached is not None:
         return cached
@@ -441,14 +441,14 @@ async def get_velocity(
 
     from api.services.velocity_service import VelocityService
 
-    cache_params = dict(
-        year=year,
-        compare_years=compare_years,
-        session_cm_id=session_cm_id,
-        session_types=session_types,
-        split_by_gender=split_by_gender,
-        metric=metric,
-    )
+    cache_params = {
+        "year": year,
+        "compare_years": compare_years,
+        "session_cm_id": session_cm_id,
+        "session_types": session_types,
+        "split_by_gender": split_by_gender,
+        "metric": metric,
+    }
     cached: VelocityResponse | None = metrics_cache.get("velocity", **cache_params)
     if cached is not None:
         return cached
@@ -483,7 +483,7 @@ async def get_forecast(
     """Get registration forecast with budget goals, capacity, and revenue projections."""
     from api.services.forecast_service import ForecastService
 
-    cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
+    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id}
     cached: ForecastResponse | None = metrics_cache.get("forecast", **cache_params)
     if cached is not None:
         return cached

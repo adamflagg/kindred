@@ -48,7 +48,7 @@ export const queryClient = new QueryClient({
 
 // Helper to manually invalidate cache (e.g., after sync)
 export const invalidateCache = () => {
-  queryClient.invalidateQueries()
+  void queryClient.invalidateQueries()
 }
 
 // Helper to clear all cache
@@ -68,32 +68,32 @@ export const invalidateSyncData = () => {
   fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
 
   // Sessions
-  queryClient.invalidateQueries({ queryKey: ['sessions'] })
-  queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-  queryClient.invalidateQueries({ queryKey: ['session'] })
-  queryClient.invalidateQueries({ queryKey: ['session-stats'] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions'] })
+  void queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+  void queryClient.invalidateQueries({ queryKey: ['session'] })
+  void queryClient.invalidateQueries({ queryKey: ['session-stats'] })
 
   // Campers and persons
-  queryClient.invalidateQueries({ queryKey: ['campers'] })
-  queryClient.invalidateQueries({ queryKey: ['all-campers'] })
-  queryClient.invalidateQueries({ queryKey: ['camper'] })
-  queryClient.invalidateQueries({ queryKey: ['camper-history'] })
+  void queryClient.invalidateQueries({ queryKey: ['campers'] })
+  void queryClient.invalidateQueries({ queryKey: ['all-campers'] })
+  void queryClient.invalidateQueries({ queryKey: ['camper'] })
+  void queryClient.invalidateQueries({ queryKey: ['camper-history'] })
 
   // Historical data
-  queryClient.invalidateQueries({ queryKey: ['historical-bunking'] })
+  void queryClient.invalidateQueries({ queryKey: ['historical-bunking'] })
 
   // Bunks and assignments
-  queryClient.invalidateQueries({ queryKey: ['bunks'] })
-  queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
+  void queryClient.invalidateQueries({ queryKey: ['bunks'] })
+  void queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
 
   // Bunk requests
-  queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-  queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
+  void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+  void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
 
   // Metrics (depends on synced data)
-  queryClient.invalidateQueries({ queryKey: ['metrics'] })
+  void queryClient.invalidateQueries({ queryKey: ['metrics'] })
 
   // Sync status
-  queryClient.invalidateQueries({ queryKey: ['sync-status'] })
-  queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+  void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+  void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
 }

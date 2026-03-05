@@ -346,7 +346,7 @@ class Phase2ResolutionService:
         # Log batch resolution results
         logger.debug(f"Batch resolved {len(batch_results)} names")
         for j, (req, result) in enumerate(zip(batch_requests, batch_results, strict=False)):
-            name, requester_id, session_id, year = req
+            name, requester_id, _session_id, _year = req
             num_candidates = len(result.candidates) if result.candidates else 0
             logger.debug(
                 f"Result for '{name}' (requester={requester_id}): "
@@ -586,15 +586,14 @@ class Phase2ResolutionService:
                     results.append((parse_result, filtered_results))
                 else:
                     # No resolution results - create empty list with one failed result per request
-                    failed_results = []
-                    for req in parse_result.parsed_requests:
-                        failed_results.append(
-                            ResolutionResult(
-                                confidence=0.0,
-                                method="no_resolution",
-                                target_name=req.target_name or "",
-                            )
+                    failed_results = [
+                        ResolutionResult(
+                            confidence=0.0,
+                            method="no_resolution",
+                            target_name=req.target_name or "",
                         )
+                        for req in parse_result.parsed_requests
+                    ]
                     results.append((parse_result, failed_results))
             else:
                 # Parse result wasn't valid or wasn't processed

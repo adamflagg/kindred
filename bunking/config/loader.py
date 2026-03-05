@@ -501,8 +501,7 @@ class ConfigLoader:
             pb_config = self._build_nested_from_records(records)
 
             # Merge PocketBase config into result
-            for key, value in pb_config.items():
-                config[key] = value
+            config.update(pb_config)
 
             logger.debug(f"Loaded AI config from PocketBase: {len(records)} records")
 
@@ -532,7 +531,7 @@ class ConfigLoader:
             value = record.value
 
             # Build the path: subcategory parts + config_key
-            parts = subcategory.split(".") + [config_key] if subcategory else [config_key]
+            parts = [*subcategory.split("."), config_key] if subcategory else [config_key]
 
             # Navigate/create nested structure
             current = result

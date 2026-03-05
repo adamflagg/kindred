@@ -367,7 +367,7 @@ export default function EditableRequestTarget({
           }}
         >
           {/* Reference banner - shows the name we're looking for */}
-          {requestedPersonName && requestedPersonName.trim() && (
+          {requestedPersonName?.trim() && (
             <div className="bg-forest-50/60 dark:bg-forest-950/40 border-forest-200/50 dark:border-forest-800/50 border-b px-3 py-2">
               <div className="flex items-start gap-2">
                 <Quote className="text-forest-600 dark:text-forest-400 mt-0.5 h-3.5 w-3.5 flex-shrink-0" />

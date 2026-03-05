@@ -266,12 +266,12 @@ class LoadTester:
                 df = pd.DataFrame(self.results["solver_performance"])
                 f.write("| Session | Campers | Bunks | Time (s) | Memory (MB) | Status |\n")
                 f.write("|---------|---------|-------|----------|-------------|--------|\n")
-                for row in df.itertuples(index=False):
-                    f.write(
-                        f"| {row.session_id} | {row.actual_campers} | "
-                        f"{row.bunks_created} | {row.elapsed_seconds:.2f} | "
-                        f"{row.memory_delta_mb:.2f} | {row.status} |\n"
-                    )
+                f.writelines(
+                    f"| {row.session_id} | {row.actual_campers} | "
+                    f"{row.bunks_created} | {row.elapsed_seconds:.2f} | "
+                    f"{row.memory_delta_mb:.2f} | {row.status} |\n"
+                    for row in df.itertuples(index=False)
+                )
                 f.write("\n")
 
             # API Performance
@@ -281,8 +281,10 @@ class LoadTester:
                 summary = df.groupby("endpoint")["elapsed_ms"].agg(["mean", "min", "max", "count"]).reset_index()
                 f.write("| Endpoint | Avg (ms) | Min (ms) | Max (ms) | Count |\n")
                 f.write("|----------|----------|----------|----------|-------|\n")
-                for row in summary.itertuples(index=False):
-                    f.write(f"| {row.endpoint} | {row.mean:.2f} | {row.min:.2f} | {row.max:.2f} | {row.count} |\n")
+                f.writelines(
+                    f"| {row.endpoint} | {row.mean:.2f} | {row.min:.2f} | {row.max:.2f} | {row.count} |\n"
+                    for row in summary.itertuples(index=False)
+                )
                 f.write("\n")
 
             # Memory Usage
@@ -296,11 +298,11 @@ class LoadTester:
             # Errors
             if self.results["errors"]:
                 f.write("## Errors\n\n")
-                for error in self.results["errors"]:
-                    f.write(
-                        f"- **{error.get('operation', 'unknown')}** at {error['timestamp']}: "
-                        f"{error.get('error', error.get('status_code', 'Unknown error'))}\n"
-                    )
+                f.writelines(
+                    f"- **{error.get('operation', 'unknown')}** at {error['timestamp']}: "
+                    f"{error.get('error', error.get('status_code', 'Unknown error'))}\n"
+                    for error in self.results["errors"]
+                )
                 f.write("\n")
 
             f.write("\n## Summary\n\n")

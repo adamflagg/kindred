@@ -171,12 +171,10 @@ class GraphCacheManager:
             Number of graphs invalidated
         """
         with self._lock:
-            keys_to_remove = []
             session_prefix = f"session_{session_cm_id}_{year}"
-
-            for key in self._cache:
-                if key.startswith(session_prefix) or f"_{session_cm_id}_{year}" in key:
-                    keys_to_remove.append(key)
+            keys_to_remove = [
+                key for key in self._cache if key.startswith(session_prefix) or f"_{session_cm_id}_{year}" in key
+            ]
 
             for key in keys_to_remove:
                 self._evict(key)
@@ -193,11 +191,7 @@ class GraphCacheManager:
             Number of graphs invalidated
         """
         with self._lock:
-            keys_to_remove = []
-
-            for key in self._cache:
-                if f"bunk_{bunk_cm_id}_" in key:
-                    keys_to_remove.append(key)
+            keys_to_remove = [key for key in self._cache if f"bunk_{bunk_cm_id}_" in key]
 
             for key in keys_to_remove:
                 self._evict(key)

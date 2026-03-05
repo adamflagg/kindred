@@ -15,7 +15,7 @@ interface RegDateConfig {
   value: string
 }
 
-const REG_DATE_FIELDS: Omit<RegDateConfig, 'id' | 'value'>[] = [
+const REG_DATE_FIELDS: Array<Omit<RegDateConfig, 'id' | 'value'>> = [
   {
     key: 'priority_reg_date',
     label: 'Priority Registration',

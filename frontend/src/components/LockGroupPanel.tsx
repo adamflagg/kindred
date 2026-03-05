@@ -164,7 +164,7 @@ function LockGroupPanel({
   })
 
   // Group members by group ID
-  const membersByGroup = allMembers.reduce(
+  const membersByGroup = allMembers.reduce<Record<string, ExpandedMember[]>>(
     (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
       const groupId = member.group
       if (!acc[groupId]) {
@@ -173,7 +173,7 @@ function LockGroupPanel({
       acc[groupId]?.push(member)
       return acc
     },
-    {} as Record<string, ExpandedMember[]>
+    {}
   )
 
   // Helper to get age from member (year-aware for historical viewing)
@@ -257,10 +257,10 @@ function LockGroupPanel({
       return await pb.collection('locked_groups').update(groupId, updates)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-groups', scenarioId, sessionPbId, currentYear],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear],
       })
     },
@@ -279,16 +279,16 @@ function LockGroupPanel({
       return await pb.collection('locked_groups').delete(groupId)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-groups', scenarioId, sessionPbId, currentYear],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-group-members', scenarioId, sessionPbId],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-group-members-panel', scenarioId, sessionPbId],
       })
     },
@@ -300,10 +300,10 @@ function LockGroupPanel({
       return await pb.collection('locked_group_members').delete(memberId)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-group-members', scenarioId, sessionPbId],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-group-members-panel', scenarioId, sessionPbId],
       })
     },

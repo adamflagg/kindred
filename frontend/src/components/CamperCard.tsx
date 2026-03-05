@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { type MouseEvent, type CSSProperties, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -129,7 +129,7 @@ function CamperCard({
     willChange: isDragging ? 'transform' : 'auto',
   }
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: MouseEvent) => {
     // Only trigger click if not dragging
     if (isDragging || isSortableDragging) return
 
@@ -156,7 +156,7 @@ function CamperCard({
     }
   }
 
-  const handleContextMenu = (e: React.MouseEvent) => {
+  const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     // Close any other open context menus first, then open ours after a microtask
@@ -216,7 +216,7 @@ function CamperCard({
             ...(lockState === 'pending'
               ? { animationDelay: `${getPendingAnimationDelay(camper.id)}ms` }
               : {}),
-          } as React.CSSProperties
+          } as CSSProperties
         }
         className={clsx(
           'relative overflow-hidden rounded-xl border-2 p-2.5 transition-all select-none',
@@ -429,7 +429,7 @@ function CamperCard({
                               key={group.id}
                               className="hover:bg-muted/50 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors"
                               onClick={() => {
-                                addCamperToGroup(camper, group.id)
+                                void addCamperToGroup(camper, group.id)
                                 setShowContextMenu(false)
                               }}
                             >

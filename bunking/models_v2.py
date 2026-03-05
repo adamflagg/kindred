@@ -5,7 +5,7 @@ No transformation needed.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -52,8 +52,8 @@ class DirectPerson(BaseModel):
         if not self.birthdate:
             return 0.0
 
-        today = datetime.now()
-        birth = datetime.fromisoformat(self.birthdate.replace("Z", "+00:00"))
+        today = datetime.now(tz=UTC)
+        birth = datetime.fromisoformat(self.birthdate)
 
         years = today.year - birth.year
         months = today.month - birth.month

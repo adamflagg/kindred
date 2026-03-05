@@ -57,9 +57,9 @@ export function useCreateScenario() {
     },
     onSuccess: (_data, params) => {
       // Invalidate scenarios query to refetch
-      queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
+      void queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
       // Also invalidate the specific session query using the param
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['saved-scenarios', params.session_cm_id],
       })
     },
@@ -185,7 +185,7 @@ export function useDeleteScenario() {
     },
     onSuccess: () => {
       // Invalidate all scenarios queries to refetch
-      queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
+      void queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
     },
   })
 }

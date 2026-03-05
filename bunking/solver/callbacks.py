@@ -5,7 +5,7 @@ Solver Callbacks - Progress monitoring for OR-Tools CP-SAT solver.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from ortools.sat.python import cp_model
 
@@ -22,12 +22,12 @@ class SolverProgressCallback(cp_model.CpSolverSolutionCallback):  # type: ignore
         self.constraint_logger = constraint_logger
         self.debug_mode = debug_mode
         self.solution_count = 0
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(tz=UTC)
 
     def on_solution_callback(self) -> None:
         """Called when a new solution is found."""
         self.solution_count += 1
-        current_time = datetime.now()
+        current_time = datetime.now(tz=UTC)
         elapsed = (current_time - self.start_time).total_seconds()
 
         message = f"Solution #{self.solution_count} found after {elapsed:.1f}s - Objective: {self.ObjectiveValue()}"

@@ -145,6 +145,6 @@ export function useSiblings(
   return {
     siblings,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

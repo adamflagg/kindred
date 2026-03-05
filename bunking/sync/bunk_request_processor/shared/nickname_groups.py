@@ -113,7 +113,7 @@ def get_nickname_groups(config_service: Any = None) -> list[set[str]]:
                         processed.update(group)
 
                 return groups
-        except Exception:
+        except Exception:  # noqa: S110 — intentional silent handling
             # Fall back to defaults on any error
             pass
 

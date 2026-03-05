@@ -58,9 +58,9 @@ export function useNormalizedMappings(
       const byNormalized = new Map<string, Map<string, { count: number; confidence: number }>>()
 
       for (const record of records) {
-        const normalizedValue = record['normalized_value'] as string
-        const originalValue = record['original_value'] as string
-        const confidence = (record['confidence'] as number) ?? 1.0
+        const normalizedValue = record['normalized_value']
+        const originalValue = record['original_value']
+        const confidence = record['confidence'] ?? 1.0
 
         let originals = byNormalized.get(normalizedValue)
         if (!originals) {

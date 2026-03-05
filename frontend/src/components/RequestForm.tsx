@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import type { Constraint, Camper, ConstraintType } from '../types/app-types'
@@ -19,7 +19,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
   const [selectedCampers, setSelectedCampers] = useState<string[]>(constraint?.campers || [])
   const [metadata, setMetadata] = useState<Record<string, unknown>>(constraint?.metadata || {})
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
 
     if (selectedCampers.length === 0) {
@@ -70,7 +70,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
         <Listbox
           value={type}
           onChange={(v) => {
-            setType(v as ConstraintType)
+            setType(v)
             setSelectedCampers([]) // Reset selection on type change
           }}
         >

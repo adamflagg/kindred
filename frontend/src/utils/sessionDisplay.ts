@@ -176,7 +176,7 @@ export function getSessionChartLabel(
 
     for (const pattern of patterns) {
       const match = sessionName.match(pattern)
-      if (match && match[1]) {
+      if (match?.[1]) {
         return `All-Gender ${match[1]}${gradeRange}`
       }
     }
@@ -187,14 +187,14 @@ export function getSessionChartLabel(
   // Handle embedded sessions - show "Session 2a", "Session 3a", etc.
   if (sessionType === 'embedded') {
     const embeddedMatch = sessionName.match(/session\s*(\d+[a-z])/i)
-    if (embeddedMatch && embeddedMatch[1]) {
+    if (embeddedMatch?.[1]) {
       return `Session ${embeddedMatch[1]}${gradeRange}`
     }
   }
 
   // Handle main sessions - show "Session 2", "Session 3", etc.
   const sessionMatch = sessionName.match(/session\s*(\d+[a-z]?)/i)
-  if (sessionMatch && sessionMatch[1]) {
+  if (sessionMatch?.[1]) {
     return `Session ${sessionMatch[1]}${gradeRange}`
   }
 

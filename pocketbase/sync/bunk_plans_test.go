@@ -63,9 +63,13 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 			}
 
 			// Simulate building recordData as createBunkPlan would
+			idFloat, ok := tt.planData["ID"].(float64)
+			if !ok {
+				t.Fatal("missing ID in test data")
+			}
 			recordData := map[string]interface{}{
 				"year":      2025,
-				"cm_id":     int(tt.planData["ID"].(float64)),
+				"cm_id":     int(idFloat),
 				"name":      tt.planData["Name"],
 				"code":      tt.planData["Code"],
 				"is_active": isActive,

@@ -89,7 +89,7 @@ stage2_cmd() {
         uv run pytest tests/unit/ -v --tb=short -q || return 1
 
     echo "Running Go unit tests..."
-    (cd pocketbase && go test ./... -v) || return 1
+    (cd pocketbase && go test -race ./... -v) || return 1
 
     echo "Running frontend unit tests..."
     (cd frontend && npm run test -- --run) || return 1

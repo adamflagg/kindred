@@ -269,7 +269,7 @@ def generate(camper_states: dict[str, str]) -> None:
 
     for name in sorted(states.keys()):
         key = repr(name) if not name.isidentifier() else name
-        lines.append(f"  {key}: {repr(states[name])},")
+        lines.append(f"  {key}: {states[name]!r},")
 
     lines.append("}")
     lines.append("")

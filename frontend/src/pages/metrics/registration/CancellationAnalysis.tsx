@@ -75,14 +75,14 @@ function transformCancelSessionData(
 }
 
 function transformCancelGradeData(
-  byGrade: {
+  byGrade: Array<{
     grade: number | null
     count: number
     was_enrolled?: number
     was_waitlisted?: number
     was_applied?: number
     other_prior_status?: number
-  }[]
+  }>
 ): StackedBarDataItem[] {
   return byGrade.map((item) => {
     const known =

@@ -214,7 +214,7 @@ class Deduplicator:
             primary: The request to keep
             duplicates: The duplicate requests
         """
-        all_requests = [primary] + duplicates
+        all_requests = [primary, *duplicates]
 
         # Build merged_sources array with full context from each source field
         merged_sources = []

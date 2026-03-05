@@ -746,7 +746,7 @@ class DrilldownService:
 
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
-        all_relevant_statuses = list(DECLINED_STATUSES) + ["enrolled", "waitlisted"]
+        all_relevant_statuses = [*list(DECLINED_STATUSES), "enrolled", "waitlisted"]
 
         history, enrolled_attendees, all_attendees = await asyncio.gather(
             self.repo.fetch_status_history(year, old_status="waitlisted", new_statuses=new_statuses),
@@ -926,11 +926,8 @@ class DrilldownService:
             if breakdown_type == "waitlist_total":
                 # Return all waitlisted (UC1 + UC2)
                 matching_attendees.append(att)
-            elif (
-                breakdown_type == "waitlist_no_enrollment"
-                and not is_enrolled
-                or breakdown_type == "waitlist_has_enrollment"
-                and is_enrolled
+            elif (breakdown_type == "waitlist_no_enrollment" and not is_enrolled) or (
+                breakdown_type == "waitlist_has_enrollment" and is_enrolled
             ):
                 matching_attendees.append(att)
 

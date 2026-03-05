@@ -32,19 +32,19 @@ from .schema import CONFIG_SCHEMA, get_all_required_keys, get_schema_key, valida
 from .types import ConfigKey, ConfigType
 
 __all__ = [
-    # Main loader
-    "ConfigLoader",
-    # Error classes
-    "ConfigError",
-    "MissingKeyError",
-    "ValidationError",
-    "DatabaseUnavailableError",
-    "UnknownKeyError",
     # Schema
     "CONFIG_SCHEMA",
+    # Error classes
+    "ConfigError",
     "ConfigKey",
+    # Main loader
+    "ConfigLoader",
     "ConfigType",
-    "get_schema_key",
+    "DatabaseUnavailableError",
+    "MissingKeyError",
+    "UnknownKeyError",
+    "ValidationError",
     "get_all_required_keys",
+    "get_schema_key",
     "validate_key",
 ]
