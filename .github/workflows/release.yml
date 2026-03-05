@@ -92,35 +92,50 @@ jobs:
           exit 0
         fi
 
-        # CI hasn't run on this commit — dispatch it
-        echo "⚠️ CI Summary not found, dispatching CI..."
-        gh workflow run ci.yml --ref main
+        # Check if a CI workflow is already running on main (e.g., push-triggered)
+        # We check workflow runs, not check-runs, because the CI Summary job
+        # won't appear until its dependencies complete.
+        CI_IN_PROGRESS=$(gh run list --workflow ci.yml --branch main --status in_progress --json databaseId --jq 'length' 2>/dev/null || echo "0")
+        CI_QUEUED=$(gh run list --workflow ci.yml --branch main --status queued --json databaseId --jq 'length' 2>/dev/null || echo "0")
 
-        # Poll for CI Summary (up to ~5 min)
+        if [ "$CI_IN_PROGRESS" = "0" ] && [ "$CI_QUEUED" = "0" ]; then
+          # No CI running — dispatch one
+          echo "⚠️ No CI running on main, dispatching CI..."
+          gh workflow run ci.yml --ref main
+        else
+          echo "⏳ CI already running on main (in_progress: $CI_IN_PROGRESS, queued: $CI_QUEUED), waiting..."
+        fi
+
+        # Poll for a successful CI Summary (up to ~5 min)
+        # Note: After dispatching, the new CI may cancel an in-progress push-triggered CI
+        # (same concurrency group). The cancelled run produces a failed CI Summary.
+        # We must keep polling until either a success appears or all runs finish as failures.
         for i in {1..20}; do
           sleep 15
-          RESULT=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
-            --jq '[.check_runs[] | select(.name == "CI Summary")] | sort_by(.started_at) | last | {status: .status, conclusion: .conclusion}' 2>/dev/null || echo "")
 
-          if [ -z "$RESULT" ]; then
-            echo "  Attempt $i/20: CI not started yet..."
-            continue
+          # Check for any successful CI Summary
+          SUCCESS=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | length' 2>/dev/null || echo "0")
+
+          if [ "$SUCCESS" != "0" ]; then
+            echo "✅ CI Summary passed"
+            exit 0
           fi
 
-          STATUS=$(echo "$RESULT" | jq -r '.status')
-          CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion')
+          # Check if any CI Summary is still pending/in-progress
+          PENDING=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Summary" and .status != "completed")] | length' 2>/dev/null || echo "0")
 
-          if [ "$STATUS" = "completed" ]; then
-            if [ "$CONCLUSION" = "success" ]; then
-              echo "✅ CI Summary passed"
-              exit 0
-            else
-              echo "❌ CI Summary failed (conclusion: $CONCLUSION)"
-              exit 1
-            fi
+          TOTAL=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Summary")] | length' 2>/dev/null || echo "0")
+
+          if [ "$TOTAL" != "0" ] && [ "$PENDING" = "0" ]; then
+            # All CI Summary checks completed, none succeeded
+            echo "❌ All CI Summary checks failed (total: $TOTAL, none succeeded)"
+            exit 1
           fi
 
-          echo "  Attempt $i/20: CI in progress..."
+          echo "  Attempt $i/20: waiting for CI... (total: $TOTAL, pending: $PENDING)"
         done
 
         echo "❌ CI did not complete within 5 minutes"
