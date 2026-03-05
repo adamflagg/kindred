@@ -11,6 +11,7 @@ import (
 
 // TestISO8601Format verifies the timestamp format matches the spec
 func TestISO8601Format(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	var buf bytes.Buffer
 	logger := NewLogger("test", &buf)
 
@@ -30,6 +31,7 @@ func TestISO8601Format(t *testing.T) {
 
 // TestSourceTagInBrackets verifies source is wrapped in brackets
 func TestSourceTagInBrackets(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	var buf bytes.Buffer
 	logger := NewLogger("pocketbase", &buf)
 
@@ -43,6 +45,7 @@ func TestSourceTagInBrackets(t *testing.T) {
 
 // TestDifferentLogLevels verifies all log levels work correctly
 func TestDifferentLogLevels(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	tests := []struct {
 		level    slog.Level
 		levelStr string
@@ -71,6 +74,7 @@ func TestDifferentLogLevels(t *testing.T) {
 
 // TestMessageWithAttributes verifies attributes are included
 func TestMessageWithAttributes(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	var buf bytes.Buffer
 	logger := NewLogger("test", &buf)
 
@@ -87,6 +91,7 @@ func TestMessageWithAttributes(t *testing.T) {
 
 // TestTimestampIsUTC verifies timestamp ends with Z (UTC indicator)
 func TestTimestampIsUTC(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	var buf bytes.Buffer
 	logger := NewLogger("test", &buf)
 
@@ -102,6 +107,7 @@ func TestTimestampIsUTC(t *testing.T) {
 
 // TestInitSetsDefaultLogger verifies Init configures slog.Default
 func TestInitSetsDefaultLogger(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	var buf bytes.Buffer
 	InitWithWriter("myservice", &buf)
 
@@ -119,6 +125,7 @@ func TestInitSetsDefaultLogger(t *testing.T) {
 
 // TestInitWithWriter verifies InitWithWriter correctly sets up the logger
 func TestInitWithWriter(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
 	var buf bytes.Buffer
 	InitWithWriter("testservice", &buf)
 
@@ -147,5 +154,70 @@ func TestLogLevelFromEnv(t *testing.T) {
 	logger.Info("Info message")
 	if buf.Len() == 0 {
 		t.Error("INFO message should be logged at INFO level")
+	}
+}
+
+// TestCompactModeOmitsTimestampAndSource verifies compact mode strips timestamp and source
+func TestCompactModeOmitsTimestampAndSource(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "true")
+	var buf bytes.Buffer
+	logger := NewLogger("pocketbase", &buf)
+
+	logger.Info("Registered sync service")
+
+	output := strings.TrimSpace(buf.String())
+	expected := "INFO Registered sync service"
+	if output != expected {
+		t.Errorf("Compact output should be %q, got %q", expected, output)
+	}
+}
+
+// TestCompactModeKeepsSubLabels verifies sub-labels (with /) are preserved in compact mode
+func TestCompactModeKeepsSubLabels(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "true")
+	var buf bytes.Buffer
+	logger := NewLogger("sync/sessions", &buf)
+
+	logger.Info("Starting session sync")
+
+	output := strings.TrimSpace(buf.String())
+	expected := "[sync/sessions] INFO Starting session sync"
+	if output != expected {
+		t.Errorf("Compact sub-label output should be %q, got %q", expected, output)
+	}
+}
+
+// TestCompactModeDisabledShowsFullFormat verifies LOG_COMPACT=false produces full format
+func TestCompactModeDisabledShowsFullFormat(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "false")
+	var buf bytes.Buffer
+	logger := NewLogger("pocketbase", &buf)
+
+	logger.Info("Server started")
+
+	output := buf.String()
+	// Should have full format: timestamp [source] LEVEL message
+	pattern := `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \[pocketbase\] INFO Server started\n$`
+	matched, err := regexp.MatchString(pattern, output)
+	if err != nil {
+		t.Fatalf("Regex error: %v", err)
+	}
+	if !matched {
+		t.Errorf("Full format output %q doesn't match pattern %s", output, pattern)
+	}
+}
+
+// TestCompactModeWithAttributes verifies attributes still appear in compact mode
+func TestCompactModeWithAttributes(t *testing.T) {
+	t.Setenv("LOG_COMPACT", "true")
+	var buf bytes.Buffer
+	logger := NewLogger("pocketbase", &buf)
+
+	logger.Info("Registered sync", "name", "staff_skills")
+
+	output := strings.TrimSpace(buf.String())
+	expected := "INFO Registered sync name=staff_skills"
+	if output != expected {
+		t.Errorf("Compact output with attrs should be %q, got %q", expected, output)
 	}
 }
