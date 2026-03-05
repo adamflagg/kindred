@@ -221,6 +221,6 @@ export function useSatisfactionData(
   return {
     satisfactionData,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

@@ -9,7 +9,7 @@ export default function User() {
 
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    void navigate('/login')
   }
 
   if (isLoading) {

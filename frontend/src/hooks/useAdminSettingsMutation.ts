@@ -34,7 +34,7 @@ export function useUpdateAdminSetting() {
     },
     onSuccess: () => {
       // Invalidate admin settings query to refetch
-      queryClient.invalidateQueries({ queryKey: queryKeys.adminSettings() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminSettings() })
     },
   })
 }

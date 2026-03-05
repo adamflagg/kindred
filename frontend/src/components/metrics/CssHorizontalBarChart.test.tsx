@@ -38,7 +38,7 @@ describe('CssHorizontalBarChart rendering', () => {
 
   it('should render without a title when not provided', () => {
     const { container } = render(<CssHorizontalBarChart data={sampleData} />)
-    expect(container.querySelectorAll('h3').length).toBe(0)
+    expect(container.querySelectorAll<HTMLElement>('h3').length).toBe(0)
   })
 
   it('should render one row per data item', () => {
@@ -51,7 +51,7 @@ describe('CssHorizontalBarChart rendering', () => {
   it('should display value labels in the value column', () => {
     const { container } = render(<CssHorizontalBarChart data={sampleData} title="Values" />)
     // Value labels are in the tabular-nums spans at the end of each row
-    const valueSpans = container.querySelectorAll('.tabular-nums')
+    const valueSpans = container.querySelectorAll<HTMLElement>('.tabular-nums')
     const values = Array.from(valueSpans).map((el) => el.textContent?.trim())
     expect(values).toContain('40')
     expect(values).toContain('70')
@@ -86,7 +86,7 @@ describe('CssHorizontalBarChart bar sizing', () => {
       { name: 'Full', value: 100 },
     ]
     const { container } = render(<CssHorizontalBarChart data={data} title="Scale" />)
-    const fills = container.querySelectorAll('.rounded.transition-all') as NodeListOf<HTMLElement>
+    const fills = container.querySelectorAll<HTMLElement>('.rounded.transition-all')
     // The "Full" bar should be wider than the "Half" bar
     const halfWidth = parseFloat(fills[0]?.style.width || '0')
     const fullWidth = parseFloat(fills[1]?.style.width || '0')
@@ -97,7 +97,7 @@ describe('CssHorizontalBarChart bar sizing', () => {
     const { container } = render(
       <CssHorizontalBarChart data={sampleData} labelWidth={120} valueWidth={60} />
     )
-    const labels = container.querySelectorAll('.truncate') as NodeListOf<HTMLElement>
+    const labels = container.querySelectorAll<HTMLElement>('.truncate')
     expect(labels[0]?.style.width).toBe('120px')
   })
 })

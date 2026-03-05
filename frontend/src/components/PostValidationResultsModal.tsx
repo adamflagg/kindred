@@ -154,7 +154,7 @@ function parseIssueMessage(issue: Issue): ParsedIssue {
       // Convert all_grades object to sorted array (already sorted by count desc from backend)
       const grades = Object.entries(d.all_grades).map(([g, c]) => ({
         grade: parseInt(g, 10),
-        count: c as number,
+        count: c,
       }))
       return {
         primary: d.bunk_name,

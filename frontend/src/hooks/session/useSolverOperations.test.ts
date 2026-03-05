@@ -182,7 +182,7 @@ describe('solver result statistics', () => {
       | { impossible_requests?: number }
       | undefined
     const hasImpossibleRequests =
-      validation && validation.impossible_requests && validation.impossible_requests > 0
+      validation?.impossible_requests && validation.impossible_requests > 0
 
     expect(hasImpossibleRequests).toBeFalsy()
   })

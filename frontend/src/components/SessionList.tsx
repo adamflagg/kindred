@@ -74,7 +74,7 @@ function getSessionStatus(session: CampSessionsResponse): SessionStatus {
  */
 function parseSessionForSort(name: string): [number, string] {
   const match = name.match(/session\s+(\d+)([a-z])?/i)
-  if (match && match[1]) {
+  if (match?.[1]) {
     return [parseInt(match[1], 10), match[2]?.toLowerCase() || '']
   }
   // Taste of Camp sorts first (0)
@@ -575,7 +575,7 @@ export default function SessionList() {
   // Map statistics to sessions
   const sessionsWithStats: SessionWithStats[] = sessions.map((session, index) => ({
     ...session,
-    statistics: statisticsQueries[index]?.data as SessionStatistics | undefined,
+    statistics: statisticsQueries[index]?.data,
     isLoadingStats: statisticsQueries[index]?.isLoading,
   }))
 

@@ -18,7 +18,7 @@ export default tseslint.config(
 
   // Ignore patterns
   {
-    ignores: ['dist/**', 'node_modules/**', '*.cjs', 'src/types/pocketbase-types.ts'],
+    ignores: ['dist/**', 'node_modules/**', '*.cjs', 'src/types/pocketbase-types.ts', 'vite.config.local.ts'],
   },
 
   // Configuration for JS files
@@ -51,18 +51,19 @@ export default tseslint.config(
         process: true,
         Buffer: true,
       },
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     plugins: {
       'react-hooks': reactHooks,
     },
     rules: {
       // React Hooks rules - core rules as errors, compiler rules as warnings
-      // Phase 1.1-1.5 improved patterns in LoginPage, RightPanelContainer,
-      // CamperDetailsPanel, ScenarioContext, AuthContext
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'error', // Promoted from warn - all violations fixed
+      'react-hooks/exhaustive-deps': 'error',
       // React Compiler rules - enabled as warnings for gradual adoption
-      // Full adoption requires more extensive refactoring
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/refs': 'warn',
       'react-hooks/purity': 'warn',
@@ -71,23 +72,36 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
 
-      // TypeScript 5.8 strict rules (no type checking required)
+      // TypeScript strict rules (no type checking required)
       '@typescript-eslint/prefer-as-const': 'error',
       '@typescript-eslint/no-non-null-assertion': 'warn',
       '@typescript-eslint/consistent-type-imports': [
         'warn',
         {
           prefer: 'type-imports',
-          disallowTypeAnnotations: true,
+          fixStyle: 'inline-type-imports',
         },
       ],
       '@typescript-eslint/consistent-type-definitions': ['warn', 'interface'],
       '@typescript-eslint/array-type': ['warn', { default: 'array-simple' }],
-      // Rules that require type checking are commented out
-      // '@typescript-eslint/prefer-nullish-coalescing': 'warn',
-      // '@typescript-eslint/prefer-optional-chain': 'warn',
-      // '@typescript-eslint/strict-boolean-expressions': 'off',
-      // '@typescript-eslint/no-unnecessary-condition': 'off',
+
+      // Type-checked correctness rules (require parserOptions.projectService)
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: { attributes: false } }],
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-unnecessary-condition': 'warn',
+
+      // Type-checked quality rules
+      '@typescript-eslint/prefer-nullish-coalescing': 'warn',
+      '@typescript-eslint/prefer-optional-chain': 'warn',
+      '@typescript-eslint/consistent-type-exports': 'warn',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
+      '@typescript-eslint/restrict-template-expressions': 'warn',
+
+      // Type-checked style rules
+      '@typescript-eslint/prefer-string-starts-ends-with': 'warn',
+      '@typescript-eslint/prefer-includes': 'warn',
+      '@typescript-eslint/prefer-reduce-type-parameter': 'warn',
     },
   },
 

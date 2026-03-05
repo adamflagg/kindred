@@ -70,7 +70,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
         <Listbox
           value={type}
           onChange={(v) => {
-            setType(v as ConstraintType)
+            setType(v)
             setSelectedCampers([]) // Reset selection on type change
           }}
         >

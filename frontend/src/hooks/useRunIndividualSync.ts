@@ -138,7 +138,7 @@ export function useRunIndividualSync() {
       }
 
       // Invalidate sync status to show it's running
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error, syncType) => {
       const displayName = SYNC_TYPE_NAMES[syncType] || syncType

@@ -47,7 +47,7 @@ export default function Users() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchUsers()
+    void fetchUsers()
   }, [])
 
   const fetchUsers = async () => {

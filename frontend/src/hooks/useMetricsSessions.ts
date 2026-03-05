@@ -32,10 +32,10 @@ export function useMetricsSessions(year: number) {
       })
 
       const mapped = sessions.map((s) => ({
-        cm_id: s.cm_id as number,
-        name: s.name as string,
+        cm_id: s.cm_id,
+        name: s.name,
         session_type: s.session_type as 'main' | 'embedded' | 'quest',
-        start_date: s.start_date as string,
+        start_date: s.start_date,
       }))
       return sortSessionsByDate(mapped)
     },

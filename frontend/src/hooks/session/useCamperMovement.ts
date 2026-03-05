@@ -350,10 +350,10 @@ export function useCamperMovement({
     onSuccess: (response) => {
       // Handle null response (e.g., production move to unassigned)
       if (!response) {
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: ['campers', selectedSession],
         })
-        queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
+        void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
         onPendingMoveCleared?.()
         toast.success('Camper moved successfully')
         return
@@ -363,8 +363,8 @@ export function useCamperMovement({
       const wasChanged = (response as { changed?: boolean }).changed !== false
 
       // Always invalidate queries to keep UI in sync
-      queryClient.invalidateQueries({ queryKey: ['campers', selectedSession] })
-      queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['campers', selectedSession] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
       onPendingMoveCleared?.()
 
       // Invalidate graph cache for the session

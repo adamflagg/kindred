@@ -136,7 +136,7 @@ export function drawBunkBubbles(
       }
 
       // Store the path reference with metadata
-      pathsRef.current.push(path as SVGElement)
+      pathsRef.current.push(path)
     } catch (error) {
       console.error(`Error creating bubble for bunk ${bunkId}:`, error)
       failedBunks.push(`${bunkId} (${bunkName}) - Error: ${error}`)
@@ -283,7 +283,7 @@ export function drawBunkBubbles(
   // Update popper positions on graph viewport changes
   const updatePoppers = () => {
     poppersRef.current.forEach(({ instance }) => {
-      instance.update()
+      void instance.update()
     })
   }
 

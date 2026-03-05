@@ -93,7 +93,7 @@ describe('mergeDataForComparison', () => {
 
   it('calculates changePercent as null when compare value is 0', () => {
     const primary = [{ name: 'New Item', value: 10 }]
-    const compare: { name: string; value: number }[] = []
+    const compare: Array<{ name: string; value: number }> = []
 
     const result = mergeDataForComparison(primary, compare)
     // Item only in primary → compareValue=0 → changePercent=null
@@ -101,7 +101,7 @@ describe('mergeDataForComparison', () => {
   })
 
   it('calculates changePercent correctly for zero primary value', () => {
-    const primary: { name: string; value: number }[] = []
+    const primary: Array<{ name: string; value: number }> = []
     const compare = [{ name: 'Gone Item', value: 10 }]
 
     const result = mergeDataForComparison(primary, compare)
@@ -178,14 +178,14 @@ describe('mergeDataForComparison', () => {
 
   it('does NOT set compareName for items only in primary', () => {
     const primary = [{ name: 'New Session', value: 30, id: '1000003' }]
-    const compare: { name: string; value: number; id: string }[] = []
+    const compare: Array<{ name: string; value: number; id: string }> = []
 
     const result = mergeDataForComparison(primary, compare, 'name', 'id')
     expect(result[0]?.compareName).toBeUndefined()
   })
 
   it('does NOT set compareName for items only in compare', () => {
-    const primary: { name: string; value: number; id: string }[] = []
+    const primary: Array<{ name: string; value: number; id: string }> = []
     const compare = [{ name: 'Old Session', value: 20, id: '1000004' }]
 
     const result = mergeDataForComparison(primary, compare, 'name', 'id')
@@ -288,7 +288,7 @@ describe('mergeDataForComparison', () => {
     })
 
     it('handles compare-only aliased items when no primary match exists', () => {
-      const primary: { name: string; value: number }[] = []
+      const primary: Array<{ name: string; value: number }> = []
       const compare = [{ name: 'Taste of Camp', value: 100 }]
 
       const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)

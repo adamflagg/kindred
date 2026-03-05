@@ -33,7 +33,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
         fileInputRef.current.value = ''
       }
       // Invalidate sync status
-      queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
     },
     onError: (error: UploadError) => {
       if (error.missing_columns) {

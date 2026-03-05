@@ -43,7 +43,7 @@ export function CampJourneyTimeline({
                 const isCurrentYear = record.year === currentYear
                 // Hide year label if same year as previous record (multi-session)
                 const prevRecord = idx > 0 ? history[idx - 1] : null
-                const showYear = !prevRecord || prevRecord.year !== record.year
+                const showYear = prevRecord?.year !== record.year
 
                 return (
                   <div

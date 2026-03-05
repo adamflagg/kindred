@@ -73,7 +73,7 @@ export function BreakdownChart({
     active?: boolean
     payload?: Array<{ payload: ChartData }>
   }) => {
-    if (active && payload && payload.length && payload[0]) {
+    if (active && payload?.length && payload[0]) {
       const item = payload[0].payload
       return (
         <div className="bg-card border-border rounded-lg border p-3 shadow-lg">

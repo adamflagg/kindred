@@ -35,14 +35,14 @@ function getTableInSection(sectionHeading: string) {
 
 function getRowHeaders(table: HTMLElement): string[] {
   const rows = within(table).getAllByRole('row')
-  return rows.slice(1).map((row) => within(row).getByRole('rowheader').textContent!)
+  return rows.slice(1).map((row) => within(row).getByRole('rowheader').textContent)
 }
 
 function getColumnHeaders(table: HTMLElement): string[] {
   const headerRow = within(table).getAllByRole('row')[0]!
   return within(headerRow)
     .getAllByRole('columnheader')
-    .map((th) => th.textContent!)
+    .map((th) => th.textContent)
 }
 
 describe('SessionBunkHeatmap', () => {

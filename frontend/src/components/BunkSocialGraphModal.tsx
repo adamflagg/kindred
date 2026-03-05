@@ -210,7 +210,7 @@ export default function BunkSocialGraphModal({
         if (name.includes('Bet')) return { primary: -1, secondary: name }
 
         const match = name.match(/[GB]-(\d+)/)
-        if (match && match[1]) {
+        if (match?.[1]) {
           return { primary: parseInt(match[1], 10), secondary: name }
         }
         return { primary: 999, secondary: name }
@@ -712,7 +712,7 @@ export default function BunkSocialGraphModal({
                         {(() => {
                           const grades = graphData.nodes
                             .map((n) => n.grade)
-                            .filter((g) => g !== null) as number[]
+                            .filter((g) => g !== null)
                           if (grades.length === 0) return 'N/A'
 
                           // Count campers per grade
@@ -895,7 +895,7 @@ export default function BunkSocialGraphModal({
                             // Get grade counts
                             const allGrades = graphData.nodes
                               .map((n) => n.grade)
-                              .filter((g) => g !== null) as number[]
+                              .filter((g) => g !== null)
                             const gradeCounts: Record<number, number> = {}
                             allGrades.forEach((grade) => {
                               gradeCounts[grade] = (gradeCounts[grade] || 0) + 1

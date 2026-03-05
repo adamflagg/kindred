@@ -147,6 +147,6 @@ export function useCamperEnrollment(
     camper: data?.camper ?? null,
     person: data?.person ?? null,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

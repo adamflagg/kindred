@@ -141,7 +141,7 @@ export function CollapsibleDemographicTable(props: CollapsibleDemographicTablePr
                 </thead>
                 <tbody>
                   {variant === 'registration'
-                    ? (data as RegistrationTableData[]).map((item, idx) => (
+                    ? (data).map((item, idx) => (
                         <tr key={idx} className="border-border hover:bg-muted/30 border-t">
                           <td
                             className="text-foreground max-w-[200px] truncate px-4 py-2"
@@ -155,7 +155,7 @@ export function CollapsibleDemographicTable(props: CollapsibleDemographicTablePr
                           </td>
                         </tr>
                       ))
-                    : (data as RetentionTableData[]).map((item, idx) => (
+                    : (data).map((item, idx) => (
                         <tr key={idx} className="border-border hover:bg-muted/30 border-t">
                           <td
                             className="text-foreground max-w-[200px] truncate px-4 py-2"

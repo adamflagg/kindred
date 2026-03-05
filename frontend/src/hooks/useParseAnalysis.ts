@@ -197,13 +197,13 @@ export function useParsePhase1Only() {
       debugService.parsePhase1Only(request, fetchWithAuth),
     onSuccess: () => {
       // Invalidate all related queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
-      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      void queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
+      void queryClient.invalidateQueries({
         queryKey: ['parse-result-with-fallback'],
       })
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
     },
   })
 }
@@ -222,7 +222,7 @@ export function useReparseSingle() {
         fetchWithAuth
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
     },
   })
 }
@@ -238,11 +238,11 @@ export function useClearParseAnalysis() {
     mutationFn: (filters?: ScopedClearFilters) =>
       debugService.clearParseAnalysis(fetchWithAuth, filters),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
-      queryClient.invalidateQueries({ queryKey: ['original-requests'] })
-      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      void queryClient.invalidateQueries({ queryKey: ['original-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
     },
   })
 }
@@ -258,11 +258,11 @@ export function useClearSingleParseAnalysis() {
     mutationFn: (originalRequestId: string) =>
       debugService.clearSingleParseAnalysis(originalRequestId, fetchWithAuth),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
-      queryClient.invalidateQueries({ queryKey: ['original-requests'] })
-      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      void queryClient.invalidateQueries({ queryKey: ['original-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
+      void queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
     },
   })
 }
@@ -340,10 +340,10 @@ export function useUpdatePrompt() {
       debugService.updatePrompt(name, content, fetchWithAuth),
     onSuccess: (_data, variables) => {
       // Invalidate both the specific prompt and the list
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: queryKeys.prompt(variables.name),
       })
-      queryClient.invalidateQueries({ queryKey: queryKeys.prompts() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.prompts() })
     },
   })
 }

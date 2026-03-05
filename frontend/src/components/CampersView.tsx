@@ -147,9 +147,9 @@ export default function CampersView({
       filtered = filtered.filter(
         (camper) =>
           camper.name.toLowerCase().includes(term) ||
-          (camper.first_name && camper.first_name.toLowerCase().includes(term)) ||
-          (camper.last_name && camper.last_name.toLowerCase().includes(term)) ||
-          (camper.preferred_name && camper.preferred_name.toLowerCase().includes(term))
+          (camper.first_name?.toLowerCase().includes(term)) ||
+          (camper.last_name?.toLowerCase().includes(term)) ||
+          (camper.preferred_name?.toLowerCase().includes(term))
       )
     }
 
@@ -217,7 +217,7 @@ export default function CampersView({
 
           {/* Filter Controls */}
           <div className="flex items-center gap-2">
-            <Listbox value={filterSex} onChange={(v) => setFilterSex(v as 'all' | 'M' | 'F')}>
+            <Listbox value={filterSex} onChange={(v) => setFilterSex(v)}>
               <div className="relative">
                 <ListboxButton className="listbox-button-compact">
                   <span>{filterSex === 'all' ? 'All' : filterSex === 'M' ? 'Boys' : 'Girls'}</span>

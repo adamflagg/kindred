@@ -262,7 +262,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     } // End of runLayout function
 
     // Start staged addition
-    addElementsStaged().then(() => {
+    void addElementsStaged().then(() => {
       // Run layout after all elements are added
       runLayout()
     })

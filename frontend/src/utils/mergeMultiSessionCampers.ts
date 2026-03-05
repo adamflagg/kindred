@@ -72,7 +72,7 @@ export function mergeMultiSessionCampers(campers: Camper[], sessions: Session[])
         session_cm_id: c.session_cm_id,
         session_name: session?.name ?? `Session ${c.session_cm_id}`,
         bunk_cm_id: c.assigned_bunk_cm_id ?? undefined,
-        bunk_name: bunk && 'name' in bunk ? (bunk.name as string) : undefined,
+        bunk_name: bunk && 'name' in bunk ? (bunk.name) : undefined,
         bunk_pb_id: c.assigned_bunk ?? undefined,
       }
     })

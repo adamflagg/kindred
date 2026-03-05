@@ -156,6 +156,6 @@ export function useCamperEnrollment(
   return {
     enrolledCampers,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

@@ -80,7 +80,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
   const getBunkPersonSet = (bunkCmId: number, campersInBunk: BunkmateInfo[]): Set<number> => {
     const cached = bunkPersonSetCache.current.get(bunkCmId)
     // Invalidate if camper count changed
-    if (cached && cached.size === campersInBunk.length) {
+    if (cached?.size === campersInBunk.length) {
       return cached.set
     }
     const set = new Set(campersInBunk.map((c) => c.cmId))
@@ -162,7 +162,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     getRequestsForCamper,
     getSatisfiedRequestInfo,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 
   return <BunkRequestContext.Provider value={value}>{children}</BunkRequestContext.Provider>

@@ -112,6 +112,6 @@ export function useOriginalBunkData(
   return {
     originalBunkData,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

@@ -40,7 +40,7 @@ function parseStaffAttribution(text: string | undefined): StaffAttribution | nul
 
   for (const line of lines) {
     const match = staffPattern.exec(line)
-    if (match && match[1] && match[2] && match[3]) {
+    if (match?.[1] && match[2] && match[3]) {
       const content = line.slice(0, match.index).trim()
       const firstName = match[1].charAt(0) + match[1].slice(1).toLowerCase()
       const lastName = match[2].charAt(0) + match[2].slice(1).toLowerCase()

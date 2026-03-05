@@ -13,7 +13,7 @@ export function useCancelRunningSync() {
       return await pb.send('/api/custom/sync/running', { method: 'DELETE' })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
       toast.success('Sync canceled', { duration: 3000 })
     },
     onError: (error) => {

@@ -148,7 +148,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
 
   // Group members by group ID (using relation field 'group')
   const membersByGroup = useMemo(() => {
-    return allMembers.reduce(
+    return allMembers.reduce<Record<string, ExpandedMember[]>>(
       (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
         const groupId = member.group
         if (!acc[groupId]) {
@@ -157,7 +157,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         acc[groupId]?.push(member)
         return acc
       },
-      {} as Record<string, ExpandedMember[]>
+      {}
     )
   }, [allMembers])
 
@@ -306,16 +306,16 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         })
 
         // Invalidate queries to refresh
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: ['locked-groups', scenarioId, sessionPbId, currentYear],
         })
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: ['locked-group-members', scenarioId, sessionPbId],
         })
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear],
         })
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: ['locked-group-members-panel', scenarioId, sessionPbId],
         })
 

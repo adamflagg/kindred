@@ -55,7 +55,7 @@ export function useUpdateSolverConfig() {
     },
     onSuccess: () => {
       // Invalidate solver config query to refetch
-      queryClient.invalidateQueries({ queryKey: ['solver-config'] })
+      void queryClient.invalidateQueries({ queryKey: ['solver-config'] })
     },
   })
 }
@@ -83,7 +83,7 @@ export function useResetSolverConfig() {
     },
     onSuccess: () => {
       // Invalidate solver config query to refetch
-      queryClient.invalidateQueries({ queryKey: ['solver-config'] })
+      void queryClient.invalidateQueries({ queryKey: ['solver-config'] })
     },
   })
 }

@@ -189,16 +189,16 @@ function LockGroupActionBar({
       return group
     },
     onSuccess: (group) => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-groups', scenarioId, sessionPbId, year],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-groups-panel', scenarioId, sessionPbId, year],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-group-members', scenarioId, sessionPbId],
       })
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['locked-group-members-panel', scenarioId, sessionPbId],
       })
       onGroupCreated(group.id)

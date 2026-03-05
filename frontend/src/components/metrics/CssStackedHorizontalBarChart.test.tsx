@@ -161,7 +161,7 @@ describe('CssStackedHorizontalBarChart segments', () => {
     const { container } = render(<CssStackedHorizontalBarChart data={data} segments={segments} />)
     const segDivs = container.querySelectorAll(
       '[style*="background-color"]'
-    ) as NodeListOf<HTMLElement>
+    )
     // Should have at least the 2 segment divs (enrolled + waitlisted) + legend swatches
     const barSegments = Array.from(segDivs).filter((el) => el.classList.contains('h-full'))
     expect(barSegments.length).toBe(2)
@@ -173,7 +173,7 @@ describe('CssStackedHorizontalBarChart segments', () => {
     ]
     const { container } = render(<CssStackedHorizontalBarChart data={data} segments={segments} />)
     const barSegments = Array.from(
-      container.querySelectorAll('[style*="background-color"]') as NodeListOf<HTMLElement>
+      container.querySelectorAll('[style*="background-color"]')
     ).filter((el) => el.classList.contains('h-full'))
     expect(barSegments.length).toBe(1)
   })

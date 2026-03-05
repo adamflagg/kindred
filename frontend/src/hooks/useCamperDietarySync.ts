@@ -28,7 +28,7 @@ export function useCamperDietarySync() {
         })
       }
       // Invalidate sync status to show it's running
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error) => {
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'

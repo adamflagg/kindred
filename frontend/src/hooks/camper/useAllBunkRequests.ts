@@ -85,6 +85,6 @@ export function useAllBunkRequests(
   return {
     allBunkRequests,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 }

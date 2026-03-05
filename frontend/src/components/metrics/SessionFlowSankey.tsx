@@ -44,7 +44,7 @@ function SankeyTooltip({ active, payload, sankeyData }: CustomTooltipProps) {
   if (!active || !payload?.[0]) return null
 
   const data = payload[0].payload?.payload ?? payload[0].payload
-  if (!data || data.source == null || data.target == null) return null
+  if (data?.source == null || data.target == null) return null
 
   const sourceName = stripSuffix(sankeyData.nodes[data.source]?.name ?? '')
   const targetName = stripSuffix(sankeyData.nodes[data.target]?.name ?? '')

@@ -51,7 +51,7 @@ export function useUnifiedSync() {
       })
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
 
       // Check if sync was queued (202 response)
       if (data?.status === 'queued') {
@@ -63,7 +63,7 @@ export function useUnifiedSync() {
       }
 
       // Also invalidate after delay for quick syncs
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000)
+      setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000)
     },
     onError: (error, variables) => {
       const serviceDisplay = variables.service === 'all' ? 'all services' : variables.service

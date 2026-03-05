@@ -146,7 +146,7 @@ export function CamperHistoryProvider({
   const value = {
     getLastYearHistory,
     isLoading,
-    error: error as Error | null,
+    error: error,
   }
 
   return <CamperHistoryContext.Provider value={value}>{children}</CamperHistoryContext.Provider>

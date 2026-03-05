@@ -58,7 +58,7 @@ export function useRunPhaseSync() {
       })
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
 
       const phaseName = PHASE_NAMES[variables.phase] || variables.phase
       const jobCount = data.jobs?.length || 0
@@ -76,7 +76,7 @@ export function useRunPhaseSync() {
       }
 
       // Invalidate again after a delay for quick syncs
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000)
+      setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000)
     },
     onError: (error, variables) => {
       const phaseName = PHASE_NAMES[variables.phase] || variables.phase

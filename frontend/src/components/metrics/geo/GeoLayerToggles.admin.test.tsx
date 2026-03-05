@@ -24,7 +24,7 @@ const defaultProps = {
 
 /** Get all checkboxes as typed inputs */
 function getCheckboxes(): HTMLInputElement[] {
-  return screen.getAllByRole('checkbox') as HTMLInputElement[]
+  return screen.getAllByRole('checkbox')
 }
 
 describe('GeoLayerToggles admin gating', () => {

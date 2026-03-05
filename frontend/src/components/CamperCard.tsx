@@ -429,7 +429,7 @@ function CamperCard({
                               key={group.id}
                               className="hover:bg-muted/50 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors"
                               onClick={() => {
-                                addCamperToGroup(camper, group.id)
+                                void addCamperToGroup(camper, group.id)
                                 setShowContextMenu(false)
                               }}
                             >
