@@ -34,6 +34,7 @@ import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
 } from '../../../utils/sessionUtils'
+import { PHASE_COLORS } from './phaseColors'
 
 const PRIOR_YEAR_COLORS = [
   'hsl(220, 60%, 65%)',
@@ -46,12 +47,6 @@ const PRIOR_YEAR_COLORS = [
 const GENDER_COLORS = {
   boys: 'hsl(210, 70%, 55%)',
   girls: 'hsl(340, 65%, 55%)',
-}
-
-const PHASE_COLORS: Record<string, string> = {
-  priority: 'hsl(270, 60%, 55%)',
-  early: 'hsl(200, 70%, 50%)',
-  open: 'hsl(140, 60%, 40%)',
 }
 
 /** Custom dot renderer that shows a hollow dashed circle on partial week data points. */
