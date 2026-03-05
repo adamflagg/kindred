@@ -673,7 +673,9 @@ export default function VelocityPage() {
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
                             {entry.name}: {Math.abs(Number(entry.value)).toLocaleString()}
                             {priorDate && (
-                              <span className="text-muted-foreground ml-1 text-xs">({priorDate})</span>
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                ({priorDate})
+                              </span>
                             )}
                           </p>
                         )
@@ -812,7 +814,9 @@ export default function VelocityPage() {
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
                             {entry.name}: {Number(entry.value).toLocaleString()}
                             {priorDate && (
-                              <span className="text-muted-foreground ml-1 text-xs">({priorDate})</span>
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                ({priorDate})
+                              </span>
                             )}
                           </p>
                         )
