@@ -1046,7 +1046,9 @@ export default function VelocityPage() {
                       {week.week_label}
                       {(() => {
                         const marker = phaseByWeek.get(week.week_number)
-                        return marker ? <PhaseBadge phase={marker.phase} label={marker.label} /> : null
+                        return marker ? (
+                          <PhaseBadge phase={marker.phase} label={marker.label} />
+                        ) : null
                       })()}
                       {week.is_partial && (
                         <span className="ml-1.5 text-xs font-normal text-amber-600 dark:text-amber-400">
