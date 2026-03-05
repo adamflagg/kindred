@@ -551,7 +551,7 @@ func (m *MultiWorkbookExport) loadSessions(year int) (map[string]SessionRecord, 
 	filter := fmt.Sprintf("year = %d", year)
 	records, err := m.App.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading sessions for year %d: %w", year, err)
 	}
 
 	sessionMap := make(map[string]SessionRecord)
@@ -578,7 +578,7 @@ func (m *MultiWorkbookExport) loadPersons(year int) (map[string]PersonInfo, erro
 	filter := fmt.Sprintf("year = %d", year)
 	records, err := m.App.FindRecordsByFilter("persons", filter, "", 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading persons for year %d: %w", year, err)
 	}
 
 	personMap := make(map[string]PersonInfo)
@@ -605,7 +605,7 @@ func (m *MultiWorkbookExport) loadLookupWithCMID(
 ) (lookup map[string]string, cmids map[string]int, err error) {
 	records, err := m.App.FindRecordsByFilter(collection, filter, "", 0, 0)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("loading lookup from %s: %w", collection, err)
 	}
 
 	lookup = make(map[string]string)
@@ -625,7 +625,7 @@ func (m *MultiWorkbookExport) loadLookupWithCMID(
 func (m *MultiWorkbookExport) loadRelationMapping(collection, relationField string) (map[string]string, error) {
 	records, err := m.App.FindRecordsByFilter(collection, "", "", 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading relation mapping from %s: %w", collection, err)
 	}
 
 	mapping := make(map[string]string)
@@ -654,7 +654,7 @@ func (m *MultiWorkbookExport) getCMIDFromRecord(collection, pbID string) int {
 func (m *MultiWorkbookExport) loadSimpleLookup(collection, field, filter string) (map[string]string, error) {
 	records, err := m.App.FindRecordsByFilter(collection, filter, "", 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading lookup from %s: %w", collection, err)
 	}
 
 	lookup := make(map[string]string)

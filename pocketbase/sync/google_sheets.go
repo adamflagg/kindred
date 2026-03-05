@@ -66,8 +66,11 @@ func (w *RealSheetsWriter) WriteToSheet(
 		sheetTab+"!A1",
 		valueRange,
 	).ValueInputOption("USER_ENTERED").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("updating sheet %s: %w", sheetTab, err)
+	}
 
-	return err
+	return nil
 }
 
 // ClearSheet clears all data from a sheet tab
@@ -77,8 +80,11 @@ func (w *RealSheetsWriter) ClearSheet(ctx context.Context, spreadsheetID, sheetT
 		sheetTab+"!A:Z",
 		&sheets.ClearValuesRequest{},
 	).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("clearing sheet %s: %w", sheetTab, err)
+	}
 
-	return err
+	return nil
 }
 
 // EnsureSheet creates a sheet tab if it doesn't exist (idempotent)

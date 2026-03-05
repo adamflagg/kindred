@@ -47,7 +47,11 @@ type DefaultDriveSearcher struct{}
 
 // FindSpreadsheetByName searches Drive for a spreadsheet by exact name
 func (d *DefaultDriveSearcher) FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
-	return google.FindSpreadsheetByName(ctx, name)
+	id, err := google.FindSpreadsheetByName(ctx, name)
+	if err != nil {
+		return "", fmt.Errorf("searching Drive for spreadsheet %q: %w", name, err)
+	}
+	return id, nil
 }
 
 // WorkbookManager handles the lifecycle of Google Sheets workbooks.

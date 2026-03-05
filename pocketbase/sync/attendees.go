@@ -92,7 +92,7 @@ func (s *AttendeesSync) Sync(ctx context.Context) error {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("attendees sync cancelled: %w", ctx.Err())
 		default:
 		}
 

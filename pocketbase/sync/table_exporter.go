@@ -315,6 +315,10 @@ func (r *FieldResolver) ResolveValue(value interface{}, col *ColumnConfig) inter
 		}
 		return r.LookupByCMID(col.RelatedCol, cmID)
 
+	case FieldTypeWriteInOverride:
+		// Check write_in field first, fallback to standard field resolution
+		return safeString(value)
+
 	default:
 		return safeString(value)
 	}

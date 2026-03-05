@@ -133,7 +133,7 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("bunk assignments sync cancelled: %w", ctx.Err())
 		default:
 		}
 

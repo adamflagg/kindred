@@ -89,7 +89,10 @@ func (h *ISO8601Handler) Handle(_ context.Context, r slog.Record) error {
 	buf.WriteString("\n")
 
 	_, err := h.writer.Write([]byte(buf.String()))
-	return err
+	if err != nil {
+		return fmt.Errorf("writing log record: %w", err)
+	}
+	return nil
 }
 
 // WithAttrs returns a new handler with the given attributes

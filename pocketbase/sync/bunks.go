@@ -71,7 +71,7 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 	for _, bunkData := range bunks {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("bunks sync cancelled: %w", ctx.Err())
 		default:
 		}
 

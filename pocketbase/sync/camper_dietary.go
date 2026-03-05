@@ -238,7 +238,7 @@ func (s *CamperDietarySync) loadPersonAttendeeMapping(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("dietary needs query cancelled: %w", ctx.Err())
 		default:
 		}
 
@@ -290,7 +290,7 @@ func (s *CamperDietarySync) loadPersonCustomValues(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("custom values query cancelled: %w", ctx.Err())
 		default:
 		}
 
@@ -498,7 +498,7 @@ func (s *CamperDietarySync) loadExistingRecords(ctx context.Context, year int) (
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("loading existing dietary records cancelled: %w", ctx.Err())
 		default:
 		}
 

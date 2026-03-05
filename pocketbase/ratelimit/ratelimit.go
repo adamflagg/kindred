@@ -57,7 +57,10 @@ func NewRateLimiter(cfg *Config) *RateLimiter {
 
 // Wait blocks until the rate limiter allows the request
 func (r *RateLimiter) Wait(ctx context.Context) error {
-	return r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limiter wait: %w", err)
+	}
+	return nil
 }
 
 // HandleError processes an error and returns whether to retry and how long to wait
@@ -131,7 +134,7 @@ func (r *RateLimiter) ExecuteWithRetry(ctx context.Context, fn func() error) err
 		// Wait before retry
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("retry wait cancelled: %w", ctx.Err())
 		case <-time.After(waitTime):
 			// Continue to next attempt
 		}
