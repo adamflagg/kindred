@@ -154,20 +154,25 @@ npm ci --prefer-offline &  # Root deps (commitlint)
 (cd frontend && npm ci --prefer-offline) &
 wait
 
-# Link local config (branding, logos) if kindred-local exists
+# Copy/link local config (branding, logos) if kindred-local exists
+# Files needed by Docker builds are COPIED (symlinks break Docker build context).
+# Dev-only files are symlinked to stay in sync with kindred-local.
 LOCAL_REPO="${KINDRED_LOCAL_PATH:-$HOME/kindred-local}"
 if [ -d "$LOCAL_REPO" ]; then
-    echo -e "${BLUE}Linking local config from kindred-local...${NC}"
+    echo -e "${BLUE}Setting up local config from kindred-local...${NC}"
+    # Copied: files that Docker builds reference (COPY in Dockerfiles)
+    rm -rf "$WORKTREE_DIR/local"
+    cp -r "$LOCAL_REPO/local" "$WORKTREE_DIR/local"
+    cp -f "$LOCAL_REPO/config/branding.local.json" "$WORKTREE_DIR/config/branding.local.json"
+    cp -f "$LOCAL_REPO/config/staff_list.json" "$WORKTREE_DIR/config/staff_list.json"
+    # Symlinked: dev-only files (not in Docker build context)
     ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$WORKTREE_DIR/CLAUDE.local.md"
-    ln -sfr "$LOCAL_REPO/config/branding.local.json" "$WORKTREE_DIR/config/branding.local.json"
-    ln -sfr "$LOCAL_REPO/config/staff_list.json" "$WORKTREE_DIR/config/staff_list.json"
     ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$WORKTREE_DIR/config/sheets_sharing.local.json"
     ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$WORKTREE_DIR/frontend/vite.config.local.ts"
     ln -sfr "$LOCAL_REPO/scripts/vault.config" "$WORKTREE_DIR/scripts/vault.config"
-    rm -rf "$WORKTREE_DIR/docs/camp" "$WORKTREE_DIR/local"
+    rm -rf "$WORKTREE_DIR/docs/camp"
     ln -sfrn "$LOCAL_REPO/docs/camp" "$WORKTREE_DIR/docs/camp"
-    ln -sfrn "$LOCAL_REPO/local" "$WORKTREE_DIR/local"
-    echo -e "${GREEN}Local config linked${NC}"
+    echo -e "${GREEN}Local config set up (Docker files copied, dev files linked)${NC}"
 else
     echo -e "${YELLOW}kindred-local not found at $LOCAL_REPO, skipping local config${NC}"
 fi
