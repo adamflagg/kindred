@@ -1,0 +1,29 @@
+# =============================================================================
+# Stage 1: Build PocketBase binary (needed for superuser upsert)
+# =============================================================================
+FROM dhi.io/golang:1.26-dev AS go-builder
+
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY pocketbase/go.mod pocketbase/go.sum ./
+RUN go mod download
+COPY pocketbase/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o pocketbase .
+
+# =============================================================================
+# Stage 2: Init runtime (needs shell + curl for OIDC discovery)
+# =============================================================================
+FROM chainguard/wolfi-base:latest
+
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl
+
+COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
+COPY --chmod=755 docker/multi/init-entrypoint.sh /init-entrypoint.sh
+
+USER nonroot
+
+ENV TZ=UTC
+
+ENTRYPOINT ["/init-entrypoint.sh"]
