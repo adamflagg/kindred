@@ -489,10 +489,16 @@ class TestGetSources:
 
     @pytest.mark.asyncio
     async def test_groups_by_original_value(self, service: GeoService, mock_pb: MagicMock) -> None:
-        """Should group normalized_mappings by original_value with counts."""
+        """Should group normalized_mappings by original_value with row counts."""
         mappings = [
+            # 3 persons typed "riverside elem"
             _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.93),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95),
+            # 2 persons typed exact name
             _make_mapping_record("Riverside Elementary", "Riverside Elementary", confidence=1.0),
+            _make_mapping_record("Riverside Elementary", "Riverside Elementary", confidence=1.0),
+            # 1 person typed long form
             _make_mapping_record("riverside elementary school", "Riverside Elementary", confidence=0.85),
         ]
 
@@ -507,9 +513,13 @@ class TestGetSources:
 
         assert result.canonical_name == "Riverside Elementary"
         assert len(result.sources) == 3
-        # Each record = 1 person, so all counts are 1; sorted by count desc then original_value
-        assert result.sources[0].count == 1
-        assert result.sources[1].count == 1
+        # Sort by count descending
+        assert result.sources[0].original_value == "riverside elem"
+        assert result.sources[0].count == 3
+        assert result.sources[0].confidence == 0.93  # min confidence
+        assert result.sources[1].original_value == "Riverside Elementary"
+        assert result.sources[1].count == 2
+        assert result.sources[2].original_value == "riverside elementary school"
         assert result.sources[2].count == 1
 
     @pytest.mark.asyncio
