@@ -36,8 +36,8 @@ describe('transformGenderData', () => {
     const result = transformGenderData(input)
 
     expect(result).toEqual([
-      { name: 'M', value: 60, percentage: 60 },
-      { name: 'F', value: 40, percentage: 40 },
+      { name: 'Male', value: 60, percentage: 60, id: 'M' },
+      { name: 'Female', value: 40, percentage: 40, id: 'F' },
     ])
   })
 
