@@ -7,7 +7,18 @@ services:
     image: ghcr.io/adamflagg/kindred:${IMAGE_TAG:-latest}
     container_name: kindred
     restart: unless-stopped
-    user: "${PUID:-1000}:${PGID:-1000}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m
+      - /run:size=8m
+      - /app/logs:size=64m
+      - /app/csv_history:size=64m
+      - /app/.config/caddy:size=8m
+      - /app/.local/share/caddy:size=8m
     volumes:
       - ${APPDATA_DIR}/bunking/pocketbase:/pb_data
       - ${APPDATA_DIR}/bunking/config:/config
