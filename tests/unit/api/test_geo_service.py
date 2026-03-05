@@ -33,7 +33,6 @@ def _make_mapping_record(
     original_value: str,
     normalized_value: str,
     category: str = "school",
-    occurrence_count: int = 1,
     confidence: float = 1.0,
     year: int = 2025,
 ) -> Mock:
@@ -42,7 +41,6 @@ def _make_mapping_record(
     record.original_value = original_value
     record.normalized_value = normalized_value
     record.category = category
-    record.occurrence_count = occurrence_count
     record.confidence = confidence
     record.year = year
     return record
@@ -103,8 +101,8 @@ class TestGetGaps:
         should be classified as canonical_no_coords."""
         # Arrange: "Riverside Elementary" is in the lookup values but has no coords
         mappings = [
-            _make_mapping_record("riverside elem", "Riverside Elementary", occurrence_count=5),
-            _make_mapping_record("Riverside Elementary", "Riverside Elementary", occurrence_count=10),
+            _make_mapping_record("riverside elem", "Riverside Elementary"),
+            _make_mapping_record("Riverside Elementary", "Riverside Elementary"),
         ]
         mock_pb.collection.return_value.get_full_list.return_value = mappings
 
@@ -129,7 +127,7 @@ class TestGetGaps:
 
         assert len(result.canonical_no_coords) == 1
         assert result.canonical_no_coords[0].name == "Riverside Elementary"
-        assert result.canonical_no_coords[0].count == 15  # 5 + 10
+        assert result.canonical_no_coords[0].count == 2
 
     @pytest.mark.asyncio
     async def test_non_canonical_grouped_detected(self, service: GeoService, mock_pb: MagicMock) -> None:
@@ -137,9 +135,9 @@ class TestGetGaps:
         should be classified as non_canonical_grouped."""
         # "Oakwood Academy" is not in the lookup but has multiple original values mapping to it
         mappings = [
-            _make_mapping_record("oakwood academy", "Oakwood Academy", occurrence_count=3),
-            _make_mapping_record("Oakwood Acad.", "Oakwood Academy", occurrence_count=2),
-            _make_mapping_record("The Oakwood Academy", "Oakwood Academy", occurrence_count=1),
+            _make_mapping_record("oakwood academy", "Oakwood Academy"),
+            _make_mapping_record("Oakwood Acad.", "Oakwood Academy"),
+            _make_mapping_record("The Oakwood Academy", "Oakwood Academy"),
         ]
 
         with (
@@ -160,7 +158,7 @@ class TestGetGaps:
 
         assert len(result.non_canonical_grouped) == 1
         assert result.non_canonical_grouped[0].name == "Oakwood Academy"
-        assert result.non_canonical_grouped[0].count == 6  # 3 + 2 + 1
+        assert result.non_canonical_grouped[0].count == 3
         assert result.non_canonical_grouped[0].source_count == 3
 
     @pytest.mark.asyncio
@@ -168,7 +166,7 @@ class TestGetGaps:
         """A single raw value that passed through unmatched with only one source
         should be classified as non_canonical_ungrouped."""
         mappings = [
-            _make_mapping_record("Random School XYZ", "Random School XYZ", occurrence_count=2),
+            _make_mapping_record("Random School XYZ", "Random School XYZ"),
         ]
 
         with (
@@ -189,14 +187,14 @@ class TestGetGaps:
 
         assert len(result.non_canonical_ungrouped) == 1
         assert result.non_canonical_ungrouped[0].name == "Random School XYZ"
-        assert result.non_canonical_ungrouped[0].count == 2
+        assert result.non_canonical_ungrouped[0].count == 1
         assert result.non_canonical_ungrouped[0].source_count == 1
 
     @pytest.mark.asyncio
     async def test_values_with_coords_are_not_gaps(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Values that have coordinates in static data should not appear in gaps."""
         mappings = [
-            _make_mapping_record("riverside elementary", "Riverside Elementary", occurrence_count=10),
+            _make_mapping_record("riverside elementary", "Riverside Elementary"),
         ]
 
         with (
@@ -225,7 +223,7 @@ class TestGetGaps:
     async def test_override_coords_exclude_from_gaps(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Values that have coordinates from geo_overrides should not appear in gaps."""
         mappings = [
-            _make_mapping_record("oakwood academy", "Oakwood Academy", occurrence_count=5),
+            _make_mapping_record("oakwood academy", "Oakwood Academy"),
         ]
         override = _make_override_record(
             canonical_name="Oakwood Academy",
@@ -256,9 +254,12 @@ class TestGetGaps:
     async def test_gaps_sorted_by_count_descending(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Each gap category should be sorted by count descending."""
         mappings = [
-            _make_mapping_record("Small School", "Small School", occurrence_count=1),
-            _make_mapping_record("Big School", "Big School", occurrence_count=10),
-            _make_mapping_record("Medium School", "Medium School", occurrence_count=5),
+            _make_mapping_record("Small School", "Small School"),
+            _make_mapping_record("Big School", "Big School"),
+            _make_mapping_record("Big School 2", "Big School"),
+            _make_mapping_record("Big School 3", "Big School"),
+            _make_mapping_record("Medium School", "Medium School"),
+            _make_mapping_record("Medium 2", "Medium School"),
         ]
 
         with (
@@ -277,23 +278,28 @@ class TestGetGaps:
 
             result = await service.get_gaps("school", 2025)
 
-        # All three are ungrouped (single source each)
-        assert len(result.non_canonical_ungrouped) == 3
-        assert result.non_canonical_ungrouped[0].name == "Big School"
-        assert result.non_canonical_ungrouped[1].name == "Medium School"
-        assert result.non_canonical_ungrouped[2].name == "Small School"
+        # Big School (3 sources) and Medium School (2 sources) are non_canonical_grouped
+        # Small School (1 source) is non_canonical_ungrouped
+        assert len(result.non_canonical_grouped) == 2
+        assert result.non_canonical_grouped[0].name == "Big School"
+        assert result.non_canonical_grouped[0].count == 3
+        assert result.non_canonical_grouped[1].name == "Medium School"
+        assert result.non_canonical_grouped[1].count == 2
+        assert len(result.non_canonical_ungrouped) == 1
+        assert result.non_canonical_ungrouped[0].name == "Small School"
+        assert result.non_canonical_ungrouped[0].count == 1
 
     @pytest.mark.asyncio
     async def test_mixed_gap_categories(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Test a mix of all three gap categories."""
         mappings = [
             # canonical_no_coords: in lookup values but no coords
-            _make_mapping_record("riverside elem", "Riverside Elementary", occurrence_count=5),
+            _make_mapping_record("riverside elem", "Riverside Elementary"),
             # non_canonical_grouped: not in lookup, multiple sources
-            _make_mapping_record("oakwood academy", "Oakwood Academy", occurrence_count=3),
-            _make_mapping_record("Oakwood Acad.", "Oakwood Academy", occurrence_count=2),
+            _make_mapping_record("oakwood academy", "Oakwood Academy"),
+            _make_mapping_record("Oakwood Acad.", "Oakwood Academy"),
             # non_canonical_ungrouped: not in lookup, single source
-            _make_mapping_record("Random Place", "Random Place", occurrence_count=1),
+            _make_mapping_record("Random Place", "Random Place"),
         ]
 
         with (
@@ -343,9 +349,9 @@ class TestSearchCanonicals:
     async def test_search_filters_by_query(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Search should filter canonical names by case-insensitive substring."""
         mappings = [
-            _make_mapping_record("park day", "Park Day School", occurrence_count=5),
-            _make_mapping_record("mark day", "Mark Day School", occurrence_count=3),
-            _make_mapping_record("other school", "Other School", occurrence_count=1),
+            _make_mapping_record("park day", "Park Day School"),
+            _make_mapping_record("mark day", "Mark Day School"),
+            _make_mapping_record("other school", "Other School"),
         ]
 
         with (
@@ -380,7 +386,7 @@ class TestSearchCanonicals:
     async def test_search_includes_location_metadata(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Search results should include city and state from location data."""
         mappings = [
-            _make_mapping_record("park day", "Park Day School", occurrence_count=5),
+            _make_mapping_record("park day", "Park Day School"),
         ]
 
         with (
@@ -406,7 +412,7 @@ class TestSearchCanonicals:
     async def test_search_source_badge_nces(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Schools from NCES lookup should have 'nces' source badge."""
         mappings = [
-            _make_mapping_record("a school", "A School", occurrence_count=1),
+            _make_mapping_record("a school", "A School"),
         ]
 
         with (
@@ -485,11 +491,9 @@ class TestGetSources:
     async def test_groups_by_original_value(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Should group normalized_mappings by original_value with counts."""
         mappings = [
-            _make_mapping_record("riverside elem", "Riverside Elementary", occurrence_count=5, confidence=0.95),
-            _make_mapping_record("Riverside Elementary", "Riverside Elementary", occurrence_count=10, confidence=1.0),
-            _make_mapping_record(
-                "riverside elementary school", "Riverside Elementary", occurrence_count=2, confidence=0.85
-            ),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95),
+            _make_mapping_record("Riverside Elementary", "Riverside Elementary", confidence=1.0),
+            _make_mapping_record("riverside elementary school", "Riverside Elementary", confidence=0.85),
         ]
 
         with (
@@ -503,18 +507,16 @@ class TestGetSources:
 
         assert result.canonical_name == "Riverside Elementary"
         assert len(result.sources) == 3
-        # Sort by count descending
-        assert result.sources[0].original_value == "Riverside Elementary"
-        assert result.sources[0].count == 10
-        assert result.sources[0].confidence == 1.0
-        assert result.sources[1].original_value == "riverside elem"
-        assert result.sources[1].count == 5
+        # Each record = 1 person, so all counts are 1; sorted by count desc then original_value
+        assert result.sources[0].count == 1
+        assert result.sources[1].count == 1
+        assert result.sources[2].count == 1
 
     @pytest.mark.asyncio
     async def test_includes_city_state(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Should include city and state from location data."""
         mappings = [
-            _make_mapping_record("riverside elem", "Riverside Elementary", occurrence_count=5),
+            _make_mapping_record("riverside elem", "Riverside Elementary"),
         ]
 
         with (
