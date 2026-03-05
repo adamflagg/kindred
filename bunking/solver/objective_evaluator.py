@@ -204,7 +204,7 @@ class ObjectiveEvaluator:
         # Apply diminishing returns (same logic as solver)
         total_score = 0
 
-        for person_cm_id, person_requests in requests_by_person.items():
+        for person_requests in requests_by_person.values():
             # Sort by priority descending (same as solver)
             person_requests.sort(key=lambda x: x[0].get("priority", 5), reverse=True)
 
@@ -403,7 +403,7 @@ class ObjectiveEvaluator:
 
         total_penalty = 0
 
-        for bunk_cm_id, person_ids in bunk_to_persons.items():
+        for person_ids in bunk_to_persons.values():
             grades: list[int] = []
             for pid in person_ids:
                 if pid in person_by_cm_id:
@@ -452,7 +452,7 @@ class ObjectiveEvaluator:
 
         total_penalty = 0
 
-        for bunk_cm_id, person_ids in bunk_to_persons.items():
+        for person_ids in bunk_to_persons.values():
             occupancy = len(person_ids)
             if 0 < occupancy < min_occupancy:
                 deficit = min_occupancy - occupancy

@@ -276,20 +276,19 @@ async def list_parse_analysis(
     response_items = []
     for item in items:
         # Convert parsed_intents to proper model
-        parsed_intents = []
-        for intent in item.get("parsed_intents", []):
-            parsed_intents.append(
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
+        parsed_intents = [
+            ParsedIntent(
+                request_type=intent.get("request_type", "unknown"),
+                target_name=intent.get("target_name"),
+                keywords_found=intent.get("keywords_found", []),
+                parse_notes=intent.get("parse_notes", ""),
+                reasoning=intent.get("reasoning", ""),
+                list_position=intent.get("list_position", 0),
+                needs_clarification=intent.get("needs_clarification", False),
+                temporal_info=intent.get("temporal_info"),
             )
+            for intent in item.get("parsed_intents", [])
+        ]
 
         # Parse created timestamp
         created_str = item.get("created")
@@ -331,20 +330,19 @@ async def get_parse_analysis_detail(item_id: str) -> ParseAnalysisDetailItem:
         raise HTTPException(status_code=404, detail="Parse analysis result not found")
 
     # Convert parsed_intents
-    parsed_intents = []
-    for intent in item.get("parsed_intents", []):
-        parsed_intents.append(
-            ParsedIntent(
-                request_type=intent.get("request_type", "unknown"),
-                target_name=intent.get("target_name"),
-                keywords_found=intent.get("keywords_found", []),
-                parse_notes=intent.get("parse_notes", ""),
-                reasoning=intent.get("reasoning", ""),
-                list_position=intent.get("list_position", 0),
-                needs_clarification=intent.get("needs_clarification", False),
-                temporal_info=intent.get("temporal_info"),
-            )
+    parsed_intents = [
+        ParsedIntent(
+            request_type=intent.get("request_type", "unknown"),
+            target_name=intent.get("target_name"),
+            keywords_found=intent.get("keywords_found", []),
+            parse_notes=intent.get("parse_notes", ""),
+            reasoning=intent.get("reasoning", ""),
+            list_position=intent.get("list_position", 0),
+            needs_clarification=intent.get("needs_clarification", False),
+            temporal_info=intent.get("temporal_info"),
         )
+        for intent in item.get("parsed_intents", [])
+    ]
 
     # Parse created timestamp
     created_str = item.get("created")
@@ -398,20 +396,19 @@ async def parse_phase1_only(request: Phase1OnlyRequest) -> Phase1OnlyResponse:
     # Convert to response model
     response_items = []
     for item in results:
-        parsed_intents = []
-        for intent in item.get("parsed_intents", []):
-            parsed_intents.append(
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
+        parsed_intents = [
+            ParsedIntent(
+                request_type=intent.get("request_type", "unknown"),
+                target_name=intent.get("target_name"),
+                keywords_found=intent.get("keywords_found", []),
+                parse_notes=intent.get("parse_notes", ""),
+                reasoning=intent.get("reasoning", ""),
+                list_position=intent.get("list_position", 0),
+                needs_clarification=intent.get("needs_clarification", False),
+                temporal_info=intent.get("temporal_info"),
             )
+            for intent in item.get("parsed_intents", [])
+        ]
 
         response_items.append(
             ParseAnalysisItem(
@@ -676,20 +673,19 @@ async def get_parse_results_batch(
         data = results_map.get(rid, {})
 
         # Convert parsed_intents to proper model
-        parsed_intents = []
-        for intent in data.get("parsed_intents", []):
-            parsed_intents.append(
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
+        parsed_intents = [
+            ParsedIntent(
+                request_type=intent.get("request_type", "unknown"),
+                target_name=intent.get("target_name"),
+                keywords_found=intent.get("keywords_found", []),
+                parse_notes=intent.get("parse_notes", ""),
+                reasoning=intent.get("reasoning", ""),
+                list_position=intent.get("list_position", 0),
+                needs_clarification=intent.get("needs_clarification", False),
+                temporal_info=intent.get("temporal_info"),
             )
+            for intent in data.get("parsed_intents", [])
+        ]
 
         # Parse created timestamp if present
         created_dt = None
@@ -754,20 +750,19 @@ async def get_parse_results_batch_dual(
         if data.get("debug_result"):
             dr = data["debug_result"]
             # Convert parsed_intents
-            debug_intents = []
-            for intent in dr.get("parsed_intents", []):
-                debug_intents.append(
-                    ParsedIntent(
-                        request_type=intent.get("request_type", "unknown"),
-                        target_name=intent.get("target_name"),
-                        keywords_found=intent.get("keywords_found", []),
-                        parse_notes=intent.get("parse_notes", ""),
-                        reasoning=intent.get("reasoning", ""),
-                        list_position=intent.get("list_position", 0),
-                        needs_clarification=intent.get("needs_clarification", False),
-                        temporal_info=intent.get("temporal_info"),
-                    )
+            debug_intents = [
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
                 )
+                for intent in dr.get("parsed_intents", [])
+            ]
 
             # Parse created timestamp if present
             created_dt = None
@@ -794,20 +789,19 @@ async def get_parse_results_batch_dual(
         if data.get("production_result"):
             pr = data["production_result"]
             # Convert parsed_intents
-            prod_intents = []
-            for intent in pr.get("parsed_intents", []):
-                prod_intents.append(
-                    ParsedIntent(
-                        request_type=intent.get("request_type", "unknown"),
-                        target_name=intent.get("target_name"),
-                        keywords_found=intent.get("keywords_found", []),
-                        parse_notes=intent.get("parse_notes", ""),
-                        reasoning=intent.get("reasoning", ""),
-                        list_position=intent.get("list_position", 0),
-                        needs_clarification=intent.get("needs_clarification", False),
-                        temporal_info=intent.get("temporal_info"),
-                    )
+            prod_intents = [
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
                 )
+                for intent in pr.get("parsed_intents", [])
+            ]
 
             prod_result_data = ParseResultData(
                 parsed_intents=prod_intents,
@@ -869,20 +863,19 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
     debug_result = debug_repo.get_by_original_request(original_request_id)
     if debug_result:
         # Convert parsed_intents to proper model
-        parsed_intents = []
-        for intent in debug_result.get("parsed_intents", []):
-            parsed_intents.append(
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
+        parsed_intents = [
+            ParsedIntent(
+                request_type=intent.get("request_type", "unknown"),
+                target_name=intent.get("target_name"),
+                keywords_found=intent.get("keywords_found", []),
+                parse_notes=intent.get("parse_notes", ""),
+                reasoning=intent.get("reasoning", ""),
+                list_position=intent.get("list_position", 0),
+                needs_clarification=intent.get("needs_clarification", False),
+                temporal_info=intent.get("temporal_info"),
             )
+            for intent in debug_result.get("parsed_intents", [])
+        ]
 
         # Parse created timestamp
         created_str = debug_result.get("created")
@@ -984,18 +977,17 @@ async def list_prompts() -> PromptListResponse:
     if not PROMPTS_DIR.exists():
         return PromptListResponse(prompts=[])
 
-    prompts = []
-    for file_path in PROMPTS_DIR.glob("*.txt"):
-        prompts.append(
+    prompts = sorted(
+        [
             PromptListItem(
                 name=file_path.stem,
                 filename=file_path.name,
                 modified_at=_get_file_modified_at(file_path),
             )
-        )
-
-    # Sort by name for consistent ordering
-    prompts.sort(key=lambda p: p.name)
+            for file_path in PROMPTS_DIR.glob("*.txt")
+        ],
+        key=lambda p: p.name,
+    )
     return PromptListResponse(prompts=prompts)
 
 

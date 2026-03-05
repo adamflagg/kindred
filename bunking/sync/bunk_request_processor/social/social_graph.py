@@ -234,7 +234,7 @@ class SocialGraph:
                             )
 
             # Add classmate edges (medium informational connection)
-            for (_school, _grade), members in schools.items():
+            for members in schools.values():
                 if len(members) > 1:
                     for i in range(len(members)):
                         for j in range(i + 1, len(members)):

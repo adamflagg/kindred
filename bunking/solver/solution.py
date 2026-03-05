@@ -250,9 +250,7 @@ def analyze_bunk_health(
                     person_connection_count[request.requested_person_cm_id] += 1
 
     # Find isolated campers
-    for person_cm_id in person_cm_ids:
-        if person_connection_count[person_cm_id] == 0:
-            isolated_campers.append(person_cm_id)
+    isolated_campers = [person_cm_id for person_cm_id in person_cm_ids if person_connection_count[person_cm_id] == 0]
 
     connection_count = len(connections)
     total_possible_connections = len(person_cm_ids) * (len(person_cm_ids) - 1) / 2

@@ -80,8 +80,7 @@ class WrappedRecordService(RecordService):
             items = []
             if "items" in response_data:
                 response_data["items"] = response_data["items"] or []
-                for item in response_data["items"]:
-                    items.append(self.decode(item))
+                items = [self.decode(item) for item in response_data["items"]]
 
             return ListResult(
                 response_data.get("page", 1),

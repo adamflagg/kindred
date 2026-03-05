@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -56,10 +56,8 @@ def calculate_age(birthdate_str: str) -> float:
     if not birthdate_str:
         return 0.0
     try:
-        from datetime import date
-
         birthdate = datetime.fromisoformat(birthdate_str).date()
-        today = date.today()
+        today = datetime.now(tz=UTC).date()
 
         years = today.year - birthdate.year
         months = today.month - birthdate.month

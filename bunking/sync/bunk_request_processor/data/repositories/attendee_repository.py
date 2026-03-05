@@ -66,7 +66,7 @@ class AttendeeRepository:
             if result.items:
                 return self._map_attendee_record(result.items[0])
 
-        except Exception:
+        except Exception:  # noqa: S110 — intentional silent handling
             pass
 
         return None
@@ -185,7 +185,7 @@ class AttendeeRepository:
 
             # Filter by age
             filtered_peers = []
-            for _cm_id, person in persons_dict.items():
+            for person in persons_dict.values():
                 if person.birth_date:
                     months_diff = self._calculate_months_difference(requester_birth_date, person.birth_date)
                     if abs(months_diff) <= max_age_diff_months:
@@ -328,11 +328,8 @@ class AttendeeRepository:
                 return {}
 
             # Check which bunkmates are returning this year
-            returning_ids = []
             sessions_map = self.bulk_get_sessions_for_persons(bunkmate_cm_ids, year)
-            for cm_id in bunkmate_cm_ids:
-                if cm_id in sessions_map:
-                    returning_ids.append(cm_id)
+            returning_ids = [cm_id for cm_id in bunkmate_cm_ids if cm_id in sessions_map]
 
             return {
                 "cm_ids": returning_ids,

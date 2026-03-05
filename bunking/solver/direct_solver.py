@@ -573,7 +573,7 @@ class DirectBunkingSolver:
         add_cabin_minimum_occupancy_soft_penalty(ctx, objective_terms, self.bunk_is_used)
 
         # Subtract penalties for soft constraint violations
-        for _violation_name, (violation_var, penalty) in self.soft_constraint_violations.items():
+        for violation_var, penalty in self.soft_constraint_violations.values():
             objective_terms.append(-penalty * violation_var)
 
         # Maximize objective
@@ -857,7 +857,7 @@ class DirectBunkingSolver:
                     contribution = penalty * value if isinstance(value, int) else penalty
                     category_totals[category] += contribution
                     category_counts[category] += 1
-            except Exception:
+            except Exception:  # noqa: S110 — intentional silent handling
                 # Variable might not be in solution
                 pass
 

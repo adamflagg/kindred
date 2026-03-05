@@ -4,7 +4,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import requests
@@ -18,7 +18,7 @@ load_dotenv()
 def get_current_season() -> int:
     """Get current season from environment or default to current year."""
     season_id = os.getenv("CAMPMINDER_SEASON_ID")
-    return int(season_id) if season_id else datetime.now().year
+    return int(season_id) if season_id else datetime.now(tz=UTC).year
 
 
 @dataclass
@@ -100,7 +100,8 @@ class CampMinderClient:
                 try:
                     # JWT tokens have format: header.payload.signature
                     # Payload contains 'exp' field with expiry timestamp
-                    assert self.jwt_token is not None  # Just set above
+                    if self.jwt_token is None:  # pragma: no cover
+                        raise ValueError("JWT token unexpectedly None")
                     payload_part = self.jwt_token.split(".")[1]
                     # Add padding if needed for base64 decoding
                     payload_part += "=" * (4 - len(payload_part) % 4)
@@ -130,7 +131,7 @@ class CampMinderClient:
                             match = re.search(r"Try again in (\d+) seconds", error_data["message"])
                             if match:
                                 wait_time = int(match.group(1)) + 1  # Add 1 second buffer
-                    except Exception:
+                    except Exception:  # noqa: S110 — best-effort retry delay parsing
                         pass
 
                     if retry < max_retries - 1:
@@ -194,10 +195,9 @@ class CampMinderClient:
                             logger.info(
                                 f"Loaded cached CampMinder token (expires in {int((cache['expiry'] - time.time()) / 60)} minutes)"
                             )
-                        except Exception:
+                        except Exception:  # noqa: S110 — best-effort log message
                             pass
-        except Exception:
-            # Silently ignore cache load errors and authenticate normally
+        except Exception:  # noqa: S110 — cache load is optional, authenticate normally
             pass
 
     def _save_cached_token(self) -> None:
@@ -215,8 +215,7 @@ class CampMinderClient:
             # Set file permissions to be readable only by owner
             os.chmod(self.token_cache_file, 0o600)
 
-        except Exception:
-            # Silently ignore cache save errors
+        except Exception:  # noqa: S110 — cache save is optional
             pass
 
     def _make_request(
@@ -498,7 +497,7 @@ class CampMinderClient:
                         field_id = int(field_key.split("_")[1])
                         field_name = field_mapping.get(field_id, field_key)
                         camper.custom_fields[field_name] = value
-                except Exception:
+                except Exception:  # noqa: S110 — skip malformed custom field keys
                     pass
 
         return campers
@@ -580,12 +579,10 @@ class CampMinderClient:
                 param_strings.append(f"{key}={value}")
 
         # Add multiple bunk plan IDs
-        for bunk_plan_id in bunk_plan_ids:
-            param_strings.append(f"bunkplanids={bunk_plan_id}")
+        param_strings.extend(f"bunkplanids={bunk_plan_id}" for bunk_plan_id in bunk_plan_ids)
 
         # Add multiple bunk IDs
-        for bunk_id in bunk_ids:
-            param_strings.append(f"bunkids={bunk_id}")
+        param_strings.extend(f"bunkids={bunk_id}" for bunk_id in bunk_ids)
 
         # Make the request with the full URL
         full_url = f"{base_url}?{'&'.join(param_strings)}"
@@ -648,19 +645,14 @@ def load_config_from_env() -> CampMinderConfig | None:
     client_id = os.getenv("CAMPMINDER_CLIENT_ID")
     season_id = os.getenv("CAMPMINDER_SEASON_ID")
 
-    if not all([api_key, subscription_key, client_id]):
+    if not api_key or not subscription_key or not client_id:
         return None
-
-    # All values validated above
-    assert api_key is not None
-    assert subscription_key is not None
-    assert client_id is not None
 
     return CampMinderConfig(
         api_key=api_key,
         subscription_key=subscription_key,
         client_id=int(client_id),
-        season_id=int(season_id) if season_id else datetime.now().year,
+        season_id=int(season_id) if season_id else datetime.now(tz=UTC).year,
     )
 
 

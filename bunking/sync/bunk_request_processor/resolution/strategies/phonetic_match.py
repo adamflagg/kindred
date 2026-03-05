@@ -163,11 +163,11 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         first_soundex = self._soundex(first_name)
         last_soundex = self._soundex(last_name)
 
-        matches = []
-        for person in all_persons:
-            # Check if Soundex codes match
-            if self._soundex(person.first_name) == first_soundex and self._soundex(person.last_name) == last_soundex:
-                matches.append(person)
+        matches = [
+            person
+            for person in all_persons
+            if self._soundex(person.first_name) == first_soundex and self._soundex(person.last_name) == last_soundex
+        ]
 
         # Filter out self-references
         matches = self._filter_self_references(matches, requester_cm_id)
@@ -220,14 +220,12 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         first_metaphone = self._metaphone(first_name)
         last_metaphone = self._metaphone(last_name)
 
-        matches = []
-        for person in all_persons:
-            # Check if Metaphone codes match
-            if (
-                self._metaphone(person.first_name) == first_metaphone
-                and self._metaphone(person.last_name) == last_metaphone
-            ):
-                matches.append(person)
+        matches = [
+            person
+            for person in all_persons
+            if self._metaphone(person.first_name) == first_metaphone
+            and self._metaphone(person.last_name) == last_metaphone
+        ]
 
         # Filter out self-references
         matches = self._filter_self_references(matches, requester_cm_id)
@@ -671,11 +669,11 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         last_soundex = self._soundex(last_name)
 
         # Filter candidates by Soundex match
-        matches = []
-        for person in candidates:
-            # Check if Soundex codes match
-            if self._soundex(person.first_name) == first_soundex and self._soundex(person.last_name) == last_soundex:
-                matches.append(person)
+        matches = [
+            person
+            for person in candidates
+            if self._soundex(person.first_name) == first_soundex and self._soundex(person.last_name) == last_soundex
+        ]
 
         # Filter out self-references
         matches = self._filter_self_references(matches, requester_cm_id)
@@ -734,14 +732,12 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         last_metaphone = self._metaphone(last_name)
 
         # Filter candidates by Metaphone match
-        matches = []
-        for person in candidates:
-            # Check if Metaphone codes match
-            if (
-                self._metaphone(person.first_name) == first_metaphone
-                and self._metaphone(person.last_name) == last_metaphone
-            ):
-                matches.append(person)
+        matches = [
+            person
+            for person in candidates
+            if self._metaphone(person.first_name) == first_metaphone
+            and self._metaphone(person.last_name) == last_metaphone
+        ]
 
         # Filter out self-references
         matches = self._filter_self_references(matches, requester_cm_id)
@@ -794,9 +790,11 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         # Filter by same session using pre-loaded attendee info
         same_session_matches = []
         if attendee_info is not None:
-            for m in matches:
-                if m.cm_id in attendee_info and attendee_info[m.cm_id].get("session_cm_id") == session_cm_id:
-                    same_session_matches.append(m)
+            same_session_matches = [
+                m
+                for m in matches
+                if m.cm_id in attendee_info and attendee_info[m.cm_id].get("session_cm_id") == session_cm_id
+            ]
 
         if len(same_session_matches) == 1:
             return ResolutionResult(

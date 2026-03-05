@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -70,14 +70,14 @@ class ConstraintLogger:
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
         run_id_suffix = f"_{solver_run_id}" if solver_run_id else ""
         filename = f"session_{session_id}_solver_log_{timestamp}{run_id_suffix}.json"
         filepath = logs_dir / filename
 
         # Prepare log data
         log_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
             "session_id": session_id,
             "solver_run_id": solver_run_id,
             "debug_mode": self.debug_mode,

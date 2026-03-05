@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pocketbase import PocketBase
@@ -380,8 +380,8 @@ class OriginalRequestsLoader:
                 return None
 
             processed = parse_timestamp(record.processed)
-            created = parse_timestamp(record.created) or datetime.now()
-            updated = parse_timestamp(record.updated) or datetime.now()
+            created = parse_timestamp(record.created) or datetime.now(tz=UTC)
+            updated = parse_timestamp(record.updated) or datetime.now(tz=UTC)
 
             # Ensure proper type conversion (PocketBase may return strings)
             cm_id = person_data["cm_id"]
@@ -523,7 +523,7 @@ class OriginalRequestsLoader:
             return 0
 
         success_count = 0
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(tz=UTC).isoformat()
 
         for req_id in request_ids:
             try:

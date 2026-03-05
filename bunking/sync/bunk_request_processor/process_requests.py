@@ -358,7 +358,7 @@ def main() -> None:
                 valid_sessions = session_repo.get_valid_session_names(args.year)
                 # Get unique main session IDs (filter out aliases like 'toc')
                 seen_cm_ids: set[int] = set()
-                for friendly_name, (cm_id, is_main) in valid_sessions.items():
+                for cm_id, is_main in valid_sessions.values():
                     if cm_id not in seen_cm_ids:
                         seen_cm_ids.add(cm_id)
                         if is_main:

@@ -479,7 +479,7 @@ async def apply_solver_results(run_id: str) -> dict[str, str]:
     if not run_year and "year" in results:
         run_year = results["year"]
     if not run_year:
-        run_year = datetime.now().year
+        run_year = datetime.now(tz=UTC).year
         logger.warning(f"apply_solver_results: No year in run config/results, using current year {run_year}")
 
     # Create ID cache for the run year
@@ -842,41 +842,41 @@ async def get_solver_logs(session_id: int, run_id: str | None = None) -> dict[st
         with open(log_file) as f:
             log_data = json.load(f)
 
-        logs = []
+        logs: list[dict[str, str]] = []
         summary = log_data.get("summary", {})
 
         for mode, constraints in summary.get("constraints_added", {}).items():
             for constraint_type, details_list in constraints.items():
-                for details in details_list:
-                    logs.append(
-                        {
-                            "timestamp": log_data["timestamp"],
-                            "level": "INFO",
-                            "category": "CONSTRAINT",
-                            "message": f"Added {mode} {constraint_type} constraint: {details}",
-                        }
-                    )
-
-        for warning in summary.get("feasibility_warnings", []):
-            logs.append(
-                {"timestamp": log_data["timestamp"], "level": "WARNING", "category": "FEASIBILITY", "message": warning}
-            )
-
-        for progress in summary.get("solver_progress", []):
-            logs.append(
-                {"timestamp": log_data["timestamp"], "level": "INFO", "category": "SOLVER", "message": progress}
-            )
-
-        for violation_type, violations in summary.get("violations", {}).items():
-            for violation in violations:
-                logs.append(
+                logs.extend(
                     {
                         "timestamp": log_data["timestamp"],
-                        "level": "ERROR" if violation["severity"] == "error" else "WARNING",
-                        "category": "VIOLATION",
-                        "message": f"{violation_type}: {violation['details']}",
+                        "level": "INFO",
+                        "category": "CONSTRAINT",
+                        "message": f"Added {mode} {constraint_type} constraint: {details}",
                     }
+                    for details in details_list
                 )
+
+        logs.extend(
+            {"timestamp": log_data["timestamp"], "level": "WARNING", "category": "FEASIBILITY", "message": warning}
+            for warning in summary.get("feasibility_warnings", [])
+        )
+
+        logs.extend(
+            {"timestamp": log_data["timestamp"], "level": "INFO", "category": "SOLVER", "message": progress}
+            for progress in summary.get("solver_progress", [])
+        )
+
+        for violation_type, violations in summary.get("violations", {}).items():
+            logs.extend(
+                {
+                    "timestamp": log_data["timestamp"],
+                    "level": "ERROR" if violation["severity"] == "error" else "WARNING",
+                    "category": "VIOLATION",
+                    "message": f"{violation_type}: {violation['details']}",
+                }
+                for violation in violations
+            )
 
         request_validation = summary.get("request_validation")
         if request_validation:
@@ -918,7 +918,7 @@ async def list_solver_logs() -> dict[str, list[dict[str, Any]]]:
                         "session_id": session_id,
                         "timestamp": timestamp,
                         "size": log_file.stat().st_size,
-                        "modified": datetime.fromtimestamp(log_file.stat().st_mtime).isoformat(),
+                        "modified": datetime.fromtimestamp(log_file.stat().st_mtime, tz=UTC).isoformat(),
                     }
                 )
 

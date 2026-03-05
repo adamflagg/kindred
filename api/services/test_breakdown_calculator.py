@@ -298,7 +298,7 @@ class TestBreakdownStats:
         stats = BreakdownStats(base_count=10, returned_count=7, retention_rate=0.7)
 
         # Should raise FrozenInstanceError when trying to modify
-        with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
+        with pytest.raises((AttributeError, TypeError)):  # FrozenInstanceError inherits from AttributeError
             stats.base_count = 20  # type: ignore[misc]
 
 

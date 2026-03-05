@@ -97,19 +97,17 @@ class SessionRepository:
 
         try:
             sessions = self.pb.collection("camp_sessions").get_full_list(query_params={"filter": f"year = {year}"})
-            result: list[dict[str, Any]] = []
-            for s in sessions:
-                result.append(
-                    {
-                        "id": s.id,
-                        "cm_id": getattr(s, "cm_id", None),
-                        "name": getattr(s, "name", ""),
-                        "year": getattr(s, "year", None),
-                        "session_type": getattr(s, "session_type", None),
-                        "parent_id": getattr(s, "parent_id", None),
-                    }
-                )
-            return result
+            return [
+                {
+                    "id": s.id,
+                    "cm_id": getattr(s, "cm_id", None),
+                    "name": getattr(s, "name", ""),
+                    "year": getattr(s, "year", None),
+                    "session_type": getattr(s, "session_type", None),
+                    "parent_id": getattr(s, "parent_id", None),
+                }
+                for s in sessions
+            ]
         except Exception as e:
             logger.error(f"Error getting sessions for year {year}: {e}")
             return []

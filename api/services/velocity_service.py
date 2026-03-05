@@ -7,7 +7,7 @@ Computes week-over-week enrollment velocity using either enrollment snapshots
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from api.schemas.velocity import (
@@ -79,7 +79,7 @@ def _partial_week_info(week_start_str: str, year: int, *, today: date | None = N
     Only the current year can have partial weeks. A week is partial when
     today falls within the 7-day bucket starting at week_start_str.
     """
-    ref = today or date.today()
+    ref = today or datetime.now(tz=UTC).date()
     if year != ref.year:
         return False, 7
     ws = datetime.strptime(week_start_str, "%Y-%m-%d").date()

@@ -527,7 +527,7 @@ class BatchProcessor:
 
         # Add jitter (±10%)
         jitter = delay * 0.1
-        delay += random.uniform(-jitter, jitter)
+        delay += random.uniform(-jitter, jitter)  # noqa: S311 — retry jitter, not security
 
         final_delay: float = delay
         return final_delay

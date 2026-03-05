@@ -97,9 +97,11 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     # Only get age preference vars for campers with NO bunk requests (or if fallback enabled)
     age_only_requests: dict[int, list[DirectBunkRequest]] = {}
     if fallback_to_age:
-        for person_cm_id, age_reqs in age_requests_by_person.items():
-            if person_cm_id not in bunk_requests_by_person:
-                age_only_requests[person_cm_id] = age_reqs
+        age_only_requests = {
+            person_cm_id: age_reqs
+            for person_cm_id, age_reqs in age_requests_by_person.items()
+            if person_cm_id not in bunk_requests_by_person
+        }
 
     age_sat_vars, _ = add_age_preference_satisfaction_vars(ctx, age_only_requests)
 

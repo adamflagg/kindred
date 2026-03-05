@@ -586,15 +586,14 @@ class Phase2ResolutionService:
                     results.append((parse_result, filtered_results))
                 else:
                     # No resolution results - create empty list with one failed result per request
-                    failed_results = []
-                    for req in parse_result.parsed_requests:
-                        failed_results.append(
-                            ResolutionResult(
-                                confidence=0.0,
-                                method="no_resolution",
-                                target_name=req.target_name or "",
-                            )
+                    failed_results = [
+                        ResolutionResult(
+                            confidence=0.0,
+                            method="no_resolution",
+                            target_name=req.target_name or "",
                         )
+                        for req in parse_result.parsed_requests
+                    ]
                     results.append((parse_result, failed_results))
             else:
                 # Parse result wasn't valid or wasn't processed

@@ -2890,7 +2890,7 @@ class TestPartialWeekInfo:
 class TestPartialWeekInSnapshots:
     """Verify that snapshot-based curves mark the last week as partial for current year."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def service(self):
         repo = AsyncMock()
         repo.fetch_registration_dates = AsyncMock(
@@ -2969,7 +2969,7 @@ class TestPartialWeekInSnapshots:
 class TestPartialWeekInReconstruction:
     """Verify that reconstruction-based curves mark the last week as partial."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def service(self):
         repo = AsyncMock()
         repo.fetch_registration_dates = AsyncMock(
@@ -3015,7 +3015,7 @@ class TestPartialWeekInReconstruction:
 class TestPartialWeekInCombinedCurves:
     """Verify partial week info propagates through _combine_weekly_curves."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def service(self):
         repo = AsyncMock()
         repo.fetch_registration_dates = AsyncMock(
@@ -3065,7 +3065,7 @@ class TestPartialWeekInCombinedCurves:
 class TestPartialWeekInGenderCurves:
     """Verify partial week info works in gender-split curves."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def service(self):
         repo = AsyncMock()
         repo.fetch_registration_dates = AsyncMock(
@@ -3169,7 +3169,7 @@ class TestCombineCarryForward:
     than implicitly contributing 0.
     """
 
-    @pytest.fixture()
+    @pytest.fixture
     def service(self):
         repo = AsyncMock()
         return VelocityService(repo)
@@ -3305,7 +3305,7 @@ class TestReconstructionEffectiveDate:
     enrollment_date (PostDate) for cancellation events. Only enrolled,
     cancelled, and withdrawn statuses contribute to velocity curves."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def service(self):
         repo = AsyncMock()
         repo.fetch_registration_dates = AsyncMock(return_value={"priority_reg_date": "2026-01-05"})

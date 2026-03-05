@@ -63,11 +63,7 @@ def get_representative_requests(groups: dict[str, list[ParseRequest]]) -> list[P
     Returns:
         List of representative ParseRequest objects (one per unique text)
     """
-    representatives = []
-    for requests in groups.values():
-        # Use the first request as the representative
-        representatives.append(requests[0])
-    return representatives
+    return [requests[0] for requests in groups.values()]
 
 
 def clone_parse_result(original: ParseResult, new_request: ParseRequest) -> ParseResult:
@@ -164,7 +160,7 @@ class RequestDeduplicator:
             rep_to_result[id(rep_request)] = result
 
         # For each group, clone the result to all members
-        for _normalized_text, requests in mapping.items():
+        for requests in mapping.values():
             # First request in each group was the representative
             representative = requests[0]
             rep_result: ParseResult | None = rep_to_result.get(id(representative))

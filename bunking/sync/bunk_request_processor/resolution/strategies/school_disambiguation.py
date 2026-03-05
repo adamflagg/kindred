@@ -259,10 +259,12 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
 
         if requester_has_location and candidate_has_location:
             # City: case-insensitive exact match (checked above that these are not None)
-            assert requester_city is not None and candidate_city is not None
+            assert requester_city is not None
+            assert candidate_city is not None
             city_match = candidate_city.strip().lower() == requester_city.strip().lower()
             # State: case-insensitive exact match
-            assert requester_state is not None and candidate_state is not None
+            assert requester_state is not None
+            assert candidate_state is not None
             state_match = candidate_state.strip().lower() == requester_state.strip().lower()
             return city_match and state_match
 

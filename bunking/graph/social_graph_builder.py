@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import community as community_louvain
@@ -54,7 +54,7 @@ class SocialGraphBuilder:
     def __init__(self, pb: PocketBase, random_seed: int | None = None):
         self.pb = pb
         self.graph = nx.Graph()
-        self.current_year = datetime.now().year
+        self.current_year = datetime.now(tz=UTC).year
         self.person_cache: dict[int, dict[str, Any]] = {}
         self.attendee_cache: dict[int, list[dict[str, Any]]] = {}
         self.random_seed = random_seed
@@ -359,7 +359,7 @@ class SocialGraphBuilder:
                     person = self.pb.collection("persons").get_first_list_item(f"cm_id = {person_cm_id}")
                     if person.family_id:
                         persons_data[person_cm_id] = person.family_id
-                except Exception:
+                except Exception:  # noqa: S110 — intentional silent handling
                     pass
 
             # Find siblings
@@ -836,9 +836,7 @@ class SocialGraphBuilder:
                 communities[comm_id].add(node)
 
             # Filter by size
-            for community in communities.values():
-                if min_size <= len(community) <= max_size:
-                    groups.append(community)
+            groups.extend(community for community in communities.values() if min_size <= len(community) <= max_size)
 
         except Exception as e:
             logger.warning(f"Community detection failed: {e}")
@@ -873,19 +871,13 @@ class SocialGraphBuilder:
             cliques = list(nx.find_cliques(self.graph))
 
         # Filter by size and convert to sets
-        for clique in cliques:
-            if min_size <= len(clique) <= max_size:
-                groups.append(set(clique))
+        groups = [set(clique) for clique in cliques if min_size <= len(clique) <= max_size]
 
         return groups
 
     def _merge_detections(self, community_groups: list[set[int]], clique_groups: list[set[int]]) -> list[set[int]]:
         """Merge and deduplicate group detections"""
-        all_groups = []
-
-        # Add all groups
-        for group in community_groups:
-            all_groups.append(group)
+        all_groups = list(community_groups)
 
         for clique in clique_groups:
             # Check if this clique is a subset of any community group
@@ -943,11 +935,12 @@ class SocialGraphBuilder:
                     edge_members.append(node)
 
         # Find missing connections within group
-        missing_connections = []
-        for i in range(len(members_list)):
-            for j in range(i + 1, len(members_list)):
-                if not subgraph.has_edge(members_list[i], members_list[j]):
-                    missing_connections.append((members_list[i], members_list[j]))
+        missing_connections = [
+            (members_list[i], members_list[j])
+            for i in range(len(members_list))
+            for j in range(i + 1, len(members_list))
+            if not subgraph.has_edge(members_list[i], members_list[j])
+        ]
 
         # Determine detection method
         if actual_edges == possible_edges:
@@ -1049,11 +1042,7 @@ class SocialGraphBuilder:
 
     def find_isolated_campers(self, threshold: int = 1) -> list[int]:
         """Find campers with few or no connections"""
-        isolated = []
-        for node in self.graph.nodes():
-            if self.graph.degree(node) <= threshold:
-                isolated.append(node)
-        return isolated
+        return [node for node in self.graph.nodes() if self.graph.degree(node) <= threshold]
 
     def find_bridge_campers(self) -> list[int]:
         """Find campers who connect different groups"""

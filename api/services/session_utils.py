@@ -62,8 +62,7 @@ async def get_related_session_ids(session_cm_id: int, year: int, pb_client: Pock
             query_params={"filter": f'session_type = "ag" && parent_id = {session_cm_id} && year = {year}'},
         )
 
-        for session in ag_sessions:
-            related_ids.append(getattr(session, "cm_id", 0))
+        related_ids.extend(getattr(session, "cm_id", 0) for session in ag_sessions)
 
         logger.info(f"Session {session_cm_id} ({session_name}) year {year} has related AG sessions: {related_ids}")
 

@@ -33,7 +33,7 @@ class BaseSyncService:
         if admin_email and admin_password:
             try:
                 self.pb.collection("_superusers").auth_with_password(admin_email, admin_password)
-            except Exception:
+            except Exception:  # noqa: S110 — intentional silent handling
                 pass
 
     def force_wal_checkpoint(self) -> None:
@@ -42,5 +42,5 @@ class BaseSyncService:
             # This is typically done via direct SQLite access
             # For PocketBase, we rely on the built-in checkpointing
             pass
-        except Exception:
+        except Exception:  # noqa: S110 — intentional silent handling
             pass

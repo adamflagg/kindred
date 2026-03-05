@@ -258,9 +258,11 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
     requests_to_delete = [r for r in requests_to_merge if r.id != request.keep_target_from]
 
     # Type guard: IDs are guaranteed to exist for database records
-    assert keep_request.id is not None, "Database record missing ID"
+    if keep_request.id is None:
+        raise ValueError("Database record missing ID")
     for req in requests_to_delete:
-        assert req.id is not None, "Database record missing ID"
+        if req.id is None:
+            raise ValueError("Database record missing ID")
 
     # Combine source_fields from all requests
     # Fall back to source_field (singular) if source_fields is empty
@@ -308,7 +310,8 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
     # Ensure source links exist for all requests before merging
     # This handles legacy requests that were created before source_link tracking
     for req in requests_to_merge:
-        assert req.id is not None
+        if req.id is None:
+            raise ValueError("Database record missing ID")
         # Get source field - from source_fields array or fall back to source_field
         req_source_fields = getattr(req, "source_fields", None) or []
         if isinstance(req_source_fields, str):
@@ -360,7 +363,7 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
     merged_ids: list[str] = []
     for merge_id in delete_ids:
         if request_repo.soft_delete_for_merge(merge_id, kept_id):
-            merged_ids.append(merge_id)
+            merged_ids.append(merge_id)  # noqa: PERF401 — loop has side effect
 
     logger.info(f"Merged {len(merged_ids)} requests into {kept_id}. Source fields: {combined_source_fields}")
 
@@ -398,7 +401,8 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
             detail=f"Request '{request.request_id}' not found",
         )
 
-    assert kept_request.id is not None, "Database record missing ID"
+    if kept_request.id is None:
+        raise ValueError("Database record missing ID")
 
     # Get all soft-deleted requests that were merged into this one
     merged_requests = request_repo.get_merged_requests(request.request_id)

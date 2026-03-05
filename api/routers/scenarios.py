@@ -214,21 +214,18 @@ async def list_scenarios(
             pb.collection("saved_scenarios").get_full_list, query_params={"filter": filter_str}
         )
 
-        result: list[SavedScenario] = []
-        for s in scenarios:
-            result.append(
-                SavedScenario(
-                    id=s.id,
-                    name=str(getattr(s, "name", "")),
-                    session_cm_id=int(getattr(s, "session_cm_id", 0)),
-                    year=int(getattr(s, "year", ctx.year)),
-                    is_active=bool(getattr(s, "is_active", True)),
-                    description=str(getattr(s, "description", "")),
-                    created_by=str(getattr(s, "created_by", "")),
-                )
+        return [
+            SavedScenario(
+                id=s.id,
+                name=str(getattr(s, "name", "")),
+                session_cm_id=int(getattr(s, "session_cm_id", 0)),
+                year=int(getattr(s, "year", ctx.year)),
+                is_active=bool(getattr(s, "is_active", True)),
+                description=str(getattr(s, "description", "")),
+                created_by=str(getattr(s, "created_by", "")),
             )
-
-        return result
+            for s in scenarios
+        ]
 
     except HTTPException:
         raise

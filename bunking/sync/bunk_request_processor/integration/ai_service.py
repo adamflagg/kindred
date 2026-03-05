@@ -66,7 +66,7 @@ class AIService:
             "year": context.year,
         }
         key_str = json.dumps(key_data, sort_keys=True)
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode()).hexdigest()  # noqa: S324 — content dedup, not security
 
     def _sanitize_request(self, request_text: str) -> str:
         """Sanitize request text"""

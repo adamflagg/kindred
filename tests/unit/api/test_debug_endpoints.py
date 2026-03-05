@@ -463,14 +463,14 @@ class TestListPromptsEndpoint:
     """Test GET /api/debug/prompts endpoint."""
 
     @pytest.fixture
-    def client_with_mocks(self) -> Generator[TestClient, None, None]:
+    def client_with_mocks(self) -> TestClient:
         """Create test client."""
         from api.routers.debug import router
 
         app = FastAPI()
         app.include_router(router)
 
-        yield TestClient(app)
+        return TestClient(app)
 
     def test_list_prompts_returns_available_files(self, client_with_mocks: TestClient) -> None:
         """Test that list prompts returns available prompt files."""
@@ -525,14 +525,14 @@ class TestGetPromptEndpoint:
     """Test GET /api/debug/prompts/{name} endpoint."""
 
     @pytest.fixture
-    def client_with_mocks(self) -> Generator[TestClient, None, None]:
+    def client_with_mocks(self) -> TestClient:
         """Create test client."""
         from api.routers.debug import router
 
         app = FastAPI()
         app.include_router(router)
 
-        yield TestClient(app)
+        return TestClient(app)
 
     def test_get_prompt_returns_content(self, client_with_mocks: TestClient) -> None:
         """Test that get prompt returns file content."""
@@ -589,14 +589,14 @@ class TestUpdatePromptEndpoint:
     """Test PUT /api/debug/prompts/{name} endpoint."""
 
     @pytest.fixture
-    def client_with_mocks(self) -> Generator[TestClient, None, None]:
+    def client_with_mocks(self) -> TestClient:
         """Create test client."""
         from api.routers.debug import router
 
         app = FastAPI()
         app.include_router(router)
 
-        yield TestClient(app)
+        return TestClient(app)
 
     def test_update_prompt_writes_content(self, client_with_mocks: TestClient) -> None:
         """Test that update prompt writes new content to file."""

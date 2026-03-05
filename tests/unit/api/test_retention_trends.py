@@ -338,10 +338,10 @@ class TestRetentionTrendsResponseStructure:
         }
 
         # Verify structure is as expected (this is a schema test)
-        for field, field_type in expected_fields.items():
+        for field in expected_fields:
             assert field in expected_fields  # Sanity check
 
-        for field, field_type in year_entry_fields.items():
+        for field in year_entry_fields:
             assert field in year_entry_fields  # Sanity check
 
     def test_breakdown_entries_have_year_values(self) -> None:

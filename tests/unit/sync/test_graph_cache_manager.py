@@ -38,20 +38,20 @@ class TestGraphCacheManager(unittest.TestCase):
 
         # Retrieve it
         cached = self.cache.get_session_graph(12345, 2025)
-        self.assertIsNotNone(cached)
         assert cached is not None
-        self.assertEqual(cached.number_of_nodes(), 3)
-        self.assertEqual(cached.number_of_edges(), 2)
+        assert cached is not None
+        assert cached.number_of_nodes() == 3
+        assert cached.number_of_edges() == 2
 
         # Miss on different session
         missed = self.cache.get_session_graph(99999, 2025)
-        self.assertIsNone(missed)
+        assert missed is None
 
         # Check stats
         stats = self.cache.get_stats()
-        self.assertEqual(stats["hit_count"], 1)
-        self.assertEqual(stats["miss_count"], 1)
-        self.assertEqual(stats["cache_size"], 1)
+        assert stats["hit_count"] == 1
+        assert stats["miss_count"] == 1
+        assert stats["cache_size"] == 1
 
     def test_bunk_caching(self):
         """Test bunk-specific caching."""
@@ -60,13 +60,13 @@ class TestGraphCacheManager(unittest.TestCase):
 
         # Retrieve it
         cached = self.cache.get_bunk_graph(101, 12345, 2025)
-        self.assertIsNotNone(cached)
         assert cached is not None
-        self.assertEqual(cached.number_of_nodes(), 3)
+        assert cached is not None
+        assert cached.number_of_nodes() == 3
 
         # Miss on different bunk
         missed = self.cache.get_bunk_graph(999, 12345, 2025)
-        self.assertIsNone(missed)
+        assert missed is None
 
     def test_ttl_expiration(self):
         """Test that cached items expire after TTL."""
@@ -79,18 +79,18 @@ class TestGraphCacheManager(unittest.TestCase):
 
             # Should be available immediately
             cached = self.cache.get_session_graph(12345, 2025)
-            self.assertIsNotNone(cached)
+            assert cached is not None
 
             # Advance time past TTL (2.5 seconds later)
             mock_time.time.return_value = 1002.5
 
             # Should be expired
             expired = self.cache.get_session_graph(12345, 2025)
-            self.assertIsNone(expired)
+            assert expired is None
 
             # Stats should show miss
             stats = self.cache.get_stats()
-            self.assertEqual(stats["miss_count"], 1)
+            assert stats["miss_count"] == 1
 
     def test_invalidation_by_person(self):
         """Test cache invalidation when a person changes."""
@@ -109,11 +109,11 @@ class TestGraphCacheManager(unittest.TestCase):
 
         # Invalidate for person 101
         invalidated = self.cache.invalidate_for_person(101)
-        self.assertEqual(invalidated, 1)
+        assert invalidated == 1
 
         # First should be gone, second should remain
-        self.assertIsNone(self.cache.get_session_graph(1, 2025))
-        self.assertIsNotNone(self.cache.get_session_graph(2, 2025))
+        assert self.cache.get_session_graph(1, 2025) is None
+        assert self.cache.get_session_graph(2, 2025) is not None
 
     def test_invalidation_by_session(self):
         """Test cache invalidation for entire session."""
@@ -125,12 +125,12 @@ class TestGraphCacheManager(unittest.TestCase):
 
         # Invalidate session 12345
         invalidated = self.cache.invalidate_session(12345, 2025)
-        self.assertEqual(invalidated, 3)  # Session graph + 2 bunk graphs
+        assert invalidated == 3  # Session graph + 2 bunk graphs
 
         # Check what remains
-        self.assertIsNone(self.cache.get_session_graph(12345, 2025))
-        self.assertIsNone(self.cache.get_bunk_graph(101, 12345, 2025))
-        self.assertIsNotNone(self.cache.get_session_graph(99999, 2025))
+        assert self.cache.get_session_graph(12345, 2025) is None
+        assert self.cache.get_bunk_graph(101, 12345, 2025) is None
+        assert self.cache.get_session_graph(99999, 2025) is not None
 
     def test_lru_eviction(self):
         """Test LRU eviction when cache is full."""
@@ -150,11 +150,11 @@ class TestGraphCacheManager(unittest.TestCase):
         self.cache.cache_session_graph(99, 2025, new_graph)
 
         # Session 1 should be evicted (not accessed)
-        self.assertIsNone(self.cache.get_session_graph(1, 2025))
+        assert self.cache.get_session_graph(1, 2025) is None
 
         # Others should still be there
-        self.assertIsNotNone(self.cache.get_session_graph(0, 2025))
-        self.assertIsNotNone(self.cache.get_session_graph(99, 2025))
+        assert self.cache.get_session_graph(0, 2025) is not None
+        assert self.cache.get_session_graph(99, 2025) is not None
 
     def test_thread_safety(self):
         """Test concurrent access to cache."""
@@ -193,7 +193,7 @@ class TestGraphCacheManager(unittest.TestCase):
                 future.result()
 
         # No errors should occur
-        self.assertEqual(len(errors), 0, f"Thread safety errors: {errors}")
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
 
     def test_graph_immutability(self):
         """Test that cached graphs cannot be mutated externally."""
@@ -211,9 +211,9 @@ class TestGraphCacheManager(unittest.TestCase):
         # Retrieve again - should be unchanged
         cached_again = self.cache.get_session_graph(12345, 2025)
         assert cached_again is not None
-        self.assertNotIn(999, cached_again.nodes())
-        self.assertEqual(cached_again.number_of_nodes(), 3)
-        self.assertEqual(cached_again.number_of_edges(), 2)
+        assert 999 not in cached_again.nodes()
+        assert cached_again.number_of_nodes() == 3
+        assert cached_again.number_of_edges() == 2
 
     def test_cleanup_expired(self):
         """Test manual cleanup of expired entries."""
@@ -229,18 +229,18 @@ class TestGraphCacheManager(unittest.TestCase):
 
             # No expired yet
             removed = self.cache.cleanup_expired()
-            self.assertEqual(removed, 0)
+            assert removed == 0
 
             # Advance time past TTL (2.5 seconds later)
             mock_time.time.return_value = 1002.5
 
             # Clean up
             removed = self.cache.cleanup_expired()
-            self.assertEqual(removed, 5)
+            assert removed == 5
 
             # Cache should be empty
             stats = self.cache.get_stats()
-            self.assertEqual(stats["cache_size"], 0)
+            assert stats["cache_size"] == 0
 
     def test_clear_cache(self):
         """Test clearing entire cache."""
@@ -253,12 +253,12 @@ class TestGraphCacheManager(unittest.TestCase):
         self.cache.clear()
 
         # Everything should be gone
-        self.assertIsNone(self.cache.get_session_graph(1, 2025))
-        self.assertIsNone(self.cache.get_bunk_graph(101, 1, 2025))
-        self.assertIsNone(self.cache.get_session_graph(2, 2025))
+        assert self.cache.get_session_graph(1, 2025) is None
+        assert self.cache.get_bunk_graph(101, 1, 2025) is None
+        assert self.cache.get_session_graph(2, 2025) is None
 
         stats = self.cache.get_stats()
-        self.assertEqual(stats["cache_size"], 0)
+        assert stats["cache_size"] == 0
 
 
 if __name__ == "__main__":

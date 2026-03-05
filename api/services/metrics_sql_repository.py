@@ -284,14 +284,14 @@ class MetricsSQLRepository:
                       AND a.year <= ?""",
                 [*batch, max_year],
             )
-            for r in rows:
-                all_results.append(
-                    SimpleNamespace(
-                        person_id=r["person_id"],
-                        year=r["year"],
-                        expand={"session": self._session_ns(r)},
-                    )
+            all_results.extend(
+                SimpleNamespace(
+                    person_id=r["person_id"],
+                    year=r["year"],
+                    expand={"session": self._session_ns(r)},
                 )
+                for r in rows
+            )
 
         return all_results
 

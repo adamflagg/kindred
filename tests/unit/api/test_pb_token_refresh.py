@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def _mock_settings():
     """Skip PB auth for import."""
     with patch.dict("os.environ", {"SKIP_PB_AUTH": "true"}):

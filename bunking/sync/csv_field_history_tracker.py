@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -288,7 +288,7 @@ class CSVFieldHistoryTracker:
             retention_days: Number of days to keep history
         """
         try:
-            cutoff = datetime.now() - timedelta(days=retention_days)
+            cutoff = datetime.now(tz=UTC) - timedelta(days=retention_days)
             cleaned = 0
 
             # Find and remove old files

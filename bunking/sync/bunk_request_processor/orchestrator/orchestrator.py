@@ -83,7 +83,7 @@ def generate_unresolved_person_id(name_text: str) -> int:
     normalized = name_text.strip().lower()
 
     # Create MD5 hash of the normalized name
-    hash_object = hashlib.md5(normalized.encode("utf-8"))
+    hash_object = hashlib.md5(normalized.encode("utf-8"))  # noqa: S324 — deterministic seed, not security
     hash_hex = hash_object.hexdigest()
 
     # Take first 8 characters of hex and convert to int
