@@ -86,19 +86,22 @@ export default function GeoAnalysis() {
     currentYear,
     categoryToDbCategory.city,
     needsMappings && activeLayers.has('city'),
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    activeSessionTypes
   )
   const { data: schoolSources } = useNormalizedMappings(
     currentYear,
     categoryToDbCategory.school,
     needsMappings && activeLayers.has('school'),
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    activeSessionTypes
   )
   const { data: synagogueSources } = useNormalizedMappings(
     currentYear,
     categoryToDbCategory.synagogue,
     needsMappings && activeLayers.has('synagogue'),
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    activeSessionTypes
   )
 
   // Fetch registration data with geographic breakdowns + optional comparison

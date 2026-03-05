@@ -37,15 +37,20 @@ export function useNormalizedMappings(
   year: number,
   category: NormalizedCategory,
   enabled: boolean,
-  sessionCmId?: number
+  sessionCmId?: number,
+  sessionTypes?: readonly string[]
 ) {
   return useQuery({
-    queryKey: queryKeys.normalizedMappings(year, category, sessionCmId),
+    queryKey: queryKeys.normalizedMappings(year, category, sessionCmId, sessionTypes),
     queryFn: async () => {
       // Build filter with optional session filter
       let filter = `year = ${year} && category = "${category}"`
       if (sessionCmId !== undefined) {
         filter += ` && session.cm_id = ${sessionCmId}`
+      } else if (sessionTypes && sessionTypes.length > 0) {
+        // Filter by session types when no specific session selected
+        const typeFilters = sessionTypes.map((t) => `session.session_type = "${t}"`)
+        filter += ` && (${typeFilters.join(' || ')})`
       }
 
       const records = await pb.collection('normalized_mappings').getFullList({
