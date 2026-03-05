@@ -172,13 +172,17 @@ export function GeoDetailList({
                               )}
                             </span>
                             {showGaps &&
-                              !getLocationCoordsWithOverrides(category, item.name, overrideCoords) && (
-                              <span
-                                data-unmatched
-                                className="h-2 w-2 rounded-full bg-amber-400"
-                                title="Not in canonical US cities list"
-                              />
-                            )}
+                              !getLocationCoordsWithOverrides(
+                                category,
+                                item.name,
+                                overrideCoords
+                              ) && (
+                                <span
+                                  data-unmatched
+                                  className="h-2 w-2 rounded-full bg-amber-400"
+                                  title="Not in canonical US cities list"
+                                />
+                              )}
                           </div>
                         </td>
                         <td className="text-foreground px-4 py-2 text-right font-medium">

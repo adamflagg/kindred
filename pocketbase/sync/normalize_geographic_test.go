@@ -1139,13 +1139,15 @@ func TestBuildPythonNormalizerCommand(t *testing.T) {
 // Geo Override Integration Tests
 // ============================================================================
 
+const testCityOakland = "Oakland"
+
 // TestResolveValueAliasOverrideTakesPriority verifies that alias overrides
 // take priority over fuzzy match results. When a raw value has an alias
 // override, it should return the alias canonical with confidence 1.0.
 func TestResolveValueAliasOverrideTakesPriority(t *testing.T) {
 	// Fuzzy match lookup maps a raw value to a normalized result
 	fuzzyLookup := map[string]string{
-		"Oaklnd": "Oakland", // fuzzy match would normalize to "Oakland"
+		"Oaklnd": testCityOakland, // fuzzy match would normalize to "Oakland"
 	}
 
 	// Alias override maps the same raw value to a different canonical
@@ -1228,7 +1230,9 @@ func TestResolveValueMergeRedirectAfterFuzzyMatch(t *testing.T) {
 		categorySchool: {},
 	}
 
-	normalized, confidence := resolveValue("Temple Beth-El", categoryCongregation, fuzzyLookup, aliasOverrides, mergeOverrides)
+	normalized, confidence := resolveValue(
+		"Temple Beth-El", categoryCongregation, fuzzyLookup,
+		aliasOverrides, mergeOverrides)
 
 	if normalized != "Congregation Beth El" {
 		t.Errorf("resolveValue() normalized = %q, want %q", normalized, "Congregation Beth El")
@@ -1305,7 +1309,7 @@ func TestResolveValueEmptyOverridesFallBackToFuzzy(t *testing.T) {
 // returns a case-equal result, confidence is 1.0.
 func TestResolveValueFuzzyMatchExactCaseConfidence(t *testing.T) {
 	fuzzyLookup := map[string]string{
-		"Oakland": "Oakland", // exact match (same string)
+		testCityOakland: testCityOakland, // exact match (same string)
 	}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1320,10 +1324,10 @@ func TestResolveValueFuzzyMatchExactCaseConfidence(t *testing.T) {
 		categoryCongregation: {},
 	}
 
-	normalized, confidence := resolveValue("Oakland", categoryCity, fuzzyLookup, aliasOverrides, mergeOverrides)
+	normalized, confidence := resolveValue(testCityOakland, categoryCity, fuzzyLookup, aliasOverrides, mergeOverrides)
 
-	if normalized != "Oakland" {
-		t.Errorf("resolveValue() normalized = %q, want %q", normalized, "Oakland")
+	if normalized != testCityOakland {
+		t.Errorf("resolveValue() normalized = %q, want %q", normalized, testCityOakland)
 	}
 	if confidence != 1.0 {
 		t.Errorf("resolveValue() confidence = %f, want 1.0 (exact case match)", confidence)
@@ -1361,7 +1365,7 @@ func TestResolveValueNoMatchReturnsEmpty(t *testing.T) {
 // overrides don't cause panics (defensive coding).
 func TestResolveValueNilOverrideMapsDoNotPanic(t *testing.T) {
 	fuzzyLookup := map[string]string{
-		"Oakland": "Oakland",
+		testCityOakland: testCityOakland,
 	}
 
 	// Missing category keys in override maps
@@ -1369,10 +1373,10 @@ func TestResolveValueNilOverrideMapsDoNotPanic(t *testing.T) {
 	mergeOverrides := map[string]map[string]string{}
 
 	// Should not panic, should fall back to fuzzy match
-	normalized, confidence := resolveValue("Oakland", categoryCity, fuzzyLookup, aliasOverrides, mergeOverrides)
+	normalized, confidence := resolveValue(testCityOakland, categoryCity, fuzzyLookup, aliasOverrides, mergeOverrides)
 
-	if normalized != "Oakland" {
-		t.Errorf("resolveValue() normalized = %q, want %q", normalized, "Oakland")
+	if normalized != testCityOakland {
+		t.Errorf("resolveValue() normalized = %q, want %q", normalized, testCityOakland)
 	}
 	if confidence != 1.0 {
 		t.Errorf("resolveValue() confidence = %f, want 1.0", confidence)
@@ -1401,7 +1405,9 @@ func TestResolveValueMergeOnlyNoAlias(t *testing.T) {
 		categoryCongregation: {},
 	}
 
-	normalized, confidence := resolveValue("Oak Valley Middle School", categorySchool, fuzzyLookup, aliasOverrides, mergeOverrides)
+	normalized, confidence := resolveValue(
+		"Oak Valley Middle School", categorySchool, fuzzyLookup,
+		aliasOverrides, mergeOverrides)
 
 	if normalized != "Oak Valley Middle" {
 		t.Errorf("resolveValue() normalized = %q, want %q", normalized, "Oak Valley Middle")
@@ -1416,7 +1422,7 @@ func TestResolveValueMergeOnlyNoAlias(t *testing.T) {
 // do not affect resolution in another category.
 func TestResolveValueCategoryIsolation(t *testing.T) {
 	fuzzyLookup := map[string]string{
-		"Oakland": "Oakland",
+		testCityOakland: testCityOakland,
 	}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1434,11 +1440,14 @@ func TestResolveValueCategoryIsolation(t *testing.T) {
 	}
 
 	// When resolving as "school" category, the city alias should NOT apply
-	normalized, confidence := resolveValue("Oakland", categorySchool, fuzzyLookup, aliasOverrides, mergeOverrides)
+	normalized, confidence := resolveValue(
+		testCityOakland, categorySchool, fuzzyLookup,
+		aliasOverrides, mergeOverrides)
 
 	// Should use fuzzy match, not the city alias
-	if normalized != "Oakland" {
-		t.Errorf("resolveValue() for school category = %q, want %q (city alias should not apply)", normalized, "Oakland")
+	if normalized != testCityOakland {
+		t.Errorf("resolveValue() for school category = %q, want %q (city alias should not apply)",
+			normalized, testCityOakland)
 	}
 	if confidence != 1.0 {
 		t.Errorf("resolveValue() confidence = %f, want 1.0", confidence)

@@ -97,7 +97,17 @@ export function ResolveGapDialog({
     }
     await createOverride.mutateAsync(data)
     handleClose()
-  }, [category, gapType, gapName, year, newCanonicalName, newCity, newState, createOverride, handleClose])
+  }, [
+    category,
+    gapType,
+    gapName,
+    year,
+    newCanonicalName,
+    newCity,
+    newState,
+    createOverride,
+    handleClose,
+  ])
 
   const results = searchResults?.results ?? []
 
@@ -119,9 +129,7 @@ export function ResolveGapDialog({
           </div>
 
           {/* Search results */}
-          {isSearching && (
-            <p className="text-muted-foreground px-2 text-sm">Searching...</p>
-          )}
+          {isSearching && <p className="text-muted-foreground px-2 text-sm">Searching...</p>}
 
           {searchEnabled && !isSearching && results.length === 0 && (
             <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
@@ -168,7 +176,10 @@ export function ResolveGapDialog({
         /* Create new entry form */
         <div className="space-y-4">
           <div>
-            <label htmlFor="canonical-name" className="text-foreground mb-1 block text-sm font-medium">
+            <label
+              htmlFor="canonical-name"
+              className="text-foreground mb-1 block text-sm font-medium"
+            >
               Canonical Name
             </label>
             <input

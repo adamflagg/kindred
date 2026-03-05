@@ -411,7 +411,7 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	filter := fmt.Sprintf("year = %d", year)
 	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0)
 	if findErr != nil {
-		return aliasOverrides, mergeOverrides, findErr
+		return aliasOverrides, mergeOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
 
 	for _, record := range records {
@@ -438,8 +438,10 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		}
 	}
 
-	aliasCount := len(aliasOverrides[categoryCity]) + len(aliasOverrides[categorySchool]) + len(aliasOverrides[categoryCongregation])
-	mergeCount := len(mergeOverrides[categoryCity]) + len(mergeOverrides[categorySchool]) + len(mergeOverrides[categoryCongregation])
+	aliasCount := len(aliasOverrides[categoryCity]) +
+		len(aliasOverrides[categorySchool]) + len(aliasOverrides[categoryCongregation])
+	mergeCount := len(mergeOverrides[categoryCity]) +
+		len(mergeOverrides[categorySchool]) + len(mergeOverrides[categoryCongregation])
 	if aliasCount > 0 || mergeCount > 0 {
 		slog.Info("Loaded geo_overrides", "aliases", aliasCount, "merges", mergeCount)
 	}
@@ -623,7 +625,9 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 	for _, d := range data {
 		// School mapping
 		if d.School != "" {
-			if normalized, confidence := resolveValue(d.School, categorySchool, lookup.school, aliasOverrides, mergeOverrides); normalized != "" {
+			normalized, confidence := resolveValue(
+				d.School, categorySchool, lookup.school, aliasOverrides, mergeOverrides)
+			if normalized != "" {
 				mappings = append(mappings, &personSessionMapping{
 					personPBID:      d.PersonPBID,
 					sessionPBID:     d.SessionPBID,
@@ -638,7 +642,9 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 
 		// City mapping
 		if d.City != "" {
-			if normalized, confidence := resolveValue(d.City, categoryCity, lookup.city, aliasOverrides, mergeOverrides); normalized != "" {
+			normalized, confidence := resolveValue(
+				d.City, categoryCity, lookup.city, aliasOverrides, mergeOverrides)
+			if normalized != "" {
 				mappings = append(mappings, &personSessionMapping{
 					personPBID:      d.PersonPBID,
 					sessionPBID:     d.SessionPBID,
@@ -653,7 +659,10 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 
 		// Congregation mapping
 		if d.Congregation != "" {
-			if normalized, confidence := resolveValue(d.Congregation, categoryCongregation, lookup.congregation, aliasOverrides, mergeOverrides); normalized != "" {
+			normalized, confidence := resolveValue(
+				d.Congregation, categoryCongregation, lookup.congregation,
+				aliasOverrides, mergeOverrides)
+			if normalized != "" {
 				mappings = append(mappings, &personSessionMapping{
 					personPBID:      d.PersonPBID,
 					sessionPBID:     d.SessionPBID,
@@ -1046,12 +1055,11 @@ func computeConfidenceStatic(original, normalized string) float64 {
 
 // resolveValue checks alias overrides first, then fuzzy match, then merge redirects.
 // Returns the normalized value and confidence score.
-func resolveValue(rawValue string, category string, lookupMap map[string]string,
-	aliasOverrides, mergeOverrides map[string]map[string]string) (string, float64) {
-
+func resolveValue(
+	rawValue string, category string, lookupMap map[string]string,
+	aliasOverrides, mergeOverrides map[string]map[string]string,
+) (normalized string, confidence float64) {
 	lowerRaw := strings.ToLower(rawValue)
-	var normalized string
-	var confidence float64
 
 	// 1. Check alias override first
 	if aliases, ok := aliasOverrides[category]; ok {

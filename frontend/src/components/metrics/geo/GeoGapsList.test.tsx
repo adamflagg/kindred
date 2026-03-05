@@ -28,10 +28,7 @@ const sourceMappings = new Map<string, SourceMapping[]>([
       { original: 'Riverside Elementary School', count: 4, confidence: 0.9 },
     ],
   ],
-  [
-    'Oak Valley Middle',
-    [{ original: 'Oak Valley MS', count: 5, confidence: 0.88 }],
-  ],
+  ['Oak Valley Middle', [{ original: 'Oak Valley MS', count: 5, confidence: 0.88 }]],
 ])
 
 // ---------------------------------------------------------------------------
@@ -54,9 +51,7 @@ describe('GeoGapsList legacy behavior (no sourceMappings)', () => {
   })
 
   it('shows singular category for a single gap item', () => {
-    const singleGap: GeoDataItem[] = [
-      { name: 'Riverside Elementary', count: 14, percentage: 8.2 },
-    ]
+    const singleGap: GeoDataItem[] = [{ name: 'Riverside Elementary', count: 14, percentage: 8.2 }]
     render(<GeoGapsList gaps={singleGap} category="school" />)
     expect(screen.getByText(/1 Unmapped School$/)).toBeInTheDocument()
   })
@@ -69,7 +64,9 @@ describe('GeoGapsList legacy behavior (no sourceMappings)', () => {
   it('sorts items by count descending', () => {
     render(<GeoGapsList gaps={schoolGaps} category="school" />)
     const rows = screen.getAllByRole('row')
-    const names = rows.map((row) => within(row).getByText(/Elementary|Valley|Hillcrest/).textContent)
+    const names = rows.map(
+      (row) => within(row).getByText(/Elementary|Valley|Hillcrest/).textContent
+    )
     expect(names).toEqual(['Riverside Elementary', 'Oak Valley Middle', 'Hillcrest High'])
   })
 })
@@ -79,9 +76,7 @@ describe('GeoGapsList legacy behavior (no sourceMappings)', () => {
 // ---------------------------------------------------------------------------
 describe('GeoGapsList with sourceMappings', () => {
   it('splits items into Unmapped and Unresolved sections', () => {
-    render(
-      <GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />)
     // Riverside Elementary and Oak Valley Middle are in sourceMappings = unmapped
     expect(screen.getByText(/2 Unmapped Schools/)).toBeInTheDocument()
     // Hillcrest High is NOT in sourceMappings = unresolved
@@ -92,20 +87,14 @@ describe('GeoGapsList with sourceMappings', () => {
     const singleCanonical: GeoDataItem[] = [
       { name: 'Riverside Elementary', count: 14, percentage: 8.2 },
     ]
-    render(
-      <GeoGapsList gaps={singleCanonical} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={singleCanonical} category="school" sourceMappings={sourceMappings} />)
     expect(screen.getByText(/1 Unmapped School$/)).toBeInTheDocument()
     expect(screen.queryByText(/Unresolved/)).not.toBeInTheDocument()
   })
 
   it('shows singular for single unresolved value', () => {
-    const singleUnresolved: GeoDataItem[] = [
-      { name: 'Unknown Place', count: 1, percentage: 0.5 },
-    ]
-    render(
-      <GeoGapsList gaps={singleUnresolved} category="city" sourceMappings={sourceMappings} />
-    )
+    const singleUnresolved: GeoDataItem[] = [{ name: 'Unknown Place', count: 1, percentage: 0.5 }]
+    render(<GeoGapsList gaps={singleUnresolved} category="city" sourceMappings={sourceMappings} />)
     expect(screen.getByText(/1 Unresolved City$/)).toBeInTheDocument()
     expect(screen.queryByText(/Unmapped/)).not.toBeInTheDocument()
   })
@@ -115,9 +104,7 @@ describe('GeoGapsList with sourceMappings', () => {
       { name: 'Riverside Elementary', count: 14, percentage: 8.2 },
       { name: 'Oak Valley Middle', count: 5, percentage: 2.9 },
     ]
-    render(
-      <GeoGapsList gaps={allMapped} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={allMapped} category="school" sourceMappings={sourceMappings} />)
     expect(screen.getByText(/2 Unmapped Schools/)).toBeInTheDocument()
     expect(screen.queryByText(/Unresolved/)).not.toBeInTheDocument()
   })
@@ -127,9 +114,7 @@ describe('GeoGapsList with sourceMappings', () => {
       { name: 'Unknown School A', count: 3, percentage: 1.5 },
       { name: 'Unknown School B', count: 1, percentage: 0.5 },
     ]
-    render(
-      <GeoGapsList gaps={allUnresolved} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={allUnresolved} category="school" sourceMappings={sourceMappings} />)
     expect(screen.queryByText(/Unmapped/)).not.toBeInTheDocument()
     expect(screen.getByText(/2 Unresolved Schools/)).toBeInTheDocument()
   })
@@ -164,9 +149,7 @@ describe('GeoGapsList with sourceMappings', () => {
   })
 
   it('renders count and percentage for each item', () => {
-    render(
-      <GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />)
     // Riverside Elementary: 14, 8.2%
     expect(screen.getByText('14')).toBeInTheDocument()
     expect(screen.getByText('8.2%')).toBeInTheDocument()
@@ -219,17 +202,13 @@ describe('GeoGapsList category labels', () => {
 // ---------------------------------------------------------------------------
 describe('GeoGapsList styling', () => {
   it('uses amber styling for unmapped section', () => {
-    render(
-      <GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />)
     const unmappedHeader = screen.getByText(/Unmapped/).closest('div')
     expect(unmappedHeader?.className).toContain('amber')
   })
 
   it('uses distinct styling for unresolved section (not amber)', () => {
-    render(
-      <GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />
-    )
+    render(<GeoGapsList gaps={schoolGaps} category="school" sourceMappings={sourceMappings} />)
     // The unresolved header should NOT use amber — it should be a warmer/red-brown tone
     const unresolvedHeader = screen.getByText(/Unresolved/).closest('div')
     expect(unresolvedHeader?.className).not.toContain('amber')

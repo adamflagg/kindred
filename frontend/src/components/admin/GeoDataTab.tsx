@@ -81,11 +81,7 @@ export function GeoDataTab() {
       </div>
 
       {/* Sub-tab Content */}
-      <GeoSubTabContent
-        category={category}
-        year={year}
-        onResolve={handleResolve}
-      />
+      <GeoSubTabContent category={category} year={year} onResolve={handleResolve} />
 
       {/* Resolve Gap Dialog */}
       <ResolveGapDialog
@@ -153,15 +149,13 @@ function GeoSubTabContent({
                           {o.override_type}
                         </span>
                       </td>
-                      <td className="text-muted-foreground px-3 py-1.5">
-                        {o.raw_value || '—'}
-                      </td>
+                      <td className="text-muted-foreground px-3 py-1.5">{o.raw_value || '—'}</td>
                       <td className="text-foreground px-3 py-1.5 font-medium">
                         {o.merged_into || o.canonical_name}
                       </td>
                       <td className="px-3 py-1.5 text-right">
                         <button
-                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                          className="text-red-500 transition-colors hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                           onClick={() => deleteOverride.mutate(o.id)}
                           disabled={deleteOverride.isPending}
                           title="Delete override"

@@ -32,12 +32,7 @@ export function useAllCanonicals(category: string, year: number) {
   })
 }
 
-export function useCanonicalSearch(
-  category: string,
-  query: string,
-  year: number,
-  enabled = true
-) {
+export function useCanonicalSearch(category: string, query: string, year: number, enabled = true) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery({
     queryKey: queryKeys.geoCanonicals(category, query, year),
@@ -75,8 +70,7 @@ export function useCreateOverride(category: string, year: number) {
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
   return useMutation({
-    mutationFn: (data: OverrideCreateData) =>
-      geoService.createOverride(data, fetchWithAuth),
+    mutationFn: (data: OverrideCreateData) => geoService.createOverride(data, fetchWithAuth),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
@@ -103,8 +97,7 @@ export function useDeleteOverride(category: string, year: number) {
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
   return useMutation({
-    mutationFn: (overrideId: string) =>
-      geoService.deleteOverride(overrideId, fetchWithAuth),
+    mutationFn: (overrideId: string) => geoService.deleteOverride(overrideId, fetchWithAuth),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })

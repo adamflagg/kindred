@@ -195,8 +195,7 @@ export const queryKeys = {
     ['geo', 'all-canonicals', category, year] as const,
   geoSources: (category: string, canonicalName: string, year: number) =>
     ['geo', 'sources', category, canonicalName, year] as const,
-  geoOverrides: (category: string, year: number) =>
-    ['geo', 'overrides', category, year] as const,
+  geoOverrides: (category: string, year: number) => ['geo', 'overrides', category, year] as const,
   geoOverrideCoords: (year: number) => ['geo', 'override-coords', year] as const,
 
   // Velocity (Tier 1 - sync data, historical analysis)

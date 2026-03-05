@@ -48,9 +48,7 @@ const onlyCoordsGaps: GapsResponse = {
 
 const onlyGroupedGaps: GapsResponse = {
   canonical_no_coords: [],
-  non_canonical_grouped: [
-    { name: 'Hillcrest High', count: 10, percentage: 5.8, source_count: 4 },
-  ],
+  non_canonical_grouped: [{ name: 'Hillcrest High', count: 10, percentage: 5.8, source_count: 4 }],
   non_canonical_ungrouped: [],
   total_gaps: 1,
 }
@@ -58,9 +56,7 @@ const onlyGroupedGaps: GapsResponse = {
 const onlyUngroupedGaps: GapsResponse = {
   canonical_no_coords: [],
   non_canonical_grouped: [],
-  non_canonical_ungrouped: [
-    { name: 'Mapleton Prep', count: 7, percentage: 4.1, source_count: 0 },
-  ],
+  non_canonical_ungrouped: [{ name: 'Mapleton Prep', count: 7, percentage: 4.1, source_count: 0 }],
   total_gaps: 1,
 }
 
@@ -183,9 +179,7 @@ describe('GapsPanel onResolve callback', () => {
     const user = userEvent.setup()
     const onResolve = vi.fn()
 
-    render(
-      <GapsPanel gaps={onlyCoordsGaps} category="school" year={2025} onResolve={onResolve} />
-    )
+    render(<GapsPanel gaps={onlyCoordsGaps} category="school" year={2025} onResolve={onResolve} />)
 
     const addButton = screen.getByRole('button', { name: /add location/i })
     await user.click(addButton)
@@ -197,9 +191,7 @@ describe('GapsPanel onResolve callback', () => {
     const user = userEvent.setup()
     const onResolve = vi.fn()
 
-    render(
-      <GapsPanel gaps={onlyGroupedGaps} category="school" year={2025} onResolve={onResolve} />
-    )
+    render(<GapsPanel gaps={onlyGroupedGaps} category="school" year={2025} onResolve={onResolve} />)
 
     const resolveButton = screen.getByRole('button', { name: /resolve/i })
     await user.click(resolveButton)
@@ -239,7 +231,9 @@ describe('GapsPanel sorting', () => {
     render(<GapsPanel gaps={gaps} category="school" year={2025} />)
 
     const section = screen.getByTestId('section-canonical-no-coords')
-    const names = within(section as HTMLElement).getAllByTestId('gap-item-name').map((el) => el.textContent)
+    const names = within(section as HTMLElement)
+      .getAllByTestId('gap-item-name')
+      .map((el) => el.textContent)
     expect(names).toEqual(['Riverside Elementary', 'Oak Valley Middle'])
   })
 
@@ -256,7 +250,9 @@ describe('GapsPanel sorting', () => {
     render(<GapsPanel gaps={gaps} category="school" year={2025} />)
 
     const section = screen.getByTestId('section-non-canonical-grouped')
-    const names = within(section as HTMLElement).getAllByTestId('gap-item-name').map((el) => el.textContent)
+    const names = within(section as HTMLElement)
+      .getAllByTestId('gap-item-name')
+      .map((el) => el.textContent)
     expect(names).toEqual(['Hillcrest High', 'Lakewood Academy'])
   })
 
@@ -273,7 +269,9 @@ describe('GapsPanel sorting', () => {
     render(<GapsPanel gaps={gaps} category="school" year={2025} />)
 
     const section = screen.getByTestId('section-non-canonical-ungrouped')
-    const names = within(section as HTMLElement).getAllByTestId('gap-item-name').map((el) => el.textContent)
+    const names = within(section as HTMLElement)
+      .getAllByTestId('gap-item-name')
+      .map((el) => el.textContent)
     expect(names).toEqual(['Mapleton Prep', 'Cedar Ridge School'])
   })
 })

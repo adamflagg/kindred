@@ -44,7 +44,7 @@ export function CanonicalBrowser({ category, year }: CanonicalBrowserProps): Rea
       <div className="relative">
         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
           {searchInput ? (
-            <Search className="h-4 w-4 text-forest-500 dark:text-forest-400" />
+            <Search className="text-forest-500 dark:text-forest-400 h-4 w-4" />
           ) : (
             <Compass className="h-4 w-4 text-stone-400 dark:text-stone-500" />
           )}
@@ -54,7 +54,7 @@ export function CanonicalBrowser({ category, year }: CanonicalBrowserProps): Rea
           placeholder="Search canonical entries..."
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full rounded-lg border border-forest-200 bg-white py-2 pl-10 pr-4 text-sm placeholder:text-stone-400 focus:border-forest-400 focus:outline-none focus:ring-1 focus:ring-forest-400 dark:border-forest-700 dark:bg-forest-900/30 dark:placeholder:text-stone-500 dark:focus:border-forest-500 dark:focus:ring-forest-500"
+          className="border-forest-200 focus:border-forest-400 focus:ring-forest-400 dark:border-forest-700 dark:bg-forest-900/30 dark:focus:border-forest-500 dark:focus:ring-forest-500 w-full rounded-lg border bg-white py-2 pr-4 pl-10 text-sm placeholder:text-stone-400 focus:ring-1 focus:outline-none dark:placeholder:text-stone-500"
         />
       </div>
 

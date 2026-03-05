@@ -77,17 +77,17 @@ export function CanonicalCard({
   const isManual = entry.source === 'manual'
 
   return (
-    <div className="card-lodge overflow-hidden border-forest-200 dark:border-forest-700">
+    <div className="card-lodge border-forest-200 dark:border-forest-700 overflow-hidden">
       {/* Header — always visible */}
       <button
         type="button"
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-forest-50 dark:hover:bg-forest-900/20"
+        className="hover:bg-forest-50 dark:hover:bg-forest-900/20 flex w-full items-center gap-3 px-4 py-3 text-left transition-colors"
         onClick={onToggleExpand}
       >
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-forest-600 dark:text-forest-400" />
+          <ChevronDown className="text-forest-600 dark:text-forest-400 h-4 w-4 shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-forest-600 dark:text-forest-400" />
+          <ChevronRight className="text-forest-600 dark:text-forest-400 h-4 w-4 shrink-0" />
         )}
 
         <span className="font-display min-w-0 flex-1 truncate text-sm font-medium">
@@ -96,7 +96,7 @@ export function CanonicalCard({
 
         {/* City/State badge */}
         {entry.city && entry.state && (
-          <span className="shrink-0 rounded px-1.5 py-0.5 text-xs text-stone-600 bg-stone-100 dark:bg-stone-800 dark:text-stone-400">
+          <span className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-400">
             {entry.city}, {entry.state}
           </span>
         )}
@@ -113,7 +113,7 @@ export function CanonicalCard({
         {entry.camper_count > 0 && (
           <span
             data-testid="in-use-indicator"
-            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400"
+            className="flex shrink-0 items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
           >
             <Users className="h-3 w-3" />
             {entry.camper_count}
@@ -123,17 +123,17 @@ export function CanonicalCard({
 
       {/* Expanded body */}
       {isExpanded && (
-        <div className="border-t border-forest-200 bg-forest-50/30 px-4 py-3 dark:border-forest-700 dark:bg-forest-900/10">
+        <div className="border-forest-200 bg-forest-50/30 dark:border-forest-700 dark:bg-forest-900/10 border-t px-4 py-3">
           {/* Source list */}
           {sourcesData?.sources && sourcesData.sources.length > 0 && (
             <div className="mb-3 space-y-1.5">
-              <div className="text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+              <div className="text-xs font-medium tracking-wide text-stone-500 uppercase dark:text-stone-400">
                 Source Variants
               </div>
               {sourcesData.sources.map((src) => (
                 <div
                   key={src.original_value}
-                  className="flex items-center gap-2 rounded bg-white/60 px-3 py-1.5 text-sm dark:bg-forest-900/20"
+                  className="dark:bg-forest-900/20 flex items-center gap-2 rounded bg-white/60 px-3 py-1.5 text-sm"
                 >
                   <span className="min-w-0 flex-1 truncate">{src.original_value}</span>
                   <span className="shrink-0 font-medium">{src.count}</span>
@@ -143,7 +143,7 @@ export function CanonicalCard({
                   {onReassignSource && (
                     <button
                       type="button"
-                      className="ml-1 shrink-0 flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-forest-700 hover:bg-forest-100 dark:text-forest-400 dark:hover:bg-forest-800 transition-colors"
+                      className="text-forest-700 hover:bg-forest-100 dark:text-forest-400 dark:hover:bg-forest-800 ml-1 flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors"
                       onClick={() => onReassignSource(src.original_value)}
                     >
                       <ArrowRightLeft className="h-3 w-3" />
@@ -160,7 +160,7 @@ export function CanonicalCard({
             {onMerge && (
               <button
                 type="button"
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-forest-700 hover:bg-forest-100 dark:text-forest-400 dark:hover:bg-forest-800 transition-colors"
+                className="text-forest-700 hover:bg-forest-100 dark:text-forest-400 dark:hover:bg-forest-800 flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium transition-colors"
                 onClick={() => onMerge(entry.canonical_name)}
               >
                 <GitMerge className="h-3.5 w-3.5" />
@@ -170,7 +170,7 @@ export function CanonicalCard({
             {isManual && (
               <button
                 type="button"
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800 transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Edit
