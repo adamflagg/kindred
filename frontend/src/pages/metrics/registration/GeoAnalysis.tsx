@@ -78,23 +78,24 @@ export default function GeoAnalysis() {
     statusFilter: DEFAULT_STATUS_FILTER,
   })
 
-  // Fetch normalized mappings for source display per active layer
+  // Fetch normalized mappings for source display and gap classification per active layer
+  const needsMappings = showSources || showGaps
   const { data: citySources } = useNormalizedMappings(
     currentYear,
     categoryToDbCategory.city,
-    showSources && activeLayers.has('city'),
+    needsMappings && activeLayers.has('city'),
     selectedSessionCmId ?? undefined
   )
   const { data: schoolSources } = useNormalizedMappings(
     currentYear,
     categoryToDbCategory.school,
-    showSources && activeLayers.has('school'),
+    needsMappings && activeLayers.has('school'),
     selectedSessionCmId ?? undefined
   )
   const { data: synagogueSources } = useNormalizedMappings(
     currentYear,
     categoryToDbCategory.synagogue,
-    showSources && activeLayers.has('synagogue'),
+    needsMappings && activeLayers.has('synagogue'),
     selectedSessionCmId ?? undefined
   )
 
@@ -472,10 +473,26 @@ export default function GeoAnalysis() {
           {/* Gap Tracking (admin only, single-year mode only) */}
           {showGaps && !isComparing && (
             <div className="space-y-3">
-              {activeLayers.has('city') && <GeoGapsList gaps={gaps.city} category="city" />}
-              {activeLayers.has('school') && <GeoGapsList gaps={gaps.school} category="school" />}
+              {activeLayers.has('city') && (
+                <GeoGapsList
+                  gaps={gaps.city}
+                  category="city"
+                  sourceMappings={sourceMappingsFor.city}
+                />
+              )}
+              {activeLayers.has('school') && (
+                <GeoGapsList
+                  gaps={gaps.school}
+                  category="school"
+                  sourceMappings={sourceMappingsFor.school}
+                />
+              )}
               {activeLayers.has('synagogue') && (
-                <GeoGapsList gaps={gaps.synagogue} category="synagogue" />
+                <GeoGapsList
+                  gaps={gaps.synagogue}
+                  category="synagogue"
+                  sourceMappings={sourceMappingsFor.synagogue}
+                />
               )}
             </div>
           )}
