@@ -71,34 +71,34 @@ describe('GapsPanel sections', () => {
   it('renders all three gap sections when data is present', () => {
     render(<GapsPanel gaps={fullGaps} category="school" year={2025} />)
 
-    // Each section should have a heading or label distinguishing it
-    expect(screen.getByText(/missing coordinates/i)).toBeInTheDocument()
-    expect(screen.getByText(/grouped/i)).toBeInTheDocument()
-    expect(screen.getByText(/ungrouped/i)).toBeInTheDocument()
+    // Each section should have a data-testid distinguishing it
+    expect(screen.getByTestId('section-canonical-no-coords')).toBeInTheDocument()
+    expect(screen.getByTestId('section-non-canonical-grouped')).toBeInTheDocument()
+    expect(screen.getByTestId('section-non-canonical-ungrouped')).toBeInTheDocument()
   })
 
   it('renders only canonical_no_coords section when others are empty', () => {
     render(<GapsPanel gaps={onlyCoordsGaps} category="school" year={2025} />)
 
-    expect(screen.getByText(/missing coordinates/i)).toBeInTheDocument()
-    expect(screen.queryByText(/grouped/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/ungrouped/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('section-canonical-no-coords')).toBeInTheDocument()
+    expect(screen.queryByTestId('section-non-canonical-grouped')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('section-non-canonical-ungrouped')).not.toBeInTheDocument()
   })
 
   it('renders only non_canonical_grouped section when others are empty', () => {
     render(<GapsPanel gaps={onlyGroupedGaps} category="school" year={2025} />)
 
-    expect(screen.queryByText(/missing coordinates/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/grouped/i)).toBeInTheDocument()
-    expect(screen.queryByText(/ungrouped/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('section-canonical-no-coords')).not.toBeInTheDocument()
+    expect(screen.getByTestId('section-non-canonical-grouped')).toBeInTheDocument()
+    expect(screen.queryByTestId('section-non-canonical-ungrouped')).not.toBeInTheDocument()
   })
 
   it('renders only non_canonical_ungrouped section when others are empty', () => {
     render(<GapsPanel gaps={onlyUngroupedGaps} category="school" year={2025} />)
 
-    expect(screen.queryByText(/missing coordinates/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/grouped/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/ungrouped/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('section-canonical-no-coords')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('section-non-canonical-grouped')).not.toBeInTheDocument()
+    expect(screen.getByTestId('section-non-canonical-ungrouped')).toBeInTheDocument()
   })
 })
 
@@ -169,9 +169,9 @@ describe('GapsPanel empty state', () => {
     render(<GapsPanel gaps={emptyGaps} category="school" year={2025} />)
 
     expect(screen.getByText(/no gaps/i)).toBeInTheDocument()
-    expect(screen.queryByText(/missing coordinates/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/grouped/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/ungrouped/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('section-canonical-no-coords')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('section-non-canonical-grouped')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('section-non-canonical-ungrouped')).not.toBeInTheDocument()
   })
 })
 
@@ -238,8 +238,8 @@ describe('GapsPanel sorting', () => {
     }
     render(<GapsPanel gaps={gaps} category="school" year={2025} />)
 
-    const section = screen.getByText(/missing coordinates/i).closest('[data-testid="section-canonical-no-coords"]') as HTMLElement
-    const names = within(section).getAllByTestId('gap-item-name').map((el) => el.textContent)
+    const section = screen.getByTestId('section-canonical-no-coords')
+    const names = within(section as HTMLElement).getAllByTestId('gap-item-name').map((el) => el.textContent)
     expect(names).toEqual(['Riverside Elementary', 'Oak Valley Middle'])
   })
 
@@ -255,8 +255,8 @@ describe('GapsPanel sorting', () => {
     }
     render(<GapsPanel gaps={gaps} category="school" year={2025} />)
 
-    const section = screen.getByText(/grouped/i).closest('[data-testid="section-non-canonical-grouped"]') as HTMLElement
-    const names = within(section).getAllByTestId('gap-item-name').map((el) => el.textContent)
+    const section = screen.getByTestId('section-non-canonical-grouped')
+    const names = within(section as HTMLElement).getAllByTestId('gap-item-name').map((el) => el.textContent)
     expect(names).toEqual(['Hillcrest High', 'Lakewood Academy'])
   })
 
@@ -272,8 +272,8 @@ describe('GapsPanel sorting', () => {
     }
     render(<GapsPanel gaps={gaps} category="school" year={2025} />)
 
-    const section = screen.getByText(/ungrouped/i).closest('[data-testid="section-non-canonical-ungrouped"]') as HTMLElement
-    const names = within(section).getAllByTestId('gap-item-name').map((el) => el.textContent)
+    const section = screen.getByTestId('section-non-canonical-ungrouped')
+    const names = within(section as HTMLElement).getAllByTestId('gap-item-name').map((el) => el.textContent)
     expect(names).toEqual(['Mapleton Prep', 'Cedar Ridge School'])
   })
 })
