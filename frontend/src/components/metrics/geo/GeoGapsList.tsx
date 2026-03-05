@@ -10,10 +10,12 @@
 import { AlertCircle } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
 import type { GeoCategory } from './GeoCategoryTabs'
+import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
 
 interface GeoGapsListProps {
   gaps: GeoDataItem[]
   category: GeoCategory
+  sourceMappings?: Map<string, SourceMapping[]>
 }
 
 const CATEGORY_PLURALS: Record<GeoCategory, string> = {
