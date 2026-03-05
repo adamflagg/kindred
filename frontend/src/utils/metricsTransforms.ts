@@ -50,12 +50,18 @@ export interface TrendDisplay {
 // Registration transforms (types from types/metrics.ts)
 // ============================================================================
 
+const GENDER_LABEL_MAP: Record<string, string> = {
+  M: 'Male',
+  F: 'Female',
+}
+
 export function transformGenderData(data: GenderBreakdown[] | undefined): ChartDataPoint[] {
   if (!data?.length) return []
   return data.map((g) => ({
-    name: g.gender || 'Unknown',
+    name: GENDER_LABEL_MAP[g.gender] ?? (g.gender || 'Unknown'),
     value: g.count,
     percentage: g.percentage,
+    id: g.gender,
   }))
 }
 

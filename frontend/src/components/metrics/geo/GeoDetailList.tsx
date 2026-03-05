@@ -91,7 +91,7 @@ export function GeoDetailList({
           onToggle?.()
           if (isOpen === undefined) setInternalExpanded(!internalExpanded)
         }}
-        className="hover:bg-muted/50 flex w-full items-center justify-between px-4 py-3 transition-colors"
+        className="bg-muted/40 hover:bg-muted/60 flex w-full items-center justify-between px-4 py-3 transition-colors"
       >
         <div className="flex items-center gap-2">
           {isExpanded ? (
@@ -99,7 +99,7 @@ export function GeoDetailList({
           ) : (
             <ChevronRight className="text-muted-foreground h-4 w-4" />
           )}
-          <span className="text-foreground font-medium">{CATEGORY_PLURALS[category]}</span>
+          <span className="text-foreground font-semibold">{CATEGORY_PLURALS[category]}</span>
           <span className="text-muted-foreground text-sm">({data.length})</span>
         </div>
       </button>
@@ -109,8 +109,8 @@ export function GeoDetailList({
         <div className="border-border border-t">
           <div className="max-h-80 overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="bg-card sticky top-0 z-10">
-                <tr>
+              <thead className="bg-muted/30 sticky top-0 z-10">
+                <tr className="border-border border-b">
                   <th className="text-muted-foreground px-4 py-2 text-left font-medium">
                     {CATEGORY_LABELS[category]}
                   </th>
