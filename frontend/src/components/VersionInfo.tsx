@@ -6,8 +6,7 @@ interface VersionInfoProps {
 
 const GITHUB_REPO_URL = 'https://github.com/adamflagg/kindred'
 
-const getReleaseUrl = (version: string) =>
-  `${GITHUB_REPO_URL}/releases/tag/${version}`
+const getReleaseUrl = (version: string) => `${GITHUB_REPO_URL}/releases/tag/${version}`
 
 const GitHubIcon: FC<{ size?: number }> = ({ size = 14 }) => (
   <svg
