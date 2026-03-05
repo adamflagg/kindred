@@ -439,6 +439,17 @@ func GetWeeklySyncJobs() []string {
 	}
 }
 
+// GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
+// Runs in order: bunks (fetch latest bunk list), bunk_plans (update plans),
+// then bunk_assignments (update assignments).
+func GetRefreshBunkingJobs() []string {
+	return []string{
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+	}
+}
+
 // GetCustomValuesSyncJobs returns the list of services that run in the custom values sync.
 // These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
 func GetCustomValuesSyncJobs() []string {
@@ -446,6 +457,20 @@ func GetCustomValuesSyncJobs() []string {
 		"person_custom_values",
 		"household_custom_values",
 	}
+}
+
+// RunSyncSequence runs multiple sync services sequentially, waiting for each
+// to complete before starting the next. Unlike RunSyncWithOptions, this is
+// lightweight — no global table checks, no year override, no daily/historical
+// tracking. Used for targeted refreshes like bunking (bunks -> bunk_plans ->
+// bunk_assignments).
+func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) error {
+	for _, svc := range services {
+		if err := o.runSyncAndWait(ctx, svc); err != nil {
+			return fmt.Errorf("sync sequence failed on %s: %w", svc, err)
+		}
+	}
+	return nil
 }
 
 // RunSingleSync runs a single sync service

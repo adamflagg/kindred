@@ -512,31 +512,32 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	})
 }
 
-// handleRefreshBunking triggers a bunk assignments sync
+// handleRefreshBunking triggers a full bunking refresh: bunks -> bunk_plans -> bunk_assignments
 func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
-	// Check if already running
-	if orchestrator.IsRunning("bunk_assignments") {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error":  "Sync already in progress",
-			"status": "running",
-		})
+	// Check if any bunking-related sync is already running
+	for _, job := range GetRefreshBunkingJobs() {
+		if orchestrator.IsRunning(job) {
+			return e.JSON(http.StatusConflict, map[string]interface{}{
+				"error":  "Bunking sync already in progress",
+				"status": "running",
+			})
+		}
 	}
 
-	// Start sync with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
+	// Run bunks -> bunk_plans -> bunk_assignments sequentially
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
 
-	err := orchestrator.RunSingleSync(ctx, "bunk_assignments")
-	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error": err.Error(),
-		})
-	}
+		if err := orchestrator.RunSyncSequence(ctx, GetRefreshBunkingJobs()); err != nil {
+			e.App.Logger().Error("Refresh bunking failed", "error", err)
+		}
+	}()
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Bunk assignments sync started",
+		"message": "Bunking refresh started (bunks, plans, assignments)",
 		"status":  "started",
 	})
 }

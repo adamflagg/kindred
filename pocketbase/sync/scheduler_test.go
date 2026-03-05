@@ -41,6 +41,8 @@ func TestSchedulerTriggerSyncTypes(t *testing.T) {
 			// Register mock services for testing
 			mock := &MockService{name: "test"}
 			s.orchestrator.RegisterService("bunk_assignments", mock)
+			s.orchestrator.RegisterService("bunks", mock)
+			s.orchestrator.RegisterService("bunk_plans", mock)
 			// Weekly sync services (definition tables)
 			s.orchestrator.RegisterService("divisions", mock)
 			s.orchestrator.RegisterService("person_tag_defs", mock)
@@ -192,6 +194,88 @@ func TestCustomValuesSyncRunsSequentially(t *testing.T) {
 			"  household_custom_values: start=%v, end=%v",
 			personRec.start.Format(time.RFC3339Nano), personRec.end.Format(time.RFC3339Nano),
 			householdRec.start.Format(time.RFC3339Nano), householdRec.end.Format(time.RFC3339Nano))
+	}
+}
+
+// TestGetRefreshBunkingJobs tests that refresh bunking returns the correct services in order
+func TestGetRefreshBunkingJobs(t *testing.T) {
+	jobs := GetRefreshBunkingJobs()
+
+	expected := []string{"bunks", "bunk_plans", "bunk_assignments"}
+	if len(jobs) != len(expected) {
+		t.Fatalf("expected %d jobs, got %d", len(expected), len(jobs))
+	}
+
+	for i, job := range expected {
+		if jobs[i] != job {
+			t.Errorf("expected job %d to be %q, got %q", i, job, jobs[i])
+		}
+	}
+}
+
+// TestRefreshBunkingRunsAllThreeServices verifies that refresh-bunking triggers
+// bunks, bunk_plans, and bunk_assignments in sequence (not just bunk_assignments)
+func TestRefreshBunkingRunsAllThreeServices(t *testing.T) {
+	s := NewScheduler(nil)
+
+	// Track which services were called and in what order
+	var mu sync.Mutex
+	var callOrder []string
+
+	for _, name := range GetRefreshBunkingJobs() {
+		jobName := name
+		mock := &MockService{
+			name:  jobName,
+			delay: 10 * time.Millisecond,
+		}
+		wrappedMock := &timingMockService{
+			MockService: mock,
+			onSync: func() {
+				mu.Lock()
+				callOrder = append(callOrder, jobName)
+				mu.Unlock()
+			},
+		}
+		s.orchestrator.RegisterService(name, wrappedMock)
+	}
+
+	err := s.TriggerSync(context.Background(), "refresh-bunking")
+	if err != nil {
+		t.Fatalf("TriggerSync failed: %v", err)
+	}
+
+	// Allow time for all services to complete
+	time.Sleep(200 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	expected := []string{"bunks", "bunk_plans", "bunk_assignments"}
+	if len(callOrder) != len(expected) {
+		t.Fatalf("expected %d services called, got %d: %v", len(expected), len(callOrder), callOrder)
+	}
+
+	for i, name := range expected {
+		if callOrder[i] != name {
+			t.Errorf("expected service %d to be %q, got %q (order: %v)", i, name, callOrder[i], callOrder)
+		}
+	}
+}
+
+// TestRefreshBunkingRegistersRequiredServices verifies that TriggerSync for
+// refresh-bunking registers mock services for all three bunking sync jobs
+func TestRefreshBunkingRegistersRequiredServices(t *testing.T) {
+	s := NewScheduler(nil)
+
+	// Only register bunk_assignments (old behavior) — should fail with new code
+	// because bunks and bunk_plans are also needed
+	mock := &MockService{name: "test"}
+	s.orchestrator.RegisterService("bunk_assignments", mock)
+
+	err := s.TriggerSync(context.Background(), "refresh-bunking")
+	// Should get an error about missing "bunks" service
+	if err == nil {
+		t.Error("expected error when bunks service is not registered")
 	}
 }
 
