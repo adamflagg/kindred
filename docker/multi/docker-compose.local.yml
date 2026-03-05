@@ -2,6 +2,17 @@
 # Usage: docker compose -f docker/multi/docker-compose.local.yml up -d --build
 
 services:
+  # One-shot service to fix volume ownership (Docker named volumes default to root)
+  init-permissions:
+    image: busybox:latest
+    container_name: kindred-init-permissions
+    command: ["sh", "-c", "chown -R 65532:65532 /pb_data"]
+    volumes:
+      - kindred-pb-data:/pb_data
+    restart: "no"
+    networks:
+      - kindred-local
+
   pocketbase:
     build:
       context: ../..
@@ -14,6 +25,9 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
     volumes:
       - kindred-pb-data:/pb_data
     tmpfs:
@@ -78,6 +92,8 @@ services:
     depends_on:
       pocketbase:
         condition: service_healthy
+      init:
+        condition: service_completed_successfully
     volumes:
       - kindred-pb-data:/pb_data:ro
     tmpfs:
@@ -86,10 +102,15 @@ services:
       - /app/csv_history:size=64m,uid=65532,gid=65532
     environment:
       - POCKETBASE_URL=http://pocketbase:8090
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL:-admin@test.local}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD:-testpassword123}
       - AI_PROVIDER=${AI_PROVIDER:-}
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_MODEL=${AI_MODEL:-}
       - AUTH_MODE=${AUTH_MODE:-bypass}
+      # CI signals allow AUTH_MODE=bypass in Docker (otherwise forced to production)
+      - CI=true
+      - GITHUB_ACTIONS=true
       - TZ=${TZ:-America/Los_Angeles}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     healthcheck:
@@ -119,7 +140,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${CADDY_PORT:-8080}:8080"
     tmpfs:
       - /tmp:size=8m,uid=65532,gid=65532
       - /data:size=8m,uid=65532,gid=65532

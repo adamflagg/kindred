@@ -73,6 +73,8 @@ services:
     depends_on:
       pocketbase:
         condition: service_healthy
+      init:
+        condition: service_completed_successfully
     volumes:
       - ${APPDATA_DIR}/kindred/pocketbase:/pb_data:ro
       - ${APPDATA_DIR}/kindred/config:/config:ro
@@ -82,6 +84,8 @@ services:
       - /app/csv_history:size=64m,uid=65532,gid=65532
     environment:
       - POCKETBASE_URL=http://pocketbase:8090
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD}
       - AI_PROVIDER=${AI_PROVIDER:-}
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_MODEL=${AI_MODEL:-}

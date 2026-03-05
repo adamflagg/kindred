@@ -24,14 +24,25 @@ COPY docker/multi/healthcheck/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o healthcheck .
 
 # =============================================================================
-# Stage 3: Distroless runtime
+# Stage 3: Create directory structure (distroless has no mkdir)
+# =============================================================================
+FROM busybox:latest AS dirs
+
+RUN mkdir -p /pb_data && chown 65532:65532 /pb_data
+
+# =============================================================================
+# Stage 4: Distroless runtime
 # =============================================================================
 FROM chainguard/static:latest
 
+# /pb_data owned by nonroot — Docker named volumes inherit this ownership
+COPY --from=dirs /pb_data /pb_data
 COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
 COPY --from=healthcheck-builder /build/healthcheck /usr/local/bin/healthcheck
 COPY pocketbase/pb_hooks /pb_hooks
 COPY pocketbase/pb_migrations /pb_migrations
+
+VOLUME /pb_data
 
 USER nonroot
 
