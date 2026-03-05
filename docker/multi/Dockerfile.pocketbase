@@ -1,0 +1,46 @@
+# =============================================================================
+# Stage 1: Build PocketBase (pure Go, no CGO)
+# =============================================================================
+FROM dhi.io/golang:1.26-dev AS go-builder
+
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY pocketbase/go.mod pocketbase/go.sum ./
+RUN go mod download
+COPY pocketbase/ ./
+
+# CGO_ENABLED=0: uses modernc.org/sqlite (pure Go SQLite, already in go.mod)
+# Produces a fully static binary that runs on chainguard/static
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o pocketbase .
+
+# =============================================================================
+# Stage 2: Build healthcheck binary
+# =============================================================================
+FROM golang:1.26-alpine AS healthcheck-builder
+
+WORKDIR /build
+COPY docker/multi/healthcheck/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o healthcheck .
+
+# =============================================================================
+# Stage 3: Distroless runtime
+# =============================================================================
+FROM chainguard/static:latest
+
+COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
+COPY --from=healthcheck-builder /build/healthcheck /usr/local/bin/healthcheck
+COPY pocketbase/pb_hooks /pb_hooks
+COPY pocketbase/pb_migrations /pb_migrations
+
+USER nonroot
+
+EXPOSE 8090
+
+ENV HOME=/app
+ENV TZ=UTC
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
+    CMD ["/usr/local/bin/healthcheck", "http://127.0.0.1:8090/api/health"]
+
+ENTRYPOINT ["/usr/local/bin/pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/pb_data", "--publicDir=/dev/null", "--hooksDir=/pb_hooks", "--migrationsDir=/pb_migrations"]
