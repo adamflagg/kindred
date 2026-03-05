@@ -15,7 +15,7 @@ import {
   REGION_COLORS,
   type LatLng,
 } from '../../../data/californiaGeo'
-import { getLocationCoords } from '../../../data/geoCoords'
+import { getLocationCoordsWithOverrides } from '../../../data/geoCoords'
 import type { DrilldownFilter } from '../../../types/metrics'
 import { RegionOverlays } from './RegionOverlays'
 import type { GeoCategory } from './GeoCategoryTabs'
@@ -44,6 +44,8 @@ export interface GeoMapProps {
   height?: number | string
   /** Whether to show region overlay polygons */
   showRegions?: boolean
+  /** Override coordinates from geo_overrides, keyed by "category:name" */
+  overrideCoords?: Map<string, LatLng> | undefined
 }
 
 /** Color palette matching Sierra Lodge theme */
@@ -112,6 +114,7 @@ export function GeoMap({
   selectedItem,
   height = 575,
   showRegions = true,
+  overrideCoords,
 }: GeoMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const isMultiLayer = layers.length > 1
@@ -123,13 +126,15 @@ export function GeoMap({
       const mappable = layer.data
         .map((item) => ({
           ...item,
-          coords: getLocationCoords(layer.category, item.name),
+          coords: getLocationCoordsWithOverrides(layer.category, item.name, overrideCoords),
         }))
         .filter((item): item is GeoDataItem & { coords: LatLng } => item.coords !== undefined)
-      const unmappable = layer.data.filter((item) => !getLocationCoords(layer.category, item.name))
+      const unmappable = layer.data.filter(
+        (item) => !getLocationCoordsWithOverrides(layer.category, item.name, overrideCoords)
+      )
       return { ...layer, mappable, unmappable }
     })
-  }, [layers])
+  }, [layers, overrideCoords])
 
   // Global max count across all layers for consistent marker sizing
   const maxCount = useMemo(() => {

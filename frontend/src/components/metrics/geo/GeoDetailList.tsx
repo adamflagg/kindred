@@ -12,7 +12,8 @@ import type { GeoCategoryExtended } from './GeoCategoryTabs'
 import type { DrilldownFilter } from '../../../types/metrics'
 import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
 import { US_CITY_STATES } from '../../../data/cityGeo'
-import { getLocationCoords } from '../../../data/geoCoords'
+import { getLocationCoordsWithOverrides } from '../../../data/geoCoords'
+import type { LatLng } from '../../../data/californiaGeo'
 
 interface GeoDetailListProps {
   data: GeoDataItem[]
@@ -33,6 +34,8 @@ interface GeoDetailListProps {
   isOpen?: boolean | undefined
   /** Callback when header is clicked (for controlled mode) */
   onToggle?: (() => void) | undefined
+  /** Override coordinates from geo_overrides, keyed by "category:name" */
+  overrideCoords?: Map<string, LatLng> | undefined
 }
 
 const CATEGORY_LABELS: Record<GeoCategoryExtended, string> = {
@@ -61,6 +64,7 @@ export function GeoDetailList({
   showGaps = false,
   isOpen,
   onToggle,
+  overrideCoords,
 }: GeoDetailListProps) {
   const [internalExpanded, setInternalExpanded] = useState(false)
   const isExpanded = isOpen ?? internalExpanded
@@ -167,7 +171,8 @@ export function GeoDetailList({
                                 </span>
                               )}
                             </span>
-                            {showGaps && !getLocationCoords(category, item.name) && (
+                            {showGaps &&
+                              !getLocationCoordsWithOverrides(category, item.name, overrideCoords) && (
                               <span
                                 data-unmatched
                                 className="h-2 w-2 rounded-full bg-amber-400"
