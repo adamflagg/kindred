@@ -27,9 +27,7 @@ on:
   # This catches CD breakage BEFORE it merges to main
   pull_request:
     paths:
-      - 'Dockerfile'
-      - 'docker-compose*.yml'
-      - 'docker/**'
+      - 'docker/multi/**'
       - '.github/workflows/cd.yml'
 
   # On version tags only (semver pattern)
@@ -89,7 +87,7 @@ jobs:
           echo "Using previous commit: $BASE_SHA"
           echo "initial_commit=false" >> $GITHUB_OUTPUT
         else
-          echo "⚠️ Initial commit detected (no parent) - building all images"
+          echo "Initial commit detected (no parent) - building all images"
           # For initial commit, use HEAD as base (no changes detected by paths-filter)
           # but set flag to force all builds
           BASE_SHA=${{ github.sha }}
@@ -123,12 +121,9 @@ jobs:
             - 'config/*.json'
             - 'pyproject.toml'
             - 'uv.lock'
-            - 'Dockerfile'
-            - 'docker/supervisord.conf'
-            - 'docker/combined-entrypoint.sh'
-            - 'docker/Caddyfile'
+            - 'docker/multi/**'
           docker:
-            - 'Dockerfile'
+            - 'docker/multi/**'
             - 'docker-compose*.yml'
             - '.dockerignore'
 
@@ -178,7 +173,7 @@ jobs:
           EXISTING_SUCCESS=$(gh api "repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs" \
             --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
           if [ -n "$EXISTING_SUCCESS" ]; then
-            echo "✅ CI Summary already passed for this commit - skipping wait"
+            echo "CI Summary already passed for this commit - skipping wait"
             exit 0
           fi
         fi
@@ -202,13 +197,13 @@ jobs:
           fi
 
           if [ "$SUCCESS" -gt 0 ]; then
-            echo "✅ CI Summary passed"
+            echo "CI Summary passed"
             CI_PASSED=true
             break
           fi
 
           if [ "$FAILED" -gt 0 ]; then
-            echo "❌ CI Summary failed"
+            echo "CI Summary failed"
             exit 1
           fi
 
@@ -216,7 +211,7 @@ jobs:
         done
 
         if [ "$CI_PASSED" != "true" ]; then
-          echo "❌ CI timed out after 10 minutes"
+          echo "CI timed out after 10 minutes"
           exit 1
         fi
 
@@ -227,41 +222,41 @@ jobs:
         DOCS_TOTAL=$(echo "$DOCS_SUMMARY" | jq -r '.total')
 
         if [ "$DOCS_TOTAL" -eq 0 ]; then
-          echo "ℹ️  No docs check found (no doc changes in this commit)"
+          echo "No docs check found (no doc changes in this commit)"
         else
           DOCS_SUCCESS=$(echo "$DOCS_SUMMARY" | jq -r '.success')
           DOCS_FAILED=$(echo "$DOCS_SUMMARY" | jq -r '.failed')
 
           if [ "$DOCS_SUCCESS" -gt 0 ]; then
-            echo "✅ Documentation Linting passed"
+            echo "Documentation Linting passed"
           elif [ "$DOCS_FAILED" -gt 0 ]; then
-            echo "❌ Documentation Linting failed"
+            echo "Documentation Linting failed"
             exit 1
           else
-            echo "⏳ Documentation Linting still running, waiting..."
+            echo "Documentation Linting still running, waiting..."
             for j in {1..10}; do
               sleep 15
               DOCS_SUMMARY=$(get_check_summary "Documentation Linting")
               DOCS_SUCCESS=$(echo "$DOCS_SUMMARY" | jq -r '.success')
               DOCS_FAILED=$(echo "$DOCS_SUMMARY" | jq -r '.failed')
               if [ "$DOCS_SUCCESS" -gt 0 ]; then
-                echo "✅ Documentation Linting passed"
+                echo "Documentation Linting passed"
                 break
               fi
               if [ "$DOCS_FAILED" -gt 0 ]; then
-                echo "❌ Documentation Linting failed"
+                echo "Documentation Linting failed"
                 exit 1
               fi
             done
             if [ "$DOCS_SUCCESS" -eq 0 ]; then
-              echo "❌ Documentation Linting did not complete successfully"
+              echo "Documentation Linting did not complete successfully"
               exit 1
             fi
           fi
         fi
 
         echo ""
-        echo "✅ All required checks passed for this commit"
+        echo "All required checks passed for this commit"
 
   # Smoke test for manual triggers
   smoke-test:
@@ -290,9 +285,9 @@ jobs:
           cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
 
           rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
-          echo "✅ Private config loaded"
+          echo "Private config loaded"
         else
-          echo "⚠️ KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
+          echo "KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
         fi
 
     - name: Setup Python
@@ -313,16 +308,17 @@ jobs:
     - name: Verify Python imports
       run: |
         uv sync --frozen -q
-        uv run python -c "import bunking; import api; print('✅ Python imports OK')"
+        uv run python -c "import bunking; import api; print('Python imports OK')"
 
     - name: Verify TypeScript compiles
       working-directory: ./frontend
       run: |
         npm ci
         npm run type-check
-        echo "✅ TypeScript OK"
+        echo "TypeScript OK"
 
-  # Build, test, then push Docker image (single combined container)
+  # Build, test, then push all 4 Docker images (multi-container architecture)
+  # All images built in one job so integration test can use them together
   # Following Docker's "test before push" pattern:
   # https://docs.docker.com/build/ci/github-actions/test-before-push/
   build-test-push:
@@ -339,49 +335,45 @@ jobs:
       packages: write
       security-events: write
 
-    strategy:
-      matrix:
-        include:
-          - image: kindred
-            dockerfile: Dockerfile
-            context: .
-            changed: ${{ needs.detect-changes.outputs.api }}
-
     steps:
     - name: Check if build needed
       id: check
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        # For tag pushes, check if image was already pushed locally by release.sh
+        # For tag pushes, check if all images were already pushed by release.sh
         if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
           TAG_NAME=${GITHUB_REF#refs/tags/}
           DOCKER_TAG=${TAG_NAME#v}
-          echo "Checking if image ${{ matrix.image }}:${DOCKER_TAG} already exists..."
+          ALL_EXIST=true
 
-          # Query GitHub Packages API for existing version
-          # Note: gh api returns 404 JSON to stdout (not stderr) when package doesn't exist,
-          # so we must check exit code explicitly
-          if gh api "/users/${{ env.USERNAME }}/packages/container/${{ matrix.image }}/versions" \
-               --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" \
-               > /tmp/existing_id 2>/dev/null; then
-            EXISTING=$(head -1 /tmp/existing_id)
-          else
-            EXISTING=""
-          fi
+          for IMAGE in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
+            echo "Checking if ${IMAGE}:${DOCKER_TAG} already exists..."
+            if gh api "/users/${{ env.USERNAME }}/packages/container/${IMAGE}/versions" \
+                 --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" \
+                 > /tmp/existing_id 2>/dev/null; then
+              EXISTING=$(head -1 /tmp/existing_id)
+            else
+              EXISTING=""
+            fi
 
-          if [ -n "$EXISTING" ]; then
+            if [ -z "$EXISTING" ]; then
+              ALL_EXIST=false
+              echo "  ${IMAGE}:${DOCKER_TAG} not found, will build..."
+            else
+              echo "  ${IMAGE}:${DOCKER_TAG} exists"
+            fi
+          done
+
+          if [ "$ALL_EXIST" = "true" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            echo "✅ Image ${{ matrix.image }}:${DOCKER_TAG} already exists (pushed by local release)"
-            echo "   Skipping redundant build"
+            echo "All images already exist (pushed by local release) - skipping build"
             exit 0
-          else
-            echo "Image not found, will build..."
           fi
         fi
 
-        # Standard change detection for non-tag pushes or when image doesn't exist
-        if [ "${{ matrix.changed }}" == "true" ] || \
+        # Standard change detection
+        if [ "${{ needs.detect-changes.outputs.api }}" == "true" ] || \
            [ "${{ github.event_name }}" == "workflow_dispatch" ] || \
            [ "${{ github.event_name }}" == "schedule" ] || \
            [[ "${{ github.ref }}" == refs/tags/* ]] || \
@@ -390,7 +382,7 @@ jobs:
           echo "build=true" >> $GITHUB_OUTPUT
         else
           echo "build=false" >> $GITHUB_OUTPUT
-          echo "Skipping ${{ matrix.image }} - no changes detected"
+          echo "Skipping build - no changes detected"
         fi
 
     - name: Checkout code
@@ -415,9 +407,9 @@ jobs:
           cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
 
           rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
-          echo "✅ Private config loaded - branding assets available"
+          echo "Private config loaded - branding assets available"
         else
-          echo "⚠️ KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
+          echo "KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
         fi
 
     - name: Prepare local assets for Docker build
@@ -426,16 +418,12 @@ jobs:
         # Ensure local/ directory exists for Docker COPY (even if empty)
         mkdir -p local/assets
         if [ -f local/assets/camp-logo.png ]; then
-          echo "✅ Local assets found (from kindred-local)"
+          echo "Local assets found (from kindred-local)"
           ls -la local/assets/
         else
-          echo "ℹ️  No local assets (kindred-local not available)"
-          echo "   Using default branding"
+          echo "No local assets (kindred-local not available)"
+          echo "Using default branding"
         fi
-
-    - name: Set up Docker Buildx
-      if: steps.check.outputs.build == 'true'
-      uses: docker/setup-buildx-action@v3
 
     - name: Log in to GitHub Container Registry
       if: steps.check.outputs.build == 'true'
@@ -453,31 +441,6 @@ jobs:
         username: ${{ secrets.DHI_USERNAME }}
         password: ${{ secrets.DHI_TOKEN }}
 
-    - name: Determine tags
-      if: steps.check.outputs.build == 'true'
-      id: tags
-      run: |
-        IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}"
-        TAGS="${IMAGE}:latest"
-        if [ -n "${{ github.event.inputs.tag }}" ]; then
-          TAGS="${TAGS},${IMAGE}:${{ github.event.inputs.tag }}"
-        fi
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-          # Strip 'refs/tags/' prefix, then strip 'v' prefix for Docker tag
-          # Git tags remain v0.7.0, Docker tags become 0.7.0, 0.7, latest
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          DOCKER_TAG=${TAG_NAME#v}
-          TAGS="${TAGS},${IMAGE}:${DOCKER_TAG}"
-
-          # Add minor version tag (e.g., 1.0 from 1.0.0)
-          MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-          if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
-            TAGS="${TAGS},${IMAGE}:${MINOR_TAG}"
-          fi
-        fi
-        echo "tags=$TAGS" >> $GITHUB_OUTPUT
-        echo "Using tags: $TAGS"
-
     - name: Get version and build date
       if: steps.check.outputs.build == 'true'
       id: version
@@ -493,22 +456,54 @@ jobs:
         echo "Version: $VERSION"
         echo "Build Date: $BUILD_DATE"
 
-    - name: Build Docker image (local only)
+    - name: Build all Docker images (local only)
       if: steps.check.outputs.build == 'true'
-      id: build
-      uses: docker/build-push-action@v6
-      with:
-        context: ${{ matrix.context }}
-        file: ${{ matrix.dockerfile }}
-        load: true
-        tags: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test
-        cache-from: ${{ github.event.inputs.no_cache == 'true' && '' || 'type=gha' }}
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64
-        no-cache: ${{ github.event.inputs.no_cache == 'true' }}
-        build-args: |
-          VERSION=${{ steps.version.outputs.version }}
-          BUILD_DATE=${{ steps.version.outputs.build_date }}
+      run: |
+        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+        DOCKERFILES=("docker/multi/Dockerfile.caddy" "docker/multi/Dockerfile.pocketbase" "docker/multi/Dockerfile.api" "docker/multi/Dockerfile.init")
+
+        NO_CACHE_FLAG=""
+        if [ "${{ github.event.inputs.no_cache }}" == "true" ]; then
+          NO_CACHE_FLAG="--no-cache"
+        fi
+
+        for i in "${!IMAGES[@]}"; do
+          echo "=== Building ${IMAGES[$i]} ==="
+          docker build \
+            -f "${DOCKERFILES[$i]}" \
+            -t "${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGES[$i]}:test" \
+            --build-arg VERSION=${{ steps.version.outputs.version }} \
+            --build-arg BUILD_DATE=${{ steps.version.outputs.build_date }} \
+            $NO_CACHE_FLAG \
+            .
+          echo "${IMAGES[$i]} built"
+        done
+
+        echo "All 4 images built successfully"
+
+    - name: Determine tag suffixes
+      if: steps.check.outputs.build == 'true'
+      id: tags
+      run: |
+        TAG_SUFFIXES="latest"
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          TAG_SUFFIXES="${TAG_SUFFIXES},${{ github.event.inputs.tag }}"
+        fi
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          # Strip 'refs/tags/' prefix, then strip 'v' prefix for Docker tag
+          # Git tags remain v0.7.0, Docker tags become 0.7.0, 0.7, latest
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          DOCKER_TAG=${TAG_NAME#v}
+          TAG_SUFFIXES="${TAG_SUFFIXES},${DOCKER_TAG}"
+
+          # Add minor version tag (e.g., 1.0 from 1.0.0)
+          MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+          if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
+            TAG_SUFFIXES="${TAG_SUFFIXES},${MINOR_TAG}"
+          fi
+        fi
+        echo "tag_suffixes=$TAG_SUFFIXES" >> $GITHUB_OUTPUT
+        echo "Using tag suffixes: $TAG_SUFFIXES"
 
     # === Integration Tests (run before push) ===
     - name: Create CI environment file
@@ -520,9 +515,6 @@ jobs:
         IMAGE_TAG=test
         POCKETBASE_ADMIN_EMAIL=ci@test.local
         POCKETBASE_ADMIN_PASSWORD=ci-test-password
-        AUTH_MODE=bypass
-        CI=true
-        GITHUB_ACTIONS=true
         # Optional vars (empty to suppress warnings)
         CAMPMINDER_API_KEY=
         CAMPMINDER_PRIMARY_KEY=
@@ -535,24 +527,25 @@ jobs:
         echo "APPDATA_DIR=${CI_DIR}" >> .env.ci
         # Remove leading whitespace from heredoc
         sed -i 's/^[[:space:]]*//' .env.ci
-        mkdir -p ${CI_DIR}/bunking/pocketbase
-        sudo chown -R 1000:1000 ${CI_DIR}/bunking/pocketbase
+        # Create data directories with correct ownership (65532 = nonroot in distroless)
+        mkdir -p ${CI_DIR}/kindred/pocketbase ${CI_DIR}/kindred/config
+        sudo chown -R 65532:65532 ${CI_DIR}/kindred
 
     - name: Start test stack
       if: steps.check.outputs.build == 'true'
       run: |
-        # Use CI override to avoid external network requirement
-        # --wait uses Docker's native healthcheck polling (configured in docker-compose.yml)
-        # --wait-timeout 150 matches our previous 30 attempts × 5s = 150s max
-        if docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d --wait --wait-timeout 150; then
-          echo "✅ Service is healthy!"
+        # Use multi-container compose with CI override
+        # --wait uses Docker's native healthcheck polling
+        # --wait-timeout 180 allows time for all 4 containers (init runs first, then api/caddy)
+        if docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml up -d --wait --wait-timeout 180; then
+          echo "All services healthy!"
         else
-          echo "❌ Service failed to become healthy within 150 seconds"
-          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
-          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
+          echo "Services failed to become healthy within 180 seconds"
+          docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml ps
+          docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml logs --tail=50
           exit 1
         fi
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml ps
 
     - name: Test service endpoints
       if: steps.check.outputs.build == 'true'
@@ -569,7 +562,7 @@ jobs:
           echo "Testing $name..."
           for i in $(seq 1 $max_retries); do
             if curl -f -s -o /dev/null -w "%{http_code}" "$url" | grep -q "200"; then
-              echo "✓ $name is responding correctly"
+              echo "  $name is responding correctly"
               return 0
             else
               echo "  Attempt $i/$max_retries failed for $name"
@@ -578,7 +571,7 @@ jobs:
               fi
             fi
           done
-          echo "❌ $name failed after $max_retries attempts"
+          echo "$name failed after $max_retries attempts"
           curl -v "$url" || true
           return 1
         }
@@ -587,94 +580,159 @@ jobs:
         test_endpoint "http://localhost:8080/health" "Health check" || exit 1
         test_endpoint "http://localhost:8080/api/config" "FastAPI config" || exit 1
 
-        echo "✅ All integration tests passed!"
+        echo "All integration tests passed!"
 
-    - name: Verify non-root user and write permissions
+    - name: Verify non-root user and distroless containers
       if: steps.check.outputs.build == 'true'
       run: |
-        # Use docker compose exec to run commands in the service container
-        # (Avoids issues with container name lookup)
-        COMPOSE_CMD="docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml exec -T kindred"
+        COMPOSE_CMD="docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml"
 
-        CONTAINER_USER=$($COMPOSE_CMD id -u)
+        # API container has a shell (Debian-based for Python) - verify non-root
+        CONTAINER_USER=$($COMPOSE_CMD exec -T api id -u)
         if [ "$CONTAINER_USER" = "0" ]; then
-          echo "❌ Container is running as root!"
+          echo "API container is running as root!"
           exit 1
         fi
-        echo "✓ Container running as UID: $CONTAINER_USER"
+        echo "API container running as UID: $CONTAINER_USER"
 
-        $COMPOSE_CMD sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
-        echo "✓ Database directory is writable by non-root user"
-
-        # Verify entrypoint is world-readable (required for shell scripts)
-        # This catches local builds with restrictive umask (600 → chmod +x → 711)
-        ENTRYPOINT_PERMS=$($COMPOSE_CMD stat -c "%a" /entrypoint.sh)
-        if [ "$ENTRYPOINT_PERMS" != "755" ]; then
-          echo "❌ Entrypoint has wrong permissions: $ENTRYPOINT_PERMS (expected 755)"
-          echo "   This usually means the Dockerfile uses 'chmod +x' instead of 'chmod 755'"
+        # Verify distroless containers have no shell
+        if $COMPOSE_CMD exec -T pocketbase /bin/sh -c "echo" 2>/dev/null; then
+          echo "PocketBase container has a shell (should be distroless)"
           exit 1
         fi
-        echo "✓ Entrypoint has correct permissions (755)"
+        echo "PocketBase is distroless (no shell)"
+
+        if $COMPOSE_CMD exec -T caddy /bin/sh -c "echo" 2>/dev/null; then
+          echo "Caddy container has a shell (should be distroless)"
+          exit 1
+        fi
+        echo "Caddy is distroless (no shell)"
 
     - name: Show logs on test failure
       if: failure() && steps.check.outputs.build == 'true'
       run: |
         echo "=== Docker Compose Status ==="
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml ps
         echo ""
-        echo "=== Kindred Logs ==="
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs kindred
+        echo "=== All Container Logs ==="
+        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml logs
 
     - name: Stop test stack
       if: always() && steps.check.outputs.build == 'true'
       run: |
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml down -v || true
-        # Use sudo to clean up files created by container (runs as UID 1000, different from runner)
+        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml down -v || true
+        # Use sudo to clean up files created by container (runs as UID 65532, different from runner)
         sudo rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
     # === Security Scan (run before push) ===
-    - name: Run Trivy vulnerability scanner
+    # Scan the two images with custom code (caddy has frontend, api has Python deps)
+    # PocketBase and init are distroless/minimal - lower risk
+    - name: Run Trivy vulnerability scanner (Caddy)
       if: steps.check.outputs.build == 'true'
       uses: aquasecurity/trivy-action@0.34.2
       with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-caddy:test
         version: 'v0.68.2'
         format: 'sarif'
-        output: 'trivy-results-${{ matrix.image }}.sarif'
+        output: 'trivy-results-kindred-caddy.sarif'
         severity: 'CRITICAL,HIGH'
         exit-code: '0'
 
-    - name: Upload Trivy scan results to GitHub Security
+    - name: Run Trivy vulnerability scanner (API)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-api:test
+        version: 'v0.68.2'
+        format: 'sarif'
+        output: 'trivy-results-kindred-api.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Run Trivy vulnerability scanner (PocketBase)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-pocketbase:test
+        version: 'v0.68.2'
+        format: 'sarif'
+        output: 'trivy-results-kindred-pocketbase.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Run Trivy vulnerability scanner (Init)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-init:test
+        version: 'v0.68.2'
+        format: 'sarif'
+        output: 'trivy-results-kindred-init.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Upload Trivy results - Caddy
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@v4
       with:
-        sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
-        # Tag-push refs (refs/tags/v*) are invisible in GitHub's Security tab,
-        # which only shows results for the default branch (refs/heads/main).
-        # Override ref/sha so tag-triggered scans update the security tab.
+        sarif_file: 'trivy-results-kindred-caddy.sarif'
+        category: 'trivy-kindred-caddy'
+        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        sha: ${{ github.sha }}
+
+    - name: Upload Trivy results - API
+      if: steps.check.outputs.build == 'true'
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results-kindred-api.sarif'
+        category: 'trivy-kindred-api'
+        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        sha: ${{ github.sha }}
+
+    - name: Upload Trivy results - PocketBase
+      if: steps.check.outputs.build == 'true'
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results-kindred-pocketbase.sarif'
+        category: 'trivy-kindred-pocketbase'
+        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        sha: ${{ github.sha }}
+
+    - name: Upload Trivy results - Init
+      if: steps.check.outputs.build == 'true'
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results-kindred-init.sarif'
+        category: 'trivy-kindred-init'
         ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
         sha: ${{ github.sha }}
 
     # === Push to Registry (only if tests pass and not dry-run/PR) ===
-    # Tag and push the already-built :test image instead of rebuilding (~3-5 min savings)
-    - name: Push Docker image
+    # Tag and push the already-built :test images instead of rebuilding
+    - name: Push Docker images
       if: |
         steps.check.outputs.build == 'true' &&
         github.event_name != 'pull_request' &&
         github.event.inputs.dry_run != 'true'
       run: |
-        TEST_IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test"
+        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+        IFS=',' read -ra SUFFIXES <<< "${{ steps.tags.outputs.tag_suffixes }}"
 
-        # Tags are comma-separated, iterate and push each
-        IFS=',' read -ra TAG_ARRAY <<< "${{ steps.tags.outputs.tags }}"
-        for tag in "${TAG_ARRAY[@]}"; do
-          echo "Tagging and pushing: $tag"
-          docker tag "$TEST_IMAGE" "$tag"
-          docker push "$tag"
+        for IMAGE in "${IMAGES[@]}"; do
+          TEST_IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGE}:test"
+          for SUFFIX in "${SUFFIXES[@]}"; do
+            FULL_TAG="${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGE}:${SUFFIX}"
+            echo "Pushing: ${FULL_TAG}"
+            docker tag "$TEST_IMAGE" "$FULL_TAG"
+            docker push "$FULL_TAG"
+          done
         done
 
-        echo "✅ All tags pushed successfully"
+        echo "All images pushed successfully"
 
     - name: Skip push (dry-run or PR)
       if: |
@@ -682,9 +740,9 @@ jobs:
         (github.event_name == 'pull_request' || github.event.inputs.dry_run == 'true')
       run: |
         if [ "${{ github.event_name }}" == "pull_request" ]; then
-          echo "🔍 PR validation mode - image built and tested but NOT pushed"
+          echo "PR validation mode - images built and tested but NOT pushed"
         else
-          echo "🔍 Dry-run mode - image built and tested but NOT pushed"
+          echo "Dry-run mode - images built and tested but NOT pushed"
         fi
         echo "   To push, trigger manually without dry_run or create a release tag"
 
@@ -698,35 +756,38 @@ jobs:
     - name: Check build status
       run: |
         if [ "${{ needs.build-test-push.result }}" != "success" ] && [ "${{ needs.build-test-push.result }}" != "skipped" ]; then
-          echo "❌ Build, test, or push failed!"
+          echo "Build, test, or push failed!"
           exit 1
         fi
 
         if [ "${{ needs.build-test-push.result }}" == "skipped" ]; then
-          echo "ℹ️  Docker build skipped (no relevant file changes)"
+          echo "Docker build skipped (no relevant file changes)"
         elif [ "${{ github.event_name }}" == "pull_request" ]; then
-          echo "✅ CD validation passed (PR mode - no push)"
+          echo "CD validation passed (PR mode - no push)"
           echo ""
           echo "This PR's CD changes have been validated:"
-          echo "- Docker image built successfully"
-          echo "- Integration tests passed"
+          echo "- All 4 Docker images built successfully"
+          echo "- Integration tests passed (multi-container stack)"
           echo "- Security scan completed"
           echo ""
-          echo "Image will be pushed when this PR merges and a release is created."
+          echo "Images will be pushed when this PR merges and a release is created."
         elif [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
-          echo "✅ CD dry-run passed (no push)"
+          echo "CD dry-run passed (no push)"
           echo ""
           echo "Validated:"
-          echo "- Docker image built successfully"
-          echo "- Integration tests passed"
+          echo "- All 4 Docker images built successfully"
+          echo "- Integration tests passed (multi-container stack)"
           echo "- Security scan completed"
           echo ""
           echo "To push, run again without dry_run or create a release tag."
         else
-          echo "✅ All CD checks passed successfully!"
+          echo "All CD checks passed successfully!"
           echo ""
-          echo "Image pushed:"
-          echo "- ghcr.io/${{ env.USERNAME }}/kindred (Caddy + PocketBase + FastAPI)"
+          echo "Images pushed:"
+          echo "- ghcr.io/${{ env.USERNAME }}/kindred-caddy (Caddy reverse proxy + frontend)"
+          echo "- ghcr.io/${{ env.USERNAME }}/kindred-pocketbase (PocketBase database)"
+          echo "- ghcr.io/${{ env.USERNAME }}/kindred-api (FastAPI solver/metrics)"
+          echo "- ghcr.io/${{ env.USERNAME }}/kindred-init (One-shot admin + OIDC setup)"
         fi
 
   # Auto-generate release notes from conventional commits

@@ -1,0 +1,162 @@
+# Kindred Multi-Container Local Testing Docker Compose
+# Usage: docker compose -f docker/multi/docker-compose.local.yml up -d --build
+
+services:
+  # One-shot service to fix volume ownership (Docker named volumes default to root)
+  init-permissions:
+    image: busybox:latest
+    container_name: kindred-init-permissions
+    command: ["sh", "-c", "chown -R 65532:65532 /pb_data"]
+    volumes:
+      - kindred-pb-data:/pb_data
+    restart: "no"
+    networks:
+      - kindred-local
+
+  pocketbase:
+    build:
+      context: ../..
+      dockerfile: docker/multi/Dockerfile.pocketbase
+    image: kindred-pocketbase:local
+    container_name: kindred-pocketbase
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
+    volumes:
+      - kindred-pb-data:/pb_data
+    tmpfs:
+      - /tmp:size=8m,uid=65532,gid=65532
+    environment:
+      - CAMPMINDER_API_KEY=${CAMPMINDER_API_KEY:-}
+      - CAMPMINDER_PRIMARY_KEY=${CAMPMINDER_PRIMARY_KEY:-}
+      - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID:-}
+      - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID:-2025}
+      - SKIP_CAMPMINDER=${SKIP_CAMPMINDER:-false}
+      - TZ=${TZ:-America/Los_Angeles}
+    healthcheck:
+      test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8090/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kindred-local
+
+  init:
+    build:
+      context: ../..
+      dockerfile: docker/multi/Dockerfile.init
+    image: kindred-init:local
+    container_name: kindred-init
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    volumes:
+      - kindred-pb-data:/pb_data
+    tmpfs:
+      - /tmp:size=8m,uid=65532,gid=65532
+    environment:
+      - POCKETBASE_URL=http://pocketbase:8090
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL:-admin@test.local}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD:-testpassword123}
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+    networks:
+      - kindred-local
+
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/multi/Dockerfile.api
+    image: kindred-api:local
+    container_name: kindred-api
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - kindred-pb-data:/pb_data:ro
+    tmpfs:
+      - /tmp:size=64m,uid=65532,gid=65532
+      - /app/logs:size=64m,uid=65532,gid=65532
+      - /app/csv_history:size=64m,uid=65532,gid=65532
+    environment:
+      - POCKETBASE_URL=http://pocketbase:8090
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL:-admin@test.local}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD:-testpassword123}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AUTH_MODE=${AUTH_MODE:-bypass}
+      # CI signals allow AUTH_MODE=bypass in Docker (otherwise forced to production)
+      - CI=true
+      - GITHUB_ACTIONS=true
+      - TZ=${TZ:-America/Los_Angeles}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: [CMD, curl, -f, "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - kindred-local
+
+  caddy:
+    build:
+      context: ../..
+      dockerfile: docker/multi/Dockerfile.caddy
+    image: kindred-caddy:local
+    container_name: kindred-caddy
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    ports:
+      - "${CADDY_PORT:-8080}:8080"
+    tmpfs:
+      - /tmp:size=8m,uid=65532,gid=65532
+      - /data:size=8m,uid=65532,gid=65532
+      - /config:size=8m,uid=65532,gid=65532
+    healthcheck:
+      test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - kindred-local
+
+networks:
+  kindred-local:
+    driver: bridge
+
+volumes:
+  kindred-pb-data:
