@@ -178,6 +178,7 @@ Before committing any migration:
 - [ ] **Dynamic collection lookups** using `app.findCollectionByNameOrId()`
 - [ ] **`go build .`** passes in pocketbase/
 - [ ] **Fresh DB test** - delete pb_data/ and verify schema creates correctly
+- [ ] **Seed script updated** — if adding/removing a collection, verify `scripts/setup/seed_from_prod.py` handles it (auto-discovered, but check skip lists)
 
 **Enum update workaround**: If migration applies but enum values unchanged, use `scripts/fix_request_type_enum.py` to update schema JSON directly.
 
