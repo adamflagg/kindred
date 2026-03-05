@@ -191,14 +191,10 @@ def _filter_and_categorize_requests(
             bunk_requests.append(request)
         elif request.request_type == "age_preference":
             # Only include age preferences from explicit CSV fields (not socialize_preference)
-            if (
-                request_csv_fields
-                and "socialize_preference" not in request_csv_fields
-                or (
-                    not request_csv_fields
-                    and hasattr(request, "source_field")
-                    and request.source_field != "socialize_preference"
-                )
+            if (request_csv_fields and "socialize_preference" not in request_csv_fields) or (
+                not request_csv_fields
+                and hasattr(request, "source_field")
+                and request.source_field != "socialize_preference"
             ):
                 age_requests.append(request)
 

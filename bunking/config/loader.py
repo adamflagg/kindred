@@ -532,7 +532,7 @@ class ConfigLoader:
             value = record.value
 
             # Build the path: subcategory parts + config_key
-            parts = subcategory.split(".") + [config_key] if subcategory else [config_key]
+            parts = [*subcategory.split("."), config_key] if subcategory else [config_key]
 
             # Navigate/create nested structure
             current = result

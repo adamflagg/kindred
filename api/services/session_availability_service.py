@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from api.services.metrics_repository import MetricsRepository
@@ -49,7 +49,7 @@ class SessionAvailabilityService:
             return "limited"
         return "open"
 
-    _DEFAULT_SESSION_TYPES = ["main", "embedded", "ag", "quest"]
+    _DEFAULT_SESSION_TYPES: ClassVar[list[str]] = ["main", "embedded", "ag", "quest"]
 
     async def calculate_availability(
         self,

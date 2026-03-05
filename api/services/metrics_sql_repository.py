@@ -420,7 +420,7 @@ class MetricsSQLRepository:
     async def fetch_attendees_with_persons(
         self,
         year: int,
-        session_types: list[str] | None = None,  # noqa: ARG002 — filtered at service layer
+        session_types: list[str] | None = None,
         status_filter: str | list[str] | None = None,
     ) -> list[Any]:
         """Fetch attendees with both person and session expansion."""
@@ -595,7 +595,7 @@ class MetricsSQLRepository:
     async def fetch_attendees_with_dates(
         self,
         year: int,
-        session_cm_id: int | None = None,  # noqa: ARG002 — filtered at service layer
+        session_cm_id: int | None = None,
         expand_person: bool = False,
     ) -> list[Any]:
         """Fetch attendees with enrollment dates for velocity reconstruction."""

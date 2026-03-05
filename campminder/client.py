@@ -163,7 +163,7 @@ class CampMinderClient:
                     time.sleep(wait_time)
                     continue
                 else:
-                    raise Exception(f"Authentication error: {str(e)}")
+                    raise Exception(f"Authentication error: {e!s}")
 
         # This should never be reached, but satisfies type checker
         raise Exception("Authentication failed: unexpected error in retry loop")
@@ -195,9 +195,7 @@ class CampMinderClient:
                                 f"Loaded cached CampMinder token (expires in {int((cache['expiry'] - time.time()) / 60)} minutes)"
                             )
                         except Exception:
-                            print(
-                                f"Loaded cached CampMinder token (expires in {int((cache['expiry'] - time.time()) / 60)} minutes)"
-                            )
+                            pass
         except Exception:
             # Silently ignore cache load errors and authenticate normally
             pass
@@ -292,7 +290,7 @@ class CampMinderClient:
             else:
                 raise Exception(f"API request failed: {e.response.status_code} - {e.response.text}")
         except Exception as e:
-            raise Exception(f"Request error: {str(e)}")
+            raise Exception(f"Request error: {e!s}")
 
     def get_campers(self, page_size: int = 100) -> list[CamperData]:
         """Fetch all campers for the configured season."""
@@ -364,8 +362,6 @@ class CampMinderClient:
         This method returns an empty dict as a placeholder.
         Real cabin assignments would need to come from custom fields or another source.
         """
-        print("⚠️  Note: Bunk assignment endpoints not available in API")
-        print("   Cabin assignments would need to be retrieved from custom fields or external source")
 
         # Return empty dict as placeholder
         # In a real implementation, this might parse cabin info from custom fields
@@ -385,26 +381,18 @@ class CampMinderClient:
         params = {"clientid": self.config.client_id}
 
         try:
-            print(f"Fetching attendees for session {session_id}, season {season_id}")
-            print(f"Endpoint: {endpoint}")
-            print(f"Params: {params}")
             data = self._make_request("GET", endpoint, params=params)
-            print(f"Response type: {type(data)}")
             if data:
-                print(f"Response keys: {list(data.keys()) if isinstance(data, dict) else 'LIST'}")
+                pass
             # Check if this endpoint returns paginated results or direct array
             if isinstance(data, dict) and "Results" in data:
                 results = cast(list[dict[str, Any]], data.get("Results", []))
-                print(f"Found {len(results)} attendees in Results")
                 return results
             elif isinstance(data, list):
-                print(f"Found {len(data)} attendees as list")
                 return data
             else:
-                print(f"Unexpected response format for session {session_id} attendees: {type(data)}")
                 return []
-        except Exception as e:
-            print(f"Error fetching attendees for session {session_id}: {e}")
+        except Exception:
             import traceback
 
             traceback.print_exc()
@@ -483,18 +471,14 @@ class CampMinderClient:
 
     def fetch_all_data(self, fetch_custom_fields: bool = True) -> list[CamperData]:
         """Fetch all camper data including custom fields and bunk assignments."""
-        print("Fetching campers...")
         campers = self.get_campers()
-        print(f"Found {len(campers)} campers")
 
         # Get bunk assignments (using placeholder - real API doesn't support this)
-        print("Fetching bunk assignments...")
         person_to_bunk = self.get_bunk_assignments_placeholder()
 
         # Get custom field definitions if needed
         field_mapping = {}
         if fetch_custom_fields:
-            print("Fetching custom field definitions...")
             field_mapping = self.get_custom_field_definitions()
 
         # Update campers with assignments and custom fields
@@ -505,7 +489,7 @@ class CampMinderClient:
             # Fetch custom fields
             if fetch_custom_fields:
                 if i % 10 == 0:
-                    print(f"Fetching custom fields for camper {i + 1}/{len(campers)}...")
+                    pass
 
                 try:
                     raw_fields = self.get_custom_fields(camper.person_id)
@@ -514,8 +498,8 @@ class CampMinderClient:
                         field_id = int(field_key.split("_")[1])
                         field_name = field_mapping.get(field_id, field_key)
                         camper.custom_fields[field_name] = value
-                except Exception as e:
-                    print(f"Error fetching custom fields for {camper.name}: {e}")
+                except Exception:
+                    pass
 
         return campers
 

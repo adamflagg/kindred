@@ -106,7 +106,7 @@ class ConflictDetector:
             conflicts=conflicts,
             auto_resolvable_count=0,  # Session conflicts cannot be auto-resolved
             manual_review_count=manual_review,
-            affected_requests=sorted(list(affected_indices)),
+            affected_requests=sorted(affected_indices),
             conflict_groups={},  # No grouping needed for simple session conflicts
         )
 
@@ -205,7 +205,7 @@ class ConflictDetector:
         for conflict in conflict_result.conflicts:
             for idx in conflict.affected_request_indices:
                 if idx < len(modified_requests):
-                    parsed_req, resolution_info = modified_requests[idx]
+                    _parsed_req, resolution_info = modified_requests[idx]
 
                     # Add conflict information
                     resolution_info["has_conflict"] = True

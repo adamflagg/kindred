@@ -149,7 +149,7 @@ class TestRequestGrouping:
 
         # Should have 1 group with 3 requests
         assert len(groups) == 1
-        group_key = list(groups.keys())[0]
+        group_key = next(iter(groups.keys()))
         assert len(groups[group_key]) == 3
 
     def test_group_different_texts_separately(self):

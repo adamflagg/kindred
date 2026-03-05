@@ -346,7 +346,7 @@ class Phase2ResolutionService:
         # Log batch resolution results
         logger.debug(f"Batch resolved {len(batch_results)} names")
         for j, (req, result) in enumerate(zip(batch_requests, batch_results, strict=False)):
-            name, requester_id, session_id, year = req
+            name, requester_id, _session_id, _year = req
             num_candidates = len(result.candidates) if result.candidates else 0
             logger.debug(
                 f"Result for '{name}' (requester={requester_id}): "

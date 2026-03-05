@@ -169,7 +169,7 @@ async def fetch_session_data_v2(
 
     except ClientResponseError as e:
         logger.error(f"Failed to fetch session data for CM ID {session_cm_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch session data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch session data: {e!s}")
 
 
 async def fetch_historical_bunking(

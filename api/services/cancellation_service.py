@@ -149,7 +149,7 @@ class CancellationService:
             "has_other_sessions",
             "no_other_sessions",
         )
-        cancelled_by_session: dict[int, dict[str, int]] = defaultdict(lambda: {k: 0 for k in session_keys})
+        cancelled_by_session: dict[int, dict[str, int]] = defaultdict(lambda: dict.fromkeys(session_keys, 0))
 
         seen_per_session: dict[int, set[int]] = defaultdict(set)
         seen_for_summary: set[int] = set()
@@ -199,7 +199,7 @@ class CancellationService:
         for sid, counts in cancelled_by_session.items():
             target_sid = ag_parent_map.get(sid, sid)
             if target_sid not in merged_by_session:
-                merged_by_session[target_sid] = {k: 0 for k in session_keys}
+                merged_by_session[target_sid] = dict.fromkeys(session_keys, 0)
             for key in session_keys:
                 merged_by_session[target_sid][key] += counts[key]
 

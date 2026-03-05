@@ -80,7 +80,7 @@ class Phase1ParseService:
         logger.info(f"Phase 1: Starting batch parse of {len(requests)} requests")
 
         # Sanitize inputs before AI processing (security: prompt injection protection)
-        requests, security_metadata = self._sanitize_requests(requests)
+        requests, _security_metadata = self._sanitize_requests(requests)
 
         # Build parse-only contexts for all requests
         contexts = self._build_contexts(requests)

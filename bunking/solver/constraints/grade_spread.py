@@ -48,7 +48,7 @@ def add_grade_spread_constraints(ctx: SolverContext) -> None:
             continue
 
         # Get all unique grades among eligible campers
-        unique_grades = sorted(set(person.grade for _, person in eligible_campers))
+        unique_grades = sorted({person.grade for _, person in eligible_campers})
 
         # Skip if all eligible campers have same grade
         if len(unique_grades) == 1:
@@ -122,7 +122,7 @@ def add_grade_spread_soft_constraint(ctx: SolverContext, objective_terms: list[A
             continue
 
         # Get all unique grades among eligible campers
-        unique_grades = sorted(set(person.grade for _, person in eligible_campers))
+        unique_grades = sorted({person.grade for _, person in eligible_campers})
 
         # Skip if impossible to exceed limit
         if len(unique_grades) <= max_unique_grades:

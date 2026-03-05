@@ -11,7 +11,7 @@ import json
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from bunking.sync.sync_logging import setup_logging
 
@@ -22,7 +22,7 @@ class CSVFieldHistoryTracker:
     """Track CSV field changes at a granular level to preserve manually resolved requests"""
 
     # Map CSV fields to the request types they generate
-    FIELD_TO_REQUEST_TYPE = {
+    FIELD_TO_REQUEST_TYPE: ClassVar[dict[str, str | list[str]]] = {
         "Share Bunk With": "bunk_with",
         "Do Not Share Bunk With": "not_bunk_with",
         "RetParent-Socializewithbest": "age_preference",

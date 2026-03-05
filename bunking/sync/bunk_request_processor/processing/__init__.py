@@ -14,8 +14,8 @@ from .reciprocal_detector import ReciprocalDetector, ReciprocalPair
 from .request_builder import RequestBuilder, RequestBuilderOptions
 
 __all__ = [
-    "Deduplicator",
     "DeduplicationResult",
+    "Deduplicator",
     "DuplicateGroup",
     "PriorityCalculator",
     "ReciprocalDetector",

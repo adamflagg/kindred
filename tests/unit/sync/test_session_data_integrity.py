@@ -156,7 +156,7 @@ class SessionDataIntegrityTester:
                         logger.info(f"  ✓ {parent_session.name} -> {child_session.name}")
 
         except Exception as e:
-            self.errors.append(f"Error validating session structure: {str(e)}")
+            self.errors.append(f"Error validating session structure: {e!s}")
             logger.error(f"Error validating session structure: {e}", exc_info=True)
 
     def validate_attendee_relationships(self):
@@ -225,7 +225,7 @@ class SessionDataIntegrityTester:
                     logger.info(f"  {ag_session.name}: {count} attendees")
 
         except Exception as e:
-            self.errors.append(f"Error validating attendee relationships: {str(e)}")
+            self.errors.append(f"Error validating attendee relationships: {e!s}")
             logger.error(f"Error validating attendee relationships: {e}", exc_info=True)
 
     def validate_bunk_assignments(self):
@@ -318,7 +318,7 @@ class SessionDataIntegrityTester:
             self.check_orphaned_assignments()
 
         except Exception as e:
-            self.errors.append(f"Error validating bunk assignments: {str(e)}")
+            self.errors.append(f"Error validating bunk assignments: {e!s}")
             logger.error(f"Error validating bunk assignments: {e}", exc_info=True)
 
     def check_orphaned_assignments(self):
@@ -328,7 +328,7 @@ class SessionDataIntegrityTester:
             attendees = self.pb.collection("attendees").get_full_list(
                 query_params={"filter": f"year = {self.current_year}"}
             )
-            valid_person_ids = set(a.person_cm_id for a in attendees)
+            valid_person_ids = {a.person_cm_id for a in attendees}
 
             # Get all assignments
             assignments = self.pb.collection("bunk_assignments").get_full_list(
@@ -352,7 +352,7 @@ class SessionDataIntegrityTester:
                 logger.info("  ✓ No orphaned assignments found")
 
         except Exception as e:
-            self.warnings.append(f"Could not check orphaned assignments: {str(e)}")
+            self.warnings.append(f"Could not check orphaned assignments: {e!s}")
 
     def print_summary(self):
         """Print test summary."""

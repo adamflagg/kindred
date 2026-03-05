@@ -300,8 +300,7 @@ class ContextBuilder:
             if (
                 first_name.startswith(target_first_3)
                 or (len(first_name_3) >= 3 and first_name_3 == target_first_3)
-                or len(first_name) >= 2
-                and target_first.startswith(first_name[: min(3, len(first_name))])
+                or (len(first_name) >= 2 and target_first.startswith(first_name[: min(3, len(first_name))]))
                 or first_name in target_nicknames
             ):
                 is_match = True
@@ -496,8 +495,7 @@ class ContextBuilder:
             if (
                 target_parts[0] in first_name
                 or first_name in target_parts[0]
-                or len(target_parts) > 1
-                and (target_parts[-1] in last_name or last_name in target_parts[-1])
+                or (len(target_parts) > 1 and (target_parts[-1] in last_name or last_name in target_parts[-1]))
             ):
                 relevant.append(attendee)
 

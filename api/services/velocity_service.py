@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from api.schemas.velocity import (
     PhaseMarker,
@@ -165,7 +165,7 @@ def _daily_counts_to_weekly_points(
 class _CurveResult:
     """Internal result from curve building, includes extra metadata."""
 
-    __slots__ = ("combined", "by_session", "cancelled_to_date")
+    __slots__ = ("by_session", "cancelled_to_date", "combined")
 
     def __init__(
         self,
@@ -934,8 +934,8 @@ class VelocityService:
         return None
 
     # Statuses that count as enrollments in velocity curves
-    _ENROLLMENT_STATUSES = {2, 32, 256}  # enrolled, cancelled, withdrawn
-    _CANCELLATION_STATUSES = {32, 256}  # cancelled, withdrawn
+    _ENROLLMENT_STATUSES: ClassVar[set[int]] = {2, 32, 256}  # enrolled, cancelled, withdrawn
+    _CANCELLATION_STATUSES: ClassVar[set[int]] = {32, 256}  # cancelled, withdrawn
 
     async def _curves_from_reconstruction(
         self,
@@ -1217,7 +1217,7 @@ class VelocityService:
             return self._assemble_gender_curves(year, session_cm_id, sessions, snap_gps, snap_totals)
 
         # Hybrid: reconstruction pre-snapshot + snapshots post
-        recon_gps, recon_totals = await self._gender_data_from_reconstruction(
+        recon_gps, _recon_totals = await self._gender_data_from_reconstruction(
             year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
         )
 

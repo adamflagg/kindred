@@ -67,11 +67,8 @@ class CollectedRequest:
         elif self.metadata.get("declined", False):
             status = "declined"
         # Age preferences don't need a requested_cm_id to be valid
-        elif (
-            self.request_type == "age_preference"
-            and self.confidence_score >= resolved_threshold
-            or self.requested_cm_id
-            and self.confidence_score >= resolved_threshold
+        elif (self.request_type == "age_preference" and self.confidence_score >= resolved_threshold) or (
+            self.requested_cm_id and self.confidence_score >= resolved_threshold
         ):
             status = "resolved"
         else:

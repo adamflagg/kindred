@@ -1390,7 +1390,7 @@ class RequestOrchestrator:
             # Method 2: Check which data fields are present in the row
             # This handles direct CSV processing
             for field_name, source_field in ALL_FIELD_TO_SOURCE_FIELD.items():
-                if field_name in row and row[field_name]:
+                if row.get(field_name):
                     person_source_fields[person_id].add(source_field)
 
         # Clear requests per person, per source field
@@ -1536,7 +1536,7 @@ class RequestOrchestrator:
             except json.JSONDecodeError:
                 existing_source_fields = [existing.source_field] if existing.source_field else []
 
-        new_source_fields = list(set(existing_source_fields + [request.source_field]))
+        new_source_fields = list({*existing_source_fields, request.source_field})
 
         # Use higher confidence score
         final_confidence = max(existing.confidence_score, request.confidence_score)

@@ -184,7 +184,7 @@ class TestGraphCacheManager(unittest.TestCase):
                     thread_cache.invalidate_session(session_id, 2025)
 
             except Exception as e:
-                errors.append(f"Session {session_id}: {str(e)}")
+                errors.append(f"Session {session_id}: {e!s}")
 
         # Run concurrent operations
         with ThreadPoolExecutor(max_workers=10) as executor:

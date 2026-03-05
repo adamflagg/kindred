@@ -430,7 +430,7 @@ async def pre_validate_solver(request: SolverRequest) -> dict[str, Any]:
         logger.error(f"PocketBase API error in pre-validation: {e.status} - {e.data}")
         raise HTTPException(status_code=500, detail=f"PocketBase error: {e.status} - {e.data}")
     except Exception as e:
-        logger.error(f"Pre-validation failed: {str(e)}", exc_info=True)
+        logger.error(f"Pre-validation failed: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -811,7 +811,7 @@ async def clear_session_assignments(session_cm_id: int, request: ClearAssignment
         raise
     except Exception as e:
         logger.error(f"Error clearing assignments: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to clear assignments: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear assignments: {e!s}")
 
 
 # ========================================

@@ -15,7 +15,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class StaffNameDetector:
         ]
     )
 
-    STAFF_PATTERNS = [
+    STAFF_PATTERNS: ClassVar[list[str]] = [
         r"(\w+(?:\s+\w+)?)\s+(?:called|spoke|discussed|mentioned)",
         r"(?:call|speak\s+to|discuss\s+with|talked\s+to)\s+(\w+(?:\s+\w+)?)",
         r"(\w+(?:\s+\w+)?)\s+(?:forgot\s+to|wanted\s+to|asked\s+to|requested)",

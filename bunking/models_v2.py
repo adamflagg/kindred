@@ -53,7 +53,7 @@ class DirectPerson(BaseModel):
             return 0.0
 
         today = datetime.now()
-        birth = datetime.fromisoformat(self.birthdate.replace("Z", "+00:00"))
+        birth = datetime.fromisoformat(self.birthdate)
 
         years = today.year - birth.year
         months = today.month - birth.month

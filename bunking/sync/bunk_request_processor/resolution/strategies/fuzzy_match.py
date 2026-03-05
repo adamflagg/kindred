@@ -346,7 +346,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         variations = find_nickname_variations(first_name)
         all_candidates: list[Person] = []
 
-        for variant in [first_name] + list(variations):
+        for variant in [first_name, *list(variations)]:
             if candidates:
                 matches = [c for c in candidates if c.first_name.lower() == variant.lower()]
             else:
@@ -398,7 +398,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
         """Try matching via parent surname (e.g., 'Emma Smith' when Emma's dad is Smith)."""
-        variations = [first_name] + list(find_nickname_variations(first_name))
+        variations = [first_name, *list(find_nickname_variations(first_name))]
         all_matches: list[Person] = []
 
         for variant in variations:

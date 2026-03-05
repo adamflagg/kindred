@@ -211,7 +211,7 @@ class BunkingTestRunner:
             }
 
         except Exception as e:
-            logger.error(f"Exception running phase {phase_num}: {str(e)}")
+            logger.error(f"Exception running phase {phase_num}: {e!s}")
             return {"success": False, "skipped": False, "duration": 0, "output": "", "errors": str(e)}
 
     def generate_final_report(self):
@@ -322,7 +322,7 @@ class BunkingTestRunner:
             logger.info(f"\nDetailed report saved to: {report_path}")
 
         except Exception as e:
-            logger.warning(f"Could not save detailed report: {str(e)}")
+            logger.warning(f"Could not save detailed report: {e!s}")
 
 
 async def main():

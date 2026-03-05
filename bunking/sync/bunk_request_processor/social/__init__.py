@@ -4,4 +4,4 @@ from __future__ import annotations
 
 from .social_graph import FriendGroup, SocialGraph
 
-__all__ = ["SocialGraph", "FriendGroup"]
+__all__ = ["FriendGroup", "SocialGraph"]

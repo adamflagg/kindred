@@ -33,8 +33,8 @@ class BaseSyncService:
         if admin_email and admin_password:
             try:
                 self.pb.collection("_superusers").auth_with_password(admin_email, admin_password)
-            except Exception as e:
-                print(f"Warning: Could not authenticate with PocketBase: {e}")
+            except Exception:
+                pass
 
     def force_wal_checkpoint(self) -> None:
         """Force SQLite WAL checkpoint to ensure data is written to main database."""
@@ -42,5 +42,5 @@ class BaseSyncService:
             # This is typically done via direct SQLite access
             # For PocketBase, we rely on the built-in checkpointing
             pass
-        except Exception as e:
-            print(f"Warning: Could not force WAL checkpoint: {e}")
+        except Exception:
+            pass

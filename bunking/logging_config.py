@@ -24,6 +24,7 @@ import logging
 import os
 import sys
 from datetime import UTC, datetime
+from typing import ClassVar
 
 # Custom TRACE level for very verbose diagnostics
 TRACE = 5
@@ -86,7 +87,7 @@ class HealthCheckFilter(logging.Filter):
     This filter suppresses them unless LOG_LEVEL=DEBUG is set.
     """
 
-    HEALTH_PATHS = {"/health", "/api/health"}
+    HEALTH_PATHS: ClassVar[set[str]] = {"/health", "/api/health"}
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Filter out health check logs at INFO level.

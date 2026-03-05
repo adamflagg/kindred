@@ -108,7 +108,7 @@ def seed_from_prod(
         tables_copied: dict[str, int] = {}
         prod_conn = sqlite3.connect(prod_db)
         for table in common:
-            count: int = prod_conn.execute(f"SELECT COUNT(*) FROM [{table}]").fetchone()[0]  # noqa: S608
+            count: int = prod_conn.execute(f"SELECT COUNT(*) FROM [{table}]").fetchone()[0]
             tables_copied[table] = count
         prod_conn.close()
 
@@ -135,9 +135,9 @@ def seed_from_prod(
 
         tables_copied = {}
         for table in common:
-            cur.execute(f"DELETE FROM main.[{table}]")  # noqa: S608
-            cur.execute(f"INSERT INTO main.[{table}] SELECT * FROM prod.[{table}]")  # noqa: S608
-            count = cur.execute(f"SELECT COUNT(*) FROM main.[{table}]").fetchone()[0]  # noqa: S608
+            cur.execute(f"DELETE FROM main.[{table}]")
+            cur.execute(f"INSERT INTO main.[{table}] SELECT * FROM prod.[{table}]")
+            count = cur.execute(f"SELECT COUNT(*) FROM main.[{table}]").fetchone()[0]
             tables_copied[table] = count
 
         conn.commit()

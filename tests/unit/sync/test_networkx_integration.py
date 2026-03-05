@@ -168,8 +168,8 @@ class TestNetworkXIntegration:
         part2_results = []
         for _ in range(3):
             part1, part2 = nx.algorithms.community.kernighan_lin_bisection(graph, seed=seed)
-            part1_results.append(sorted(list(part1)))
-            part2_results.append(sorted(list(part2)))
+            part1_results.append(sorted(part1))
+            part2_results.append(sorted(part2))
 
         # All results should be identical
         for i in range(1, len(part1_results)):

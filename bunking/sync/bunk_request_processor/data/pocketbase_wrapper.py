@@ -13,7 +13,7 @@ from pocketbase.models.utils.list_result import ListResult
 from pocketbase.services.record_service import RecordService
 
 # Import TRACE constant and ensure trace method is available
-from bunking.logging_config import TRACE  # noqa: F401
+from bunking.logging_config import TRACE
 from pocketbase import PocketBase
 
 logger = logging.getLogger(__name__)

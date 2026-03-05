@@ -160,7 +160,7 @@ def add_grade_adjacency_constraints(ctx: SolverContext) -> None:
             continue
 
         # Get unique grades among eligible campers
-        unique_grades = sorted(set(person.grade for _, person in eligible_campers if person.grade is not None))
+        unique_grades = sorted({person.grade for _, person in eligible_campers if person.grade is not None})
 
         # Skip if only 1 unique grade (nothing to compare)
         if len(unique_grades) <= 1:

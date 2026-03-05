@@ -282,7 +282,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         search_last = name_parts[-1].lower()
 
         # Get all nickname variations for the search first name
-        search_variations = set([search_first])
+        search_variations = {search_first}
         search_variations.update(v.lower() for v in find_nickname_variations(search_first))
 
         # Get all nickname groups for bidirectional lookup
@@ -357,7 +357,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         last_metaphone = self._metaphone(last_name)
 
         # Get nickname variations for first name
-        first_variations = set([first_name.lower()])
+        first_variations = {first_name.lower()}
         first_variations.update(v.lower() for v in find_nickname_variations(first_name))
 
         matches = []
@@ -860,7 +860,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         last_metaphone = self._metaphone(last_name)
 
         # Get nickname variations for first name
-        first_variations = set([first_name.lower()])
+        first_variations = {first_name.lower()}
         first_variations.update(v.lower() for v in find_nickname_variations(first_name))
 
         matches = []

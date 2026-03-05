@@ -374,7 +374,7 @@ class OriginalRequestsLoader:
                     return val
                 if isinstance(val, str):
                     try:
-                        return datetime.fromisoformat(val.replace("Z", "+00:00"))
+                        return datetime.fromisoformat(val)
                     except (ValueError, TypeError):
                         return None
                 return None

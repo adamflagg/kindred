@@ -29,24 +29,24 @@ from .metrics_repository import MetricsRepository
 from .retention_service import RetentionService
 
 __all__ = [
+    # Breakdown calculator
+    "BreakdownStats",
     # Existing
     "IDLookupCache",
     # Repository
     "MetricsRepository",
+    "RegistrationBreakdownStats",
     # Services
     "RetentionService",
-    # Breakdown calculator
-    "BreakdownStats",
-    "RegistrationBreakdownStats",
+    "calculate_percentage",
     "compute_breakdown",
     "compute_registration_breakdown",
-    "safe_rate",
-    "calculate_percentage",
+    "extract_city",
     # Extractors
     "extract_gender",
     "extract_grade",
     "extract_school",
-    "extract_city",
     "extract_synagogue",
     "extract_years_at_camp",
+    "safe_rate",
 ]

@@ -58,7 +58,7 @@ def calculate_age(birthdate_str: str) -> float:
     try:
         from datetime import date
 
-        birthdate = datetime.fromisoformat(birthdate_str.replace("Z", "+00:00")).date()
+        birthdate = datetime.fromisoformat(birthdate_str).date()
         today = date.today()
 
         years = today.year - birthdate.year
@@ -388,6 +388,6 @@ async def validate_bunking(request: ValidateBunkingRequest) -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Error during bunking validation: {e}", exc_info=True)
         if os.environ.get("ENV", "development") == "development":
-            raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Validation error: {e!s}")
         else:
             raise HTTPException(status_code=500, detail="Failed to validate bunking")

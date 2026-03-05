@@ -296,7 +296,7 @@ async def list_parse_analysis(
         created_dt = None
         if created_str:
             try:
-                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                created_dt = datetime.fromisoformat(created_str)
             except (ValueError, TypeError):
                 pass
 
@@ -351,7 +351,7 @@ async def get_parse_analysis_detail(item_id: str) -> ParseAnalysisDetailItem:
     created_dt = None
     if created_str:
         try:
-            created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            created_dt = datetime.fromisoformat(created_str)
         except (ValueError, TypeError):
             pass
 
@@ -696,7 +696,7 @@ async def get_parse_results_batch(
         created_str = data.get("created")
         if created_str:
             try:
-                created_dt = datetime.fromisoformat(str(created_str).replace("Z", "+00:00"))
+                created_dt = datetime.fromisoformat(str(created_str))
             except (ValueError, TypeError):
                 pass
 
@@ -774,7 +774,7 @@ async def get_parse_results_batch_dual(
             created_str = dr.get("created")
             if created_str:
                 try:
-                    created_dt = datetime.fromisoformat(str(created_str).replace("Z", "+00:00"))
+                    created_dt = datetime.fromisoformat(str(created_str))
                 except (ValueError, TypeError):
                     pass
 
@@ -889,7 +889,7 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
         created_dt = None
         if created_str:
             try:
-                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                created_dt = datetime.fromisoformat(created_str)
             except (ValueError, TypeError):
                 pass
 

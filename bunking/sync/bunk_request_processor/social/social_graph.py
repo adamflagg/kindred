@@ -129,22 +129,22 @@ class SocialGraph:
 
     async def _build_session_graph(self, session_cm_id: int) -> nx.Graph:
         """Build NetworkX graph for a specific session"""
-        G = nx.Graph()
+        graph = nx.Graph()
 
         try:
             # Build graph from legitimate data sources only
             # NO loading from bunk_requests table - that would be circular dependency
 
             # Add family, school, bunkmate relationships from attendees
-            await self._add_informational_relationships(G, session_cm_id)
+            await self._add_informational_relationships(graph, session_cm_id)
 
             # Add historical bunking relationships from previous years
-            await self._add_historical_bunking_relationships(G, session_cm_id)
+            await self._add_historical_bunking_relationships(graph, session_cm_id)
 
         except Exception as e:
             logger.error(f"Error building social graph for session {session_cm_id}: {e}")
 
-        return G
+        return graph
 
     def _calculate_edge_weight(self, request: Any) -> float:
         """Calculate edge weight based on request properties"""
@@ -168,7 +168,7 @@ class SocialGraph:
 
         return base_weight
 
-    async def _add_informational_relationships(self, G: nx.Graph, session_cm_id: int) -> None:
+    async def _add_informational_relationships(self, graph: nx.Graph, session_cm_id: int) -> None:
         """Add family, school, and bunkmate relationships (informational only)"""
         try:
             # Get all attendees for this year with person and session expanded
@@ -226,7 +226,7 @@ class SocialGraph:
                     for i in range(len(members)):
                         for j in range(i + 1, len(members)):
                             self._add_informational_edge(
-                                G,
+                                graph,
                                 members[i],
                                 members[j],
                                 RelationshipType.SIBLING,
@@ -239,7 +239,7 @@ class SocialGraph:
                     for i in range(len(members)):
                         for j in range(i + 1, len(members)):
                             self._add_informational_edge(
-                                G,
+                                graph,
                                 members[i],
                                 members[j],
                                 RelationshipType.CLASSMATE,
@@ -252,7 +252,7 @@ class SocialGraph:
                     for i in range(len(members)):
                         for j in range(i + 1, len(members)):
                             self._add_informational_edge(
-                                G,
+                                graph,
                                 members[i],
                                 members[j],
                                 RelationshipType.BUNKMATE,
@@ -262,14 +262,14 @@ class SocialGraph:
         except Exception as e:
             logger.debug(f"Could not add informational relationships: {e}")
 
-    async def _add_historical_bunking_relationships(self, G: nx.Graph, session_cm_id: int) -> None:
+    async def _add_historical_bunking_relationships(self, graph: nx.Graph, session_cm_id: int) -> None:
         """Add historical bunking relationships from previous years using bunk_assignments table"""
         try:
             # Get all people in this session's graph
-            if G.number_of_nodes() == 0:
+            if graph.number_of_nodes() == 0:
                 return
 
-            person_cm_ids = list(G.nodes())
+            person_cm_ids = list(graph.nodes())
 
             # Query bunk_assignments for these people in previous years
             # Build filter in chunks to avoid overly long filter strings
@@ -312,7 +312,7 @@ class SocialGraph:
 
             for (year, _bunk_id), members in year_bunk_members.items():
                 # Only consider members who are in the current session's graph
-                graph_members = [m for m in members if m in G]
+                graph_members = [m for m in members if m in graph]
 
                 # Create edges between all pairs of bunkmates
                 for i, person_id in enumerate(graph_members):
@@ -328,7 +328,7 @@ class SocialGraph:
                         recency_weight = 1.0 / (1 + years_ago * 0.2)  # Decay by 20% per year
 
                         self._add_informational_edge(
-                            G,
+                            graph,
                             person_id,
                             bunkmate_id,
                             RelationshipType.BUNKMATE,  # Historical bunkmate
@@ -342,11 +342,13 @@ class SocialGraph:
         except Exception as e:
             logger.debug(f"Could not add historical bunking relationships: {e}")
 
-    def _add_informational_edge(self, G: nx.Graph, u: int, v: int, rel_type: RelationshipType, weight: float) -> None:
+    def _add_informational_edge(
+        self, graph: nx.Graph, u: int, v: int, rel_type: RelationshipType, weight: float
+    ) -> None:
         """Add or update an informational edge"""
-        if G.has_edge(u, v):
+        if graph.has_edge(u, v):
             # Update existing edge
-            edge_data = G[u][v]
+            edge_data = graph[u][v]
             edge_data["weight"] += weight * 0.5  # Reduce weight when combining
             if "relationship_types" not in edge_data:
                 edge_data["relationship_types"] = []
@@ -354,7 +356,7 @@ class SocialGraph:
                 edge_data["relationship_types"].append(rel_type)
         else:
             # Add new edge
-            G.add_edge(
+            graph.add_edge(
                 u, v, weight=weight, relationship_types=[rel_type], informational_only=True
             )  # These edges are just for signals
 

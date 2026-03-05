@@ -5,7 +5,7 @@ with the same or similar names."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
@@ -146,7 +146,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
         )
 
     # School name abbreviation mappings for normalization
-    SCHOOL_ABBREVIATIONS = {
+    SCHOOL_ABBREVIATIONS: ClassVar[dict[str, str]] = {
         "middle school": "ms",
         "elementary school": "es",
         "elementary": "es",

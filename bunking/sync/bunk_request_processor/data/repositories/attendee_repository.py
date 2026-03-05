@@ -66,8 +66,8 @@ class AttendeeRepository:
             if result.items:
                 return self._map_attendee_record(result.items[0])
 
-        except Exception as e:
-            print(f"Error finding attendee for person {person_cm_id} in year {year}: {e}")
+        except Exception:
+            pass
 
         return None
 
@@ -133,8 +133,7 @@ class AttendeeRepository:
 
             return attendees
 
-        except Exception as e:
-            print(f"Error finding attendees for session {session_cm_id} in year {year}: {e}")
+        except Exception:
             return []
 
     def clear_cache(self) -> None:
@@ -164,7 +163,7 @@ class AttendeeRepository:
 
             # Get requester's birth date
             requester_birth_date = None
-            if "birth_date" in requester_attendee and requester_attendee["birth_date"]:
+            if requester_attendee.get("birth_date"):
                 requester_birth_date = parse_date(requester_attendee["birth_date"])
 
             if not requester_birth_date:
@@ -194,8 +193,7 @@ class AttendeeRepository:
 
             return filtered_peers
 
-        except Exception as e:
-            print(f"Error getting age-filtered peers: {e}")
+        except Exception:
             return []
 
     def bulk_get_sessions_for_persons(self, person_cm_ids: list[int], year: int) -> dict[int, int]:
@@ -230,8 +228,7 @@ class AttendeeRepository:
 
             return sessions_dict
 
-        except Exception as e:
-            print(f"Error bulk getting sessions: {e}")
+        except Exception:
             return {}
 
     def _map_attendee_record(self, db_record: Any) -> dict[str, Any]:
@@ -289,8 +286,7 @@ class AttendeeRepository:
                         "expand": "person,bunk",
                     }
                 )
-            except Exception as e:
-                print(f"Error finding prior assignment for {requester_cm_id}: {e}")
+            except Exception:
                 return {}
 
             if not assignments:
@@ -346,8 +342,7 @@ class AttendeeRepository:
                 "returning_count": len(returning_ids),
             }
 
-        except Exception as e:
-            print(f"Failed to find prior year bunkmates: {e}")
+        except Exception:
             return {}
 
     def build_person_session_mappings(
@@ -466,5 +461,4 @@ class AttendeeRepository:
             }
 
         except Exception as e:
-            print(f"Error building person session mappings: {e}")
             return {"person_sessions": {}, "person_previous_year_sessions": {}, "stats": {"error": str(e)}}
