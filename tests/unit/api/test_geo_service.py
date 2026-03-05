@@ -662,8 +662,7 @@ class TestGeocoding:
         """Successful geocoding should return (lat, lng) tuple."""
         from api.services.geo_service import geocode_location
 
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
+        mock_response = Mock()
         mock_response.json.return_value = [{"lat": "37.8044", "lon": "-122.2712"}]
 
         with patch("api.services.geo_service.httpx.AsyncClient") as mock_client_cls:
@@ -682,8 +681,7 @@ class TestGeocoding:
         """When Nominatim returns no results, should return None."""
         from api.services.geo_service import geocode_location
 
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
+        mock_response = Mock()
         mock_response.json.return_value = []
 
         with patch("api.services.geo_service.httpx.AsyncClient") as mock_client_cls:

@@ -1,0 +1,133 @@
+"""
+Geo Router - Geographic data management endpoints.
+
+This router provides endpoints for:
+- Viewing gaps in geographic data (missing coordinates)
+- Searching canonical entries with source metadata
+- Inspecting raw value sources for a canonical name
+- Managing geo overrides (CRUD)
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, Query
+from starlette.responses import Response
+
+from bunking.auth_middleware import AuthUser, get_current_user
+
+from ..dependencies import pb
+from ..schemas.geo import (
+    CanonicalSearchResponse,
+    GapsResponse,
+    OverrideCreate,
+    OverrideResponse,
+    SourcesResponse,
+)
+from ..services.geo_service import GeoService
+
+router = APIRouter(prefix="/api/geo", tags=["geo"])
+
+
+def _get_service() -> GeoService:
+    """Create a GeoService instance with the shared PocketBase client."""
+    return GeoService(pb)
+
+
+# ============================================================================
+# Gaps Endpoint
+# ============================================================================
+
+
+@router.get("/gaps", response_model=GapsResponse)
+async def get_gaps(
+    category: str = Query(..., description="Category: city, school, or congregation"),
+    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    user: AuthUser = Depends(get_current_user),
+) -> GapsResponse:
+    """Get three-tier gap classification for normalized values missing coordinates."""
+    service = _get_service()
+    return await service.get_gaps(category, year)
+
+
+# ============================================================================
+# Canonical Search Endpoint
+# ============================================================================
+
+
+@router.get("/canonicals", response_model=CanonicalSearchResponse)
+async def search_canonicals(
+    category: str = Query(..., description="Category: city, school, or congregation"),
+    q: str = Query(..., description="Search query (case-insensitive substring match)"),
+    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    user: AuthUser = Depends(get_current_user),
+) -> CanonicalSearchResponse:
+    """Search canonical entries by name, city, or state."""
+    service = _get_service()
+    return await service.search_canonicals(category, q, year)
+
+
+# ============================================================================
+# Source Inspection Endpoint
+# ============================================================================
+
+
+@router.get("/canonicals/{canonical_name}/sources", response_model=SourcesResponse)
+async def get_sources(
+    canonical_name: str,
+    category: str = Query(..., description="Category: city, school, or congregation"),
+    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    user: AuthUser = Depends(get_current_user),
+) -> SourcesResponse:
+    """Get raw value variants that map to a canonical name."""
+    service = _get_service()
+    return await service.get_sources(category, canonical_name, year)
+
+
+# ============================================================================
+# Override CRUD Endpoints
+# ============================================================================
+
+
+@router.get("/overrides", response_model=list[OverrideResponse])
+async def list_overrides(
+    category: str = Query(..., description="Category: city, school, or congregation"),
+    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    user: AuthUser = Depends(get_current_user),
+) -> list[OverrideResponse]:
+    """List all geo overrides for a category and year."""
+    service = _get_service()
+    return await service.list_overrides(category, year)
+
+
+@router.post("/overrides", response_model=OverrideResponse, status_code=201)
+async def create_override(
+    data: OverrideCreate,
+    user: AuthUser = Depends(get_current_user),
+) -> OverrideResponse:
+    """Create a new geo override."""
+    service = _get_service()
+    return await service.create_override(data)
+
+
+@router.patch("/overrides/{override_id}", response_model=OverrideResponse)
+async def update_override(
+    override_id: str,
+    data: dict[str, Any],
+    user: AuthUser = Depends(get_current_user),
+) -> OverrideResponse:
+    """Update an existing geo override."""
+    service = _get_service()
+    return await service.update_override(override_id, data)
+
+
+@router.delete("/overrides/{override_id}", status_code=204)
+async def delete_override(
+    override_id: str,
+    user: AuthUser = Depends(get_current_user),
+) -> Response:
+    """Delete a geo override."""
+    service = _get_service()
+    await service.delete_override(override_id)
+    return Response(status_code=204)

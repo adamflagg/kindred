@@ -120,6 +120,7 @@ def create_app() -> FastAPI:
     # Register routers
     from .routers import (
         debug,
+        geo,
         metrics,
         requests,
         scenarios,
@@ -137,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(debug.router)
     app.include_router(metrics.router)
     app.include_router(session_availability.router)
+    app.include_router(geo.router)
 
     # Core endpoints (not in a router)
     @app.get("/health")
