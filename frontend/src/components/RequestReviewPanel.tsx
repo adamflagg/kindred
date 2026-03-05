@@ -584,8 +584,7 @@ export default function RequestReviewPanel({
       // Only validate if changing target or type (potential conflict fields)
       if (updates.requestee_id !== undefined || updates.request_type !== undefined) {
         const newRequesteeId = updates.requestee_id ?? request.requestee_id ?? 0
-        const newType = (updates.request_type ??
-          request.request_type)
+        const newType = updates.request_type ?? request.request_type
 
         validateChange({
           requestId: request.id,

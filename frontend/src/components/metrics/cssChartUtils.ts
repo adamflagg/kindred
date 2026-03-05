@@ -6,7 +6,16 @@
  * other vertical/horizontal CSS charts.
  */
 
-import { type MouseEvent, type RefObject, type ReactNode, createElement, Fragment, useState, useCallback, useRef } from 'react'
+import {
+  type MouseEvent,
+  type RefObject,
+  type ReactNode,
+  createElement,
+  Fragment,
+  useState,
+  useCallback,
+  useRef,
+} from 'react'
 
 /** Height for straight x-axis labels (px). */
 export const X_AXIS_HEIGHT_STRAIGHT = 34

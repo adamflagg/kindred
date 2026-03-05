@@ -73,9 +73,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
 
   // Cache bunk person sets to avoid recreating for each camper in the bunk
   // Key: bunkCmId, Value: Set of person CM IDs
-  const bunkPersonSetCache = useRef<Map<number, { set: Set<number>; size: number }>>(
-    new Map()
-  )
+  const bunkPersonSetCache = useRef<Map<number, { set: Set<number>; size: number }>>(new Map())
 
   const getBunkPersonSet = (bunkCmId: number, campersInBunk: BunkmateInfo[]): Set<number> => {
     const cached = bunkPersonSetCache.current.get(bunkCmId)

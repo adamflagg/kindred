@@ -101,8 +101,7 @@ interface RequestCardProps {
 
 function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
   // Check direct source_field first, then ai_reasoning.csv_source_field
-  const sourceField =
-    request.source_field || (request.ai_reasoning?.csv_source_field)
+  const sourceField = request.source_field || request.ai_reasoning?.csv_source_field
 
   const borderColor =
     request.request_type === 'bunk_with'
@@ -251,8 +250,7 @@ function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) 
 
 function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
   // Check direct source_field first, then ai_reasoning.csv_source_field
-  const sourceField =
-    request.source_field || (request.ai_reasoning?.csv_source_field)
+  const sourceField = request.source_field || request.ai_reasoning?.csv_source_field
 
   return (
     <div className="border-border bg-muted/20 border-t px-4 pt-2 pb-4">

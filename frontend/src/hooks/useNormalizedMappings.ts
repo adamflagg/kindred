@@ -60,7 +60,7 @@ export function useNormalizedMappings(
       for (const record of records) {
         const normalizedValue = record['normalized_value']
         const originalValue = record['original_value']
-        const confidence = (record['confidence']) ?? 1.0
+        const confidence = record['confidence'] ?? 1.0
 
         let originals = byNormalized.get(normalizedValue)
         if (!originals) {

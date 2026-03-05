@@ -363,11 +363,15 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
     ]
     const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     // maxWidth should be on inner visual div, not on the outer flex-1 wrapper
-    const innerDivsWithMaxWidth = container.querySelectorAll<HTMLElement>('[style*="max-width: 120px"]')
+    const innerDivsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(innerDivsWithMaxWidth.length).toBe(sparseData.length)
     // Outer wrappers (direct children of barsArea) should NOT have maxWidth
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const outerWithMaxWidth = barsArea.querySelectorAll<HTMLElement>(':scope > [style*="max-width"]')
+    const outerWithMaxWidth = barsArea.querySelectorAll<HTMLElement>(
+      ':scope > [style*="max-width"]'
+    )
     expect(outerWithMaxWidth.length).toBe(0)
   })
 
@@ -388,7 +392,9 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
       female: 8 + i,
     }))
     const { container } = render(<CssVerticalGroupedBarChart data={normalData} series={series} />)
-    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>('[style*="max-width: 120px"]')
+    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 

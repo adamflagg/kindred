@@ -147,9 +147,9 @@ export default function CampersView({
       filtered = filtered.filter(
         (camper) =>
           camper.name.toLowerCase().includes(term) ||
-          (camper.first_name?.toLowerCase().includes(term)) ||
-          (camper.last_name?.toLowerCase().includes(term)) ||
-          (camper.preferred_name?.toLowerCase().includes(term))
+          camper.first_name?.toLowerCase().includes(term) ||
+          camper.last_name?.toLowerCase().includes(term) ||
+          camper.preferred_name?.toLowerCase().includes(term)
       )
     }
 

@@ -152,7 +152,7 @@ export function SyncTab() {
     const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus]
     const status =
       statusValue && typeof statusValue === 'object' && 'status' in statusValue
-        ? (statusValue)
+        ? statusValue
         : ({ status: 'idle' } as SyncStatus)
     const Icon = syncType.icon
     const isRunning = status.status === 'running'
@@ -769,7 +769,7 @@ export function SyncTab() {
               const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus]
               const status =
                 statusValue && typeof statusValue === 'object' && 'status' in statusValue
-                  ? (statusValue)
+                  ? statusValue
                   : ({ status: 'idle' } as SyncStatus)
               const Icon = syncType.icon
               const isRunning = status.status === 'running'

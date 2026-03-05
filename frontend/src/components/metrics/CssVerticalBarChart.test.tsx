@@ -373,7 +373,9 @@ describe('CssVerticalBarChart column sizing', () => {
       value: 10 + i,
     }))
     const { container } = render(<CssVerticalBarChart data={normalData} />)
-    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>('[style*="max-width: 120px"]')
+    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -395,9 +397,7 @@ describe('CssVerticalBarChart column sizing', () => {
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(
-      ':scope > [style*="max-width"]'
-    )
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]')
     fireEvent.mouseEnter(columns[0]!)
     expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
     expect(columns[1]!.className).not.toContain('bg-foreground/[0.06]')

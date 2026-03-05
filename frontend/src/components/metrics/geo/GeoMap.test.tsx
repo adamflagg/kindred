@@ -17,9 +17,7 @@ const renderedMarkers: Array<{
 
 // Mock react-leaflet components before imports
 vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: ReactNode }) => (
-    <div data-testid="map">{children}</div>
-  ),
+  MapContainer: ({ children }: { children: ReactNode }) => <div data-testid="map">{children}</div>,
   TileLayer: () => null,
   CircleMarker: ({
     children,

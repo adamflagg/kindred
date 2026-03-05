@@ -541,7 +541,9 @@ describe('CssVerticalStackedBarChart column sizing', () => {
       <CssVerticalStackedBarChart data={normalData} segments={segments} />
     )
     // Normal mode should NOT have maxWidth on columns
-    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>('[style*="max-width: 120px"]')
+    const columnsWithMaxWidth = container.querySelectorAll<HTMLElement>(
+      '[style*="max-width: 120px"]'
+    )
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -567,9 +569,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
       <CssVerticalStackedBarChart data={sparseData} segments={segments} />
     )
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(
-      ':scope > [style*="max-width"]'
-    )
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]')
     // Hover over first column
     fireEvent.mouseEnter(columns[0]!)
     expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
