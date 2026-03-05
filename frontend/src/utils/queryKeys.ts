@@ -187,6 +187,15 @@ export const queryKeys = {
       ? (['normalized-mappings', year, category, sessionCmId] as const)
       : (['normalized-mappings', year, category] as const),
 
+  // Geo Management (Tier 2 - user data)
+  geoGaps: (category: string, year: number) => ['geo', 'gaps', category, year] as const,
+  geoCanonicals: (category: string, query: string, year: number) =>
+    ['geo', 'canonicals', category, query, year] as const,
+  geoSources: (category: string, canonicalName: string, year: number) =>
+    ['geo', 'sources', category, canonicalName, year] as const,
+  geoOverrides: (category: string, year: number) =>
+    ['geo', 'overrides', category, year] as const,
+
   // Velocity (Tier 1 - sync data, historical analysis)
   velocity: (
     year: number,
