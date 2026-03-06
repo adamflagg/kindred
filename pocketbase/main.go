@@ -19,6 +19,7 @@ import (
 
 	// Import our packages
 	"github.com/camp/kindred/pocketbase/logging"
+	"github.com/camp/kindred/pocketbase/rbac"
 	"github.com/camp/kindred/pocketbase/sync"
 )
 
@@ -126,6 +127,9 @@ func main() {
 			return e.Next()
 		},
 	})
+
+	// Register RBAC hooks for permission cache recomputation
+	rbac.RegisterHooks(app)
 
 	// Start scheduler after the app is fully initialized
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
