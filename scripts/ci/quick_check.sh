@@ -149,7 +149,10 @@ fi
 # 7. Shell script linting (if shellcheck installed)
 if command -v shellcheck &> /dev/null; then
     echo -n "Shell scripts (shellcheck)... "
-    if shellcheck --severity=warning scripts/*.sh scripts/**/*.sh .githooks/* docker/*.sh frontend/*.sh tests/shell/*.sh > /tmp/shellcheck_output.txt 2>&1; then
+    # Lint all shell scripts (use find to avoid glob failures on empty dirs)
+    SHELL_FILES=$(find scripts/ .githooks/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' -o -name 'pre-*' -o -name 'post-*' 2>/dev/null | sort)
+    # shellcheck disable=SC2086
+    if [ -n "$SHELL_FILES" ] && echo "$SHELL_FILES" | xargs shellcheck --severity=warning > /tmp/shellcheck_output.txt 2>&1; then
         echo -e "${GREEN}✓${NC}"
     else
         echo -e "${RED}✗${NC}"
