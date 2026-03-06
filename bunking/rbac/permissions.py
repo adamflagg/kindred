@@ -21,3 +21,14 @@ class Permission:
 
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(getattr(Permission, attr) for attr in dir(Permission) if attr.isupper())
+
+PERMISSION_DESCRIPTIONS: dict[str, str] = {
+    Permission.BUNKING_VIEW: "View board layout, camper lists, social graphs",
+    Permission.BUNKING_MANAGE: "Manage requests, scenarios, solver runs",
+    Permission.METRICS_VIEW: "View registration and retention dashboards",
+    Permission.METRICS_FINANCIAL: "View financial projections and revenue data",
+    Permission.METRICS_GEO: "View and manage geographic data",
+    Permission.SYNC_RUN: "Run CampMinder syncs",
+    Permission.SOLVER_CONFIGURE: "Adjust solver weights and parameters",
+    Permission.USERS_MANAGE: "Assign roles and manage users",
+}

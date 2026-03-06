@@ -8,6 +8,7 @@ import { useScenario } from '../hooks/useScenario'
 import { graphCacheService } from '../services/GraphCacheService'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import {
   useSessionHierarchy,
   useSolverOperations,
@@ -56,7 +57,7 @@ export default function SessionView() {
   } = useScenario()
   const { setSessionPbId: setLockGroupSessionPbId } = useLockGroupContext()
   const { hasPermission } = usePermissions()
-  const canManage = hasPermission('bunking.manage')
+  const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Extract tab from URL path
   const activeTab = (isValidTab(tabPath || '') ? tabPath : 'bunks') as ValidTab

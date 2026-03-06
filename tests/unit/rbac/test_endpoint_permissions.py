@@ -48,11 +48,11 @@ class TestSocialGraphPermissions:
 
         _assert_endpoint_has_permission_dep(get_person_ego_network, Permission.BUNKING_VIEW)
 
-    def test_update_position_requires_bunking_view(self) -> None:
-        """PATCH /api/sessions/{id}/campers/{id}/position needs bunking.view."""
+    def test_update_position_requires_bunking_manage(self) -> None:
+        """PATCH /api/sessions/{id}/campers/{id}/position needs bunking.manage."""
         from api.routers.social_graph import update_camper_position
 
-        _assert_endpoint_has_permission_dep(update_camper_position, Permission.BUNKING_VIEW)
+        _assert_endpoint_has_permission_dep(update_camper_position, Permission.BUNKING_MANAGE)
 
 
 class TestSolverPermissions:

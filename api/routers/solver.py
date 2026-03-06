@@ -28,6 +28,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from bunking.auth_middleware import AuthUser
 from bunking.config import ConfigLoader
 from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb, solver_runs
 from ..schemas import (
@@ -53,7 +54,7 @@ router = APIRouter(prefix="/api", tags=["solver"])
 async def run_solver(
     request: SolverRequest,
     background_tasks: BackgroundTasks,
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SolverResponse:
     """Run the bunking solver for a session."""
     run_id = str(uuid4())
@@ -92,7 +93,9 @@ async def run_solver(
 
 
 @router.get("/solver/run/{run_id}")
-async def get_solver_run(run_id: str, user: AuthUser = Depends(require_permission("bunking.manage"))) -> dict[str, Any]:
+async def get_solver_run(
+    run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> dict[str, Any]:
     """Get status and results of a solver run."""
     if run_id not in solver_runs:
         # Try to fetch from PocketBase
@@ -118,7 +121,7 @@ async def get_solver_run(run_id: str, user: AuthUser = Depends(require_permissio
 
 @router.post("/solver/pre-validate")
 async def pre_validate_solver(
-    request: SolverRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    request: SolverRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, Any]:
     """Pre-validate solver request to check for unsatisfiable constraints.
 
@@ -443,14 +446,16 @@ async def pre_validate_solver(
 
 
 @router.post("/solver/run/{run_id}/analyze")
-async def analyze_solver_run(run_id: str, user: AuthUser = Depends(require_permission("bunking.manage"))) -> None:
+async def analyze_solver_run(
+    run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> None:
     """Analyze an existing solver run results."""
     raise HTTPException(status_code=501, detail="Analysis functionality is being reimplemented")
 
 
 @router.post("/solver/apply/{run_id}")
 async def apply_solver_results(
-    run_id: str, user: AuthUser = Depends(require_permission("bunking.manage"))
+    run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, str]:
     """Apply the results of a solver run to the database."""
     session_cm_id = None
@@ -665,7 +670,7 @@ async def apply_solver_results(
 async def run_multi_session_solver(
     request: MultiSessionSolverRequest,
     background_tasks: BackgroundTasks,
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Run the bunking solver for multiple child sessions of a parent session."""
     # Get time limit from config if not specified in request
@@ -765,7 +770,7 @@ async def run_multi_session_solver(
 async def clear_session_assignments(
     session_cm_id: int,
     request: ClearAssignmentsRequest,
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Clear all assignments for a session and its related sessions."""
     try:
@@ -837,7 +842,7 @@ async def clear_session_assignments(
 
 @router.get("/solver/logs/{session_id}")
 async def get_solver_logs(
-    session_id: int, run_id: str | None = None, user: AuthUser = Depends(require_permission("bunking.manage"))
+    session_id: int, run_id: str | None = None, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, Any]:
     """Get solver logs for a session."""
     try:
@@ -917,7 +922,7 @@ async def get_solver_logs(
 
 @router.get("/solver/logs")
 async def list_solver_logs(
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, list[dict[str, Any]]]:
     """List available solver log files."""
     try:

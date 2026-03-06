@@ -11,16 +11,8 @@ import { Shield, Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { pb } from '../../lib/pocketbase'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import { usePermissions } from '../../hooks/usePermissions'
-import { ALL_PERMISSIONS } from '../../constants/permissions'
-import type { RecordModel } from 'pocketbase'
-
-interface Role extends RecordModel {
-  name: string
-  slug: string
-  description: string
-  permissions: string[]
-  is_system: boolean
-}
+import { ALL_PERMISSIONS, Permission } from '../../constants/permissions'
+import type { Role } from '../../types/rbac'
 
 interface RoleFormData {
   name: string
@@ -31,7 +23,7 @@ interface RoleFormData {
 
 export function RolesTab() {
   const { hasPermission, isAdmin } = usePermissions()
-  const canManageUsers = hasPermission('users.manage')
+  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
   const queryClient = useQueryClient()
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [isCreating, setIsCreating] = useState(false)

@@ -28,6 +28,7 @@ import BunkRequestsUpload from '../components/BunkRequestsUpload'
 import { BrandedLogo } from '../components/BrandedLogo'
 import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 import { formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
@@ -234,7 +235,7 @@ export const AppLayout = () => {
 
               {/* Desktop navigation */}
               <div className="hidden sm:flex sm:gap-1">
-                {activeProgram === 'summer' && hasPermission('bunking.view') && (
+                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_VIEW) && (
                   <Link
                     to="/summer/sessions"
                     className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
@@ -242,7 +243,7 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && hasPermission('metrics.view') && (
+                {activeProgram === 'metrics' && hasPermission(Permission.METRICS_VIEW) && (
                   <Link
                     to="/metrics"
                     className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
@@ -455,7 +456,7 @@ export const AppLayout = () => {
 
               {/* Navigation Items */}
               <div className="space-y-1">
-                {activeProgram === 'summer' && hasPermission('bunking.view') && (
+                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_VIEW) && (
                   <Link
                     to="/summer/sessions"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
@@ -468,7 +469,7 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && hasPermission('metrics.view') && (
+                {activeProgram === 'metrics' && hasPermission(Permission.METRICS_VIEW) && (
                   <Link
                     to="/metrics"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
@@ -556,7 +557,7 @@ export const AppLayout = () => {
                 <YearSelector />
 
                 {/* Summer-only: Bunking controls (manage permission required) */}
-                {activeProgram === 'summer' && hasPermission('bunking.manage') && (
+                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                   <>
                     <BunkRequestsUpload />
                     <button
@@ -640,7 +641,7 @@ export const AppLayout = () => {
 
             {/* Right side: Program-specific actions */}
             <div className="flex items-center gap-2">
-              {activeProgram === 'summer' && hasPermission('bunking.manage') && (
+              {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                 <>
                   <BunkRequestsUpload />
                   <button

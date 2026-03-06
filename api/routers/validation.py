@@ -27,6 +27,7 @@ from bunking.models import (
     Session,
 )
 from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
@@ -82,7 +83,7 @@ def calculate_age(birthdate_str: str) -> float:
 
 @router.post("/validate-bunking")
 async def validate_bunking(
-    request: ValidateBunkingRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    request: ValidateBunkingRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, Any]:
     """Validate current bunking assignments for a session."""
     try:

@@ -27,6 +27,7 @@ import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
 
 interface BunkingBoardByAreaProps {
@@ -70,7 +71,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const [, startTransition] = useTransition()
   const currentYear = useYear()
   const { hasPermission } = usePermissions()
-  const canManage = hasPermission('bunking.manage')
+  const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Get lock group context for action bar and pending camper management
   const {

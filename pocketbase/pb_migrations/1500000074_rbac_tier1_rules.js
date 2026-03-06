@@ -9,7 +9,7 @@
 
 migrate((app) => {
   const adminOnly = '@request.auth.is_admin = true'
-  const anyRole = '@request.auth.is_admin = true || @request.auth.cached_permissions != "[]"'
+  const anyRole = '@request.auth.is_admin = true || (@request.auth.cached_permissions != null && @request.auth.cached_permissions != "[]")'
   const bunkingView = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.view"'
   const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
   const metricsGeo = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "metrics.geo"'

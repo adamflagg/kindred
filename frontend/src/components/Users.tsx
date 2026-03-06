@@ -4,9 +4,12 @@ import { pb } from '../lib/pocketbase'
 import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck } from 'lucide-react'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
+import { formatDistanceToNow } from 'date-fns'
 import { RolesTab } from './admin/RolesTab'
 import { UserRolesPanel } from './admin/UserRolesPanel'
 import type { RecordModel } from 'pocketbase'
+import type { Role, UserRole } from '../types/rbac'
 
 // Generate consistent color from string (for avatar backgrounds)
 function getAvatarColor(str: string): string {
@@ -31,36 +34,11 @@ function getAvatarColor(str: string): string {
   )
 }
 
-// Format relative time
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
-  return `${Math.floor(diffDays / 365)} years ago`
-}
-
 type Tab = 'users' | 'roles'
-
-interface Role extends RecordModel {
-  name: string
-  slug: string
-}
-
-interface UserRole extends RecordModel {
-  user: string
-  role: string
-}
 
 export default function Users() {
   const { hasPermission } = usePermissions()
-  const canManageUsers = hasPermission('users.manage')
+  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>('users')
   const [selectedUser, setSelectedUser] = useState<RecordModel | null>(null)
@@ -71,7 +49,7 @@ export default function Users() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['users-list'],
+    queryKey: queryKeys.users(),
     queryFn: async () => {
       const result = await pb.collection('users').getList<RecordModel>(1, 1000, {
         sort: '-created',
@@ -287,7 +265,7 @@ export default function Users() {
                       {created && (
                         <div className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex">
                           <Calendar className="h-3.5 w-3.5" />
-                          <span>{formatRelativeTime(created)}</span>
+                          <span>{formatDistanceToNow(new Date(created), { addSuffix: true })}</span>
                         </div>
                       )}
                     </div>

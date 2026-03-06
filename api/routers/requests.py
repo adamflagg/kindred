@@ -14,6 +14,7 @@ from pydantic import BaseModel, field_validator
 
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
     RequestType,
@@ -207,7 +208,7 @@ class SplitRequestsResponse(BaseModel):
 
 @router.post("/requests/merge", response_model=MergeRequestsResponse)
 async def merge_requests(
-    request: MergeRequestsRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    request: MergeRequestsRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> MergeRequestsResponse:
     """Merge multiple bunk_requests into a single request.
 
@@ -381,7 +382,7 @@ async def merge_requests(
 
 @router.post("/requests/split", response_model=SplitRequestsResponse)
 async def split_requests(
-    request: SplitRequestsRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    request: SplitRequestsRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> SplitRequestsResponse:
     """Split a merged bunk_request into separate requests.
 

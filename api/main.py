@@ -175,21 +175,12 @@ def create_app() -> FastAPI:
         Returns all valid permission codenames and their descriptions.
         Any authenticated user can read this; it's used by the role editor.
         """
-        from bunking.rbac.permissions import ALL_PERMISSIONS, Permission
+        from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS
 
         return {
             "permissions": [
-                {"codename": Permission.BUNKING_VIEW, "description": "View board layout, camper lists, social graphs"},
-                {"codename": Permission.BUNKING_MANAGE, "description": "Manage requests, scenarios, solver runs"},
-                {"codename": Permission.METRICS_VIEW, "description": "View registration and retention dashboards"},
-                {
-                    "codename": Permission.METRICS_FINANCIAL,
-                    "description": "View financial projections and revenue data",
-                },
-                {"codename": Permission.METRICS_GEO, "description": "View and manage geographic data"},
-                {"codename": Permission.SYNC_RUN, "description": "Run CampMinder syncs"},
-                {"codename": Permission.SOLVER_CONFIGURE, "description": "Adjust solver weights and parameters"},
-                {"codename": Permission.USERS_MANAGE, "description": "Assign roles and manage users"},
+                {"codename": perm, "description": PERMISSION_DESCRIPTIONS.get(perm, "")}
+                for perm in sorted(ALL_PERMISSIONS)
             ],
             "total": len(ALL_PERMISSIONS),
         }

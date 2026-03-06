@@ -13,7 +13,6 @@ from bunking.auth_middleware import (
     _is_docker_environment,
     create_auth_middleware,
     get_current_user,
-    require_admin,
 )
 
 
@@ -206,40 +205,6 @@ class TestGetCurrentUser:
             get_current_user(request)
 
         assert exc_info.value.status_code == 401
-
-
-class TestRequireAdmin:
-    """Tests for require_admin dependency."""
-
-    def test_require_admin_is_admin(self):
-        """Test require_admin with admin user."""
-        user = AuthUser(
-            username="admin",
-            email="admin@example.com",
-            display_name="Admin",
-            groups=["admin"],
-            is_admin=True,
-        )
-
-        result = require_admin(user)
-        assert result.is_admin is True
-
-    def test_require_admin_not_admin(self):
-        """Test require_admin with non-admin user."""
-        from fastapi import HTTPException
-
-        user = AuthUser(
-            username="basic",
-            email="basic@example.com",
-            display_name="Basic",
-            groups=[],
-            is_admin=False,
-        )
-
-        with pytest.raises(HTTPException) as exc_info:
-            require_admin(user)
-
-        assert exc_info.value.status_code == 403
 
 
 class TestCreateAuthMiddleware:

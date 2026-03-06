@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import aiohttp
 import httpx
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
@@ -416,12 +416,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Add user to request state
         request.state.user = user
 
-        # Check admin access for admin routes
-        if request.url.path.startswith("/admin") or request.url.path.startswith("/api/users"):
-            if not user.is_admin:
-                logger.warning(f"Non-admin user {user.username} attempted to access {request.url.path}")
-                return JSONResponse(status_code=403, content={"detail": "Admin access required"})
-
         # Log the authenticated request
         logger.debug(f"Authenticated request from {user.username} to {request.url.path}")
 
@@ -442,21 +436,6 @@ def get_current_user(request: Request) -> AuthUser:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user: AuthUser = request.state.user
-    return user
-
-
-def require_admin(user: AuthUser = Depends(get_current_user)) -> AuthUser:
-    """
-    Dependency to require admin access.
-
-    Usage:
-        @app.get("/admin/protected")
-        async def admin_route(user: AuthUser = Depends(require_admin)):
-            return {"message": f"Hello admin {user.username}"}
-    """
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
     return user
 
 

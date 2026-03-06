@@ -11,19 +11,7 @@ import { X, Loader2, Shield } from 'lucide-react'
 import { pb } from '../../lib/pocketbase'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { RecordModel } from 'pocketbase'
-
-interface Role extends RecordModel {
-  name: string
-  slug: string
-  description: string
-  permissions: string[]
-  is_system: boolean
-}
-
-interface UserRole extends RecordModel {
-  user: string
-  role: string
-}
+import type { Role, UserRole } from '../../types/rbac'
 
 interface UserRolesPanelProps {
   user: RecordModel

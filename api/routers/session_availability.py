@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
 from ..schemas.session_availability import SessionAvailabilityResponse
@@ -28,7 +29,7 @@ async def get_session_availability(
         None,
         description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
     ),
-    user: AuthUser = Depends(require_permission("metrics.view")),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_VIEW)),
 ) -> SessionAvailabilityResponse:
     """Get session availability matrix.
 

@@ -28,6 +28,7 @@ from bunking.models import (
     UpdateScenarioRequest,
 )
 from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 from bunking.solver.objective_evaluator import evaluate_objective
 
 from ..dependencies import pb, solver_runs
@@ -46,7 +47,7 @@ router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 
 @router.post("")
 async def create_scenario(
-    request: CreateScenarioRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    request: CreateScenarioRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> SavedScenario:
     """Create a new scenario, optionally copying from production data."""
     try:
@@ -202,7 +203,7 @@ async def list_scenarios(
     session_id: Annotated[int, Query(description="Session CampMinder ID")],
     year: Annotated[int, Query(description="Year to filter by")],  # Now required
     include_inactive: Annotated[bool, Query(description="Include inactive scenarios")] = False,
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> list[SavedScenario]:
     """List all scenarios for a session and its related sessions."""
     try:
@@ -244,7 +245,7 @@ async def evaluate_score(
     session_id: Annotated[int, Query(description="Session CampMinder ID")],
     year: Annotated[int, Query(description="Year")],
     scenario_id: Annotated[str | None, Query(description="Scenario ID (omit for production)")] = None,
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Evaluate the solver objective score for a scenario or production assignments.
 
@@ -380,7 +381,7 @@ async def evaluate_score(
 async def get_scenario(
     scenario_id: Annotated[str, Path(description="Scenario ID")],
     include_assignments: Annotated[bool, Query(description="Include bunk assignments")] = True,
-    user: AuthUser = Depends(require_permission("bunking.manage")),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SavedScenario | dict[str, Any]:
     """Get a specific scenario with optional assignments."""
     try:
@@ -424,7 +425,9 @@ async def get_scenario(
 
 @router.put("/{scenario_id}")
 async def update_scenario(
-    scenario_id: str, request: UpdateScenarioRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    scenario_id: str,
+    request: UpdateScenarioRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SavedScenario:
     """Update scenario metadata."""
     try:
@@ -464,7 +467,7 @@ async def update_scenario(
 
 @router.delete("/{scenario_id}")
 async def delete_scenario(
-    scenario_id: str, user: AuthUser = Depends(require_permission("bunking.manage"))
+    scenario_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, str]:
     """Delete a scenario and all its data."""
     try:
@@ -500,7 +503,9 @@ async def delete_scenario(
 
 @router.put("/{scenario_id}/assignments")
 async def update_scenario_assignment(
-    scenario_id: str, update: ScenarioAssignmentUpdate, user: AuthUser = Depends(require_permission("bunking.manage"))
+    scenario_id: str,
+    update: ScenarioAssignmentUpdate,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Update a single assignment in a scenario.
 
@@ -653,14 +658,18 @@ async def update_scenario_assignment(
 
 
 @router.post("/{scenario_id}/analyze")
-async def analyze_scenario(scenario_id: str, user: AuthUser = Depends(require_permission("bunking.manage"))) -> None:
+async def analyze_scenario(
+    scenario_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> None:
     """Analyze the current assignments in a scenario."""
     raise HTTPException(status_code=501, detail="Analysis functionality is being reimplemented")
 
 
 @router.post("/{scenario_id}/solve")
 async def solve_scenario(
-    scenario_id: str, background_tasks: BackgroundTasks, user: AuthUser = Depends(require_permission("bunking.manage"))
+    scenario_id: str,
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, str]:
     """Run the solver on a scenario.
 
@@ -709,7 +718,9 @@ async def solve_scenario(
 
 @router.post("/{scenario_id}/clear")
 async def clear_scenario(
-    scenario_id: str, request: ClearScenarioRequest, user: AuthUser = Depends(require_permission("bunking.manage"))
+    scenario_id: str,
+    request: ClearScenarioRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, str | int]:
     """Clear all assignments in a scenario."""
     try:
