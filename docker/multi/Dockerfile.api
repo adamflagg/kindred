@@ -1,14 +1,12 @@
 # =============================================================================
 # Stage 1: Python dependencies build
 # =============================================================================
-FROM dhi.io/python:3.14-dev AS python-builder
+FROM cgr.dev/chainguard/wolfi-base:latest AS python-builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends gcc g++
+# hadolint ignore=DL3018
+RUN apk add --no-cache python-3.14 python-3.14-dev gcc g++ glibc-dev libstdc++-dev
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
@@ -18,11 +16,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM dhi.io/python:3.14-dev
+FROM cgr.dev/chainguard/wolfi-base:latest
 
-# hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/* \
+# hadolint ignore=DL3018
+RUN apk add --no-cache python-3.14 libstdc++ curl \
     && mkdir -p /app/logs /app/csv_history \
     && chown -R nonroot:nonroot /app
 
