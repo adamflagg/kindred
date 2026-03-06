@@ -25,6 +25,8 @@ from api.schemas.geo import (
     OverrideCreate,
     OverrideResponse,
     SourceItem,
+    SourceMappingItem,
+    SourceMappingsResponse,
     SourcesResponse,
 )
 from bunking.logging_config import get_logger
@@ -455,6 +457,47 @@ class GeoService:
             state=loc.get("state", ""),
             sources=sources,
         )
+
+    async def get_source_mappings(
+        self,
+        category: str,
+        year: int,
+        active_only: bool = False,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
+    ) -> SourceMappingsResponse:
+        """Get all source mappings grouped by normalized_value, then by original_value."""
+        mappings: list[Any] = await asyncio.to_thread(
+            self.pb.collection("normalized_mappings").get_full_list,
+            query_params={"filter": f'category = "{category}" && year = {year}'},
+        )
+
+        if active_only:
+            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            mappings = self._filter_and_dedup_mappings(mappings, active_ids)
+
+        # Group: normalized_value -> original_value -> {count, confidence}
+        by_normalized: dict[str, dict[str, dict[str, Any]]] = {}
+        for m in mappings:
+            nv = m.normalized_value
+            ov = m.original_value
+            if nv not in by_normalized:
+                by_normalized[nv] = {}
+            if ov not in by_normalized[nv]:
+                by_normalized[nv][ov] = {"count": 0, "confidence": m.confidence}
+            by_normalized[nv][ov]["count"] += 1
+            by_normalized[nv][ov]["confidence"] = min(by_normalized[nv][ov]["confidence"], m.confidence)
+
+        result: dict[str, list[SourceMappingItem]] = {}
+        for nv, originals in by_normalized.items():
+            items = [
+                SourceMappingItem(original=ov, count=g["count"], confidence=g["confidence"])
+                for ov, g in originals.items()
+            ]
+            items.sort(key=lambda x: -x.count)
+            result[nv] = items
+
+        return SourceMappingsResponse(mappings=result)
 
     async def list_overrides(self, category: str, year: int) -> list[OverrideResponse]:
         """List all overrides for a category and year."""

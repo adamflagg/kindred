@@ -23,6 +23,7 @@ from ..schemas.geo import (
     GapsResponse,
     OverrideCreate,
     OverrideResponse,
+    SourceMappingsResponse,
     SourcesResponse,
 )
 from ..services.geo_service import GeoService
@@ -111,6 +112,26 @@ async def get_sources(
         types_list,
         session_cm_id,
     )
+
+
+# ============================================================================
+# Bulk Source Mappings Endpoint
+# ============================================================================
+
+
+@router.get("/source-mappings", response_model=SourceMappingsResponse)
+async def get_source_mappings(
+    category: str = Query(..., description="Category: city, school, or congregation"),
+    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
+    session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
+    session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
+    user: AuthUser = Depends(get_current_user),
+) -> SourceMappingsResponse:
+    """Get all source mappings grouped by normalized_value with attendee filtering."""
+    service = _get_service()
+    types_list = session_types.split(",") if session_types else None
+    return await service.get_source_mappings(category, year, active_only, types_list, session_cm_id)
 
 
 # ============================================================================

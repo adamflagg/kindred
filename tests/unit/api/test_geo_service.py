@@ -550,6 +550,86 @@ class TestActiveOnlyFiltering:
 
 
 # ============================================================================
+# Bulk Source Mappings Tests
+# ============================================================================
+
+
+class TestGetSourceMappings:
+    """Test bulk source-mappings endpoint."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_groups_by_normalized_then_original_value(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Should return dict keyed by normalized_value, each value is list of {original, count, confidence}."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95, person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.93, person="p2"),
+            _make_mapping_record("Riverside Elementary", "Riverside Elementary", confidence=1.0, person="p3"),
+        ]
+        mock_pb.collection.return_value.get_full_list.return_value = mappings
+
+        result = await service.get_source_mappings("school", 2025)
+
+        assert "Riverside Elementary" in result.mappings
+        sources = result.mappings["Riverside Elementary"]
+        assert len(sources) == 2
+        # Sorted by count descending
+        assert sources[0].original == "riverside elem"
+        assert sources[0].count == 2
+        assert sources[0].confidence == 0.93  # min
+        assert sources[1].original == "Riverside Elementary"
+        assert sources[1].count == 1
+
+    @pytest.mark.asyncio
+    async def test_active_only_filters_and_deduplicates(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Only active persons, deduped by (person, normalized_value)."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),  # dup session
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),  # inactive
+        ]
+        attendees = [_make_attendee_record("p1")]
+
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            mappings,
+            attendees,
+        ]
+
+        result = await service.get_source_mappings("school", 2025, active_only=True)
+
+        sources = result.mappings["Riverside Elementary"]
+        assert sources[0].count == 1  # only p1, deduped
+
+    @pytest.mark.asyncio
+    async def test_session_types_filtering(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Should respect session type filter."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),
+        ]
+        attendees = [_make_attendee_record("p1")]  # only p1 in "main" sessions
+
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            mappings,
+            attendees,
+        ]
+
+        result = await service.get_source_mappings("school", 2025, active_only=True, session_types=["main"])
+
+        sources = result.mappings["Riverside Elementary"]
+        assert sources[0].count == 1
+
+
+# ============================================================================
 # Canonical Search Tests
 # ============================================================================
 
