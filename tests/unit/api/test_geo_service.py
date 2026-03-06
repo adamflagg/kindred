@@ -544,11 +544,13 @@ class TestActiveOnlyFiltering:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],  # geo_overrides
-                attendees,
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "attendees": attendees,
+                }
+            )
 
             result = await service.search_canonicals("school", "park", 2025, active_only=True)
 
@@ -707,10 +709,12 @@ class TestSearchCanonicals:
                 "Mark Day School": {"city": "San Rafael", "state": "CA"},
             }
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,  # normalized_mappings
-                [],  # geo_overrides
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.search_canonicals("school", "park", 2025)
 
@@ -735,10 +739,12 @@ class TestSearchCanonicals:
             mock_coords.return_value = {"Park Day School": [37.8, -122.2]}
             mock_location.return_value = {"Park Day School": {"city": "Oakland", "state": "CA"}}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.search_canonicals("school", "park", 2025)
 
@@ -763,10 +769,12 @@ class TestSearchCanonicals:
             mock_location.return_value = {}
             mock_badge.return_value = "nces"
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.search_canonicals("school", "school", 2025)
 
@@ -793,10 +801,12 @@ class TestSearchCanonicals:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                [],  # normalized_mappings
-                [override],  # geo_overrides
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": [],
+                    "geo_overrides": [override],
+                }
+            )
 
             result = await service.search_canonicals("school", "custom", 2025)
 
