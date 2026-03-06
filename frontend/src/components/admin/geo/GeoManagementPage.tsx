@@ -4,6 +4,7 @@ import { MapPin } from 'lucide-react'
 import { CATEGORY_SIDEBAR, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
 import type { GeoCategory } from '../geoConstants'
 import { useGeoGaps } from '../../../hooks/useGeoData'
+import { NonCanonicalsPanel } from './NonCanonicalsPanel'
 import { useYear } from '../../../hooks/useCurrentYear'
 
 export function GeoManagementPage() {
@@ -67,7 +68,13 @@ export function GeoManagementPage() {
         {/* Split panels */}
         <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
           <div data-testid="left-panel" className="border-border overflow-y-auto border-r p-3">
-            <p className="text-muted-foreground text-sm">Left panel: gaps</p>
+            {gaps && (
+              <NonCanonicalsPanel
+                grouped={gaps.non_canonical_grouped}
+                ungrouped={gaps.non_canonical_ungrouped}
+                onResolve={() => {}}
+              />
+            )}
           </div>
           <div data-testid="right-panel" className="overflow-y-auto p-3">
             <p className="text-muted-foreground text-sm">Right panel: canonicals</p>
