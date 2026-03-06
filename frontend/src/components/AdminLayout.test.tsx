@@ -16,10 +16,17 @@ vi.mock('../hooks/useIsAdmin', () => ({
   useIsAdmin: () => mockIsAdmin(),
 }))
 
+// Mock usePermissions hook
+const mockHasPermission = vi.fn(() => true)
+vi.mock('../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
 const TestChild = ({ text }: { text: string }) => <div data-testid="child">{text}</div>
 
 const renderWithRouter = (initialPath: string, { isAdmin = true } = {}) => {
   mockIsAdmin.mockReturnValue(isAdmin)
+  mockHasPermission.mockReturnValue(isAdmin)
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })

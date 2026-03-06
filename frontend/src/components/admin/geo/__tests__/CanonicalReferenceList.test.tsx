@@ -52,13 +52,13 @@ function defaultMocks() {
   mockUseAllCanonicals.mockReturnValue({
     data: { results: entries },
     isLoading: false,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
 
   mockUseCanonicalSources.mockReturnValue({
     data: null,
     isLoading: false,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
 }
 
@@ -71,9 +71,7 @@ describe('CanonicalReferenceList', () => {
   // ---------- Rendering ----------
 
   it('renders list of canonical entries showing name, city/state, source badge, camper count', () => {
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     // Names visible
     expect(screen.getByText('Riverside Elementary')).toBeInTheDocument()
@@ -99,9 +97,7 @@ describe('CanonicalReferenceList', () => {
   // ---------- Sort ----------
 
   it('sorts by Popular (count desc) by default', () => {
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     const rows = screen.getAllByTestId('canonical-row')
     // Popular sort: 12 > 8 > 5 > 0
@@ -113,9 +109,7 @@ describe('CanonicalReferenceList', () => {
 
   it('toggles to A-Z sort (alphabetical by name)', async () => {
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /a-z/i }))
 
@@ -131,9 +125,7 @@ describe('CanonicalReferenceList', () => {
 
   it('filters entries by name search', async () => {
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     await user.type(screen.getByPlaceholderText(/search/i), 'riverside')
 
@@ -144,9 +136,7 @@ describe('CanonicalReferenceList', () => {
 
   it('filters entries by city search', async () => {
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     await user.type(screen.getByPlaceholderText(/search/i), 'portland')
 
@@ -156,9 +146,7 @@ describe('CanonicalReferenceList', () => {
 
   it('filters entries by state search', async () => {
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     await user.type(screen.getByPlaceholderText(/search/i), 'WA')
 
@@ -180,13 +168,11 @@ describe('CanonicalReferenceList', () => {
         ],
       },
       isLoading: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     // Click first row to expand
     const rows = screen.getAllByTestId('canonical-row')
@@ -215,13 +201,11 @@ describe('CanonicalReferenceList', () => {
         ],
       },
       isLoading: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     // Expand the first row
     const rows = screen.getAllByTestId('canonical-row')
@@ -240,17 +224,15 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
-        sources: [
-          { original_value: 'Riverside Elem', count: 7, confidence: 0.92 },
-        ],
+        sources: [{ original_value: 'Riverside Elem', count: 7, confidence: 0.92 }],
       },
       isLoading: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
     const user = userEvent.setup()
     render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={onReassignSource} />,
+      <CanonicalReferenceList category="school" year={2025} onReassignSource={onReassignSource} />
     )
 
     // Expand the first row
@@ -266,9 +248,7 @@ describe('CanonicalReferenceList', () => {
   // ---------- 0-camper entries ----------
 
   it('shows 0-camper entries with opacity-50 class', () => {
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     const rows = screen.getAllByTestId('canonical-row')
     // Hillcrest High has camper_count=0, should be last in popular sort
@@ -283,12 +263,10 @@ describe('CanonicalReferenceList', () => {
     mockUseAllCanonicals.mockReturnValue({
       data: undefined,
       isLoading: true,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
@@ -297,9 +275,7 @@ describe('CanonicalReferenceList', () => {
 
   it('shows empty state when no results after search', async () => {
     const user = userEvent.setup()
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     await user.type(screen.getByPlaceholderText(/search/i), 'zzzznonexistent')
 
@@ -310,12 +286,10 @@ describe('CanonicalReferenceList', () => {
     mockUseAllCanonicals.mockReturnValue({
       data: { results: [] },
       isLoading: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     expect(screen.getByText(/no.*entries/i)).toBeInTheDocument()
   })
@@ -323,9 +297,7 @@ describe('CanonicalReferenceList', () => {
   // ---------- Header ----------
 
   it('renders header with Canonical Entries title', () => {
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     expect(screen.getByText('Canonical Entries')).toBeInTheDocument()
   })
@@ -333,9 +305,7 @@ describe('CanonicalReferenceList', () => {
   // ---------- Source badge colors ----------
 
   it('applies correct badge colors for different source types', () => {
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />,
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     const ncesBadge = screen.getByText('NCES')
     expect(ncesBadge).toHaveClass('bg-forest-100')

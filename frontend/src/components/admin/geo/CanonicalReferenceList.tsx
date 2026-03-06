@@ -39,7 +39,7 @@ export function CanonicalReferenceList({
           (entry) =>
             entry.canonical_name.toLowerCase().includes(q) ||
             entry.city.toLowerCase().includes(q) ||
-            entry.state.toLowerCase().includes(q),
+            entry.state.toLowerCase().includes(q)
         )
       : all
 
@@ -179,7 +179,7 @@ function CanonicalRow({
     category,
     entry.canonical_name,
     year,
-    isExpanded,
+    isExpanded
   )
 
   const dimmed = entry.camper_count === 0
@@ -192,7 +192,10 @@ function CanonicalRow({
     >
       {/* Collapsed row */}
       <div className="hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors">
-        <span data-testid="canonical-name" className="text-foreground min-w-0 flex-1 truncate text-sm">
+        <span
+          data-testid="canonical-name"
+          className="text-foreground min-w-0 flex-1 truncate text-sm"
+        >
           {entry.canonical_name}
         </span>
 
@@ -219,10 +222,7 @@ function CanonicalRow({
 
       {/* Expanded: source variants */}
       {isExpanded && sourcesData?.sources && (
-        <ExpandedSources
-          sourcesData={sourcesData}
-          onReassignSource={onReassignSource}
-        />
+        <ExpandedSources sourcesData={sourcesData} onReassignSource={onReassignSource} />
       )}
     </div>
   )
@@ -242,7 +242,7 @@ function ExpandedSources({ sourcesData, onReassignSource }: ExpandedSourcesProps
 
   return (
     <div className="border-border border-t px-3 py-2">
-      <div className="text-muted-foreground mb-1.5 text-xs font-medium uppercase tracking-wide">
+      <div className="text-muted-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
         Source Variants
       </div>
       <div className="space-y-1">

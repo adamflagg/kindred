@@ -40,7 +40,7 @@ function renderPage(initialPath = '/admin/geo/cities') {
       <MemoryRouter initialEntries={[initialPath]}>
         <GeoManagementPage />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
 }
 
@@ -80,7 +80,7 @@ describe('GeoManagementPage', () => {
     // Verify the Schools sidebar item is active
     expect(screen.getByText('Schools').closest('[data-active]')).toHaveAttribute(
       'data-active',
-      'true',
+      'true'
     )
   })
 })

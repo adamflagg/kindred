@@ -39,9 +39,9 @@ export function NonCanonicalsPanel({ grouped, ungrouped, onResolve }: NonCanonic
     <div>
       {/* Header */}
       <div className="mb-2 flex items-center gap-2">
-        <AlertCircle className="text-red-500 h-4 w-4" />
+        <AlertCircle className="h-4 w-4 text-red-500" />
         <span className="text-foreground text-sm font-semibold">Resolve Non-Canonicals</span>
-        <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded-full px-2 py-0.5 text-xs font-medium">
+        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
           {totalCount}
         </span>
       </div>
@@ -59,10 +59,15 @@ export function NonCanonicalsPanel({ grouped, ungrouped, onResolve }: NonCanonic
                 data-testid="gap-indicator"
                 className={`h-2 w-2 shrink-0 rounded-full ${isGrouped ? 'bg-red-500' : 'bg-stone-400'}`}
               />
-              <span data-testid="gap-name" className="text-foreground min-w-0 flex-1 truncate text-sm">
+              <span
+                data-testid="gap-name"
+                className="text-foreground min-w-0 flex-1 truncate text-sm"
+              >
                 {item.name}
               </span>
-              <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{item.count}</span>
+              <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                {item.count}
+              </span>
               <button
                 onClick={() => onResolve(item.name, item.gapType)}
                 className="text-forest-700 hover:text-forest-900 dark:text-forest-400 dark:hover:text-forest-200 shrink-0 text-xs font-medium transition-colors"

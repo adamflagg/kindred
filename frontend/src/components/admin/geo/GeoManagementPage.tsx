@@ -87,7 +87,7 @@ export function GeoManagementPage() {
                 }`}
               >
                 <Icon className="h-5 w-5" />
-                <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+                <span className="text-[10px] leading-tight font-medium">{item.label}</span>
               </Link>
             )
           })}
@@ -95,7 +95,10 @@ export function GeoManagementPage() {
 
         {/* Split panels */}
         <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
-          <div data-testid="left-panel" className="border-border space-y-4 overflow-y-auto border-r p-3">
+          <div
+            data-testid="left-panel"
+            className="border-border space-y-4 overflow-y-auto border-r p-3"
+          >
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <span className="text-muted-foreground text-sm">Loading gaps...</span>
@@ -124,7 +127,9 @@ export function GeoManagementPage() {
             <CanonicalReferenceList
               category={category}
               year={year}
-              onReassignSource={(originalValue) => handleOpenResolve(originalValue, 'non_canonical_grouped')}
+              onReassignSource={(originalValue) =>
+                handleOpenResolve(originalValue, 'non_canonical_grouped')
+              }
             />
           </div>
         </div>

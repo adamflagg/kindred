@@ -12,9 +12,7 @@ function AdminLayoutInner() {
 
   const visibleTabs = ADMIN_TABS.filter(
     (tab) =>
-      tab.requiredPermission === 'authenticated' ||
-      isAdmin ||
-      hasPermission(tab.requiredPermission)
+      tab.requiredPermission === 'authenticated' || isAdmin || hasPermission(tab.requiredPermission)
   )
 
   const isTabActive = (tab: AdminTabConfig) => location.pathname.startsWith(tab.path)

@@ -78,7 +78,11 @@ export default function GeoAnalysis() {
 
   // Fetch source mappings from backend with active_only filtering
   const needsMappings = showSources || showGaps
-  const sourceMappingOptions: { activeOnly: boolean; sessionTypes: readonly string[]; sessionCmId?: number } = {
+  const sourceMappingOptions: {
+    activeOnly: boolean
+    sessionTypes: readonly string[]
+    sessionCmId?: number
+  } = {
     activeOnly: true,
     sessionTypes: [...activeSessionTypes],
   }

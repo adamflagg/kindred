@@ -8,9 +8,7 @@ const grouped: GapItem[] = [
   { name: 'Hillcrest High', count: 14, percentage: 8.2, source_count: 3 },
   { name: 'Riverside Elem', count: 5, percentage: 2.9, source_count: 2 },
 ]
-const ungrouped: GapItem[] = [
-  { name: 'Mapleton Prep', count: 2, percentage: 1.2, source_count: 0 },
-]
+const ungrouped: GapItem[] = [{ name: 'Mapleton Prep', count: 2, percentage: 1.2, source_count: 0 }]
 
 describe('NonCanonicalsPanel', () => {
   it('renders merged list sorted by count descending', () => {

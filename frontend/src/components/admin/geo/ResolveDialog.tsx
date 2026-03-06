@@ -133,7 +133,12 @@ export function ResolveDialog({
 
   const title = isCoordMode ? `Add Coordinates: ${gapName}` : `Resolve: ${gapName}`
 
-  const coordsSaveDisabled = !lat.trim() || !lng.trim() || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng)) || createOverride.isPending
+  const coordsSaveDisabled =
+    !lat.trim() ||
+    !lng.trim() ||
+    isNaN(parseFloat(lat)) ||
+    isNaN(parseFloat(lng)) ||
+    createOverride.isPending
 
   return (
     <Modal isOpen={open} onClose={handleClose} title={title} size="md">
@@ -267,7 +272,10 @@ export function ResolveDialog({
         /* Mode A: Create new canonical form */
         <div className="space-y-4">
           <div>
-            <label htmlFor="canonical-name" className="text-foreground mb-1 block text-sm font-medium">
+            <label
+              htmlFor="canonical-name"
+              className="text-foreground mb-1 block text-sm font-medium"
+            >
               Name
             </label>
             <input

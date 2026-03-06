@@ -30,11 +30,17 @@ export function useSourceMappings(
       options?.sessionCmId
     ),
     queryFn: async () => {
-      const fetchOptions: { activeOnly?: boolean; sessionTypes?: string[]; sessionCmId?: number } = {}
+      const fetchOptions: { activeOnly?: boolean; sessionTypes?: string[]; sessionCmId?: number } =
+        {}
       if (options?.activeOnly !== undefined) fetchOptions.activeOnly = options.activeOnly
       if (options?.sessionTypes) fetchOptions.sessionTypes = [...options.sessionTypes]
       if (options?.sessionCmId !== undefined) fetchOptions.sessionCmId = options.sessionCmId
-      const response = await geoService.fetchSourceMappings(category, year, fetchWithAuth, fetchOptions)
+      const response = await geoService.fetchSourceMappings(
+        category,
+        year,
+        fetchWithAuth,
+        fetchOptions
+      )
       // Convert Record to Map for backward compat with GeoDetailList/GeoGapsList
       const map = new Map<string, SourceMapping[]>()
       for (const [nv, items] of Object.entries(response.mappings)) {
