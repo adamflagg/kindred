@@ -3,6 +3,7 @@ package rbac
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sort"
 
@@ -35,25 +36,27 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 	userRoles, err := app.FindRecordsByFilter("user_roles", "user = {:userId}", "", 100, 0,
 		map[string]any{"userId": userID})
 	if err != nil {
-		return err
+		return fmt.Errorf("finding user_roles: %w", err)
 	}
 
 	// Collect permission arrays from each role
 	var allPerms [][]string
 	for _, ur := range userRoles {
 		roleID := ur.GetString("role")
-		role, err := app.FindRecordById("roles", roleID)
-		if err != nil {
-			slog.Warn("Failed to find role for user_role", "role_id", roleID, "error", err)
+		role, roleErr := app.FindRecordById("roles", roleID)
+		if roleErr != nil {
+			slog.Warn("Failed to find role for user_role", "role_id", roleID, "error", roleErr)
 			continue
 		}
 
 		var perms []string
 		raw := role.Get("permissions")
 		if raw != nil {
-			data, err := json.Marshal(raw)
-			if err == nil {
-				json.Unmarshal(data, &perms) //nolint:errcheck
+			data, marshalErr := json.Marshal(raw)
+			if marshalErr == nil {
+				if unmarshalErr := json.Unmarshal(data, &perms); unmarshalErr != nil {
+					slog.Warn("Failed to unmarshal role permissions", "role_id", roleID, "error", unmarshalErr)
+				}
 			}
 		}
 		allPerms = append(allPerms, perms)
@@ -65,10 +68,13 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 	// Update user record
 	user, err := app.FindRecordById("_pb_users_auth_", userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("finding user: %w", err)
 	}
 	user.Set("cached_permissions", flattened)
-	return app.Save(user)
+	if saveErr := app.Save(user); saveErr != nil {
+		return fmt.Errorf("saving user: %w", saveErr)
+	}
+	return nil
 }
 
 // RegisterHooks registers RBAC-related hooks on the PocketBase app.

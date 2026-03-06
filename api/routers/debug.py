@@ -968,13 +968,21 @@ async def get_parse_result_with_fallback(
 # ============================================================================
 
 
-def _validate_prompt_name(name: str) -> None:
-    """Validate prompt name to prevent path traversal attacks."""
+def _safe_prompt_path(name: str) -> Path:
+    """Validate prompt name and return a safe, resolved file path.
+
+    Prevents path traversal by validating the name pattern and confirming
+    the resolved path stays within PROMPTS_DIR.
+    """
     if not VALID_PROMPT_NAME_PATTERN.match(name):
         raise HTTPException(
             status_code=400,
             detail="Invalid prompt name. Only alphanumeric characters and underscores allowed.",
         )
+    file_path = (PROMPTS_DIR / f"{name}.txt").resolve()
+    if file_path.parent != PROMPTS_DIR.resolve():
+        raise HTTPException(status_code=400, detail="Invalid prompt path")
+    return file_path
 
 
 def _get_file_modified_at(path: Path) -> datetime | None:
@@ -1018,9 +1026,7 @@ async def get_prompt(
     Args:
         name: Prompt name (without .txt extension)
     """
-    _validate_prompt_name(name)
-
-    file_path = PROMPTS_DIR / f"{name}.txt"
+    file_path = _safe_prompt_path(name)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
 
@@ -1044,9 +1050,7 @@ async def update_prompt(
         name: Prompt name (without .txt extension)
         request: Request body with new content
     """
-    _validate_prompt_name(name)
-
-    file_path = PROMPTS_DIR / f"{name}.txt"
+    file_path = _safe_prompt_path(name)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
 

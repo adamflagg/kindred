@@ -229,7 +229,10 @@ export function RolesTab() {
             <button
               onClick={handleSave}
               disabled={
-                createMutation.isPending || updateMutation.isPending || !formData.name || !formData.slug
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                !formData.name ||
+                !formData.slug
               }
               className="btn-primary flex items-center gap-1.5 text-sm"
             >

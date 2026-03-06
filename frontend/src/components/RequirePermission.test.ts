@@ -6,10 +6,7 @@ import { AuthContext } from '../contexts/AuthContext'
 import { RequirePermission } from './RequirePermission'
 import type { RecordModel } from 'pocketbase'
 
-function createMockAuthContext(overrides: {
-  user?: RecordModel | null
-  isBypassMode?: boolean
-}) {
+function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
   return {
     pb: {} as never,
     user: overrides.user ?? null,
@@ -54,7 +51,10 @@ describe('RequirePermission', () => {
 
     renderWithContext(
       ctx,
-      createElement(RequirePermission, { permission: 'bunking.view', children: 'Protected Content' })
+      createElement(RequirePermission, {
+        permission: 'bunking.view',
+        children: 'Protected Content',
+      })
     )
     expect(screen.getByText('Protected Content')).toBeTruthy()
   })

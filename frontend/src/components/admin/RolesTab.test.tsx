@@ -40,10 +40,7 @@ vi.mock('../../lib/pocketbase', () => ({
   },
 }))
 
-function createMockAuthContext(overrides: {
-  user?: RecordModel | null
-  isBypassMode?: boolean
-}) {
+function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
   return {
     pb: {} as never,
     user: overrides.user ?? null,

@@ -150,9 +150,7 @@ export function UserRolesPanel({ user, onClose }: UserRolesPanelProps) {
                     ))}
                   </div>
                 </div>
-                {isMutating && (
-                  <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                )}
+                {isMutating && <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />}
               </label>
             )
           })}

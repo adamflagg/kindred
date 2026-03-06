@@ -684,20 +684,24 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       )}
 
       {/* Lock Group Action Bar - only shown in draft mode with pending selections (lazy loaded) */}
-      {canManage && isDraftMode && scenarioId && lockGroupSessionPbId && pendingCampers.length > 0 && (
-        <Suspense fallback={null}>
-          <LockGroupActionBar
-            pendingCampers={pendingCampers}
-            sessionPbId={lockGroupSessionPbId}
-            scenarioId={scenarioId}
-            year={currentYear}
-            onClearPending={clearPendingCampers}
-            onGroupCreated={() => {
-              toast.success('Lock group created successfully')
-            }}
-          />
-        </Suspense>
-      )}
+      {canManage &&
+        isDraftMode &&
+        scenarioId &&
+        lockGroupSessionPbId &&
+        pendingCampers.length > 0 && (
+          <Suspense fallback={null}>
+            <LockGroupActionBar
+              pendingCampers={pendingCampers}
+              sessionPbId={lockGroupSessionPbId}
+              scenarioId={scenarioId}
+              year={currentYear}
+              onClearPending={clearPendingCampers}
+              onGroupCreated={() => {
+                toast.success('Lock group created successfully')
+              }}
+            />
+          </Suspense>
+        )}
 
       {/* Friend Groups Hub - visible in draft mode with manage permission (lazy loaded) */}
       {canManage && isDraftMode && scenarioId && lockGroupSessionPbId && (

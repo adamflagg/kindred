@@ -5,10 +5,7 @@ import { AuthContext } from '../contexts/AuthContext'
 import { usePermissions } from './usePermissions'
 import type { RecordModel } from 'pocketbase'
 
-function createMockAuthContext(overrides: {
-  user?: RecordModel | null
-  isBypassMode?: boolean
-}) {
+function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
   return {
     pb: {} as never,
     user: overrides.user ?? null,

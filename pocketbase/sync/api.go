@@ -75,9 +75,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	}))
 
 	// Bunk requests CSV upload endpoint (requires bunking.manage permission)
-	e.Router.POST("/api/custom/sync/bunk_requests_upload", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleBunkRequestsUpload(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/bunk_requests_upload",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleBunkRequestsUpload(e, scheduler)
+		}))
 
 	// Status endpoint
 	e.Router.GET("/api/custom/sync/status", requireAuth(func(e *core.RequestEvent) error {

@@ -30,10 +30,7 @@ vi.mock('../../lib/pocketbase', () => ({
   },
 }))
 
-function createMockAuthContext(overrides: {
-  user?: RecordModel | null
-  isBypassMode?: boolean
-}) {
+function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
   return {
     pb: {} as never,
     user: overrides.user ?? null,
@@ -152,9 +149,7 @@ describe('UserRolesPanel', () => {
       },
     ]
 
-    mockGetFullList
-      .mockResolvedValueOnce(mockRoles)
-      .mockResolvedValueOnce(userRoles)
+    mockGetFullList.mockResolvedValueOnce(mockRoles).mockResolvedValueOnce(userRoles)
 
     renderWithProviders(
       createElement(UserRolesPanel, {
@@ -167,18 +162,14 @@ describe('UserRolesPanel', () => {
     await waitFor(() => {
       // The Bunking Manager checkbox should be checked
       const checkboxes = screen.getAllByRole('checkbox')
-      const bunkingCheckbox = checkboxes.find(
-        (cb) => cb.getAttribute('data-role-id') === 'role-1'
-      )
+      const bunkingCheckbox = checkboxes.find((cb) => cb.getAttribute('data-role-id') === 'role-1')
       expect(bunkingCheckbox).toBeTruthy()
       expect((bunkingCheckbox as HTMLInputElement).checked).toBe(true)
     })
   })
 
   it('calls onClose when close button is clicked', async () => {
-    mockGetFullList
-      .mockResolvedValueOnce(mockRoles)
-      .mockResolvedValueOnce([])
+    mockGetFullList.mockResolvedValueOnce(mockRoles).mockResolvedValueOnce([])
 
     const onClose = vi.fn()
 
@@ -200,9 +191,7 @@ describe('UserRolesPanel', () => {
   })
 
   it('creates user_role record when toggling role on', async () => {
-    mockGetFullList
-      .mockResolvedValueOnce(mockRoles)
-      .mockResolvedValueOnce([])
+    mockGetFullList.mockResolvedValueOnce(mockRoles).mockResolvedValueOnce([])
 
     mockCreate.mockResolvedValueOnce({
       id: 'ur-new',
@@ -223,9 +212,7 @@ describe('UserRolesPanel', () => {
     })
 
     const checkboxes = screen.getAllByRole('checkbox')
-    const bunkingCheckbox = checkboxes.find(
-      (cb) => cb.getAttribute('data-role-id') === 'role-1'
-    )
+    const bunkingCheckbox = checkboxes.find((cb) => cb.getAttribute('data-role-id') === 'role-1')
     expect(bunkingCheckbox).toBeTruthy()
     await userEvent.click(bunkingCheckbox!)
 
