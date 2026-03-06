@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { MapPin } from 'lucide-react'
 import { CATEGORY_SIDEBAR, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
 import type { GeoCategory } from '../geoConstants'
-import { useGeoGaps, useBatchResolveCoords } from '../../../hooks/useGeoData'
+import { useGeoGaps, useBatchResolveCoords, useGeoPagePrefetch } from '../../../hooks/useGeoData'
 import { NonCanonicalsPanel } from './NonCanonicalsPanel'
 import { AddCoordsPanel } from './AddCoordsPanel'
 import { CanonicalReferenceList } from './CanonicalReferenceList'
@@ -30,6 +30,7 @@ export function GeoManagementPage() {
   })
 
   const { data: gaps } = useGeoGaps(category, year, activeOnly)
+  useGeoPagePrefetch(category, year, activeOnly)
   const totalGaps = gaps?.total_gaps ?? 0
   const batchResolve = useBatchResolveCoords(category, year)
 

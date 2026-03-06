@@ -4,18 +4,39 @@
  * Wraps geoService functions with caching, invalidation, and auth.
  */
 
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 import type { OverrideCreateData } from '../services/geoService'
+import type { GeoCategory } from '../components/admin/geoConstants'
+
+const ALL_GEO_CATEGORIES: GeoCategory[] = ['city', 'school', 'congregation']
 
 /**
  * Prefetch gaps + canonicals for non-active geo categories so tab switches are instant.
- * Stub — implementation pending.
+ * Fires on mount and whenever the active category changes.
  */
-export function useGeoPagePrefetch(_activeCategory: string, _year: number, _activeOnly: boolean) {
-  // TODO: implement prefetching
+export function useGeoPagePrefetch(activeCategory: string, year: number, activeOnly: boolean) {
+  const queryClient = useQueryClient()
+  const { fetchWithAuth } = useApiWithAuth()
+
+  useEffect(() => {
+    const otherCategories: GeoCategory[] = ALL_GEO_CATEGORIES.filter((c) => c !== activeCategory)
+    for (const cat of otherCategories) {
+      void queryClient.prefetchQuery({
+        queryKey: queryKeys.geoGaps(cat, year, activeOnly),
+        queryFn: () => geoService.fetchGeoGaps(cat, year, fetchWithAuth, { activeOnly }),
+        ...userDataOptions,
+      })
+      void queryClient.prefetchQuery({
+        queryKey: queryKeys.geoAllCanonicals(cat, year),
+        queryFn: () => geoService.fetchAllCanonicals(cat, year, fetchWithAuth),
+        ...syncDataOptions,
+      })
+    }
+  }, [activeCategory, year, activeOnly, queryClient, fetchWithAuth])
 }
 
 export function useGeoGaps(category: string, year: number, activeOnly = true) {
