@@ -15,7 +15,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from starlette.responses import Response
 
-from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.auth_middleware import AuthUser
+from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
 from ..schemas.geo import (
@@ -49,7 +51,7 @@ async def get_gaps(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> GapsResponse:
     """Get three-tier gap classification for normalized values missing coordinates."""
     service = _get_service()
@@ -71,7 +73,7 @@ async def search_canonicals(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> CanonicalSearchResponse:
     """Search canonical entries by name, city, or state."""
     service = _get_service()
@@ -100,7 +102,7 @@ async def get_sources(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> SourcesResponse:
     """Get raw value variants that map to a canonical name."""
     service = _get_service()
@@ -127,7 +129,7 @@ async def get_source_mappings(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> SourceMappingsResponse:
     """Get all source mappings grouped by normalized_value with attendee filtering."""
     service = _get_service()
@@ -144,7 +146,7 @@ async def get_source_mappings(
 async def batch_resolve_coords(
     category: str = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> BatchResolveResponse:
     """Batch auto-resolve coordinates for unambiguous canonical entries."""
     service = _get_service()
@@ -161,7 +163,7 @@ async def batch_resolve_coords(
 async def list_overrides(
     category: str = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> list[OverrideResponse]:
     """List all geo overrides for a category and year."""
     service = _get_service()
@@ -171,7 +173,7 @@ async def list_overrides(
 @router.post("/overrides", response_model=OverrideResponse, status_code=201)
 async def create_override(
     data: OverrideCreate,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> OverrideResponse:
     """Create a new geo override."""
     service = _get_service()
@@ -182,7 +184,7 @@ async def create_override(
 async def update_override(
     override_id: str,
     data: dict[str, Any],
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> OverrideResponse:
     """Update an existing geo override."""
     service = _get_service()
@@ -192,7 +194,7 @@ async def update_override(
 @router.delete("/overrides/{override_id}", status_code=204)
 async def delete_override(
     override_id: str,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> Response:
     """Delete a geo override."""
     service = _get_service()

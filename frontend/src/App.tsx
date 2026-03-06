@@ -222,13 +222,13 @@ function App() {
                               <Route
                                 path="geo/*"
                                 element={
-                                  <AdminRoute>
+                                  <RequirePermission permission="metrics.geo">
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <GeoDataTab />
                                       </Suspense>
                                     </ErrorBoundary>
-                                  </AdminRoute>
+                                  </RequirePermission>
                                 }
                               />
                             </Route>
