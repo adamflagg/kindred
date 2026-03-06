@@ -109,3 +109,15 @@ class OverrideResponse(BaseModel):
     merged_into: str | None = Field(default=None, description="Target canonical name (for merge type)")
     notes: str | None = Field(default=None, description="Free-form notes")
     year: int = Field(description="Year scope")
+    nominatim_status: str | None = Field(
+        default=None, description="Nominatim lookup status: resolved, no_result, ambiguous"
+    )
+
+
+class BatchResolveResponse(BaseModel):
+    """Response for batch coordinate resolution."""
+
+    resolved: int
+    skipped: int
+    skipped_names: list[str]
+    paused: bool = False

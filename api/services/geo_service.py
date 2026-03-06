@@ -150,6 +150,7 @@ def _override_to_response(record: Any) -> OverrideResponse:
         merged_into=record.merged_into or None,
         notes=record.notes or None,
         year=record.year,
+        nominatim_status=record.nominatim_status or None,
     )
 
 
@@ -552,3 +553,120 @@ class GeoService:
             self.pb.collection("geo_overrides").delete,
             override_id,
         )
+
+    def _check_name_ambiguity(self, category: str, canonical_name: str) -> bool:
+        """Check if a canonical name exists in multiple locations in static data."""
+        location_data = _load_static_location(category)
+        lookup = _load_static_lookup(category)
+
+        target_lower = canonical_name.lower()
+        matching_canonicals = [v for k, v in lookup.items() if v.lower() == target_lower or k == target_lower]
+        if len(matching_canonicals) <= 1:
+            return False
+
+        locations = set()
+        for canon in matching_canonicals:
+            loc = location_data.get(canon, {})
+            city = loc.get("city", "")
+            state = loc.get("state", "")
+            if city or state:
+                locations.add((city.lower(), state.lower()))
+
+        return len(locations) > 1
+
+    async def batch_resolve_coords(self, category: str, year: int) -> dict[str, Any]:
+        """Batch auto-resolve coordinates for unambiguous canonical entries."""
+        static_coords = _load_static_coords(category)
+        static_lookup = _load_static_lookup(category)
+        static_location = _load_static_location(category)
+        canonical_values = set(static_lookup.values())
+
+        mappings: list[Any] = await asyncio.to_thread(
+            self.pb.collection("normalized_mappings").get_full_list,
+            query_params={"filter": f'category = "{category}" && year = {year}'},
+        )
+
+        canonical_names = {
+            m.normalized_value for m in mappings if m.normalized_value and m.normalized_value in canonical_values
+        }
+        missing_coords = [name for name in canonical_names if name not in static_coords]
+
+        overrides: list[Any] = await asyncio.to_thread(
+            self.pb.collection("geo_overrides").get_full_list,
+            query_params={"filter": f'category = "{category}" && year = {year}'},
+        )
+
+        checked_names = {o.canonical_name for o in overrides if o.nominatim_status}
+        coord_override_names = {o.canonical_name for o in overrides if o.lat and o.lng}
+        candidates = [name for name in missing_coords if name not in checked_names and name not in coord_override_names]
+
+        resolved = 0
+        skipped = 0
+        skipped_names: list[str] = []
+
+        for name in candidates:
+            if self._check_name_ambiguity(category, name):
+                skipped += 1
+                skipped_names.append(name)
+                location = static_location.get(name, {})
+                await asyncio.to_thread(
+                    self.pb.collection("geo_overrides").create,
+                    {
+                        "category": category,
+                        "override_type": "canonical",
+                        "canonical_name": name,
+                        "city": location.get("city", ""),
+                        "state": location.get("state", ""),
+                        "nominatim_status": "ambiguous",
+                        "year": year,
+                    },
+                )
+                continue
+
+            location = static_location.get(name, {})
+            city = location.get("city", "")
+            state = location.get("state", "")
+
+            coords = await geocode_location(name, city, state)
+
+            if coords:
+                lat, lng = coords
+                await asyncio.to_thread(
+                    self.pb.collection("geo_overrides").create,
+                    {
+                        "category": category,
+                        "override_type": "canonical",
+                        "canonical_name": name,
+                        "city": city,
+                        "state": state,
+                        "lat": lat,
+                        "lng": lng,
+                        "nominatim_status": "resolved",
+                        "year": year,
+                    },
+                )
+                resolved += 1
+            else:
+                skipped += 1
+                skipped_names.append(name)
+                await asyncio.to_thread(
+                    self.pb.collection("geo_overrides").create,
+                    {
+                        "category": category,
+                        "override_type": "canonical",
+                        "canonical_name": name,
+                        "city": city,
+                        "state": state,
+                        "nominatim_status": "no_result",
+                        "year": year,
+                    },
+                )
+
+            await asyncio.sleep(1.0)
+
+        return {
+            "resolved": resolved,
+            "skipped": skipped,
+            "skipped_names": skipped_names,
+            "paused": False,
+        }

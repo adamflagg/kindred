@@ -1073,7 +1073,7 @@ class TestBatchResolveCoords:
             ),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]  # type: ignore[attr-defined]
+            result = await service.batch_resolve_coords("school", 2025)
 
         assert result["resolved"] == 1
         assert result["skipped"] == 0
@@ -1100,7 +1100,7 @@ class TestBatchResolveCoords:
             ),
             patch.object(service, "_check_name_ambiguity", return_value=True, create=True),
         ):
-            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+            result = await service.batch_resolve_coords("school", 2025)
 
         assert result["resolved"] == 0
         assert result["skipped"] == 1
@@ -1130,7 +1130,7 @@ class TestBatchResolveCoords:
                 return_value={"oak valley middle": "Oak Valley Middle"},
             ),
         ):
-            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+            result = await service.batch_resolve_coords("school", 2025)
 
         assert result["resolved"] == 0
         assert result["skipped"] == 0  # not counted as skipped, just filtered out
@@ -1162,7 +1162,7 @@ class TestBatchResolveCoords:
             ),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+            result = await service.batch_resolve_coords("school", 2025)
 
         assert result["resolved"] == 0
         assert result["skipped"] == 1
@@ -1177,7 +1177,7 @@ class TestBatchResolveCoords:
             patch("api.services.geo_service._load_static_location", return_value={}),
             patch("api.services.geo_service._load_static_lookup", return_value={}),
         ):
-            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+            result = await service.batch_resolve_coords("school", 2025)
 
         assert "resolved" in result
         assert "skipped" in result

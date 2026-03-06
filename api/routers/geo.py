@@ -19,6 +19,7 @@ from bunking.auth_middleware import AuthUser, get_current_user
 
 from ..dependencies import pb
 from ..schemas.geo import (
+    BatchResolveResponse,
     CanonicalSearchResponse,
     GapsResponse,
     OverrideCreate,
@@ -132,6 +133,23 @@ async def get_source_mappings(
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
     return await service.get_source_mappings(category, year, active_only, types_list, session_cm_id)
+
+
+# ============================================================================
+# Batch Resolve Coords Endpoint
+# ============================================================================
+
+
+@router.post("/batch-resolve-coords", response_model=BatchResolveResponse)
+async def batch_resolve_coords(
+    category: str = Query(..., description="Category: city, school, or congregation"),
+    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    user: AuthUser = Depends(get_current_user),
+) -> BatchResolveResponse:
+    """Batch auto-resolve coordinates for unambiguous canonical entries."""
+    service = _get_service()
+    result = await service.batch_resolve_coords(category, year)
+    return BatchResolveResponse(**result)
 
 
 # ============================================================================
