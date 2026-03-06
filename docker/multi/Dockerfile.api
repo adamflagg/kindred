@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: Python dependencies build
 # =============================================================================
-FROM cgr.dev/chainguard/wolfi-base:latest AS python-builder
+FROM chainguard/wolfi-base:latest AS python-builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM cgr.dev/chainguard/wolfi-base:latest
+FROM chainguard/wolfi-base:latest
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache python-3.14 libstdc++ curl \
