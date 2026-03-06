@@ -237,13 +237,13 @@ sqlite3 pocketbase/pb_data/data.db "EXPLAIN QUERY PLAN SELECT ..."
 ### Restore from Backup
 ```bash
 # Stop services
-docker-compose down
+docker compose down
 
 # Restore database
 cp -r backups/latest/pb_data/* pocketbase/pb_data/
 
 # Restart services
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Fix Corrupted State
@@ -312,7 +312,7 @@ ps aux | grep -E "pocketbase|python|node"
 
 # Docker containers
 docker ps
-docker logs bunking_solver_1 --tail=50
+docker compose logs kindred-api --tail=50
 
 # System resources
 top
@@ -340,7 +340,7 @@ df -h
 - Solver logs: `logs/solver.log`
 - Frontend logs: Browser console
 - PocketBase logs: `pocketbase/pb_data/logs.db`
-- Docker logs: `docker-compose logs [service]`
+- Docker logs: `docker compose logs [service]`
 
 ## Enhanced Request System Issues
 
@@ -436,7 +436,7 @@ print(f'Total requests: {len(requests)}')
 **Solution**: The withAuth wrapper automatically re-authenticates. If persistent:
 ```bash
 # Restart services
-docker-compose restart
+docker compose restart
 # or
 ./scripts/start_dev.sh
 ```

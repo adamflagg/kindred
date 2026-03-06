@@ -359,52 +359,48 @@ Solver configuration stored in PocketBase `admin_configs` collection.
 
 ## Docker Configuration
 
-### Development (docker-compose.dev.yml)
+### Local Testing (docker-compose.local.yml)
 ```yaml
+# Builds from local Dockerfiles, exposes port 8080 directly
+# Usage: docker compose -f docker-compose.local.yml up -d --build
 services:
   pocketbase:
-    build: ./pocketbase
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.pocketbase
+  init:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.init
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+  caddy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.caddy
     ports:
-      - "8090:8090"
-    volumes:
-      - ./pocketbase/pb_data:/pb_data
-      - ./pocketbase/pb_migrations:/pb_migrations
-    environment:
-      - ENV=development
-    
-  frontend:
-    build: ./bunking-frontend
-    ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://pocketbase:8090
-    
-  solver:
-    build: ./solver
-    environment:
-      - POCKETBASE_URL=http://pocketbase:8090
+      - "8080:8080"
 ```
 
 ### Production (docker-compose.yml)
 ```yaml
+# 4 containers: caddy, pocketbase, api, init
+# Usage: docker compose up -d
 services:
-  bunking:
-    image: ghcr.io/adamflagg/kindred:latest
-    restart: unless-stopped
-    networks:
-      - web-proxy
-    volumes:
-      - ${APPDATA_DIR}/bunking:/pb_data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 45s
+  pocketbase:
+    image: ghcr.io/adamflagg/kindred-pocketbase:${IMAGE_TAG:-latest}
+  init:
+    image: ghcr.io/adamflagg/kindred-init:${IMAGE_TAG:-latest}
+  api:
+    image: ghcr.io/adamflagg/kindred-api:${IMAGE_TAG:-latest}
+  caddy:
+    image: ghcr.io/adamflagg/kindred-caddy:${IMAGE_TAG:-latest}
     labels:
       traefik.enable: true
-      traefik.http.routers.bunking.rule: Host(`bunking.yourdomain.com`)
-      traefik.http.services.bunking.loadbalancer.server.port: 8080
+      traefik.http.routers.kindred.rule: Host(`bunking.yourdomain.com`)
+      traefik.http.services.kindred.loadbalancer.server.port: 8080
 ```
 
 ### Testing (docker-compose.test.yml)

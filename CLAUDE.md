@@ -8,26 +8,24 @@ Kindred finds campers who belong together and places them in the right cabins. A
 
 ## System Architecture
 
-### Single-Container Architecture
+### Multi-Container Architecture
 ```
 CampMinder API → Go Sync ─┐
                           │
-React Frontend ──────────┼──→ kindred (Caddy + PocketBase + FastAPI)
+React Frontend ──────────┼──→ 4 Docker containers
                           │
 OR-Tools Solver ─────────┘
 ```
 
-| Service | Port | Technology | Purpose |
-|---------|------|------------|---------|
-| **kindred** | 8080 | Caddy + Go + Python + SQLite | Combined container (see below) |
+| Container | Port | Technology | Purpose |
+|-----------|------|------------|---------|
+| **kindred-caddy** | 8080 | Caddy + static frontend | Reverse proxy, routing, frontend |
+| **kindred-pocketbase** | 8090 | Go + SQLite | Database, auth, CampMinder sync |
+| **kindred-api** | 8000 | Python + FastAPI | Solver, social graphs, scenarios |
+| **kindred-init** | — | Go + shell | One-shot admin/OIDC setup |
 | **React Frontend** | 3000 | TypeScript + Vite | Dev server with HMR (development only) |
 
-**kindred** runs all three services via supervisor:
-- **Caddy (8080)**: Reverse proxy, routing (main entry point)
-- **PocketBase (8090)**: Database, auth, CampMinder sync, embedded frontend
-- **FastAPI (8000)**: Solver, social graphs, scenarios, validation
-
-**Routing (Inverse Pattern)**: Caddy routes specific PocketBase patterns (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/oauth2-redirect`) to port 8090. All other `/api/*` requests go to FastAPI (8000). This eliminates route enumeration - new FastAPI endpoints automatically work. See `docker/Caddyfile` (prod) and `frontend/Caddyfile` (dev) for routing rules.
+**Routing (Inverse Pattern)**: Caddy routes specific PocketBase patterns (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/oauth2-redirect`) to PocketBase. All other `/api/*` requests go to FastAPI. This eliminates route enumeration - new FastAPI endpoints automatically work. See `docker/Caddyfile` (prod) and `frontend/Caddyfile` (dev) for routing rules.
 
 ### Key Data Principle
 **All cross-table relationships use CampMinder IDs, never PocketBase IDs.** This ensures data integrity during syncs.
