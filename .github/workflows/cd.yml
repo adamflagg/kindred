@@ -587,7 +587,7 @@ jobs:
       run: |
         COMPOSE_CMD="docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml"
 
-        # API container has a shell (Debian-based for Python) - verify non-root
+        # API container has a shell (Wolfi-based for Python) - verify non-root
         CONTAINER_USER=$($COMPOSE_CMD exec -T api id -u)
         if [ "$CONTAINER_USER" = "0" ]; then
           echo "API container is running as root!"
