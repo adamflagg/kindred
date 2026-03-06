@@ -371,6 +371,38 @@ class MetricsRepository:
             query_params={"filter": filter_str, "expand": expand},
         )
 
+    async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
+        """Return distinct snapshot dates for a year, sorted descending (newest first)."""
+        snapshots = await asyncio.to_thread(
+            self.pb.collection("enrollment_snapshots").get_full_list,
+            query_params={"filter": f"year = {year}", "sort": "-snapshot_date", "fields": "snapshot_date"},
+        )
+        seen: set[str] = set()
+        dates: list[str] = []
+        for s in snapshots:
+            date_str = getattr(s, "snapshot_date", "").split("T")[0].split(" ")[0]
+            if date_str and date_str not in seen:
+                seen.add(date_str)
+                dates.append(date_str)
+        return dates
+
+    async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
+        """Return per-session enrollment counts for a specific snapshot date."""
+        filter_str = f'year = {year} && snapshot_date ~ "{snapshot_date}"'
+        snapshots = await asyncio.to_thread(
+            self.pb.collection("enrollment_snapshots").get_full_list,
+            query_params={"filter": filter_str},
+        )
+        result: dict[int, dict[str, int]] = {}
+        for s in snapshots:
+            sid = int(getattr(s, "session_cm_id", 0))
+            result[sid] = {
+                "enrolled": int(getattr(s, "enrolled_count", 0) or 0),
+                "waitlisted": int(getattr(s, "waitlisted_count", 0) or 0),
+                "cancelled": int(getattr(s, "cancelled_count", 0) or 0),
+            }
+        return result
+
     async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
         """Fetch budget config for all sessions.
 

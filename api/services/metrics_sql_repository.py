@@ -684,6 +684,34 @@ class MetricsSQLRepository:
     # 15. fetch_registration_dates
     # ------------------------------------------------------------------
 
+    async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
+        """Return distinct snapshot dates for a year, sorted descending (newest first)."""
+        rows = self._query(
+            "SELECT DISTINCT snapshot_date FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_date DESC",
+            (year,),
+        )
+        return [r["snapshot_date"].split("T")[0].split(" ")[0] for r in rows]
+
+    async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
+        """Return per-session enrollment counts for a specific snapshot date.
+
+        Returns {session_cm_id: {"enrolled": N, "waitlisted": N, "cancelled": N}}.
+        """
+        rows = self._query(
+            "SELECT session_cm_id, enrolled_count, waitlisted_count, cancelled_count "
+            "FROM enrollment_snapshots WHERE year = ? AND snapshot_date LIKE ?",
+            (year, f"{snapshot_date}%"),
+        )
+        result: dict[int, dict[str, int]] = {}
+        for r in rows:
+            sid = int(r["session_cm_id"])
+            result[sid] = {
+                "enrolled": int(r["enrolled_count"] or 0),
+                "waitlisted": int(r["waitlisted_count"] or 0),
+                "cancelled": int(r["cancelled_count"] or 0),
+            }
+        return result
+
     async def fetch_registration_dates(self, year: int) -> dict[str, str]:
         """Fetch registration phase dates from config table."""
         rows = self._query(
