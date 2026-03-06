@@ -224,22 +224,28 @@ class GeoService:
         coords = _load_static_coords(category)
         canonical_values = set(lookup.values())
 
-        # Fetch normalized_mappings for this category+year
-        mappings: list[Any] = await asyncio.to_thread(
+        # Fetch all PB data in parallel
+        mappings_task = asyncio.to_thread(
             self.pb.collection("normalized_mappings").get_full_list,
             query_params={"filter": f'category = "{category}" && year = {year}'},
         )
-
-        # Fetch geo_overrides with coordinates for this category+year
-        overrides: list[Any] = await asyncio.to_thread(
+        overrides_task = asyncio.to_thread(
             self.pb.collection("geo_overrides").get_full_list,
             query_params={"filter": f'category = "{category}" && year = {year}'},
         )
 
-        # Filter to active attendees if requested
         if active_only:
-            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            active_ids_task = self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            mappings_raw, overrides_raw, active_ids = await asyncio.gather(
+                mappings_task, overrides_task, active_ids_task
+            )
+            mappings: list[Any] = mappings_raw
+            overrides: list[Any] = overrides_raw
             mappings = self._filter_and_dedup_mappings(mappings, active_ids)
+        else:
+            mappings_raw, overrides_raw = await asyncio.gather(mappings_task, overrides_task)
+            mappings = list(mappings_raw)
+            overrides = list(overrides_raw)
 
         # Build set of canonical names that have override coords
         override_coord_names: set[str] = set()
