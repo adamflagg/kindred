@@ -254,6 +254,55 @@ class TestSessionAvailabilityPermissions:
         _assert_endpoint_has_permission_dep(get_session_availability, Permission.METRICS_VIEW)
 
 
+class TestGeoPermissions:
+    """geo.py endpoints require metrics.geo."""
+
+    def test_get_gaps_requires_metrics_geo(self) -> None:
+        from api.routers.geo import get_gaps
+
+        _assert_endpoint_has_permission_dep(get_gaps, Permission.METRICS_GEO)
+
+    def test_search_canonicals_requires_metrics_geo(self) -> None:
+        from api.routers.geo import search_canonicals
+
+        _assert_endpoint_has_permission_dep(search_canonicals, Permission.METRICS_GEO)
+
+    def test_get_sources_requires_metrics_geo(self) -> None:
+        from api.routers.geo import get_sources
+
+        _assert_endpoint_has_permission_dep(get_sources, Permission.METRICS_GEO)
+
+    def test_get_source_mappings_requires_metrics_geo(self) -> None:
+        from api.routers.geo import get_source_mappings
+
+        _assert_endpoint_has_permission_dep(get_source_mappings, Permission.METRICS_GEO)
+
+    def test_batch_resolve_coords_requires_metrics_geo(self) -> None:
+        from api.routers.geo import batch_resolve_coords
+
+        _assert_endpoint_has_permission_dep(batch_resolve_coords, Permission.METRICS_GEO)
+
+    def test_list_overrides_requires_metrics_geo(self) -> None:
+        from api.routers.geo import list_overrides
+
+        _assert_endpoint_has_permission_dep(list_overrides, Permission.METRICS_GEO)
+
+    def test_create_override_requires_metrics_geo(self) -> None:
+        from api.routers.geo import create_override
+
+        _assert_endpoint_has_permission_dep(create_override, Permission.METRICS_GEO)
+
+    def test_update_override_requires_metrics_geo(self) -> None:
+        from api.routers.geo import update_override
+
+        _assert_endpoint_has_permission_dep(update_override, Permission.METRICS_GEO)
+
+    def test_delete_override_requires_metrics_geo(self) -> None:
+        from api.routers.geo import delete_override
+
+        _assert_endpoint_has_permission_dep(delete_override, Permission.METRICS_GEO)
+
+
 class TestDebugPermissions:
     """debug.py endpoints require users.manage (admin-level debug tools)."""
 
