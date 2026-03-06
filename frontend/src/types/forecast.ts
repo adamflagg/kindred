@@ -25,4 +25,5 @@ export interface ForecastResponse {
   year: number
   sessions: SessionForecast[]
   grand_total: SessionForecast
+  snapshot_date?: string | null
 }
