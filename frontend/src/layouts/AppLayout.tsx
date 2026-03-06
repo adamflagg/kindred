@@ -555,8 +555,8 @@ export const AppLayout = () => {
 
                 <YearSelector />
 
-                {/* Summer-only: Bunking controls */}
-                {activeProgram === 'summer' && (
+                {/* Summer-only: Bunking controls (manage permission required) */}
+                {activeProgram === 'summer' && hasPermission('bunking.manage') && (
                   <>
                     <BunkRequestsUpload />
                     <button
@@ -640,7 +640,7 @@ export const AppLayout = () => {
 
             {/* Right side: Program-specific actions */}
             <div className="flex items-center gap-2">
-              {activeProgram === 'summer' && (
+              {activeProgram === 'summer' && hasPermission('bunking.manage') && (
                 <>
                   <BunkRequestsUpload />
                   <button
