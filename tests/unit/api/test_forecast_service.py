@@ -960,3 +960,101 @@ class TestForecastPriorYearFailure:
         assert result.grand_total.prior_year_count is None
         assert result.grand_total.two_year_prior_count is None
         assert result.grand_total.participants_vs_prior_year is None
+
+
+# ============================================================================
+# Snapshot Lookback Tests
+# ============================================================================
+
+
+class TestForecastSnapshotLookback:
+    """Test historical forecast viewing via snapshot_date parameter."""
+
+    @pytest.mark.asyncio
+    async def test_snapshot_date_uses_snapshot_counts(self, service, mock_repository):
+        """When snapshot_date is provided, enrolled/waitlisted come from snapshots."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_snapshot_counts = AsyncMock(
+            return_value={
+                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3},
+            }
+        )
+        mock_repository.fetch_budget_config.return_value = dict(
+            [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
+        )
+
+        result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
+
+        mock_repository.fetch_snapshot_counts.assert_called_once_with(2026, "2026-02-15")
+        session = result.sessions[0]
+        assert session.enrolled == 50
+        assert session.waitlisted == 5
+
+    @pytest.mark.asyncio
+    async def test_snapshot_date_none_uses_live_data(self, service, mock_repository):
+        """When snapshot_date is None (default), behavior is unchanged."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        enrolled = [create_mock_attendee(101, 1001)]
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        # Should NOT call fetch_snapshot_counts
+        assert not hasattr(mock_repository, "fetch_snapshot_counts") or not mock_repository.fetch_snapshot_counts.called
+        assert result.sessions[0].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_snapshot_preserves_budget_and_capacity(self, service, mock_repository):
+        """Budget goals and capacity should use current config even in snapshot mode."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_snapshot_counts = AsyncMock(
+            return_value={
+                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3},
+            }
+        )
+        mock_repository.fetch_budget_config.return_value = dict(
+            [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
+        )
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_1001"),
+            create_mock_bunk_plan("pb_1001", bunk_name="B-2"),
+        ]
+
+        result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
+
+        session = result.sessions[0]
+        assert session.participant_goal == 100
+        assert session.capacity == 24  # 2 bunks * default_capacity (12)
+        assert session.session_fee == 1000
+
+    @pytest.mark.asyncio
+    async def test_snapshot_date_in_response(self, service, mock_repository):
+        """Response should include the snapshot_date when provided."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_snapshot_counts = AsyncMock(
+            return_value={1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3}}
+        )
+
+        result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
+        assert result.snapshot_date == "2026-02-15"
+
+    @pytest.mark.asyncio
+    async def test_no_snapshot_date_in_response_for_live(self, service, mock_repository):
+        """Response should have snapshot_date=None for live data."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees.return_value = []
+
+        result = await service.calculate_forecast(year=2026)
+        assert result.snapshot_date is None
