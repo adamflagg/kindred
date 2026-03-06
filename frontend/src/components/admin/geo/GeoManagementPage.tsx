@@ -1,11 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { MapPin } from 'lucide-react'
 import { CATEGORY_SIDEBAR, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
 import type { GeoCategory } from '../geoConstants'
-import { useGeoGaps } from '../../../hooks/useGeoData'
+import { useGeoGaps, useBatchResolveCoords } from '../../../hooks/useGeoData'
 import { NonCanonicalsPanel } from './NonCanonicalsPanel'
+import { AddCoordsPanel } from './AddCoordsPanel'
+import { CanonicalReferenceList } from './CanonicalReferenceList'
+import { ResolveDialog } from './ResolveDialog'
 import { useYear } from '../../../hooks/useCurrentYear'
+
+interface ResolveDialogState {
+  open: boolean
+  gapName: string
+  gapType: string
+}
 
 export function GeoManagementPage() {
   const location = useLocation()
@@ -14,9 +23,27 @@ export function GeoManagementPage() {
   const activeSubTab = getActiveSubTab(location.pathname)
   const category = (SUB_TAB_TO_CATEGORY[activeSubTab] ?? 'city') as GeoCategory
   const [activeOnly, setActiveOnly] = useState(true)
+  const [resolveDialog, setResolveDialog] = useState<ResolveDialogState>({
+    open: false,
+    gapName: '',
+    gapType: '',
+  })
 
   const { data: gaps } = useGeoGaps(category, year, activeOnly)
   const totalGaps = gaps?.total_gaps ?? 0
+  const batchResolve = useBatchResolveCoords(category, year)
+
+  const handleOpenResolve = useCallback((gapName: string, gapType: string) => {
+    setResolveDialog({ open: true, gapName, gapType })
+  }, [])
+
+  const handleCloseResolve = useCallback(() => {
+    setResolveDialog({ open: false, gapName: '', gapType: '' })
+  }, [])
+
+  const handleBatchResolve = useCallback(() => {
+    void batchResolve.mutateAsync()
+  }, [batchResolve])
 
   // Default redirect
   useEffect(() => {
@@ -67,17 +94,29 @@ export function GeoManagementPage() {
 
         {/* Split panels */}
         <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
-          <div data-testid="left-panel" className="border-border overflow-y-auto border-r p-3">
+          <div data-testid="left-panel" className="border-border space-y-4 overflow-y-auto border-r p-3">
             {gaps && (
-              <NonCanonicalsPanel
-                grouped={gaps.non_canonical_grouped}
-                ungrouped={gaps.non_canonical_ungrouped}
-                onResolve={() => {}}
-              />
+              <>
+                <NonCanonicalsPanel
+                  grouped={gaps.non_canonical_grouped}
+                  ungrouped={gaps.non_canonical_ungrouped}
+                  onResolve={handleOpenResolve}
+                />
+                <AddCoordsPanel
+                  gaps={gaps.canonical_no_coords}
+                  onAdd={(name) => handleOpenResolve(name, 'canonical_no_coords')}
+                  onBatchResolve={handleBatchResolve}
+                  isBatchResolving={batchResolve.isPending}
+                />
+              </>
             )}
           </div>
           <div data-testid="right-panel" className="overflow-y-auto p-3">
-            <p className="text-muted-foreground text-sm">Right panel: canonicals</p>
+            <CanonicalReferenceList
+              category={category}
+              year={year}
+              onReassignSource={(originalValue) => handleOpenResolve(originalValue, 'non_canonical_grouped')}
+            />
           </div>
         </div>
       </div>
@@ -98,6 +137,16 @@ export function GeoManagementPage() {
           {totalGaps} {totalGaps === 1 ? 'gap' : 'gaps'} remaining
         </span>
       </div>
+
+      {/* Resolve dialog */}
+      <ResolveDialog
+        open={resolveDialog.open}
+        onClose={handleCloseResolve}
+        gapName={resolveDialog.gapName}
+        gapType={resolveDialog.gapType}
+        category={category}
+        year={year}
+      />
     </div>
   )
 }
