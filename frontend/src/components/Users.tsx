@@ -1,7 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
-import { Users as UsersIcon, Mail, Calendar, Shield } from 'lucide-react'
-import type { UsersResponse } from '../types/pocketbase-types'
+import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck } from 'lucide-react'
+import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
+import { formatDistanceToNow } from 'date-fns'
+import { RolesTab } from './admin/RolesTab'
+import { UserRolesPanel } from './admin/UserRolesPanel'
+import type { RecordModel } from 'pocketbase'
+import type { Role, UserRole } from '../types/rbac'
 
 // Generate consistent color from string (for avatar backgrounds)
 function getAvatarColor(str: string): string {
@@ -26,51 +34,74 @@ function getAvatarColor(str: string): string {
   )
 }
 
-// Format relative time
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
-  return `${Math.floor(diffDays / 365)} years ago`
-}
+type Tab = 'users' | 'roles'
 
 export default function Users() {
-  const [users, setUsers] = useState<UsersResponse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { hasPermission } = usePermissions()
+  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
+  const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState<Tab>('users')
+  const [selectedUser, setSelectedUser] = useState<RecordModel | null>(null)
 
-  useEffect(() => {
-    void fetchUsers()
-  }, [])
-
-  const fetchUsers = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      const result = await pb.collection('users').getList<UsersResponse>(1, 1000, {
+  const {
+    data: users = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.users(),
+    queryFn: async () => {
+      const result = await pb.collection('users').getList<RecordModel>(1, 1000, {
         sort: '-created',
         requestKey: null,
       })
+      return result.items
+    },
+    ...userDataOptions,
+  })
 
-      setUsers(result.items)
-    } catch (err: unknown) {
-      const error = err as { message?: string }
-      if (error?.message?.includes('autocancelled')) {
-        return
-      }
-      setError(error?.message || 'Failed to fetch users')
-      setUsers([])
-    } finally {
-      setIsLoading(false)
-    }
+  const { data: roles = [] } = useQuery({
+    queryKey: queryKeys.roles(),
+    queryFn: async () => {
+      return pb.collection('roles').getFullList<Role>({
+        sort: 'name',
+        requestKey: null,
+      })
+    },
+    ...userDataOptions,
+  })
+
+  const { data: allUserRoles = [] } = useQuery({
+    queryKey: queryKeys.userRoles(),
+    queryFn: async () => {
+      return pb.collection('user_roles').getFullList<UserRole>({
+        requestKey: null,
+      })
+    },
+    ...userDataOptions,
+  })
+
+  // Build a map: userId -> role names
+  const roleMap = new Map<string, Role>()
+  for (const role of roles) {
+    roleMap.set(role.id, role)
+  }
+
+  function getRoleBadges(userId: string): Role[] {
+    return allUserRoles
+      .filter((ur) => ur.user === userId)
+      .map((ur) => roleMap.get(ur.role))
+      .filter((r): r is Role => r !== undefined)
+  }
+
+  function handleUserClick(user: RecordModel) {
+    if (!canManageUsers) return
+    setSelectedUser(selectedUser?.id === user.id ? null : user)
+  }
+
+  function handleClosePanel() {
+    setSelectedUser(null)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.userRoles() })
   }
 
   return (
@@ -91,7 +122,7 @@ export default function Users() {
               </p>
             </div>
           </div>
-          {!isLoading && !error && (
+          {!isLoading && !error && activeTab === 'users' && (
             <div className="text-right">
               <div className="font-display text-lg font-bold text-white tabular-nums sm:text-xl">
                 {users.length}
@@ -104,77 +135,153 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="spinner-lodge" />
-        </div>
-      ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center sm:p-6 dark:border-red-800 dark:bg-red-950/30">
-          <h2 className="font-display mb-2 text-base font-bold text-red-800 sm:text-lg dark:text-red-200">
-            Error Loading Users
-          </h2>
-          <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>
-          <button onClick={fetchUsers} className="btn-primary">
-            Try Again
-          </button>
-        </div>
-      ) : users.length === 0 ? (
-        <div className="bg-card border-border rounded-xl border p-8 text-center sm:p-12">
-          <UsersIcon className="text-muted-foreground/50 mx-auto mb-4 h-10 w-10 sm:h-12 sm:w-12" />
-          <h2 className="font-display text-foreground mb-2 text-base font-semibold sm:text-lg">
-            No Users Yet
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            Users will appear here after signing in via Pocket ID
-          </p>
-        </div>
+      {/* Tabs */}
+      <div className="border-border flex gap-1 border-b">
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'users'
+              ? 'border-primary text-primary border-b-2'
+              : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <UsersIcon className="h-4 w-4" />
+            Users
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('roles')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'roles'
+              ? 'border-primary text-primary border-b-2'
+              : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4" />
+            Roles
+          </span>
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'roles' ? (
+        <RolesTab />
       ) : (
-        <div className="bg-card border-border divide-border divide-y overflow-hidden rounded-xl border shadow-sm">
-          {users.map((user, index) => (
-            <div
-              key={user.id}
-              className="hover:bg-muted/50 dark:hover:bg-muted/30 flex items-center gap-3 px-3 py-3 transition-colors sm:gap-4 sm:px-5 sm:py-4"
-              style={{ animationDelay: `${index * 30}ms` }}
-            >
-              {/* Avatar */}
-              <div
-                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-11 sm:w-11 ${
-                  user.avatar ? '' : getAvatarColor(user.email)
-                }`}
-              >
-                {user.avatar ? (
-                  <img
-                    src={pb.files.getURL(user, user.avatar, { thumb: '44x44' })}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-semibold sm:text-base">
-                    {(user.name || user.email).charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-
-              {/* User Info */}
-              <div className="min-w-0 flex-1">
-                <div className="text-foreground truncate text-sm font-medium sm:text-base">
-                  {user.name || user.email.split('@')[0]}
-                </div>
-                <div className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm">
-                  <Mail className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5" />
-                  <span className="truncate">{user.email}</span>
-                </div>
-              </div>
-
-              {/* Join Date */}
-              <div className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>{formatRelativeTime(user.created)}</span>
-              </div>
+        <>
+          {/* Users Tab Content */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="spinner-lodge" />
             </div>
-          ))}
-        </div>
+          ) : error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center sm:p-6 dark:border-red-800 dark:bg-red-950/30">
+              <h2 className="font-display mb-2 text-base font-bold text-red-800 sm:text-lg dark:text-red-200">
+                Error Loading Users
+              </h2>
+              <p className="mb-4 text-sm text-red-600 dark:text-red-400">
+                {error instanceof Error ? error.message : 'Failed to fetch users'}
+              </p>
+              <button onClick={() => void refetch()} className="btn-primary">
+                Try Again
+              </button>
+            </div>
+          ) : users.length === 0 ? (
+            <div className="bg-card border-border rounded-xl border p-8 text-center sm:p-12">
+              <UsersIcon className="text-muted-foreground/50 mx-auto mb-4 h-10 w-10 sm:h-12 sm:w-12" />
+              <h2 className="font-display text-foreground mb-2 text-base font-semibold sm:text-lg">
+                No Users Yet
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Users will appear here after signing in via Pocket ID
+              </p>
+            </div>
+          ) : (
+            <div className="bg-card border-border divide-border divide-y overflow-hidden rounded-xl border shadow-sm">
+              {users.map((user, index) => {
+                const userRoleBadges = getRoleBadges(user.id)
+                const isAdmin = Boolean(user['is_admin'])
+                const email = (user['email'] as string) || ''
+                const name = (user['name'] as string) || ''
+                const avatar = user['avatar'] as string | undefined
+                const created = (user['created'] as string) || ''
+
+                return (
+                  <div key={user.id}>
+                    <div
+                      className={`hover:bg-muted/50 dark:hover:bg-muted/30 flex items-center gap-3 px-3 py-3 transition-colors sm:gap-4 sm:px-5 sm:py-4 ${
+                        canManageUsers ? 'cursor-pointer' : ''
+                      } ${selectedUser?.id === user.id ? 'bg-muted/50 dark:bg-muted/30' : ''}`}
+                      style={{ animationDelay: `${index * 30}ms` }}
+                      onClick={() => handleUserClick(user)}
+                    >
+                      {/* Avatar */}
+                      <div
+                        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-11 sm:w-11 ${
+                          avatar ? '' : getAvatarColor(email)
+                        }`}
+                      >
+                        {avatar ? (
+                          <img
+                            src={pb.files.getURL(user, avatar, { thumb: '44x44' })}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-sm font-semibold sm:text-base">
+                            {(name || email).charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* User Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-foreground truncate text-sm font-medium sm:text-base">
+                            {name || email.split('@')[0]}
+                          </span>
+                          {isAdmin && (
+                            <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              Admin
+                            </span>
+                          )}
+                          {userRoleBadges.map((role) => (
+                            <span
+                              key={role.id}
+                              className="bg-primary/10 text-primary hidden rounded-md px-1.5 py-0.5 text-xs font-medium sm:inline-block"
+                            >
+                              {role.name}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm">
+                          <Mail className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5" />
+                          <span className="truncate">{email}</span>
+                        </div>
+                      </div>
+
+                      {/* Join Date */}
+                      {created && (
+                        <div className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>{formatDistanceToNow(new Date(created), { addSuffix: true })}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Inline UserRolesPanel */}
+                    {selectedUser?.id === user.id && canManageUsers && (
+                      <div className="border-border border-t px-3 py-3 sm:px-5">
+                        <UserRolesPanel user={user} onClose={handleClosePanel} />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

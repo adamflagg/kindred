@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { queryClient } from './utils/queryClient'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
+import { RequirePermission } from './components/RequirePermission'
 import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -239,31 +240,37 @@ function App() {
                             <Route
                               path="sessions"
                               element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <SessionList />
-                                  </Suspense>
-                                </ErrorBoundary>
+                                <RequirePermission permission="bunking.view">
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <SessionList />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
                               }
                             />
                             <Route
                               path="session/:sessionId/*"
                               element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <SessionView />
-                                  </Suspense>
-                                </ErrorBoundary>
+                                <RequirePermission permission="bunking.view">
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <SessionView />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
                               }
                             />
                             <Route
                               path="session/:sessionId/compare"
                               element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <ScenarioComparisonPage />
-                                  </Suspense>
-                                </ErrorBoundary>
+                                <RequirePermission permission="bunking.view">
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <ScenarioComparisonPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
                               }
                             />
                             {/* Redirects for routes moved to global */}
@@ -297,11 +304,13 @@ function App() {
                             {/* Metrics layout with nested routes */}
                             <Route
                               element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <MetricsLayout />
-                                  </Suspense>
-                                </ErrorBoundary>
+                                <RequirePermission permission="metrics.view">
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <MetricsLayout />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
                               }
                             >
                               {/* Registration section */}

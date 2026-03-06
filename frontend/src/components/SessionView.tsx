@@ -7,6 +7,8 @@ import { useYear } from '../hooks/useCurrentYear'
 import { useScenario } from '../hooks/useScenario'
 import { graphCacheService } from '../services/GraphCacheService'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import {
   useSessionHierarchy,
   useSolverOperations,
@@ -54,6 +56,8 @@ export default function SessionView() {
     loading: scenarioLoading,
   } = useScenario()
   const { setSessionPbId: setLockGroupSessionPbId } = useLockGroupContext()
+  const { hasPermission } = usePermissions()
+  const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Extract tab from URL path
   const activeTab = (isValidTab(tabPath || '') ? tabPath : 'bunks') as ValidTab
@@ -245,6 +249,7 @@ export default function SessionView() {
         onShowNewScenarioModal={() => setShowNewScenarioModal(true)}
         onShowScenarioManagement={() => setShowScenarioManagementModal(true)}
         onSelectScenario={selectScenario}
+        canManage={canManage}
       />
 
       {/* Unified Navigation Region - Tabs + Area Filter */}
@@ -311,20 +316,26 @@ export default function SessionView() {
           />
         </Activity>
 
-        {/* Requests Tab - preserves selection/review state */}
+        {/* Requests Tab - preserves selection/review state (manage permission required) */}
         <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
-          {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-            <RequestReviewPanel
-              sessionId={parseInt(selectedSession, 10)}
-              relatedSessionIds={
-                selectedSession === session?.cm_id.toString()
-                  ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
-                  : []
-              }
-              year={currentYear}
-            />
+          {canManage ? (
+            selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
+              <RequestReviewPanel
+                sessionId={parseInt(selectedSession, 10)}
+                relatedSessionIds={
+                  selectedSession === session?.cm_id.toString()
+                    ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
+                    : []
+                }
+                year={currentYear}
+              />
+            ) : (
+              <div className="text-muted-foreground text-center">Loading session data...</div>
+            )
           ) : (
-            <div className="text-muted-foreground text-center">Loading session data...</div>
+            <div className="text-muted-foreground py-12 text-center">
+              You need the bunking manage permission to view requests.
+            </div>
           )}
         </Activity>
 
@@ -338,8 +349,8 @@ export default function SessionView() {
         </Activity>
       </div>
 
-      {/* New Scenario Modal */}
-      {showNewScenarioModal && session && (
+      {/* New Scenario Modal (manage permission required) */}
+      {canManage && showNewScenarioModal && session && (
         <NewScenarioModal
           sessionId={session.cm_id}
           onClose={() => setShowNewScenarioModal(false)}
@@ -350,8 +361,8 @@ export default function SessionView() {
         />
       )}
 
-      {/* Scenario Management Modal */}
-      {showScenarioManagementModal && session && (
+      {/* Scenario Management Modal (manage permission required) */}
+      {canManage && showScenarioManagementModal && session && (
         <ScenarioManagementModal
           sessionId={session.cm_id}
           onClose={() => setShowScenarioManagementModal(false)}

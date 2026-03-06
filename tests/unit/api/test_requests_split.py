@@ -20,6 +20,23 @@ test_dir = Path(__file__).resolve().parent
 project_root = test_dir.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from bunking.auth_middleware import AuthUser, get_current_user
+
+
+def _override_auth(app: FastAPI) -> None:
+    """Override auth dependency to provide an admin user for testing."""
+
+    def _mock_admin_user() -> AuthUser:
+        return AuthUser(
+            username="TestAdmin",
+            email="test@example.com",
+            display_name="Test Admin",
+            groups=["admin"],
+            is_admin=True,
+        )
+
+    app.dependency_overrides[get_current_user] = _mock_admin_user
+
 
 class TestSplitEndpointValidation:
     """Test request validation for split endpoint."""
@@ -31,6 +48,7 @@ class TestSplitEndpointValidation:
 
         app = FastAPI()
         app.include_router(router)
+        _override_auth(app)
         return TestClient(app)
 
     def test_split_requires_at_least_one_source(self, client: TestClient) -> None:
@@ -95,6 +113,7 @@ class TestSplitEndpointSuccess:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
@@ -239,6 +258,7 @@ class TestSplitEndpointErrors:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
@@ -354,6 +374,7 @@ class TestSplitEndpointPrimaryValidation:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
@@ -449,6 +470,7 @@ class TestSplitEndpointMergedFromUpdate:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 

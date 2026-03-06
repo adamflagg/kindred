@@ -9,9 +9,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
+from bunking.auth_middleware import AuthUser
+from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
     RequestType,
@@ -204,7 +207,9 @@ class SplitRequestsResponse(BaseModel):
 
 
 @router.post("/requests/merge", response_model=MergeRequestsResponse)
-async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse:
+async def merge_requests(
+    request: MergeRequestsRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> MergeRequestsResponse:
     """Merge multiple bunk_requests into a single request.
 
     Combines source links, source_fields arrays, and metadata from all
@@ -376,7 +381,9 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
 
 
 @router.post("/requests/split", response_model=SplitRequestsResponse)
-async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse:
+async def split_requests(
+    request: SplitRequestsRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> SplitRequestsResponse:
     """Split a merged bunk_request into separate requests.
 
     For each source to split off:

@@ -27,7 +27,8 @@ import CacheStatus from '../components/CacheStatus'
 import BunkRequestsUpload from '../components/BunkRequestsUpload'
 import { BrandedLogo } from '../components/BrandedLogo'
 import { useYear } from '../hooks/useCurrentYear'
-import { useIsAdmin } from '../hooks/useIsAdmin'
+import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 import { formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
@@ -42,7 +43,7 @@ export const AppLayout = () => {
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
   const { user, isAuthenticated, logout } = useAuth()
-  const isAdmin = useIsAdmin()
+  const { hasPermission, isAdmin } = usePermissions()
   const { fetchWithAuth } = useApiWithAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
@@ -234,7 +235,7 @@ export const AppLayout = () => {
 
               {/* Desktop navigation */}
               <div className="hidden sm:flex sm:gap-1">
-                {activeProgram === 'summer' && (
+                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_VIEW) && (
                   <Link
                     to="/summer/sessions"
                     className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
@@ -242,7 +243,7 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && (
+                {activeProgram === 'metrics' && hasPermission(Permission.METRICS_VIEW) && (
                   <Link
                     to="/metrics"
                     className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
@@ -262,12 +263,14 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                <Link
-                  to="/admin"
-                  className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
-                >
-                  Admin
-                </Link>
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
+                  >
+                    Admin
+                  </Link>
+                )}
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
                     to="/summer/debug"
@@ -453,7 +456,7 @@ export const AppLayout = () => {
 
               {/* Navigation Items */}
               <div className="space-y-1">
-                {activeProgram === 'summer' && (
+                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_VIEW) && (
                   <Link
                     to="/summer/sessions"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
@@ -466,7 +469,7 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && (
+                {activeProgram === 'metrics' && hasPermission(Permission.METRICS_VIEW) && (
                   <Link
                     to="/metrics"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
@@ -501,17 +504,19 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                <Link
-                  to="/admin"
-                  className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                    isActiveRoute('/admin')
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground hover:bg-muted/50'
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  Admin
-                </Link>
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
+                      isActiveRoute('/admin')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Admin
+                  </Link>
+                )}
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
                     to="/summer/debug"
@@ -551,8 +556,8 @@ export const AppLayout = () => {
 
                 <YearSelector />
 
-                {/* Summer-only: Bunking controls */}
-                {activeProgram === 'summer' && (
+                {/* Summer-only: Bunking controls (manage permission required) */}
+                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                   <>
                     <BunkRequestsUpload />
                     <button
@@ -636,7 +641,7 @@ export const AppLayout = () => {
 
             {/* Right side: Program-specific actions */}
             <div className="flex items-center gap-2">
-              {activeProgram === 'summer' && (
+              {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                 <>
                   <BunkRequestsUpload />
                   <button

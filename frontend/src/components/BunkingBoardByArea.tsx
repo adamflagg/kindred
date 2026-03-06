@@ -26,6 +26,8 @@ const LockGroupsHub = lazy(() => import('./LockGroupsHub'))
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { useYear } from '../hooks/useCurrentYear'
+import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
 
 interface BunkingBoardByAreaProps {
@@ -68,6 +70,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const [draggedGroupMembers, setDraggedGroupMembers] = useState<Camper[]>([])
   const [, startTransition] = useTransition()
   const currentYear = useYear()
+  const { hasPermission } = usePermissions()
+  const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Get lock group context for action bar and pending camper management
   const {
@@ -291,6 +295,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   }
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (!canManage) return
     const { active } = event
     setActiveId(active.id as string)
     setIsDragging(true)
@@ -679,23 +684,27 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       )}
 
       {/* Lock Group Action Bar - only shown in draft mode with pending selections (lazy loaded) */}
-      {isDraftMode && scenarioId && lockGroupSessionPbId && pendingCampers.length > 0 && (
-        <Suspense fallback={null}>
-          <LockGroupActionBar
-            pendingCampers={pendingCampers}
-            sessionPbId={lockGroupSessionPbId}
-            scenarioId={scenarioId}
-            year={currentYear}
-            onClearPending={clearPendingCampers}
-            onGroupCreated={() => {
-              toast.success('Lock group created successfully')
-            }}
-          />
-        </Suspense>
-      )}
+      {canManage &&
+        isDraftMode &&
+        scenarioId &&
+        lockGroupSessionPbId &&
+        pendingCampers.length > 0 && (
+          <Suspense fallback={null}>
+            <LockGroupActionBar
+              pendingCampers={pendingCampers}
+              sessionPbId={lockGroupSessionPbId}
+              scenarioId={scenarioId}
+              year={currentYear}
+              onClearPending={clearPendingCampers}
+              onGroupCreated={() => {
+                toast.success('Lock group created successfully')
+              }}
+            />
+          </Suspense>
+        )}
 
-      {/* Friend Groups Hub - always visible in draft mode (lazy loaded) */}
-      {isDraftMode && scenarioId && lockGroupSessionPbId && (
+      {/* Friend Groups Hub - visible in draft mode with manage permission (lazy loaded) */}
+      {canManage && isDraftMode && scenarioId && lockGroupSessionPbId && (
         <Suspense fallback={null}>
           <LockGroupsHub
             groups={groups}
@@ -710,7 +719,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       )}
 
       {/* Lock Group Panel (lazy loaded) */}
-      {isDraftMode && scenarioId && lockGroupSessionPbId && (
+      {canManage && isDraftMode && scenarioId && lockGroupSessionPbId && (
         <Suspense fallback={null}>
           <LockGroupPanel
             isOpen={isLockPanelOpen}
