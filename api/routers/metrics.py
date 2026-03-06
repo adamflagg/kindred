@@ -487,17 +487,34 @@ async def get_velocity(
 # ============================================================================
 
 
+@router.get("/forecast/snapshot-dates")
+async def get_forecast_snapshot_dates(
+    year: int = Query(..., description="Year to get snapshot dates for"),
+    user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
+) -> dict[str, list[str]]:
+    """Return available enrollment snapshot dates for the forecast date picker."""
+    repository = _create_repository()
+    dates = await repository.fetch_available_snapshot_dates(year)
+    return {"dates": dates}
+
+
 @router.get("/forecast", response_model=ForecastResponse)
 async def get_forecast(
     year: int = Query(..., description="Year to forecast"),
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
+    snapshot_date: str | None = Query(None, description="Historical snapshot date (YYYY-MM-DD)"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals, capacity, and revenue projections."""
     from api.services.forecast_service import ForecastService
 
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id}
+    cache_params = {
+        "year": year,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "snapshot_date": snapshot_date,
+    }
     cached: ForecastResponse | None = metrics_cache.get("forecast", **cache_params)
     if cached is not None:
         return cached
@@ -509,6 +526,7 @@ async def get_forecast(
         year=year,
         session_types=type_filter,
         session_cm_id=session_cm_id,
+        snapshot_date=snapshot_date,
     )
     metrics_cache.set("forecast", result, **cache_params)
     return result
