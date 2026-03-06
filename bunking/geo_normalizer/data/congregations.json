@@ -288,5 +288,211 @@
       34.0579,
       -118.311
     ]
+  },
+  "location": {
+    "Beth El": {
+      "city": "Berkeley",
+      "state": "CA"
+    },
+    "Beth Jacob Oakland": {
+      "city": "Oakland",
+      "state": "CA"
+    },
+    "Chabad of the East Bay": {
+      "city": "Berkeley",
+      "state": "CA"
+    },
+    "Congregation B'nai Israel": {
+      "city": "Walnut Creek",
+      "state": "CA"
+    },
+    "Congregation B'nai Israel Sacramento": {
+      "city": "Sacramento",
+      "state": "CA"
+    },
+    "Congregation B'nai Shalom": {
+      "city": "Walnut Creek",
+      "state": "CA"
+    },
+    "Congregation B'nai Tikvah": {
+      "city": "Walnut Creek",
+      "state": "CA"
+    },
+    "Congregation Beth Am": {
+      "city": "Los Altos Hills",
+      "state": "CA"
+    },
+    "Congregation Beth Am Los Angeles": {
+      "city": "Los Angeles",
+      "state": "CA"
+    },
+    "Congregation Beth Ami": {
+      "city": "Santa Rosa",
+      "state": "CA"
+    },
+    "Congregation Beth David": {
+      "city": "Saratoga",
+      "state": "CA"
+    },
+    "Congregation Beth El": {
+      "city": "Berkeley",
+      "state": "CA"
+    },
+    "Congregation Beth Israel": {
+      "city": "Berkeley",
+      "state": "CA"
+    },
+    "Congregation Beth Jacob": {
+      "city": "Redwood City",
+      "state": "CA"
+    },
+    "Congregation Beth Shalom Sacramento": {
+      "city": "Sacramento",
+      "state": "CA"
+    },
+    "Congregation Beth Sholom": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Congregation Emanu-El": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Congregation Emeth": {
+      "city": "Palo Alto",
+      "state": "CA"
+    },
+    "Congregation Etz Chayim": {
+      "city": "Palo Alto",
+      "state": "CA"
+    },
+    "Congregation Kol Emeth": {
+      "city": "Palo Alto",
+      "state": "CA"
+    },
+    "Congregation Kol Shofar": {
+      "city": "Tiburon",
+      "state": "CA"
+    },
+    "Congregation Ner Tamid": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Congregation Netivot Shalom": {
+      "city": "Berkeley",
+      "state": "CA"
+    },
+    "Congregation Rodef Sholom": {
+      "city": "San Rafael",
+      "state": "CA"
+    },
+    "Congregation Sha'ar Zahav": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Congregation Sherith Israel": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Congregation Shir Hadash": {
+      "city": "Los Gatos",
+      "state": "CA"
+    },
+    "Congregation Shomrei Torah": {
+      "city": "Santa Rosa",
+      "state": "CA"
+    },
+    "Congregation Sinai": {
+      "city": "San Jose",
+      "state": "CA"
+    },
+    "Keddem Congregation": {
+      "city": "Palo Alto",
+      "state": "CA"
+    },
+    "Kehilla Community Synagogue": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Marin Jewish Community Center": {
+      "city": "San Rafael",
+      "state": "CA"
+    },
+    "Or Chadash": {
+      "city": "Pleasanton",
+      "state": "CA"
+    },
+    "Or Shalom": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Or Shalom Jewish Community": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Peninsula Sinai Congregation": {
+      "city": "Foster City",
+      "state": "CA"
+    },
+    "Peninsula Temple Beth El": {
+      "city": "San Mateo",
+      "state": "CA"
+    },
+    "Peninsula Temple Sholom": {
+      "city": "Burlingame",
+      "state": "CA"
+    },
+    "Stephen Wise Temple": {
+      "city": "Los Angeles",
+      "state": "CA"
+    },
+    "Temple Beth Abraham": {
+      "city": "Oakland",
+      "state": "CA"
+    },
+    "Temple Beth Am": {
+      "city": "Los Angeles",
+      "state": "CA"
+    },
+    "Temple Beth Hillel": {
+      "city": "Richmond",
+      "state": "CA"
+    },
+    "Temple Beth Sholom": {
+      "city": "San Jose",
+      "state": "CA"
+    },
+    "Temple Emanu-El": {
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "Temple Emanu-El San Jose": {
+      "city": "San Jose",
+      "state": "CA"
+    },
+    "Temple Isaiah": {
+      "city": "Lafayette",
+      "state": "CA"
+    },
+    "Temple Israel": {
+      "city": "Alameda",
+      "state": "CA"
+    },
+    "Temple Sinai": {
+      "city": "Oakland",
+      "state": "CA"
+    },
+    "Temple of the Arts": {
+      "city": "Los Angeles",
+      "state": "CA"
+    },
+    "Tri-Valley Cultural Jews": {
+      "city": "Pleasanton",
+      "state": "CA"
+    },
+    "Wilshire Boulevard Temple": {
+      "city": "Los Angeles",
+      "state": "CA"
+    }
   }
 }

@@ -1,0 +1,75 @@
+import { Building2, School, Landmark } from 'lucide-react'
+
+export type GeoCategory = 'city' | 'school' | 'congregation'
+
+export const GEO_CATEGORIES: GeoCategory[] = ['city', 'school', 'congregation']
+
+/** Map source key to display label. */
+export function sourceLabel(source: string): string {
+  switch (source) {
+    case 'nces':
+      return 'NCES'
+    case 'pss':
+      return 'PSS'
+    case 'simplemaps':
+      return 'SimpleMaps'
+    case 'curated':
+      return 'Curated'
+    case 'manual':
+      return 'Manual'
+    default:
+      return source
+  }
+}
+
+/** Map source key to Tailwind badge classes (earthy palette). */
+export function sourceBadgeClasses(source: string): string {
+  switch (source) {
+    case 'nces':
+    case 'pss':
+      return 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
+    case 'simplemaps':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+    case 'manual':
+    case 'curated':
+      return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+  }
+}
+
+export const SUB_TABS = [
+  { id: 'cities', label: 'Cities', path: '/admin/geo/cities', icon: Building2 },
+  { id: 'schools', label: 'Schools', path: '/admin/geo/schools', icon: School },
+  {
+    id: 'congregations',
+    label: 'Congregations',
+    path: '/admin/geo/congregations',
+    icon: Landmark,
+  },
+] as const
+
+export const CATEGORY_SIDEBAR = [
+  { id: 'city' as const, label: 'Cities', icon: Building2, path: '/admin/geo/cities' },
+  { id: 'school' as const, label: 'Schools', icon: School, path: '/admin/geo/schools' },
+  {
+    id: 'congregation' as const,
+    label: 'Congregations',
+    icon: Landmark,
+    path: '/admin/geo/congregations',
+  },
+]
+
+/** Map sub-tab id to API category value */
+export const SUB_TAB_TO_CATEGORY: Record<string, GeoCategory> = {
+  cities: 'city',
+  schools: 'school',
+  congregations: 'congregation',
+}
+
+export function getActiveSubTab(pathname: string): string {
+  for (const tab of SUB_TABS) {
+    if (pathname.startsWith(tab.path)) return tab.id
+  }
+  return 'cities'
+}

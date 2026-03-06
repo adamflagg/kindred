@@ -1,13 +1,22 @@
 import type { LucideIcon } from 'lucide-react'
-import { RefreshCw, Sliders, FileSpreadsheet, Workflow, Database, CalendarDays } from 'lucide-react'
+import {
+  RefreshCw,
+  Sliders,
+  FileSpreadsheet,
+  Workflow,
+  Database,
+  CalendarDays,
+  MapPin,
+} from 'lucide-react'
+import { Permission } from '../constants/permissions'
 
 export interface AdminTabConfig {
-  id: 'sync' | 'config' | 'sheets'
+  id: 'sync' | 'config' | 'sheets' | 'geo'
   label: string
   path: string
   icon: LucideIcon
-  /** Permission required. 'admin' = super-admin only, 'authenticated' = any logged-in user */
-  requiredPermission: 'admin' | 'authenticated'
+  /** Permission required. 'admin' = super-admin only, 'authenticated' = any logged-in user, or a permission codename */
+  requiredPermission: 'admin' | 'authenticated' | string
 }
 
 export const ADMIN_TABS: AdminTabConfig[] = [
@@ -31,6 +40,13 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     path: '/admin/sheets',
     icon: FileSpreadsheet,
     requiredPermission: 'admin',
+  },
+  {
+    id: 'geo',
+    label: 'Geo Data',
+    path: '/admin/geo',
+    icon: MapPin,
+    requiredPermission: Permission.METRICS_GEO,
   },
 ]
 

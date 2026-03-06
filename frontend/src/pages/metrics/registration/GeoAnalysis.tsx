@@ -15,11 +15,7 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
-import {
-  useNormalizedMappings,
-  type NormalizedCategory,
-  type SourceMapping,
-} from '../../../hooks/useNormalizedMappings'
+import { useSourceMappings, type SourceMapping } from '../../../hooks/useSourceMappings'
 import { useIsAdmin } from '../../../hooks/useIsAdmin'
 import {
   GeoMap,
@@ -33,14 +29,15 @@ import {
   type GeoDataItem,
   type GeoMapLayer,
 } from '../../../components/metrics/geo'
-import { getLocationCoords } from '../../../data/geoCoords'
+import { getLocationCoordsWithOverrides } from '../../../data/geoCoords'
+import { useGeoOverrideCoords } from '../../../hooks/useGeoOverrideCoords'
 import { aggregateCityCountsByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 
 /** Default status filter for enrolled campers */
 const DEFAULT_STATUS_FILTER = ['enrolled']
 
 /** Map frontend category names to DB category names */
-const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
+const categoryToDbCategory: Record<GeoCategory, string> = {
   city: 'city',
   school: 'school',
   synagogue: 'congregation',
@@ -49,6 +46,7 @@ const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
   const isAdmin = useIsAdmin()
+  const { data: overrideCoords } = useGeoOverrideCoords(currentYear)
   const [activeLayers, setActiveLayers] = useState<Set<GeoCategoryExtended>>(
     new Set(['city', 'school', 'synagogue', 'region'])
   )
@@ -78,24 +76,36 @@ export default function GeoAnalysis() {
     statusFilter: DEFAULT_STATUS_FILTER,
   })
 
-  // Fetch normalized mappings for source display per active layer
-  const { data: citySources } = useNormalizedMappings(
+  // Fetch source mappings from backend with active_only filtering
+  const needsMappings = showSources || showGaps
+  const sourceMappingOptions: {
+    activeOnly: boolean
+    sessionTypes: readonly string[]
+    sessionCmId?: number
+  } = {
+    activeOnly: true,
+    sessionTypes: [...activeSessionTypes],
+  }
+  if (selectedSessionCmId != null) {
+    sourceMappingOptions.sessionCmId = selectedSessionCmId
+  }
+  const { data: citySources } = useSourceMappings(
     currentYear,
     categoryToDbCategory.city,
-    showSources && activeLayers.has('city'),
-    selectedSessionCmId ?? undefined
+    needsMappings && activeLayers.has('city'),
+    sourceMappingOptions
   )
-  const { data: schoolSources } = useNormalizedMappings(
+  const { data: schoolSources } = useSourceMappings(
     currentYear,
     categoryToDbCategory.school,
-    showSources && activeLayers.has('school'),
-    selectedSessionCmId ?? undefined
+    needsMappings && activeLayers.has('school'),
+    sourceMappingOptions
   )
-  const { data: synagogueSources } = useNormalizedMappings(
+  const { data: synagogueSources } = useSourceMappings(
     currentYear,
     categoryToDbCategory.synagogue,
-    showSources && activeLayers.has('synagogue'),
-    selectedSessionCmId ?? undefined
+    needsMappings && activeLayers.has('synagogue'),
+    sourceMappingOptions
   )
 
   // Fetch registration data with geographic breakdowns + optional comparison
@@ -250,17 +260,17 @@ export default function GeoAnalysis() {
     setSelectedItem((prev) => (prev === name ? null : name))
   }
 
-  // Compute gaps (items without coordinates = not in canonical lookup)
+  // Compute gaps (items without coordinates = not in canonical lookup or overrides)
   const gaps = useMemo(() => {
     const computeGaps = (items: GeoDataItem[], category: GeoCategory) =>
-      items.filter((item) => !getLocationCoords(category, item.name))
+      items.filter((item) => !getLocationCoordsWithOverrides(category, item.name, overrideCoords))
 
     return {
       city: computeGaps(geoData.city, 'city'),
       school: computeGaps(geoData.school, 'school'),
       synagogue: computeGaps(geoData.synagogue, 'synagogue'),
     }
-  }, [geoData])
+  }, [geoData, overrideCoords])
 
   // Source mappings per category
   const sourceMappingsFor: Record<GeoCategory, Map<string, SourceMapping[]> | undefined> = {
@@ -359,6 +369,7 @@ export default function GeoAnalysis() {
               onDrilldown={setFilter}
               height={575}
               showRegions={showRegions}
+              overrideCoords={overrideCoords}
             />
           )}
 
@@ -428,6 +439,7 @@ export default function GeoAnalysis() {
                   showGaps={showGaps}
                   isOpen={expandedCategories.has('city')}
                   onToggle={() => handleDetailToggle('city')}
+                  overrideCoords={overrideCoords}
                 />
               )}
               {activeLayers.has('school') && geoData.school.length > 0 && (
@@ -442,6 +454,7 @@ export default function GeoAnalysis() {
                   showGaps={showGaps}
                   isOpen={expandedCategories.has('school')}
                   onToggle={() => handleDetailToggle('school')}
+                  overrideCoords={overrideCoords}
                 />
               )}
               {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
@@ -456,6 +469,7 @@ export default function GeoAnalysis() {
                   showGaps={showGaps}
                   isOpen={expandedCategories.has('synagogue')}
                   onToggle={() => handleDetailToggle('synagogue')}
+                  overrideCoords={overrideCoords}
                 />
               )}
               {activeLayers.has('region') && geoData.region.length > 0 && (
@@ -472,10 +486,26 @@ export default function GeoAnalysis() {
           {/* Gap Tracking (admin only, single-year mode only) */}
           {showGaps && !isComparing && (
             <div className="space-y-3">
-              {activeLayers.has('city') && <GeoGapsList gaps={gaps.city} category="city" />}
-              {activeLayers.has('school') && <GeoGapsList gaps={gaps.school} category="school" />}
+              {activeLayers.has('city') && (
+                <GeoGapsList
+                  gaps={gaps.city}
+                  category="city"
+                  sourceMappings={sourceMappingsFor.city}
+                />
+              )}
+              {activeLayers.has('school') && (
+                <GeoGapsList
+                  gaps={gaps.school}
+                  category="school"
+                  sourceMappings={sourceMappingsFor.school}
+                />
+              )}
               {activeLayers.has('synagogue') && (
-                <GeoGapsList gaps={gaps.synagogue} category="synagogue" />
+                <GeoGapsList
+                  gaps={gaps.synagogue}
+                  category="synagogue"
+                  sourceMappings={sourceMappingsFor.synagogue}
+                />
               )}
             </div>
           )}

@@ -220,6 +220,17 @@ const LoginPage = () => {
         <p className="text-muted-foreground/70 mt-6 text-center text-sm">
           Use your staff credentials
         </p>
+        <p className="text-muted-foreground/40 mt-3 text-center text-xs">
+          City data by{' '}
+          <a
+            href="https://simplemaps.com/data/us-cities"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-muted-foreground/60 underline"
+          >
+            SimpleMaps
+          </a>
+        </p>
       </div>
     </div>
   )

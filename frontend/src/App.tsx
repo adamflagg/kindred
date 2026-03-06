@@ -13,6 +13,7 @@ import { queryClient } from './utils/queryClient'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
+import { Permission } from './constants/permissions'
 import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -38,6 +39,9 @@ const ConfigTab = lazy(() =>
 )
 const SheetsTab = lazy(() =>
   import('./components/admin/SheetsTab').then((m) => ({ default: m.SheetsTab }))
+)
+const GeoDataTab = lazy(() =>
+  import('./components/admin/GeoDataTab').then((m) => ({ default: m.GeoDataTab }))
 )
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -214,6 +218,18 @@ function App() {
                                       </Suspense>
                                     </ErrorBoundary>
                                   </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="geo/*"
+                                element={
+                                  <RequirePermission permission={Permission.METRICS_GEO}>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <GeoDataTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </RequirePermission>
                                 }
                               />
                             </Route>

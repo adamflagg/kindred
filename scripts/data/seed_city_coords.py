@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Generate frontend city coordinate data from uscities.csv.
+"""Generate frontend city coordinate data and backend lookup JSON from uscities.csv.
 
-Reads the SimpleMaps uscities.csv and generates frontend/src/data/cityGeo.ts
-containing US_CITY_COORDS and US_CITY_STATES lookups.
+Reads the SimpleMaps uscities.csv and generates:
+1. frontend/src/data/cityGeo.ts — US_CITY_COORDS and US_CITY_STATES lookups
+2. bunking/geo_normalizer/data/us_cities.json — lookup + location metadata
 
 For duplicate city names (e.g., Portland OR vs ME), resolves using actual
 camper data from PocketBase: persons.address_state with fallback to
@@ -11,10 +12,10 @@ version.
 
 Usage:
     # With PocketBase running (uses camper data for disambiguation):
-    uv run python scripts/data/seed_city_coords.py
+    uv run python scripts/data/seed_city_coords.py --source path/to/uscities.csv
 
     # Without PocketBase (falls back to most populous for all dupes):
-    uv run python scripts/data/seed_city_coords.py --no-pb
+    uv run python scripts/data/seed_city_coords.py --source path/to/uscities.csv --no-pb
 
     # Custom PocketBase URL:
     uv run python scripts/data/seed_city_coords.py --pb-url http://localhost:8120
@@ -22,6 +23,7 @@ Usage:
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -30,16 +32,17 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CSV_PATH = REPO_ROOT / "uscities.csv"
 OUTPUT_PATH = REPO_ROOT / "frontend" / "src" / "data" / "cityGeo.ts"
+JSON_OUTPUT_PATH = REPO_ROOT / "bunking" / "geo_normalizer" / "data" / "us_cities.json"
 
 DEFAULT_PB_URL = "http://127.0.0.1:8090"
 
 
-def load_csv() -> list[dict[str, str]]:
+def load_csv(csv_path: Path) -> list[dict[str, str]]:
     """Load uscities.csv rows."""
-    if not CSV_PATH.exists():
-        print(f"Error: {CSV_PATH} not found", file=sys.stderr)
+    if not csv_path.exists():
+        print(f"Error: {csv_path} not found", file=sys.stderr)
         sys.exit(1)
-    with open(CSV_PATH, newline="", encoding="utf-8") as f:
+    with open(csv_path, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
@@ -190,10 +193,10 @@ def query_camper_city_states(pb_url: str) -> dict[str, str]:
     return result
 
 
-def generate(camper_states: dict[str, str]) -> None:
-    """Generate cityGeo.ts from uscities.csv + camper state data."""
-    rows = load_csv()
-    print(f"  Loaded {len(rows)} rows from uscities.csv", file=sys.stderr)
+def generate(camper_states: dict[str, str], csv_path: Path) -> None:
+    """Generate cityGeo.ts and us_cities.json from uscities.csv + camper state data."""
+    rows = load_csv(csv_path)
+    print(f"  Loaded {len(rows)} rows from {csv_path.name}", file=sys.stderr)
 
     # Group by city name (lowercase) -> (display_name, list of (state, lat, lng, population))
     city_variants: dict[str, tuple[str, list[tuple[str, float, float, int]]]] = {}
@@ -279,9 +282,40 @@ def generate(camper_states: dict[str, str]) -> None:
     size_kb = OUTPUT_PATH.stat().st_size / 1024
     print(f"  Generated {OUTPUT_PATH.name} ({size_kb:.0f} KB)", file=sys.stderr)
 
+    # Generate us_cities.json with lookup + location metadata
+    lookup: dict[str, str] = {}
+    location: dict[str, dict[str, str]] = {}
+
+    for display_name in sorted(coords.keys()):
+        lower = display_name.lower()
+        if lower not in lookup:
+            lookup[lower] = display_name
+        state = states.get(display_name, "")
+        if state:
+            location[display_name] = {"state": state}
+
+    json_data = {
+        "lookup": dict(sorted(lookup.items())),
+        "location": dict(sorted(location.items())),
+    }
+
+    JSON_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(JSON_OUTPUT_PATH, "w") as f:
+        json.dump(json_data, f, indent=2)
+
+    json_size_kb = JSON_OUTPUT_PATH.stat().st_size / 1024
+    print(f"  Generated {JSON_OUTPUT_PATH.name} ({json_size_kb:.0f} KB)", file=sys.stderr)
+    print(f"  {len(lookup)} entries in lookup, {len(location)} with location metadata", file=sys.stderr)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate frontend city coordinate data")
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=None,
+        help="Path to uscities.csv (default: auto-discover in repo root)",
+    )
     parser.add_argument(
         "--no-pb",
         action="store_true",
@@ -294,7 +328,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print("Generating city coordinates...", file=sys.stderr)
+    csv_path = args.source or CSV_PATH
+    print(f"Generating city coordinates from {csv_path}...", file=sys.stderr)
 
     camper_states: dict[str, str] = {}
     if not args.no_pb:
@@ -302,7 +337,7 @@ def main() -> None:
     else:
         print("  Skipping PocketBase (--no-pb), using most populous for duplicates", file=sys.stderr)
 
-    generate(camper_states)
+    generate(camper_states, csv_path)
     print("Done.", file=sys.stderr)
 
 

@@ -31,3 +31,24 @@ export function getLocationCoords(category: string, name: string): LatLng | unde
       return undefined
   }
 }
+
+/**
+ * Get coordinates with override priority.
+ *
+ * Checks the override map first (keyed by DB category), then falls
+ * back to static coordinate lookup. Maps frontend "synagogue" to
+ * DB "congregation" for the override key.
+ */
+export function getLocationCoordsWithOverrides(
+  category: string,
+  name: string,
+  overrideCoords?: Map<string, LatLng>
+): LatLng | undefined {
+  if (overrideCoords) {
+    const dbCategory = category === 'synagogue' ? 'congregation' : category
+    const key = `${dbCategory}:${name}`
+    const override = overrideCoords.get(key)
+    if (override) return override
+  }
+  return getLocationCoords(category, name)
+}

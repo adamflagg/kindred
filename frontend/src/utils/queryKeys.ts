@@ -189,11 +189,34 @@ export const queryKeys = {
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
 
-  // Normalized mappings for geographic source tracking
-  normalizedMappings: (year: number, category: string, sessionCmId?: number) =>
-    sessionCmId !== undefined
-      ? (['normalized-mappings', year, category, sessionCmId] as const)
-      : (['normalized-mappings', year, category] as const),
+  // Geo Management (Tier 2 - user data)
+  geoSourceMappings: (
+    category: string,
+    year: number,
+    activeOnly?: boolean,
+    sessionTypes?: readonly string[],
+    sessionCmId?: number
+  ) =>
+    [
+      'geo',
+      'source-mappings',
+      category,
+      year,
+      activeOnly,
+      sessionTypes ? [...sessionTypes] : undefined,
+      sessionCmId,
+    ] as const,
+  geoGapsPrefix: (category: string, year: number) => ['geo', 'gaps', category, year] as const,
+  geoGaps: (category: string, year: number, activeOnly?: boolean) =>
+    ['geo', 'gaps', category, year, activeOnly] as const,
+  geoCanonicals: (category: string, query: string, year: number) =>
+    ['geo', 'canonicals', category, query, year] as const,
+  geoAllCanonicals: (category: string, year: number) =>
+    ['geo', 'all-canonicals', category, year] as const,
+  geoSources: (category: string, canonicalName: string, year: number) =>
+    ['geo', 'sources', category, canonicalName, year] as const,
+  geoOverrides: (category: string, year: number) => ['geo', 'overrides', category, year] as const,
+  geoOverrideCoords: (year: number) => ['geo', 'override-coords', year] as const,
 
   // Velocity (Tier 1 - sync data, historical analysis)
   velocity: (

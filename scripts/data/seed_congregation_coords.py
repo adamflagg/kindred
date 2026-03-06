@@ -21,81 +21,84 @@ from typing import Any
 # Output path
 OUTPUT_PATH = Path(__file__).parent.parent.parent / "bunking" / "geo_normalizer" / "data" / "congregations.json"
 
-# Bay Area Jewish congregations with coordinates
+# Bay Area Jewish congregations with coordinates and location metadata
 # Organized by region for maintainability
-CONGREGATIONS: dict[str, list[float]] = {
+# Format: name -> {"coords": [lat, lon], "city": city, "state": state}
+CONGREGATIONS: dict[str, dict[str, Any]] = {
     # ========== SAN FRANCISCO ==========
-    "Congregation Beth Sholom": [37.7830, -122.4681],
-    "Congregation Emanu-El": [37.7862, -122.4410],
-    "Congregation Ner Tamid": [37.7237, -122.4769],
-    "Congregation Sha'ar Zahav": [37.7606, -122.4269],
-    "Congregation Sherith Israel": [37.7885, -122.4285],
-    "Kehilla Community Synagogue": [37.8430, -122.2545],
-    "Or Shalom Jewish Community": [37.7470, -122.4530],
-    "Temple Emanu-El": [37.7862, -122.4410],
+    "Congregation Beth Sholom": {"coords": [37.7830, -122.4681], "city": "San Francisco", "state": "CA"},
+    "Congregation Emanu-El": {"coords": [37.7862, -122.4410], "city": "San Francisco", "state": "CA"},
+    "Congregation Ner Tamid": {"coords": [37.7237, -122.4769], "city": "San Francisco", "state": "CA"},
+    "Congregation Sha'ar Zahav": {"coords": [37.7606, -122.4269], "city": "San Francisco", "state": "CA"},
+    "Congregation Sherith Israel": {"coords": [37.7885, -122.4285], "city": "San Francisco", "state": "CA"},
+    "Kehilla Community Synagogue": {"coords": [37.8430, -122.2545], "city": "San Francisco", "state": "CA"},
+    "Or Shalom Jewish Community": {"coords": [37.7470, -122.4530], "city": "San Francisco", "state": "CA"},
+    "Temple Emanu-El": {"coords": [37.7862, -122.4410], "city": "San Francisco", "state": "CA"},
     # ========== MARIN COUNTY ==========
-    "Congregation Kol Shofar": [37.9249, -122.5339],
-    "Congregation Rodef Sholom": [37.9735, -122.5311],
-    "Marin Jewish Community Center": [37.9400, -122.5200],
-    "Or Shalom": [37.7470, -122.4530],
-    "Temple Isaiah": [37.8791, -122.5157],
+    "Congregation Kol Shofar": {"coords": [37.9249, -122.5339], "city": "Tiburon", "state": "CA"},
+    "Congregation Rodef Sholom": {"coords": [37.9735, -122.5311], "city": "San Rafael", "state": "CA"},
+    "Marin Jewish Community Center": {"coords": [37.9400, -122.5200], "city": "San Rafael", "state": "CA"},
+    "Or Shalom": {"coords": [37.7470, -122.4530], "city": "San Francisco", "state": "CA"},
+    "Temple Isaiah": {"coords": [37.8791, -122.5157], "city": "Lafayette", "state": "CA"},
     # ========== PENINSULA ==========
-    "Congregation Beth Am": [37.3880, -122.1160],
-    "Congregation Beth David": [37.3190, -121.9500],
-    "Congregation Beth Jacob": [37.4630, -122.1420],
-    "Congregation Emeth": [37.4419, -122.1430],
-    "Congregation Kol Emeth": [37.4419, -122.1430],
-    "Congregation Etz Chayim": [37.4419, -122.1430],
-    "Keddem Congregation": [37.4550, -122.1730],
-    "Peninsula Sinai Congregation": [37.3688, -122.0363],
-    "Peninsula Temple Beth El": [37.5529, -122.3055],
-    "Peninsula Temple Sholom": [37.5841, -122.3661],
+    "Congregation Beth Am": {"coords": [37.3880, -122.1160], "city": "Los Altos Hills", "state": "CA"},
+    "Congregation Beth David": {"coords": [37.3190, -121.9500], "city": "Saratoga", "state": "CA"},
+    "Congregation Beth Jacob": {"coords": [37.4630, -122.1420], "city": "Redwood City", "state": "CA"},
+    "Congregation Emeth": {"coords": [37.4419, -122.1430], "city": "Palo Alto", "state": "CA"},
+    "Congregation Kol Emeth": {"coords": [37.4419, -122.1430], "city": "Palo Alto", "state": "CA"},
+    "Congregation Etz Chayim": {"coords": [37.4419, -122.1430], "city": "Palo Alto", "state": "CA"},
+    "Keddem Congregation": {"coords": [37.4550, -122.1730], "city": "Palo Alto", "state": "CA"},
+    "Peninsula Sinai Congregation": {"coords": [37.3688, -122.0363], "city": "Foster City", "state": "CA"},
+    "Peninsula Temple Beth El": {"coords": [37.5529, -122.3055], "city": "San Mateo", "state": "CA"},
+    "Peninsula Temple Sholom": {"coords": [37.5841, -122.3661], "city": "Burlingame", "state": "CA"},
     # ========== EAST BAY ==========
-    "Beth El": [37.8716, -122.2727],
-    "Beth Jacob Oakland": [37.8244, -122.2317],
-    "Chabad of the East Bay": [37.8716, -122.2727],
-    "Congregation Beth El": [37.8716, -122.2727],
-    "Congregation Beth Israel": [37.8716, -122.2727],
-    "Congregation B'nai Israel": [37.9101, -122.0652],
-    "Congregation B'nai Shalom": [37.9101, -122.0652],
-    "Congregation B'nai Tikvah": [37.9101, -122.0652],
-    "Congregation Netivot Shalom": [37.8716, -122.2727],
-    "Or Chadash": [37.6624, -121.8747],
-    "Temple Beth Abraham": [37.8044, -122.2712],
-    "Temple Beth Hillel": [37.8771, -122.1797],
-    "Temple Beth Sholom": [37.3382, -121.8863],
-    "Temple Israel": [37.6688, -122.0808],
-    "Temple Sinai": [37.8044, -122.2712],
-    "Tri-Valley Cultural Jews": [37.6624, -121.8747],
+    "Beth El": {"coords": [37.8716, -122.2727], "city": "Berkeley", "state": "CA"},
+    "Beth Jacob Oakland": {"coords": [37.8244, -122.2317], "city": "Oakland", "state": "CA"},
+    "Chabad of the East Bay": {"coords": [37.8716, -122.2727], "city": "Berkeley", "state": "CA"},
+    "Congregation Beth El": {"coords": [37.8716, -122.2727], "city": "Berkeley", "state": "CA"},
+    "Congregation Beth Israel": {"coords": [37.8716, -122.2727], "city": "Berkeley", "state": "CA"},
+    "Congregation B'nai Israel": {"coords": [37.9101, -122.0652], "city": "Walnut Creek", "state": "CA"},
+    "Congregation B'nai Shalom": {"coords": [37.9101, -122.0652], "city": "Walnut Creek", "state": "CA"},
+    "Congregation B'nai Tikvah": {"coords": [37.9101, -122.0652], "city": "Walnut Creek", "state": "CA"},
+    "Congregation Netivot Shalom": {"coords": [37.8716, -122.2727], "city": "Berkeley", "state": "CA"},
+    "Or Chadash": {"coords": [37.6624, -121.8747], "city": "Pleasanton", "state": "CA"},
+    "Temple Beth Abraham": {"coords": [37.8044, -122.2712], "city": "Oakland", "state": "CA"},
+    "Temple Beth Hillel": {"coords": [37.8771, -122.1797], "city": "Richmond", "state": "CA"},
+    "Temple Beth Sholom": {"coords": [37.3382, -121.8863], "city": "San Jose", "state": "CA"},
+    "Temple Israel": {"coords": [37.6688, -122.0808], "city": "Alameda", "state": "CA"},
+    "Temple Sinai": {"coords": [37.8044, -122.2712], "city": "Oakland", "state": "CA"},
+    "Tri-Valley Cultural Jews": {"coords": [37.6624, -121.8747], "city": "Pleasanton", "state": "CA"},
     # ========== SOUTH BAY ==========
-    "Congregation Shir Hadash": [37.2358, -121.9624],
-    "Congregation Sinai": [37.3382, -121.8863],
-    "Temple Emanu-El San Jose": [37.3382, -121.8863],
+    "Congregation Shir Hadash": {"coords": [37.2358, -121.9624], "city": "Los Gatos", "state": "CA"},
+    "Congregation Sinai": {"coords": [37.3382, -121.8863], "city": "San Jose", "state": "CA"},
+    "Temple Emanu-El San Jose": {"coords": [37.3382, -121.8863], "city": "San Jose", "state": "CA"},
     # ========== NAPA / SONOMA ==========
-    "Congregation Beth Ami": [38.4404, -122.7141],
-    "Congregation Shomrei Torah": [38.4404, -122.7141],
+    "Congregation Beth Ami": {"coords": [38.4404, -122.7141], "city": "Santa Rosa", "state": "CA"},
+    "Congregation Shomrei Torah": {"coords": [38.4404, -122.7141], "city": "Santa Rosa", "state": "CA"},
     # ========== SACRAMENTO ==========
-    "Congregation B'nai Israel Sacramento": [38.5816, -121.4944],
-    "Congregation Beth Shalom Sacramento": [38.5816, -121.4944],
+    "Congregation B'nai Israel Sacramento": {"coords": [38.5816, -121.4944], "city": "Sacramento", "state": "CA"},
+    "Congregation Beth Shalom Sacramento": {"coords": [38.5816, -121.4944], "city": "Sacramento", "state": "CA"},
     # ========== LOS ANGELES AREA ==========
-    "Congregation Beth Am Los Angeles": [34.0522, -118.2437],
-    "Stephen Wise Temple": [34.0903, -118.4643],
-    "Temple Beth Am": [34.0522, -118.2437],
-    "Temple of the Arts": [34.0522, -118.2437],
-    "Wilshire Boulevard Temple": [34.0579, -118.3110],
+    "Congregation Beth Am Los Angeles": {"coords": [34.0522, -118.2437], "city": "Los Angeles", "state": "CA"},
+    "Stephen Wise Temple": {"coords": [34.0903, -118.4643], "city": "Los Angeles", "state": "CA"},
+    "Temple Beth Am": {"coords": [34.0522, -118.2437], "city": "Los Angeles", "state": "CA"},
+    "Temple of the Arts": {"coords": [34.0522, -118.2437], "city": "Los Angeles", "state": "CA"},
+    "Wilshire Boulevard Temple": {"coords": [34.0579, -118.3110], "city": "Los Angeles", "state": "CA"},
 }
 
 
 def build_json() -> dict[str, Any]:
-    """Build the congregations.json structure with lookup + coords."""
+    """Build the congregations.json structure with lookup + coords + location."""
     lookup: dict[str, str] = {}
     coords: dict[str, list[float]] = {}
+    location: dict[str, dict[str, str]] = {}
 
-    for name, coord in CONGREGATIONS.items():
+    for name, info in CONGREGATIONS.items():
         lower = name.lower()
         if lower not in lookup:
             lookup[lower] = name
-            coords[name] = [round(coord[0], 4), round(coord[1], 4)]
+            coords[name] = [round(info["coords"][0], 4), round(info["coords"][1], 4)]
+            location[name] = {"city": info["city"], "state": info["state"]}
 
         # Also add common variations without prefix
         for prefix in ("Congregation ", "Temple "):
@@ -106,10 +109,12 @@ def build_json() -> dict[str, Any]:
                     lookup[short_lower] = name
 
     print(f"Total: {len(lookup)} entries in lookup, {len(coords)} with coordinates")
+    print(f"  {len(location)} entries with location metadata")
 
     return {
         "lookup": dict(sorted(lookup.items())),
         "coords": dict(sorted(coords.items())),
+        "location": dict(sorted(location.items())),
     }
 
 

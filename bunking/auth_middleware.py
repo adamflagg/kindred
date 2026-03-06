@@ -171,12 +171,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         On failure, logs and continues with empty permissions (don't break auth).
         """
         try:
-            admin_token = await self._get_pb_admin_token()
-            if not admin_token:
-                return
-
-            pb_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
-
             # Check permissions cache first (keyed by email, expires after 60s)
             cache_key = f"perms:{user.email}"
             cached = self._permissions_cache.get(cache_key)
@@ -185,6 +179,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 if cached.get("is_admin"):
                     user.is_admin = True
                 return
+
+            admin_token = await self._get_pb_admin_token()
+            if not admin_token:
+                return
+
+            pb_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
 
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(

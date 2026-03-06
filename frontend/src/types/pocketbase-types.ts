@@ -818,7 +818,6 @@ export type NormalizedMappingsRecord = {
   created: IsoAutoDateString
   id: string
   normalized_value: string
-  occurrence_count?: number
   original_value: string
   person?: RecordIdString
   session?: RecordIdString
