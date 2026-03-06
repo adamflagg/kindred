@@ -762,12 +762,10 @@ class TestSearchCanonicals:
             patch("api.services.geo_service._load_static_lookup") as mock_lookup,
             patch("api.services.geo_service._load_static_coords") as mock_coords,
             patch("api.services.geo_service._load_static_location") as mock_location,
-            patch("api.services.geo_service._get_source_badge") as mock_badge,
         ):
             mock_lookup.return_value = {"a school": "A School"}
             mock_coords.return_value = {}
             mock_location.return_value = {}
-            mock_badge.return_value = "nces"
 
             mock_pb.collection.side_effect = _route_collections(
                 {

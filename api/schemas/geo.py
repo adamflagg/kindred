@@ -7,6 +7,8 @@ source inspection, and override CRUD.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -84,7 +86,9 @@ class OverrideCreate(BaseModel):
     """Request body for creating a geo override."""
 
     category: str = Field(description="Category: city, school, or congregation")
-    override_type: str = Field(description="Override type: alias, canonical, or merge")
+    override_type: Literal["alias", "canonical", "merge"] = Field(
+        description="Override type: alias, canonical, or merge"
+    )
     raw_value: str | None = Field(default=None, description="Original raw value (for alias type)")
     canonical_name: str = Field(description="The canonical/normalized name")
     city: str | None = Field(default=None, description="City for location context")
@@ -101,7 +105,9 @@ class OverrideResponse(BaseModel):
 
     id: str = Field(description="PocketBase record ID")
     category: str = Field(description="Category: city, school, or congregation")
-    override_type: str = Field(description="Override type: alias, canonical, or merge")
+    override_type: Literal["alias", "canonical", "merge"] = Field(
+        description="Override type: alias, canonical, or merge"
+    )
     raw_value: str | None = Field(default=None, description="Original raw value (for alias type)")
     canonical_name: str = Field(description="The canonical/normalized name")
     city: str | None = Field(default=None, description="City for location context")

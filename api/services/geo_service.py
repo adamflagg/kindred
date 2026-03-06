@@ -372,15 +372,16 @@ class GeoService:
 
         # Collect all canonical names from lookup values
         all_canonicals: dict[str, CanonicalEntry] = {}
+        badge_map = {"school": "nces", "city": "simplemaps", "congregation": "curated"}
+        source_badge = badge_map.get(category, "")
         for canonical_name in set(lookup.values()):
             loc = location.get(canonical_name, {})
             has_coords = canonical_name in coords
-            source = _get_source_badge(category, canonical_name)
             all_canonicals[canonical_name] = CanonicalEntry(
                 canonical_name=canonical_name,
                 city=loc.get("city", ""),
                 state=loc.get("state", ""),
-                source=source,
+                source=source_badge,
                 has_coords=has_coords,
                 camper_count=camper_counts.get(canonical_name, 0),
             )
@@ -614,20 +615,23 @@ class GeoService:
         static_location = _load_static_location(category)
         canonical_values = set(static_lookup.values())
 
-        mappings: list[Any] = await asyncio.to_thread(
-            self.pb.collection("normalized_mappings").get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year}'},
+        mappings_raw, overrides_raw = await asyncio.gather(
+            asyncio.to_thread(
+                self.pb.collection("normalized_mappings").get_full_list,
+                query_params={"filter": f'category = "{category}" && year = {year}'},
+            ),
+            asyncio.to_thread(
+                self.pb.collection("geo_overrides").get_full_list,
+                query_params={"filter": f'category = "{category}" && year = {year}'},
+            ),
         )
+        mappings: list[Any] = mappings_raw
+        overrides: list[Any] = overrides_raw
 
         canonical_names = {
             m.normalized_value for m in mappings if m.normalized_value and m.normalized_value in canonical_values
         }
         missing_coords = [name for name in canonical_names if name not in static_coords]
-
-        overrides: list[Any] = await asyncio.to_thread(
-            self.pb.collection("geo_overrides").get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year}'},
-        )
 
         checked_names = {o.canonical_name for o in overrides if o.nominatim_status}
         coord_override_names = {o.canonical_name for o in overrides if o.lat is not None and o.lng is not None}

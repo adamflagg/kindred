@@ -9,12 +9,10 @@ import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 
+import type { SourceMappingItem } from '../services/geoService'
+
 /** A single source string that normalized to a canonical value */
-export interface SourceMapping {
-  original: string
-  count: number
-  confidence: number
-}
+export type SourceMapping = SourceMappingItem
 
 export function useSourceMappings(
   year: number,

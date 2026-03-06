@@ -15,7 +15,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { Search, Plus, MapPin } from 'lucide-react'
 import { Modal } from '../../ui/Modal'
 import { useAllCanonicals, useCreateOverride } from '../../../hooks/useGeoData'
-import type { GeoCategory } from '../geoConstants'
+import { sourceLabel, sourceBadgeClasses, type GeoCategory } from '../geoConstants'
 import type { OverrideCreateData, CanonicalEntry } from '../../../services/geoService'
 
 interface ResolveDialogProps {
@@ -25,40 +25,6 @@ interface ResolveDialogProps {
   gapType: string
   category: GeoCategory
   year: number
-}
-
-/** Map source to display label. */
-function sourceLabel(source: string): string {
-  switch (source) {
-    case 'nces':
-      return 'NCES'
-    case 'pss':
-      return 'PSS'
-    case 'simplemaps':
-      return 'SimpleMaps'
-    case 'curated':
-      return 'Curated'
-    case 'manual':
-      return 'Manual'
-    default:
-      return source
-  }
-}
-
-/** Map source to Tailwind badge classes (earthy palette). */
-function sourceBadgeClasses(source: string): string {
-  switch (source) {
-    case 'nces':
-    case 'pss':
-      return 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
-    case 'simplemaps':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
-    case 'manual':
-    case 'curated':
-      return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
-    default:
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-  }
 }
 
 export function ResolveDialog({

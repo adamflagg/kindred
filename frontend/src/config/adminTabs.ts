@@ -8,14 +8,15 @@ import {
   CalendarDays,
   MapPin,
 } from 'lucide-react'
+import { Permission } from '../constants/permissions'
 
 export interface AdminTabConfig {
   id: 'sync' | 'config' | 'sheets' | 'geo'
   label: string
   path: string
   icon: LucideIcon
-  /** Permission required. 'admin' = super-admin only, 'authenticated' = any logged-in user */
-  requiredPermission: 'admin' | 'authenticated'
+  /** Permission required. 'admin' = super-admin only, 'authenticated' = any logged-in user, or a permission codename */
+  requiredPermission: 'admin' | 'authenticated' | string
 }
 
 export const ADMIN_TABS: AdminTabConfig[] = [
@@ -45,7 +46,7 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     label: 'Geo Data',
     path: '/admin/geo',
     icon: MapPin,
-    requiredPermission: 'authenticated',
+    requiredPermission: Permission.METRICS_GEO,
   },
 ]
 

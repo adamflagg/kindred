@@ -2,14 +2,19 @@ import { Link, Outlet, useLocation } from 'react-router'
 import { Settings, AlertCircle } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useIsAdmin } from '../hooks/useIsAdmin'
+import { usePermissions } from '../hooks/usePermissions'
 import { ADMIN_TABS, type AdminTabConfig } from '../config/adminTabs'
 
 function AdminLayoutInner() {
   const location = useLocation()
   const isAdmin = useIsAdmin()
+  const { hasPermission } = usePermissions()
 
   const visibleTabs = ADMIN_TABS.filter(
-    (tab) => tab.requiredPermission === 'authenticated' || isAdmin
+    (tab) =>
+      tab.requiredPermission === 'authenticated' ||
+      isAdmin ||
+      hasPermission(tab.requiredPermission)
   )
 
   const isTabActive = (tab: AdminTabConfig) => location.pathname.startsWith(tab.path)

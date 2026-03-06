@@ -10,9 +10,7 @@ import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 import type { OverrideCreateData } from '../services/geoService'
-import type { GeoCategory } from '../components/admin/geoConstants'
-
-const ALL_GEO_CATEGORIES: GeoCategory[] = ['city', 'school', 'congregation']
+import { GEO_CATEGORIES, type GeoCategory } from '../components/admin/geoConstants'
 
 /**
  * Prefetch gaps + canonicals for non-active geo categories so tab switches are instant.
@@ -23,7 +21,7 @@ export function useGeoPagePrefetch(activeCategory: string, year: number, activeO
   const { fetchWithAuth } = useApiWithAuth()
 
   useEffect(() => {
-    const otherCategories: GeoCategory[] = ALL_GEO_CATEGORIES.filter((c) => c !== activeCategory)
+    const otherCategories: GeoCategory[] = GEO_CATEGORIES.filter((c) => c !== activeCategory)
     for (const cat of otherCategories) {
       void queryClient.prefetchQuery({
         queryKey: queryKeys.geoGaps(cat, year, activeOnly),

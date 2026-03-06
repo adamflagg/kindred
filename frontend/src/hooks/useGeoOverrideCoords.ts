@@ -11,8 +11,7 @@ import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import { fetchOverrides } from '../services/geoService'
 import type { LatLng } from '../data/californiaGeo'
-
-const GEO_CATEGORIES = ['city', 'school', 'congregation'] as const
+import { GEO_CATEGORIES } from '../components/admin/geoConstants'
 
 export function useGeoOverrideCoords(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
