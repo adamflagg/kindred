@@ -105,3 +105,17 @@ export function useDeleteOverride(category: string, year: number) {
     },
   })
 }
+
+export function useBatchResolveCoords(category: string, year: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => geoService.batchResolveCoords(category, year, fetchWithAuth),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
+    },
+  })
+}

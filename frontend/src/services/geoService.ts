@@ -64,6 +64,14 @@ export interface GeoOverride {
   merged_into: string | null
   notes: string | null
   year: number
+  nominatim_status: string | null
+}
+
+export interface BatchResolveResponse {
+  resolved: number
+  skipped: number
+  skipped_names: string[]
+  paused: boolean
 }
 
 export interface OverrideCreateData {
@@ -256,5 +264,24 @@ export async function fetchSourceMappings(
   if (options?.sessionCmId !== undefined) params.set('session_cm_id', String(options.sessionCmId))
   const response = await fetchWithAuth(`${API_BASE}/source-mappings?${params}`)
   if (!response.ok) throw new Error('Failed to fetch source mappings')
+  return response.json()
+}
+
+/**
+ * Batch auto-resolve coordinates for unambiguous canonical entries via Nominatim.
+ */
+export async function batchResolveCoords(
+  category: string,
+  year: number,
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+): Promise<BatchResolveResponse> {
+  const params = new URLSearchParams({ category, year: String(year) })
+  const response = await fetchWithAuth(`${API_BASE}/batch-resolve-coords?${params}`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { detail?: string }).detail ?? 'Failed to batch resolve coords')
+  }
   return response.json()
 }
