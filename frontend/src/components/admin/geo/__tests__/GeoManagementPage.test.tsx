@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { GeoManagementPage } from '../GeoManagementPage'
+import { useGeoPagePrefetch } from '../../../../hooks/useGeoData'
 
 // Mock hooks
 vi.mock('../../../../hooks/useGeoData', () => ({
@@ -26,6 +27,7 @@ vi.mock('../../../../hooks/useGeoData', () => ({
   useCanonicalSearch: vi.fn(() => ({ data: null, isLoading: false })),
   useCanonicalSources: vi.fn(() => ({ data: null, isLoading: false })),
   useBatchResolveCoords: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useGeoPagePrefetch: vi.fn(),
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({
   useYear: vi.fn(() => 2025),
@@ -64,6 +66,11 @@ describe('GeoManagementPage', () => {
   it('shows total gaps count', () => {
     renderPage()
     expect(screen.getByText(/1 gap/i)).toBeInTheDocument()
+  })
+
+  it('calls useGeoPagePrefetch with current category, year, and activeOnly', () => {
+    renderPage()
+    expect(useGeoPagePrefetch).toHaveBeenCalledWith('city', 2025, true)
   })
 
   it('switches category on sidebar click', async () => {

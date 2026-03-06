@@ -10,6 +10,14 @@ import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 import type { OverrideCreateData } from '../services/geoService'
 
+/**
+ * Prefetch gaps + canonicals for non-active geo categories so tab switches are instant.
+ * Stub — implementation pending.
+ */
+export function useGeoPagePrefetch(_activeCategory: string, _year: number, _activeOnly: boolean) {
+  // TODO: implement prefetching
+}
+
 export function useGeoGaps(category: string, year: number, activeOnly = true) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery({
