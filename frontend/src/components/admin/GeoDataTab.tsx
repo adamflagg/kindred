@@ -106,7 +106,8 @@ function GeoSubTabContent({
   year: number
   onResolve: (gapName: string, gapType: string) => void
 }) {
-  const { data: gaps, isLoading: gapsLoading } = useGeoGaps(category, year)
+  const [activeOnly, setActiveOnly] = useState(true)
+  const { data: gaps, isLoading: gapsLoading } = useGeoGaps(category, year, activeOnly)
   const { data: overrides, isLoading: overridesLoading } = useGeoOverrides(category, year)
   const deleteOverride = useDeleteOverride(category, year)
 
@@ -114,7 +115,18 @@ function GeoSubTabContent({
     <div className="space-y-4 sm:space-y-6">
       {/* Gaps Panel */}
       <section>
-        <h3 className="text-foreground mb-2 text-sm font-semibold">Gaps</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-foreground text-sm font-semibold">Gaps</h3>
+          <label className="text-muted-foreground flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={activeOnly}
+              onChange={(e) => setActiveOnly(e.target.checked)}
+              className="rounded"
+            />
+            Active enrollees only
+          </label>
+        </div>
         {gapsLoading ? (
           <div className="card-lodge border-forest-200 dark:border-forest-700 border p-4">
             <p className="text-muted-foreground text-sm">Loading gaps...</p>

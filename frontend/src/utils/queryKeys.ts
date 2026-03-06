@@ -213,7 +213,8 @@ export const queryKeys = {
       sessionTypes ? [...sessionTypes] : undefined,
       sessionCmId,
     ] as const,
-  geoGaps: (category: string, year: number) => ['geo', 'gaps', category, year] as const,
+  geoGaps: (category: string, year: number, activeOnly?: boolean) =>
+    ['geo', 'gaps', category, year, activeOnly] as const,
   geoCanonicals: (category: string, query: string, year: number) =>
     ['geo', 'canonicals', category, query, year] as const,
   geoAllCanonicals: (category: string, year: number) =>

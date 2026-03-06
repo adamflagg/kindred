@@ -98,9 +98,11 @@ export interface SourceMappingsResponse {
 export async function fetchGeoGaps(
   category: string,
   year: number,
-  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+  options?: { activeOnly?: boolean }
 ): Promise<GapsResponse> {
   const params = new URLSearchParams({ category, year: String(year) })
+  if (options?.activeOnly) params.set('active_only', 'true')
   const response = await fetchWithAuth(`${API_BASE}/gaps?${params}`)
 
   if (!response.ok) {

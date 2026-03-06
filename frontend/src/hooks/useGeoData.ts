@@ -10,11 +10,11 @@ import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 import type { OverrideCreateData } from '../services/geoService'
 
-export function useGeoGaps(category: string, year: number) {
+export function useGeoGaps(category: string, year: number, activeOnly = true) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery({
-    queryKey: queryKeys.geoGaps(category, year),
-    queryFn: () => geoService.fetchGeoGaps(category, year, fetchWithAuth),
+    queryKey: queryKeys.geoGaps(category, year, activeOnly),
+    queryFn: () => geoService.fetchGeoGaps(category, year, fetchWithAuth, { activeOnly }),
     ...userDataOptions,
   })
 }
@@ -72,7 +72,7 @@ export function useCreateOverride(category: string, year: number) {
   return useMutation({
     mutationFn: (data: OverrideCreateData) => geoService.createOverride(data, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
+      void queryClient.invalidateQueries({ queryKey: ['geo', 'gaps', category, year] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
@@ -86,7 +86,7 @@ export function useUpdateOverride(category: string, year: number) {
     mutationFn: ({ overrideId, data }: { overrideId: string; data: Partial<OverrideCreateData> }) =>
       geoService.updateOverride(overrideId, data, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
+      void queryClient.invalidateQueries({ queryKey: ['geo', 'gaps', category, year] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
@@ -99,7 +99,7 @@ export function useDeleteOverride(category: string, year: number) {
   return useMutation({
     mutationFn: (overrideId: string) => geoService.deleteOverride(overrideId, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
+      void queryClient.invalidateQueries({ queryKey: ['geo', 'gaps', category, year] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
