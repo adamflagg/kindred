@@ -40,6 +40,27 @@ func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent
 	}
 }
 
+// requirePermission wraps a handler to require authentication and a specific RBAC permission.
+// Admin users (is_admin=true) bypass the permission check.
+func requirePermission(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("Authentication required", nil)
+		}
+		// Admin bypass
+		if e.Auth.GetBool("is_admin") {
+			return handler(e)
+		}
+		// Check cached_permissions JSON array
+		perms := e.Auth.Get("cached_permissions")
+		permsJSON, _ := json.Marshal(perms)
+		if !strings.Contains(string(permsJSON), permission) {
+			return apis.NewForbiddenError("Permission required: "+permission, nil)
+		}
+		return handler(e)
+	}
+}
+
 // InitializeSyncService sets up the sync API endpoints
 func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error {
 	// Get the scheduler instance
@@ -53,10 +74,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleRefreshBunking(e, scheduler)
 	}))
 
-	// Bunk requests CSV upload endpoint
-	e.Router.POST("/api/custom/sync/bunk_requests_upload", requireAuth(func(e *core.RequestEvent) error {
-		return handleBunkRequestsUpload(e, scheduler)
-	}))
+	// Bunk requests CSV upload endpoint (requires bunking.manage permission)
+	e.Router.POST("/api/custom/sync/bunk_requests_upload",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleBunkRequestsUpload(e, scheduler)
+		}))
 
 	// Status endpoint
 	e.Router.GET("/api/custom/sync/status", requireAuth(func(e *core.RequestEvent) error {
@@ -66,7 +88,8 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Unified sync endpoint (replaces daily + historical endpoints)
 	// Accepts query params: year, service, includeCustomValues, debug
 	// Returns 202 Accepted if enqueued, 200 OK if started immediately
-	e.Router.POST("/api/custom/sync/run", requireAuth(func(e *core.RequestEvent) error {
+	// Requires sync.run permission
+	e.Router.POST("/api/custom/sync/run", requirePermission("sync.run", func(e *core.RequestEvent) error {
 		return handleUnifiedSync(e, scheduler)
 	}))
 

@@ -19,6 +19,23 @@ test_dir = Path(__file__).resolve().parent
 project_root = test_dir.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from bunking.auth_middleware import AuthUser, get_current_user
+
+
+def _override_auth(app: FastAPI) -> None:
+    """Override auth dependency to provide an admin user for testing."""
+
+    def _mock_admin_user() -> AuthUser:
+        return AuthUser(
+            username="TestAdmin",
+            email="test@example.com",
+            display_name="Test Admin",
+            groups=["admin"],
+            is_admin=True,
+        )
+
+    app.dependency_overrides[get_current_user] = _mock_admin_user
+
 
 class TestMergeEndpointValidation:
     """Test request validation for merge endpoint."""
@@ -30,6 +47,7 @@ class TestMergeEndpointValidation:
 
         app = FastAPI()
         app.include_router(router)
+        _override_auth(app)
         return TestClient(app)
 
     def test_merge_requires_at_least_two_requests(self, client: TestClient) -> None:
@@ -100,6 +118,7 @@ class TestMergeEndpointSuccess:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
@@ -337,6 +356,7 @@ class TestMergeEndpointErrors:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 

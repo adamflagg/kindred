@@ -13,8 +13,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from bunking.auth_middleware import AuthUser
+from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
     DebugParseRepository,
 )
@@ -249,6 +252,7 @@ async def list_parse_analysis(
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=50, ge=1, le=500, description="Maximum results"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> ParseAnalysisListResponse:
     """List Phase 1 parse analysis results.
 
@@ -321,7 +325,9 @@ async def list_parse_analysis(
 
 
 @router.get("/parse-analysis/{item_id}", response_model=ParseAnalysisDetailItem)
-async def get_parse_analysis_detail(item_id: str) -> ParseAnalysisDetailItem:
+async def get_parse_analysis_detail(
+    item_id: str, user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))
+) -> ParseAnalysisDetailItem:
     """Get detailed parse analysis result including raw AI response."""
     debug_repo = get_debug_parse_repository()
     item = debug_repo.get_by_id(item_id)
@@ -372,7 +378,9 @@ async def get_parse_analysis_detail(item_id: str) -> ParseAnalysisDetailItem:
 
 
 @router.post("/parse-phase1-only", response_model=Phase1OnlyResponse)
-async def parse_phase1_only(request: Phase1OnlyRequest) -> Phase1OnlyResponse:
+async def parse_phase1_only(
+    request: Phase1OnlyRequest, user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))
+) -> Phase1OnlyResponse:
     """Run Phase 1 parsing only on selected original_bunk_requests.
 
     This endpoint runs the AI parsing phase in isolation without
@@ -432,7 +440,9 @@ async def parse_phase1_only(request: Phase1OnlyRequest) -> Phase1OnlyResponse:
 
 
 @router.delete("/parse-analysis/by-original/{original_request_id}", response_model=ClearAnalysisResponse)
-async def clear_single_parse_analysis(original_request_id: str) -> ClearAnalysisResponse:
+async def clear_single_parse_analysis(
+    original_request_id: str, user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))
+) -> ClearAnalysisResponse:
     """Clear debug parse result for a single original request.
 
     Args:
@@ -448,6 +458,7 @@ async def clear_single_parse_analysis(original_request_id: str) -> ClearAnalysis
 async def clear_parse_analysis(
     session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> ClearAnalysisResponse:
     """Clear debug parse analysis results.
 
@@ -486,6 +497,7 @@ async def list_original_requests(
     session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=50, ge=1, le=500, description="Maximum results"),
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> OriginalRequestsListResponse:
     """List original_bunk_requests for debug selection.
 
@@ -528,6 +540,7 @@ async def list_original_requests_with_parse_status(
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=100, ge=1, le=500, description="Maximum results"),
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> OriginalRequestsWithParseResponse:
     """List original_bunk_requests with their parse status flags.
 
@@ -587,6 +600,7 @@ async def list_original_requests_grouped(
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=5000, ge=1, description="Maximum campers to return"),
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> GroupedRequestsResponse:
     """List original requests grouped by camper.
 
@@ -647,6 +661,7 @@ async def list_original_requests_grouped(
 @router.post("/parse-results-batch", response_model=list[ParseResultWithSource])
 async def get_parse_results_batch(
     original_request_ids: list[str],
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> list[ParseResultWithSource]:
     """Get Phase 1 parse results for multiple original requests in one call.
 
@@ -721,6 +736,7 @@ async def get_parse_results_batch(
 @router.post("/parse-results-batch-dual", response_model=list[DualSourceParseResult])
 async def get_parse_results_batch_dual(
     original_request_ids: list[str],
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> list[DualSourceParseResult]:
     """Get BOTH debug and production parse results for multiple original requests.
 
@@ -826,7 +842,9 @@ async def get_parse_results_batch_dual(
 
 
 @router.get("/parse-result/{original_request_id}", response_model=ParseResultWithSource)
-async def get_parse_result_with_fallback(original_request_id: str) -> ParseResultWithSource:
+async def get_parse_result_with_fallback(
+    original_request_id: str, user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))
+) -> ParseResultWithSource:
     """Get Phase 1 parse result for an original request with fallback.
 
     Priority:
@@ -950,13 +968,24 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
 # ============================================================================
 
 
-def _validate_prompt_name(name: str) -> None:
-    """Validate prompt name to prevent path traversal attacks."""
+def _safe_prompt_path(name: str) -> Path:
+    """Validate prompt name and return a safe file path via directory listing.
+
+    Prevents path traversal by validating the name pattern and then locating
+    the file through a directory glob rather than constructing a path from
+    user input.
+    """
     if not VALID_PROMPT_NAME_PATTERN.match(name):
         raise HTTPException(
             status_code=400,
             detail="Invalid prompt name. Only alphanumeric characters and underscores allowed.",
         )
+    # Look up by listing the directory — avoids constructing a path from user input
+    if PROMPTS_DIR.exists():
+        for candidate in PROMPTS_DIR.glob("*.txt"):
+            if candidate.stem == name:
+                return candidate
+    raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
 
 
 def _get_file_modified_at(path: Path) -> datetime | None:
@@ -969,7 +998,7 @@ def _get_file_modified_at(path: Path) -> datetime | None:
 
 
 @router.get("/prompts", response_model=PromptListResponse)
-async def list_prompts() -> PromptListResponse:
+async def list_prompts(user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))) -> PromptListResponse:
     """List available prompt files.
 
     Returns all .txt files in the config/prompts directory.
@@ -992,17 +1021,15 @@ async def list_prompts() -> PromptListResponse:
 
 
 @router.get("/prompts/{name}", response_model=PromptContentResponse)
-async def get_prompt(name: str) -> PromptContentResponse:
+async def get_prompt(
+    name: str, user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))
+) -> PromptContentResponse:
     """Get the content of a specific prompt file.
 
     Args:
         name: Prompt name (without .txt extension)
     """
-    _validate_prompt_name(name)
-
-    file_path = PROMPTS_DIR / f"{name}.txt"
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+    file_path = _safe_prompt_path(name)  # raises 404 if not found
 
     content = file_path.read_text(encoding="utf-8")
     modified_at = _get_file_modified_at(file_path)
@@ -1015,18 +1042,16 @@ async def get_prompt(name: str) -> PromptContentResponse:
 
 
 @router.put("/prompts/{name}", response_model=PromptUpdateResponse)
-async def update_prompt(name: str, request: PromptUpdateRequest) -> PromptUpdateResponse:
+async def update_prompt(
+    name: str, request: PromptUpdateRequest, user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE))
+) -> PromptUpdateResponse:
     """Update a prompt file's content.
 
     Args:
         name: Prompt name (without .txt extension)
         request: Request body with new content
     """
-    _validate_prompt_name(name)
-
-    file_path = PROMPTS_DIR / f"{name}.txt"
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+    file_path = _safe_prompt_path(name)  # raises 404 if not found
 
     # Write the new content
     file_path.write_text(request.content, encoding="utf-8")
@@ -1047,6 +1072,7 @@ async def get_production_requests(
     camper_cm_id: int,
     year: int = Query(description="Year to filter by (required)"),
     session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+    user: AuthUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> ProductionRequestsResponse:
     """Get all production bunk_requests for a camper, grouped by source_field.
 

@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from bunking.auth_middleware import AuthUser
 from bunking.bunking_validator import BunkingValidator, HistoricalBunkingRecord
 from bunking.models import (
     Bunk,
@@ -25,6 +26,8 @@ from bunking.models import (
     Person,
     Session,
 )
+from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
@@ -79,7 +82,9 @@ def calculate_age(birthdate_str: str) -> float:
 
 
 @router.post("/validate-bunking")
-async def validate_bunking(request: ValidateBunkingRequest) -> dict[str, Any]:
+async def validate_bunking(
+    request: ValidateBunkingRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> dict[str, Any]:
     """Validate current bunking assignments for a session."""
     try:
         logger.info(f"Validate bunking request received: {request}")

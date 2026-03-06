@@ -22,10 +22,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from bunking.auth_middleware import AuthUser
 from bunking.config import ConfigLoader
+from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb, solver_runs
 from ..schemas import (
@@ -48,7 +51,11 @@ router = APIRouter(prefix="/api", tags=["solver"])
 
 
 @router.post("/solver/run")
-async def run_solver(request: SolverRequest, background_tasks: BackgroundTasks) -> SolverResponse:
+async def run_solver(
+    request: SolverRequest,
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> SolverResponse:
     """Run the bunking solver for a session."""
     run_id = str(uuid4())
 
@@ -86,7 +93,9 @@ async def run_solver(request: SolverRequest, background_tasks: BackgroundTasks) 
 
 
 @router.get("/solver/run/{run_id}")
-async def get_solver_run(run_id: str) -> dict[str, Any]:
+async def get_solver_run(
+    run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> dict[str, Any]:
     """Get status and results of a solver run."""
     if run_id not in solver_runs:
         # Try to fetch from PocketBase
@@ -111,7 +120,9 @@ async def get_solver_run(run_id: str) -> dict[str, Any]:
 
 
 @router.post("/solver/pre-validate")
-async def pre_validate_solver(request: SolverRequest) -> dict[str, Any]:
+async def pre_validate_solver(
+    request: SolverRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> dict[str, Any]:
     """Pre-validate solver request to check for unsatisfiable constraints.
 
     Returns detailed information about:
@@ -435,13 +446,17 @@ async def pre_validate_solver(request: SolverRequest) -> dict[str, Any]:
 
 
 @router.post("/solver/run/{run_id}/analyze")
-async def analyze_solver_run(run_id: str) -> None:
+async def analyze_solver_run(
+    run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> None:
     """Analyze an existing solver run results."""
     raise HTTPException(status_code=501, detail="Analysis functionality is being reimplemented")
 
 
 @router.post("/solver/apply/{run_id}")
-async def apply_solver_results(run_id: str) -> dict[str, str]:
+async def apply_solver_results(
+    run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> dict[str, str]:
     """Apply the results of a solver run to the database."""
     session_cm_id = None
     scenario = None
@@ -653,7 +668,9 @@ async def apply_solver_results(run_id: str) -> dict[str, str]:
 
 @router.post("/solver/run-multi-session")
 async def run_multi_session_solver(
-    request: MultiSessionSolverRequest, background_tasks: BackgroundTasks
+    request: MultiSessionSolverRequest,
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Run the bunking solver for multiple child sessions of a parent session."""
     # Get time limit from config if not specified in request
@@ -750,7 +767,11 @@ async def run_multi_session_solver(
 
 
 @router.post("/sessions/{session_cm_id}/clear-assignments")
-async def clear_session_assignments(session_cm_id: int, request: ClearAssignmentsRequest) -> dict[str, Any]:
+async def clear_session_assignments(
+    session_cm_id: int,
+    request: ClearAssignmentsRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> dict[str, Any]:
     """Clear all assignments for a session and its related sessions."""
     try:
         # Build session context from request (validates session exists for year)
@@ -820,7 +841,9 @@ async def clear_session_assignments(session_cm_id: int, request: ClearAssignment
 
 
 @router.get("/solver/logs/{session_id}")
-async def get_solver_logs(session_id: int, run_id: str | None = None) -> dict[str, Any]:
+async def get_solver_logs(
+    session_id: int, run_id: str | None = None, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
+) -> dict[str, Any]:
     """Get solver logs for a session."""
     try:
         logs_dir = Path("logs/solver")
@@ -898,7 +921,9 @@ async def get_solver_logs(session_id: int, run_id: str | None = None) -> dict[st
 
 
 @router.get("/solver/logs")
-async def list_solver_logs() -> dict[str, list[dict[str, Any]]]:
+async def list_solver_logs(
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> dict[str, list[dict[str, Any]]]:
     """List available solver log files."""
     try:
         logs_dir = Path("logs/solver")

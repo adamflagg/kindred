@@ -13,7 +13,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 import aiohttp
-from fastapi import Depends, HTTPException, Request
+import httpx
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
@@ -50,6 +51,7 @@ class AuthUser:
         self.display_name = display_name
         self.groups = groups
         self.is_admin = is_admin
+        self.permissions: set[str] = set()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert user to dictionary for JSON serialization."""
@@ -59,6 +61,7 @@ class AuthUser:
             "display_name": self.display_name,
             "groups": self.groups,
             "is_admin": self.is_admin,
+            "permissions": sorted(self.permissions),
         }
 
 
@@ -76,6 +79,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.auth_mode = auth_mode.lower()
         self.admin_group = admin_group
         self._userinfo_cache: dict[str, dict[str, Any]] = {}
+        self._pb_admin_token: str | None = None
+        self._pb_admin_token_expires: float = 0.0
+        self._permissions_cache: dict[str, dict[str, Any]] = {}
 
         # Validate auth mode
         if self.auth_mode not in ["bypass", "production"]:
@@ -124,6 +130,89 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             self.pb_token_validator = PocketBaseTokenValidator(pocketbase_url)
             logger.info(f"PocketBase token validator initialized for {pocketbase_url}")
+
+    async def _get_pb_admin_token(self) -> str | None:
+        """Get a cached PocketBase admin token, refreshing if expired."""
+        if self._pb_admin_token and self._pb_admin_token_expires > time.time():
+            return self._pb_admin_token
+
+        pb_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
+        admin_email = os.getenv("PB_ADMIN_EMAIL", "admin@camp.local")
+        admin_password = os.getenv("PB_ADMIN_PASSWORD", "")
+
+        if not admin_password:
+            logger.debug("No PB_ADMIN_PASSWORD set, skipping PB permission fetch")
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(
+                    f"{pb_url}/api/collections/_superusers/auth-with-password",
+                    json={"identity": admin_email, "password": admin_password},
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    self._pb_admin_token = data.get("token")
+                    # Cache for 50 minutes (tokens typically valid for 1 hour)
+                    self._pb_admin_token_expires = time.time() + 3000
+                    return self._pb_admin_token
+                else:
+                    logger.warning(f"PB admin auth failed: {response.status_code}")
+                    return None
+        except Exception:
+            logger.debug("Failed to authenticate with PocketBase for permission fetch", exc_info=True)
+            return None
+
+    async def _populate_user_permissions(self, user: AuthUser) -> None:
+        """Fetch cached_permissions and is_admin from PocketBase user record.
+
+        Queries PocketBase for the user record by email, then populates
+        user.permissions from the cached_permissions field and syncs is_admin.
+        On failure, logs and continues with empty permissions (don't break auth).
+        """
+        try:
+            admin_token = await self._get_pb_admin_token()
+            if not admin_token:
+                return
+
+            pb_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
+
+            # Check permissions cache first (keyed by email, expires after 60s)
+            cache_key = f"perms:{user.email}"
+            cached = self._permissions_cache.get(cache_key)
+            if cached and cached.get("expires", 0) > time.time():
+                user.permissions = set(cached.get("permissions", []))
+                if cached.get("is_admin"):
+                    user.is_admin = True
+                return
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{pb_url}/api/collections/users/records",
+                    params={"filter": f'email = "{user.email}"', "perPage": 1},
+                    headers={"Authorization": admin_token},
+                )
+                if response.status_code == 200:
+                    items = response.json().get("items", [])
+                    if items:
+                        record = items[0]
+                        cached_perms = record.get("cached_permissions") or []
+                        if isinstance(cached_perms, list):
+                            user.permissions = set(cached_perms)
+                        # Sync is_admin from PB record (may be set by Go hook)
+                        if record.get("is_admin"):
+                            user.is_admin = True
+
+                        # Cache the result for 60 seconds
+                        self._permissions_cache[cache_key] = {
+                            "permissions": list(user.permissions),
+                            "is_admin": user.is_admin,
+                            "expires": time.time() + 60,
+                        }
+                else:
+                    logger.debug(f"PB user lookup returned {response.status_code}")
+        except Exception:
+            logger.debug("Could not fetch PB permissions, using empty set", exc_info=True)
 
     async def _extract_user_from_jwt(self, request: Request) -> AuthUser | None:
         """Extract user information from JWT token."""
@@ -307,6 +396,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug(f"Production mode: extracting user from JWT for {request.url.path}")
             user = await self._extract_user_from_jwt(request)
 
+        # Populate permissions from PocketBase (production mode only)
+        # In bypass mode, is_admin=True already grants full access
+        if user and self.auth_mode == "production":
+            await self._populate_user_permissions(user)
+
         # Check if user is authenticated
         if not user:
             # Allow OPTIONS requests for CORS
@@ -321,12 +415,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Add user to request state
         request.state.user = user
-
-        # Check admin access for admin routes
-        if request.url.path.startswith("/admin") or request.url.path.startswith("/api/users"):
-            if not user.is_admin:
-                logger.warning(f"Non-admin user {user.username} attempted to access {request.url.path}")
-                return JSONResponse(status_code=403, content={"detail": "Admin access required"})
 
         # Log the authenticated request
         logger.debug(f"Authenticated request from {user.username} to {request.url.path}")
@@ -348,21 +436,6 @@ def get_current_user(request: Request) -> AuthUser:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user: AuthUser = request.state.user
-    return user
-
-
-def require_admin(user: AuthUser = Depends(get_current_user)) -> AuthUser:
-    """
-    Dependency to require admin access.
-
-    Usage:
-        @app.get("/admin/protected")
-        async def admin_route(user: AuthUser = Depends(require_admin)):
-            return {"message": f"Hello admin {user.username}"}
-    """
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
     return user
 
 

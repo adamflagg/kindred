@@ -52,6 +52,14 @@ export const queryKeys = {
   syncStatus: () => ['sync-status'] as const,
   syncStatusForService: (service: string) => ['sync-status', service] as const,
 
+  // Users (Tier 2 - user data)
+  users: () => ['users'] as const,
+
+  // RBAC (Tier 2 - user data)
+  roles: () => ['roles'] as const,
+  userRoles: () => ['user-roles'] as const,
+  userRolesForUser: (userId: string) => ['user-roles', userId] as const,
+
   // Admin/Config (Tier 2 - user data)
   adminSettings: () => ['admin-settings'] as const,
   adminSessions: (year: number) => ['admin-sessions', year] as const,

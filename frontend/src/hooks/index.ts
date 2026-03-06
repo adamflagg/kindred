@@ -1,5 +1,6 @@
 export { useYear } from './useCurrentYear'
 export { useIsAdmin } from './useIsAdmin'
+export { usePermissions } from './usePermissions'
 export { useBunkRequestContext, useBunkRequestsFromContext } from './useBunkRequests'
 export { useCamperHistoryContext } from './useCamperHistory'
 export { useLockGroupContext } from '../contexts/LockGroupContext'

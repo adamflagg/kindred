@@ -52,6 +52,8 @@ export interface SessionHeaderProps {
   onShowScenarioManagement: () => void
   /** Select a scenario (null for production) */
   onSelectScenario: (scenarioId: string | null) => void
+  /** Whether the user has bunking.manage permission (hides management controls when false) */
+  canManage?: boolean
 }
 
 export default function SessionHeader({
@@ -71,6 +73,7 @@ export default function SessionHeader({
   onShowNewScenarioModal,
   onShowScenarioManagement,
   onSelectScenario,
+  canManage = true,
 }: SessionHeaderProps) {
   const selectableSessions = sortSessionsByDate(filterSelectableSessions(allSessions))
   const showPulse = (isSolving || isApplyingResults) && capturedScenarioId !== null
@@ -113,75 +116,79 @@ export default function SessionHeader({
             </Listbox>
           </div>
 
-          {/* Mode + Scenario controls */}
+          {/* Mode + Scenario controls (manage permission required) */}
           <ModeBadge isProductionMode={isProductionMode} scenarioName={currentScenario?.name} />
 
-          <div className="relative">
-            <Listbox
-              value={currentScenario?.id || 'production'}
-              onChange={handleScenarioChange}
-              disabled={scenarioLoading || isSolving || isApplyingResults}
-            >
-              <ListboxButton className="listbox-button-compact min-w-[130px]">
-                <span className="flex-1 truncate text-left">
-                  {currentScenario?.name || 'CampMinder'}
-                </span>
-                <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-              </ListboxButton>
-              <ListboxOptions className="listbox-options w-auto min-w-[160px]">
-                <ListboxOption value="production" className="listbox-option py-1.5">
-                  CampMinder
-                </ListboxOption>
-                {scenarios.map((scenario) => (
-                  <ListboxOption
-                    key={scenario.id}
-                    value={scenario.id}
-                    className="listbox-option py-1.5"
-                  >
-                    {scenario.name}
-                  </ListboxOption>
-                ))}
-                <ListboxOption
-                  value="new"
-                  className="listbox-option text-primary border-border mt-1 border-t py-1.5 pt-2 font-medium"
+          {canManage && (
+            <>
+              <div className="relative">
+                <Listbox
+                  value={currentScenario?.id || 'production'}
+                  onChange={handleScenarioChange}
+                  disabled={scenarioLoading || isSolving || isApplyingResults}
                 >
-                  + New Scenario
-                </ListboxOption>
-              </ListboxOptions>
-            </Listbox>
-            {showPulse && (
-              <div className="bg-primary absolute -top-1.5 -right-1.5 h-2.5 w-2.5 animate-pulse rounded-full" />
-            )}
-          </div>
+                  <ListboxButton className="listbox-button-compact min-w-[130px]">
+                    <span className="flex-1 truncate text-left">
+                      {currentScenario?.name || 'CampMinder'}
+                    </span>
+                    <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                  </ListboxButton>
+                  <ListboxOptions className="listbox-options w-auto min-w-[160px]">
+                    <ListboxOption value="production" className="listbox-option py-1.5">
+                      CampMinder
+                    </ListboxOption>
+                    {scenarios.map((scenario) => (
+                      <ListboxOption
+                        key={scenario.id}
+                        value={scenario.id}
+                        className="listbox-option py-1.5"
+                      >
+                        {scenario.name}
+                      </ListboxOption>
+                    ))}
+                    <ListboxOption
+                      value="new"
+                      className="listbox-option text-primary border-border mt-1 border-t py-1.5 pt-2 font-medium"
+                    >
+                      + New Scenario
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                {showPulse && (
+                  <div className="bg-primary absolute -top-1.5 -right-1.5 h-2.5 w-2.5 animate-pulse rounded-full" />
+                )}
+              </div>
 
-          <button
-            onClick={onShowScenarioManagement}
-            className="btn-ghost text-muted-foreground hover:text-foreground p-1.5"
-            title="Manage Scenarios"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
+              <button
+                onClick={onShowScenarioManagement}
+                className="btn-ghost text-muted-foreground hover:text-foreground p-1.5"
+                title="Manage Scenarios"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
 
-          {scenarios.length > 0 && (
-            <Link
-              to={`/summer/session/${sessionNameToUrl(session.name)}/compare`}
-              className="btn-ghost text-muted-foreground hover:text-foreground p-1.5"
-              title="Compare scenarios"
-            >
-              <GitCompare className="h-4 w-4" />
-            </Link>
+              {scenarios.length > 0 && (
+                <Link
+                  to={`/summer/session/${sessionNameToUrl(session.name)}/compare`}
+                  className="btn-ghost text-muted-foreground hover:text-foreground p-1.5"
+                  title="Compare scenarios"
+                >
+                  <GitCompare className="h-4 w-4" />
+                </Link>
+              )}
+            </>
           )}
 
           {/* Right: Action buttons - ml-auto pushes to far right */}
           <div className="ml-auto flex items-center gap-2">
-            {!isProductionMode && session && (
+            {canManage && !isProductionMode && session && (
               <PreValidateRequestsButton
                 sessionCmId={session.cm_id}
                 year={currentYear}
                 className="px-3 py-2 text-sm"
               />
             )}
-            {!isProductionMode && (
+            {canManage && !isProductionMode && (
               <OptimizeBunksButton
                 isSolving={isSolving}
                 isApplyingResults={isApplyingResults}
@@ -195,7 +202,7 @@ export default function SessionHeader({
                 className="px-3 py-2 text-sm"
               />
             )}
-            {!isProductionMode && currentScenario && (
+            {canManage && !isProductionMode && currentScenario && (
               <button
                 onClick={onShowClearDialog}
                 className="btn-secondary flex items-center gap-1.5 px-3 py-2 text-sm"

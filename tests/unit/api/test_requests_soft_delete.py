@@ -21,6 +21,23 @@ test_dir = Path(__file__).resolve().parent
 project_root = test_dir.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from bunking.auth_middleware import AuthUser, get_current_user
+
+
+def _override_auth(app: FastAPI) -> None:
+    """Override auth dependency to provide an admin user for testing."""
+
+    def _mock_admin_user() -> AuthUser:
+        return AuthUser(
+            username="TestAdmin",
+            email="test@example.com",
+            display_name="Test Admin",
+            groups=["admin"],
+            is_admin=True,
+        )
+
+    app.dependency_overrides[get_current_user] = _mock_admin_user
+
 
 class TestRequestRepositorySoftDelete:
     """Test soft delete methods in RequestRepository."""
@@ -255,6 +272,7 @@ class TestMergeEndpointSoftDelete:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
@@ -384,6 +402,7 @@ class TestSplitEndpointRestore:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 

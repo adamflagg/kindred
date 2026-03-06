@@ -165,8 +165,25 @@ def create_app() -> FastAPI:
 
     @app.get("/api/user/me")
     async def get_current_user_info(user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
-        """Get current user information."""
+        """Get current user information including permissions."""
         return user.to_dict()
+
+    @app.get("/api/permissions")
+    async def get_permission_registry(user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
+        """Get the permission registry for role-editing UI.
+
+        Returns all valid permission codenames and their descriptions.
+        Any authenticated user can read this; it's used by the role editor.
+        """
+        from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS
+
+        return {
+            "permissions": [
+                {"codename": perm, "description": PERMISSION_DESCRIPTIONS.get(perm, "")}
+                for perm in sorted(ALL_PERMISSIONS)
+            ],
+            "total": len(ALL_PERMISSIONS),
+        }
 
     return app
 

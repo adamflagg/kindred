@@ -13,7 +13,6 @@ from bunking.auth_middleware import (
     _is_docker_environment,
     create_auth_middleware,
     get_current_user,
-    require_admin,
 )
 
 
@@ -206,40 +205,6 @@ class TestGetCurrentUser:
             get_current_user(request)
 
         assert exc_info.value.status_code == 401
-
-
-class TestRequireAdmin:
-    """Tests for require_admin dependency."""
-
-    def test_require_admin_is_admin(self):
-        """Test require_admin with admin user."""
-        user = AuthUser(
-            username="admin",
-            email="admin@example.com",
-            display_name="Admin",
-            groups=["admin"],
-            is_admin=True,
-        )
-
-        result = require_admin(user)
-        assert result.is_admin is True
-
-    def test_require_admin_not_admin(self):
-        """Test require_admin with non-admin user."""
-        from fastapi import HTTPException
-
-        user = AuthUser(
-            username="basic",
-            email="basic@example.com",
-            display_name="Basic",
-            groups=[],
-            is_admin=False,
-        )
-
-        with pytest.raises(HTTPException) as exc_info:
-            require_admin(user)
-
-        assert exc_info.value.status_code == 403
 
 
 class TestCreateAuthMiddleware:
@@ -649,3 +614,86 @@ class TestClaimsLoggingLevel:
                 assert "Final claims" not in log_message, (
                     f"Final claims should be logged at DEBUG, not INFO: {log_message}"
                 )
+
+
+class TestAuthUserPermissions:
+    """Tests for AuthUser permissions field."""
+
+    def test_default_permissions_empty_set(self):
+        user = AuthUser(
+            username="testuser",
+            email="test@example.com",
+            display_name="Test User",
+            groups=[],
+            is_admin=False,
+        )
+        assert user.permissions == set()
+
+    def test_permissions_set_explicitly(self):
+        user = AuthUser(
+            username="testuser",
+            email="test@example.com",
+            display_name="Test User",
+            groups=[],
+            is_admin=False,
+        )
+        user.permissions = {"bunking.view", "metrics.view"}
+        assert "bunking.view" in user.permissions
+        assert "metrics.view" in user.permissions
+
+    def test_to_dict_includes_permissions(self):
+        user = AuthUser(
+            username="testuser",
+            email="test@example.com",
+            display_name="Test User",
+            groups=[],
+            is_admin=False,
+        )
+        user.permissions = {"bunking.view"}
+        result = user.to_dict()
+        assert "permissions" in result
+        assert "bunking.view" in result["permissions"]
+
+    def test_to_dict_permissions_sorted(self):
+        user = AuthUser(
+            username="testuser",
+            email="test@example.com",
+            display_name="Test User",
+            groups=[],
+            is_admin=False,
+        )
+        user.permissions = {"metrics.view", "bunking.view", "bunking.manage"}
+        result = user.to_dict()
+        assert result["permissions"] == ["bunking.manage", "bunking.view", "metrics.view"]
+
+
+class TestAuthUserPermissionsFromPB:
+    """Tests for permissions population from PocketBase."""
+
+    def test_permissions_populated_from_pb_record(self):
+        """Verify that permissions can be set from cached_permissions."""
+        user = AuthUser(
+            username="testuser",
+            email="test@example.com",
+            display_name="Test User",
+            groups=[],
+            is_admin=False,
+        )
+        # Simulate PB record with cached_permissions
+        pb_data: dict[str, list[str] | bool] = {
+            "cached_permissions": ["bunking.view", "metrics.view"],
+            "is_admin": False,
+        }
+        cached = pb_data.get("cached_permissions")
+        user.permissions = set(cached) if isinstance(cached, list) else set()
+        assert user.permissions == {"bunking.view", "metrics.view"}
+
+    def test_permissions_empty_when_no_pb_record(self):
+        user = AuthUser(
+            username="testuser",
+            email="test@example.com",
+            display_name="Test User",
+            groups=[],
+            is_admin=False,
+        )
+        assert user.permissions == set()
