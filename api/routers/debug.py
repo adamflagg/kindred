@@ -969,20 +969,23 @@ async def get_parse_result_with_fallback(
 
 
 def _safe_prompt_path(name: str) -> Path:
-    """Validate prompt name and return a safe, resolved file path.
+    """Validate prompt name and return a safe file path via directory listing.
 
-    Prevents path traversal by validating the name pattern and confirming
-    the resolved path stays within PROMPTS_DIR.
+    Prevents path traversal by validating the name pattern and then locating
+    the file through a directory glob rather than constructing a path from
+    user input.
     """
     if not VALID_PROMPT_NAME_PATTERN.match(name):
         raise HTTPException(
             status_code=400,
             detail="Invalid prompt name. Only alphanumeric characters and underscores allowed.",
         )
-    file_path = (PROMPTS_DIR / f"{name}.txt").resolve()
-    if file_path.parent != PROMPTS_DIR.resolve():
-        raise HTTPException(status_code=400, detail="Invalid prompt path")
-    return file_path
+    # Look up by listing the directory — avoids constructing a path from user input
+    if PROMPTS_DIR.exists():
+        for candidate in PROMPTS_DIR.glob("*.txt"):
+            if candidate.stem == name:
+                return candidate
+    raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
 
 
 def _get_file_modified_at(path: Path) -> datetime | None:
@@ -1026,9 +1029,7 @@ async def get_prompt(
     Args:
         name: Prompt name (without .txt extension)
     """
-    file_path = _safe_prompt_path(name)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+    file_path = _safe_prompt_path(name)  # raises 404 if not found
 
     content = file_path.read_text(encoding="utf-8")
     modified_at = _get_file_modified_at(file_path)
@@ -1050,9 +1051,7 @@ async def update_prompt(
         name: Prompt name (without .txt extension)
         request: Request body with new content
     """
-    file_path = _safe_prompt_path(name)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+    file_path = _safe_prompt_path(name)  # raises 404 if not found
 
     # Write the new content
     file_path.write_text(request.content, encoding="utf-8")
