@@ -210,15 +210,23 @@ else
 fi
 
 # 10. Dockerfile linting (if docker available)
-if command -v docker &> /dev/null && [ -f "Dockerfile" ]; then
-    echo -n "Dockerfile linting (hadolint)... "
-    if docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < Dockerfile > /tmp/hadolint_output.txt 2>&1; then
-        echo -e "${GREEN}✓${NC}"
-    else
-        echo -e "${RED}✗${NC}"
-        echo "Hadolint errors:"
-        cat /tmp/hadolint_output.txt
-        FAILED=1
+if command -v docker &> /dev/null; then
+    DOCKERFILES=(docker/Dockerfile.*)
+    if [ -e "${DOCKERFILES[0]}" ]; then
+        echo -n "Dockerfile linting (hadolint)... "
+        HADOLINT_FAILED=0
+        for df in "${DOCKERFILES[@]}"; do
+            if ! docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < "$df" > /tmp/hadolint_output.txt 2>&1; then
+                echo -e "${RED}✗ $df${NC}"
+                cat /tmp/hadolint_output.txt
+                HADOLINT_FAILED=1
+            fi
+        done
+        if [ $HADOLINT_FAILED -eq 0 ]; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            FAILED=1
+        fi
     fi
 fi
 

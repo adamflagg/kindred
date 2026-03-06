@@ -222,13 +222,7 @@ Kindred uses **4 Docker images**:
 
 ### Creating a Release
 
-```bash
-# Preview what would be released
-./scripts/release.sh --dry-run
-
-# Create release (runs checks, creates tag, pushes)
-./scripts/release.sh
-```
+Release via GitHub Actions: **Actions → Release → Run workflow**. Leave version empty for auto-bump, or enter a version to override.
 
 ### Pulling Images
 

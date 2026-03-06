@@ -24,5 +24,7 @@ services:
 networks:
   kindred-ci:
     driver: bridge
+  # Override web-proxy from base file to not be external
+  # Must explicitly set external: false (compose merges properties, not replaces)
   web-proxy:
     external: false

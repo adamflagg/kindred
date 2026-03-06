@@ -191,34 +191,12 @@ Creates a PocketBase migration snapshot of current schema.
 
 ## Deployment & Production
 
-### Deploy to Production
-```bash
-./scripts/deploy_production.sh
-```
-Deploys to production with safety checks:
-- Runs tests
-- Builds Docker images
-- Creates backup
-- Performs health checks
-- Automatic rollback on failure
+Deployment uses GitHub Actions CD workflow. See CLAUDE.md "Release Workflow" section.
 
-### Rollback Deployment
 ```bash
-./scripts/rollback.sh
-```
-Emergency rollback to previous deployment version.
-
-### Deploy from Host
-```bash
+# Deploy from host machine (for CI/CD pipelines)
 ./scripts/deploy-bunking-from-host.sh
 ```
-Deploy from host machine (for CI/CD pipelines).
-
-### Wait for Health
-```bash
-./scripts/wait_for_healthy.sh [CONTAINER_NAME] [TIMEOUT]
-```
-Waits for container health checks to pass.
 
 ## Configuration & Setup
 
@@ -358,8 +336,8 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests --test-lim
 # Full test suite
 ./scripts/ci/run_all_tests.sh
 
-# Deploy if tests pass
-./scripts/deploy_production.sh
+# Deploy via GitHub Actions Release workflow
+# GitHub -> Actions -> Release -> Run workflow
 
 # Monitor logs
 docker compose logs -f

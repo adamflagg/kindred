@@ -361,8 +361,6 @@ Release via GitHub Actions: **Actions → Release → Run workflow**. Leave vers
 
 Requires `RELEASE_TOKEN` repo secret (fine-grained PAT with `contents: write`).
 
-`scripts/release.sh` is retained for re-releases only.
-
 ### GitHub Repository Rules (Branch Protection)
 
 The `main` branch is protected by a GitHub **Ruleset** (not legacy branch protection) with:

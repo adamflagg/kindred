@@ -33,7 +33,6 @@ on:
 
   # On version tags only (semver pattern)
   # Use: git tag -a v0.1.0 -m "Release message" && git push --tags
-  # Note: release.sh creates the GitHub release, so we don't trigger on release events
   push:
     tags:
       - 'v*'
@@ -342,7 +341,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        # For tag pushes, check if all images were already pushed by release.sh
+        # For tag pushes, check if all images already exist in registry
         if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
           TAG_NAME=${GITHUB_REF#refs/tags/}
           DOCKER_TAG=${TAG_NAME#v}
