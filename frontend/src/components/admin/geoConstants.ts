@@ -13,6 +13,12 @@ export const SUB_TABS = [
   },
 ] as const
 
+export const CATEGORY_SIDEBAR = [
+  { id: 'city' as const, label: 'Cities', icon: Building2, path: '/admin/geo/cities' },
+  { id: 'school' as const, label: 'Schools', icon: School, path: '/admin/geo/schools' },
+  { id: 'congregation' as const, label: 'Congregations', icon: Landmark, path: '/admin/geo/congregations' },
+]
+
 /** Map sub-tab id to API category value */
 export const SUB_TAB_TO_CATEGORY: Record<string, GeoCategory> = {
   cities: 'city',
