@@ -159,8 +159,8 @@ jobs:
             - '.githooks/**'
             - '.shellcheckrc'
           docker:
-            - 'Dockerfile'
             - 'docker/**'
+            - 'docker-compose*.yml'
             - '.hadolint.yaml'
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
@@ -309,7 +309,8 @@ jobs:
       if: needs.detect-changes.outputs.scripts == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.docker == 'true'
       run: |
         echo "Checking shell scripts..."
-        shellcheck --severity=warning scripts/*.sh scripts/**/*.sh .githooks/* docker/*.sh frontend/*.sh tests/shell/*.sh
+        find scripts/ .githooks/ docker/ frontend/ tests/shell/ -maxdepth 3 \( -name '*.sh' -o -name 'pre-*' -o -name 'post-*' \) -print0 | \
+          xargs -0 shellcheck --severity=warning
 
   # Frontend linting (parallel with other lint jobs)
   frontend-lint:
@@ -360,7 +361,11 @@ jobs:
 
     # Dockerfile linting (stdin, no mounts - avoids self-hosted runner volume mount issues)
     - name: Dockerfile linting (hadolint)
-      run: docker run --rm -i hadolint/hadolint /bin/hadolint --ignore DL3008 - < Dockerfile
+      run: |
+        for df in docker/Dockerfile.api docker/Dockerfile.caddy docker/Dockerfile.pocketbase docker/Dockerfile.init; do
+          echo "=== Linting $df ==="
+          docker run --rm -i hadolint/hadolint /bin/hadolint --ignore DL3008 - < "$df"
+        done
 
     # Caddyfile validation (stdin, no mounts - avoids self-hosted runner volume mount issues)
     - name: Caddyfile validation

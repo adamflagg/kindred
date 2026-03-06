@@ -27,7 +27,8 @@ on:
   # This catches CD breakage BEFORE it merges to main
   pull_request:
     paths:
-      - 'docker/multi/**'
+      - 'docker/**'
+      - 'docker-compose*.yml'
       - '.github/workflows/cd.yml'
 
   # On version tags only (semver pattern)
@@ -121,9 +122,9 @@ jobs:
             - 'config/*.json'
             - 'pyproject.toml'
             - 'uv.lock'
-            - 'docker/multi/**'
+            - 'docker/**'
           docker:
-            - 'docker/multi/**'
+            - 'docker/**'
             - 'docker-compose*.yml'
             - '.dockerignore'
 
@@ -460,7 +461,7 @@ jobs:
       if: steps.check.outputs.build == 'true'
       run: |
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
-        DOCKERFILES=("docker/multi/Dockerfile.caddy" "docker/multi/Dockerfile.pocketbase" "docker/multi/Dockerfile.api" "docker/multi/Dockerfile.init")
+        DOCKERFILES=("docker/Dockerfile.caddy" "docker/Dockerfile.pocketbase" "docker/Dockerfile.api" "docker/Dockerfile.init")
 
         NO_CACHE_FLAG=""
         if [ "${{ github.event.inputs.no_cache }}" == "true" ]; then
@@ -537,15 +538,15 @@ jobs:
         # Use multi-container compose with CI override
         # --wait uses Docker's native healthcheck polling
         # --wait-timeout 180 allows time for all 4 containers (init runs first, then api/caddy)
-        if docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml up -d --wait --wait-timeout 180; then
+        if docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d --wait --wait-timeout 180; then
           echo "All services healthy!"
         else
           echo "Services failed to become healthy within 180 seconds"
-          docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml ps
-          docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml logs --tail=50
+          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
+          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
           exit 1
         fi
-        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
 
     - name: Test service endpoints
       if: steps.check.outputs.build == 'true'
@@ -585,7 +586,7 @@ jobs:
     - name: Verify non-root user and distroless containers
       if: steps.check.outputs.build == 'true'
       run: |
-        COMPOSE_CMD="docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml"
+        COMPOSE_CMD="docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml"
 
         # API container has a shell (Wolfi-based for Python) - verify non-root
         CONTAINER_USER=$($COMPOSE_CMD exec -T api id -u)
@@ -612,15 +613,15 @@ jobs:
       if: failure() && steps.check.outputs.build == 'true'
       run: |
         echo "=== Docker Compose Status ==="
-        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
         echo ""
         echo "=== All Container Logs ==="
-        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml logs
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs
 
     - name: Stop test stack
       if: always() && steps.check.outputs.build == 'true'
       run: |
-        docker compose --env-file .env.ci -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml down -v || true
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml down -v || true
         # Use sudo to clean up files created by container (runs as UID 65532, different from runner)
         sudo rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
