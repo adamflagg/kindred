@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from importlib.resources import files
 from typing import Any
 
@@ -164,6 +165,7 @@ class GeoService:
 
     def __init__(self, pb: PocketBase) -> None:
         self.pb = pb
+        self._person_id_cache: dict[tuple[int, tuple[str, ...], int | None], tuple[set[str], float]] = {}
 
     async def _fetch_active_person_pb_ids(
         self,
@@ -171,7 +173,19 @@ class GeoService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
     ) -> set[str]:
-        """Fetch PB IDs of persons with active enrolled attendee records."""
+        """Fetch PB IDs of persons with active enrolled attendee records.
+
+        Results are cached for 60 seconds keyed by (year, session_types, session_cm_id).
+        """
+        cache_key = (year, tuple(session_types or []), session_cm_id)
+        now = time.monotonic()
+
+        cached = self._person_id_cache.get(cache_key)
+        if cached is not None:
+            result, cached_at = cached
+            if now - cached_at < 60.0:
+                return result
+
         att_filter = f"year = {year} && is_active = 1 && status_id = 2"
         if session_cm_id is not None:
             att_filter += f" && session.cm_id = {session_cm_id}"
@@ -183,7 +197,9 @@ class GeoService:
             self.pb.collection("attendees").get_full_list,
             query_params={"filter": att_filter, "fields": "person"},
         )
-        return {a.person for a in attendees if a.person}
+        result = {a.person for a in attendees if a.person}
+        self._person_id_cache[cache_key] = (result, now)
+        return result
 
     @staticmethod
     def _filter_and_dedup_mappings(

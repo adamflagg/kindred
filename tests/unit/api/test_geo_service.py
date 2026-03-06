@@ -1282,7 +1282,7 @@ class TestPersonIdCache:
         await service._fetch_active_person_pb_ids(2025)
 
         # Manually expire the cache by setting timestamp to 0
-        cache = service._person_id_cache  # type: ignore[attr-defined]
+        cache = service._person_id_cache
         for key in cache:
             cache[key] = (cache[key][0], 0.0)
 
