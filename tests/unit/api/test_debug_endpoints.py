@@ -19,6 +19,23 @@ test_dir = Path(__file__).resolve().parent
 project_root = test_dir.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from bunking.auth_middleware import AuthUser, get_current_user
+
+
+def _override_auth(app: FastAPI) -> None:
+    """Override auth dependency to provide an admin user for testing."""
+
+    def _mock_admin_user() -> AuthUser:
+        return AuthUser(
+            username="TestAdmin",
+            email="test@example.com",
+            display_name="Test Admin",
+            groups=["admin"],
+            is_admin=True,
+        )
+
+    app.dependency_overrides[get_current_user] = _mock_admin_user
+
 
 class TestListParseAnalysisEndpoint:
     """Test GET /api/debug/parse-analysis endpoint."""
@@ -45,6 +62,7 @@ class TestListParseAnalysisEndpoint:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_repos
 
@@ -174,6 +192,7 @@ class TestGetParseAnalysisDetailEndpoint:
 
             app = FastAPI()
             app.include_router(router)
+            _override_auth(app)
 
             yield TestClient(app), mock_repos
 
@@ -233,6 +252,7 @@ class TestPhase1OnlyEndpoint:
 
             app = FastAPI()
             app.include_router(router)
+            _override_auth(app)
 
             yield TestClient(app), mock_services
 
@@ -335,6 +355,7 @@ class TestClearParseAnalysisEndpoint:
 
             app = FastAPI()
             app.include_router(router)
+            _override_auth(app)
 
             yield TestClient(app), mock_repos
 
@@ -382,6 +403,7 @@ class TestListOriginalRequestsEndpoint:
 
             app = FastAPI()
             app.include_router(router)
+            _override_auth(app)
 
             yield TestClient(app), mock_loader
 
@@ -469,6 +491,7 @@ class TestListPromptsEndpoint:
 
         app = FastAPI()
         app.include_router(router)
+        _override_auth(app)
 
         return TestClient(app)
 
@@ -531,6 +554,7 @@ class TestGetPromptEndpoint:
 
         app = FastAPI()
         app.include_router(router)
+        _override_auth(app)
 
         return TestClient(app)
 
@@ -595,6 +619,7 @@ class TestUpdatePromptEndpoint:
 
         app = FastAPI()
         app.include_router(router)
+        _override_auth(app)
 
         return TestClient(app)
 
@@ -713,6 +738,7 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
 
                     app = FastAPI()
                     app.include_router(router)
+                    _override_auth(app)
 
                     yield TestClient(app), mock_repos, mock_loader
 
@@ -808,6 +834,7 @@ class TestGetParseResultWithFallbackEndpoint:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_deps
 
@@ -996,6 +1023,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_deps
 
@@ -1179,6 +1207,7 @@ class TestBatchParseStatusEndpoint:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_deps, mock_loader
 
@@ -1263,6 +1292,7 @@ class TestGroupedByCamperEndpoint:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_deps, mock_loader
 
@@ -1420,6 +1450,7 @@ class TestClearSingleDebugResultEndpoint:
 
             app = FastAPI()
             app.include_router(router)
+            _override_auth(app)
 
             yield TestClient(app), mock_repos
 
@@ -1477,6 +1508,7 @@ class TestScopedClearEndpoint:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_repos
 
@@ -1591,6 +1623,7 @@ class TestProductionRequestsEndpoint:
 
                 app = FastAPI()
                 app.include_router(router)
+                _override_auth(app)
 
                 yield TestClient(app), mock_deps
 
@@ -1774,6 +1807,7 @@ class TestProductionRequestsResponseSchema:
 
             app = FastAPI()
             app.include_router(router)
+            _override_auth(app)
 
             yield TestClient(app), mock_deps
 

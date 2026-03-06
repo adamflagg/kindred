@@ -10,7 +10,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from bunking.auth_middleware import AuthUser
+from bunking.rbac.dependencies import require_permission
 
 from ..dependencies import metrics_cache, pb
 from ..schemas.forecast import ForecastResponse
@@ -57,6 +60,7 @@ async def get_retention_metrics(
         None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
     ),
     session_cm_id: int | None = Query(None, description="Filter to specific session by CampMinder ID"),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
 
@@ -108,6 +112,7 @@ async def get_registration_metrics(
         None,
         description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
 
@@ -153,6 +158,7 @@ async def get_comparison_metrics(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> ComparisonMetricsResponse:
     """Get year-over-year comparison metrics.
 
@@ -191,6 +197,7 @@ async def get_historical_trends(
         None,
         description="Filter to specific session by CampMinder ID. Uses name-matching across years.",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> HistoricalTrendsResponse:
     """Get historical trends across multiple years.
 
@@ -238,6 +245,7 @@ async def get_retention_trends(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> RetentionTrendsResponse:
     """Get retention trends across multiple year transitions.
 
@@ -292,6 +300,7 @@ async def get_waitlist_metrics(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> WaitlistMetricsResponse:
     """Get waitlist analysis metrics.
 
@@ -337,6 +346,7 @@ async def get_cancellation_metrics(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> CancellationMetricsResponse:
     """Get cancellation analysis metrics.
 
@@ -398,6 +408,7 @@ async def get_drilldown_attendees(
         description="Compare year for retention drilldowns. When set, is_returning reflects "
         "whether camper returned to the compare year instead of years_at_camp > 1.",
     ),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> list[DrilldownAttendee]:
     """Get attendee list for a specific breakdown value.
 
@@ -436,6 +447,7 @@ async def get_velocity(
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
     split_by_gender: bool = Query(False, description="Split enrollment by gender (M/F)"),
     metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
+    user: AuthUser = Depends(require_permission("metrics.view")),
 ) -> VelocityResponse:
     """Get registration velocity curves with week-over-week data."""
 
@@ -479,6 +491,7 @@ async def get_forecast(
     year: int = Query(..., description="Year to forecast"),
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
+    user: AuthUser = Depends(require_permission("metrics.financial")),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals, capacity, and revenue projections."""
     from api.services.forecast_service import ForecastService
@@ -506,7 +519,7 @@ async def get_forecast(
 
 
 @router.post("/cache/invalidate")
-async def invalidate_metrics_cache() -> dict[str, int]:
+async def invalidate_metrics_cache(user: AuthUser = Depends(require_permission("metrics.view"))) -> dict[str, int]:
     """Invalidate all cached metrics responses.
 
     Called by frontend on sync completion (via invalidateSyncData) or manual cache clear.
@@ -516,6 +529,8 @@ async def invalidate_metrics_cache() -> dict[str, int]:
 
 
 @router.get("/cache/stats")
-async def get_cache_stats() -> dict[str, int | float]:
+async def get_cache_stats(
+    user: AuthUser = Depends(require_permission("metrics.view")),
+) -> dict[str, int | float]:
     """Get metrics cache statistics (hit rate, size, etc.)."""
     return metrics_cache.get_stats()

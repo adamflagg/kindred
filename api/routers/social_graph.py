@@ -15,10 +15,12 @@ import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
+from bunking.auth_middleware import AuthUser
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.social_graph_builder import SocialGraphBuilder
+from bunking.rbac.dependencies import require_permission
 
 from ..dependencies import graph_cache, pb
 from ..schemas import (
@@ -55,6 +57,7 @@ async def get_session_social_graph(
     include_historical: Annotated[bool, Query(description="Include historical data")] = False,
     layout: Annotated[str, Query(description="Layout algorithm: force, circle, hierarchical")] = "force",
     edge_types: Annotated[str | None, Query(description="Comma-separated edge types to include")] = None,
+    user: AuthUser = Depends(require_permission("bunking.view")),
 ) -> SocialGraphResponse:
     """Get the full social graph for a session using NetworkX analysis.
 
@@ -297,7 +300,12 @@ async def get_session_social_graph(
 
 
 @router.get("/api/bunks/{bunk_cm_id}/social-graph")
-async def get_bunk_social_graph(bunk_cm_id: int, session_cm_id: int, year: int | None = None) -> BunkGraphResponse:
+async def get_bunk_social_graph(
+    bunk_cm_id: int,
+    session_cm_id: int,
+    year: int | None = None,
+    user: AuthUser = Depends(require_permission("bunking.view")),
+) -> BunkGraphResponse:
     """Get the social subgraph for a specific bunk.
 
     Args:
@@ -571,7 +579,11 @@ async def get_bunk_social_graph(bunk_cm_id: int, session_cm_id: int, year: int |
 
 @router.get("/api/persons/{person_cm_id}/ego-network")
 async def get_person_ego_network(
-    person_cm_id: int, session_cm_id: int | None = None, radius: int = 2, include_historical: bool = False
+    person_cm_id: int,
+    session_cm_id: int | None = None,
+    radius: int = 2,
+    include_historical: bool = False,
+    user: AuthUser = Depends(require_permission("bunking.view")),
 ) -> EgoNetworkResponse:
     """Get an individual's ego network.
 
@@ -710,7 +722,11 @@ async def get_person_ego_network(
 
 @router.patch("/api/sessions/{session_cm_id}/campers/{person_cm_id}/position")
 async def update_camper_position(
-    session_cm_id: int, person_cm_id: int, update: CamperPositionUpdate, year: int | None = None
+    session_cm_id: int,
+    person_cm_id: int,
+    update: CamperPositionUpdate,
+    year: int | None = None,
+    user: AuthUser = Depends(require_permission("bunking.view")),
 ) -> IncrementalUpdateResponse:
     """Update a camper's bunk position and return incremental changes.
 
