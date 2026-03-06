@@ -17,7 +17,7 @@
 import { AlertCircle, MapPin } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
 import type { GeoCategory } from './GeoCategoryTabs'
-import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
+import type { SourceMapping } from '../../../hooks/useSourceMappings'
 
 interface GeoGapsListProps {
   gaps: GeoDataItem[]

@@ -78,6 +78,16 @@ export interface OverrideCreateData {
   year: number
 }
 
+export interface SourceMappingItem {
+  original: string
+  count: number
+  confidence: number
+}
+
+export interface SourceMappingsResponse {
+  mappings: Record<string, SourceMappingItem[]>
+}
+
 // ============================================================================
 // API Functions
 // ============================================================================
@@ -227,4 +237,22 @@ export async function deleteOverride(
   if (!response.ok) {
     throw new Error('Failed to delete override')
   }
+}
+
+/**
+ * Fetch all source mappings grouped by normalized_value with optional attendee filtering.
+ */
+export async function fetchSourceMappings(
+  category: string,
+  year: number,
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+  options?: { activeOnly?: boolean; sessionTypes?: string[]; sessionCmId?: number }
+): Promise<SourceMappingsResponse> {
+  const params = new URLSearchParams({ category, year: String(year) })
+  if (options?.activeOnly) params.set('active_only', 'true')
+  if (options?.sessionTypes?.length) params.set('session_types', options.sessionTypes.join(','))
+  if (options?.sessionCmId !== undefined) params.set('session_cm_id', String(options.sessionCmId))
+  const response = await fetchWithAuth(`${API_BASE}/source-mappings?${params}`)
+  if (!response.ok) throw new Error('Failed to fetch source mappings')
+  return response.json()
 }

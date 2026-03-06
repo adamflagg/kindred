@@ -9,7 +9,7 @@ import { render, screen, within } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { GeoGapsList } from './GeoGapsList'
 import type { GeoDataItem } from './GeoMap'
-import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
+import type { SourceMapping } from '../../../hooks/useSourceMappings'
 
 // ---------------------------------------------------------------------------
 // Test data
