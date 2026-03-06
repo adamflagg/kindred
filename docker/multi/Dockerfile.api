@@ -6,7 +6,7 @@ FROM cgr.dev/chainguard/wolfi-base:latest AS python-builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # hadolint ignore=DL3018
-RUN apk add --no-cache python-3.14 python-3.14-dev gcc g++ glibc-dev libstdc++-dev
+RUN apk add --no-cache python-3.14 python-3.14-dev build-base
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
