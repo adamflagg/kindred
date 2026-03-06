@@ -235,6 +235,10 @@ class VelocityService:
             "M": defaultdict(dict),
             "F": defaultdict(dict),
         }
+        gender_session_cancelled: dict[str, dict[int, dict[str, int]]] = {
+            "M": defaultdict(dict),
+            "F": defaultdict(dict),
+        }
 
         # Track latest snapshot per session for breakdown
         session_latest: dict[int, tuple[str, int, int]] = {}  # sid -> (date, male, female)
@@ -246,6 +250,8 @@ class VelocityService:
 
             male_count = int(getattr(snap, "enrolled_male_count", 0) or 0)
             female_count = int(getattr(snap, "enrolled_female_count", 0) or 0)
+            cancelled_male = int(getattr(snap, "cancelled_male_count", 0) or 0)
+            cancelled_female = int(getattr(snap, "cancelled_female_count", 0) or 0)
 
             # Accumulate into per-gender per-session per-date
             gender_session_date["M"][effective_sid][date_str] = (
@@ -253,6 +259,12 @@ class VelocityService:
             )
             gender_session_date["F"][effective_sid][date_str] = (
                 gender_session_date["F"][effective_sid].get(date_str, 0) + female_count
+            )
+            gender_session_cancelled["M"][effective_sid][date_str] = (
+                gender_session_cancelled["M"][effective_sid].get(date_str, 0) + cancelled_male
+            )
+            gender_session_cancelled["F"][effective_sid][date_str] = (
+                gender_session_cancelled["F"][effective_sid].get(date_str, 0) + cancelled_female
             )
 
             # Track latest snapshot per session for breakdown (accumulate AG)
@@ -270,12 +282,18 @@ class VelocityService:
                 gender_session_date[gender] = {
                     sid: dates for sid, dates in gender_session_date[gender].items() if sid == session_cm_id
                 }
+                gender_session_cancelled[gender] = {
+                    sid: dates for sid, dates in gender_session_cancelled[gender].items() if sid == session_cm_id
+                }
             session_latest = {sid: v for sid, v in session_latest.items() if sid == session_cm_id}
 
         # Filter out sessions not in the sessions dict
         for gender in ("M", "F"):
             gender_session_date[gender] = {
                 sid: dates for sid, dates in gender_session_date[gender].items() if sid in sessions
+            }
+            gender_session_cancelled[gender] = {
+                sid: dates for sid, dates in gender_session_cancelled[gender].items() if sid in sessions
             }
         session_latest = {sid: v for sid, v in session_latest.items() if sid in sessions}
 
@@ -287,8 +305,9 @@ class VelocityService:
                 date_data: dict[str, dict[str, int]] = {
                     d: {"enrolled": c, "waitlisted": 0} for d, c in date_counts.items()
                 }
+                cancelled_for_session = gender_session_cancelled[gender].get(sid, {})
                 weekly = self._aggregate_snapshots_to_weekly(
-                    date_data, {}, season_start, season_end, year=year, today=today
+                    date_data, cancelled_for_session, season_start, season_end, year=year, today=today
                 )
                 per_session_data[sid] = weekly
             gender_per_session[gender] = per_session_data
