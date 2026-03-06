@@ -26,7 +26,7 @@ import {
   ReferenceLine,
   Brush,
 } from 'recharts'
-import { Loader2, AlertCircle, AlertTriangle } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { useVelocity } from '../../../hooks/useVelocity'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -222,14 +222,27 @@ export default function VelocityPage() {
         row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
         row['gross_enrolled_boys'] = mMap.get(wn)?.gross_enrolled ?? null
         row['gross_enrolled_girls'] = fMap.get(wn)?.gross_enrolled ?? null
+        // Gender delta keys for Weekly Delta view
+        row['weekly_new_boys'] = mMap.get(wn)?.weekly_new ?? null
+        row['weekly_new_girls'] = fMap.get(wn)?.weekly_new ?? null
+        row['weekly_cancelled_boys'] =
+          mMap.get(wn)?.weekly_cancelled != null ? -mMap.get(wn)!.weekly_cancelled : null
+        row['weekly_cancelled_girls'] =
+          fMap.get(wn)?.weekly_cancelled != null ? -fMap.get(wn)!.weekly_cancelled : null
 
         for (const { year, map } of priorMGenderMaps) {
           row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
           row[`gross_enrolled_boys_${year}`] = map.get(wn)?.gross_enrolled ?? null
+          row[`weekly_new_boys_${year}`] = map.get(wn)?.weekly_new ?? null
+          row[`weekly_cancelled_boys_${year}`] =
+            map.get(wn)?.weekly_cancelled != null ? -map.get(wn)!.weekly_cancelled : null
         }
         for (const { year, map } of priorFGenderMaps) {
           row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
           row[`gross_enrolled_girls_${year}`] = map.get(wn)?.gross_enrolled ?? null
+          row[`weekly_new_girls_${year}`] = map.get(wn)?.weekly_new ?? null
+          row[`weekly_cancelled_girls_${year}`] =
+            map.get(wn)?.weekly_cancelled != null ? -map.get(wn)!.weekly_cancelled : null
         }
       }
 
@@ -482,18 +495,6 @@ export default function VelocityPage() {
         </div>
       </div>
 
-      {/* Warnings banner */}
-      {data?.warnings && data.warnings.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
-          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-          <div className="text-sm text-amber-800 dark:text-amber-300">
-            {data.warnings.map((w, i) => (
-              <p key={i}>{w}</p>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Summary Comparison Cards */}
       {summaryCards && hasPriorYear && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
@@ -712,55 +713,154 @@ export default function VelocityPage() {
                 />
               ))}
 
-              {/* Current year lines */}
-              <Line
-                type="monotone"
-                dataKey="weekly_new"
-                name={`New ${currentYear}`}
-                stroke="hsl(150, 60%, 45%)"
-                strokeWidth={3}
-                dot={<PartialWeekDot />}
-                activeDot={{ r: 5 }}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="weekly_cancelled"
-                name={`Cancelled ${currentYear}`}
-                stroke="hsl(0, 65%, 55%)"
-                strokeWidth={3}
-                dot={<PartialWeekDot />}
-                activeDot={{ r: 5 }}
-                connectNulls={false}
-              />
+              {splitByGender ? (
+                <>
+                  {/* Gender split delta: boys + girls new/cancelled lines */}
+                  <Line
+                    type="monotone"
+                    dataKey="weekly_new_boys"
+                    name={`New Boys ${currentYear}`}
+                    stroke={GENDER_COLORS.boys}
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="weekly_new_girls"
+                    name={`New Girls ${currentYear}`}
+                    stroke={GENDER_COLORS.girls}
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="weekly_cancelled_boys"
+                    name={`Cancelled Boys ${currentYear}`}
+                    stroke={GENDER_COLORS.boys}
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="weekly_cancelled_girls"
+                    name={`Cancelled Girls ${currentYear}`}
+                    stroke={GENDER_COLORS.girls}
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  {/* Prior year gender delta (first prior year only) */}
+                  {selectedPriorYears.slice(0, 1).map((year) => (
+                    <Fragment key={year}>
+                      <Line
+                        type="monotone"
+                        dataKey={`weekly_new_boys_${year}`}
+                        name={`New Boys ${year}`}
+                        stroke={GENDER_COLORS.boys}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.5}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={`weekly_new_girls_${year}`}
+                        name={`New Girls ${year}`}
+                        stroke={GENDER_COLORS.girls}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.5}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={`weekly_cancelled_boys_${year}`}
+                        name={`Cancelled Boys ${year}`}
+                        stroke={GENDER_COLORS.boys}
+                        strokeWidth={1}
+                        strokeDasharray="6 3"
+                        dot={false}
+                        opacity={0.5}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={`weekly_cancelled_girls_${year}`}
+                        name={`Cancelled Girls ${year}`}
+                        stroke={GENDER_COLORS.girls}
+                        strokeWidth={1}
+                        strokeDasharray="6 3"
+                        dot={false}
+                        opacity={0.5}
+                        connectNulls={false}
+                      />
+                    </Fragment>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {/* Current year lines */}
+                  <Line
+                    type="monotone"
+                    dataKey="weekly_new"
+                    name={`New ${currentYear}`}
+                    stroke="hsl(150, 60%, 45%)"
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="weekly_cancelled"
+                    name={`Cancelled ${currentYear}`}
+                    stroke="hsl(0, 65%, 55%)"
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
 
-              {/* Prior year lines (dashed) */}
-              {data.prior_years.map((py) => (
-                <Fragment key={py.year}>
-                  <Line
-                    type="monotone"
-                    dataKey={`weekly_new_${py.year}`}
-                    name={`New ${py.year}`}
-                    stroke="hsl(150, 40%, 65%)"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                    opacity={0.7}
-                    connectNulls={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey={`weekly_cancelled_${py.year}`}
-                    name={`Cancelled ${py.year}`}
-                    stroke="hsl(0, 40%, 70%)"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                    opacity={0.7}
-                    connectNulls={false}
-                  />
-                </Fragment>
-              ))}
+                  {/* Prior year lines (dashed) */}
+                  {data.prior_years.map((py) => (
+                    <Fragment key={py.year}>
+                      <Line
+                        type="monotone"
+                        dataKey={`weekly_new_${py.year}`}
+                        name={`New ${py.year}`}
+                        stroke="hsl(150, 40%, 65%)"
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.7}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={`weekly_cancelled_${py.year}`}
+                        name={`Cancelled ${py.year}`}
+                        stroke="hsl(0, 40%, 70%)"
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.7}
+                        connectNulls={false}
+                      />
+                    </Fragment>
+                  ))}
+                </>
+              )}
             </LineChart>
           ) : (
             <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
