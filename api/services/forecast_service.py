@@ -34,6 +34,7 @@ class ForecastService:
         year: int = 2026,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        snapshot_date: str | None = None,
     ) -> ForecastResponse:
         """Calculate forecast for the given year.
 
@@ -83,6 +84,11 @@ class ForecastService:
             prior_sessions, prior_attendees = {}, []
             two_year_sessions, two_year_attendees = {}, []
 
+        # Historical snapshot mode: use snapshot counts instead of live attendee data
+        snapshot_counts: dict[int, dict[str, int]] | None = None
+        if snapshot_date is not None:
+            snapshot_counts = await self.repository.fetch_snapshot_counts(year, snapshot_date)
+
         # Build name-to-count maps for prior years
         prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)
         two_year_counts = self._count_by_session_name(two_year_sessions, two_year_attendees)
@@ -105,8 +111,13 @@ class ForecastService:
                     continue
 
             # Each session counts only its own attendees (no AG merging)
-            enrolled = self._count_attendees_for_session(enrolled_attendees, sid, set())
-            waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, set())
+            if snapshot_counts is not None:
+                sc = snapshot_counts.get(sid, {})
+                enrolled = sc.get("enrolled", 0)
+                waitlisted = sc.get("waitlisted", 0)
+            else:
+                enrolled = self._count_attendees_for_session(enrolled_attendees, sid, set())
+                waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, set())
 
             # Count bunk plans for this session only (no AG merging)
             session_pb_id = getattr(session, "id", None)
@@ -177,6 +188,7 @@ class ForecastService:
             year=year,
             sessions=session_forecasts,
             grand_total=grand_total,
+            snapshot_date=snapshot_date,
         )
 
     def _count_attendees_for_session(
