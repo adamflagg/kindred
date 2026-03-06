@@ -165,8 +165,34 @@ def create_app() -> FastAPI:
 
     @app.get("/api/user/me")
     async def get_current_user_info(user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
-        """Get current user information."""
+        """Get current user information including permissions."""
         return user.to_dict()
+
+    @app.get("/api/permissions")
+    async def get_permission_registry(user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
+        """Get the permission registry for role-editing UI.
+
+        Returns all valid permission codenames and their descriptions.
+        Any authenticated user can read this; it's used by the role editor.
+        """
+        from bunking.rbac.permissions import ALL_PERMISSIONS, Permission
+
+        return {
+            "permissions": [
+                {"codename": Permission.BUNKING_VIEW, "description": "View board layout, camper lists, social graphs"},
+                {"codename": Permission.BUNKING_MANAGE, "description": "Manage requests, scenarios, solver runs"},
+                {"codename": Permission.METRICS_VIEW, "description": "View registration and retention dashboards"},
+                {
+                    "codename": Permission.METRICS_FINANCIAL,
+                    "description": "View financial projections and revenue data",
+                },
+                {"codename": Permission.METRICS_GEO, "description": "View and manage geographic data"},
+                {"codename": Permission.SYNC_RUN, "description": "Run CampMinder syncs"},
+                {"codename": Permission.SOLVER_CONFIGURE, "description": "Adjust solver weights and parameters"},
+                {"codename": Permission.USERS_MANAGE, "description": "Assign roles and manage users"},
+            ],
+            "total": len(ALL_PERMISSIONS),
+        }
 
     return app
 
