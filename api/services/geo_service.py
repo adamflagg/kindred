@@ -162,7 +162,54 @@ class GeoService:
     def __init__(self, pb: PocketBase) -> None:
         self.pb = pb
 
-    async def get_gaps(self, category: str, year: int) -> GapsResponse:
+    async def _fetch_active_person_pb_ids(
+        self,
+        year: int,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
+    ) -> set[str]:
+        """Fetch PB IDs of persons with active enrolled attendee records."""
+        att_filter = f"year = {year} && is_active = 1 && status_id = 2"
+        if session_cm_id is not None:
+            att_filter += f" && session.cm_id = {session_cm_id}"
+        elif session_types:
+            clauses = [f'session.session_type = "{t}"' for t in session_types]
+            att_filter += f" && ({' || '.join(clauses)})"
+
+        attendees: list[Any] = await asyncio.to_thread(
+            self.pb.collection("attendees").get_full_list,
+            query_params={"filter": att_filter, "fields": "person"},
+        )
+        return {a.person for a in attendees if a.person}
+
+    @staticmethod
+    def _filter_and_dedup_mappings(
+        mappings: list[Any],
+        active_person_ids: set[str] | None,
+    ) -> list[Any]:
+        """Filter mappings to active persons and deduplicate by (person, normalized_value)."""
+        if active_person_ids is None:
+            return mappings
+        seen: set[tuple[str, str]] = set()
+        result: list[Any] = []
+        for m in mappings:
+            if not m.person or m.person not in active_person_ids:
+                continue
+            key = (m.person, m.normalized_value)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(m)
+        return result
+
+    async def get_gaps(
+        self,
+        category: str,
+        year: int,
+        active_only: bool = False,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
+    ) -> GapsResponse:
         """Classify normalized values without coordinates into three tiers.
 
         1. canonical_no_coords: In static lookup values but missing coords
@@ -185,6 +232,11 @@ class GeoService:
             self.pb.collection("geo_overrides").get_full_list,
             query_params={"filter": f'category = "{category}" && year = {year}'},
         )
+
+        # Filter to active attendees if requested
+        if active_only:
+            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            mappings = self._filter_and_dedup_mappings(mappings, active_ids)
 
         # Build set of canonical names that have override coords
         override_coord_names: set[str] = set()
@@ -246,7 +298,15 @@ class GeoService:
         )
 
     async def search_canonicals(
-        self, category: str, query: str, year: int, *, in_use_only: bool = False
+        self,
+        category: str,
+        query: str,
+        year: int,
+        *,
+        in_use_only: bool = False,
+        active_only: bool = False,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
     ) -> CanonicalSearchResponse:
         """Search canonical entries by name, city, or state.
 
@@ -267,6 +327,11 @@ class GeoService:
             self.pb.collection("geo_overrides").get_full_list,
             query_params={"filter": f'category = "{category}" && year = {year} && override_type = "canonical"'},
         )
+
+        # Filter to active attendees if requested
+        if active_only:
+            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            mappings = self._filter_and_dedup_mappings(mappings, active_ids)
 
         # Build camper counts per normalized_value
         camper_counts: dict[str, int] = {}
@@ -337,7 +402,15 @@ class GeoService:
 
         return CanonicalSearchResponse(results=results)
 
-    async def get_sources(self, category: str, canonical_name: str, year: int) -> SourcesResponse:
+    async def get_sources(
+        self,
+        category: str,
+        canonical_name: str,
+        year: int,
+        active_only: bool = False,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
+    ) -> SourcesResponse:
         """Get raw value variants that map to a canonical name.
 
         Groups by original_value with row counts and confidence scores.
@@ -351,6 +424,11 @@ class GeoService:
                 "filter": (f'category = "{category}" && year = {year} && normalized_value = "{canonical_name}"')
             },
         )
+
+        # Filter to active attendees if requested
+        if active_only:
+            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            mappings = self._filter_and_dedup_mappings(mappings, active_ids)
 
         # Group by original_value, counting rows and tracking min confidence
         source_groups: dict[str, dict[str, Any]] = {}

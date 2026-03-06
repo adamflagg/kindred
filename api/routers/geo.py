@@ -44,11 +44,15 @@ def _get_service() -> GeoService:
 async def get_gaps(
     category: str = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
+    active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
+    session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
+    session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
     user: AuthUser = Depends(get_current_user),
 ) -> GapsResponse:
     """Get three-tier gap classification for normalized values missing coordinates."""
     service = _get_service()
-    return await service.get_gaps(category, year)
+    types_list = session_types.split(",") if session_types else None
+    return await service.get_gaps(category, year, active_only, types_list, session_cm_id)
 
 
 # ============================================================================
@@ -62,11 +66,23 @@ async def search_canonicals(
     q: str = Query("", description="Search query (case-insensitive substring match). Empty returns in-use entries."),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
     in_use: bool = Query(False, description="If true, only return entries with camper_count > 0"),
+    active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
+    session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
+    session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
     user: AuthUser = Depends(get_current_user),
 ) -> CanonicalSearchResponse:
     """Search canonical entries by name, city, or state."""
     service = _get_service()
-    return await service.search_canonicals(category, q, year, in_use_only=in_use)
+    types_list = session_types.split(",") if session_types else None
+    return await service.search_canonicals(
+        category,
+        q,
+        year,
+        in_use_only=in_use,
+        active_only=active_only,
+        session_types=types_list,
+        session_cm_id=session_cm_id,
+    )
 
 
 # ============================================================================
@@ -79,11 +95,22 @@ async def get_sources(
     canonical_name: str,
     category: str = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
+    active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
+    session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
+    session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
     user: AuthUser = Depends(get_current_user),
 ) -> SourcesResponse:
     """Get raw value variants that map to a canonical name."""
     service = _get_service()
-    return await service.get_sources(category, canonical_name, year)
+    types_list = session_types.split(",") if session_types else None
+    return await service.get_sources(
+        category,
+        canonical_name,
+        year,
+        active_only,
+        types_list,
+        session_cm_id,
+    )
 
 
 # ============================================================================

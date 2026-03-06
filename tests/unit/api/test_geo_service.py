@@ -35,6 +35,7 @@ def _make_mapping_record(
     category: str = "school",
     confidence: float = 1.0,
     year: int = 2025,
+    person: str = "",
 ) -> Mock:
     """Create a mock normalized_mappings record."""
     record = Mock()
@@ -42,6 +43,22 @@ def _make_mapping_record(
     record.normalized_value = normalized_value
     record.category = category
     record.confidence = confidence
+    record.year = year
+    record.person = person
+    return record
+
+
+def _make_attendee_record(
+    person: str,
+    is_active: bool = True,
+    status_id: int = 2,
+    year: int = 2025,
+) -> Mock:
+    """Create a mock attendees record."""
+    record = Mock()
+    record.person = person
+    record.is_active = is_active
+    record.status_id = status_id
     record.year = year
     return record
 
@@ -325,6 +342,211 @@ class TestGetGaps:
         assert len(result.non_canonical_ungrouped) == 1
         assert result.non_canonical_ungrouped[0].name == "Random Place"
         assert result.total_gaps == 3
+
+
+# ============================================================================
+# Active-Only Filtering Tests
+# ============================================================================
+
+
+class TestActiveOnlyFiltering:
+    """Test active_only filtering and person deduplication."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_active_only_excludes_inactive_persons(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """With active_only=True, mappings for non-active persons should be excluded."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elementary", "Riverside Elementary", person="p2"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p3"),  # inactive
+        ]
+        attendees = [
+            _make_attendee_record("p1"),
+            _make_attendee_record("p2"),
+            # p3 is not in active attendees
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,  # normalized_mappings
+                [],  # geo_overrides
+                attendees,  # attendees
+            ]
+
+            result = await service.get_gaps("school", 2025, active_only=True)
+
+        # Only 2 mappings (p1, p2) should be counted, not p3
+        # 2 different original values → non_canonical_grouped
+        assert result.non_canonical_grouped[0].count == 2
+
+    @pytest.mark.asyncio
+    async def test_active_only_deduplicates_by_person(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Same person in 2 sessions with same normalized_value should count as 1."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),  # same person, diff session
+        ]
+        attendees = [
+            _make_attendee_record("p1"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,
+                [],  # geo_overrides
+                attendees,
+            ]
+
+            result = await service.get_gaps("school", 2025, active_only=True)
+
+        # Dedup: same person + same normalized_value = 1
+        assert result.non_canonical_ungrouped[0].count == 1
+
+    @pytest.mark.asyncio
+    async def test_active_only_false_returns_all(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """With active_only=False, all mappings are returned (current behavior)."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p3"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,
+                [],  # geo_overrides
+            ]
+
+            result = await service.get_gaps("school", 2025, active_only=False)
+
+        # All 3 should be counted (no attendee filtering)
+        assert result.non_canonical_ungrouped[0].count == 3
+
+    @pytest.mark.asyncio
+    async def test_session_types_filters_attendees(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """When session_types is provided, attendee query should include session type filter."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),
+        ]
+        attendees = [
+            _make_attendee_record("p1"),  # only main session attendee
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,
+                [],  # geo_overrides
+                attendees,  # only p1 in "main" sessions
+            ]
+
+            result = await service.get_gaps("school", 2025, active_only=True, session_types=["main"])
+
+        # Only p1 is an active attendee in "main" sessions
+        assert result.non_canonical_ungrouped[0].count == 1
+
+    @pytest.mark.asyncio
+    async def test_search_canonicals_active_only(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Camper counts should reflect only active persons when active_only=True."""
+        mappings = [
+            _make_mapping_record("park day", "Park Day School", person="p1"),
+            _make_mapping_record("park day", "Park Day School", person="p2"),
+            _make_mapping_record("park day", "Park Day School", person="p3"),  # inactive
+        ]
+        attendees = [
+            _make_attendee_record("p1"),
+            _make_attendee_record("p2"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {"park day school": "Park Day School"}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,
+                [],  # geo_overrides
+                attendees,
+            ]
+
+            result = await service.search_canonicals("school", "park", 2025, active_only=True)
+
+        assert result.results[0].camper_count == 2  # p1, p2 only
+
+    @pytest.mark.asyncio
+    async def test_get_sources_active_only(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Source counts should reflect only active persons, deduped."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95, person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.93, person="p2"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95, person="p3"),  # inactive
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95, person="p1"),  # dup
+        ]
+        attendees = [
+            _make_attendee_record("p1"),
+            _make_attendee_record("p2"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,
+                attendees,
+            ]
+
+            result = await service.get_sources("school", "Riverside Elementary", 2025, active_only=True)
+
+        # p1 and p2 only, deduped: p1 appears twice but same person+normalized_value
+        assert result.sources[0].count == 2  # p1 + p2
 
 
 # ============================================================================
