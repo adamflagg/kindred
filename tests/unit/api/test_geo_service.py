@@ -1226,3 +1226,65 @@ class TestBatchResolveCoords:
         assert "skipped" in result
         assert "skipped_names" in result
         assert "paused" in result
+
+
+# ============================================================================
+# Person ID Cache Tests
+# ============================================================================
+
+
+class TestPersonIdCache:
+    """Test TTL caching of active person IDs."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_second_call_uses_cache(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Second call with same params should return cached result, not hit PB again."""
+        attendees = [_make_attendee_record("p1"), _make_attendee_record("p2")]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        result1 = await service._fetch_active_person_pb_ids(2025)
+        result2 = await service._fetch_active_person_pb_ids(2025)
+
+        assert result1 == result2 == {"p1", "p2"}
+        # PB should only be called once
+        assert mock_pb.collection.return_value.get_full_list.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_different_params_bypass_cache(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Different year should not share cache."""
+        attendees_2025 = [_make_attendee_record("p1")]
+        attendees_2024 = [_make_attendee_record("p2")]
+        mock_pb.collection.return_value.get_full_list.side_effect = [attendees_2025, attendees_2024]
+
+        result1 = await service._fetch_active_person_pb_ids(2025)
+        result2 = await service._fetch_active_person_pb_ids(2024)
+
+        assert result1 == {"p1"}
+        assert result2 == {"p2"}
+        assert mock_pb.collection.return_value.get_full_list.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cache_expires_after_ttl(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Cache should expire after TTL seconds."""
+        attendees = [_make_attendee_record("p1")]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        await service._fetch_active_person_pb_ids(2025)
+
+        # Manually expire the cache by setting timestamp to 0
+        cache = service._person_id_cache  # type: ignore[attr-defined]
+        for key in cache:
+            cache[key] = (cache[key][0], 0.0)
+
+        await service._fetch_active_person_pb_ids(2025)
+        assert mock_pb.collection.return_value.get_full_list.call_count == 2
