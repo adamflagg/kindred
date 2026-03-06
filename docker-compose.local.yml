@@ -1,5 +1,5 @@
 # Kindred Multi-Container Local Testing Docker Compose
-# Usage: docker compose -f docker/multi/docker-compose.local.yml up -d --build
+# Usage: docker compose -f docker-compose.local.yml up -d --build
 
 services:
   # One-shot service to fix volume ownership (Docker named volumes default to root)
@@ -15,8 +15,8 @@ services:
 
   pocketbase:
     build:
-      context: ../..
-      dockerfile: docker/multi/Dockerfile.pocketbase
+      context: .
+      dockerfile: docker/Dockerfile.pocketbase
     image: kindred-pocketbase:local
     container_name: kindred-pocketbase
     restart: unless-stopped
@@ -50,8 +50,8 @@ services:
 
   init:
     build:
-      context: ../..
-      dockerfile: docker/multi/Dockerfile.init
+      context: .
+      dockerfile: docker/Dockerfile.init
     image: kindred-init:local
     container_name: kindred-init
     restart: "no"
@@ -79,8 +79,8 @@ services:
 
   api:
     build:
-      context: ../..
-      dockerfile: docker/multi/Dockerfile.api
+      context: .
+      dockerfile: docker/Dockerfile.api
     image: kindred-api:local
     container_name: kindred-api
     restart: unless-stopped
@@ -125,8 +125,8 @@ services:
 
   caddy:
     build:
-      context: ../..
-      dockerfile: docker/multi/Dockerfile.caddy
+      context: .
+      dockerfile: docker/Dockerfile.caddy
     image: kindred-caddy:local
     container_name: kindred-caddy
     restart: unless-stopped

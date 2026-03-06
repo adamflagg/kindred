@@ -1,5 +1,5 @@
 # Kindred Multi-Container CI Override
-# Usage: docker compose -f docker/multi/docker-compose.yml -f docker/multi/docker-compose.ci.yml up -d
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
 services:
   pocketbase:

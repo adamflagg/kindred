@@ -1,6 +1,6 @@
 # Kindred Multi-Container Production Docker Compose
 # 4 containers: caddy (proxy + frontend), pocketbase (db), api (FastAPI), init (one-shot setup)
-# Usage: docker compose -f docker/multi/docker-compose.yml up -d
+# Usage: docker compose -f docker-compose.yml up -d
 
 services:
   pocketbase:
