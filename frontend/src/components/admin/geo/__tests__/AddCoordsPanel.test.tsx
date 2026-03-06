@@ -7,7 +7,7 @@ import type { GapItem } from '../../../../services/geoService'
 const gaps: GapItem[] = [
   { name: 'Riverside Elementary', count: 14, percentage: 8.2, source_count: 3 },
   { name: 'Oak Valley Middle', count: 8, percentage: 4.7, source_count: 2 },
-  { name: 'Hillcrest High', count: 3, percentage: 1.8, source_count: 1 },
+  { name: 'Hillcrest High', count: 5, percentage: 1.8, source_count: 1 },
 ]
 
 describe('AddCoordsPanel', () => {
@@ -25,7 +25,7 @@ describe('AddCoordsPanel', () => {
     // Verify counts are displayed
     expect(screen.getByText('14')).toBeInTheDocument()
     expect(screen.getByText('8')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('5')).toBeInTheDocument()
   })
 
   it('calls onAdd with canonical name when Add button clicked', async () => {
