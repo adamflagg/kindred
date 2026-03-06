@@ -101,7 +101,7 @@ export function useCreateOverride(category: string, year: number) {
   return useMutation({
     mutationFn: (data: OverrideCreateData) => geoService.createOverride(data, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['geo', 'gaps', category, year] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
@@ -115,7 +115,7 @@ export function useUpdateOverride(category: string, year: number) {
     mutationFn: ({ overrideId, data }: { overrideId: string; data: Partial<OverrideCreateData> }) =>
       geoService.updateOverride(overrideId, data, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['geo', 'gaps', category, year] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
@@ -128,7 +128,7 @@ export function useDeleteOverride(category: string, year: number) {
   return useMutation({
     mutationFn: (overrideId: string) => geoService.deleteOverride(overrideId, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['geo', 'gaps', category, year] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
@@ -142,7 +142,7 @@ export function useBatchResolveCoords(category: string, year: number) {
   return useMutation({
     mutationFn: () => geoService.batchResolveCoords(category, year, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },

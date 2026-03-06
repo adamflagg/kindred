@@ -29,7 +29,7 @@ export function GeoManagementPage() {
     gapType: '',
   })
 
-  const { data: gaps } = useGeoGaps(category, year, activeOnly)
+  const { data: gaps, isLoading, isError } = useGeoGaps(category, year, activeOnly)
   useGeoPagePrefetch(category, year, activeOnly)
   const totalGaps = gaps?.total_gaps ?? 0
   const batchResolve = useBatchResolveCoords(category, year)
@@ -96,7 +96,15 @@ export function GeoManagementPage() {
         {/* Split panels */}
         <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
           <div data-testid="left-panel" className="border-border space-y-4 overflow-y-auto border-r p-3">
-            {gaps && (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <span className="text-muted-foreground text-sm">Loading gaps...</span>
+              </div>
+            ) : isError ? (
+              <div className="flex items-center justify-center py-12">
+                <span className="text-sm text-red-500">Failed to load gap data</span>
+              </div>
+            ) : gaps ? (
               <>
                 <NonCanonicalsPanel
                   grouped={gaps.non_canonical_grouped}
@@ -110,7 +118,7 @@ export function GeoManagementPage() {
                   isBatchResolving={batchResolve.isPending}
                 />
               </>
-            )}
+            ) : null}
           </div>
           <div data-testid="right-panel" className="overflow-y-auto p-3">
             <CanonicalReferenceList

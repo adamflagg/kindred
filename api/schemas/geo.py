@@ -89,6 +89,8 @@ class OverrideCreate(BaseModel):
     canonical_name: str = Field(description="The canonical/normalized name")
     city: str | None = Field(default=None, description="City for location context")
     state: str | None = Field(default=None, description="State for location context")
+    lat: float | None = Field(default=None, description="Latitude coordinate")
+    lng: float | None = Field(default=None, description="Longitude coordinate")
     merged_into: str | None = Field(default=None, description="Target canonical name (for merge type)")
     notes: str | None = Field(default=None, description="Free-form notes")
     year: int = Field(description="Year scope")

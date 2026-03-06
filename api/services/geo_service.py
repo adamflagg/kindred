@@ -146,8 +146,8 @@ def _override_to_response(record: Any) -> OverrideResponse:
         canonical_name=record.canonical_name,
         city=record.city or None,
         state=record.state or None,
-        lat=record.lat if record.lat else None,
-        lng=record.lng if record.lng else None,
+        lat=record.lat if record.lat is not None else None,
+        lng=record.lng if record.lng is not None else None,
         merged_into=record.merged_into or None,
         notes=record.notes or None,
         year=record.year,
@@ -266,7 +266,7 @@ class GeoService:
         # Build set of canonical names that have override coords
         override_coord_names: set[str] = set()
         for ov in overrides:
-            if ov.lat and ov.lng:
+            if ov.lat is not None and ov.lng is not None:
                 override_coord_names.add(ov.canonical_name)
 
         # Group mappings by normalized_value
@@ -401,7 +401,7 @@ class GeoService:
 
         # Add override canonical entries
         for ov in overrides:
-            has_coords = bool(ov.lat and ov.lng)
+            has_coords = ov.lat is not None and ov.lng is not None
             all_canonicals[ov.canonical_name] = CanonicalEntry(
                 canonical_name=ov.canonical_name,
                 city=ov.city or "",
@@ -560,6 +560,11 @@ class GeoService:
                 body["lat"] = coords[0]
                 body["lng"] = coords[1]
 
+        # Use user-supplied coords if provided and not already geocoded
+        if "lat" not in body and data.lat is not None and data.lng is not None:
+            body["lat"] = data.lat
+            body["lng"] = data.lng
+
         record = await asyncio.to_thread(
             self.pb.collection("geo_overrides").create,
             body,
@@ -625,7 +630,7 @@ class GeoService:
         )
 
         checked_names = {o.canonical_name for o in overrides if o.nominatim_status}
-        coord_override_names = {o.canonical_name for o in overrides if o.lat and o.lng}
+        coord_override_names = {o.canonical_name for o in overrides if o.lat is not None and o.lng is not None}
         candidates = [name for name in missing_coords if name not in checked_names and name not in coord_override_names]
 
         resolved = 0

@@ -45,7 +45,7 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     label: 'Geo Data',
     path: '/admin/geo',
     icon: MapPin,
-    requiredPermission: 'admin',
+    requiredPermission: 'authenticated',
   },
 ]
 

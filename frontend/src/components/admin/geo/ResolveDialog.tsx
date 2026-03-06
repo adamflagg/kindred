@@ -125,7 +125,7 @@ export function ResolveDialog({
     if (!selectedEntry) return
     const data: OverrideCreateData = {
       category,
-      override_type: 'map_to_canonical',
+      override_type: 'alias',
       raw_value: gapName,
       canonical_name: selectedEntry.canonical_name,
       year,
@@ -138,7 +138,7 @@ export function ResolveDialog({
     if (!newCanonicalName.trim()) return
     const data: OverrideCreateData = {
       category,
-      override_type: 'create_canonical',
+      override_type: 'canonical',
       raw_value: gapName,
       canonical_name: newCanonicalName.trim(),
       ...(newCity.trim() ? { city: newCity.trim() } : {}),
@@ -155,7 +155,7 @@ export function ResolveDialog({
     if (isNaN(latNum) || isNaN(lngNum)) return
     const data: OverrideCreateData = {
       category,
-      override_type: 'add_coords',
+      override_type: 'canonical',
       canonical_name: gapName,
       lat: latNum,
       lng: lngNum,

@@ -99,7 +99,7 @@ describe('ResolveDialog — Mode A (non-canonical)', () => {
     expect(mockMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         category: 'school',
-        override_type: 'map_to_canonical',
+        override_type: 'alias',
         raw_value: 'Hillcrest High',
         canonical_name: 'Oak Valley Middle',
         year: 2025,
@@ -129,7 +129,7 @@ describe('ResolveDialog — Mode A (non-canonical)', () => {
     expect(nameInput.value).toBe('Hillcrest High')
   })
 
-  it('creating new canonical triggers useCreateOverride with create_canonical override', async () => {
+  it('creating new canonical triggers useCreateOverride with canonical override', async () => {
     render(<ResolveDialog {...defaultProps} />)
     const user = userEvent.setup()
 
@@ -150,7 +150,7 @@ describe('ResolveDialog — Mode A (non-canonical)', () => {
     expect(mockMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         category: 'school',
-        override_type: 'create_canonical',
+        override_type: 'canonical',
         raw_value: 'Hillcrest High',
         canonical_name: 'Hillcrest High School',
         city: 'Denver',
@@ -224,7 +224,7 @@ describe('ResolveDialog — Mode B (canonical_no_coords)', () => {
     expect(screen.getByLabelText(/longitude/i)).toBeInTheDocument()
   })
 
-  it('Save button calls useCreateOverride with add_coords override type including lat/lng', async () => {
+  it('Save button calls useCreateOverride with canonical override type including lat/lng', async () => {
     render(<ResolveDialog {...coordsProps} />)
     const user = userEvent.setup()
 
@@ -239,7 +239,7 @@ describe('ResolveDialog — Mode B (canonical_no_coords)', () => {
     expect(mockMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         category: 'school',
-        override_type: 'add_coords',
+        override_type: 'canonical',
         canonical_name: 'Riverside Elementary',
         lat: 37.7749,
         lng: -122.4194,

@@ -61,7 +61,7 @@ export function CanonicalReferenceList({
   const [sortMode, setSortMode] = useState<SortMode>('popular')
   const [expandedName, setExpandedName] = useState<string | null>(null)
 
-  const { data, isLoading } = useAllCanonicals(category, year)
+  const { data, isLoading, isError } = useAllCanonicals(category, year)
 
   // Client-side filter + sort
   const results = useMemo(() => {
@@ -154,6 +154,10 @@ export function CanonicalReferenceList({
       {isLoading ? (
         <div className="flex items-center justify-center px-4 py-8">
           <span className="text-muted-foreground text-sm">Loading entries...</span>
+        </div>
+      ) : isError ? (
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-red-300 bg-red-50/50 px-4 py-8 dark:border-red-800 dark:bg-red-950/20">
+          <span className="text-sm text-red-500 dark:text-red-400">Failed to load entries</span>
         </div>
       ) : results.length > 0 ? (
         <div className="space-y-1">
