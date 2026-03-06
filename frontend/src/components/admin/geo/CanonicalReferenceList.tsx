@@ -1,4 +1,13 @@
-// Stub -- implementation in next commit
+/**
+ * CanonicalReferenceList -- Searchable, sortable list of canonical entries.
+ *
+ * Replaces the old CanonicalBrowser with a compact row layout, sort toggle,
+ * lazy-loaded source variants, and [Fix] buttons for fuzzy matches.
+ */
+import { useState, useMemo } from 'react'
+import { Search, Compass, ArrowDownWideNarrow, ArrowDownAZ, Wrench } from 'lucide-react'
+import { useAllCanonicals, useCanonicalSources } from '../../../hooks/useGeoData'
+import type { CanonicalEntry, SourcesResponse } from '../../../services/geoService'
 import type { GeoCategory } from '../geoConstants'
 
 export interface CanonicalReferenceListProps {
@@ -7,6 +16,295 @@ export interface CanonicalReferenceListProps {
   onReassignSource: (originalValue: string) => void
 }
 
-export function CanonicalReferenceList(_props: CanonicalReferenceListProps) {
-  return null
+type SortMode = 'popular' | 'alpha'
+
+/** Map source key to display label. */
+function sourceLabel(source: string): string {
+  switch (source) {
+    case 'nces':
+      return 'NCES'
+    case 'pss':
+      return 'PSS'
+    case 'simplemaps':
+      return 'SimpleMaps'
+    case 'curated':
+      return 'Curated'
+    case 'manual':
+      return 'Manual'
+    default:
+      return source
+  }
+}
+
+/** Map source key to Tailwind badge classes (earthy palette). */
+function sourceBadgeClasses(source: string): string {
+  switch (source) {
+    case 'nces':
+    case 'pss':
+      return 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
+    case 'simplemaps':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+    case 'manual':
+    case 'curated':
+      return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+  }
+}
+
+export function CanonicalReferenceList({
+  category,
+  year,
+  onReassignSource,
+}: CanonicalReferenceListProps) {
+  const [searchInput, setSearchInput] = useState('')
+  const [sortMode, setSortMode] = useState<SortMode>('popular')
+  const [expandedName, setExpandedName] = useState<string | null>(null)
+
+  const { data, isLoading } = useAllCanonicals(category, year)
+
+  // Client-side filter + sort
+  const results = useMemo(() => {
+    const all = data?.results ?? []
+    const q = searchInput.trim().toLowerCase()
+
+    const filtered = q
+      ? all.filter(
+          (entry) =>
+            entry.canonical_name.toLowerCase().includes(q) ||
+            entry.city.toLowerCase().includes(q) ||
+            entry.state.toLowerCase().includes(q),
+        )
+      : all
+
+    const sorted = [...filtered]
+    if (sortMode === 'popular') {
+      sorted.sort((a, b) => b.camper_count - a.camper_count)
+    } else {
+      sorted.sort((a, b) => a.canonical_name.localeCompare(b.canonical_name))
+    }
+
+    return sorted
+  }, [data, searchInput, sortMode])
+
+  function handleToggleExpand(name: string) {
+    setExpandedName((prev) => (prev === name ? null : name))
+  }
+
+  const hasData = (data?.results ?? []).length > 0
+
+  return (
+    <div className="space-y-3">
+      {/* Header -- shown when there is data or loading */}
+      {(hasData || isLoading) && (
+        <div className="flex items-center gap-2">
+          <span className="text-foreground text-sm font-semibold">Canonical Entries</span>
+          <div className="flex-1" />
+          {/* Sort toggle */}
+          <div className="flex items-center gap-0.5 rounded-md border border-stone-200 dark:border-stone-700">
+            <button
+              type="button"
+              onClick={() => setSortMode('popular')}
+              className={`flex items-center gap-1 rounded-l-md px-2 py-1 text-xs transition-colors ${
+                sortMode === 'popular'
+                  ? 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <ArrowDownWideNarrow className="h-3.5 w-3.5" />
+              Popular
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortMode('alpha')}
+              className={`flex items-center gap-1 rounded-r-md px-2 py-1 text-xs transition-colors ${
+                sortMode === 'alpha'
+                  ? 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <ArrowDownAZ className="h-3.5 w-3.5" />
+              A-Z
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Search input -- shown when there is data */}
+      {hasData && (
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            {searchInput ? (
+              <Search className="text-forest-500 dark:text-forest-400 h-4 w-4" />
+            ) : (
+              <Compass className="h-4 w-4 text-stone-400 dark:text-stone-500" />
+            )}
+          </div>
+          <input
+            type="search"
+            placeholder="Search entries..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="border-border focus:border-forest-400 focus:ring-forest-400 dark:focus:border-forest-500 dark:focus:ring-forest-500 w-full rounded-lg border bg-white py-2 pr-4 pl-10 text-sm placeholder:text-stone-400 focus:ring-1 focus:outline-none dark:bg-stone-900/30 dark:placeholder:text-stone-500"
+          />
+        </div>
+      )}
+
+      {/* Results */}
+      {isLoading ? (
+        <div className="flex items-center justify-center px-4 py-8">
+          <span className="text-muted-foreground text-sm">Loading entries...</span>
+        </div>
+      ) : results.length > 0 ? (
+        <div className="space-y-1">
+          {results.map((entry) => (
+            <CanonicalRow
+              key={entry.canonical_name}
+              entry={entry}
+              category={category}
+              year={year}
+              isExpanded={expandedName === entry.canonical_name}
+              onToggle={() => handleToggleExpand(entry.canonical_name)}
+              onReassignSource={onReassignSource}
+            />
+          ))}
+        </div>
+      ) : !hasData ? (
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50/50 px-4 py-8 dark:border-stone-600 dark:bg-stone-900/20">
+          <span className="text-sm text-stone-500 dark:text-stone-400">
+            No entries for this category
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50/50 px-4 py-8 dark:border-stone-600 dark:bg-stone-900/20">
+          <span className="text-sm text-stone-500 dark:text-stone-400">No results found</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CanonicalRow -- single collapsed/expanded row
+// ---------------------------------------------------------------------------
+
+interface CanonicalRowProps {
+  entry: CanonicalEntry
+  category: GeoCategory
+  year: number
+  isExpanded: boolean
+  onToggle: () => void
+  onReassignSource: (originalValue: string) => void
+}
+
+function CanonicalRow({
+  entry,
+  category,
+  year,
+  isExpanded,
+  onToggle,
+  onReassignSource,
+}: CanonicalRowProps) {
+  const { data: sourcesData } = useCanonicalSources(
+    category,
+    entry.canonical_name,
+    year,
+    isExpanded,
+  )
+
+  const dimmed = entry.camper_count === 0
+
+  return (
+    <div
+      data-testid="canonical-row"
+      className={`border-border cursor-pointer rounded-md border ${dimmed ? 'opacity-50' : ''}`}
+      onClick={onToggle}
+    >
+      {/* Collapsed row */}
+      <div className="hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors">
+        <span data-testid="canonical-name" className="text-foreground min-w-0 flex-1 truncate text-sm">
+          {entry.canonical_name}
+        </span>
+
+        {/* City/State badge */}
+        {entry.city && entry.state && (
+          <span className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-400">
+            {entry.city}, {entry.state}
+          </span>
+        )}
+
+        {/* Source badge */}
+        <span
+          data-testid="source-badge"
+          className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${sourceBadgeClasses(entry.source)}`}
+        >
+          {sourceLabel(entry.source)}
+        </span>
+
+        {/* Camper count */}
+        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+          {entry.camper_count}
+        </span>
+      </div>
+
+      {/* Expanded: source variants */}
+      {isExpanded && sourcesData?.sources && (
+        <ExpandedSources
+          sourcesData={sourcesData}
+          onReassignSource={onReassignSource}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ExpandedSources -- source variant list inside an expanded row
+// ---------------------------------------------------------------------------
+
+interface ExpandedSourcesProps {
+  sourcesData: SourcesResponse
+  onReassignSource: (originalValue: string) => void
+}
+
+function ExpandedSources({ sourcesData, onReassignSource }: ExpandedSourcesProps) {
+  if (!sourcesData.sources.length) return null
+
+  return (
+    <div className="border-border border-t px-3 py-2">
+      <div className="text-muted-foreground mb-1.5 text-xs font-medium uppercase tracking-wide">
+        Source Variants
+      </div>
+      <div className="space-y-1">
+        {sourcesData.sources.map((src) => {
+          const isFuzzy = src.confidence < 1.0
+          return (
+            <div
+              key={src.original_value}
+              className="bg-muted/30 flex items-center gap-2 rounded px-3 py-1.5 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate">{src.original_value}</span>
+              <span className="shrink-0 font-medium">{src.count}</span>
+              <span className="text-muted-foreground shrink-0 text-xs">
+                {Math.round(src.confidence * 100)}%
+              </span>
+              {isFuzzy && (
+                <button
+                  type="button"
+                  className="text-forest-700 hover:bg-forest-100 dark:text-forest-400 dark:hover:bg-forest-800 ml-1 flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onReassignSource(src.original_value)
+                  }}
+                >
+                  <Wrench className="h-3 w-3" />
+                  Fix
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
