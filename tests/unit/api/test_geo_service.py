@@ -76,6 +76,7 @@ def _make_override_record(
     merged_into: str = "",
     notes: str = "",
     year: int = 2025,
+    nominatim_status: str = "",
 ) -> Mock:
     """Create a mock geo_overrides record."""
     record = Mock()
@@ -91,6 +92,7 @@ def _make_override_record(
     record.merged_into = merged_into
     record.notes = notes
     record.year = year
+    record.nominatim_status = nominatim_status
     return record
 
 
@@ -1024,3 +1026,160 @@ class TestGeocoding:
             result = await geocode_location("Some School", "Oakland", "CA")
 
         assert result is None
+
+
+# ============================================================================
+# Batch Resolve Coords Tests
+# ============================================================================
+
+
+class TestBatchResolveCoords:
+    """Tests for batch_resolve_coords service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_resolves_unambiguous_entry(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Unambiguous canonical missing coords gets resolved via Nominatim."""
+        mapping = _make_mapping_record("Mark Day School", "Mark Day School", "school", confidence=1.0, year=2025)
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [mapping],  # normalized_mappings
+            [],  # existing overrides
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_coords", return_value={}),
+            patch(
+                "api.services.geo_service._load_static_location",
+                return_value={"Mark Day School": {"city": "San Rafael", "state": "CA"}},
+            ),
+            patch(
+                "api.services.geo_service._load_static_lookup",
+                return_value={"mark day school": "Mark Day School"},
+            ),
+            patch.object(service, "_check_name_ambiguity", return_value=False, create=True),
+            patch(
+                "api.services.geo_service.geocode_location",
+                new_callable=AsyncMock,
+                return_value=(37.96, -122.535),
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]  # type: ignore[attr-defined]
+
+        assert result["resolved"] == 1
+        assert result["skipped"] == 0
+        assert len(result["skipped_names"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_skips_ambiguous_entry(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Ambiguous canonical (same name in multiple cities) gets skipped."""
+        mapping = _make_mapping_record("Lincoln Elementary", "Lincoln Elementary", "school", confidence=1.0, year=2025)
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [mapping],
+            [],  # no existing overrides
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_coords", return_value={}),
+            patch(
+                "api.services.geo_service._load_static_location",
+                return_value={"Lincoln Elementary": {"city": "Oakland", "state": "CA"}},
+            ),
+            patch(
+                "api.services.geo_service._load_static_lookup",
+                return_value={"lincoln elementary": "Lincoln Elementary"},
+            ),
+            patch.object(service, "_check_name_ambiguity", return_value=True, create=True),
+        ):
+            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+
+        assert result["resolved"] == 0
+        assert result["skipped"] == 1
+        assert "Lincoln Elementary" in result["skipped_names"]
+
+    @pytest.mark.asyncio
+    async def test_skips_previously_checked(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Entries with existing nominatim_status override get skipped."""
+        mapping = _make_mapping_record("Oak Valley Middle", "Oak Valley Middle", "school", confidence=1.0, year=2025)
+        existing_override = _make_override_record(
+            category="school",
+            canonical_name="Oak Valley Middle",
+            override_type="canonical",
+            nominatim_status="no_result",
+            year=2025,
+        )
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [mapping],
+            [existing_override],  # has nominatim_status
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_coords", return_value={}),
+            patch("api.services.geo_service._load_static_location", return_value={}),
+            patch(
+                "api.services.geo_service._load_static_lookup",
+                return_value={"oak valley middle": "Oak Valley Middle"},
+            ),
+        ):
+            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+
+        assert result["resolved"] == 0
+        assert result["skipped"] == 0  # not counted as skipped, just filtered out
+
+    @pytest.mark.asyncio
+    async def test_nominatim_failure_sets_no_result(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Nominatim returning no results sets nominatim_status='no_result'."""
+        mapping = _make_mapping_record("Fictional Academy", "Fictional Academy", "school", confidence=1.0, year=2025)
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [mapping],
+            [],
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_coords", return_value={}),
+            patch(
+                "api.services.geo_service._load_static_location",
+                return_value={"Fictional Academy": {"city": "Nowhereville", "state": "CA"}},
+            ),
+            patch(
+                "api.services.geo_service._load_static_lookup",
+                return_value={"fictional academy": "Fictional Academy"},
+            ),
+            patch.object(service, "_check_name_ambiguity", return_value=False, create=True),
+            patch(
+                "api.services.geo_service.geocode_location",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+
+        assert result["resolved"] == 0
+        assert result["skipped"] == 1
+
+    @pytest.mark.asyncio
+    async def test_returns_summary_counts(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Response includes resolved, skipped, skipped_names, and paused."""
+        mock_pb.collection.return_value.get_full_list.side_effect = [[], []]
+
+        with (
+            patch("api.services.geo_service._load_static_coords", return_value={}),
+            patch("api.services.geo_service._load_static_location", return_value={}),
+            patch("api.services.geo_service._load_static_lookup", return_value={}),
+        ):
+            result = await service.batch_resolve_coords("school", 2025)  # type: ignore[attr-defined]
+
+        assert "resolved" in result
+        assert "skipped" in result
+        assert "skipped_names" in result
+        assert "paused" in result
