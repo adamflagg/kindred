@@ -9,8 +9,8 @@
 # Usage: ./scripts/build/docker-build.sh [docker build args...]
 #
 # Examples:
-#   ./scripts/build/docker-build.sh -t kindred:local .
-#   ./scripts/build/docker-build.sh --no-cache -t kindred:test .
+#   ./scripts/build/docker-build.sh -f docker/Dockerfile.caddy -t kindred-caddy:local .
+#   ./scripts/build/docker-build.sh --no-cache -f docker/Dockerfile.api -t kindred-api:local .
 
 set -e
 cd "$(dirname "$0")/../.."
@@ -60,10 +60,11 @@ done
 echo "Docker build context ready!"
 echo ""
 
-# Run Docker build with provided arguments (or defaults)
+# Run Docker build with provided arguments
 if [ $# -eq 0 ]; then
-  echo "Running: docker build -t kindred:local ."
-  docker build -t kindred:local .
+  echo "Usage: $0 [docker build args...]"
+  echo "Example: $0 -f docker/Dockerfile.caddy -t kindred-caddy:local ."
+  exit 1
 else
   echo "Running: docker build $*"
   docker build "$@"

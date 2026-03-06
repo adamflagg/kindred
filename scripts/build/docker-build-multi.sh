@@ -19,19 +19,19 @@ echo "=== Building multi-container images ==="
 echo ""
 
 echo "--- kindred-pocketbase ---"
-docker build $NO_CACHE -f docker/multi/Dockerfile.pocketbase -t kindred-pocketbase:local .
+docker build $NO_CACHE -f docker/Dockerfile.pocketbase -t kindred-pocketbase:local .
 echo ""
 
 echo "--- kindred-api ---"
-docker build $NO_CACHE -f docker/multi/Dockerfile.api -t kindred-api:local .
+docker build $NO_CACHE -f docker/Dockerfile.api -t kindred-api:local .
 echo ""
 
 echo "--- kindred-init ---"
-docker build $NO_CACHE -f docker/multi/Dockerfile.init -t kindred-init:local .
+docker build $NO_CACHE -f docker/Dockerfile.init -t kindred-init:local .
 echo ""
 
 echo "--- kindred-caddy (with symlink resolution) ---"
-./scripts/build/docker-build.sh $NO_CACHE -f docker/multi/Dockerfile.caddy -t kindred-caddy:local .
+./scripts/build/docker-build.sh $NO_CACHE -f docker/Dockerfile.caddy -t kindred-caddy:local .
 echo ""
 
 echo "=== All images built ==="

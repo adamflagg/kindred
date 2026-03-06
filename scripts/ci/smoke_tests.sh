@@ -61,21 +61,26 @@ else
     FAILED=1
 fi
 
-# 7. Check memory usage
-echo -n "Memory usage check... "
-KINDRED_MEM_RAW=$(docker stats --no-stream --format "{{.MemUsage}}" kindred 2>/dev/null | cut -d'/' -f1 | tr -d ' ')
-if [[ "$KINDRED_MEM_RAW" == *"GiB"* ]]; then
-    KINDRED_MEM=$(echo "$KINDRED_MEM_RAW" | sed 's/GiB//' | awk '{printf "%.0f", $1 * 1024}')
-elif [[ "$KINDRED_MEM_RAW" == *"MiB"* ]]; then
-    KINDRED_MEM=$(echo "$KINDRED_MEM_RAW" | sed 's/MiB//' | awk '{printf "%.0f", $1}')
-else
-    KINDRED_MEM=""
-fi
+# 7. Check memory usage (per container)
+echo "Memory usage check..."
+TOTAL_MEM=0
+for container in kindred-pocketbase kindred-api kindred-caddy; do
+    MEM_RAW=$(docker stats --no-stream --format "{{.MemUsage}}" "$container" 2>/dev/null | cut -d'/' -f1 | tr -d ' ')
+    if [[ "$MEM_RAW" == *"GiB"* ]]; then
+        MEM=$(echo "$MEM_RAW" | sed 's/GiB//' | awk '{printf "%.0f", $1 * 1024}')
+    elif [[ "$MEM_RAW" == *"MiB"* ]]; then
+        MEM=$(echo "$MEM_RAW" | sed 's/MiB//' | awk '{printf "%.0f", $1}')
+    else
+        MEM=0
+    fi
+    echo -e "  ${container}: ${MEM}MB"
+    TOTAL_MEM=$((TOTAL_MEM + MEM))
+done
 
-if [ -n "$KINDRED_MEM" ] && [ "$KINDRED_MEM" -lt 500 ]; then
-    echo -e "${GREEN}✓ (${KINDRED_MEM}MB)${NC}"
-elif [ -n "$KINDRED_MEM" ]; then
-    echo -e "${RED}✗ (${KINDRED_MEM}MB - high usage!)${NC}"
+if [ "$TOTAL_MEM" -gt 0 ] && [ "$TOTAL_MEM" -lt 500 ]; then
+    echo -e "${GREEN}✓ Total: ${TOTAL_MEM}MB${NC}"
+elif [ "$TOTAL_MEM" -gt 0 ]; then
+    echo -e "${RED}✗ Total: ${TOTAL_MEM}MB - high usage!${NC}"
     FAILED=1
 else
     echo -e "${RED}✗ (could not determine)${NC}"

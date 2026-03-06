@@ -322,35 +322,37 @@ if [[ -n "$CUSTOM_VERSION" ]]; then
                 echo "  No local tag found"
             fi
 
-            # Delete Docker package versions from GHCR
+            # Delete Docker package versions from GHCR (all 4 images)
             echo -e "\n${YELLOW}▶ Cleaning up Docker packages...${NC}"
-            PACKAGE_NAME="kindred"
             USERNAME="adamflagg"
             DOCKER_TAG="${CHECK_VERSION#v}"  # v0.8.0 -> 0.8.0
 
-            # Get all package versions
-            if VERSIONS_JSON=$(gh api "/users/$USERNAME/packages/container/$PACKAGE_NAME/versions" --paginate 2>/dev/null); then
-                # Find versions with our exact patch tag (e.g., "0.8.0")
-                # Don't delete based on minor/major tags as those may have moved to newer versions
-                VERSION_IDS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.metadata.container.tags | index(\"$DOCKER_TAG\")) | .id" 2>/dev/null || echo "")
+            for PACKAGE_NAME in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
+                echo "  Checking $PACKAGE_NAME..."
+                # Get all package versions
+                if VERSIONS_JSON=$(gh api "/users/$USERNAME/packages/container/$PACKAGE_NAME/versions" --paginate 2>/dev/null); then
+                    # Find versions with our exact patch tag (e.g., "0.8.0")
+                    # Don't delete based on minor/major tags as those may have moved to newer versions
+                    VERSION_IDS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.metadata.container.tags | index(\"$DOCKER_TAG\")) | .id" 2>/dev/null || echo "")
 
-                if [[ -n "$VERSION_IDS" ]]; then
-                    for VERSION_ID in $VERSION_IDS; do
-                        # Get the tags for this version for display
-                        TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $VERSION_ID) | .metadata.container.tags | join(\", \")" 2>/dev/null || echo "unknown")
-                        echo "  Deleting package version $VERSION_ID (tags: $TAGS)..."
-                        if gh api --method DELETE "/users/$USERNAME/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" 2>/dev/null; then
-                            echo -e "  ${GREEN}✓ Deleted${NC}"
-                        else
-                            echo -e "  ${YELLOW}⚠ Failed to delete (may require admin permissions)${NC}"
-                        fi
-                    done
+                    if [[ -n "$VERSION_IDS" ]]; then
+                        for VERSION_ID in $VERSION_IDS; do
+                            # Get the tags for this version for display
+                            TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $VERSION_ID) | .metadata.container.tags | join(\", \")" 2>/dev/null || echo "unknown")
+                            echo "    Deleting package version $VERSION_ID (tags: $TAGS)..."
+                            if gh api --method DELETE "/users/$USERNAME/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" 2>/dev/null; then
+                                echo -e "    ${GREEN}✓ Deleted${NC}"
+                            else
+                                echo -e "    ${YELLOW}⚠ Failed to delete (may require admin permissions)${NC}"
+                            fi
+                        done
+                    else
+                        echo "    No package versions found with tag $DOCKER_TAG"
+                    fi
                 else
-                    echo "  No package versions found with tag $DOCKER_TAG"
+                    echo "    Package $PACKAGE_NAME not found or no access"
                 fi
-            else
-                echo "  Package $PACKAGE_NAME not found or no access"
-            fi
+            done
 
             echo -e "\n${GREEN}✓ Cleanup complete - ready for fresh release${NC}"
         fi
@@ -594,10 +596,11 @@ NEW_DOCKER_MINOR=$(echo "$NEW_DOCKER_TAG" | cut -d. -f1-2)
 echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}RELEASE $NEW_VERSION INITIATED${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "\n${YELLOW}Docker tags created:${NC}"
-echo "  - ghcr.io/adamflagg/kindred:$NEW_DOCKER_TAG (patch)"
-echo "  - ghcr.io/adamflagg/kindred:$NEW_DOCKER_MINOR (minor)"
-echo "  - ghcr.io/adamflagg/kindred:latest"
+echo -e "\n${YELLOW}Docker tags created (per image):${NC}"
+for img in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
+    echo "  - ghcr.io/adamflagg/${img}:$NEW_DOCKER_TAG"
+done
+echo "  (also tagged: $NEW_DOCKER_MINOR, latest)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Monitor CD: https://github.com/adamflagg/kindred/actions"
@@ -608,6 +611,5 @@ if [[ "$FIRST_RELEASE" != "true" ]]; then
     LAST_DOCKER_TAG=${LAST_TAG#v}
     echo ""
     echo -e "${YELLOW}Rollback if needed:${NC}"
-    echo "  docker compose pull ghcr.io/adamflagg/kindred:$LAST_DOCKER_TAG"
-    echo "  docker compose up -d"
+    echo "  IMAGE_TAG=$LAST_DOCKER_TAG docker compose pull && IMAGE_TAG=$LAST_DOCKER_TAG docker compose up -d"
 fi
