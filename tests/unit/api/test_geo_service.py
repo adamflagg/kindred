@@ -11,7 +11,7 @@ Tests verify:
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -96,6 +96,17 @@ def _make_override_record(
     return record
 
 
+def _route_collections(collection_data: dict[str, list[Mock]]) -> Any:
+    """Create a mock_pb.collection side_effect that routes by collection name."""
+
+    def collection_router(name: str) -> MagicMock:
+        mock = MagicMock()
+        mock.get_full_list.return_value = collection_data.get(name, [])
+        return mock
+
+    return collection_router
+
+
 # ============================================================================
 # Gap Classification Tests
 # ============================================================================
@@ -137,10 +148,12 @@ class TestGetGaps:
             mock_location.return_value = {}
 
             # Also mock override coords query (no overrides with coords)
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,  # normalized_mappings query
-                [],  # geo_overrides query
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -168,10 +181,12 @@ class TestGetGaps:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,  # normalized_mappings query
-                [],  # geo_overrides query
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -197,10 +212,12 @@ class TestGetGaps:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],  # geo_overrides
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -226,10 +243,12 @@ class TestGetGaps:
             mock_coords.return_value = {"Riverside Elementary": [37.0, -122.0]}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],  # geo_overrides
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -260,10 +279,12 @@ class TestGetGaps:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [override],  # geo_overrides with coords
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [override],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -290,10 +311,12 @@ class TestGetGaps:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -330,10 +353,12 @@ class TestGetGaps:
             mock_coords.return_value = {}  # no coords for any
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025)
 
@@ -387,11 +412,13 @@ class TestActiveOnlyFiltering:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,  # normalized_mappings
-                [],  # geo_overrides
-                attendees,  # attendees
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "attendees": attendees,
+                }
+            )
 
             result = await service.get_gaps("school", 2025, active_only=True)
 
@@ -419,11 +446,13 @@ class TestActiveOnlyFiltering:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],  # geo_overrides
-                attendees,
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "attendees": attendees,
+                }
+            )
 
             result = await service.get_gaps("school", 2025, active_only=True)
 
@@ -448,10 +477,12 @@ class TestActiveOnlyFiltering:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],  # geo_overrides
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
 
             result = await service.get_gaps("school", 2025, active_only=False)
 
@@ -478,11 +509,13 @@ class TestActiveOnlyFiltering:
             mock_coords.return_value = {}
             mock_location.return_value = {}
 
-            mock_pb.collection.return_value.get_full_list.side_effect = [
-                mappings,
-                [],  # geo_overrides
-                attendees,  # only p1 in "main" sessions
-            ]
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "attendees": attendees,
+                }
+            )
 
             result = await service.get_gaps("school", 2025, active_only=True, session_types=["main"])
 
