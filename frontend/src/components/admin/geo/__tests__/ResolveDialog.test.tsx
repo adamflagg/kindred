@@ -125,7 +125,7 @@ describe('ResolveDialog — Mode A (non-canonical)', () => {
 
     await user.click(screen.getByRole('button', { name: /create new/i }))
 
-    const nameInput = screen.getByLabelText(/name/i) as HTMLInputElement
+    const nameInput: HTMLInputElement = screen.getByLabelText(/name/i)
     expect(nameInput.value).toBe('Hillcrest High')
   })
 

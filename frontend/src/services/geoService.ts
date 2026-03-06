@@ -81,6 +81,8 @@ export interface OverrideCreateData {
   canonical_name: string
   city?: string
   state?: string
+  lat?: number
+  lng?: number
   merged_into?: string
   notes?: string
   year: number
