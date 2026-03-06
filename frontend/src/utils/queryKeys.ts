@@ -181,21 +181,6 @@ export const queryKeys = {
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
 
-  // Normalized mappings for geographic source tracking
-  normalizedMappings: (
-    year: number,
-    category: string,
-    sessionCmId?: number,
-    sessionTypes?: readonly string[]
-  ) =>
-    [
-      'normalized-mappings',
-      year,
-      category,
-      sessionCmId,
-      sessionTypes ? [...sessionTypes] : undefined,
-    ] as const,
-
   // Geo Management (Tier 2 - user data)
   geoSourceMappings: (
     category: string,

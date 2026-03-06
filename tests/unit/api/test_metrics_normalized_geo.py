@@ -148,9 +148,9 @@ class TestSchoolBreakdownNormalized:
         assert "Glenview Elem" not in school_counts  # Original value, not in results
 
     def test_school_breakdown_counts_persons_not_occurrences(self) -> None:
-        """School breakdown should count unique persons in the session, not occurrence_count.
+        """School breakdown should count unique persons in the session.
 
-        With the new schema, each row is one person in one session.
+        Each row is one person in one session.
         Count = number of rows with that normalized_value (for the filtered session).
         """
         # Same person in 2 sessions should count once per session
@@ -285,11 +285,10 @@ class TestSessionFilterMatchesMainList:
     """Tests that session filtering produces consistent counts.
 
     The bug: "Show sources" counts didn't match main list counts because
-    they used different data sources:
-    - Main list: Counted from persons table (raw values)
-    - Show sources: Counted from normalized_mappings (occurrence_count)
+    they used different data sources.
 
-    Fix: Both use normalized_mappings with session filtering.
+    Fix: Both use normalized_mappings with session filtering, now via
+    the backend source-mappings endpoint with active_only deduplication.
     """
 
     def test_session_filter_limits_normalized_results(self) -> None:
