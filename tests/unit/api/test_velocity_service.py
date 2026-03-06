@@ -2950,6 +2950,58 @@ class TestEnrollmentGenderFromSnapshots:
         # Should NOT have fetched attendees (pure snapshot fast path)
         mock_repository.fetch_attendees_with_dates.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_gender_gross_enrolled_uses_cancelled_counts(self, service, mock_repository, sample_sessions):
+        """Gender curves should have gross_enrolled = enrolled + cancelled, not just enrolled."""
+        mock_repository.fetch_registration_dates.side_effect = None
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2026-01-05"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-01-05",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=12,
+                enrolled_female=8,
+                cancelled=3,
+                cancelled_male=2,
+                cancelled_female=1,
+            ),
+            create_mock_snapshot(
+                "2026-01-12",
+                1001,
+                2026,
+                enrolled=30,
+                enrolled_male=18,
+                enrolled_female=12,
+                cancelled=5,
+                cancelled_male=3,
+                cancelled_female=2,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # gross_enrolled = enrolled + cancelled per gender
+        assert m_curve.weekly[-1].gross_enrolled == 21  # 18 + 3
+        assert f_curve.weekly[-1].gross_enrolled == 14  # 12 + 2
+
+        # gross_enrolled should differ from enrolled when cancellations exist
+        assert m_curve.weekly[-1].gross_enrolled != m_curve.weekly[-1].enrolled
+        assert f_curve.weekly[-1].gross_enrolled != f_curve.weekly[-1].enrolled
+
+        # weekly_new should be computed from gross deltas
+        assert m_curve.weekly[-1].weekly_new == 7  # (18+3) - (12+2) = 7
+        assert f_curve.weekly[-1].weekly_new == 5  # (12+2) - (8+1) = 5
+
+        # weekly_cancelled should track cancellation deltas
+        assert m_curve.weekly[-1].weekly_cancelled == 1  # 3 - 2
+        assert f_curve.weekly[-1].weekly_cancelled == 1  # 2 - 1
+
 
 # ============================================================================
 # Partial Week Indicator Tests
