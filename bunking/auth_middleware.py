@@ -50,6 +50,7 @@ class AuthUser:
         self.display_name = display_name
         self.groups = groups
         self.is_admin = is_admin
+        self.permissions: set[str] = set()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert user to dictionary for JSON serialization."""
@@ -59,6 +60,7 @@ class AuthUser:
             "display_name": self.display_name,
             "groups": self.groups,
             "is_admin": self.is_admin,
+            "permissions": sorted(self.permissions),
         }
 
 
