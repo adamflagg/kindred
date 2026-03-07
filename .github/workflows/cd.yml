@@ -591,21 +591,82 @@ jobs:
         sudo rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
     # === Security Scan (run before push) ===
-    - name: Install Trivy
+    - name: Run Trivy vulnerability scanner (Caddy)
       if: steps.check.outputs.build == 'true'
-      run: |
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.68.2
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-caddy:test
+        format: 'sarif'
+        output: 'trivy-results-kindred-caddy.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
 
-    - name: Scan all images with Trivy
+    - name: Run Trivy vulnerability scanner (API)
       if: steps.check.outputs.build == 'true'
-      run: |
-        for IMAGE in kindred-caddy kindred-api kindred-pocketbase kindred-init; do
-          echo "=== Scanning $IMAGE ==="
-          trivy image \
-            --format sarif --output "trivy-results-${IMAGE}.sarif" \
-            --severity CRITICAL,HIGH \
-            "${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGE}:test" || true
-        done
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-api:test
+        format: 'sarif'
+        output: 'trivy-results-kindred-api.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Run Trivy vulnerability scanner (PocketBase)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-pocketbase:test
+        format: 'sarif'
+        output: 'trivy-results-kindred-pocketbase.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Run Trivy vulnerability scanner (Init)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-init:test
+        format: 'sarif'
+        output: 'trivy-results-kindred-init.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    # Block push on CRITICAL vulnerabilities (HIGH remains informational)
+    - name: Check for CRITICAL vulnerabilities (Caddy)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-caddy:test
+        format: 'table'
+        severity: 'CRITICAL'
+        exit-code: '1'
+
+    - name: Check for CRITICAL vulnerabilities (API)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-api:test
+        format: 'table'
+        severity: 'CRITICAL'
+        exit-code: '1'
+
+    - name: Check for CRITICAL vulnerabilities (PocketBase)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-pocketbase:test
+        format: 'table'
+        severity: 'CRITICAL'
+        exit-code: '1'
+
+    - name: Check for CRITICAL vulnerabilities (Init)
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-init:test
+        format: 'table'
+        severity: 'CRITICAL'
+        exit-code: '1'
 
     # upload-sarif requires separate steps per category (GitHub Actions limitation)
     - name: Upload Trivy results - Caddy
