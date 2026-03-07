@@ -2,11 +2,19 @@ import { useNavigate } from 'react-router'
 import { useProgram } from '../contexts/ProgramContext'
 import { BrandedLogo } from '../components/BrandedLogo'
 import { getCampName } from '../config/branding'
-import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3 } from 'lucide-react'
+import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3, Lock } from 'lucide-react'
+import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 
-export default function ProgramLandingPage() {
+export default function ProgramLandingPage({ restricted = false }: { restricted?: boolean }) {
   const navigate = useNavigate()
   const { setProgram } = useProgram()
+  const { hasPermission } = usePermissions()
+  const programAccess = {
+    summer: !restricted || hasPermission(Permission.BUNKING_VIEW),
+    family: true, // always accessible
+    metrics: !restricted || hasPermission(Permission.METRICS_VIEW),
+  }
 
   const handleProgramSelect = (program: 'summer' | 'family' | 'metrics') => {
     setProgram(program)
@@ -71,7 +79,9 @@ export default function ProgramLandingPage() {
             </h1>
 
             <p className="text-muted-foreground mx-auto max-w-xl text-base leading-relaxed sm:text-lg">
-              Choose which program you're working on
+              {restricted
+                ? "You don't have access to some areas. Contact an admin to request permissions."
+                : "Choose which program you're working on"}
             </p>
           </div>
 
@@ -79,13 +89,19 @@ export default function ProgramLandingPage() {
           <div className="mx-auto grid max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
             {/* Summer Camp Card */}
             <button
-              onClick={() => handleProgramSelect('summer')}
-              className="group animate-slide-up stagger-1 relative"
+              onClick={programAccess.summer ? () => handleProgramSelect('summer') : undefined}
+              className={`animate-slide-up stagger-1 relative ${programAccess.summer ? 'group' : 'cursor-not-allowed opacity-50'}`}
               style={{ animationFillMode: 'both' }}
+              disabled={!programAccess.summer}
             >
               <div className="from-primary/20 via-primary/5 absolute -inset-px rounded-2xl bg-gradient-to-br to-transparent opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
 
               <div className="card-lodge group-hover:border-primary/40 relative h-full p-5 text-left transition-all duration-300 group-hover:-translate-y-1 lg:p-6">
+                {!programAccess.summer && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl">
+                    <Lock className="text-muted-foreground h-8 w-8" />
+                  </div>
+                )}
                 {/* Decorative corner */}
                 <div className="from-primary/5 absolute top-0 right-0 h-24 w-24 rounded-2xl bg-gradient-to-bl to-transparent" />
 
@@ -183,13 +199,19 @@ export default function ProgramLandingPage() {
 
             {/* Metrics Card */}
             <button
-              onClick={() => handleProgramSelect('metrics')}
-              className="group animate-slide-up stagger-3 relative"
+              onClick={programAccess.metrics ? () => handleProgramSelect('metrics') : undefined}
+              className={`animate-slide-up stagger-3 relative ${programAccess.metrics ? 'group' : 'cursor-not-allowed opacity-50'}`}
               style={{ animationFillMode: 'both' }}
+              disabled={!programAccess.metrics}
             >
               <div className="absolute -inset-px rounded-2xl bg-gradient-to-br from-sky-500/20 via-sky-500/5 to-transparent opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
 
               <div className="card-lodge relative h-full p-5 text-left transition-all duration-300 group-hover:-translate-y-1 group-hover:border-sky-500/40 lg:p-6">
+                {!programAccess.metrics && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl">
+                    <Lock className="text-muted-foreground h-8 w-8" />
+                  </div>
+                )}
                 {/* Decorative corner */}
                 <div className="absolute top-0 right-0 h-24 w-24 rounded-2xl bg-gradient-to-bl from-sky-500/5 to-transparent" />
 
