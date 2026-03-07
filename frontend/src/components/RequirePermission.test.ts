@@ -77,7 +77,7 @@ describe('RequirePermission', () => {
       createElement(RequirePermission, {
         anyOf: ['bunking.view', 'metrics.view'],
         children: 'AnyOf Content',
-      } as any)
+      })
     )
     expect(screen.getByText('AnyOf Content')).toBeTruthy()
   })
