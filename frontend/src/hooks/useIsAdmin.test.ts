@@ -12,36 +12,7 @@ import { renderHook } from '@testing-library/react'
 import { createElement } from 'react'
 import { AuthContext } from '../contexts/AuthContext'
 import { useIsAdmin } from './useIsAdmin'
-import type { RecordModel } from 'pocketbase'
-
-// Helper to create mock auth context
-function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
-  return {
-    pb: {} as never,
-    user: overrides.user ?? null,
-    isLoading: false,
-    isAuthenticated: true,
-    isBypassMode: overrides.isBypassMode ?? false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    error: null,
-    checkAuth: vi.fn(),
-  }
-}
-
-// Helper to create mock user with RBAC fields
-function createMockUser(overrides: { is_admin?: boolean } = {}): RecordModel {
-  return {
-    id: 'user-1',
-    collectionId: 'users',
-    collectionName: 'users',
-    created: '',
-    updated: '',
-    email: 'test@example.com',
-    is_admin: overrides.is_admin ?? false,
-    cached_permissions: [],
-  }
-}
+import { createMockAuthContext, createMockUser } from '../test/test-helpers'
 
 describe('useIsAdmin', () => {
   describe('bypass mode', () => {

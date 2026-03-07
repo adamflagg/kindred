@@ -5,6 +5,7 @@ import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthContext } from '../../contexts/AuthContext'
 import { UserRolesPanel } from './UserRolesPanel'
+import { createMockAuthContext } from '../../test/test-helpers'
 import type { RecordModel } from 'pocketbase'
 
 // Mock PocketBase
@@ -29,20 +30,6 @@ vi.mock('../../lib/pocketbase', () => ({
     }),
   },
 }))
-
-function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
-  return {
-    pb: {} as never,
-    user: overrides.user ?? null,
-    isLoading: false,
-    isAuthenticated: true,
-    isBypassMode: overrides.isBypassMode ?? false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    error: null,
-    checkAuth: vi.fn(),
-  }
-}
 
 const mockRoles = [
   {

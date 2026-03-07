@@ -115,5 +115,8 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 		return e.Next()
 	})
 
-	slog.Info("RBAC hooks registered")
+	// Register OIDC admin group sync hook
+	RegisterOIDCHooks(app)
+
+	slog.Info("RBAC hooks registered (including OIDC admin sync)")
 }

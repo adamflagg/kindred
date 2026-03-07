@@ -44,7 +44,7 @@ describe('ProtectedRoute', () => {
         </MemoryRouter>
       )
 
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.getByRole('status')).toBeInTheDocument()
       expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
     })
   })
@@ -197,7 +197,7 @@ describe('ProtectedRoute edge cases', () => {
       </MemoryRouter>
     )
 
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeInTheDocument()
 
     // Transition to authenticated
     mockUseAuth.mockReturnValue({

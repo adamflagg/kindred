@@ -3,36 +3,7 @@ import { renderHook } from '@testing-library/react'
 import { createElement } from 'react'
 import { AuthContext } from '../contexts/AuthContext'
 import { usePermissions } from './usePermissions'
-import type { RecordModel } from 'pocketbase'
-
-function createMockAuthContext(overrides: { user?: RecordModel | null; isBypassMode?: boolean }) {
-  return {
-    pb: {} as never,
-    user: overrides.user ?? null,
-    isLoading: false,
-    isAuthenticated: true,
-    isBypassMode: overrides.isBypassMode ?? false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    error: null,
-    checkAuth: vi.fn(),
-  }
-}
-
-function createMockUser(overrides: {
-  is_admin?: boolean
-  cached_permissions?: string[]
-}): RecordModel {
-  return {
-    id: 'user-1',
-    collectionId: 'users',
-    collectionName: 'users',
-    created: '',
-    updated: '',
-    is_admin: overrides.is_admin ?? false,
-    cached_permissions: overrides.cached_permissions ?? [],
-  }
-}
+import { createMockAuthContext, createMockUser } from '../test/test-helpers'
 
 describe('usePermissions', () => {
   it('returns hasPermission that checks cached_permissions', () => {

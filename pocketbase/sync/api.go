@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,10 +52,12 @@ func requirePermission(permission string, handler func(*core.RequestEvent) error
 		if e.Auth.GetBool("is_admin") {
 			return handler(e)
 		}
-		// Check cached_permissions JSON array
+		// Check cached_permissions JSON array (exact element match, not substring)
 		perms := e.Auth.Get("cached_permissions")
-		permsJSON, _ := json.Marshal(perms)
-		if !strings.Contains(string(permsJSON), permission) {
+		data, _ := json.Marshal(perms)
+		var permSlice []string
+		_ = json.Unmarshal(data, &permSlice)
+		if !slices.Contains(permSlice, permission) {
 			return apis.NewForbiddenError("Permission required: "+permission, nil)
 		}
 		return handler(e)

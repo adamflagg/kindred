@@ -1,40 +1,32 @@
-import { Navigate } from 'react-router'
+import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
+import { FullPageSpinner } from './FullPageSpinner'
+import ProgramLandingPage from '../pages/ProgramLandingPage'
 
-interface RequirePermissionProps {
-  permission: string
-  anyOf?: string[]
-  children: React.ReactNode
-  fallback?: string
-}
+type RequirePermissionProps = { children: React.ReactNode } & (
+  | { permission: string; anyOf?: never }
+  | { permission?: never; anyOf: string[] }
+)
 
-/**
- * Route wrapper that only allows users with the required permission.
- * Users without the permission are silently redirected to the fallback path.
- *
- * Follows the same pattern as AdminRoute.tsx.
- *
- * Usage:
- *   <RequirePermission permission="bunking.view">
- *     <SessionList />
- *   </RequirePermission>
- *
- *   <RequirePermission anyOf={['bunking.view', 'metrics.view']}>
- *     <DashboardPage />
- *   </RequirePermission>
- */
-export const RequirePermission = ({
-  permission,
-  anyOf,
-  children,
-  fallback = '/',
-}: RequirePermissionProps) => {
+export const RequirePermission = (props: RequirePermissionProps) => {
+  const { children } = props
+  const permission = 'permission' in props ? props.permission : undefined
+  const anyOf = 'anyOf' in props ? props.anyOf : undefined
+  const { isLoading } = useAuth()
   const { hasPermission, hasAnyPermission } = usePermissions()
 
-  const allowed = anyOf ? hasAnyPermission(...anyOf) : hasPermission(permission)
+  if (isLoading) {
+    return <FullPageSpinner />
+  }
+
+  const allowed = anyOf
+    ? hasAnyPermission(...anyOf)
+    : permission
+      ? hasPermission(permission)
+      : false
 
   if (!allowed) {
-    return <Navigate to={fallback} replace />
+    return <ProgramLandingPage restricted />
   }
 
   return <>{children}</>
