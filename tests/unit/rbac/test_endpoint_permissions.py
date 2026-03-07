@@ -13,6 +13,7 @@ import pytest
 from fastapi import Depends
 
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.rbac.dependencies import require_admin
 from bunking.rbac.permissions import Permission
 
 
@@ -236,10 +237,10 @@ class TestMetricsPermissions:
 
         _assert_endpoint_has_permission_dep(get_forecast, Permission.METRICS_FINANCIAL)
 
-    def test_cache_invalidate_requires_authentication(self) -> None:
+    def test_cache_invalidate_requires_admin(self) -> None:
         from api.routers.metrics import invalidate_metrics_cache
 
-        _assert_endpoint_has_auth_dep(invalidate_metrics_cache)
+        _assert_endpoint_has_admin_dep(invalidate_metrics_cache)
 
     def test_cache_stats_requires_authentication(self) -> None:
         from api.routers.metrics import get_cache_stats
@@ -438,4 +439,21 @@ def _assert_endpoint_has_auth_dep(endpoint_func: object) -> None:
     pytest.fail(
         f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
         f"Depends(get_current_user) in its signature"
+    )
+
+
+def _assert_endpoint_has_admin_dep(endpoint_func: object) -> None:
+    """Assert that an endpoint function has a require_admin dependency."""
+    sig = inspect.signature(endpoint_func)  # type: ignore[arg-type]
+
+    for param in sig.parameters.values():
+        default = param.default
+        if hasattr(default, "dependency"):
+            dep = default.dependency
+            if dep is require_admin:
+                return  # Found admin dependency
+
+    pytest.fail(
+        f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
+        f"Depends(require_admin) in its signature"
     )

@@ -10,9 +10,25 @@
 
 migrate((app) => {
   const rolesCol = app.findCollectionByNameOrId("roles")
+  const userRolesCol = app.findCollectionByNameOrId("user_roles")
 
-  // Delete view-only roles
+  // Clean up user_roles BEFORE deleting roles (need role IDs for lookup)
   const viewerSlugs = ["bunking-viewer", "metrics-viewer"]
+  for (const slug of viewerSlugs) {
+    try {
+      const records = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
+      if (records.length > 0) {
+        const orphaned = app.findRecordsByFilter(userRolesCol.id, `role = "${records[0].id}"`, "", 1000, 0)
+        for (const ur of orphaned) {
+          app.delete(ur)
+        }
+      }
+    } catch (e) {
+      // Role may not exist
+    }
+  }
+
+  // Now delete the view-only roles
   for (const slug of viewerSlugs) {
     try {
       const records = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
@@ -41,22 +57,6 @@ migrate((app) => {
       }
     } catch (e) {
       // Role may not exist
-    }
-  }
-
-  // Also remove any user_roles pointing to deleted roles (cascade cleanup)
-  const userRolesCol = app.findCollectionByNameOrId("user_roles")
-  for (const slug of viewerSlugs) {
-    try {
-      const roleRecords = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
-      if (roleRecords.length > 0) {
-        const orphaned = app.findRecordsByFilter(userRolesCol.id, `role = "${roleRecords[0].id}"`, "", 1000, 0)
-        for (const ur of orphaned) {
-          app.delete(ur)
-        }
-      }
-    } catch (e) {
-      // Already deleted above or doesn't exist
     }
   }
 

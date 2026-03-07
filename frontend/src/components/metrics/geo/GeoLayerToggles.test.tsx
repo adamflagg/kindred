@@ -85,7 +85,13 @@ describe('GeoLayerToggles', () => {
 
   it('calls onToggleSources when sources checkbox is clicked', () => {
     const onToggleSources = vi.fn()
-    render(<GeoLayerToggles {...defaultProps} onToggleSources={onToggleSources} hasGeoPermission={true} />)
+    render(
+      <GeoLayerToggles
+        {...defaultProps}
+        onToggleSources={onToggleSources}
+        hasGeoPermission={true}
+      />
+    )
 
     const boxes = getCheckboxes()
     fireEvent.click(boxes[5] as HTMLElement)
@@ -105,7 +111,12 @@ describe('GeoLayerToggles', () => {
 
   it('reflects showRegions and showSources state', () => {
     render(
-      <GeoLayerToggles {...defaultProps} showRegions={false} showSources={true} hasGeoPermission={true} />
+      <GeoLayerToggles
+        {...defaultProps}
+        showRegions={false}
+        showSources={true}
+        hasGeoPermission={true}
+      />
     )
 
     const boxes = getCheckboxes()

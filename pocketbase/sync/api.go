@@ -246,9 +246,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	}))
 
 	// Test connection endpoint
-	e.Router.GET("/api/custom/sync/test-connection", requireAuth(func(e *core.RequestEvent) error {
-		return handleTestConnection(e, scheduler)
-	}))
+	e.Router.GET("/api/custom/sync/test-connection",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleTestConnection(e, scheduler)
+		}))
 
 	// Individual sync endpoints
 	// Sessions sync
@@ -292,9 +293,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	}))
 
 	// Multi-workbook export endpoint (per-year workbooks)
-	e.Router.POST("/api/custom/sync/multi-workbook-export", requirePermission("sync.run", func(e *core.RequestEvent) error {
-		return handleMultiWorkbookExport(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/multi-workbook-export",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleMultiWorkbookExport(e, scheduler)
+		}))
 
 	// Person tag definitions sync
 	e.Router.POST("/api/custom/sync/person-tag-defs", requirePermission("sync.run", func(e *core.RequestEvent) error {
@@ -331,9 +333,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 	// Financial transactions sync (year-scoped - runs in daily sync)
 	// Accepts optional ?year=YYYY parameter for historical data sync
-	e.Router.POST("/api/custom/sync/financial-transactions", requirePermission("sync.run", func(e *core.RequestEvent) error {
-		return handleFinancialTransactionsSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/financial-transactions",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleFinancialTransactionsSync(e, scheduler)
+		}))
 
 	// Camper history computation endpoint
 	// Computes denormalized camper history with retention metrics
@@ -351,9 +354,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 	// Household custom values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
-	e.Router.POST("/api/custom/sync/household-custom-values", requirePermission("sync.run", func(e *core.RequestEvent) error {
-		return handleHouseholdCustomFieldValuesSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/household-custom-values",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleHouseholdCustomFieldValuesSync(e, scheduler)
+		}))
 
 	// Family camp derived tables sync
 	// Computes derived tables from person/household custom values
@@ -372,16 +376,18 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Financial aid applications sync
 	// Extracts FA- fields from person_custom_values into structured application records
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/financial-aid-applications", requirePermission("sync.run", func(e *core.RequestEvent) error {
-		return handleFinancialAidApplicationsSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/financial-aid-applications",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleFinancialAidApplicationsSync(e, scheduler)
+		}))
 
 	// Household demographics sync
 	// Computes demographics from HH- custom values + household custom values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/household-demographics", requirePermission("sync.run", func(e *core.RequestEvent) error {
-		return handleHouseholdDemographicsSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/household-demographics",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleHouseholdDemographicsSync(e, scheduler)
+		}))
 
 	// Camper dietary sync
 	// Extracts Family Medical-* fields from person_custom_values
@@ -393,9 +399,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Camper transportation sync
 	// Extracts BUS-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/camper-transportation", requirePermission("sync.run", func(e *core.RequestEvent) error {
-		return handleCamperTransportationSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/camper-transportation",
+		requirePermission("sync.run", func(e *core.RequestEvent) error {
+			return handleCamperTransportationSync(e, scheduler)
+		}))
 
 	// Quest registrations sync
 	// Extracts Quest-*/Q-* fields from person_custom_values

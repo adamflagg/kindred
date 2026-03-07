@@ -38,8 +38,12 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
   },
 ]
 
-const renderWithRouter = (initialPath: string, items: SubNavItem[] = REGISTRATION_SUB_NAV) => {
-  const user = createMockUser({ is_admin: true })
+const renderWithRouter = (
+  initialPath: string,
+  items: SubNavItem[] = REGISTRATION_SUB_NAV,
+  userOverrides?: { is_admin?: boolean; cached_permissions?: string[] }
+) => {
+  const user = createMockUser(userOverrides ?? { is_admin: true })
   const ctx = createMockAuthContext({ user })
 
   return render(
@@ -137,6 +141,58 @@ describe('MetricsSubNav', () => {
     // Nav should still be present but empty
     const nav = screen.getByRole('navigation')
     expect(nav.querySelectorAll('a')).toHaveLength(0)
+  })
+
+  it('hides items requiring a permission the user lacks', () => {
+    const itemsWithPermission: SubNavItem[] = [
+      {
+        id: 'overview',
+        label: 'Overview',
+        icon: LayoutDashboard,
+        path: '/metrics/registration/overview',
+      },
+      {
+        id: 'forecast',
+        label: 'Forecast',
+        icon: Clock,
+        path: '/metrics/registration/forecast',
+        permission: 'metrics.financial',
+      },
+    ]
+
+    renderWithRouter('/metrics/registration/overview', itemsWithPermission, {
+      is_admin: false,
+      cached_permissions: [],
+    })
+
+    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /forecast/i })).not.toBeInTheDocument()
+  })
+
+  it('shows permission-gated items when user has the permission', () => {
+    const itemsWithPermission: SubNavItem[] = [
+      {
+        id: 'overview',
+        label: 'Overview',
+        icon: LayoutDashboard,
+        path: '/metrics/registration/overview',
+      },
+      {
+        id: 'forecast',
+        label: 'Forecast',
+        icon: Clock,
+        path: '/metrics/registration/forecast',
+        permission: 'metrics.financial',
+      },
+    ]
+
+    renderWithRouter('/metrics/registration/overview', itemsWithPermission, {
+      is_admin: false,
+      cached_permissions: ['metrics.financial'],
+    })
+
+    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /forecast/i })).toBeInTheDocument()
   })
 
   it('works with subset of items', () => {

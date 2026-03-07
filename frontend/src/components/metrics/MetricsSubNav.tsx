@@ -22,9 +22,7 @@ export default function MetricsSubNav({ items }: MetricsSubNavProps) {
   const location = useLocation()
   const { hasPermission } = usePermissions()
 
-  const visibleItems = items.filter(
-    (item) => !item.permission || hasPermission(item.permission)
-  )
+  const visibleItems = items.filter((item) => !item.permission || hasPermission(item.permission))
 
   // Determine active item based on current path
   const getActiveId = () => {

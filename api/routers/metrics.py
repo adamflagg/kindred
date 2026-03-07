@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from bunking.auth_middleware import AuthUser, get_current_user
-from bunking.rbac.dependencies import require_permission
+from bunking.rbac.dependencies import require_admin, require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import metrics_cache, pb
@@ -539,7 +539,7 @@ async def get_forecast(
 
 @router.post("/cache/invalidate")
 async def invalidate_metrics_cache(
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_admin),
 ) -> dict[str, int]:
     """Invalidate all cached metrics responses.
 
