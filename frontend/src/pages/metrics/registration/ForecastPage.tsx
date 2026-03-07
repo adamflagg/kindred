@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useForecast } from '../../../hooks/useForecast'
+import { useSnapshotDates } from '../../../hooks/useSnapshotDates'
 import { MetricCard } from '../../../components/metrics/MetricCard'
+import { SnapshotDateSelector } from '../../../components/metrics/SnapshotDateSelector'
 import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
@@ -142,10 +144,13 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 export default function ForecastPage() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessionTypesParam, sessions: metricsSessions } = useMetricsSession()
+  const [snapshotDate, setSnapshotDate] = useState<string | null>(null)
+  const { data: snapshotDates = [] } = useSnapshotDates(currentYear)
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,
     sessionTypes: sessionTypesParam,
+    snapshotDate,
   })
 
   // Build lookups for camp-then-quest sorting from the session context
@@ -202,8 +207,27 @@ export default function ForecastPage() {
       <div>
         <h2 className="text-lg font-semibold">Registration Forecast</h2>
         <p className="text-muted-foreground text-sm">
-          Budget goals, capacity, and revenue projections for {currentYear}
+          {snapshotDate
+            ? `Enrollment as of ${new Date(snapshotDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} — budget and capacity are current`
+            : `Budget goals, capacity, and revenue projections for ${currentYear}`}
         </p>
+        <div className="mt-2 flex items-center gap-3">
+          <SnapshotDateSelector
+            snapshotDate={snapshotDate}
+            onDateChange={setSnapshotDate}
+            onClear={() => setSnapshotDate(null)}
+            availableDates={snapshotDates}
+          />
+          {snapshotDate && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+              Snapshot:{' '}
+              {new Date(snapshotDate + 'T00:00:00').toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}

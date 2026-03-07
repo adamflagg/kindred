@@ -179,12 +179,15 @@ export const queryKeys = {
   sessionBudgetConfig: (year: number) => ['session-budget-config', year] as const,
 
   // Forecast (Tier 1 - sync data)
-  forecast: (year: number, sessionTypes?: string, sessionCmId?: number) =>
-    sessionCmId
-      ? (['metrics', 'forecast', year, sessionTypes, sessionCmId] as const)
-      : sessionTypes
-        ? (['metrics', 'forecast', year, sessionTypes] as const)
-        : (['metrics', 'forecast', year] as const),
+  forecast: (year: number, sessionTypes?: string, sessionCmId?: number, snapshotDate?: string) =>
+    snapshotDate
+      ? (['metrics', 'forecast', year, sessionTypes, sessionCmId, snapshotDate] as const)
+      : sessionCmId
+        ? (['metrics', 'forecast', year, sessionTypes, sessionCmId] as const)
+        : sessionTypes
+          ? (['metrics', 'forecast', year, sessionTypes] as const)
+          : (['metrics', 'forecast', year] as const),
+  forecastSnapshotDates: (year: number) => ['metrics', 'forecast', 'snapshot-dates', year] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
