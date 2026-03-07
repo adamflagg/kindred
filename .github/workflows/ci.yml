@@ -411,7 +411,7 @@ jobs:
 
     - name: Install and run zizmor
       run: |
-        uvx zizmor --config zizmor.yml --min-severity medium .
+        pipx run zizmor --config zizmor.yml --min-severity medium .
 
   # Run tests in parallel with lint jobs
   tests:
