@@ -75,6 +75,7 @@ export const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Forecast',
     icon: Target,
     path: '/metrics/registration/forecast',
+    permission: 'metrics.financial',
   },
   {
     id: 'cancellations',

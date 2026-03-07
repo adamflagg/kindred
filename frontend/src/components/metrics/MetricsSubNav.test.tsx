@@ -5,8 +5,11 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
 import { LayoutDashboard, Globe, Building2, Clock } from 'lucide-react'
 import MetricsSubNav, { type SubNavItem } from './MetricsSubNav'
+import { AuthContext } from '../../contexts/AuthContext'
+import { createMockAuthContext, createMockUser } from '../../test/test-helpers'
 
 const REGISTRATION_SUB_NAV: SubNavItem[] = [
   {
@@ -36,10 +39,17 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
 ]
 
 const renderWithRouter = (initialPath: string, items: SubNavItem[] = REGISTRATION_SUB_NAV) => {
+  const user = createMockUser({ is_admin: true })
+  const ctx = createMockAuthContext({ user })
+
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <MetricsSubNav items={items} />
-    </MemoryRouter>
+    createElement(
+      AuthContext.Provider,
+      { value: ctx },
+      <MemoryRouter initialEntries={[initialPath]}>
+        <MetricsSubNav items={items} />
+      </MemoryRouter>
+    )
   )
 }
 
