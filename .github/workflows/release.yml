@@ -18,7 +18,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_TOKEN }}
@@ -28,17 +28,19 @@ jobs:
         git config user.name "adamflagg"
         git config user.email "115844481+adamflagg@users.noreply.github.com"
 
-    - uses: kenji-miyake/setup-git-cliff@v2
+    - uses: kenji-miyake/setup-git-cliff@2778609c643a39a2576c4bae2e493b855eb4aee8 # v2
 
     - name: Calculate version
       id: version
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
       run: |
         # Get last tag
         LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
-        if [ -n "${{ inputs.version }}" ]; then
+        if [ -n "$INPUT_VERSION" ]; then
           # Custom version — normalize v prefix
-          VER="${{ inputs.version }}"
+          VER="$INPUT_VERSION"
           [[ "$VER" != v* ]] && VER="v$VER"
         else
           # Auto-bump via git-cliff
@@ -54,7 +56,7 @@ jobs:
         fi
 
         # Check for release-worthy commits (skip if only docs/test/refactor)
-        if [ -z "${{ inputs.version }}" ]; then
+        if [ -z "$INPUT_VERSION" ]; then
           RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
           RANGE="${RANGE:-HEAD}"
           WORTHY=$(git log $RANGE --oneline | grep -cE '^[a-f0-9]+ (feat|fix|perf)(\(.+\))?(!)?:' || true)
@@ -144,8 +146,8 @@ jobs:
     - name: Create tag and release
       env:
         GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        VERSION: ${{ steps.version.outputs.version }}
       run: |
-        VERSION="${{ steps.version.outputs.version }}"
 
         # Create annotated tag
         git tag -a "$VERSION" -m "$(cat RELEASE_NOTES.md)"

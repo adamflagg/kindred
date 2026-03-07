@@ -41,6 +41,10 @@ env:
   REGISTRY: ghcr.io
   USERNAME: adamflagg
 
+# Restrict default permissions; jobs that need more declare their own
+permissions:
+  contents: read
+
 # Prevent multiple CD runs for the same ref
 concurrency:
   group: cd-${{ github.ref }}
@@ -57,17 +61,19 @@ jobs:
       initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Get base SHA for comparison
       id: get-base-sha
       env:
         GH_TOKEN: ${{ github.token }}
+        GH_SHA: ${{ github.sha }}
       run: |
         echo "Checking for last successful CD run..."
-        echo "Current commit SHA: ${{ github.sha }}"
+        echo "Current commit SHA: $GH_SHA"
 
         LAST_SUCCESS_SHA=$(gh run list \
           --workflow cd.yml \
@@ -75,7 +81,7 @@ jobs:
           --status success \
           --limit 5 \
           --json headSha \
-          --jq '.[] | select(.headSha != "${{ github.sha }}") | .headSha' | head -1 || echo "")
+          --jq ".[] | select(.headSha != \"$GH_SHA\") | .headSha" | head -1 || echo "")
 
         if [ -n "$LAST_SUCCESS_SHA" ]; then
           echo "Found previous successful run: $LAST_SUCCESS_SHA"
@@ -90,14 +96,14 @@ jobs:
           echo "Initial commit detected (no parent) - building all images"
           # For initial commit, use HEAD as base (no changes detected by paths-filter)
           # but set flag to force all builds
-          BASE_SHA=${{ github.sha }}
+          BASE_SHA=$GH_SHA
           echo "initial_commit=true" >> $GITHUB_OUTPUT
         fi
 
         echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
-        echo "Comparing changes from $BASE_SHA to ${{ github.sha }}"
+        echo "Comparing changes from $BASE_SHA to $GH_SHA"
 
-        if [ "$BASE_SHA" != "${{ github.sha }}" ]; then
+        if [ "$BASE_SHA" != "$GH_SHA" ]; then
           echo "=== Change Detection Summary ==="
           echo "Files changed:"
           git diff --name-only $BASE_SHA HEAD 2>/dev/null | head -20
@@ -107,7 +113,7 @@ jobs:
         fi
 
     - name: Check for file changes
-      uses: dorny/paths-filter@v3
+      uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
       id: filter
       with:
         base: ${{ steps.get-base-sha.outputs.base_sha }}
@@ -140,14 +146,19 @@ jobs:
     - name: Check CI and docs status for this commit
       env:
         GH_TOKEN: ${{ github.token }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        GH_SHA: ${{ github.sha }}
+        GH_REPO: ${{ github.repository }}
+        GH_REF: ${{ github.ref }}
       run: |
         # For PRs, github.sha is the merge commit (virtual), not the PR head commit
         # CI runs on the PR head commit, so we need to check that instead
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          CHECK_SHA="${{ github.event.pull_request.head.sha }}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          CHECK_SHA="$PR_HEAD_SHA"
           echo "PR event: checking PR head commit $CHECK_SHA"
         else
-          CHECK_SHA="${{ github.sha }}"
+          CHECK_SHA="$GH_SHA"
           echo "Checking check runs for $CHECK_SHA..."
         fi
 
@@ -155,7 +166,7 @@ jobs:
         # Always returns valid JSON: {"total":N, "success":N, "failed":N, "pending":N}
         get_check_summary() {
           local check_name="$1"
-          gh api "repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs" \
+          gh api "repos/${GH_REPO}/commits/${CHECK_SHA}/check-runs" \
             --jq "
               [.check_runs[] | select(.name == \"$check_name\")] |
               {
@@ -169,8 +180,8 @@ jobs:
 
         # For tag pushes, check if CI already passed (commit was tested on branch)
         # This saves ~1-5 minutes when tagging a commit that already passed CI
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-          EXISTING_SUCCESS=$(gh api "repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs" \
+        if [[ "$GH_REF" == refs/tags/* ]]; then
+          EXISTING_SUCCESS=$(gh api "repos/${GH_REPO}/commits/${CHECK_SHA}/check-runs" \
             --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
           if [ -n "$EXISTING_SUCCESS" ]; then
             echo "CI Summary already passed for this commit - skipping wait"
@@ -266,7 +277,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Clone private config
       uses: ./.github/actions/clone-kindred-local
@@ -274,15 +287,15 @@ jobs:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
       with:
         node-version: '22'
         cache: 'npm'
@@ -323,16 +336,22 @@ jobs:
       id: check
       env:
         GH_TOKEN: ${{ github.token }}
+        GH_REF: ${{ github.ref }}
+        GH_USERNAME: ${{ env.USERNAME }}
+        CHANGES_API: ${{ needs.detect-changes.outputs.api }}
+        CHANGES_DOCKER: ${{ needs.detect-changes.outputs.docker }}
+        CHANGES_INITIAL: ${{ needs.detect-changes.outputs.initial_commit }}
+        EVENT_NAME: ${{ github.event_name }}
       run: |
         # For tag pushes, check if all images already exist in registry
-        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+        if [[ "$GH_REF" == refs/tags/v* ]]; then
           TAG_NAME=${GITHUB_REF#refs/tags/}
           DOCKER_TAG=${TAG_NAME#v}
           ALL_EXIST=true
 
           for IMAGE in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
             echo "Checking if ${IMAGE}:${DOCKER_TAG} already exists..."
-            if gh api "/users/${{ env.USERNAME }}/packages/container/${IMAGE}/versions" \
+            if gh api "/users/${GH_USERNAME}/packages/container/${IMAGE}/versions" \
                  --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" \
                  > /tmp/existing_id 2>/dev/null; then
               EXISTING=$(head -1 /tmp/existing_id)
@@ -356,12 +375,12 @@ jobs:
         fi
 
         # Standard change detection
-        if [ "${{ needs.detect-changes.outputs.api }}" == "true" ] || \
-           [ "${{ github.event_name }}" == "workflow_dispatch" ] || \
-           [ "${{ github.event_name }}" == "schedule" ] || \
-           [[ "${{ github.ref }}" == refs/tags/* ]] || \
-           [ "${{ needs.detect-changes.outputs.docker }}" == "true" ] || \
-           [ "${{ needs.detect-changes.outputs.initial_commit }}" == "true" ]; then
+        if [ "$CHANGES_API" == "true" ] || \
+           [ "$EVENT_NAME" == "workflow_dispatch" ] || \
+           [ "$EVENT_NAME" == "schedule" ] || \
+           [[ "$GH_REF" == refs/tags/* ]] || \
+           [ "$CHANGES_DOCKER" == "true" ] || \
+           [ "$CHANGES_INITIAL" == "true" ]; then
           echo "build=true" >> $GITHUB_OUTPUT
         else
           echo "build=false" >> $GITHUB_OUTPUT
@@ -370,7 +389,9 @@ jobs:
 
     - name: Checkout code
       if: steps.check.outputs.build == 'true'
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Clone private config for branding assets
       if: steps.check.outputs.build == 'true'
@@ -393,7 +414,7 @@ jobs:
 
     - name: Log in to GitHub Container Registry
       if: steps.check.outputs.build == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -401,7 +422,7 @@ jobs:
 
     - name: Log in to Docker Hardened Images registry
       if: steps.check.outputs.build == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         registry: dhi.io
         username: ${{ secrets.DHI_USERNAME }}
@@ -410,8 +431,10 @@ jobs:
     - name: Get version and build date
       if: steps.check.outputs.build == 'true'
       id: version
+      env:
+        GH_REF: ${{ github.ref }}
       run: |
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+        if [[ "$GH_REF" == refs/tags/* ]]; then
           VERSION=${GITHUB_REF#refs/tags/}
         else
           VERSION="dev"
@@ -424,12 +447,16 @@ jobs:
 
     - name: Build all Docker images (local only)
       if: steps.check.outputs.build == 'true'
+      env:
+        INPUT_NO_CACHE: ${{ github.event.inputs.no_cache }}
+        BUILD_VERSION: ${{ steps.version.outputs.version }}
+        BUILD_DATE: ${{ steps.version.outputs.build_date }}
       run: |
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
         DOCKERFILES=("docker/Dockerfile.caddy" "docker/Dockerfile.pocketbase" "docker/Dockerfile.api" "docker/Dockerfile.init")
 
         NO_CACHE_FLAG=""
-        if [ "${{ github.event.inputs.no_cache }}" == "true" ]; then
+        if [ "$INPUT_NO_CACHE" == "true" ]; then
           NO_CACHE_FLAG="--no-cache"
         fi
 
@@ -437,9 +464,9 @@ jobs:
           echo "=== Building ${IMAGES[$i]} ==="
           docker build \
             -f "${DOCKERFILES[$i]}" \
-            -t "${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGES[$i]}:test" \
-            --build-arg VERSION=${{ steps.version.outputs.version }} \
-            --build-arg BUILD_DATE=${{ steps.version.outputs.build_date }} \
+            -t "${REGISTRY}/${USERNAME}/${IMAGES[$i]}:test" \
+            --build-arg VERSION="$BUILD_VERSION" \
+            --build-arg BUILD_DATE="$BUILD_DATE" \
             $NO_CACHE_FLAG \
             .
           echo "${IMAGES[$i]} built"
@@ -450,12 +477,15 @@ jobs:
     - name: Determine tag suffixes
       if: steps.check.outputs.build == 'true'
       id: tags
+      env:
+        INPUT_TAG: ${{ github.event.inputs.tag }}
+        GH_REF: ${{ github.ref }}
       run: |
         TAG_SUFFIXES="latest"
-        if [ -n "${{ github.event.inputs.tag }}" ]; then
-          TAG_SUFFIXES="${TAG_SUFFIXES},${{ github.event.inputs.tag }}"
+        if [ -n "$INPUT_TAG" ]; then
+          TAG_SUFFIXES="${TAG_SUFFIXES},${INPUT_TAG}"
         fi
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+        if [[ "$GH_REF" == refs/tags/* ]]; then
           # Strip 'refs/tags/' prefix, then strip 'v' prefix for Docker tag
           # Git tags remain v0.7.0, Docker tags become 0.7.0, 0.7, latest
           TAG_NAME=${GITHUB_REF#refs/tags/}
@@ -474,10 +504,12 @@ jobs:
     # === Integration Tests (run before push) ===
     - name: Create CI environment file
       if: steps.check.outputs.build == 'true'
+      env:
+        GH_RUN_ID: ${{ github.run_id }}
       run: |
-        CI_DIR="/tmp/kindred-ci-${{ github.run_id }}"
-        cat > .env.ci << 'EOF'
-        COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
+        CI_DIR="/tmp/kindred-ci-${GH_RUN_ID}"
+        cat > .env.ci << EOF
+        COMPOSE_PROJECT_NAME=kindred-ci-${GH_RUN_ID}
         IMAGE_TAG=test
         POCKETBASE_ADMIN_EMAIL=ci@test.local
         POCKETBASE_ADMIN_PASSWORD=ci-test-password
@@ -585,10 +617,12 @@ jobs:
 
     - name: Stop test stack
       if: always() && steps.check.outputs.build == 'true'
+      env:
+        GH_RUN_ID: ${{ github.run_id }}
       run: |
         docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml down -v || true
         # Use sudo to clean up files created by container (runs as UID 65532, different from runner)
-        sudo rm -rf /tmp/kindred-ci-${{ github.run_id }}
+        sudo rm -rf "/tmp/kindred-ci-${GH_RUN_ID}"
 
     # === Security Scan (run before push) ===
     - name: Run Trivy vulnerability scanner (Caddy)
@@ -672,7 +706,7 @@ jobs:
     - name: Upload Trivy results - Caddy
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-caddy.sarif'
         category: 'trivy-kindred-caddy'
@@ -682,7 +716,7 @@ jobs:
     - name: Upload Trivy results - API
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-api.sarif'
         category: 'trivy-kindred-api'
@@ -692,7 +726,7 @@ jobs:
     - name: Upload Trivy results - PocketBase
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-pocketbase.sarif'
         category: 'trivy-kindred-pocketbase'
@@ -702,7 +736,7 @@ jobs:
     - name: Upload Trivy results - Init
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-init.sarif'
         category: 'trivy-kindred-init'
@@ -716,14 +750,16 @@ jobs:
         steps.check.outputs.build == 'true' &&
         github.event_name != 'pull_request' &&
         github.event.inputs.dry_run != 'true'
+      env:
+        TAG_SUFFIXES: ${{ steps.tags.outputs.tag_suffixes }}
       run: |
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
-        IFS=',' read -ra SUFFIXES <<< "${{ steps.tags.outputs.tag_suffixes }}"
+        IFS=',' read -ra SUFFIXES <<< "$TAG_SUFFIXES"
 
         for IMAGE in "${IMAGES[@]}"; do
-          TEST_IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGE}:test"
+          TEST_IMAGE="${REGISTRY}/${USERNAME}/${IMAGE}:test"
           for SUFFIX in "${SUFFIXES[@]}"; do
-            FULL_TAG="${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGE}:${SUFFIX}"
+            FULL_TAG="${REGISTRY}/${USERNAME}/${IMAGE}:${SUFFIX}"
             echo "Pushing: ${FULL_TAG}"
             docker tag "$TEST_IMAGE" "$FULL_TAG"
             docker push "$FULL_TAG"
@@ -736,8 +772,10 @@ jobs:
       if: |
         steps.check.outputs.build == 'true' &&
         (github.event_name == 'pull_request' || github.event.inputs.dry_run == 'true')
+      env:
+        EVENT_NAME: ${{ github.event_name }}
       run: |
-        if [ "${{ github.event_name }}" == "pull_request" ]; then
+        if [ "$EVENT_NAME" == "pull_request" ]; then
           echo "PR validation mode - images built and tested but NOT pushed"
         else
           echo "Dry-run mode - images built and tested but NOT pushed"
@@ -752,15 +790,20 @@ jobs:
     if: always()
     steps:
     - name: Check build status
+      env:
+        BUILD_RESULT: ${{ needs.build-test-push.result }}
+        EVENT_NAME: ${{ github.event_name }}
+        DRY_RUN: ${{ github.event.inputs.dry_run }}
+        GH_USERNAME: ${{ env.USERNAME }}
       run: |
-        if [ "${{ needs.build-test-push.result }}" != "success" ] && [ "${{ needs.build-test-push.result }}" != "skipped" ]; then
+        if [ "$BUILD_RESULT" != "success" ] && [ "$BUILD_RESULT" != "skipped" ]; then
           echo "Build, test, or push failed!"
           exit 1
         fi
 
-        if [ "${{ needs.build-test-push.result }}" == "skipped" ]; then
+        if [ "$BUILD_RESULT" == "skipped" ]; then
           echo "Docker build skipped (no relevant file changes)"
-        elif [ "${{ github.event_name }}" == "pull_request" ]; then
+        elif [ "$EVENT_NAME" == "pull_request" ]; then
           echo "CD validation passed (PR mode - no push)"
           echo ""
           echo "This PR's CD changes have been validated:"
@@ -769,7 +812,7 @@ jobs:
           echo "- Security scan completed"
           echo ""
           echo "Images will be pushed when this PR merges and a release is created."
-        elif [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+        elif [ "$DRY_RUN" == "true" ]; then
           echo "CD dry-run passed (no push)"
           echo ""
           echo "Validated:"
@@ -782,10 +825,10 @@ jobs:
           echo "All CD checks passed successfully!"
           echo ""
           echo "Images pushed:"
-          echo "- ghcr.io/${{ env.USERNAME }}/kindred-caddy (Caddy reverse proxy + frontend)"
-          echo "- ghcr.io/${{ env.USERNAME }}/kindred-pocketbase (PocketBase database)"
-          echo "- ghcr.io/${{ env.USERNAME }}/kindred-api (FastAPI solver/metrics)"
-          echo "- ghcr.io/${{ env.USERNAME }}/kindred-init (One-shot admin + OIDC setup)"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-caddy (Caddy reverse proxy + frontend)"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-pocketbase (PocketBase database)"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-api (FastAPI solver/metrics)"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-init (One-shot admin + OIDC setup)"
         fi
 
   # Auto-generate release notes from conventional commits
@@ -799,12 +842,13 @@ jobs:
       contents: write
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0  # Need full history for git-cliff
+        persist-credentials: false
 
     - name: Install git-cliff
-      uses: kenji-miyake/setup-git-cliff@v2
+      uses: kenji-miyake/setup-git-cliff@2778609c643a39a2576c4bae2e493b855eb4aee8 # v2
 
     - name: Generate changelog
       id: changelog
@@ -829,7 +873,7 @@ jobs:
         cat RELEASE_NOTES.md
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
       with:
         body_path: RELEASE_NOTES.md
         generate_release_notes: false

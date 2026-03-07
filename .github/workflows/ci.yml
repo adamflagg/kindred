@@ -34,12 +34,13 @@ jobs:
     if: github.actor != 'dependabot[bot]'
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0  # Full history for commit range
+        persist-credentials: false
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
       with:
         node-version: '22'
 
@@ -70,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-    - uses: amannn/action-semantic-pull-request@v6
+    - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -123,12 +124,15 @@ jobs:
       tests: ${{ steps.filter.outputs.tests }}
       scripts: ${{ steps.filter.outputs.scripts }}
       docker: ${{ steps.filter.outputs.docker }}
+      actions: ${{ steps.filter.outputs.actions }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Check for file changes
-      uses: dorny/paths-filter@v3
+      uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
       id: filter
       with:
         filters: |
@@ -162,6 +166,10 @@ jobs:
             - 'docker/**'
             - 'docker-compose*.yml'
             - '.hadolint.yaml'
+          actions:
+            - '.github/workflows/**'
+            - '.github/actions/**'
+            - 'zizmor.yml'
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
   secret-scan:
@@ -169,9 +177,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0  # Full history for better scanning
+        persist-credentials: false
 
     - name: Install gitleaks
       run: |
@@ -189,15 +198,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
       with:
         enable-cache: true
 
@@ -214,7 +225,7 @@ jobs:
       run: uv run mypy . --explicit-package-bases
 
     - name: Security audit (pip-audit)
-      run: uv run pip-audit --desc || echo "::warning::pip-audit found vulnerabilities"
+      run: uv run pip-audit --desc
 
     - name: JSON config validation
       run: |
@@ -236,24 +247,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
       with:
         node-version: '22'
         cache: 'npm'
         cache-dependency-path: pocketbase/package-lock.json
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
       with:
         go-version: '1.26'
         cache: true
         cache-dependency-path: pocketbase/go.sum
 
     - name: Cache apt packages
-      uses: awalsh128/cache-apt-pkgs-action@latest
+      uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
       with:
         packages: shellcheck
         version: shellcheck-v1
@@ -277,7 +290,7 @@ jobs:
 
     - name: Go linting
       if: needs.detect-changes.outputs.backend == 'true'
-      uses: golangci/golangci-lint-action@v9
+      uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
       with:
         version: v2.9.0
         working-directory: pocketbase
@@ -320,10 +333,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
       with:
         node-version: '22'
         cache: 'npm'
@@ -347,7 +362,7 @@ jobs:
 
     - name: Security audit (npm)
       working-directory: ./frontend
-      run: npm audit --audit-level=high || echo "::warning::npm audit found vulnerabilities"
+      run: npm audit --audit-level=high
 
   # Docker linting (parallel with other lint jobs)
   docker-lint:
@@ -357,7 +372,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     # Dockerfile linting (stdin, no mounts - avoids self-hosted runner volume mount issues)
     # Each file needs its own docker run because hadolint reads from stdin (< "$df")
@@ -374,6 +391,28 @@ jobs:
         docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < docker/Caddyfile > /dev/null
         docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < frontend/Caddyfile > /dev/null
 
+  # GitHub Actions security and correctness linting
+  security-lint:
+    name: Actions Security Lint
+    needs: detect-changes
+    if: needs.detect-changes.outputs.actions == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Install and run actionlint
+      run: |
+        bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        echo "=== actionlint ==="
+        ./actionlint -shellcheck="" -color
+
+    - name: Install and run zizmor
+      run: |
+        pipx run zizmor --config zizmor.yml --min-severity medium .
+
   # Run tests in parallel with lint jobs
   tests:
     name: Run Tests
@@ -386,27 +425,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
       with:
         enable-cache: true
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
       with:
         node-version: '22'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
       with:
         go-version: '1.26'
         cache: true
@@ -548,58 +589,75 @@ jobs:
       contents: write  # Required for dependency submission API
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Submit dependencies
-      uses: advanced-security/component-detection-dependency-submission-action@v0.1.1
+      uses: advanced-security/component-detection-dependency-submission-action@9c110eb34dee187cd9eca76a652b9f6a0ed22927 # v0.1.1
 
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, tests, dependency-submission]
+    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests, dependency-submission]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Check status
+      env:
+        COMMIT_LINT: ${{ needs.commit-lint.result }}
+        PR_TITLE_LINT: ${{ needs.pr-title-lint.result }}
+        SECRET_SCAN: ${{ needs.secret-scan.result }}
+        PYTHON_LINT: ${{ needs.python-lint.result }}
+        GO_LINT: ${{ needs.go-lint.result }}
+        FRONTEND_LINT: ${{ needs.frontend-lint.result }}
+        DOCKER_LINT: ${{ needs.docker-lint.result }}
+        SECURITY_LINT: ${{ needs.security-lint.result }}
+        TESTS: ${{ needs.tests.result }}
+        DEP_SUBMISSION: ${{ needs.dependency-submission.result }}
       run: |
         # commit-lint: blocking — non-conventional commits break changelog generation
-        if [ "${{ needs.commit-lint.result }}" != "success" ] && [ "${{ needs.commit-lint.result }}" != "skipped" ]; then
+        if [ "$COMMIT_LINT" != "success" ] && [ "$COMMIT_LINT" != "skipped" ]; then
           echo "::error::Commit message format issue detected. Use: type(scope): description"
           exit 1
         fi
         # pr-title-lint: blocking — squash merge uses PR title as commit message on main
-        if [ "${{ needs.pr-title-lint.result }}" != "success" ] && [ "${{ needs.pr-title-lint.result }}" != "skipped" ]; then
+        if [ "$PR_TITLE_LINT" != "success" ] && [ "$PR_TITLE_LINT" != "skipped" ]; then
           echo "::error::PR title must follow conventional commit format: type(scope): description"
           exit 1
         fi
-        if [ "${{ needs.secret-scan.result }}" != "success" ]; then
-          echo "❌ Secret scanning failed! Check for leaked credentials."
+        if [ "$SECRET_SCAN" != "success" ]; then
+          echo "Secret scanning failed! Check for leaked credentials."
           echo "   If these are intentional dev/test values, add them to .gitleaks.toml"
           exit 1
         fi
         # Lint jobs: success or skipped (when no relevant changes)
-        if [ "${{ needs.python-lint.result }}" != "success" ] && [ "${{ needs.python-lint.result }}" != "skipped" ]; then
-          echo "❌ Python linting/type checks failed!"
+        if [ "$PYTHON_LINT" != "success" ] && [ "$PYTHON_LINT" != "skipped" ]; then
+          echo "Python linting/type checks failed!"
           exit 1
         fi
-        if [ "${{ needs.go-lint.result }}" != "success" ] && [ "${{ needs.go-lint.result }}" != "skipped" ]; then
-          echo "❌ Go linting failed!"
+        if [ "$GO_LINT" != "success" ] && [ "$GO_LINT" != "skipped" ]; then
+          echo "Go linting failed!"
           exit 1
         fi
-        if [ "${{ needs.frontend-lint.result }}" != "success" ] && [ "${{ needs.frontend-lint.result }}" != "skipped" ]; then
-          echo "❌ Frontend linting/type checks failed!"
+        if [ "$FRONTEND_LINT" != "success" ] && [ "$FRONTEND_LINT" != "skipped" ]; then
+          echo "Frontend linting/type checks failed!"
           exit 1
         fi
-        if [ "${{ needs.docker-lint.result }}" != "success" ] && [ "${{ needs.docker-lint.result }}" != "skipped" ]; then
-          echo "❌ Docker linting failed!"
+        if [ "$DOCKER_LINT" != "success" ] && [ "$DOCKER_LINT" != "skipped" ]; then
+          echo "Docker linting failed!"
           exit 1
         fi
-        if [ "${{ needs.tests.result }}" != "success" ] && [ "${{ needs.tests.result }}" != "skipped" ]; then
-          echo "❌ Tests failed!"
+        if [ "$SECURITY_LINT" != "success" ] && [ "$SECURITY_LINT" != "skipped" ]; then
+          echo "Actions security lint failed!"
+          exit 1
+        fi
+        if [ "$TESTS" != "success" ] && [ "$TESTS" != "skipped" ]; then
+          echo "Tests failed!"
           exit 1
         fi
         # dependency-submission is non-blocking (informational only)
-        if [ "${{ needs.dependency-submission.result }}" == "failure" ]; then
-          echo "⚠️ Dependency submission failed (non-blocking)"
+        if [ "$DEP_SUBMISSION" == "failure" ]; then
+          echo "Dependency submission failed (non-blocking)"
         fi
-        echo "✅ All CI checks passed!"
+        echo "All CI checks passed!"
