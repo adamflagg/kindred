@@ -3,7 +3,7 @@ module github.com/camp/kindred/pocketbase
 go 1.26.0
 
 require (
-	github.com/pocketbase/pocketbase v0.36.5
+	github.com/pocketbase/pocketbase v0.36.6
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/time v0.14.0
