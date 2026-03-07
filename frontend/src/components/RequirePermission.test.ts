@@ -59,7 +59,7 @@ describe('RequirePermission', () => {
     expect(screen.getByText('Protected Content')).toBeTruthy()
   })
 
-  it('redirects when user lacks permission', () => {
+  it('shows restricted program switcher when user lacks permission', () => {
     const user = createMockUser({ cached_permissions: ['metrics.view'] })
     const ctx = createMockAuthContext({ user })
 
@@ -68,6 +68,7 @@ describe('RequirePermission', () => {
       createElement(RequirePermission, { permission: 'bunking.view', children: 'Protected' })
     )
     expect(screen.queryByText('Protected')).toBeNull()
+    expect(screen.getByText(/don't have access/i)).toBeTruthy()
   })
 
   it('renders children for admin regardless of permission', () => {
@@ -104,5 +105,39 @@ describe('RequirePermission', () => {
       })
     )
     expect(screen.getByText('AnyOf Content')).toBeTruthy()
+  })
+
+  it('shows loading spinner when auth is loading', () => {
+    const ctx = {
+      ...createMockAuthContext({ user: null }),
+      isLoading: true,
+    }
+
+    renderWithContext(
+      ctx,
+      createElement(RequirePermission, {
+        permission: 'bunking.view',
+        children: 'Protected Content',
+      })
+    )
+    // Should not show content or navigate — should show loading indicator
+    expect(screen.queryByText('Protected Content')).toBeNull()
+    expect(screen.getByRole('status')).toBeTruthy()
+  })
+
+  it('shows program switcher with access message when permission denied', () => {
+    const user = createMockUser({ cached_permissions: [] })
+    const ctx = createMockAuthContext({ user })
+
+    renderWithContext(
+      ctx,
+      createElement(RequirePermission, {
+        permission: 'bunking.view',
+        children: 'Protected Content',
+      })
+    )
+    expect(screen.queryByText('Protected Content')).toBeNull()
+    // Should show the access denied message instead of redirecting
+    expect(screen.getByText(/don't have access/i)).toBeTruthy()
   })
 })
