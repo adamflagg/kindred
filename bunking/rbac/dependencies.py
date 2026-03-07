@@ -20,6 +20,13 @@ def require_permission(permission: str) -> Callable[..., AuthUser]:
     return checker
 
 
+def require_admin(user: AuthUser = Depends(get_current_user)) -> AuthUser:
+    """Require admin access."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 def require_any_permission(*permissions: str) -> Callable[..., AuthUser]:
     """Require at least one of the listed permissions. Admin always passes."""
 

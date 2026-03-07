@@ -28,12 +28,12 @@ function getCheckboxes(): HTMLInputElement[] {
 describe('GeoLayerToggles', () => {
   it('renders 4 layer checkboxes plus region toggle (non-admin)', () => {
     render(<GeoLayerToggles {...defaultProps} />)
-    // 4 layers + 1 region zones = 5 (admin toggles hidden by default)
+    // 4 layers + 1 region zones = 5 (geo-permission toggles hidden by default)
     expect(getCheckboxes()).toHaveLength(5)
   })
 
-  it('renders all 7 checkboxes when isAdmin is true', () => {
-    render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
+  it('renders all 7 checkboxes when hasGeoPermission is true', () => {
+    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} />)
     // 4 layers + 1 region zones + 2 admin (sources, gaps) = 7
     expect(getCheckboxes()).toHaveLength(7)
   })
@@ -49,7 +49,7 @@ describe('GeoLayerToggles', () => {
     expect(screen.getByText(/15/)).toBeInTheDocument()
   })
 
-  it('renders region toggle but hides admin toggles for non-admin', () => {
+  it('renders region toggle but hides geo-permission toggles for non-admin', () => {
     render(<GeoLayerToggles {...defaultProps} />)
 
     expect(screen.getByText(/Region zones/)).toBeInTheDocument()
@@ -57,8 +57,8 @@ describe('GeoLayerToggles', () => {
     expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
   })
 
-  it('renders all admin toggles when isAdmin is true', () => {
-    render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
+  it('renders all geo-permission toggles when hasGeoPermission is true', () => {
+    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} />)
 
     expect(screen.getByText(/Show sources/)).toBeInTheDocument()
     expect(screen.getByText(/Show gaps/)).toBeInTheDocument()
@@ -85,7 +85,13 @@ describe('GeoLayerToggles', () => {
 
   it('calls onToggleSources when sources checkbox is clicked', () => {
     const onToggleSources = vi.fn()
-    render(<GeoLayerToggles {...defaultProps} onToggleSources={onToggleSources} isAdmin={true} />)
+    render(
+      <GeoLayerToggles
+        {...defaultProps}
+        onToggleSources={onToggleSources}
+        hasGeoPermission={true}
+      />
+    )
 
     const boxes = getCheckboxes()
     fireEvent.click(boxes[5] as HTMLElement)
@@ -105,7 +111,12 @@ describe('GeoLayerToggles', () => {
 
   it('reflects showRegions and showSources state', () => {
     render(
-      <GeoLayerToggles {...defaultProps} showRegions={false} showSources={true} isAdmin={true} />
+      <GeoLayerToggles
+        {...defaultProps}
+        showRegions={false}
+        showSources={true}
+        hasGeoPermission={true}
+      />
     )
 
     const boxes = getCheckboxes()
@@ -118,7 +129,7 @@ describe('GeoLayerToggles', () => {
     render(
       <GeoLayerToggles
         {...defaultProps}
-        isAdmin={true}
+        hasGeoPermission={true}
         showGaps={false}
         onToggleGaps={onToggleGaps}
       />
@@ -134,7 +145,7 @@ describe('GeoLayerToggles', () => {
     render(
       <GeoLayerToggles
         {...defaultProps}
-        isAdmin={true}
+        hasGeoPermission={true}
         showSources={false}
         showGaps={false}
         isComparing={true}
@@ -150,14 +161,14 @@ describe('GeoLayerToggles', () => {
     expect(boxes[4]?.disabled).toBe(false)
   })
 
-  it('shows hint text when isComparing disables admin toggles', () => {
-    render(<GeoLayerToggles {...defaultProps} isAdmin={true} isComparing={true} />)
+  it('shows hint text when isComparing disables geo-permission toggles', () => {
+    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} isComparing={true} />)
 
     expect(screen.getByText(/single-year mode/i)).toBeInTheDocument()
   })
 
-  it('does not disable admin toggles when isComparing is false', () => {
-    render(<GeoLayerToggles {...defaultProps} isAdmin={true} isComparing={false} />)
+  it('does not disable geo-permission toggles when isComparing is false', () => {
+    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} isComparing={false} />)
 
     const boxes = getCheckboxes()
     // Sources and gaps should be enabled

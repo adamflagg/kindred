@@ -16,7 +16,8 @@ import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegis
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useSourceMappings, type SourceMapping } from '../../../hooks/useSourceMappings'
-import { useIsAdmin } from '../../../hooks/useIsAdmin'
+import { usePermissions } from '../../../hooks/usePermissions'
+import { Permission } from '../../../constants/permissions'
 import {
   GeoMap,
   GeoSummaryCards,
@@ -45,7 +46,7 @@ const categoryToDbCategory: Record<GeoCategory, string> = {
 
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
-  const isAdmin = useIsAdmin()
+  const { hasPermission } = usePermissions()
   const { data: overrideCoords } = useGeoOverrideCoords(currentYear)
   const [activeLayers, setActiveLayers] = useState<Set<GeoCategoryExtended>>(
     new Set(['city', 'school', 'synagogue', 'region'])
@@ -348,7 +349,7 @@ export default function GeoAnalysis() {
             onToggleSources={() => setShowSources((v) => !v)}
             showGaps={showGaps}
             onToggleGaps={() => setShowGaps((v) => !v)}
-            isAdmin={isAdmin}
+            hasGeoPermission={hasPermission(Permission.METRICS_GEO)}
             isComparing={isComparing}
           />
 

@@ -9,13 +9,10 @@
  */
 
 export const Permission = {
-  BUNKING_VIEW: 'bunking.view',
   BUNKING_MANAGE: 'bunking.manage',
-  METRICS_VIEW: 'metrics.view',
   METRICS_FINANCIAL: 'metrics.financial',
   METRICS_GEO: 'metrics.geo',
   SYNC_RUN: 'sync.run',
-  SOLVER_CONFIGURE: 'solver.configure',
   USERS_MANAGE: 'users.manage',
 } as const
 

@@ -1,7 +1,7 @@
 import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
 import { FullPageSpinner } from './FullPageSpinner'
-import ProgramLandingPage from '../pages/ProgramLandingPage'
+import PermissionDeniedPage from '../pages/PermissionDeniedPage'
 
 type RequirePermissionProps = { children: React.ReactNode } & (
   | { permission: string; anyOf?: never }
@@ -26,7 +26,7 @@ export const RequirePermission = (props: RequirePermissionProps) => {
       : false
 
   if (!allowed) {
-    return <ProgramLandingPage restricted />
+    return <PermissionDeniedPage />
   }
 
   return <>{children}</>

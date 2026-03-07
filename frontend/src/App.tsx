@@ -241,37 +241,31 @@ function App() {
                             <Route
                               path="sessions"
                               element={
-                                <RequirePermission permission="bunking.view">
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <SessionList />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </RequirePermission>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <SessionList />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="session/:sessionId/*"
                               element={
-                                <RequirePermission permission="bunking.view">
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <SessionView />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </RequirePermission>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <SessionView />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="session/:sessionId/compare"
                               element={
-                                <RequirePermission permission="bunking.view">
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <ScenarioComparisonPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </RequirePermission>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <ScenarioComparisonPage />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             {/* Redirects for routes moved to global */}
@@ -305,13 +299,11 @@ function App() {
                             {/* Metrics layout with nested routes */}
                             <Route
                               element={
-                                <RequirePermission permission="metrics.view">
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <MetricsLayout />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </RequirePermission>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <MetricsLayout />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             >
                               {/* Registration section */}
@@ -362,11 +354,13 @@ function App() {
                               <Route
                                 path="registration/forecast"
                                 element={
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <ForecastPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
+                                  <RequirePermission permission={Permission.METRICS_FINANCIAL}>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <ForecastPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </RequirePermission>
                                 }
                               />
                               <Route

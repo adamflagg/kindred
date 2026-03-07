@@ -25,14 +25,14 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     label: 'Sync Operations',
     path: '/admin/sync',
     icon: RefreshCw,
-    requiredPermission: 'authenticated',
+    requiredPermission: 'admin',
   },
   {
     id: 'config',
     label: 'Configuration',
     path: '/admin/config',
     icon: Sliders,
-    requiredPermission: 'authenticated',
+    requiredPermission: 'admin',
   },
   {
     id: 'sheets',

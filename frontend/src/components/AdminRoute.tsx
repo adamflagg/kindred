@@ -1,7 +1,7 @@
 import { useAuth } from '../contexts/AuthContext'
 import { useIsAdmin } from '../hooks/useIsAdmin'
 import { FullPageSpinner } from './FullPageSpinner'
-import ProgramLandingPage from '../pages/ProgramLandingPage'
+import PermissionDeniedPage from '../pages/PermissionDeniedPage'
 
 interface AdminRouteProps {
   children: React.ReactNode
@@ -16,7 +16,7 @@ export const AdminRoute = ({ children }: AdminRouteProps) => {
   }
 
   if (!isAdmin) {
-    return <ProgramLandingPage restricted />
+    return <PermissionDeniedPage />
   }
 
   return <>{children}</>

@@ -22,29 +22,29 @@ function renderWithContext(
 
 describe('RequirePermission', () => {
   it('renders children when user has required permission', () => {
-    const user = createMockUser({ cached_permissions: ['bunking.view'] })
+    const user = createMockUser({ cached_permissions: ['bunking.manage'] })
     const ctx = createMockAuthContext({ user })
 
     renderWithContext(
       ctx,
       createElement(RequirePermission, {
-        permission: 'bunking.view',
+        permission: 'bunking.manage',
         children: 'Protected Content',
       })
     )
     expect(screen.getByText('Protected Content')).toBeTruthy()
   })
 
-  it('shows restricted program switcher when user lacks permission', () => {
-    const user = createMockUser({ cached_permissions: ['metrics.view'] })
+  it('shows restricted page when user lacks permission', () => {
+    const user = createMockUser({ cached_permissions: ['metrics.financial'] })
     const ctx = createMockAuthContext({ user })
 
     renderWithContext(
       ctx,
-      createElement(RequirePermission, { permission: 'bunking.view', children: 'Protected' })
+      createElement(RequirePermission, { permission: 'bunking.manage', children: 'Protected' })
     )
     expect(screen.queryByText('Protected')).toBeNull()
-    expect(screen.getByText(/don't have access/i)).toBeTruthy()
+    expect(screen.getByText(/Access Restricted/i)).toBeTruthy()
   })
 
   it('renders children for admin regardless of permission', () => {
@@ -69,13 +69,13 @@ describe('RequirePermission', () => {
   })
 
   it('renders children when anyOf matches at least one permission', () => {
-    const user = createMockUser({ cached_permissions: ['metrics.view'] })
+    const user = createMockUser({ cached_permissions: ['metrics.financial'] })
     const ctx = createMockAuthContext({ user })
 
     renderWithContext(
       ctx,
       createElement(RequirePermission, {
-        anyOf: ['bunking.view', 'metrics.view'],
+        anyOf: ['bunking.manage', 'metrics.financial'],
         children: 'AnyOf Content',
       })
     )
@@ -91,7 +91,7 @@ describe('RequirePermission', () => {
     renderWithContext(
       ctx,
       createElement(RequirePermission, {
-        permission: 'bunking.view',
+        permission: 'bunking.manage',
         children: 'Protected Content',
       })
     )
@@ -100,19 +100,19 @@ describe('RequirePermission', () => {
     expect(screen.getByRole('status')).toBeTruthy()
   })
 
-  it('shows program switcher with access message when permission denied', () => {
+  it('shows permission denied page when permission denied', () => {
     const user = createMockUser({ cached_permissions: [] })
     const ctx = createMockAuthContext({ user })
 
     renderWithContext(
       ctx,
       createElement(RequirePermission, {
-        permission: 'bunking.view',
+        permission: 'bunking.manage',
         children: 'Protected Content',
       })
     )
     expect(screen.queryByText('Protected Content')).toBeNull()
     // Should show the access denied message instead of redirecting
-    expect(screen.getByText(/don't have access/i)).toBeTruthy()
+    expect(screen.getByText(/Access Restricted/i)).toBeTruthy()
   })
 })

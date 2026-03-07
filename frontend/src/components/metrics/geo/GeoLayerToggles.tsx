@@ -3,7 +3,7 @@
  *
  * Replaces GeoCategoryTabs with simultaneous multi-layer visibility.
  * Three data layers (cities, schools, synagogues) plus region zones.
- * Admin-only toggles: source strings and gap tracking.
+ * Geo-permission-gated toggles: source strings and gap tracking.
  */
 
 import { MapPin, Building2, Heart, Map } from 'lucide-react'
@@ -20,7 +20,7 @@ export interface GeoLayerTogglesProps {
   showGaps?: boolean
   onToggleGaps?: () => void
   /** When true, shows sources and gaps toggles. Defaults to false. */
-  isAdmin?: boolean
+  hasGeoPermission?: boolean
   /** When true, disables sources/gaps toggles (not available in compare mode). */
   isComparing?: boolean
 }
@@ -47,7 +47,7 @@ export function GeoLayerToggles({
   onToggleSources,
   showGaps = false,
   onToggleGaps,
-  isAdmin = false,
+  hasGeoPermission = false,
   isComparing = false,
 }: GeoLayerTogglesProps) {
   return (
@@ -88,7 +88,7 @@ export function GeoLayerToggles({
       </label>
 
       {/* Admin-only toggles */}
-      {isAdmin && (
+      {hasGeoPermission && (
         <>
           <label
             className={`flex items-center gap-1.5 text-sm ${isComparing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}

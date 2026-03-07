@@ -7,10 +7,12 @@ needing to mock PocketBase or auth middleware.
 
 from __future__ import annotations
 
-import pytest
-from fastapi import Depends
+import inspect
 
-from bunking.auth_middleware import AuthUser
+import pytest
+
+from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.rbac.dependencies import require_admin
 from bunking.rbac.permissions import Permission
 
 
@@ -28,25 +30,25 @@ def _make_user(permissions: set[str] | None = None, is_admin: bool = False) -> A
 
 
 class TestSocialGraphPermissions:
-    """social_graph.py endpoints require bunking.view."""
+    """social_graph.py read endpoints require authentication; write endpoints require bunking.manage."""
 
-    def test_session_graph_requires_bunking_view(self) -> None:
-        """GET /api/sessions/{id}/social-graph needs bunking.view."""
+    def test_session_graph_requires_authentication(self) -> None:
+        """GET /api/sessions/{id}/social-graph needs authentication."""
         from api.routers.social_graph import get_session_social_graph
 
-        _assert_endpoint_has_permission_dep(get_session_social_graph, Permission.BUNKING_VIEW)
+        _assert_endpoint_has_auth_dep(get_session_social_graph)
 
-    def test_bunk_graph_requires_bunking_view(self) -> None:
-        """GET /api/bunks/{id}/social-graph needs bunking.view."""
+    def test_bunk_graph_requires_authentication(self) -> None:
+        """GET /api/bunks/{id}/social-graph needs authentication."""
         from api.routers.social_graph import get_bunk_social_graph
 
-        _assert_endpoint_has_permission_dep(get_bunk_social_graph, Permission.BUNKING_VIEW)
+        _assert_endpoint_has_auth_dep(get_bunk_social_graph)
 
-    def test_ego_network_requires_bunking_view(self) -> None:
-        """GET /api/persons/{id}/ego-network needs bunking.view."""
+    def test_ego_network_requires_authentication(self) -> None:
+        """GET /api/persons/{id}/ego-network needs authentication."""
         from api.routers.social_graph import get_person_ego_network
 
-        _assert_endpoint_has_permission_dep(get_person_ego_network, Permission.BUNKING_VIEW)
+        _assert_endpoint_has_auth_dep(get_person_ego_network)
 
     def test_update_position_requires_bunking_manage(self) -> None:
         """PATCH /api/sessions/{id}/campers/{id}/position needs bunking.manage."""
@@ -182,76 +184,76 @@ class TestValidationPermissions:
 
 
 class TestMetricsPermissions:
-    """metrics.py endpoints require metrics.view, except forecast which needs metrics.financial."""
+    """metrics.py read endpoints require authentication; forecast needs metrics.financial."""
 
-    def test_retention_requires_metrics_view(self) -> None:
+    def test_retention_requires_authentication(self) -> None:
         from api.routers.metrics import get_retention_metrics
 
-        _assert_endpoint_has_permission_dep(get_retention_metrics, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_retention_metrics)
 
-    def test_registration_requires_metrics_view(self) -> None:
+    def test_registration_requires_authentication(self) -> None:
         from api.routers.metrics import get_registration_metrics
 
-        _assert_endpoint_has_permission_dep(get_registration_metrics, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_registration_metrics)
 
-    def test_comparison_requires_metrics_view(self) -> None:
+    def test_comparison_requires_authentication(self) -> None:
         from api.routers.metrics import get_comparison_metrics
 
-        _assert_endpoint_has_permission_dep(get_comparison_metrics, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_comparison_metrics)
 
-    def test_historical_requires_metrics_view(self) -> None:
+    def test_historical_requires_authentication(self) -> None:
         from api.routers.metrics import get_historical_trends
 
-        _assert_endpoint_has_permission_dep(get_historical_trends, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_historical_trends)
 
-    def test_retention_trends_requires_metrics_view(self) -> None:
+    def test_retention_trends_requires_authentication(self) -> None:
         from api.routers.metrics import get_retention_trends
 
-        _assert_endpoint_has_permission_dep(get_retention_trends, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_retention_trends)
 
-    def test_waitlist_requires_metrics_view(self) -> None:
+    def test_waitlist_requires_authentication(self) -> None:
         from api.routers.metrics import get_waitlist_metrics
 
-        _assert_endpoint_has_permission_dep(get_waitlist_metrics, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_waitlist_metrics)
 
-    def test_cancellations_requires_metrics_view(self) -> None:
+    def test_cancellations_requires_authentication(self) -> None:
         from api.routers.metrics import get_cancellation_metrics
 
-        _assert_endpoint_has_permission_dep(get_cancellation_metrics, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_cancellation_metrics)
 
-    def test_drilldown_requires_metrics_view(self) -> None:
+    def test_drilldown_requires_authentication(self) -> None:
         from api.routers.metrics import get_drilldown_attendees
 
-        _assert_endpoint_has_permission_dep(get_drilldown_attendees, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_drilldown_attendees)
 
-    def test_velocity_requires_metrics_view(self) -> None:
+    def test_velocity_requires_authentication(self) -> None:
         from api.routers.metrics import get_velocity
 
-        _assert_endpoint_has_permission_dep(get_velocity, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_velocity)
 
     def test_forecast_requires_metrics_financial(self) -> None:
         from api.routers.metrics import get_forecast
 
         _assert_endpoint_has_permission_dep(get_forecast, Permission.METRICS_FINANCIAL)
 
-    def test_cache_invalidate_requires_metrics_view(self) -> None:
+    def test_cache_invalidate_requires_admin(self) -> None:
         from api.routers.metrics import invalidate_metrics_cache
 
-        _assert_endpoint_has_permission_dep(invalidate_metrics_cache, Permission.METRICS_VIEW)
+        _assert_endpoint_has_admin_dep(invalidate_metrics_cache)
 
-    def test_cache_stats_requires_metrics_view(self) -> None:
+    def test_cache_stats_requires_authentication(self) -> None:
         from api.routers.metrics import get_cache_stats
 
-        _assert_endpoint_has_permission_dep(get_cache_stats, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_cache_stats)
 
 
 class TestSessionAvailabilityPermissions:
-    """session_availability.py endpoints require metrics.view."""
+    """session_availability.py endpoints require authentication."""
 
-    def test_session_availability_requires_metrics_view(self) -> None:
+    def test_session_availability_requires_authentication(self) -> None:
         from api.routers.session_availability import get_session_availability
 
-        _assert_endpoint_has_permission_dep(get_session_availability, Permission.METRICS_VIEW)
+        _assert_endpoint_has_auth_dep(get_session_availability)
 
 
 class TestGeoPermissions:
@@ -387,34 +389,49 @@ class TestDebugPermissions:
 # ============================================================================
 
 
-def _assert_endpoint_has_permission_dep(endpoint_func: object, expected_permission: str) -> None:
-    """Assert that an endpoint function has a require_permission dependency for the given permission.
-
-    Inspects the function's type annotations and default values to find a
-    Depends(require_permission("...")) parameter matching the expected permission.
-    """
-    import inspect
-
+def _get_dependency(endpoint_func: object) -> object | None:
+    """Extract the FastAPI dependency from an endpoint function's signature."""
     sig = inspect.signature(endpoint_func)  # type: ignore[arg-type]
-
     for param in sig.parameters.values():
         default = param.default
-        if not isinstance(default, Depends.__class__):
-            # Check if it's a fastapi.params.Depends instance
-            if hasattr(default, "dependency"):
-                dep = default.dependency
-                # The dependency should be a closure from require_permission()
-                # Check if it's a function with the right closure variables
-                if callable(dep) and hasattr(dep, "__closure__") and dep.__closure__:
-                    for cell in dep.__closure__:
-                        try:
-                            cell_value = cell.cell_contents
-                            if cell_value == expected_permission:
-                                return  # Found the correct permission
-                        except ValueError:
-                            continue
+        if hasattr(default, "dependency"):
+            dep: object = default.dependency
+            return dep
+    return None
+
+
+def _assert_endpoint_has_permission_dep(endpoint_func: object, expected_permission: str) -> None:
+    """Assert that an endpoint has a require_permission dependency for the given permission."""
+    dep = _get_dependency(endpoint_func)
+    if callable(dep) and hasattr(dep, "__closure__") and dep.__closure__:
+        for cell in dep.__closure__:
+            try:
+                if cell.cell_contents == expected_permission:
+                    return
+            except ValueError:
+                continue
 
     pytest.fail(
         f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
         f'Depends(require_permission("{expected_permission}")) in its signature'
+    )
+
+
+def _assert_endpoint_has_auth_dep(endpoint_func: object) -> None:
+    """Assert that an endpoint has a get_current_user dependency."""
+    if _get_dependency(endpoint_func) is get_current_user:
+        return
+    pytest.fail(
+        f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
+        f"Depends(get_current_user) in its signature"
+    )
+
+
+def _assert_endpoint_has_admin_dep(endpoint_func: object) -> None:
+    """Assert that an endpoint has a require_admin dependency."""
+    if _get_dependency(endpoint_func) is require_admin:
+        return
+    pytest.fail(
+        f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
+        f"Depends(require_admin) in its signature"
     )

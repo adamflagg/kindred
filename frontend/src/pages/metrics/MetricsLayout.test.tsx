@@ -3,11 +3,14 @@
  * Shared layout with sticky nav that wraps metric routes
  */
 import { render, screen } from '@testing-library/react'
+import { createElement } from 'react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { describe, it, expect, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import MetricsLayout from './MetricsLayout'
 import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
+import { AuthContext } from '../../contexts/AuthContext'
+import { createMockAuthContext, createMockUser } from '../../test/test-helpers'
 
 // Mock useMetricsSessions hook
 vi.mock('../../hooks/useMetricsSessions', () => ({
@@ -45,22 +48,29 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
     isYearReady: true,
   }
 
+  const user = createMockUser({ is_admin: true })
+  const authCtx = createMockAuthContext({ user })
+
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <CurrentYearContext.Provider value={mockYearContext}>
-          <Routes>
-            <Route path="/metrics/*" element={<MetricsLayout />}>
-              <Route path="registration/*" element={<TestChild text={childText} />} />
-              <Route path="retention" element={<TestChild text="Retention" />} />
-              <Route path="retention/flow" element={<TestChild text="Session Flow" />} />
-              <Route path="retention/bunks" element={<TestChild text="Bunk Analysis" />} />
-              <Route path="trends" element={<TestChild text="Trends" />} />
-            </Route>
-          </Routes>
-        </CurrentYearContext.Provider>
-      </MemoryRouter>
-    </QueryClientProvider>
+    createElement(
+      AuthContext.Provider,
+      { value: authCtx },
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <CurrentYearContext.Provider value={mockYearContext}>
+            <Routes>
+              <Route path="/metrics/*" element={<MetricsLayout />}>
+                <Route path="registration/*" element={<TestChild text={childText} />} />
+                <Route path="retention" element={<TestChild text="Retention" />} />
+                <Route path="retention/flow" element={<TestChild text="Session Flow" />} />
+                <Route path="retention/bunks" element={<TestChild text="Bunk Analysis" />} />
+                <Route path="trends" element={<TestChild text="Trends" />} />
+              </Route>
+            </Routes>
+          </CurrentYearContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
   )
 }
 
