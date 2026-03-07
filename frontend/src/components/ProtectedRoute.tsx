@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router'
 import { useAuth } from '../contexts/AuthContext'
-import { Loader2 } from 'lucide-react'
+import { FullPageSpinner } from './FullPageSpinner'
 
 export const ProtectedRoute = () => {
   const { user, isLoading, isBypassMode } = useAuth()
@@ -10,14 +10,7 @@ export const ProtectedRoute = () => {
   // This prevents race conditions where child components (e.g., SessionList)
   // render before user is set, causing queries with `enabled: !!user` to not run
   if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="text-primary mx-auto mb-4 h-12 w-12 animate-spin" />
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      </div>
-    )
+    return <FullPageSpinner />
   }
 
   // In bypass mode, always allow access (AuthContext provides mock user)

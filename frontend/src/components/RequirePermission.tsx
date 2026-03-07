@@ -1,6 +1,6 @@
 import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
-import { Loader2 } from 'lucide-react'
+import { FullPageSpinner } from './FullPageSpinner'
 import ProgramLandingPage from '../pages/ProgramLandingPage'
 
 interface RequirePermissionProps {
@@ -18,11 +18,7 @@ export const RequirePermission = ({
   const { hasPermission, hasAnyPermission } = usePermissions()
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center" role="status">
-        <Loader2 className="text-primary h-12 w-12 animate-spin" />
-      </div>
-    )
+    return <FullPageSpinner />
   }
 
   const allowed = anyOf ? hasAnyPermission(...anyOf) : hasPermission(permission)
