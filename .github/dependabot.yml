@@ -154,7 +154,7 @@ updates:
 
   # Docker base images
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/docker"
     schedule:
       interval: "weekly"
       day: "monday"

@@ -4,31 +4,41 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from api.settings import Settings, _is_github_actions
+from api.settings import Settings, _allow_auth_bypass
 
 
-class TestIsGitHubActions:
-    """Tests for _is_github_actions function (canonical source)."""
+class TestAllowAuthBypass:
+    """Tests for _allow_auth_bypass function (canonical source)."""
 
-    def test_both_signals_required(self):
-        """Test that both CI=true and GITHUB_ACTIONS=true are required."""
+    def test_ci_both_signals_required(self):
+        """Test that both CI=true and GITHUB_ACTIONS=true allow bypass."""
         with patch.dict("os.environ", {"CI": "true", "GITHUB_ACTIONS": "true"}):
-            assert _is_github_actions() is True
+            assert _allow_auth_bypass() is True
 
-    def test_missing_ci_signal(self):
+    def test_ci_missing_ci_signal(self):
         """Test that GITHUB_ACTIONS alone is not sufficient."""
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}, clear=True):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
 
-    def test_missing_github_actions_signal(self):
+    def test_ci_missing_github_actions_signal(self):
         """Test that CI alone is not sufficient."""
         with patch.dict("os.environ", {"CI": "true"}, clear=True):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
 
     def test_neither_signal(self):
         """Test that missing both signals returns False."""
         with patch.dict("os.environ", {}, clear=True):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
+
+    def test_allow_auth_bypass_env_var(self):
+        """Test that ALLOW_AUTH_BYPASS=true allows bypass (local Docker testing)."""
+        with patch.dict("os.environ", {"ALLOW_AUTH_BYPASS": "true"}, clear=True):
+            assert _allow_auth_bypass() is True
+
+    def test_allow_auth_bypass_env_var_false(self):
+        """Test that ALLOW_AUTH_BYPASS=false does not allow bypass."""
+        with patch.dict("os.environ", {"ALLOW_AUTH_BYPASS": "false"}, clear=True):
+            assert _allow_auth_bypass() is False
 
 
 class TestGetEffectiveAuthMode:
@@ -45,11 +55,18 @@ class TestGetEffectiveAuthMode:
         """Test that Docker environments force production mode (security)."""
         with patch.dict("os.environ", {"AUTH_MODE": "bypass"}, clear=True):
             with patch("api.settings._is_docker_environment", return_value=True):
-                with patch("api.settings._is_github_actions", return_value=False):
+                with patch("api.settings._allow_auth_bypass", return_value=False):
                     settings = Settings()
-                    # Mock the instance method since it calls the module function
                     settings.is_docker = True
                     assert settings.get_effective_auth_mode() == "production"
+
+    def test_docker_allows_bypass_when_explicitly_permitted(self):
+        """Test that Docker allows bypass when auth bypass is explicitly permitted."""
+        with patch.dict("os.environ", {"AUTH_MODE": "bypass", "ALLOW_AUTH_BYPASS": "true"}, clear=True):
+            with patch("api.settings._is_docker_environment", return_value=True):
+                settings = Settings()
+                settings.is_docker = True
+                assert settings.get_effective_auth_mode() == "bypass"
 
     def test_docker_allows_bypass_in_github_actions(self):
         """Test that Docker + GitHub Actions allows bypass mode (for CI)."""
@@ -57,7 +74,6 @@ class TestGetEffectiveAuthMode:
             with patch("api.settings._is_docker_environment", return_value=True):
                 settings = Settings()
                 settings.is_docker = True
-                # _is_github_actions() will return True due to env vars
                 assert settings.get_effective_auth_mode() == "bypass"
 
     def test_production_mode_unchanged_in_docker(self):

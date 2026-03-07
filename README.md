@@ -111,18 +111,12 @@ CI runs linting and tests on every push. CD builds Docker images on version tags
 
 ## Deployment
 
+Release via GitHub Actions: **Actions → Release → Run workflow**. Uses [git-cliff](https://git-cliff.org/) for auto-versioning.
+
 ```bash
-# Preview release (shows suggested version and changelog)
-./scripts/release.sh --dry-run
-
-# Create release (validates, tags, pushes)
-./scripts/release.sh
-
 # After CD workflow completes (~15 min):
 docker compose pull && docker compose up -d
 ```
-
-The release script uses [git-cliff](https://git-cliff.org/) to analyze commits and suggest semver versions automatically.
 
 ## Documentation
 

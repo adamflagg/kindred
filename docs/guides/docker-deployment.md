@@ -4,41 +4,39 @@ This guide explains how to deploy Kindred using Docker Compose in a production e
 
 ## Architecture Overview
 
-The production deployment uses a **single-container architecture**:
+The production deployment uses a **multi-container architecture** with 4 Docker containers:
 
 ```
 Traefik (external) ─┐
                     │
                     ▼
-┌────────────────────────────────────────────────────────┐
-│  bunking container                                     │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  Caddy :8080 (reverse proxy, main entry point)   │  │
-│  │  └── Routes via docker/Caddyfile                 │  │
-│  ├──────────────────────────────────────────────────┤  │
-│  │  PocketBase :8090                                │  │
-│  │  ├── Frontend (/)                                │  │
-│  │  ├── /api/collections/*                          │  │
-│  │  ├── /api/custom/* (sync)                        │  │
-│  │  └── Admin (/_/*)                                │  │
-│  ├──────────────────────────────────────────────────┤  │
-│  │  FastAPI :8000                                   │  │
-│  │  ├── /api/solver/*                               │  │
-│  │  ├── /api/scenarios/*                            │  │
-│  │  ├── /api/social-graph/*                         │  │
-│  │  └── /api/config                                 │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  kindred-caddy :8080                                    │
+│  Reverse proxy + frontend static files                  │
+│  Routes via docker/Caddyfile                            │
+├─────────────────────────────────────────────────────────┤
+│  kindred-pocketbase :8090                               │
+│  ├── /api/collections/* (Database API)                  │
+│  ├── /api/custom/* (Go sync)                            │
+│  └── /_/* (Admin UI)                                    │
+├─────────────────────────────────────────────────────────┤
+│  kindred-api :8000                                      │
+│  ├── /api/solver/*                                      │
+│  ├── /api/scenarios/*                                   │
+│  ├── /api/social-graph/*                                │
+│  └── /api/config                                        │
+├─────────────────────────────────────────────────────────┤
+│  kindred-init (one-shot)                                │
+│  Admin user + OIDC setup on first run                   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-| Service | Port | Technology | Purpose |
-|---------|------|------------|---------|
-| **bunking** | 8080 | Caddy + Go + Python + SQLite | Combined container |
-
-**bunking** runs all three services via supervisor:
-- **Caddy (8080)**: Reverse proxy, routing (main entry point)
-- **PocketBase (8090)**: Database, auth, CampMinder sync, embedded frontend
-- **FastAPI (8000)**: Solver, social graphs, scenarios, validation
+| Container | Image | Technology | Purpose |
+|-----------|-------|------------|---------|
+| **kindred-caddy** | `ghcr.io/adamflagg/kindred-caddy` | Caddy (distroless) | Reverse proxy, frontend |
+| **kindred-pocketbase** | `ghcr.io/adamflagg/kindred-pocketbase` | Go (distroless) | Database, auth, sync |
+| **kindred-api** | `ghcr.io/adamflagg/kindred-api` | Python + Wolfi | Solver, social graphs |
+| **kindred-init** | `ghcr.io/adamflagg/kindred-init` | Go + Wolfi | One-shot admin/OIDC setup |
 
 ## Prerequisites
 
@@ -106,10 +104,10 @@ cp config/bunking_config.json config/
 ### 1. Pull and Start Services
 
 ```bash
-# Pull latest image
+# Pull latest images
 docker compose pull
 
-# Start service
+# Start all services
 docker compose up -d
 
 # Check logs
@@ -134,8 +132,8 @@ curl -X POST "http://localhost:8080/api/custom/sync/run?year=2025&service=all"
 These are internal container ports. Access via Traefik in production:
 
 - Caddy proxy: http://localhost:8080 (main entry point)
-- PocketBase: http://127.0.0.1:8090 (internal)
-- FastAPI: http://127.0.0.1:8000 (internal)
+- PocketBase: http://kindred-pocketbase:8090 (internal network)
+- FastAPI: http://kindred-api:8000 (internal network)
 
 ## Routing
 
@@ -157,7 +155,7 @@ Caddy routes requests based on path patterns (see `docker/Caddyfile`):
 - `/api/*` - All other API routes (catch-all)
 
 **Frontend:**
-- `/` - React app served from PocketBase `/pb_public`
+- `/` - React app served as static files from Caddy
 
 ## Data Management
 
@@ -165,11 +163,11 @@ Caddy routes requests based on path patterns (see `docker/Caddyfile`):
 
 ```bash
 # Create backup
-docker exec bunking \
-  sqlite3 /pb_data/data.db ".backup /pb_data/backup-$(date +%Y%m%d).db"
+docker exec kindred-pocketbase \
+  /usr/local/bin/pocketbase --dir=/pb_data backup create backup-$(date +%Y%m%d).zip
 
 # Copy backup to host
-docker cp bunking:/pb_data/backup-*.db ./backups/
+docker cp kindred-pocketbase:/pb_data/backups/ ./backups/
 ```
 
 ### Sync Schedules
@@ -188,24 +186,26 @@ curl -X POST "http://localhost:8080/api/custom/sync/attendees"
 ## Health Checks
 
 ```bash
-# Check service status
+# Check all service status
 docker compose ps
 
 # Test health (via Caddy - validates entire stack)
 curl http://localhost:8080/health
 
-# Test internal services (from inside container)
-docker exec bunking curl -s http://127.0.0.1:8090/api/health
-docker exec bunking curl -s http://127.0.0.1:8000/health
+# Test individual services
+docker exec kindred-api curl -s http://127.0.0.1:8000/health
 ```
 
-## Docker Image
+## Docker Images
 
-Kindred uses a **single Docker image**:
+Kindred uses **4 Docker images**:
 
 | Image | Purpose |
 |-------|---------|
-| `ghcr.io/adamflagg/kindred` | Combined Caddy + PocketBase + FastAPI |
+| `ghcr.io/adamflagg/kindred-caddy` | Caddy reverse proxy + frontend static files |
+| `ghcr.io/adamflagg/kindred-pocketbase` | PocketBase database + CampMinder sync |
+| `ghcr.io/adamflagg/kindred-api` | FastAPI solver, metrics, social graphs |
+| `ghcr.io/adamflagg/kindred-init` | One-shot admin user + OIDC configuration |
 
 ## CI/CD Workflow
 
@@ -215,29 +215,26 @@ Kindred uses a **single Docker image**:
 - Fast feedback (~2-3 minutes)
 
 ### CD (runs on version tags)
-- Builds Docker image
+- Builds all 4 Docker images
 - Security scanning with Trivy
-- Integration testing
+- Integration testing (full multi-container stack)
 - Pushes to GitHub Container Registry
 
 ### Creating a Release
 
-```bash
-# Preview what would be released
-./scripts/release.sh --dry-run
+Release via GitHub Actions: **Actions → Release → Run workflow**. Leave version empty for auto-bump, or enter a version to override.
 
-# Create release (runs checks, creates tag, pushes)
-./scripts/release.sh
-```
-
-### Pulling Image
+### Pulling Images
 
 ```bash
-# Pull latest image
-docker pull ghcr.io/adamflagg/kindred:latest
+# Pull all latest images
+docker compose pull
 
 # Pull specific version (Docker tags don't have 'v' prefix)
-docker pull ghcr.io/adamflagg/kindred:1.2.0
+docker pull ghcr.io/adamflagg/kindred-caddy:1.2.0
+docker pull ghcr.io/adamflagg/kindred-pocketbase:1.2.0
+docker pull ghcr.io/adamflagg/kindred-api:1.2.0
+docker pull ghcr.io/adamflagg/kindred-init:1.2.0
 ```
 
 ## Security
@@ -245,8 +242,9 @@ docker pull ghcr.io/adamflagg/kindred:1.2.0
 ### Network Isolation
 
 - Only port 8080 (Caddy) is exposed to Traefik
-- Internal services (PocketBase, FastAPI) communicate via localhost
-- All external traffic routes through Caddy
+- Internal services communicate via Docker bridge network (`kindred-internal`)
+- PocketBase and API containers are not directly accessible from outside
+- Caddy and PocketBase containers are distroless (no shell)
 
 ### Authentication
 
@@ -265,24 +263,22 @@ docker pull ghcr.io/adamflagg/kindred:1.2.0
 
 ### Service Won't Start
 
-1. Check logs: `docker compose logs bunking`
+1. Check logs: `docker compose logs` (or specific service: `docker compose logs kindred-api`)
 2. Verify environment variables in `.env`
 3. Ensure Traefik network exists: `docker network ls`
 
 ### Data Sync Failures
 
 1. Verify CampMinder credentials in `.env`
-2. Check network connectivity: `docker exec bunking ping api.campminder.com`
-3. Review sync logs: `docker compose logs bunking | grep sync`
+2. Review sync logs: `docker compose logs kindred-pocketbase | grep sync`
 
 ### Routing Issues
 
-1. Check container is healthy: `docker compose ps`
-2. Verify Caddyfile syntax: `docker exec bunking caddy validate --config /etc/caddy/Caddyfile`
-3. Test internal routing: `docker exec bunking curl -s http://127.0.0.1:8090/api/health`
+1. Check all containers are healthy: `docker compose ps`
+2. Check Caddy logs: `docker compose logs kindred-caddy`
 
 ### OAuth Not Working
 
 1. Verify OIDC_ISSUER is accessible
 2. Check redirect URI matches your domain
-3. Review PocketBase logs: `docker compose logs bunking | grep oauth`
+3. Review PocketBase logs: `docker compose logs kindred-pocketbase | grep oauth`

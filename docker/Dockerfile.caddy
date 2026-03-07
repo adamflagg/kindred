@@ -24,7 +24,7 @@ RUN npm run build
 FROM golang:1.26-alpine AS healthcheck-builder
 
 WORKDIR /build
-COPY docker/multi/healthcheck/ ./
+COPY docker/healthcheck/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o healthcheck .
 
 # =============================================================================
@@ -34,7 +34,7 @@ FROM chainguard/static:latest
 
 COPY --from=dhi.io/caddy:2 /usr/local/bin/caddy /usr/local/bin/caddy
 COPY --from=healthcheck-builder /build/healthcheck /usr/local/bin/healthcheck
-COPY docker/multi/Caddyfile /etc/caddy/Caddyfile
+COPY docker/Caddyfile /etc/caddy/Caddyfile
 
 # Frontend static files
 COPY --from=frontend-builder /app/dist /pb_public

@@ -1,28 +1,24 @@
-# Kindred CI Docker Compose Override
-# For GitHub Actions integration testing
+# Kindred Multi-Container CI Override
 # Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
-#
-# This override:
-# - Uses internal bridge network (no external Traefik network required)
-# - Exposes port 8080 directly for testing
-# - Removes Traefik labels (not needed in CI)
 
 services:
-  kindred:
-    # CI-specific environment variables (merged with base docker-compose.yml)
-    # These MUST be here because --env-file only does ${VAR} substitution,
-    # it doesn't automatically pass vars to the container
+  pocketbase:
+    environment:
+      - SKIP_CAMPMINDER=true
+  init:
+    environment:
+      - AUTH_MODE=bypass
+  api:
     environment:
       - AUTH_MODE=bypass
       - CI=true
       - GITHUB_ACTIONS=true
-    # Clear Traefik labels - not needed in CI
-    labels: []
-    # Expose port directly for testing
+  caddy:
     ports:
       - "8080:8080"
-    # Override to use internal network
+    labels: []
     networks:
+      - kindred-internal
       - kindred-ci
 
 networks:

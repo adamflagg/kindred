@@ -149,7 +149,10 @@ fi
 # 7. Shell script linting (if shellcheck installed)
 if command -v shellcheck &> /dev/null; then
     echo -n "Shell scripts (shellcheck)... "
-    if shellcheck --severity=warning scripts/*.sh scripts/**/*.sh .githooks/* docker/*.sh frontend/*.sh tests/shell/*.sh > /tmp/shellcheck_output.txt 2>&1; then
+    # Lint all shell scripts (use find to avoid glob failures on empty dirs)
+    SHELL_FILES=$(find scripts/ .githooks/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' -o -name 'pre-*' -o -name 'post-*' 2>/dev/null | sort)
+    # shellcheck disable=SC2086
+    if [ -n "$SHELL_FILES" ] && echo "$SHELL_FILES" | xargs shellcheck --severity=warning > /tmp/shellcheck_output.txt 2>&1; then
         echo -e "${GREEN}✓${NC}"
     else
         echo -e "${RED}✗${NC}"
@@ -207,15 +210,23 @@ else
 fi
 
 # 10. Dockerfile linting (if docker available)
-if command -v docker &> /dev/null && [ -f "Dockerfile" ]; then
-    echo -n "Dockerfile linting (hadolint)... "
-    if docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < Dockerfile > /tmp/hadolint_output.txt 2>&1; then
-        echo -e "${GREEN}✓${NC}"
-    else
-        echo -e "${RED}✗${NC}"
-        echo "Hadolint errors:"
-        cat /tmp/hadolint_output.txt
-        FAILED=1
+if command -v docker &> /dev/null; then
+    DOCKERFILES=(docker/Dockerfile.*)
+    if [ -e "${DOCKERFILES[0]}" ]; then
+        echo -n "Dockerfile linting (hadolint)... "
+        HADOLINT_FAILED=0
+        for df in "${DOCKERFILES[@]}"; do
+            if ! docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < "$df" > /tmp/hadolint_output.txt 2>&1; then
+                echo -e "${RED}✗ $df${NC}"
+                cat /tmp/hadolint_output.txt
+                HADOLINT_FAILED=1
+            fi
+        done
+        if [ $HADOLINT_FAILED -eq 0 ]; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            FAILED=1
+        fi
     fi
 fi
 

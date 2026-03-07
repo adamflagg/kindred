@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o pocketbase .
 FROM golang:1.26-alpine AS healthcheck-builder
 
 WORKDIR /build
-COPY docker/multi/healthcheck/ ./
+COPY docker/healthcheck/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o healthcheck .
 
 # =============================================================================

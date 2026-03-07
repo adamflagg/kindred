@@ -38,7 +38,7 @@ if curl -f -s "http://localhost:8080/health" > /dev/null; then
     echo "✓ OK"
 else
     echo "✗ FAILED"
-    docker compose -f docker-compose.local.yml logs kindred
+    docker compose -f docker-compose.local.yml logs
     exit 1
 fi
 
@@ -48,7 +48,7 @@ if curl -f -s "http://localhost:8080/api/health" > /dev/null; then
     echo "✓ OK"
 else
     echo "✗ FAILED"
-    docker compose -f docker-compose.local.yml logs kindred
+    docker compose -f docker-compose.local.yml logs
     exit 1
 fi
 
@@ -58,7 +58,7 @@ if curl -f -s "http://localhost:8080/api/solver/health" > /dev/null; then
     echo "✓ OK"
 else
     echo "✗ FAILED"
-    docker compose -f docker-compose.local.yml logs kindred
+    docker compose -f docker-compose.local.yml logs
     exit 1
 fi
 

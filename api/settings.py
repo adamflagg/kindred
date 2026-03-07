@@ -28,14 +28,19 @@ def _is_docker_environment() -> bool:
     return False
 
 
-def _is_github_actions() -> bool:
-    """Detect if running in GitHub Actions CI environment.
+def _allow_auth_bypass() -> bool:
+    """Check if auth bypass is explicitly allowed in this environment.
 
-    Returns True only when BOTH CI=true AND GITHUB_ACTIONS=true are set.
-    This dual-signal requirement prevents accidental bypass in production.
+    Returns True when:
+    - ALLOW_AUTH_BYPASS=true is set (local Docker testing), OR
+    - Both CI=true AND GITHUB_ACTIONS=true are set (GitHub Actions CI)
+
+    The dual-signal CI requirement prevents accidental bypass in production.
     """
     import os
 
+    if os.getenv("ALLOW_AUTH_BYPASS", "").lower() in ("true", "1", "yes"):
+        return True
     return os.getenv("CI") == "true" and os.getenv("GITHUB_ACTIONS") == "true"
 
 
@@ -170,13 +175,12 @@ class Settings(BaseSettings):
         return self.is_docker or self.docker_container or _is_docker_environment()
 
     def get_effective_auth_mode(self) -> str:
-        """Get effective auth mode, forcing production in Docker (except CI).
+        """Get effective auth mode, forcing production in Docker unless explicitly allowed.
 
         In Docker environments, always force production mode for security,
-        EXCEPT when running in GitHub Actions CI where bypass is allowed
-        for integration testing.
+        EXCEPT when auth bypass is explicitly allowed (CI or local testing).
         """
-        if self.is_docker_environment() and not _is_github_actions():
+        if self.is_docker_environment() and not _allow_auth_bypass():
             return "production"
         return self.auth_mode
 

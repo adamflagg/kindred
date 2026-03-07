@@ -138,15 +138,13 @@ else
     FAILED=1
 fi
 
-# Check image size
-echo -n "Image size... "
-KINDRED_SIZE=$(docker image inspect kindred:local --format='{{.Size}}' 2>/dev/null || echo 0)
-KINDRED_MB=$((KINDRED_SIZE / 1048576))
-if [ "$KINDRED_MB" -lt 1000 ]; then
-    echo -e "${GREEN}✓ (${KINDRED_MB}MB)${NC}"
-else
-    echo -e "${YELLOW}⚠ (${KINDRED_MB}MB - large!)${NC}"
-fi
+# Check image sizes
+echo "Image sizes..."
+for img in kindred-pocketbase kindred-api kindred-caddy kindred-init; do
+    SIZE=$(docker image inspect ${img}:local --format='{{.Size}}' 2>/dev/null || echo 0)
+    MB=$((SIZE / 1048576))
+    echo -e "  ${img}: ${MB}MB"
+done
 echo ""
 
 # Summary

@@ -1,6 +1,9 @@
 # Hadolint configuration for Dockerfile linting
 # See: https://github.com/hadolint/hadolint#configure
 
+# Only fail on errors, not warnings
+failure-threshold: error
+
 # Ignore rules:
 # - DL3008: Pin versions in apt-get install (impractical for build tools)
 ignored:

@@ -72,9 +72,13 @@ stage1_cmd() {
 
     echo "Checking Dockerfile syntax..."
     if command -v hadolint &> /dev/null; then
-        hadolint Dockerfile || true  # Warning only
+        for df in docker/Dockerfile.*; do
+            hadolint "$df" || true  # Warning only
+        done
     elif command -v docker &> /dev/null; then
-        docker run --rm -i hadolint/hadolint < Dockerfile || true  # Warning only
+        for df in docker/Dockerfile.*; do
+            docker run --rm -i hadolint/hadolint < "$df" || true  # Warning only
+        done
     else
         echo "hadolint not installed, skipping Dockerfile linting"
     fi
@@ -191,15 +195,11 @@ stage5_cmd() {
 
     # Check image sizes
     echo "Checking Docker image sizes..."
-    KINDRED_SIZE=$(docker image inspect kindred:local --format='{{.Size}}' 2>/dev/null || echo 0)
-
-    KINDRED_MB=$((KINDRED_SIZE / 1048576))
-
-    echo "Kindred image: ${KINDRED_MB}MB"
-
-    if [ "$KINDRED_MB" -gt 1000 ]; then
-        echo -e "${YELLOW}Warning: Kindred image is larger than 1GB${NC}"
-    fi
+    for img in kindred-pocketbase kindred-api kindred-caddy kindred-init; do
+        SIZE=$(docker image inspect ${img}:local --format='{{.Size}}' 2>/dev/null || echo 0)
+        MB=$((SIZE / 1048576))
+        echo "  ${img}: ${MB}MB"
+    done
 
     # Cleanup
     docker compose -f docker-compose.local.yml down -v || return 1
