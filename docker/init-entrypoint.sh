@@ -76,7 +76,7 @@ if [ -n "${OIDC_ISSUER}" ] && [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_
     log_info "Discovered OIDC endpoints"
 
     # Patch OAuth2 config (idempotent)
-    OAUTH_CONFIG="{\"oauth2\":{\"enabled\":true,\"providers\":[{\"name\":\"oidc\",\"displayName\":\"Pocket ID\",\"clientId\":\"${OIDC_CLIENT_ID}\",\"clientSecret\":\"${OIDC_CLIENT_SECRET}\",\"authURL\":\"${OIDC_AUTH_URL}\",\"tokenURL\":\"${OIDC_TOKEN_URL}\",\"userURL\":\"${OIDC_USERINFO_URL}\",\"pkce\":true,\"enabled\":true,\"scopes\":[\"openid\",\"email\",\"profile\"]}]}}"
+    OAUTH_CONFIG="{\"oauth2\":{\"enabled\":true,\"providers\":[{\"name\":\"oidc\",\"displayName\":\"Pocket ID\",\"clientId\":\"${OIDC_CLIENT_ID}\",\"clientSecret\":\"${OIDC_CLIENT_SECRET}\",\"authURL\":\"${OIDC_AUTH_URL}\",\"tokenURL\":\"${OIDC_TOKEN_URL}\",\"userURL\":\"${OIDC_USERINFO_URL}\",\"pkce\":true,\"enabled\":true,\"scopes\":[\"openid\",\"email\",\"profile\",\"groups\"]}]}}"
 
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
         -X PATCH \
