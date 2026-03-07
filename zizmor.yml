@@ -1,0 +1,43 @@
+# zizmor configuration - GitHub Actions security auditor
+# https://docs.zizmor.sh/configuration
+
+rules:
+  self-hosted-runner:
+    ignore:
+      - ci.yml
+      - cd.yml
+      - claude.yml
+      - release.yml
+      - docs-check.yml
+      - setup-labels.yml
+      - dependabot-auto-merge.yml
+
+  undocumented-permissions:
+    ignore:
+      - ci.yml
+      - cd.yml
+      - claude.yml
+      - release.yml
+      - docs-check.yml
+      - setup-labels.yml
+      - dependabot-auto-merge.yml
+
+  artipacked:
+    # claude.yml: claude-code-action needs credentials to push commits to PRs
+    # release.yml: pushes tags via git push, needs credentials
+    ignore:
+      - claude.yml
+      - release.yml
+
+  cache-poisoning:
+    # CI never publishes release artifacts - caching is internal only
+    ignore:
+      - ci.yml
+      - cd.yml
+
+  bot-conditions:
+    # dependabot-auto-merge.yml: actor check is an optimization gate;
+    # the actual validation is done by dependabot/fetch-metadata which
+    # verifies the PR was genuinely created by Dependabot
+    ignore:
+      - dependabot-auto-merge.yml
