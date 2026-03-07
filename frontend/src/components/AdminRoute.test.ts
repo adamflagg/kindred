@@ -29,13 +29,13 @@ describe('AdminRoute', () => {
     expect(screen.getByText('Admin Content')).toBeTruthy()
   })
 
-  it('shows restricted program switcher when user is not admin', () => {
+  it('shows permission denied page when user is not admin', () => {
     const user = createMockUser({ is_admin: false })
     const ctx = createMockAuthContext({ user })
 
     renderWithContext(ctx, createElement(AdminRoute, null, 'Admin Content'))
     expect(screen.queryByText('Admin Content')).toBeNull()
-    expect(screen.getByText(/don't have access/i)).toBeTruthy()
+    expect(screen.getByText(/Access Restricted/i)).toBeTruthy()
   })
 
   it('shows loading spinner when auth is loading', () => {

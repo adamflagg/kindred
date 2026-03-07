@@ -10,25 +10,19 @@ Add new permissions here when adding new gated features.
 class Permission:
     """Permission codenames. Used in backend checks and exposed to frontend via API."""
 
-    BUNKING_VIEW = "bunking.view"
     BUNKING_MANAGE = "bunking.manage"
-    METRICS_VIEW = "metrics.view"
     METRICS_FINANCIAL = "metrics.financial"
     METRICS_GEO = "metrics.geo"
     SYNC_RUN = "sync.run"
-    SOLVER_CONFIGURE = "solver.configure"
     USERS_MANAGE = "users.manage"
 
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(getattr(Permission, attr) for attr in dir(Permission) if attr.isupper())
 
 PERMISSION_DESCRIPTIONS: dict[str, str] = {
-    Permission.BUNKING_VIEW: "View board layout, camper lists, social graphs",
     Permission.BUNKING_MANAGE: "Manage requests, scenarios, solver runs",
-    Permission.METRICS_VIEW: "View registration and retention dashboards",
     Permission.METRICS_FINANCIAL: "View financial projections and revenue data",
     Permission.METRICS_GEO: "View and manage geographic data",
     Permission.SYNC_RUN: "Run CampMinder syncs",
-    Permission.SOLVER_CONFIGURE: "Adjust solver weights and parameters",
     Permission.USERS_MANAGE: "Assign roles and manage users",
 }

@@ -11,25 +11,19 @@ class TestPermissionConstants:
 
     def test_expected_permissions_exist(self):
         expected = {
-            "bunking.view",
             "bunking.manage",
-            "metrics.view",
             "metrics.financial",
             "metrics.geo",
             "sync.run",
-            "solver.configure",
             "users.manage",
         }
         assert expected == ALL_PERMISSIONS
 
     def test_permission_class_attributes_match_values(self):
-        assert Permission.BUNKING_VIEW == "bunking.view"
         assert Permission.BUNKING_MANAGE == "bunking.manage"
-        assert Permission.METRICS_VIEW == "metrics.view"
         assert Permission.METRICS_FINANCIAL == "metrics.financial"
         assert Permission.METRICS_GEO == "metrics.geo"
         assert Permission.SYNC_RUN == "sync.run"
-        assert Permission.SOLVER_CONFIGURE == "solver.configure"
         assert Permission.USERS_MANAGE == "users.manage"
 
     def test_no_duplicate_values(self):

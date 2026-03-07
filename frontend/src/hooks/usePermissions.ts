@@ -7,7 +7,7 @@
  *
  * Usage:
  *   const { hasPermission, hasAnyPermission, isAdmin } = usePermissions()
- *   if (hasPermission('bunking.view')) { ... }
+ *   if (hasPermission('bunking.manage')) { ... }
  */
 import { useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'

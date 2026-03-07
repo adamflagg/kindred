@@ -235,7 +235,7 @@ export const AppLayout = () => {
 
               {/* Desktop navigation */}
               <div className="hidden sm:flex sm:gap-1">
-                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_VIEW) && (
+                {activeProgram === 'summer' && (
                   <Link
                     to="/summer/sessions"
                     className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
@@ -243,7 +243,7 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && hasPermission(Permission.METRICS_VIEW) && (
+                {activeProgram === 'metrics' && (
                   <Link
                     to="/metrics"
                     className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
@@ -456,7 +456,7 @@ export const AppLayout = () => {
 
               {/* Navigation Items */}
               <div className="space-y-1">
-                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_VIEW) && (
+                {activeProgram === 'summer' && (
                   <Link
                     to="/summer/sessions"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
@@ -469,7 +469,7 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && hasPermission(Permission.METRICS_VIEW) && (
+                {activeProgram === 'metrics' && (
                   <Link
                     to="/metrics"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
