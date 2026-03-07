@@ -34,11 +34,11 @@ func hasGroup(rawUser map[string]any, group string) bool {
 }
 
 // RegisterOIDCHooks registers the OAuth2 login hook that syncs is_admin
-// from OIDC group claims. Reads OIDC_ADMIN_GROUP env var at call time.
+// from OIDC group claims. Reads ADMIN_GROUP_NAME env var at call time.
 func RegisterOIDCHooks(app *pocketbase.PocketBase) {
-	adminGroup := os.Getenv("OIDC_ADMIN_GROUP")
+	adminGroup := os.Getenv("ADMIN_GROUP_NAME")
 	if adminGroup == "" {
-		slog.Info("OIDC_ADMIN_GROUP not set, skipping OIDC admin sync hook")
+		slog.Info("ADMIN_GROUP_NAME not set, skipping OIDC admin sync hook")
 		return
 	}
 

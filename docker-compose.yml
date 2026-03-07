@@ -25,6 +25,7 @@ services:
       - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
       - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID:-}
       - GOOGLE_SERVICE_ACCOUNT_KEY_FILE=${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-/config/google_sheets.json}
+      - ADMIN_GROUP_NAME=${ADMIN_GROUP_NAME:-}
       - IS_DOCKER=true
       - TZ=${TZ:-America/Los_Angeles}
     healthcheck:
