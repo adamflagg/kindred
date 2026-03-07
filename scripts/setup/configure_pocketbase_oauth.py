@@ -197,7 +197,7 @@ def configure_oauth2(token: str, endpoints: dict[str, str]) -> bool:
                 "userURL": endpoints["userinfo_url"],
                 "pkce": True,
                 "enabled": True,
-                "scopes": ["openid", "email", "profile"],
+                "scopes": ["openid", "email", "profile", "groups"],
             }
         ],
     }

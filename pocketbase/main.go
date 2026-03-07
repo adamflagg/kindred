@@ -15,6 +15,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/jsvm"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"github.com/pocketbase/pocketbase/tools/auth"
 	"github.com/pocketbase/pocketbase/tools/hook"
 
 	// Import our packages
@@ -22,6 +23,19 @@ import (
 	"github.com/camp/kindred/pocketbase/rbac"
 	"github.com/camp/kindred/pocketbase/sync"
 )
+
+func init() {
+	// Override the OIDC provider factories to include the "groups" scope.
+	// PocketBase's OAuth2ProviderConfig has no scopes field, so the only way
+	// to request additional scopes is to replace the provider factory.
+	for _, name := range []string{auth.NameOIDC, auth.NameOIDC + "2", auth.NameOIDC + "3"} {
+		auth.Providers[name] = func() auth.Provider {
+			p := auth.NewOIDCProvider()
+			p.SetScopes([]string{"openid", "email", "profile", "groups"})
+			return p
+		}
+	}
+}
 
 func main() {
 	// Initialize unified logging format
