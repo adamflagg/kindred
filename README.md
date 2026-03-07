@@ -6,6 +6,7 @@ A cabin assignment system that puts relationships first. Using constraint satisf
 
 [![CI](https://github.com/adamflagg/kindred/actions/workflows/ci.yml/badge.svg)](https://github.com/adamflagg/kindred/actions/workflows/ci.yml)
 [![CD](https://github.com/adamflagg/kindred/actions/workflows/cd.yml/badge.svg?event=release)](https://github.com/adamflagg/kindred/actions/workflows/cd.yml)
+[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/adamflagg/kindred?utm_source=oss&utm_medium=github&utm_campaign=adamflagg%2Fkindred&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
 
 ## Quick Start
 
