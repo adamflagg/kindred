@@ -58,7 +58,6 @@ func RegisterOIDCHooks(app *pocketbase.PocketBase) {
 			}
 			e.CreateData["is_admin"] = isAdmin
 			slog.Info("OIDC new user admin sync",
-				"email", e.OAuth2User.Email,
 				"is_admin", isAdmin,
 			)
 		}

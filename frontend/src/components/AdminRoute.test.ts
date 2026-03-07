@@ -25,7 +25,7 @@ describe('AdminRoute', () => {
     const user = createMockUser({ is_admin: true })
     const ctx = createMockAuthContext({ user })
 
-    renderWithContext(ctx, createElement(AdminRoute, { children: 'Admin Content' }))
+    renderWithContext(ctx, createElement(AdminRoute, null, 'Admin Content'))
     expect(screen.getByText('Admin Content')).toBeTruthy()
   })
 
@@ -33,7 +33,7 @@ describe('AdminRoute', () => {
     const user = createMockUser({ is_admin: false })
     const ctx = createMockAuthContext({ user })
 
-    renderWithContext(ctx, createElement(AdminRoute, { children: 'Admin Content' }))
+    renderWithContext(ctx, createElement(AdminRoute, null, 'Admin Content'))
     expect(screen.queryByText('Admin Content')).toBeNull()
     expect(screen.getByText(/don't have access/i)).toBeTruthy()
   })
@@ -44,7 +44,7 @@ describe('AdminRoute', () => {
       isLoading: true,
     }
 
-    renderWithContext(ctx, createElement(AdminRoute, { children: 'Admin Content' }))
+    renderWithContext(ctx, createElement(AdminRoute, null, 'Admin Content'))
     expect(screen.queryByText('Admin Content')).toBeNull()
     expect(screen.getByRole('status')).toBeTruthy()
   })
@@ -52,7 +52,7 @@ describe('AdminRoute', () => {
   it('renders children in bypass mode', () => {
     const ctx = createMockAuthContext({ user: null, isBypassMode: true })
 
-    renderWithContext(ctx, createElement(AdminRoute, { children: 'Bypass Content' }))
+    renderWithContext(ctx, createElement(AdminRoute, null, 'Bypass Content'))
     expect(screen.getByText('Bypass Content')).toBeTruthy()
   })
 })
