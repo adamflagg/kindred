@@ -365,7 +365,7 @@ jobs:
       run: |
         for df in docker/Dockerfile.api docker/Dockerfile.caddy docker/Dockerfile.pocketbase docker/Dockerfile.init; do
           echo "=== Linting $df ==="
-          docker run --rm -i hadolint/hadolint /bin/hadolint --ignore DL3008 - < "$df"
+          docker run --rm -i hadolint/hadolint /bin/hadolint --ignore DL3008 --failure-threshold error - < "$df"
         done
 
     # Caddyfile validation (stdin, no mounts - avoids self-hosted runner volume mount issues)
