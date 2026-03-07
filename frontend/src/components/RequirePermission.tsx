@@ -19,7 +19,11 @@ export const RequirePermission = (props: RequirePermissionProps) => {
     return <FullPageSpinner />
   }
 
-  const allowed = anyOf ? hasAnyPermission(...anyOf) : permission ? hasPermission(permission) : false
+  const allowed = anyOf
+    ? hasAnyPermission(...anyOf)
+    : permission
+      ? hasPermission(permission)
+      : false
 
   if (!allowed) {
     return <ProgramLandingPage restricted />
