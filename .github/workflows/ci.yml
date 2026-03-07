@@ -123,6 +123,7 @@ jobs:
       tests: ${{ steps.filter.outputs.tests }}
       scripts: ${{ steps.filter.outputs.scripts }}
       docker: ${{ steps.filter.outputs.docker }}
+      actions: ${{ steps.filter.outputs.actions }}
     steps:
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -162,6 +163,10 @@ jobs:
             - 'docker/**'
             - 'docker-compose*.yml'
             - '.hadolint.yaml'
+          actions:
+            - '.github/workflows/**'
+            - '.github/actions/**'
+            - '.zizmor.toml'
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
   secret-scan:
@@ -374,6 +379,30 @@ jobs:
         docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < docker/Caddyfile > /dev/null
         docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < frontend/Caddyfile > /dev/null
 
+  # GitHub Actions security and correctness linting
+  security-lint:
+    name: Actions Security Lint
+    needs: detect-changes
+    if: needs.detect-changes.outputs.actions == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Install and run actionlint
+      run: |
+        bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        echo "=== actionlint ==="
+        ./actionlint -color
+
+    - name: Install and run zizmor
+      run: |
+        pipx install zizmor
+        echo "=== zizmor ==="
+        zizmor .
+
   # Run tests in parallel with lint jobs
   tests:
     name: Run Tests
@@ -556,7 +585,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, tests, dependency-submission]
+    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests, dependency-submission]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -592,6 +621,10 @@ jobs:
         fi
         if [ "${{ needs.docker-lint.result }}" != "success" ] && [ "${{ needs.docker-lint.result }}" != "skipped" ]; then
           echo "❌ Docker linting failed!"
+          exit 1
+        fi
+        if [ "${{ needs.security-lint.result }}" != "success" ] && [ "${{ needs.security-lint.result }}" != "skipped" ]; then
+          echo "Actions security lint failed!"
           exit 1
         fi
         if [ "${{ needs.tests.result }}" != "success" ] && [ "${{ needs.tests.result }}" != "skipped" ]; then
