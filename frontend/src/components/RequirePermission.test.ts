@@ -75,10 +75,9 @@ describe('RequirePermission', () => {
     renderWithContext(
       ctx,
       createElement(RequirePermission, {
-        permission: '',
         anyOf: ['bunking.view', 'metrics.view'],
         children: 'AnyOf Content',
-      })
+      } as any)
     )
     expect(screen.getByText('AnyOf Content')).toBeTruthy()
   })
