@@ -25,7 +25,7 @@ migrate((app) => {
         }
         app.delete(records[0])
       }
-    } catch (e) {
+    } catch (_e) {
       // Role may not exist if seed migration was already modified
     }
   }
@@ -45,7 +45,7 @@ migrate((app) => {
         records[0].set("permissions", permissions)
         app.save(records[0])
       }
-    } catch (e) {
+    } catch (_e) {
       // Role may not exist
     }
   }
@@ -87,7 +87,7 @@ migrate((app) => {
         records[0].set("permissions", permissions)
         app.save(records[0])
       }
-    } catch (e) {
+    } catch (_e) {
       // noop
     }
   }
