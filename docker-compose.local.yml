@@ -109,9 +109,8 @@ services:
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_MODEL=${AI_MODEL:-}
       - AUTH_MODE=${AUTH_MODE:-bypass}
-      # CI signals allow AUTH_MODE=bypass in Docker (otherwise forced to production)
-      - CI=true
-      - GITHUB_ACTIONS=true
+      # Allow bypass mode in local Docker (without faking CI signals)
+      - ALLOW_AUTH_BYPASS=true
       - TZ=${TZ:-America/Los_Angeles}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     healthcheck:

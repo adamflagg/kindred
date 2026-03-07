@@ -71,16 +71,17 @@ stage1_cmd() {
     (cd pocketbase && go vet ./... && go build -o /dev/null ./...) || return 1
 
     echo "Checking Dockerfile syntax..."
-    for df in docker/Dockerfile.*; do
-        if command -v hadolint &> /dev/null; then
+    if command -v hadolint &> /dev/null; then
+        for df in docker/Dockerfile.*; do
             hadolint "$df" || true  # Warning only
-        elif command -v docker &> /dev/null; then
+        done
+    elif command -v docker &> /dev/null; then
+        for df in docker/Dockerfile.*; do
             docker run --rm -i hadolint/hadolint < "$df" || true  # Warning only
-        else
-            echo "hadolint not installed, skipping Dockerfile linting"
-            break
-        fi
-    done
+        done
+    else
+        echo "hadolint not installed, skipping Dockerfile linting"
+    fi
 
     return 0
 }

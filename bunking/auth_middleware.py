@@ -18,7 +18,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
-from api.settings import _is_github_actions
+from api.settings import _allow_auth_bypass
 
 from .jwt_auth import JWTValidator, PocketBaseTokenValidator, extract_bearer_token
 
@@ -88,12 +88,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             raise ValueError(f"Invalid AUTH_MODE: {auth_mode}. Must be bypass or production")
 
         # Security: Block bypass mode in Docker containers (production deployments)
-        # Exception: Allow bypass in GitHub Actions CI for integration testing
+        # Exception: Allow bypass when explicitly permitted (CI or local testing)
         if self.auth_mode == "bypass" and _is_docker_environment():
-            if _is_github_actions():
+            if _allow_auth_bypass():
                 logger.warning(
-                    "AUTH_MODE=bypass allowed in Docker (GitHub Actions CI detected). "
-                    "This is safe for CI but should never occur in production."
+                    "AUTH_MODE=bypass allowed in Docker (auth bypass explicitly permitted). "
+                    "This is safe for CI/local testing but should never occur in production."
                 )
             else:
                 raise ValueError(

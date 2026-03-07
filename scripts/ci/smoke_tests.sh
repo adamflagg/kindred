@@ -61,11 +61,12 @@ else
     FAILED=1
 fi
 
-# 7. Check memory usage (per container)
+# 7. Check memory usage (all containers in a single docker stats call)
 echo "Memory usage check..."
 TOTAL_MEM=0
-for container in kindred-pocketbase kindred-api kindred-caddy; do
-    MEM_RAW=$(docker stats --no-stream --format "{{.MemUsage}}" "$container" 2>/dev/null | cut -d'/' -f1 | tr -d ' ')
+while IFS= read -r line; do
+    CONTAINER=$(echo "$line" | awk '{print $1}')
+    MEM_RAW=$(echo "$line" | awk '{print $2}')
     if [[ "$MEM_RAW" == *"GiB"* ]]; then
         MEM=$(echo "$MEM_RAW" | sed 's/GiB//' | awk '{printf "%.0f", $1 * 1024}')
     elif [[ "$MEM_RAW" == *"MiB"* ]]; then
@@ -73,9 +74,9 @@ for container in kindred-pocketbase kindred-api kindred-caddy; do
     else
         MEM=0
     fi
-    echo -e "  ${container}: ${MEM}MB"
+    echo -e "  ${CONTAINER}: ${MEM}MB"
     TOTAL_MEM=$((TOTAL_MEM + MEM))
-done
+done < <(docker stats --no-stream --format "{{.Name}} {{.MemUsage}}" kindred-pocketbase kindred-api kindred-caddy 2>/dev/null | sed 's|/.*||')
 
 if [ "$TOTAL_MEM" -gt 0 ] && [ "$TOTAL_MEM" -lt 500 ]; then
     echo -e "${GREEN}✓ Total: ${TOTAL_MEM}MB${NC}"

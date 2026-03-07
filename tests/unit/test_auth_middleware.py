@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.settings import _is_github_actions
+from api.settings import _allow_auth_bypass
 from bunking.auth_middleware import (
     AuthMiddleware,
     AuthUser,
@@ -82,33 +82,38 @@ class TestIsDockerEnvironment:
                 assert _is_docker_environment() is True
 
 
-class TestIsGitHubActions:
-    """Tests for _is_github_actions function."""
+class TestAllowAuthBypass:
+    """Tests for _allow_auth_bypass function."""
 
-    def test_github_actions_both_signals_present(self):
-        """Test that both CI=true and GITHUB_ACTIONS=true are required."""
+    def test_ci_both_signals_present(self):
+        """Test that both CI=true and GITHUB_ACTIONS=true allow bypass."""
         with patch.dict("os.environ", {"CI": "true", "GITHUB_ACTIONS": "true"}):
-            assert _is_github_actions() is True
+            assert _allow_auth_bypass() is True
 
-    def test_github_actions_missing_ci(self):
+    def test_ci_missing_ci(self):
         """Test that GITHUB_ACTIONS alone is not sufficient."""
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}, clear=True):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
 
-    def test_github_actions_missing_github_actions(self):
+    def test_ci_missing_github_actions(self):
         """Test that CI alone is not sufficient."""
         with patch.dict("os.environ", {"CI": "true"}, clear=True):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
 
-    def test_github_actions_neither_signal(self):
+    def test_neither_signal(self):
         """Test that missing both signals returns False."""
         with patch.dict("os.environ", {}, clear=True):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
 
-    def test_github_actions_wrong_values(self):
-        """Test that values must be exactly 'true'."""
+    def test_ci_wrong_values(self):
+        """Test that CI values must be exactly 'true'."""
         with patch.dict("os.environ", {"CI": "yes", "GITHUB_ACTIONS": "1"}):
-            assert _is_github_actions() is False
+            assert _allow_auth_bypass() is False
+
+    def test_allow_auth_bypass_env_var(self):
+        """Test that ALLOW_AUTH_BYPASS=true allows bypass (local Docker testing)."""
+        with patch.dict("os.environ", {"ALLOW_AUTH_BYPASS": "true"}, clear=True):
+            assert _allow_auth_bypass() is True
 
 
 class TestAuthMiddlewareInit:
@@ -135,21 +140,21 @@ class TestAuthMiddlewareInit:
                 AuthMiddleware(app, "invalid_mode", "admin")
 
     def test_init_bypass_blocked_in_docker(self):
-        """Test that bypass mode is blocked in Docker (non-CI)."""
+        """Test that bypass mode is blocked in Docker when not explicitly allowed."""
         app = MagicMock()
 
         with patch("bunking.auth_middleware._is_docker_environment", return_value=True):
-            with patch("bunking.auth_middleware._is_github_actions", return_value=False):
+            with patch("bunking.auth_middleware._allow_auth_bypass", return_value=False):
                 with pytest.raises(ValueError, match="SECURITY ERROR"):
                     AuthMiddleware(app, "bypass", "admin")
 
-    def test_init_bypass_allowed_in_docker_when_github_actions(self):
-        """Test that bypass mode is allowed in Docker when in GitHub Actions CI."""
+    def test_init_bypass_allowed_in_docker_when_explicitly_permitted(self):
+        """Test that bypass mode is allowed in Docker when auth bypass is explicitly permitted."""
         app = MagicMock()
 
         with patch("bunking.auth_middleware._is_docker_environment", return_value=True):
-            with patch("bunking.auth_middleware._is_github_actions", return_value=True):
-                # Should NOT raise - bypass allowed in CI
+            with patch("bunking.auth_middleware._allow_auth_bypass", return_value=True):
+                # Should NOT raise - bypass explicitly allowed
                 middleware = AuthMiddleware(app, "bypass", "admin")
                 assert middleware.auth_mode == "bypass"
 

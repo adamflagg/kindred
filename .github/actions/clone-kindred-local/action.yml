@@ -1,0 +1,33 @@
+name: Clone kindred-local
+description: Clone private config repo and copy branding assets to expected locations
+
+inputs:
+  deploy-key:
+    description: SSH deploy key for kindred-local repo
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Clone and copy private config
+      shell: bash
+      env:
+        DEPLOY_KEY: ${{ inputs.deploy-key }}
+      run: |
+        if [ -n "$DEPLOY_KEY" ]; then
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
+
+          # Copy files to expected locations
+          cp /tmp/kindred-local/config/* config/ 2>/dev/null || true
+          cp -r /tmp/kindred-local/local . 2>/dev/null || true
+          cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
+
+          rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
+          echo "Private config loaded"
+        else
+          echo "Deploy key not provided - using default branding"
+        fi

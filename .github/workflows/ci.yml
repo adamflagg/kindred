@@ -360,6 +360,7 @@ jobs:
       uses: actions/checkout@v6
 
     # Dockerfile linting (stdin, no mounts - avoids self-hosted runner volume mount issues)
+    # Each file needs its own docker run because hadolint reads from stdin (< "$df")
     - name: Dockerfile linting (hadolint)
       run: |
         for df in docker/Dockerfile.api docker/Dockerfile.caddy docker/Dockerfile.pocketbase docker/Dockerfile.init; do

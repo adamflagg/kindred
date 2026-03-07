@@ -269,26 +269,9 @@ jobs:
       uses: actions/checkout@v6
 
     - name: Clone private config
-      env:
-        DEPLOY_KEY: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
-      run: |
-        if [ -n "$DEPLOY_KEY" ]; then
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
-
-          # Copy files to expected locations
-          cp /tmp/kindred-local/config/* config/ 2>/dev/null || true
-          cp -r /tmp/kindred-local/local . 2>/dev/null || true
-          cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
-
-          rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
-          echo "Private config loaded"
-        else
-          echo "KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
-        fi
+      uses: ./.github/actions/clone-kindred-local
+      with:
+        deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Setup Python
       uses: actions/setup-python@v6
@@ -391,26 +374,9 @@ jobs:
 
     - name: Clone private config for branding assets
       if: steps.check.outputs.build == 'true'
-      env:
-        DEPLOY_KEY: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
-      run: |
-        if [ -n "$DEPLOY_KEY" ]; then
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
-
-          # Copy files to expected locations
-          cp /tmp/kindred-local/config/* config/ 2>/dev/null || true
-          cp -r /tmp/kindred-local/local . 2>/dev/null || true
-          cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
-
-          rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
-          echo "Private config loaded - branding assets available"
-        else
-          echo "KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
-        fi
+      uses: ./.github/actions/clone-kindred-local
+      with:
+        deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Prepare local assets for Docker build
       if: steps.check.outputs.build == 'true'
@@ -625,52 +591,23 @@ jobs:
         sudo rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
     # === Security Scan (run before push) ===
-    # Scan the two images with custom code (caddy has frontend, api has Python deps)
-    # PocketBase and init are distroless/minimal - lower risk
-    - name: Run Trivy vulnerability scanner (Caddy)
+    - name: Install Trivy
       if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-caddy:test
-        version: 'v0.68.2'
-        format: 'sarif'
-        output: 'trivy-results-kindred-caddy.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
+      run: |
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.68.2
 
-    - name: Run Trivy vulnerability scanner (API)
+    - name: Scan all images with Trivy
       if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-api:test
-        version: 'v0.68.2'
-        format: 'sarif'
-        output: 'trivy-results-kindred-api.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
+      run: |
+        for IMAGE in kindred-caddy kindred-api kindred-pocketbase kindred-init; do
+          echo "=== Scanning $IMAGE ==="
+          trivy image \
+            --format sarif --output "trivy-results-${IMAGE}.sarif" \
+            --severity CRITICAL,HIGH \
+            "${{ env.REGISTRY }}/${{ env.USERNAME }}/${IMAGE}:test" || true
+        done
 
-    - name: Run Trivy vulnerability scanner (PocketBase)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-pocketbase:test
-        version: 'v0.68.2'
-        format: 'sarif'
-        output: 'trivy-results-kindred-pocketbase.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
-
-    - name: Run Trivy vulnerability scanner (Init)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-init:test
-        version: 'v0.68.2'
-        format: 'sarif'
-        output: 'trivy-results-kindred-init.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
-
+    # upload-sarif requires separate steps per category (GitHub Actions limitation)
     - name: Upload Trivy results - Caddy
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
