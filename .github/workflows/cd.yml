@@ -57,7 +57,7 @@ jobs:
       initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
 
@@ -107,7 +107,7 @@ jobs:
         fi
 
     - name: Check for file changes
-      uses: dorny/paths-filter@v3
+      uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
       id: filter
       with:
         base: ${{ steps.get-base-sha.outputs.base_sha }}
@@ -266,7 +266,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Clone private config
       uses: ./.github/actions/clone-kindred-local
@@ -274,15 +274,15 @@ jobs:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
       with:
         node-version: '22'
         cache: 'npm'
@@ -370,7 +370,7 @@ jobs:
 
     - name: Checkout code
       if: steps.check.outputs.build == 'true'
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Clone private config for branding assets
       if: steps.check.outputs.build == 'true'
@@ -393,7 +393,7 @@ jobs:
 
     - name: Log in to GitHub Container Registry
       if: steps.check.outputs.build == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -401,7 +401,7 @@ jobs:
 
     - name: Log in to Docker Hardened Images registry
       if: steps.check.outputs.build == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         registry: dhi.io
         username: ${{ secrets.DHI_USERNAME }}
@@ -672,7 +672,7 @@ jobs:
     - name: Upload Trivy results - Caddy
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-caddy.sarif'
         category: 'trivy-kindred-caddy'
@@ -682,7 +682,7 @@ jobs:
     - name: Upload Trivy results - API
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-api.sarif'
         category: 'trivy-kindred-api'
@@ -692,7 +692,7 @@ jobs:
     - name: Upload Trivy results - PocketBase
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-pocketbase.sarif'
         category: 'trivy-kindred-pocketbase'
@@ -702,7 +702,7 @@ jobs:
     - name: Upload Trivy results - Init
       if: steps.check.outputs.build == 'true'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
         sarif_file: 'trivy-results-kindred-init.sarif'
         category: 'trivy-kindred-init'
@@ -799,12 +799,12 @@ jobs:
       contents: write
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0  # Need full history for git-cliff
 
     - name: Install git-cliff
-      uses: kenji-miyake/setup-git-cliff@v2
+      uses: kenji-miyake/setup-git-cliff@2778609c643a39a2576c4bae2e493b855eb4aee8 # v2
 
     - name: Generate changelog
       id: changelog
@@ -829,7 +829,7 @@ jobs:
         cat RELEASE_NOTES.md
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
       with:
         body_path: RELEASE_NOTES.md
         generate_release_notes: false

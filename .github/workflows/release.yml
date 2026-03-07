@@ -18,7 +18,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_TOKEN }}
@@ -28,7 +28,7 @@ jobs:
         git config user.name "adamflagg"
         git config user.email "115844481+adamflagg@users.noreply.github.com"
 
-    - uses: kenji-miyake/setup-git-cliff@v2
+    - uses: kenji-miyake/setup-git-cliff@2778609c643a39a2576c4bae2e493b855eb4aee8 # v2
 
     - name: Calculate version
       id: version
