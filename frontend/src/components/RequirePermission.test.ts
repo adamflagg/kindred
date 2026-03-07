@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { createElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { AuthContext } from '../contexts/AuthContext'
+import { ProgramProvider } from '../contexts/ProgramContext'
 import { RequirePermission } from './RequirePermission'
 import type { RecordModel } from 'pocketbase'
 
@@ -40,7 +41,11 @@ function renderWithContext(
   element: React.ReactNode
 ) {
   const wrapper = ({ children }: { children: React.ReactNode }) =>
-    createElement(AuthContext.Provider, { value: ctx }, createElement(MemoryRouter, null, children))
+    createElement(
+      AuthContext.Provider,
+      { value: ctx },
+      createElement(MemoryRouter, null, createElement(ProgramProvider, null, children))
+    )
   return render(element, { wrapper })
 }
 
