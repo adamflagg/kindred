@@ -63,7 +63,8 @@ func RegisterOIDCHooks(app *pocketbase.PocketBase) {
 			)
 		}
 
-		// For existing users: update record directly and save
+		// For existing users: explicit Save() required because PocketBase only
+		// updates the external auth link during OAuth2 login, not the user record.
 		if e.Record != nil && !e.IsNewRecord {
 			currentAdmin := e.Record.GetBool("is_admin")
 			if currentAdmin != isAdmin {
