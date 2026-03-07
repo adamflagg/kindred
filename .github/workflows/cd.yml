@@ -633,7 +633,7 @@ jobs:
       if: steps.check.outputs.build == 'true'
       run: |
         # Install Trivy CLI
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.62.1
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.69.3
         trivy version
 
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
