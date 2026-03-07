@@ -10,7 +10,6 @@ from __future__ import annotations
 import inspect
 
 import pytest
-from fastapi import Depends
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_admin
@@ -390,30 +389,27 @@ class TestDebugPermissions:
 # ============================================================================
 
 
-def _assert_endpoint_has_permission_dep(endpoint_func: object, expected_permission: str) -> None:
-    """Assert that an endpoint function has a require_permission dependency for the given permission.
-
-    Inspects the function's type annotations and default values to find a
-    Depends(require_permission("...")) parameter matching the expected permission.
-    """
+def _get_dependency(endpoint_func: object) -> object | None:
+    """Extract the FastAPI dependency from an endpoint function's signature."""
     sig = inspect.signature(endpoint_func)  # type: ignore[arg-type]
-
     for param in sig.parameters.values():
         default = param.default
-        if not isinstance(default, Depends.__class__):
-            # Check if it's a fastapi.params.Depends instance
-            if hasattr(default, "dependency"):
-                dep = default.dependency
-                # The dependency should be a closure from require_permission()
-                # Check if it's a function with the right closure variables
-                if callable(dep) and hasattr(dep, "__closure__") and dep.__closure__:
-                    for cell in dep.__closure__:
-                        try:
-                            cell_value = cell.cell_contents
-                            if cell_value == expected_permission:
-                                return  # Found the correct permission
-                        except ValueError:
-                            continue
+        if hasattr(default, "dependency"):
+            dep: object = default.dependency
+            return dep
+    return None
+
+
+def _assert_endpoint_has_permission_dep(endpoint_func: object, expected_permission: str) -> None:
+    """Assert that an endpoint has a require_permission dependency for the given permission."""
+    dep = _get_dependency(endpoint_func)
+    if callable(dep) and hasattr(dep, "__closure__") and dep.__closure__:
+        for cell in dep.__closure__:
+            try:
+                if cell.cell_contents == expected_permission:
+                    return
+            except ValueError:
+                continue
 
     pytest.fail(
         f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
@@ -422,20 +418,9 @@ def _assert_endpoint_has_permission_dep(endpoint_func: object, expected_permissi
 
 
 def _assert_endpoint_has_auth_dep(endpoint_func: object) -> None:
-    """Assert that an endpoint function has a get_current_user dependency (authentication only).
-
-    Inspects the function's type annotations and default values to find a
-    Depends(get_current_user) parameter.
-    """
-    sig = inspect.signature(endpoint_func)  # type: ignore[arg-type]
-
-    for param in sig.parameters.values():
-        default = param.default
-        if hasattr(default, "dependency"):
-            dep = default.dependency
-            if dep is get_current_user:
-                return  # Found auth dependency
-
+    """Assert that an endpoint has a get_current_user dependency."""
+    if _get_dependency(endpoint_func) is get_current_user:
+        return
     pytest.fail(
         f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
         f"Depends(get_current_user) in its signature"
@@ -443,16 +428,9 @@ def _assert_endpoint_has_auth_dep(endpoint_func: object) -> None:
 
 
 def _assert_endpoint_has_admin_dep(endpoint_func: object) -> None:
-    """Assert that an endpoint function has a require_admin dependency."""
-    sig = inspect.signature(endpoint_func)  # type: ignore[arg-type]
-
-    for param in sig.parameters.values():
-        default = param.default
-        if hasattr(default, "dependency"):
-            dep = default.dependency
-            if dep is require_admin:
-                return  # Found admin dependency
-
+    """Assert that an endpoint has a require_admin dependency."""
+    if _get_dependency(endpoint_func) is require_admin:
+        return
     pytest.fail(
         f"Endpoint {getattr(endpoint_func, '__name__', endpoint_func)} does not have "
         f"Depends(require_admin) in its signature"

@@ -5,13 +5,14 @@
 import { Link, useLocation } from 'react-router'
 import type { LucideIcon } from 'lucide-react'
 import { usePermissions } from '../../hooks/usePermissions'
+import type { PermissionValue } from '../../constants/permissions'
 
 export interface SubNavItem {
   id: string
   label: string
   icon: LucideIcon
   path: string
-  permission?: string
+  permission?: PermissionValue
 }
 
 interface MetricsSubNavProps {

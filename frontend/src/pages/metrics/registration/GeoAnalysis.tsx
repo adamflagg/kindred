@@ -17,6 +17,7 @@ import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useSourceMappings, type SourceMapping } from '../../../hooks/useSourceMappings'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { Permission } from '../../../constants/permissions'
 import {
   GeoMap,
   GeoSummaryCards,
@@ -348,7 +349,7 @@ export default function GeoAnalysis() {
             onToggleSources={() => setShowSources((v) => !v)}
             showGaps={showGaps}
             onToggleGaps={() => setShowGaps((v) => !v)}
-            hasGeoPermission={hasPermission('metrics.geo')}
+            hasGeoPermission={hasPermission(Permission.METRICS_GEO)}
             isComparing={isComparing}
           />
 
