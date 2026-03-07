@@ -187,7 +187,7 @@ export const queryKeys = {
         : sessionTypes
           ? (['metrics', 'forecast', year, sessionTypes] as const)
           : (['metrics', 'forecast', year] as const),
-  forecastSnapshotDates: (year: number) => ['forecast', 'snapshot-dates', year] as const,
+  forecastSnapshotDates: (year: number) => ['metrics', 'forecast', 'snapshot-dates', year] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,

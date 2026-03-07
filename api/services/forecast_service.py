@@ -42,6 +42,7 @@ class ForecastService:
             year: The year to forecast.
             session_types: Session types to include (default: main, embedded, ag).
             session_cm_id: Filter to a specific session (AG children included).
+            snapshot_date: If set, use historical snapshot counts instead of live data.
 
         Returns:
             ForecastResponse with per-session and grand total data.
@@ -52,20 +53,33 @@ class ForecastService:
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
 
-        # Parallel fetches: enrolled, waitlisted, bunk_plans, capacity config, budget config
-        (
-            enrolled_attendees,
-            waitlisted_attendees,
-            bunk_plans,
-            default_capacity,
-            budget_config,
-        ) = await asyncio.gather(
-            self.repository.fetch_attendees(year),
-            self.repository.fetch_attendees(year, status_filter="waitlisted"),
-            self.repository.fetch_bunk_plans(year),
-            self.repository.fetch_capacity_config(),
-            self.repository.fetch_budget_config(year),
-        )
+        # Historical snapshot mode: use snapshot counts instead of live attendee data
+        snapshot_counts: dict[int, dict[str, int]] | None = None
+        if snapshot_date is not None:
+            # Snapshot mode: skip current-year attendee fetches (counts come from snapshot)
+            snapshot_counts = await self.repository.fetch_snapshot_counts(year, snapshot_date)
+            enrolled_attendees: list[Any] = []
+            waitlisted_attendees: list[Any] = []
+            bunk_plans, default_capacity, budget_config = await asyncio.gather(
+                self.repository.fetch_bunk_plans(year),
+                self.repository.fetch_capacity_config(),
+                self.repository.fetch_budget_config(year),
+            )
+        else:
+            # Live mode: fetch all current-year data in parallel
+            (
+                enrolled_attendees,
+                waitlisted_attendees,
+                bunk_plans,
+                default_capacity,
+                budget_config,
+            ) = await asyncio.gather(
+                self.repository.fetch_attendees(year),
+                self.repository.fetch_attendees(year, status_filter="waitlisted"),
+                self.repository.fetch_bunk_plans(year),
+                self.repository.fetch_capacity_config(),
+                self.repository.fetch_budget_config(year),
+            )
 
         # Fetch prior year and two-year-prior data in parallel
         # These are "nice to have" — failures degrade gracefully (show "---" instead)
@@ -83,11 +97,6 @@ class ForecastService:
             )
             prior_sessions, prior_attendees = {}, []
             two_year_sessions, two_year_attendees = {}, []
-
-        # Historical snapshot mode: use snapshot counts instead of live attendee data
-        snapshot_counts: dict[int, dict[str, int]] | None = None
-        if snapshot_date is not None:
-            snapshot_counts = await self.repository.fetch_snapshot_counts(year, snapshot_date)
 
         # Build name-to-count maps for prior years
         prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)

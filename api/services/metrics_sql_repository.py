@@ -1,6 +1,6 @@
 """Direct SQLite repository for metrics — bypasses PocketBase HTTP API.
 
-Drop-in replacement for MetricsRepository. All 16 methods return objects
+Drop-in replacement for MetricsRepository. All 17 methods return objects
 with the same attribute interface (SimpleNamespace + expand dicts) that
 service-layer code expects.
 """
@@ -681,7 +681,7 @@ class MetricsSQLRepository:
         return result
 
     # ------------------------------------------------------------------
-    # 15. fetch_registration_dates
+    # 15. fetch_available_snapshot_dates
     # ------------------------------------------------------------------
 
     async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
@@ -691,6 +691,10 @@ class MetricsSQLRepository:
             (year,),
         )
         return [r["snapshot_date"].split("T")[0].split(" ")[0] for r in rows]
+
+    # ------------------------------------------------------------------
+    # 16. fetch_snapshot_counts
+    # ------------------------------------------------------------------
 
     async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
         """Return per-session enrollment counts for a specific snapshot date.
@@ -711,6 +715,10 @@ class MetricsSQLRepository:
                 "cancelled": int(r["cancelled_count"] or 0),
             }
         return result
+
+    # ------------------------------------------------------------------
+    # 17. fetch_registration_dates
+    # ------------------------------------------------------------------
 
     async def fetch_registration_dates(self, year: int) -> dict[str, str]:
         """Fetch registration phase dates from config table."""
