@@ -219,7 +219,7 @@ jobs:
       run: uv run mypy . --explicit-package-bases
 
     - name: Security audit (pip-audit)
-      run: uv run pip-audit --desc || echo "::warning::pip-audit found vulnerabilities"
+      run: uv run pip-audit --desc
 
     - name: JSON config validation
       run: |
@@ -352,7 +352,7 @@ jobs:
 
     - name: Security audit (npm)
       working-directory: ./frontend
-      run: npm audit --audit-level=high || echo "::warning::npm audit found vulnerabilities"
+      run: npm audit --audit-level=high
 
   # Docker linting (parallel with other lint jobs)
   docker-lint:
