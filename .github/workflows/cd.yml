@@ -625,86 +625,48 @@ jobs:
         sudo rm -rf "/tmp/kindred-ci-${GH_RUN_ID}"
 
     # === Security Scan (run before push) ===
-    - name: Run Trivy vulnerability scanner (Caddy)
+    # Consolidated: scans all 4 images in one step instead of 8 separate action invocations.
+    # Generates SARIF reports (HIGH+CRITICAL) and blocks on CRITICAL vulnerabilities.
+    # Trivy DB is downloaded once and reused across all scans.
+    - name: Scan all images with Trivy
+      id: trivy-scan
       if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-caddy:test
-        format: 'sarif'
-        output: 'trivy-results-kindred-caddy.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
+      run: |
+        # Install Trivy CLI
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.62.1
+        trivy version
 
-    - name: Run Trivy vulnerability scanner (API)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-api:test
-        format: 'sarif'
-        output: 'trivy-results-kindred-api.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
+        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+        HAS_CRITICAL=false
 
-    - name: Run Trivy vulnerability scanner (PocketBase)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-pocketbase:test
-        format: 'sarif'
-        output: 'trivy-results-kindred-pocketbase.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
+        for IMAGE in "${IMAGES[@]}"; do
+          FULL_REF="${REGISTRY}/${USERNAME}/${IMAGE}:test"
+          echo ""
+          echo "=== Scanning ${IMAGE} ==="
 
-    - name: Run Trivy vulnerability scanner (Init)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-init:test
-        format: 'sarif'
-        output: 'trivy-results-kindred-init.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
+          # Generate SARIF report (HIGH + CRITICAL, non-blocking)
+          trivy image --format sarif --output "trivy-results-${IMAGE}.sarif" \
+            --severity CRITICAL,HIGH --exit-code 0 "$FULL_REF"
 
-    # Block push on CRITICAL vulnerabilities (HIGH remains informational)
-    - name: Check for CRITICAL vulnerabilities (Caddy)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-caddy:test
-        format: 'table'
-        severity: 'CRITICAL'
-        exit-code: '1'
+          # Check for CRITICAL vulnerabilities (scan all images before failing)
+          if ! trivy image --format table --severity CRITICAL --exit-code 1 \
+               --skip-db-update "$FULL_REF"; then
+            echo "^^^ CRITICAL vulnerabilities found in ${IMAGE}!"
+            HAS_CRITICAL=true
+          fi
+        done
 
-    - name: Check for CRITICAL vulnerabilities (API)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-api:test
-        format: 'table'
-        severity: 'CRITICAL'
-        exit-code: '1'
-
-    - name: Check for CRITICAL vulnerabilities (PocketBase)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-pocketbase:test
-        format: 'table'
-        severity: 'CRITICAL'
-        exit-code: '1'
-
-    - name: Check for CRITICAL vulnerabilities (Init)
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred-init:test
-        format: 'table'
-        severity: 'CRITICAL'
-        exit-code: '1'
+        echo ""
+        if [ "$HAS_CRITICAL" = "true" ]; then
+          echo "One or more images have CRITICAL vulnerabilities. Blocking push."
+          exit 1
+        fi
+        echo "No CRITICAL vulnerabilities found."
 
     # upload-sarif requires separate steps per category (GitHub Actions limitation)
+    # Uses always() so SARIF results are uploaded even when criticals block the push
     - name: Upload Trivy results - Caddy
-      if: steps.check.outputs.build == 'true'
+      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
@@ -714,7 +676,7 @@ jobs:
         sha: ${{ github.sha }}
 
     - name: Upload Trivy results - API
-      if: steps.check.outputs.build == 'true'
+      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
@@ -724,7 +686,7 @@ jobs:
         sha: ${{ github.sha }}
 
     - name: Upload Trivy results - PocketBase
-      if: steps.check.outputs.build == 'true'
+      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
@@ -734,7 +696,7 @@ jobs:
         sha: ${{ github.sha }}
 
     - name: Upload Trivy results - Init
-      if: steps.check.outputs.build == 'true'
+      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
       with:
