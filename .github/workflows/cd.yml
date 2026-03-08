@@ -31,9 +31,10 @@ on:
       - 'docker-compose*.yml'
       - '.github/workflows/cd.yml'
 
-  # On version tags only (semver pattern)
-  # Use: git tag -a v0.1.0 -m "Release message" && git push --tags
+  # Continuous delivery: build and push on every merge to main
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -133,8 +134,9 @@ jobs:
             - 'docker-compose*.yml'
             - '.dockerignore'
 
-  # Verify CI and docs checks passed for tag pushes
-  # This reuses results from the branch push - no duplicate runs
+  # Verify CI passed before building/pushing images
+  # For branch pushes: CI runs concurrently, this polls until it completes
+  # For tag pushes: reuses CI results from the branch push
   verify-ci:
     name: Verify CI Passed
     needs: detect-changes
@@ -742,7 +744,7 @@ jobs:
         else
           echo "Dry-run mode - images built and tested but NOT pushed"
         fi
-        echo "   To push, trigger manually without dry_run or create a release tag"
+        echo "   To push, trigger manually without dry_run or merge to main"
 
   # Summary job
   summary:
@@ -773,7 +775,7 @@ jobs:
           echo "- Integration tests passed (multi-container stack)"
           echo "- Security scan completed"
           echo ""
-          echo "Images will be pushed when this PR merges and a release is created."
+          echo "Images will be pushed when this PR merges to main."
         elif [ "$DRY_RUN" == "true" ]; then
           echo "CD dry-run passed (no push)"
           echo ""
@@ -782,7 +784,7 @@ jobs:
           echo "- Integration tests passed (multi-container stack)"
           echo "- Security scan completed"
           echo ""
-          echo "To push, run again without dry_run or create a release tag."
+          echo "To push, run again without dry_run or merge to main."
         else
           echo "All CD checks passed successfully!"
           echo ""
