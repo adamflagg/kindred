@@ -73,9 +73,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// For PocketBase v0.28.4, we use the e.Router directly
 
 	// Refresh bunking endpoint
-	e.Router.POST("/api/custom/sync/refresh-bunking", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleRefreshBunking(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/refresh-bunking",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleRefreshBunking(e, scheduler)
+		}))
 
 	// Bunk requests CSV upload endpoint (requires bunking.manage permission)
 	e.Router.POST("/api/custom/sync/bunk_requests_upload",
@@ -142,103 +143,104 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// - ?source_field=X,Y (comma-separated list of fields to process)
 	// - ?debug=true (enable verbose debug logging in Python processor)
 	// - ?trace=true (enable very verbose trace logging in Python processor)
-	e.Router.POST("/api/custom/sync/process-requests", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
-		session := e.Request.URL.Query().Get("session")
-		if session == "" {
-			session = DefaultSession
-		}
-
-		// Parse optional source_field parameter (comma-separated)
-		sourceFieldParam := e.Request.URL.Query().Get("source_field")
-		var sourceFields []string
-		if sourceFieldParam != "" {
-			validFields := map[string]bool{
-				"bunk_with": true, "not_bunk_with": true,
-				"bunking_notes": true, "internal_notes": true, "socialize_with": true,
+	e.Router.POST("/api/custom/sync/process-requests",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
+			session := e.Request.URL.Query().Get("session")
+			if session == "" {
+				session = DefaultSession
 			}
-			for _, f := range strings.Split(sourceFieldParam, ",") {
-				f = strings.TrimSpace(f)
-				if f == "" {
-					continue
+
+			// Parse optional source_field parameter (comma-separated)
+			sourceFieldParam := e.Request.URL.Query().Get("source_field")
+			var sourceFields []string
+			if sourceFieldParam != "" {
+				validFields := map[string]bool{
+					"bunk_with": true, "not_bunk_with": true,
+					"bunking_notes": true, "internal_notes": true, "socialize_with": true,
 				}
-				if !validFields[f] {
+				for _, f := range strings.Split(sourceFieldParam, ",") {
+					f = strings.TrimSpace(f)
+					if f == "" {
+						continue
+					}
+					if !validFields[f] {
+						return e.JSON(http.StatusBadRequest, map[string]interface{}{
+							"error": fmt.Sprintf(
+								"Invalid source_field: %s. Valid options: "+
+									"bunk_with, not_bunk_with, bunking_notes, internal_notes, socialize_with", f),
+						})
+					}
+					sourceFields = append(sourceFields, f)
+				}
+			}
+
+			// Parse optional limit parameter
+			limitParam := e.Request.URL.Query().Get("limit")
+			limit := 0 // Default: no limit
+			if limitParam != "" {
+				if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
+					limit = l
+				} else {
 					return e.JSON(http.StatusBadRequest, map[string]interface{}{
-						"error": fmt.Sprintf(
-							"Invalid source_field: %s. Valid options: "+
-								"bunk_with, not_bunk_with, bunking_notes, internal_notes, socialize_with", f),
+						"error": "Invalid limit parameter. Must be a positive integer.",
 					})
 				}
-				sourceFields = append(sourceFields, f)
 			}
-		}
 
-		// Parse optional limit parameter
-		limitParam := e.Request.URL.Query().Get("limit")
-		limit := 0 // Default: no limit
-		if limitParam != "" {
-			if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
-				limit = l
-			} else {
-				return e.JSON(http.StatusBadRequest, map[string]interface{}{
-					"error": "Invalid limit parameter. Must be a positive integer.",
-				})
-			}
-		}
+			// Parse optional force parameter
+			forceParam := e.Request.URL.Query().Get("force")
+			force := forceParam == boolTrueStr || forceParam == "1"
 
-		// Parse optional force parameter
-		forceParam := e.Request.URL.Query().Get("force")
-		force := forceParam == boolTrueStr || forceParam == "1"
+			// Parse optional debug parameter
+			debugParam := e.Request.URL.Query().Get("debug")
+			debug := debugParam == boolTrueStr || debugParam == "1"
 
-		// Parse optional debug parameter
-		debugParam := e.Request.URL.Query().Get("debug")
-		debug := debugParam == boolTrueStr || debugParam == "1"
+			// Parse optional trace parameter
+			traceParam := e.Request.URL.Query().Get("trace")
+			trace := traceParam == boolTrueStr || traceParam == "1"
 
-		// Parse optional trace parameter
-		traceParam := e.Request.URL.Query().Get("trace")
-		trace := traceParam == boolTrueStr || traceParam == "1"
+			// Create processor with all options
+			processor := NewRequestProcessor(app)
+			processor.Session = session
+			processor.Limit = limit
+			processor.Force = force
+			processor.SourceFields = sourceFields
+			processor.Debug = debug
+			processor.Trace = trace
 
-		// Create processor with all options
-		processor := NewRequestProcessor(app)
-		processor.Session = session
-		processor.Limit = limit
-		processor.Force = force
-		processor.SourceFields = sourceFields
-		processor.Debug = debug
-		processor.Trace = trace
+			// Run in background
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer cancel()
 
-		// Run in background
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
+				slog.Info("Starting process_requests sync",
+					"session", session,
+					"source_fields", sourceFields,
+					"limit", limit,
+					"force", force,
+					"debug", debug,
+					"trace", trace,
+				)
+				if err := processor.Sync(ctx); err != nil {
+					slog.Error("Process requests sync failed", "error", err)
+				} else {
+					stats := processor.GetStats()
+					slog.Info("Process requests completed", "created", stats.Created, "skipped", stats.Skipped, "errors", stats.Errors)
+				}
+			}()
 
-			slog.Info("Starting process_requests sync",
-				"session", session,
-				"source_fields", sourceFields,
-				"limit", limit,
-				"force", force,
-				"debug", debug,
-				"trace", trace,
-			)
-			if err := processor.Sync(ctx); err != nil {
-				slog.Error("Process requests sync failed", "error", err)
-			} else {
-				stats := processor.GetStats()
-				slog.Info("Process requests completed", "created", stats.Created, "skipped", stats.Skipped, "errors", stats.Errors)
-			}
-		}()
-
-		return e.JSON(http.StatusOK, map[string]any{
-			"status":        "started",
-			"message":       "Process requests sync started",
-			"session":       session,
-			"source_fields": sourceFields,
-			"limit":         limit,
-			"force":         force,
-			"debug":         debug,
-			"trace":         trace,
-		})
-	}))
+			return e.JSON(http.StatusOK, map[string]any{
+				"status":        "started",
+				"message":       "Process requests sync started",
+				"session":       session,
+				"source_fields": sourceFields,
+				"limit":         limit,
+				"force":         force,
+				"debug":         debug,
+				"trace":         trace,
+			})
+		}))
 
 	// Get available years from database
 	e.Router.GET("/api/custom/sync/years", requireAuth(func(e *core.RequestEvent) error {
@@ -278,9 +280,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	}))
 
 	// Bunk assignments sync
-	e.Router.POST("/api/custom/sync/bunk-assignments", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "bunk_assignments")
-	}))
+	e.Router.POST("/api/custom/sync/bunk-assignments",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "bunk_assignments")
+		}))
 
 	// Bunk requests sync
 	e.Router.POST("/api/custom/sync/bunk-requests", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
@@ -299,17 +302,19 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		}))
 
 	// Person tag definitions sync
-	e.Router.POST("/api/custom/sync/person-tag-defs", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "person_tag_defs")
-	}))
+	e.Router.POST("/api/custom/sync/person-tag-defs",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "person_tag_defs")
+		}))
 
 	// Note: households and person_tags are now part of the combined "persons" sync
 	// and no longer have separate endpoints
 
 	// Custom field definitions sync
-	e.Router.POST("/api/custom/sync/custom-field-defs", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "custom_field_defs")
-	}))
+	e.Router.POST("/api/custom/sync/custom-field-defs",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "custom_field_defs")
+		}))
 
 	// Divisions sync (division definitions - runs in daily sync before persons)
 	e.Router.POST("/api/custom/sync/divisions", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
@@ -327,9 +332,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	}))
 
 	// Financial lookups sync (global: financial_categories, payment_methods - runs in weekly sync)
-	e.Router.POST("/api/custom/sync/financial-lookups", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "financial_lookups")
-	}))
+	e.Router.POST("/api/custom/sync/financial-lookups",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "financial_lookups")
+		}))
 
 	// Financial transactions sync (year-scoped - runs in daily sync)
 	// Accepts optional ?year=YYYY parameter for historical data sync
@@ -348,9 +354,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// On-demand sync endpoints (require N API calls - one per entity)
 	// Person custom values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
-	e.Router.POST("/api/custom/sync/person-custom-values", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handlePersonCustomFieldValuesSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/person-custom-values",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handlePersonCustomFieldValuesSync(e, scheduler)
+		}))
 
 	// Household custom values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
@@ -362,9 +369,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Family camp derived tables sync
 	// Computes derived tables from person/household custom values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/family-camp-derived", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleFamilyCampDerivedSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/family-camp-derived",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleFamilyCampDerivedSync(e, scheduler)
+		}))
 
 	// Staff skills sync
 	// Extracts Skills- fields from person_custom_values into normalized table
@@ -407,35 +415,40 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Quest registrations sync
 	// Extracts Quest-*/Q-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/quest-registrations", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleQuestRegistrationsSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/quest-registrations",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleQuestRegistrationsSync(e, scheduler)
+		}))
 
 	// Staff applications sync
 	// Extracts App-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/staff-applications", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleStaffApplicationsSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/staff-applications",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleStaffApplicationsSync(e, scheduler)
+		}))
 
 	// Staff vehicle info sync
 	// Extracts SVI-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/staff-vehicle-info", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleStaffVehicleInfoSync(e, scheduler)
-	}))
+	e.Router.POST("/api/custom/sync/staff-vehicle-info",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleStaffVehicleInfoSync(e, scheduler)
+		}))
 
 	// Normalize geographic data sync
 	// Normalizes state/country names in attendees table using normalized_mappings
-	e.Router.POST("/api/custom/sync/normalize-geographic", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "normalize_geographic")
-	}))
+	e.Router.POST("/api/custom/sync/normalize-geographic",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "normalize_geographic")
+		}))
 
 	// Enrollment snapshots sync
 	// Captures daily enrollment counts per session
-	e.Router.POST("/api/custom/sync/enrollment-snapshots", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "enrollment_snapshots")
-	}))
+	e.Router.POST("/api/custom/sync/enrollment-snapshots",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "enrollment_snapshots")
+		}))
 
 	return nil
 }
