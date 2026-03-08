@@ -35,6 +35,13 @@ rules:
       - ci.yml
       - cd.yml
 
+  secrets-outside-env:
+    # Solo repo — GitHub Environments add overhead with no security benefit
+    ignore:
+      - cd.yml
+      - claude.yml
+      - release.yml
+
   bot-conditions:
     # dependabot-auto-merge.yml: actor check is an optimization gate;
     # the actual validation is done by dependabot/fetch-metadata which
