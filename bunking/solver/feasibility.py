@@ -238,7 +238,7 @@ def check_feasibility(
             reason = f"session={p.session_cm_id},gender={p.gender}"
             stranded_by_reason[reason] += 1
             if stranded_count <= 5:  # Log first few
-                logger.warning(f"STRANDED: {p.name} ({reason}) has NO possible bunks!")
+                logger.warning(f"STRANDED: {p.campminder_person_id} ({reason}) has NO possible bunks!")
 
     if stranded_count > 0:
         constraint_logger.log_feasibility_warning(
