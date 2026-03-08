@@ -23,7 +23,7 @@ export function createMockAuthContext(overrides: {
     pb: {} as never,
     user: overrides.user ?? null,
     isLoading: false,
-    isAuthenticated: true,
+    isAuthenticated: overrides.user != null,
     isBypassMode: overrides.isBypassMode ?? false,
     login: vi.fn(),
     logout: vi.fn(),
