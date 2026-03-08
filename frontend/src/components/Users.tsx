@@ -50,7 +50,7 @@ export default function Users() {
     queryKey: queryKeys.users(),
     queryFn: async () => {
       const result = await pb.collection('users').getList<RecordModel>(1, 1000, {
-        sort: '-created',
+        sort: 'name',
         requestKey: null,
       })
       return result.items
@@ -199,7 +199,7 @@ export default function Users() {
             <div className="bg-card border-border divide-border divide-y overflow-hidden rounded-xl border shadow-sm">
               {users.map((user, index) => {
                 const userRoleBadges = getRoleBadges(user.id)
-                const isAdmin = Boolean(user['is_admin'])
+                const userIsAdmin = Boolean(user['is_admin'])
                 const email = (user['email'] as string) || ''
                 const name = (user['name'] as string) || ''
                 const avatar = user['avatar'] as string | undefined
@@ -239,7 +239,7 @@ export default function Users() {
                           <span className="text-foreground truncate text-sm font-medium sm:text-base">
                             {name || email.split('@')[0]}
                           </span>
-                          {isAdmin && (
+                          {userIsAdmin && (
                             <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
                               Admin
                             </span>
