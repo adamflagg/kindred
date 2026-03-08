@@ -61,7 +61,7 @@ class TestRequireAnyPermission:
         assert result is user
 
     def test_user_with_no_matching_permissions_gets_403(self):
-        user = _make_user(permissions={"sync.run"})
+        user = _make_user(permissions={"other.perm"})
         checker = require_any_permission("bunking.view", "metrics.view")
         with pytest.raises(HTTPException) as exc_info:
             checker(user)

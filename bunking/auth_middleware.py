@@ -176,8 +176,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             cached = self._permissions_cache.get(cache_key)
             if cached and cached.get("expires", 0) > time.time():
                 user.permissions = set(cached.get("permissions", []))
-                if cached.get("is_admin"):
-                    user.is_admin = True
+                user.is_admin = bool(cached.get("is_admin", user.is_admin))
                 return
 
             admin_token = await self._get_pb_admin_token()
@@ -199,9 +198,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         cached_perms = record.get("cached_permissions") or []
                         if isinstance(cached_perms, list):
                             user.permissions = set(cached_perms)
-                        # Sync is_admin from PB record (may be set by Go hook)
-                        if record.get("is_admin"):
-                            user.is_admin = True
+                        # Sync is_admin from PB record (authoritative, set by Go OIDC hook)
+                        user.is_admin = bool(record.get("is_admin"))
 
                         # Cache the result for 60 seconds
                         self._permissions_cache[cache_key] = {
@@ -255,9 +253,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         return None
 
                     logger.info("Token validated via PocketBase")
-                    # For PocketBase tokens, we grant admin access to all authenticated users
-                    # since PocketBase handles authorization via OAuth2
-                    claims["groups"] = ["admin"]
             except Exception as e:
                 logger.error(f"PocketBase token validation error: {type(e).__name__}: {e}")
 
