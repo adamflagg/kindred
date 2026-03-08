@@ -83,7 +83,7 @@ describe('UserRolesPanel', () => {
     created: '',
     updated: '',
     is_admin: true,
-    cached_permissions: ['users.manage'],
+    cached_permissions: [],
   }
 
   const targetUser: RecordModel = {

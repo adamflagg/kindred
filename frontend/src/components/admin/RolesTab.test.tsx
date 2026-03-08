@@ -67,7 +67,7 @@ describe('RolesTab', () => {
       created: '',
       updated: '',
       is_admin: true,
-      cached_permissions: ['users.manage'],
+      cached_permissions: [],
     }
 
     renderWithProviders(createElement(RolesTab), { user })
