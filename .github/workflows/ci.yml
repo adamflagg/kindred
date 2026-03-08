@@ -110,6 +110,7 @@ jobs:
           metrics
           graph
           data
+          rbac
         requireScope: true
         subjectPattern: ^.+$
         subjectPatternError: "PR title must follow: type(scope): description"

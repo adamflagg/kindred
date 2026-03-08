@@ -38,6 +38,7 @@ module.exports = {
       'metrics',   // Analytics, dashboards, statistics
       'graph',     // Social network graph features
       'data',      // Data models, schema changes
+      'rbac',      // Role-based access control
     ]],
 
     // Allowed types (must match cliff.toml commit_parsers)
