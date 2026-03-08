@@ -26,7 +26,7 @@ if command -v npx &> /dev/null && [ -f "commitlint.config.js" ]; then
         echo ""
         echo "Valid types: feat, fix, perf, refactor, docs, style, test, build, config, chore, ci, revert"
         echo ""
-        echo "Valid scopes: frontend, api, sync, pb, solver, docker, ci, auth, logging, release, config, deps, tests, scripts"
+        echo "Valid scopes: frontend, api, sync, pb, solver, docker, ci, auth, logging, release, config, deps, tests, scripts, rbac"
         echo ""
         echo "Examples:"
         echo "  feat(frontend): add dark mode toggle"
@@ -41,7 +41,7 @@ fi
 # Fallback: regex validation if commitlint not available
 # Matches: type(scope): description
 VALID_TYPES="feat|fix|perf|refactor|docs|style|test|build|config|chore|ci|revert"
-VALID_SCOPES="frontend|api|sync|pb|solver|docker|ci|auth|logging|release|config|deps|tests|scripts"
+VALID_SCOPES="frontend|api|sync|pb|solver|docker|ci|auth|logging|release|config|deps|tests|scripts|rbac"
 PATTERN="^($VALID_TYPES)\(($VALID_SCOPES)\)(!)?:\s.+"
 
 # Get first line (header)

@@ -17,7 +17,7 @@ vi.mock('../../lib/pocketbase', () => ({
           name: 'Bunking Manager',
           slug: 'bunking-manager',
           description: 'Can manage bunking',
-          permissions: ['bunking.view', 'bunking.manage'],
+          permissions: ['bunking.manage'],
           is_system: true,
           collectionId: 'roles',
           collectionName: 'roles',
@@ -29,7 +29,7 @@ vi.mock('../../lib/pocketbase', () => ({
           name: 'Metrics Viewer',
           slug: 'metrics-viewer',
           description: 'Can view metrics',
-          permissions: ['metrics.view'],
+          permissions: ['metrics.financial'],
           is_system: true,
           collectionId: 'roles',
           collectionName: 'roles',
@@ -67,7 +67,7 @@ describe('RolesTab', () => {
       created: '',
       updated: '',
       is_admin: true,
-      cached_permissions: ['users.manage'],
+      cached_permissions: [],
     }
 
     renderWithProviders(createElement(RolesTab), { user })
@@ -111,9 +111,8 @@ describe('RolesTab', () => {
     renderWithProviders(createElement(RolesTab), { user })
 
     await waitFor(() => {
-      expect(screen.getByText('bunking.view')).toBeTruthy()
       expect(screen.getByText('bunking.manage')).toBeTruthy()
-      expect(screen.getByText('metrics.view')).toBeTruthy()
+      expect(screen.getByText('metrics.financial')).toBeTruthy()
     })
   })
 })

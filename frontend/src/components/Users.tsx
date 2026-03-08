@@ -4,7 +4,6 @@ import { pb } from '../lib/pocketbase'
 import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck } from 'lucide-react'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { usePermissions } from '../hooks/usePermissions'
-import { Permission } from '../constants/permissions'
 import { formatDistanceToNow } from 'date-fns'
 import { RolesTab } from './admin/RolesTab'
 import { UserRolesPanel } from './admin/UserRolesPanel'
@@ -37,8 +36,7 @@ function getAvatarColor(str: string): string {
 type Tab = 'users' | 'roles'
 
 export default function Users() {
-  const { hasPermission } = usePermissions()
-  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
+  const { isAdmin } = usePermissions()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>('users')
   const [selectedUser, setSelectedUser] = useState<RecordModel | null>(null)
@@ -95,7 +93,7 @@ export default function Users() {
   }
 
   function handleUserClick(user: RecordModel) {
-    if (!canManageUsers) return
+    if (!isAdmin) return
     setSelectedUser(selectedUser?.id === user.id ? null : user)
   }
 
@@ -211,7 +209,7 @@ export default function Users() {
                   <div key={user.id}>
                     <div
                       className={`hover:bg-muted/50 dark:hover:bg-muted/30 flex items-center gap-3 px-3 py-3 transition-colors sm:gap-4 sm:px-5 sm:py-4 ${
-                        canManageUsers ? 'cursor-pointer' : ''
+                        isAdmin ? 'cursor-pointer' : ''
                       } ${selectedUser?.id === user.id ? 'bg-muted/50 dark:bg-muted/30' : ''}`}
                       style={{ animationDelay: `${index * 30}ms` }}
                       onClick={() => handleUserClick(user)}
@@ -271,7 +269,7 @@ export default function Users() {
                     </div>
 
                     {/* Inline UserRolesPanel */}
-                    {selectedUser?.id === user.id && canManageUsers && (
+                    {selectedUser?.id === user.id && isAdmin && (
                       <div className="border-border border-t px-3 py-3 sm:px-5">
                         <UserRolesPanel user={user} onClose={handleClosePanel} />
                       </div>

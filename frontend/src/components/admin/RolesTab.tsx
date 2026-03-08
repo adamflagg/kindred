@@ -3,7 +3,7 @@
  *
  * Lists all roles with their permissions. System roles show a badge and
  * are not editable unless the user is an admin. Custom roles support full
- * CRUD for users with users.manage permission.
+ * CRUD for admin users.
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +11,7 @@ import { Shield, Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { pb } from '../../lib/pocketbase'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import { usePermissions } from '../../hooks/usePermissions'
-import { ALL_PERMISSIONS, Permission } from '../../constants/permissions'
+import { ALL_PERMISSIONS } from '../../constants/permissions'
 import type { Role } from '../../types/rbac'
 
 interface RoleFormData {
@@ -22,8 +22,7 @@ interface RoleFormData {
 }
 
 export function RolesTab() {
-  const { hasPermission, isAdmin } = usePermissions()
-  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
+  const { isAdmin } = usePermissions()
   const queryClient = useQueryClient()
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -128,11 +127,6 @@ export function RolesTab() {
     }))
   }
 
-  function canEditRole(role: Role): boolean {
-    if (role.is_system) return isAdmin
-    return canManageUsers
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -160,7 +154,7 @@ export function RolesTab() {
           <h2 className="font-display text-foreground text-lg font-bold">Roles</h2>
           <span className="text-muted-foreground text-sm">({roles.length})</span>
         </div>
-        {canManageUsers && !isEditing && (
+        {isAdmin && !isEditing && (
           <button onClick={startCreate} className="btn-primary flex items-center gap-1.5 text-sm">
             <Plus className="h-4 w-4" />
             New Role
@@ -289,7 +283,7 @@ export function RolesTab() {
                   ))}
                 </div>
               </div>
-              {canEditRole(role) && !isEditing && (
+              {isAdmin && !isEditing && (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => startEdit(role)}

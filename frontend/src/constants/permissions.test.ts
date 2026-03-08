@@ -6,17 +6,13 @@ describe('Permission constants', () => {
     expect(Permission.BUNKING_MANAGE).toBe('bunking.manage')
     expect(Permission.METRICS_FINANCIAL).toBe('metrics.financial')
     expect(Permission.METRICS_GEO).toBe('metrics.geo')
-    expect(Permission.SYNC_RUN).toBe('sync.run')
-    expect(Permission.USERS_MANAGE).toBe('users.manage')
   })
 
-  it('ALL_PERMISSIONS contains all 5 permissions', () => {
-    expect(ALL_PERMISSIONS).toHaveLength(5)
+  it('ALL_PERMISSIONS contains all 3 permissions', () => {
+    expect(ALL_PERMISSIONS).toHaveLength(3)
     expect(ALL_PERMISSIONS).toContain('bunking.manage')
     expect(ALL_PERMISSIONS).toContain('metrics.financial')
     expect(ALL_PERMISSIONS).toContain('metrics.geo')
-    expect(ALL_PERMISSIONS).toContain('sync.run')
-    expect(ALL_PERMISSIONS).toContain('users.manage')
   })
 
   it('has no duplicates', () => {

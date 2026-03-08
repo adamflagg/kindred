@@ -306,82 +306,82 @@ class TestGeoPermissions:
 
 
 class TestDebugPermissions:
-    """debug.py endpoints require users.manage (admin-level debug tools)."""
+    """debug.py endpoints require admin (admin-level debug tools)."""
 
-    def test_list_parse_analysis_requires_users_manage(self) -> None:
+    def test_list_parse_analysis_requires_admin(self) -> None:
         from api.routers.debug import list_parse_analysis
 
-        _assert_endpoint_has_permission_dep(list_parse_analysis, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(list_parse_analysis)
 
-    def test_get_parse_analysis_detail_requires_users_manage(self) -> None:
+    def test_get_parse_analysis_detail_requires_admin(self) -> None:
         from api.routers.debug import get_parse_analysis_detail
 
-        _assert_endpoint_has_permission_dep(get_parse_analysis_detail, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(get_parse_analysis_detail)
 
-    def test_parse_phase1_only_requires_users_manage(self) -> None:
+    def test_parse_phase1_only_requires_admin(self) -> None:
         from api.routers.debug import parse_phase1_only
 
-        _assert_endpoint_has_permission_dep(parse_phase1_only, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(parse_phase1_only)
 
-    def test_clear_single_parse_analysis_requires_users_manage(self) -> None:
+    def test_clear_single_parse_analysis_requires_admin(self) -> None:
         from api.routers.debug import clear_single_parse_analysis
 
-        _assert_endpoint_has_permission_dep(clear_single_parse_analysis, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(clear_single_parse_analysis)
 
-    def test_clear_parse_analysis_requires_users_manage(self) -> None:
+    def test_clear_parse_analysis_requires_admin(self) -> None:
         from api.routers.debug import clear_parse_analysis
 
-        _assert_endpoint_has_permission_dep(clear_parse_analysis, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(clear_parse_analysis)
 
-    def test_list_original_requests_requires_users_manage(self) -> None:
+    def test_list_original_requests_requires_admin(self) -> None:
         from api.routers.debug import list_original_requests
 
-        _assert_endpoint_has_permission_dep(list_original_requests, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(list_original_requests)
 
-    def test_list_original_requests_with_parse_status_requires_users_manage(self) -> None:
+    def test_list_original_requests_with_parse_status_requires_admin(self) -> None:
         from api.routers.debug import list_original_requests_with_parse_status
 
-        _assert_endpoint_has_permission_dep(list_original_requests_with_parse_status, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(list_original_requests_with_parse_status)
 
-    def test_list_original_requests_grouped_requires_users_manage(self) -> None:
+    def test_list_original_requests_grouped_requires_admin(self) -> None:
         from api.routers.debug import list_original_requests_grouped
 
-        _assert_endpoint_has_permission_dep(list_original_requests_grouped, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(list_original_requests_grouped)
 
-    def test_get_parse_results_batch_requires_users_manage(self) -> None:
+    def test_get_parse_results_batch_requires_admin(self) -> None:
         from api.routers.debug import get_parse_results_batch
 
-        _assert_endpoint_has_permission_dep(get_parse_results_batch, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(get_parse_results_batch)
 
-    def test_get_parse_results_batch_dual_requires_users_manage(self) -> None:
+    def test_get_parse_results_batch_dual_requires_admin(self) -> None:
         from api.routers.debug import get_parse_results_batch_dual
 
-        _assert_endpoint_has_permission_dep(get_parse_results_batch_dual, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(get_parse_results_batch_dual)
 
-    def test_get_parse_result_with_fallback_requires_users_manage(self) -> None:
+    def test_get_parse_result_with_fallback_requires_admin(self) -> None:
         from api.routers.debug import get_parse_result_with_fallback
 
-        _assert_endpoint_has_permission_dep(get_parse_result_with_fallback, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(get_parse_result_with_fallback)
 
-    def test_list_prompts_requires_users_manage(self) -> None:
+    def test_list_prompts_requires_admin(self) -> None:
         from api.routers.debug import list_prompts
 
-        _assert_endpoint_has_permission_dep(list_prompts, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(list_prompts)
 
-    def test_get_prompt_requires_users_manage(self) -> None:
+    def test_get_prompt_requires_admin(self) -> None:
         from api.routers.debug import get_prompt
 
-        _assert_endpoint_has_permission_dep(get_prompt, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(get_prompt)
 
-    def test_update_prompt_requires_users_manage(self) -> None:
+    def test_update_prompt_requires_admin(self) -> None:
         from api.routers.debug import update_prompt
 
-        _assert_endpoint_has_permission_dep(update_prompt, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(update_prompt)
 
-    def test_get_production_requests_requires_users_manage(self) -> None:
+    def test_get_production_requests_requires_admin(self) -> None:
         from api.routers.debug import get_production_requests
 
-        _assert_endpoint_has_permission_dep(get_production_requests, Permission.USERS_MANAGE)
+        _assert_endpoint_has_admin_dep(get_production_requests)
 
 
 # ============================================================================
