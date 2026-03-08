@@ -4,7 +4,6 @@ import { pb } from '../lib/pocketbase'
 import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck } from 'lucide-react'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { usePermissions } from '../hooks/usePermissions'
-import { Permission } from '../constants/permissions'
 import { formatDistanceToNow } from 'date-fns'
 import { RolesTab } from './admin/RolesTab'
 import { UserRolesPanel } from './admin/UserRolesPanel'
@@ -37,8 +36,8 @@ function getAvatarColor(str: string): string {
 type Tab = 'users' | 'roles'
 
 export default function Users() {
-  const { hasPermission } = usePermissions()
-  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
+  const { isAdmin } = usePermissions()
+  const canManageUsers = isAdmin
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>('users')
   const [selectedUser, setSelectedUser] = useState<RecordModel | null>(null)

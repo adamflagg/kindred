@@ -73,7 +73,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// For PocketBase v0.28.4, we use the e.Router directly
 
 	// Refresh bunking endpoint
-	e.Router.POST("/api/custom/sync/refresh-bunking", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/refresh-bunking", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleRefreshBunking(e, scheduler)
 	}))
 
@@ -91,34 +91,34 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Unified sync endpoint (replaces daily + historical endpoints)
 	// Accepts query params: year, service, includeCustomValues, debug
 	// Returns 202 Accepted if enqueued, 200 OK if started immediately
-	// Requires sync.run permission
-	e.Router.POST("/api/custom/sync/run", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	// Requires bunking.manage permission
+	e.Router.POST("/api/custom/sync/run", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleUnifiedSync(e, scheduler)
 	}))
 
 	// Cancel queued sync endpoint
-	e.Router.DELETE("/api/custom/sync/queue/{id}", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.DELETE("/api/custom/sync/queue/{id}", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleCancelQueuedSync(e, scheduler)
 	}))
 
 	// Cancel running sync endpoint
-	e.Router.DELETE("/api/custom/sync/running", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.DELETE("/api/custom/sync/running", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleCancelRunningSync(e, scheduler)
 	}))
 
 	// Hourly sync endpoint
-	e.Router.POST("/api/custom/sync/hourly", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/hourly", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleHourlySync(e, scheduler)
 	}))
 
 	// Weekly sync endpoint (global data - expensive N API call syncs)
-	e.Router.POST("/api/custom/sync/weekly", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/weekly", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleWeeklySync(e, scheduler)
 	}))
 
 	// Custom values sync endpoint (runs person + household custom field values sync)
 	// This is separate from weekly sync because it's even more expensive (1 API call per entity)
-	e.Router.POST("/api/custom/sync/custom-values", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/custom-values", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleCustomValuesSync(e, scheduler)
 	}))
 
@@ -128,7 +128,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 	// POST /api/custom/sync/run-phase - Run a specific phase
 	// Accepts query params: year (required), phase (required)
-	e.Router.POST("/api/custom/sync/run-phase", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/run-phase", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleRunPhase(e, scheduler)
 	}))
 
@@ -142,7 +142,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// - ?source_field=X,Y (comma-separated list of fields to process)
 	// - ?debug=true (enable verbose debug logging in Python processor)
 	// - ?trace=true (enable very verbose trace logging in Python processor)
-	e.Router.POST("/api/custom/sync/process-requests", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/process-requests", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
 		session := e.Request.URL.Query().Get("session")
 		if session == "" {
@@ -247,59 +247,59 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 	// Test connection endpoint
 	e.Router.GET("/api/custom/sync/test-connection",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleTestConnection(e, scheduler)
 		}))
 
 	// Individual sync endpoints
 	// Sessions sync
-	e.Router.POST("/api/custom/sync/sessions", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/sessions", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "sessions")
 	}))
 
 	// Attendees sync
-	e.Router.POST("/api/custom/sync/attendees", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/attendees", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "attendees")
 	}))
 
 	// Persons sync
-	e.Router.POST("/api/custom/sync/persons", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/persons", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "persons")
 	}))
 
 	// Bunks sync
-	e.Router.POST("/api/custom/sync/bunks", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/bunks", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunks")
 	}))
 
 	// Bunk plans sync
-	e.Router.POST("/api/custom/sync/bunk-plans", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/bunk-plans", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunk_plans")
 	}))
 
 	// Bunk assignments sync
-	e.Router.POST("/api/custom/sync/bunk-assignments", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/bunk-assignments", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunk_assignments")
 	}))
 
 	// Bunk requests sync
-	e.Router.POST("/api/custom/sync/bunk-requests", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/bunk-requests", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunk_requests")
 	}))
 
 	// Session groups sync
-	e.Router.POST("/api/custom/sync/session-groups", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/session-groups", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "session_groups")
 	}))
 
 	// Multi-workbook export endpoint (per-year workbooks)
 	e.Router.POST("/api/custom/sync/multi-workbook-export",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleMultiWorkbookExport(e, scheduler)
 		}))
 
 	// Person tag definitions sync
-	e.Router.POST("/api/custom/sync/person-tag-defs", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/person-tag-defs", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "person_tag_defs")
 	}))
 
@@ -307,69 +307,69 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// and no longer have separate endpoints
 
 	// Custom field definitions sync
-	e.Router.POST("/api/custom/sync/custom-field-defs", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/custom-field-defs", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "custom_field_defs")
 	}))
 
 	// Divisions sync (division definitions - runs in daily sync before persons)
-	e.Router.POST("/api/custom/sync/divisions", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/divisions", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "divisions")
 	}))
 
 	// Staff lookups sync (global: positions, org_categories, program_areas - runs in weekly sync)
-	e.Router.POST("/api/custom/sync/staff-lookups", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/staff-lookups", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "staff_lookups")
 	}))
 
 	// Staff sync (year-scoped staff records - runs in daily sync)
-	e.Router.POST("/api/custom/sync/staff", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/staff", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "staff")
 	}))
 
 	// Financial lookups sync (global: financial_categories, payment_methods - runs in weekly sync)
-	e.Router.POST("/api/custom/sync/financial-lookups", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/financial-lookups", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "financial_lookups")
 	}))
 
 	// Financial transactions sync (year-scoped - runs in daily sync)
 	// Accepts optional ?year=YYYY parameter for historical data sync
 	e.Router.POST("/api/custom/sync/financial-transactions",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleFinancialTransactionsSync(e, scheduler)
 		}))
 
 	// Camper history computation endpoint
 	// Computes denormalized camper history with retention metrics
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/camper-history", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/camper-history", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleCamperHistorySync(e, scheduler)
 	}))
 
 	// On-demand sync endpoints (require N API calls - one per entity)
 	// Person custom values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
-	e.Router.POST("/api/custom/sync/person-custom-values", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/person-custom-values", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handlePersonCustomFieldValuesSync(e, scheduler)
 	}))
 
 	// Household custom values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
 	e.Router.POST("/api/custom/sync/household-custom-values",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleHouseholdCustomFieldValuesSync(e, scheduler)
 		}))
 
 	// Family camp derived tables sync
 	// Computes derived tables from person/household custom values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/family-camp-derived", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/family-camp-derived", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleFamilyCampDerivedSync(e, scheduler)
 	}))
 
 	// Staff skills sync
 	// Extracts Skills- fields from person_custom_values into normalized table
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/staff-skills", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/staff-skills", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleStaffSkillsSync(e, scheduler)
 	}))
 
@@ -377,7 +377,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Extracts FA- fields from person_custom_values into structured application records
 	// Accepts required ?year=YYYY parameter
 	e.Router.POST("/api/custom/sync/financial-aid-applications",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleFinancialAidApplicationsSync(e, scheduler)
 		}))
 
@@ -385,14 +385,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Computes demographics from HH- custom values + household custom values
 	// Accepts required ?year=YYYY parameter
 	e.Router.POST("/api/custom/sync/household-demographics",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleHouseholdDemographicsSync(e, scheduler)
 		}))
 
 	// Camper dietary sync
 	// Extracts Family Medical-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/camper-dietary", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/camper-dietary", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleCamperDietarySync(e, scheduler)
 	}))
 
@@ -400,40 +400,40 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Extracts BUS-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
 	e.Router.POST("/api/custom/sync/camper-transportation",
-		requirePermission("sync.run", func(e *core.RequestEvent) error {
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			return handleCamperTransportationSync(e, scheduler)
 		}))
 
 	// Quest registrations sync
 	// Extracts Quest-*/Q-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/quest-registrations", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/quest-registrations", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleQuestRegistrationsSync(e, scheduler)
 	}))
 
 	// Staff applications sync
 	// Extracts App-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/staff-applications", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/staff-applications", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleStaffApplicationsSync(e, scheduler)
 	}))
 
 	// Staff vehicle info sync
 	// Extracts SVI-* fields from person_custom_values
 	// Accepts required ?year=YYYY parameter
-	e.Router.POST("/api/custom/sync/staff-vehicle-info", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/staff-vehicle-info", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleStaffVehicleInfoSync(e, scheduler)
 	}))
 
 	// Normalize geographic data sync
 	// Normalizes state/country names in attendees table using normalized_mappings
-	e.Router.POST("/api/custom/sync/normalize-geographic", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/normalize-geographic", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "normalize_geographic")
 	}))
 
 	// Enrollment snapshots sync
 	// Captures daily enrollment counts per session
-	e.Router.POST("/api/custom/sync/enrollment-snapshots", requirePermission("sync.run", func(e *core.RequestEvent) error {
+	e.Router.POST("/api/custom/sync/enrollment-snapshots", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "enrollment_snapshots")
 	}))
 

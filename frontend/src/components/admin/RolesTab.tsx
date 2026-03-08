@@ -3,7 +3,7 @@
  *
  * Lists all roles with their permissions. System roles show a badge and
  * are not editable unless the user is an admin. Custom roles support full
- * CRUD for users with users.manage permission.
+ * CRUD for admin users.
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +11,7 @@ import { Shield, Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { pb } from '../../lib/pocketbase'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import { usePermissions } from '../../hooks/usePermissions'
-import { ALL_PERMISSIONS, Permission } from '../../constants/permissions'
+import { ALL_PERMISSIONS } from '../../constants/permissions'
 import type { Role } from '../../types/rbac'
 
 interface RoleFormData {
@@ -22,8 +22,8 @@ interface RoleFormData {
 }
 
 export function RolesTab() {
-  const { hasPermission, isAdmin } = usePermissions()
-  const canManageUsers = hasPermission(Permission.USERS_MANAGE)
+  const { isAdmin } = usePermissions()
+  const canManageUsers = isAdmin
   const queryClient = useQueryClient()
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [isCreating, setIsCreating] = useState(false)
