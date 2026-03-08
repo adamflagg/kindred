@@ -137,11 +137,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return self._pb_admin_token
 
         pb_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
-        admin_email = os.getenv("PB_ADMIN_EMAIL", "admin@camp.local")
-        admin_password = os.getenv("PB_ADMIN_PASSWORD", "")
+        admin_email = os.getenv("POCKETBASE_ADMIN_EMAIL", "admin@camp.local")
+        admin_password = os.getenv("POCKETBASE_ADMIN_PASSWORD", "")
 
         if not admin_password:
-            logger.debug("No PB_ADMIN_PASSWORD set, skipping PB permission fetch")
+            logger.debug("No POCKETBASE_ADMIN_PASSWORD set, skipping PB permission fetch")
             return None
 
         try:
