@@ -37,7 +37,7 @@ const mockRoles = [
     name: 'Bunking Manager',
     slug: 'bunking-manager',
     description: 'Can manage bunking',
-    permissions: ['bunking.view', 'bunking.manage'],
+    permissions: ['bunking.manage'],
     is_system: true,
     collectionId: 'roles',
     collectionName: 'roles',
@@ -49,7 +49,7 @@ const mockRoles = [
     name: 'Metrics Viewer',
     slug: 'metrics-viewer',
     description: 'Can view metrics',
-    permissions: ['metrics.view'],
+    permissions: ['metrics.financial'],
     is_system: true,
     collectionId: 'roles',
     collectionName: 'roles',
@@ -95,7 +95,7 @@ describe('UserRolesPanel', () => {
     name: 'Emma Johnson',
     email: 'emma@example.com',
     is_admin: false,
-    cached_permissions: ['bunking.view'],
+    cached_permissions: ['bunking.manage'],
   }
 
   beforeEach(() => {

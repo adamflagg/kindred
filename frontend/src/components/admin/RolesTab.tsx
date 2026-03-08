@@ -23,7 +23,6 @@ interface RoleFormData {
 
 export function RolesTab() {
   const { isAdmin } = usePermissions()
-  const canManageUsers = isAdmin
   const queryClient = useQueryClient()
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -128,11 +127,6 @@ export function RolesTab() {
     }))
   }
 
-  function canEditRole(role: Role): boolean {
-    if (role.is_system) return isAdmin
-    return canManageUsers
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -160,7 +154,7 @@ export function RolesTab() {
           <h2 className="font-display text-foreground text-lg font-bold">Roles</h2>
           <span className="text-muted-foreground text-sm">({roles.length})</span>
         </div>
-        {canManageUsers && !isEditing && (
+        {isAdmin && !isEditing && (
           <button onClick={startCreate} className="btn-primary flex items-center gap-1.5 text-sm">
             <Plus className="h-4 w-4" />
             New Role
@@ -289,7 +283,7 @@ export function RolesTab() {
                   ))}
                 </div>
               </div>
-              {canEditRole(role) && !isEditing && (
+              {isAdmin && !isEditing && (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => startEdit(role)}
