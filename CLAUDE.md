@@ -55,6 +55,7 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 | `security` | Security hardening, CVE fixes |
 | `metrics` | Analytics, dashboards, statistics |
 | `graph` | Social network graph features |
+| `rbac` | Roles, permissions, access control |
 | `data` | Data models, schema changes |
 
 ## Quick Development Commands
