@@ -12,13 +12,29 @@ const ungrouped: GapItem[] = [{ name: 'Mapleton Prep', count: 2, percentage: 1.2
 
 describe('NonCanonicalsPanel', () => {
   it('renders merged list sorted by count descending', () => {
-    render(<NonCanonicalsPanel grouped={grouped} ungrouped={ungrouped} onResolve={vi.fn()} />)
+    render(
+      <NonCanonicalsPanel
+        grouped={grouped}
+        ungrouped={ungrouped}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
     const names = screen.getAllByTestId('gap-name').map((el) => el.textContent)
     expect(names).toEqual(['Hillcrest High', 'Riverside Elem', 'Mapleton Prep'])
   })
 
   it('shows red dot for grouped, gray dot for ungrouped', () => {
-    render(<NonCanonicalsPanel grouped={grouped} ungrouped={ungrouped} onResolve={vi.fn()} />)
+    render(
+      <NonCanonicalsPanel
+        grouped={grouped}
+        ungrouped={ungrouped}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
     const dots = screen.getAllByTestId('gap-indicator')
     expect(dots).toHaveLength(3)
     // First two are grouped (red), last is ungrouped (gray)
@@ -28,20 +44,46 @@ describe('NonCanonicalsPanel', () => {
 
   it('calls onResolve with name and type when Resolve clicked', async () => {
     const onResolve = vi.fn()
-    render(<NonCanonicalsPanel grouped={grouped} ungrouped={ungrouped} onResolve={onResolve} />)
+    render(
+      <NonCanonicalsPanel
+        grouped={grouped}
+        ungrouped={ungrouped}
+        onResolve={onResolve}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
     const user = userEvent.setup()
     const buttons = screen.getAllByRole('button', { name: /resolve/i })
-    await user.click(buttons[0]!)
+    // Filter out the header toggle button ("Resolve Non-Canonicals") to get only item-level "Resolve" buttons
+    const resolveButtons = buttons.filter((b) => b.textContent?.trim() === 'Resolve')
+    await user.click(resolveButtons[0]!)
     expect(onResolve).toHaveBeenCalledWith('Hillcrest High', 'non_canonical_grouped')
   })
 
   it('shows count badge in header', () => {
-    render(<NonCanonicalsPanel grouped={grouped} ungrouped={ungrouped} onResolve={vi.fn()} />)
+    render(
+      <NonCanonicalsPanel
+        grouped={grouped}
+        ungrouped={ungrouped}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
     expect(screen.getByText('3')).toBeInTheDocument() // 2 grouped + 1 ungrouped
   })
 
   it('shows empty state when no gaps', () => {
-    render(<NonCanonicalsPanel grouped={[]} ungrouped={[]} onResolve={vi.fn()} />)
+    render(
+      <NonCanonicalsPanel
+        grouped={[]}
+        ungrouped={[]}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
     expect(screen.getByText(/all resolved/i)).toBeInTheDocument()
   })
 })

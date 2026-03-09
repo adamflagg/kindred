@@ -18,6 +18,8 @@ describe('AddCoordsPanel', () => {
         onAdd={vi.fn()}
         onBatchResolve={vi.fn()}
         isBatchResolving={false}
+        isOpen={true}
+        onToggle={vi.fn()}
       />
     )
     const names = screen.getAllByTestId('gap-name').map((el) => el.textContent)
@@ -31,7 +33,14 @@ describe('AddCoordsPanel', () => {
   it('calls onAdd with canonical name when Add button clicked', async () => {
     const onAdd = vi.fn()
     render(
-      <AddCoordsPanel gaps={gaps} onAdd={onAdd} onBatchResolve={vi.fn()} isBatchResolving={false} />
+      <AddCoordsPanel
+        gaps={gaps}
+        onAdd={onAdd}
+        onBatchResolve={vi.fn()}
+        isBatchResolving={false}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
     )
     const user = userEvent.setup()
     const buttons = screen.getAllByRole('button', { name: /add/i })
@@ -49,6 +58,8 @@ describe('AddCoordsPanel', () => {
         onAdd={vi.fn()}
         onBatchResolve={onBatchResolve}
         isBatchResolving={false}
+        isOpen={true}
+        onToggle={vi.fn()}
       />
     )
     const user = userEvent.setup()
@@ -63,6 +74,8 @@ describe('AddCoordsPanel', () => {
         onAdd={vi.fn()}
         onBatchResolve={vi.fn()}
         isBatchResolving={true}
+        isOpen={true}
+        onToggle={vi.fn()}
       />
     )
     const batchButton = screen.getByRole('button', { name: /resolving/i })
@@ -71,7 +84,14 @@ describe('AddCoordsPanel', () => {
 
   it('shows empty state when no missing coords', () => {
     render(
-      <AddCoordsPanel gaps={[]} onAdd={vi.fn()} onBatchResolve={vi.fn()} isBatchResolving={false} />
+      <AddCoordsPanel
+        gaps={[]}
+        onAdd={vi.fn()}
+        onBatchResolve={vi.fn()}
+        isBatchResolving={false}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
     )
     expect(screen.getByText(/all coordinates added/i)).toBeInTheDocument()
   })
@@ -83,6 +103,8 @@ describe('AddCoordsPanel', () => {
         onAdd={vi.fn()}
         onBatchResolve={vi.fn()}
         isBatchResolving={false}
+        isOpen={true}
+        onToggle={vi.fn()}
       />
     )
     expect(screen.getByText('3')).toBeInTheDocument()

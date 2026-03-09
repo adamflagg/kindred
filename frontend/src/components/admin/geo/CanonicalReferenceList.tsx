@@ -63,8 +63,14 @@ export function CanonicalReferenceList({
     <div className="space-y-3">
       {/* Header -- shown when there is data or loading */}
       {(hasData || isLoading) && (
-        <div className="flex items-center gap-2">
-          <span className="text-foreground text-sm font-semibold">Canonical Entries</span>
+        <div className="bg-forest-500/8 border-forest-500/20 flex items-center gap-2 rounded-xl border px-3 py-2.5">
+          <Compass className="text-forest-500 h-4 w-4" />
+          <span className="text-foreground text-sm font-medium">Canonical Entries</span>
+          {data?.results && (
+            <span className="bg-forest-500/15 text-forest-600 rounded-full px-1.5 py-0.5 text-xs">
+              {data.results.length}
+            </span>
+          )}
           <div className="flex-1" />
           {/* Sort toggle */}
           <div className="flex items-center gap-0.5 rounded-md border border-stone-200 dark:border-stone-700">
