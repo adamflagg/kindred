@@ -396,6 +396,7 @@ jobs:
       if: steps.check.outputs.build == 'true'
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
+        fetch-depth: 0
         persist-credentials: false
 
     - name: Clone private config for branding assets
@@ -442,7 +443,7 @@ jobs:
         if [[ "$GH_REF" == refs/tags/* ]]; then
           VERSION=${GITHUB_REF#refs/tags/}
         else
-          VERSION="dev"
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
         fi
         BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
         echo "version=$VERSION" >> $GITHUB_OUTPUT

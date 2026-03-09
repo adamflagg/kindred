@@ -1,12 +1,9 @@
 import type { FC } from 'react'
+import { parseVersion } from '../utils/versionParser'
 
 interface VersionInfoProps {
   className?: string
 }
-
-const GITHUB_REPO_URL = 'https://github.com/adamflagg/kindred'
-
-const getReleaseUrl = (version: string) => `${GITHUB_REPO_URL}/releases/tag/${version}`
 
 const GitHubIcon: FC<{ size?: number }> = ({ size = 14 }) => (
   <svg
@@ -26,19 +23,19 @@ const GitHubIcon: FC<{ size?: number }> = ({ size = 14 }) => (
 )
 
 export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
-  const version = import.meta.env.VITE_APP_VERSION
+  const parsed = parseVersion(import.meta.env.VITE_APP_VERSION)
 
   return (
     <div className={`flex items-center gap-2 text-xs text-gray-400 ${className}`}>
-      {version && version !== 'undefined' && (
+      {parsed && (
         <a
-          href={getReleaseUrl(version)}
+          href={parsed.url}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-300"
-          aria-label={`View Kindred ${version} release on GitHub`}
+          aria-label={`View Kindred ${parsed.display} on GitHub`}
         >
-          <span>Kindred {version}</span>
+          <span>Kindred {parsed.display}</span>
           <GitHubIcon />
         </a>
       )}
