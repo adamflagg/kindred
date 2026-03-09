@@ -249,6 +249,9 @@ function defaultSessionComparator(nameA: string, nameB: string): number {
   return suffixA.localeCompare(suffixB)
 }
 
+/** Session name comparator function */
+type SessionComparator = (nameA: string, nameB: string) => number
+
 /**
  * Convert SessionFlowItem[] from API to Recharts Sankey data format.
  *
@@ -256,17 +259,19 @@ function defaultSessionComparator(nameA: string, nameB: string): number {
  * to disambiguate when the same session name appears on both sides.
  * "Did Not Return" is a special target that gets no suffix and is always last.
  *
- * @param comparator - Optional sort function for session names. When provided,
- *   controls the vertical ordering of nodes on both sides (e.g. camp-then-quest
- *   via compareByDateCampThenQuest). Falls back to name-based sorting.
+ * @param comparators - Optional comparators for sorting nodes. Pass separate
+ *   `{ source, target }` comparators when each side has its own year's date/type
+ *   data (e.g. via compareByDateCampThenQuest with per-year lookups).
+ *   Falls back to name-based sorting (parseSessionName).
  */
 export function sessionFlowToSankeyData(
   data: SessionFlowItem[] | undefined,
-  comparator?: (nameA: string, nameB: string) => number
+  comparators?: { source?: SessionComparator | undefined; target?: SessionComparator | undefined }
 ): SankeyData | null {
   if (!data?.length) return null
 
-  const compare = comparator ?? defaultSessionComparator
+  const sourceCompare = comparators?.source ?? defaultSessionComparator
+  const targetCompare = comparators?.target ?? defaultSessionComparator
 
   // Collect unique sources and targets with their cm_ids
   const sourceCmIds = new Map<string, number>()
@@ -278,13 +283,12 @@ export function sessionFlowToSankeyData(
     }
   }
 
-  // Sort using comparator so matching sessions align vertically across sides.
-  // "Did Not Return" (cmId null) is pinned last among targets.
-  const sortedSources = [...sourceCmIds.entries()].sort((a, b) => compare(a[0], b[0]))
+  // Sort each side independently. "Did Not Return" is pinned last among targets.
+  const sortedSources = [...sourceCmIds.entries()].sort((a, b) => sourceCompare(a[0], b[0]))
   const sortedTargets = [...targetCmIds.entries()].sort((a, b) => {
     if (a[0] === 'Did Not Return') return 1
     if (b[0] === 'Did Not Return') return -1
-    return compare(a[0], b[0])
+    return targetCompare(a[0], b[0])
   })
 
   // Build node list: sources first, then targets

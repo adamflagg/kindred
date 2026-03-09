@@ -19,22 +19,30 @@ import {
   compareByDateCampThenQuest,
 } from '../../../utils/sessionUtils'
 
+/** Build a camp-then-quest comparator from session records */
+function buildComparator(sessions: Array<{ name: string; start_date: string; session_type: string }>) {
+  if (sessions.length === 0) return undefined
+  const dateLookup = buildSessionDateLookup(sessions)
+  const typeLookup = buildSessionTypeLookup(sessions)
+  return (a: string, b: string) => compareByDateCampThenQuest(a, b, dateLookup, typeLookup)
+}
+
 export default function SessionFlowPage() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const priorYear = currentYear - 1
 
-  // Fetch prior year sessions for date/type lookups on the source side
+  // Fetch prior year sessions for source-side ordering
   const { data: priorSessions = [] } = useMetricsSessions(priorYear)
 
-  // Build combined lookups from both years for camp-then-quest ordering
-  const sessionComparator = useMemo(() => {
-    const allSessions = [...sessions, ...priorSessions]
-    if (allSessions.length === 0) return undefined
-    const dateLookup = buildSessionDateLookup(allSessions)
-    const typeLookup = buildSessionTypeLookup(allSessions)
-    return (a: string, b: string) => compareByDateCampThenQuest(a, b, dateLookup, typeLookup)
-  }, [sessions, priorSessions])
+  // Each side gets its own year's date/type lookups for correct ordering
+  const comparators = useMemo(
+    () => ({
+      source: buildComparator(priorSessions),
+      target: buildComparator(sessions),
+    }),
+    [sessions, priorSessions]
+  )
 
   const { data, isLoading, error } = useRetentionMetrics(
     priorYear,
@@ -53,7 +61,7 @@ export default function SessionFlowPage() {
         emptyMessage="No session flow data available"
       >
         {(data) => {
-          const sankeyData = sessionFlowToSankeyData(data.session_flow, sessionComparator)
+          const sankeyData = sessionFlowToSankeyData(data.session_flow, comparators)
           return sankeyData ? (
             <div data-tour="retention-flow-sankey">
               <SessionFlowSankey
