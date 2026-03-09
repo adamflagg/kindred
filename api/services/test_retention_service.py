@@ -504,6 +504,87 @@ class TestRetentionServiceCalculateRetention:
         assert result.returned_count == 1
 
     @pytest.mark.asyncio
+    async def test_session_cm_id_resolves_alias_across_years(self) -> None:
+        """When session_cm_id only exists in compare year, resolve alias to find base year equivalent.
+
+        Scenario: User picks "Taste of Camp 2" (cm_id=2000) from the 2026 dropdown.
+        2025 has "Session 2b" (cm_id=1001) which is aliased to "Taste of Camp 2".
+        The service should find the base year equivalent and include those campers.
+        """
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # Base year: person 1 in Session 2b (cm_id=1001), person 2 in Session 2 (cm_id=1000)
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2b", session_type="embedded")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 2", session_type="main")},
+                ),
+            ],
+            # Compare year: person 1 returned to Taste of Camp 2 (cm_id=2000)
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Taste of Camp 2", session_type="embedded")},
+                ),
+                MockAttendee(
+                    person_id=3,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1000, name="Session 2", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        # Sessions for each year (fetch_sessions called multiple times)
+        mock_repo.fetch_sessions.side_effect = [
+            # base year sessions (unfiltered)
+            {
+                1000: MockSession(cm_id=1000, name="Session 2", session_type="main"),
+                1001: MockSession(cm_id=1001, name="Session 2b", session_type="embedded"),
+            },
+            # compare year sessions (filtered by type)
+            {
+                1000: MockSession(cm_id=1000, name="Session 2", session_type="main"),
+                2000: MockSession(cm_id=2000, name="Taste of Camp 2", session_type="embedded"),
+            },
+            # compare year sessions (unfiltered)
+            {
+                1000: MockSession(cm_id=1000, name="Session 2", session_type="main"),
+                2000: MockSession(cm_id=2000, name="Taste of Camp 2", session_type="embedded"),
+            },
+        ]
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_cm_id=2000,  # "Taste of Camp 2" - only exists in 2026
+        )
+
+        # Base year: person 1 should be included (Session 2b aliases to Taste of Camp 2)
+        # Person 2 should NOT be included (Session 2 is a different session)
+        assert result.base_year_total == 1
+        # Compare year: person 1 in Taste of Camp 2 (cm_id=2000)
+        assert result.compare_year_total == 1
+        assert result.returned_count == 1
+
+    @pytest.mark.asyncio
     async def test_calculate_retention_handles_empty_base_year(self) -> None:
         """calculate_retention handles empty base year gracefully."""
         from api.services.retention_service import RetentionService
