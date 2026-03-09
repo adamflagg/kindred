@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { MapPin } from 'lucide-react'
-import { CATEGORY_SIDEBAR, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
+import { AlertCircle, MapPin } from 'lucide-react'
+import { SUB_TABS, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
 import type { GeoCategory } from '../geoConstants'
 import { useGeoGaps, useBatchResolveCoords, useGeoPagePrefetch } from '../../../hooks/useGeoData'
 import { NonCanonicalsPanel } from './NonCanonicalsPanel'
@@ -23,6 +23,8 @@ export function GeoManagementPage() {
   const activeSubTab = getActiveSubTab(location.pathname)
   const category = (SUB_TAB_TO_CATEGORY[activeSubTab] ?? 'city') as GeoCategory
   const [activeOnly, setActiveOnly] = useState(true)
+  const [nonCanonicalsOpen, setNonCanonicalsOpen] = useState(false)
+  const [coordsOpen, setCoordsOpen] = useState(false)
   const [resolveDialog, setResolveDialog] = useState<ResolveDialogState>({
     open: false,
     gapName: '',
@@ -33,6 +35,10 @@ export function GeoManagementPage() {
   useGeoPagePrefetch(category, year, activeOnly)
   const totalGaps = gaps?.total_gaps ?? 0
   const batchResolve = useBatchResolveCoords(category, year)
+
+  const nonCanonicalsCount =
+    (gaps?.non_canonical_grouped?.length ?? 0) + (gaps?.non_canonical_ungrouped?.length ?? 0)
+  const coordsCount = gaps?.canonical_no_coords?.length ?? 0
 
   const handleOpenResolve = useCallback((gapName: string, gapType: string) => {
     setResolveDialog({ open: true, gapName, gapType })
@@ -68,70 +74,148 @@ export function GeoManagementPage() {
         </div>
       </div>
 
-      {/* Main content: sidebar + split panels */}
-      <div className="flex min-h-0 flex-1">
-        {/* Sidebar */}
-        <nav className="border-border flex w-16 flex-col gap-1 border-r px-1.5 py-2">
-          {CATEGORY_SIDEBAR.map((item) => {
-            const Icon = item.icon
-            const isActive = category === item.id
-            return (
-              <Link
-                key={item.id}
-                to={item.path}
-                data-active={isActive}
-                className={`flex flex-col items-center gap-0.5 rounded-lg px-1 py-2 text-center transition-colors ${
-                  isActive
-                    ? 'bg-forest-100 text-forest-800 dark:bg-forest-800 dark:text-forest-200'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      {/* Horizontal tab bar */}
+      <div
+        data-testid="category-tabs"
+        className="border-border flex items-center gap-1 border-b px-4"
+      >
+        {SUB_TABS.map((tab) => {
+          const Icon = tab.icon
+          const isActive = activeSubTab === tab.id
+          return (
+            <Link
+              key={tab.id}
+              to={tab.path}
+              data-active={isActive}
+              className={`flex items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-forest-100 text-forest-800 dark:bg-forest-800 dark:text-forest-200 border-forest-500 border-b-2'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground border-b-2 border-transparent'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+
+      {/* Split panels */}
+      <div className="grid min-h-0 flex-1 grid-cols-2">
+        <div
+          data-testid="left-panel"
+          className="border-border space-y-4 overflow-y-auto border-r p-3"
+        >
+          {/* Stat summary cards */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              data-testid="stat-unresolved"
+              onClick={() => setNonCanonicalsOpen((prev) => !prev)}
+              className={`flex items-center gap-3 rounded-xl p-3 text-left transition-all ${
+                nonCanonicalsCount > 0
+                  ? 'bg-red-50 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-800'
+                  : 'bg-muted/50'
+              }`}
+            >
+              <div
+                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
+                  nonCanonicalsCount > 0 ? 'bg-red-100 dark:bg-red-900/50' : 'bg-background'
                 }`}
               >
-                <Icon className="h-5 w-5" />
-                <span className="text-[10px] leading-tight font-medium">{item.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
+                <AlertCircle
+                  className={`h-5 w-5 ${
+                    nonCanonicalsCount > 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-muted-foreground'
+                  }`}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-muted-foreground text-xs tracking-wide uppercase">Unresolved</p>
+                <p
+                  className={`text-lg font-semibold ${
+                    nonCanonicalsCount > 0 ? 'text-red-700 dark:text-red-300' : ''
+                  }`}
+                >
+                  {nonCanonicalsCount}
+                </p>
+              </div>
+            </button>
 
-        {/* Split panels */}
-        <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
-          <div
-            data-testid="left-panel"
-            className="border-border space-y-4 overflow-y-auto border-r p-3"
-          >
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <span className="text-muted-foreground text-sm">Loading gaps...</span>
-              </div>
-            ) : isError ? (
-              <div className="flex items-center justify-center py-12">
-                <span className="text-sm text-red-500">Failed to load gap data</span>
-              </div>
-            ) : gaps ? (
-              <>
-                <NonCanonicalsPanel
-                  grouped={gaps.non_canonical_grouped}
-                  ungrouped={gaps.non_canonical_ungrouped}
-                  onResolve={handleOpenResolve}
+            <button
+              data-testid="stat-missing-coords"
+              onClick={() => setCoordsOpen((prev) => !prev)}
+              className={`flex items-center gap-3 rounded-xl p-3 text-left transition-all ${
+                coordsCount > 0
+                  ? 'bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800'
+                  : 'bg-muted/50'
+              }`}
+            >
+              <div
+                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
+                  coordsCount > 0 ? 'bg-amber-100 dark:bg-amber-900/50' : 'bg-background'
+                }`}
+              >
+                <MapPin
+                  className={`h-5 w-5 ${
+                    coordsCount > 0
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-muted-foreground'
+                  }`}
                 />
-                <AddCoordsPanel
-                  gaps={gaps.canonical_no_coords}
-                  onAdd={(name) => handleOpenResolve(name, 'canonical_no_coords')}
-                  onBatchResolve={handleBatchResolve}
-                  isBatchResolving={batchResolve.isPending}
-                />
-              </>
-            ) : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-muted-foreground text-xs tracking-wide uppercase">
+                  Missing Coords
+                </p>
+                <p
+                  className={`text-lg font-semibold ${
+                    coordsCount > 0 ? 'text-amber-700 dark:text-amber-300' : ''
+                  }`}
+                >
+                  {coordsCount}
+                </p>
+              </div>
+            </button>
           </div>
-          <div data-testid="right-panel" className="overflow-y-auto p-3">
-            <CanonicalReferenceList
-              category={category}
-              year={year}
-              onReassignSource={(originalValue) =>
-                handleOpenResolve(originalValue, 'non_canonical_grouped')
-              }
-            />
-          </div>
+
+          {/* Collapsible sections */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <span className="text-muted-foreground text-sm">Loading gaps...</span>
+            </div>
+          ) : isError ? (
+            <div className="flex items-center justify-center py-12">
+              <span className="text-sm text-red-500">Failed to load gap data</span>
+            </div>
+          ) : gaps ? (
+            <>
+              <NonCanonicalsPanel
+                grouped={gaps.non_canonical_grouped}
+                ungrouped={gaps.non_canonical_ungrouped}
+                onResolve={handleOpenResolve}
+                isOpen={nonCanonicalsOpen}
+                onToggle={() => setNonCanonicalsOpen((prev) => !prev)}
+              />
+              <AddCoordsPanel
+                gaps={gaps.canonical_no_coords}
+                onAdd={(name) => handleOpenResolve(name, 'canonical_no_coords')}
+                onBatchResolve={handleBatchResolve}
+                isBatchResolving={batchResolve.isPending}
+                isOpen={coordsOpen}
+                onToggle={() => setCoordsOpen((prev) => !prev)}
+              />
+            </>
+          ) : null}
+        </div>
+        <div data-testid="right-panel" className="overflow-y-auto p-3">
+          <CanonicalReferenceList
+            category={category}
+            year={year}
+            onReassignSource={(originalValue) =>
+              handleOpenResolve(originalValue, 'non_canonical_grouped')
+            }
+          />
         </div>
       </div>
 
