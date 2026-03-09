@@ -396,6 +396,7 @@ jobs:
       if: steps.check.outputs.build == 'true'
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
+        fetch-depth: 0
         persist-credentials: false
 
     - name: Clone private config for branding assets

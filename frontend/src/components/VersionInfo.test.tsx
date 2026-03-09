@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { parseVersion } from '../utils/versionParser'
 import { VersionInfo } from './VersionInfo'
@@ -91,6 +91,10 @@ describe('parseVersion', () => {
 const mockVersion = (version: string) => {
   vi.stubEnv('VITE_APP_VERSION', version)
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('VersionInfo', () => {
   it('should render release version with link to release page', () => {
