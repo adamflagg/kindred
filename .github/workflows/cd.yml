@@ -328,6 +328,8 @@ jobs:
       (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
       !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
     runs-on: ubuntu-latest
+    outputs:
+      promoted: ${{ steps.check.outputs.promote }}
     permissions:
       contents: read
       packages: write
@@ -339,44 +341,45 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REF: ${{ github.ref }}
+        GH_SHA: ${{ github.sha }}
         GH_USERNAME: ${{ env.USERNAME }}
         CHANGES_API: ${{ needs.detect-changes.outputs.api }}
         CHANGES_DOCKER: ${{ needs.detect-changes.outputs.docker }}
         CHANGES_INITIAL: ${{ needs.detect-changes.outputs.initial_commit }}
         EVENT_NAME: ${{ github.event_name }}
       run: |
-        # For tag pushes, check if all images already exist in registry
+        # For tag pushes, check if we can promote existing images instead of rebuilding.
+        # Main pushes create a sha-<commit> tag; releases promote from that immutable ref.
         if [[ "$GH_REF" == refs/tags/v* ]]; then
           TAG_NAME=${GITHUB_REF#refs/tags/}
           DOCKER_TAG=${TAG_NAME#v}
-          ALL_EXIST=true
+          MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+          SHA_TAG="sha-$(echo "$GH_SHA" | cut -c1-7)"
 
-          for IMAGE in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
-            echo "Checking if ${IMAGE}:${DOCKER_TAG} already exists..."
-            if gh api "/users/${GH_USERNAME}/packages/container/${IMAGE}/versions" \
-                 --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" \
-                 > /tmp/existing_id 2>/dev/null; then
-              EXISTING=$(head -1 /tmp/existing_id)
-            else
-              EXISTING=""
-            fi
+          # Check if the SHA-tagged images exist (pushed by the main CD run)
+          LAST_CD_SHA=$(gh run list \
+            --workflow cd.yml \
+            --branch main \
+            --status success \
+            --limit 1 \
+            --json headSha \
+            --jq '.[0].headSha' 2>/dev/null || echo "")
 
-            if [ -z "$EXISTING" ]; then
-              ALL_EXIST=false
-              echo "  ${IMAGE}:${DOCKER_TAG} not found, will build..."
-            else
-              echo "  ${IMAGE}:${DOCKER_TAG} exists"
-            fi
-          done
-
-          if [ "$ALL_EXIST" = "true" ]; then
+          if [ -n "$LAST_CD_SHA" ] && [ "$LAST_CD_SHA" == "$GH_SHA" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            echo "All images already exist (pushed by local release) - skipping build"
+            echo "promote=true" >> $GITHUB_OUTPUT
+            echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+            echo "minor_tag=$MINOR_TAG" >> $GITHUB_OUTPUT
+            echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
+            echo "Images from SHA $GH_SHA exist as :${SHA_TAG} - promoting instead of rebuilding"
             exit 0
           fi
+
+          echo "Last main CD was ${LAST_CD_SHA:-unknown}, not $GH_SHA - full build required"
         fi
 
         # Standard change detection
+        echo "promote=false" >> $GITHUB_OUTPUT
         if [ "$CHANGES_API" == "true" ] || \
            [ "$EVENT_NAME" == "workflow_dispatch" ] || \
            [ "$EVENT_NAME" == "schedule" ] || \
@@ -415,7 +418,7 @@ jobs:
         fi
 
     - name: Log in to GitHub Container Registry
-      if: steps.check.outputs.build == 'true'
+      if: steps.check.outputs.build == 'true' || steps.check.outputs.promote == 'true'
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         registry: ${{ env.REGISTRY }}
@@ -482,8 +485,12 @@ jobs:
       env:
         INPUT_TAG: ${{ github.event.inputs.tag }}
         GH_REF: ${{ github.ref }}
+        GH_SHA: ${{ github.sha }}
       run: |
         TAG_SUFFIXES="latest"
+        # Add immutable SHA tag so releases can promote from it
+        SHA_TAG="sha-$(echo "$GH_SHA" | cut -c1-7)"
+        TAG_SUFFIXES="${TAG_SUFFIXES},${SHA_TAG}"
         if [ -n "$INPUT_TAG" ]; then
           TAG_SUFFIXES="${TAG_SUFFIXES},${INPUT_TAG}"
         fi
@@ -746,6 +753,29 @@ jobs:
         fi
         echo "   To push, trigger manually without dry_run or merge to main"
 
+    # === Promote Path (tag push, same SHA already built on main) ===
+    # Re-tag existing sha-<commit> images with version tags at the registry level.
+    # Uses the immutable SHA tag (not :latest) to guarantee we promote the exact
+    # image that was built and tested, even if another main push lands concurrently.
+    - name: Promote to release tags
+      if: steps.check.outputs.promote == 'true'
+      env:
+        DOCKER_TAG: ${{ steps.check.outputs.docker_tag }}
+        MINOR_TAG: ${{ steps.check.outputs.minor_tag }}
+        SHA_TAG: ${{ steps.check.outputs.sha_tag }}
+      run: |
+        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+
+        for IMAGE in "${IMAGES[@]}"; do
+          SRC="${REGISTRY}/${USERNAME}/${IMAGE}:${SHA_TAG}"
+          echo "Promoting ${IMAGE}: ${SHA_TAG} → ${DOCKER_TAG}, ${MINOR_TAG}"
+          docker buildx imagetools create "$SRC" \
+            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${DOCKER_TAG}" \
+            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${MINOR_TAG}"
+        done
+
+        echo "All images promoted successfully (no rebuild needed)"
+
   # Summary job
   summary:
     name: Build Summary
@@ -756,6 +786,7 @@ jobs:
     - name: Check build status
       env:
         BUILD_RESULT: ${{ needs.build-test-push.result }}
+        PROMOTED: ${{ needs.build-test-push.outputs.promoted }}
         EVENT_NAME: ${{ github.event_name }}
         DRY_RUN: ${{ github.event.inputs.dry_run }}
         GH_USERNAME: ${{ env.USERNAME }}
@@ -767,6 +798,14 @@ jobs:
 
         if [ "$BUILD_RESULT" == "skipped" ]; then
           echo "Docker build skipped (no relevant file changes)"
+        elif [ "$PROMOTED" == "true" ]; then
+          echo "Release images promoted from latest (same SHA, no rebuild)"
+          echo ""
+          echo "Images promoted:"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-caddy"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-pocketbase"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-api"
+          echo "- ghcr.io/${GH_USERNAME}/kindred-init"
         elif [ "$EVENT_NAME" == "pull_request" ]; then
           echo "CD validation passed (PR mode - no push)"
           echo ""
