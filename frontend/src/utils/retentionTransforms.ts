@@ -257,17 +257,26 @@ export function sessionFlowToSankeyData(data: SessionFlowItem[] | undefined): Sa
     }
   }
 
+  // Sort by cmId ascending so matching sessions align vertically across sides.
+  // "Did Not Return" (cmId null) is pinned last among targets.
+  const sortedSources = [...sourceCmIds.entries()].sort((a, b) => a[1] - b[1])
+  const sortedTargets = [...targetCmIds.entries()].sort((a, b) => {
+    if (a[1] == null) return 1
+    if (b[1] == null) return -1
+    return a[1] - b[1]
+  })
+
   // Build node list: sources first, then targets
   const nodes: SankeyNode[] = []
   const nodeIndexMap = new Map<string, number>()
 
-  for (const [name, cmId] of sourceCmIds) {
+  for (const [name, cmId] of sortedSources) {
     const displayName = `${name} (from)`
     nodeIndexMap.set(`source:${name}`, nodes.length)
     nodes.push({ name: displayName, cmId })
   }
 
-  for (const [name, cmId] of targetCmIds) {
+  for (const [name, cmId] of sortedTargets) {
     const displayName = name === 'Did Not Return' ? name : `${name} (to)`
     nodeIndexMap.set(`target:${name}`, nodes.length)
     nodes.push({ name: displayName, cmId: cmId ?? null })
