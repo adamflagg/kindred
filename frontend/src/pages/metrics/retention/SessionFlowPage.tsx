@@ -20,7 +20,9 @@ import {
 } from '../../../utils/sessionUtils'
 
 /** Build a camp-then-quest comparator from session records */
-function buildComparator(sessions: Array<{ name: string; start_date: string; session_type: string }>) {
+function buildComparator(
+  sessions: Array<{ name: string; start_date: string; session_type: string }>
+) {
   if (sessions.length === 0) return undefined
   const dateLookup = buildSessionDateLookup(sessions)
   const typeLookup = buildSessionTypeLookup(sessions)
