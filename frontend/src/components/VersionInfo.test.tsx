@@ -102,10 +102,7 @@ describe('VersionInfo', () => {
     render(<VersionInfo />)
     const link = screen.getByRole('link')
     expect(link).toHaveTextContent('Kindred v0.8.0')
-    expect(link).toHaveAttribute(
-      'href',
-      'https://github.com/adamflagg/kindred/releases/tag/v0.8.0',
-    )
+    expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/releases/tag/v0.8.0')
   })
 
   it('should render describe version with +N suffix and link to commit', () => {
@@ -113,10 +110,7 @@ describe('VersionInfo', () => {
     render(<VersionInfo />)
     const link = screen.getByRole('link')
     expect(link).toHaveTextContent('Kindred v0.7.0+5')
-    expect(link).toHaveAttribute(
-      'href',
-      'https://github.com/adamflagg/kindred/commit/abc1234',
-    )
+    expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/commit/abc1234')
   })
 
   it('should render nothing for "dev"', () => {
