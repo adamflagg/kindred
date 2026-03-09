@@ -98,11 +98,19 @@ class RetentionService:
         summer_types = list(DISPLAY_SESSION_TYPES)
         effective_types = session_types if session_types is not None else summer_types
 
+        # Resolve session_cm_id per year via alias system. When a session is
+        # renamed across years (e.g. "Session 2b" → "Taste of Camp 2"), the
+        # picker's cm_id may only exist in one year. Resolve to the equivalent
+        # cm_id in the other year so both sides filter correctly.
+        base_session_cm_id, compare_session_cm_id = self._resolve_session_cm_ids(
+            session_cm_id, sessions_base_all, sessions_compare_all
+        )
+
         # Get unique person IDs for base year, filtered by session
-        person_ids_base, _ = self._filter_base_attendees(attendees_base, effective_types, session_cm_id)
+        person_ids_base, _ = self._filter_base_attendees(attendees_base, effective_types, base_session_cm_id)
 
         # Get person IDs for compare year, filtered by session type and cm_id
-        person_ids_compare, _ = self._filter_base_attendees(attendees_compare, effective_types, session_cm_id)
+        person_ids_compare, _ = self._filter_base_attendees(attendees_compare, effective_types, compare_session_cm_id)
 
         # "Unfiltered" pools for session chart semantics and session flow.
         # Still filtered to summer types (no session_cm_id filter) so non-summer
@@ -130,7 +138,9 @@ class RetentionService:
         }
 
         # Base year attendee sessions (filtered by session_types and session_cm_id) for session flow
-        _, attendee_sessions_base_filtered = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
+        _, attendee_sessions_base_filtered = self._filter_base_attendees(
+            attendees_base, session_types, base_session_cm_id
+        )
 
         # Calculate returned campers
         returned_ids = person_ids_base & person_ids_compare
@@ -223,7 +233,7 @@ class RetentionService:
             person_ids_compare_unfiltered,
             sessions_base_all,
             session_types,
-            session_cm_id,
+            base_session_cm_id,
             aged_out_person_ids=aged_out_person_ids,
         )
 
@@ -306,6 +316,78 @@ class RetentionService:
                 attendee_sessions[person_id].append(attendee_session_cm_id)
 
         return person_ids, attendee_sessions
+
+    @staticmethod
+    def _resolve_session_cm_ids(
+        session_cm_id: int | None,
+        sessions_base: dict[int, Any],
+        sessions_compare: dict[int, Any],
+    ) -> tuple[int | None, int | None]:
+        """Resolve a session cm_id to per-year equivalents using alias mapping.
+
+        The session picker uses compare-year cm_ids. When a session is renamed
+        across years (e.g. "Session 2b" in 2025 → "Taste of Camp 2" in 2026),
+        the picker's cm_id only exists in one year. This resolves the alias
+        so each year filters by its own cm_id.
+
+        Args:
+            session_cm_id: The cm_id from the session picker (compare-year based), or None.
+            sessions_base: All base year sessions keyed by cm_id.
+            sessions_compare: All compare year sessions keyed by cm_id.
+
+        Returns:
+            Tuple of (base_session_cm_id, compare_session_cm_id).
+        """
+        if session_cm_id is None:
+            return None, None
+
+        from api.utils.session_aliases import get_alias_group
+
+        # Build name→cm_id lookup for each year
+        name_to_cmid_base: dict[str, int] = {}
+        for cmid, session in sessions_base.items():
+            name = getattr(session, "name", None)
+            if name:
+                name_to_cmid_base[name] = cmid
+
+        name_to_cmid_compare: dict[str, int] = {}
+        for cmid, session in sessions_compare.items():
+            name = getattr(session, "name", None)
+            if name:
+                name_to_cmid_compare[name] = cmid
+
+        # Start with the picker value for both sides
+        base_cm_id: int | None = session_cm_id
+        compare_cm_id: int | None = session_cm_id
+
+        # Look up session name from whichever year has this cm_id
+        session_name: str | None = None
+        if session_cm_id in sessions_compare:
+            session_name = getattr(sessions_compare[session_cm_id], "name", None)
+        elif session_cm_id in sessions_base:
+            session_name = getattr(sessions_base[session_cm_id], "name", None)
+
+        if session_name is None:
+            return base_cm_id, compare_cm_id
+
+        # Get all equivalent names (canonical + aliases)
+        alias_names = get_alias_group(session_name)
+
+        # Resolve base year: find cm_id for any alias name present in base year
+        if session_cm_id not in sessions_base:
+            for name in alias_names:
+                if name in name_to_cmid_base:
+                    base_cm_id = name_to_cmid_base[name]
+                    break
+
+        # Resolve compare year: find cm_id for any alias name present in compare year
+        if session_cm_id not in sessions_compare:
+            for name in alias_names:
+                if name in name_to_cmid_compare:
+                    compare_cm_id = name_to_cmid_compare[name]
+                    break
+
+        return base_cm_id, compare_cm_id
 
     def _build_retention_breakdown[T, M](
         self,
