@@ -55,7 +55,7 @@ export function NonCanonicalsPanel({
       <button
         onClick={onToggle}
         aria-expanded={isOpen}
-        className="flex w-full items-center gap-2 bg-red-500/8 px-3 py-2.5 text-left transition-colors cursor-pointer"
+        className="flex w-full cursor-pointer items-center gap-2 bg-red-500/8 px-3 py-2.5 text-left transition-colors"
       >
         <AlertCircle className="h-4 w-4 text-red-500" />
         <span className="text-foreground text-sm font-semibold">Resolve Non-Canonicals</span>
@@ -73,12 +73,7 @@ export function NonCanonicalsPanel({
 
       {/* Collapsible content */}
       {isOpen && (
-        <div
-          className="divide-border/30 max-h-64 divide-y overflow-y-auto border-t border-red-500/20 bg-red-500/8"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          role="presentation"
-        >
+        <div className="divide-border/30 max-h-64 divide-y overflow-y-auto border-t border-red-500/20 bg-red-500/8">
           {merged.map((item) => {
             const isGrouped = item.gapType === 'non_canonical_grouped'
             return (
@@ -100,10 +95,7 @@ export function NonCanonicalsPanel({
                   {item.count}
                 </span>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onResolve(item.name, item.gapType)
-                  }}
+                  onClick={() => onResolve(item.name, item.gapType)}
                   className="text-forest-700 hover:text-forest-900 dark:text-forest-400 dark:hover:text-forest-200 shrink-0 text-xs font-medium transition-colors"
                 >
                   Resolve

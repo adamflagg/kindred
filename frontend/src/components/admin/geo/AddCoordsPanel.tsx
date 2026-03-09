@@ -42,7 +42,7 @@ export function AddCoordsPanel({
         <button
           onClick={onToggle}
           aria-expanded={isOpen}
-          className="flex flex-1 items-center gap-2 text-left cursor-pointer"
+          className="flex flex-1 cursor-pointer items-center gap-2 text-left"
         >
           <AlertCircle className="h-4 w-4 text-amber-500" />
           <span className="text-foreground text-sm font-semibold">Add Coordinates</span>
@@ -78,12 +78,7 @@ export function AddCoordsPanel({
 
       {/* Collapsible content */}
       {isOpen && (
-        <div
-          className="divide-border/30 max-h-64 divide-y overflow-y-auto border-t border-amber-500/20 bg-amber-500/8"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          role="presentation"
-        >
+        <div className="divide-border/30 max-h-64 divide-y overflow-y-auto border-t border-amber-500/20 bg-amber-500/8">
           {gaps.map((item) => (
             <div
               key={item.name}
@@ -99,10 +94,7 @@ export function AddCoordsPanel({
                 {item.count}
               </span>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onAdd(item.name)
-                }}
+                onClick={() => onAdd(item.name)}
                 className="text-forest-700 hover:text-forest-900 dark:text-forest-400 dark:hover:text-forest-200 shrink-0 text-xs font-medium transition-colors"
               >
                 Add

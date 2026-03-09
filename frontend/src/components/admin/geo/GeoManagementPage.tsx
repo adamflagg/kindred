@@ -25,6 +25,12 @@ export function GeoManagementPage() {
   const [activeOnly, setActiveOnly] = useState(true)
   const [nonCanonicalsOpen, setNonCanonicalsOpen] = useState(false)
   const [coordsOpen, setCoordsOpen] = useState(false)
+  const [prevCategory, setPrevCategory] = useState(category)
+  if (prevCategory !== category) {
+    setPrevCategory(category)
+    setNonCanonicalsOpen(false)
+    setCoordsOpen(false)
+  }
   const [resolveDialog, setResolveDialog] = useState<ResolveDialogState>({
     open: false,
     gapName: '',
@@ -111,7 +117,7 @@ export function GeoManagementPage() {
             <button
               data-testid="stat-unresolved"
               onClick={() => setNonCanonicalsOpen((prev) => !prev)}
-              className={`flex items-center gap-3 rounded-xl p-3 text-left transition-all ${
+              className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 text-left transition-all ${
                 nonCanonicalsCount > 0
                   ? 'bg-red-50 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-800'
                   : 'bg-muted/50'
@@ -145,7 +151,7 @@ export function GeoManagementPage() {
             <button
               data-testid="stat-missing-coords"
               onClick={() => setCoordsOpen((prev) => !prev)}
-              className={`flex items-center gap-3 rounded-xl p-3 text-left transition-all ${
+              className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 text-left transition-all ${
                 coordsCount > 0
                   ? 'bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800'
                   : 'bg-muted/50'
@@ -158,9 +164,7 @@ export function GeoManagementPage() {
               >
                 <MapPin
                   className={`h-5 w-5 ${
-                    coordsCount > 0
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-muted-foreground'
+                    coordsCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
                   }`}
                 />
               </div>
