@@ -462,15 +462,17 @@ describe('sessionFlowToSankeyData', () => {
     expect(dnrIndex).toBeGreaterThanOrEqual(sourceCount)
   })
 
-  it('sorts nodes using provided comparator', () => {
-    // Comparator puts Quest before Camp (reverse of default camp-then-quest)
-    const reverseComparator = (a: string, b: string) => {
+  it('sorts source and target sides with separate comparators', () => {
+    // Source comparator: Quest before Camp
+    // Target comparator: alphabetical
+    const questFirst = (a: string, b: string) => {
       const isQuestA = a.startsWith('Quest')
       const isQuestB = b.startsWith('Quest')
       if (isQuestA && !isQuestB) return -1
       if (!isQuestA && isQuestB) return 1
       return a.localeCompare(b)
     }
+    const alphabetical = (a: string, b: string) => a.localeCompare(b)
 
     const input: SessionFlowItem[] = [
       {
@@ -487,28 +489,22 @@ describe('sessionFlowToSankeyData', () => {
         source_cm_id: 1002,
         target_cm_id: 1002,
       },
-      {
-        source: 'Session 2',
-        target: 'Session 2',
-        value: 20,
-        source_cm_id: 1001,
-        target_cm_id: 1001,
-      },
     ]
-    const result = sessionFlowToSankeyData(input, reverseComparator)
+    const result = sessionFlowToSankeyData(input, {
+      source: questFirst,
+      target: alphabetical,
+    })
     expect(result).not.toBeNull()
 
-    // Comparator puts Quest first, then Sessions alphabetically
+    // Source: Quest first (questFirst comparator)
     expect(result!.nodes[0]!.name).toBe('Quest 1 (from)')
     expect(result!.nodes[1]!.name).toBe('Session 1 (from)')
-    expect(result!.nodes[2]!.name).toBe('Session 2 (from)')
-    expect(result!.nodes[3]!.name).toBe('Quest 1 (to)')
-    expect(result!.nodes[4]!.name).toBe('Session 1 (to)')
-    expect(result!.nodes[5]!.name).toBe('Session 2 (to)')
+    // Target: alphabetical (Quest 1 < Session 1)
+    expect(result!.nodes[2]!.name).toBe('Quest 1 (to)')
+    expect(result!.nodes[3]!.name).toBe('Session 1 (to)')
   })
 
-  it('falls back to name-based sorting without comparator', () => {
-    // Input has Session 3 first, then Session 1 — should sort by parsed name
+  it('falls back to name-based sorting without comparators', () => {
     const input: SessionFlowItem[] = [
       {
         source: 'Session 3',
@@ -535,7 +531,7 @@ describe('sessionFlowToSankeyData', () => {
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
 
-    // Default: sorted by session name (1, 2, 3)
+    // Default: sorted by session name (1, 2, 3) on both sides
     expect(result!.nodes[0]!.name).toBe('Session 1 (from)')
     expect(result!.nodes[1]!.name).toBe('Session 2 (from)')
     expect(result!.nodes[2]!.name).toBe('Session 3 (from)')
@@ -555,24 +551,23 @@ describe('sessionFlowToSankeyData', () => {
       },
       {
         source: 'Taste of Camp',
-        target: 'Taste of Camp',
+        target: 'Taste of Camp 1',
         value: 10,
         source_cm_id: 1000,
-        target_cm_id: 1000,
+        target_cm_id: 1100,
       },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
 
-    // Taste of Camp parses to [0, "taste of camp"], Session 1 to [1, ""]
-    // So Taste of Camp sorts first
+    // Both "Taste of Camp" and "Taste of Camp 1" parse to [0, ...] → sort first
     expect(result!.nodes[0]!.name).toBe('Taste of Camp (from)')
     expect(result!.nodes[1]!.name).toBe('Session 1 (from)')
+    expect(result!.nodes[2]!.name).toBe('Taste of Camp 1 (to)')
+    expect(result!.nodes[3]!.name).toBe('Session 1 (to)')
   })
 
-  it('pins Did Not Return as last target node regardless of comparator', () => {
-    // Comparator would sort "Did Not Return" alphabetically before "Session"
-    // but it should always be pinned last
+  it('pins Did Not Return as last target regardless of comparator', () => {
     const alphabetical = (a: string, b: string) => a.localeCompare(b)
 
     const input: SessionFlowItem[] = [
@@ -598,20 +593,75 @@ describe('sessionFlowToSankeyData', () => {
         target_cm_id: 1001,
       },
     ]
-    const result = sessionFlowToSankeyData(input, alphabetical)
+    const result = sessionFlowToSankeyData(input, { target: alphabetical })
     expect(result).not.toBeNull()
 
-    // Sources sorted alphabetically: Session 1, Session 2
-    // Targets: Session 1, Session 2, Did Not Return (pinned last)
-    expect(result!.nodes[0]!.name).toBe('Session 1 (from)')
-    expect(result!.nodes[1]!.name).toBe('Session 2 (from)')
+    // Did Not Return pinned last even though "D" < "S" alphabetically
     expect(result!.nodes[2]!.name).toBe('Session 1 (to)')
     expect(result!.nodes[3]!.name).toBe('Session 2 (to)')
     expect(result!.nodes[4]!.name).toBe('Did Not Return')
   })
 
-  it('links resolve correctly after comparator-based sorting', () => {
-    // Session 3 appears first in data but comparator sorts it last
+  it('each side can use different year lookups for correct ordering', () => {
+    // Simulates real scenario: source year has "Taste of Camp", target year has "Taste of Camp 1"
+    // Each side's comparator uses its own year's date data
+    const sourceByDate = (a: string, b: string) => {
+      const dates: Record<string, string> = {
+        'Taste of Camp': '2025-06-08',
+        'Session 2': '2025-06-15',
+        'Session 4': '2025-07-27',
+      }
+      return (dates[a] ?? '').localeCompare(dates[b] ?? '')
+    }
+    const targetByDate = (a: string, b: string) => {
+      const dates: Record<string, string> = {
+        'Taste of Camp 1': '2026-06-07',
+        'Session 2': '2026-06-14',
+        'Session 4': '2026-07-26',
+      }
+      return (dates[a] ?? '').localeCompare(dates[b] ?? '')
+    }
+
+    const input: SessionFlowItem[] = [
+      {
+        source: 'Session 4',
+        target: 'Session 4',
+        value: 20,
+        source_cm_id: 1002,
+        target_cm_id: 1002,
+      },
+      {
+        source: 'Taste of Camp',
+        target: 'Taste of Camp 1',
+        value: 10,
+        source_cm_id: 1000,
+        target_cm_id: 1100,
+      },
+      {
+        source: 'Session 2',
+        target: 'Session 2',
+        value: 30,
+        source_cm_id: 1001,
+        target_cm_id: 1001,
+      },
+    ]
+    const result = sessionFlowToSankeyData(input, {
+      source: sourceByDate,
+      target: targetByDate,
+    })
+    expect(result).not.toBeNull()
+
+    // Source sorted by 2025 dates: Taste (Jun 8), Session 2 (Jun 15), Session 4 (Jul 27)
+    expect(result!.nodes[0]!.name).toBe('Taste of Camp (from)')
+    expect(result!.nodes[1]!.name).toBe('Session 2 (from)')
+    expect(result!.nodes[2]!.name).toBe('Session 4 (from)')
+    // Target sorted by 2026 dates: Taste 1 (Jun 7), Session 2 (Jun 14), Session 4 (Jul 26)
+    expect(result!.nodes[3]!.name).toBe('Taste of Camp 1 (to)')
+    expect(result!.nodes[4]!.name).toBe('Session 2 (to)')
+    expect(result!.nodes[5]!.name).toBe('Session 4 (to)')
+  })
+
+  it('links resolve correctly with separate comparators', () => {
     const input: SessionFlowItem[] = [
       {
         source: 'Session 3',
@@ -631,17 +681,15 @@ describe('sessionFlowToSankeyData', () => {
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
 
-    // After name sorting: sources=[Session 1(0), Session 3(1)], targets=[Session 1(2), Session 3(3)]
+    // Default name sort: sources=[Session 1(0), Session 3(1)], targets=[Session 1(2), Session 3(3)]
     expect(result!.nodes[0]!.name).toBe('Session 1 (from)')
     expect(result!.nodes[1]!.name).toBe('Session 3 (from)')
     expect(result!.nodes[2]!.name).toBe('Session 1 (to)')
     expect(result!.nodes[3]!.name).toBe('Session 3 (to)')
 
-    // Session 3 (from, idx 1) -> Session 1 (to, idx 2): value 10
     const link1 = result!.links.find((l) => l.value === 10)
     expect(link1).toEqual({ source: 1, target: 2, value: 10 })
 
-    // Session 1 (from, idx 0) -> Session 3 (to, idx 3): value 5
     const link2 = result!.links.find((l) => l.value === 5)
     expect(link2).toEqual({ source: 0, target: 3, value: 5 })
   })

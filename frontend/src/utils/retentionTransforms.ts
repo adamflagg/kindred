@@ -18,6 +18,7 @@ import type {
   SessionFlowItem,
   RetentionRateBarItem,
 } from '../types/metrics'
+import { parseSessionName } from './sessionUtils'
 
 export type RetentionSortBy = 'rate' | 'count' | 'name' | 'none'
 
@@ -238,14 +239,34 @@ function getNodeIndex(map: Map<string, number>, key: string): number {
 }
 
 /**
+ * Default comparator for session names: sorts by parsed session number then suffix.
+ * E.g. "Taste of Camp" (0) < "Session 1" < "Session 2a" < "Session 3".
+ */
+function defaultSessionComparator(nameA: string, nameB: string): number {
+  const [numA, suffixA] = parseSessionName(nameA)
+  const [numB, suffixB] = parseSessionName(nameB)
+  if (numA !== numB) return numA - numB
+  return suffixA.localeCompare(suffixB)
+}
+
+/**
  * Convert SessionFlowItem[] from API to Recharts Sankey data format.
  *
  * Source nodes get "(from)" suffix, target nodes get "(to)" suffix
  * to disambiguate when the same session name appears on both sides.
- * "Did Not Return" is a special target that gets no suffix.
+ * "Did Not Return" is a special target that gets no suffix and is always last.
+ *
+ * @param comparator - Optional sort function for session names. When provided,
+ *   controls the vertical ordering of nodes on both sides (e.g. camp-then-quest
+ *   via compareByDateCampThenQuest). Falls back to name-based sorting.
  */
-export function sessionFlowToSankeyData(data: SessionFlowItem[] | undefined): SankeyData | null {
+export function sessionFlowToSankeyData(
+  data: SessionFlowItem[] | undefined,
+  comparator?: (nameA: string, nameB: string) => number
+): SankeyData | null {
   if (!data?.length) return null
+
+  const compare = comparator ?? defaultSessionComparator
 
   // Collect unique sources and targets with their cm_ids
   const sourceCmIds = new Map<string, number>()
@@ -257,13 +278,13 @@ export function sessionFlowToSankeyData(data: SessionFlowItem[] | undefined): Sa
     }
   }
 
-  // Sort by cmId ascending so matching sessions align vertically across sides.
+  // Sort using comparator so matching sessions align vertically across sides.
   // "Did Not Return" (cmId null) is pinned last among targets.
-  const sortedSources = [...sourceCmIds.entries()].sort((a, b) => a[1] - b[1])
+  const sortedSources = [...sourceCmIds.entries()].sort((a, b) => compare(a[0], b[0]))
   const sortedTargets = [...targetCmIds.entries()].sort((a, b) => {
-    if (a[1] == null) return 1
-    if (b[1] == null) return -1
-    return a[1] - b[1]
+    if (a[0] === 'Did Not Return') return 1
+    if (b[0] === 'Did Not Return') return -1
+    return compare(a[0], b[0])
   })
 
   // Build node list: sources first, then targets
