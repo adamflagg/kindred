@@ -78,7 +78,8 @@ describe('GeoManagementPage', () => {
   it('expands a collapsible section on click', async () => {
     renderPage()
     const user = userEvent.setup()
-    await user.click(screen.getByTestId('section-non-canonicals'))
+    const section = screen.getByTestId('section-non-canonicals')
+    await user.click(within(section).getByRole('button', { name: /resolve non-canonicals/i }))
     // After expanding, gap items should be visible
     expect(screen.queryAllByTestId('gap-name').length).toBeGreaterThan(0)
   })

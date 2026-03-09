@@ -37,8 +37,8 @@ export function GeoManagementPage() {
   const batchResolve = useBatchResolveCoords(category, year)
 
   const nonCanonicalsCount =
-    (gaps?.non_canonical_grouped?.length ?? 0) + (gaps?.non_canonical_ungrouped?.length ?? 0)
-  const coordsCount = gaps?.canonical_no_coords?.length ?? 0
+    (gaps?.non_canonical_grouped.length ?? 0) + (gaps?.non_canonical_ungrouped.length ?? 0)
+  const coordsCount = gaps?.canonical_no_coords.length ?? 0
 
   const handleOpenResolve = useCallback((gapName: string, gapType: string) => {
     setResolveDialog({ open: true, gapName, gapType })

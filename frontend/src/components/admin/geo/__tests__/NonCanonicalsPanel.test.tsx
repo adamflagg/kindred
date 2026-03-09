@@ -31,7 +31,9 @@ describe('NonCanonicalsPanel', () => {
     render(<NonCanonicalsPanel grouped={grouped} ungrouped={ungrouped} onResolve={onResolve} isOpen={true} onToggle={vi.fn()} />)
     const user = userEvent.setup()
     const buttons = screen.getAllByRole('button', { name: /resolve/i })
-    await user.click(buttons[0]!)
+    // Filter out the header toggle button ("Resolve Non-Canonicals") to get only item-level "Resolve" buttons
+    const resolveButtons = buttons.filter((b) => b.textContent?.trim() === 'Resolve')
+    await user.click(resolveButtons[0]!)
     expect(onResolve).toHaveBeenCalledWith('Hillcrest High', 'non_canonical_grouped')
   })
 

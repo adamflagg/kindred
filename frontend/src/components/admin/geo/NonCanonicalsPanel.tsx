@@ -49,11 +49,14 @@ export function NonCanonicalsPanel({
   return (
     <div
       data-testid="section-non-canonicals"
-      className="overflow-hidden rounded-xl border border-red-500/20 cursor-pointer"
-      onClick={onToggle}
+      className="overflow-hidden rounded-xl border border-red-500/20"
     >
       {/* Collapsible header */}
-      <div className="flex w-full items-center gap-2 bg-red-500/8 px-3 py-2.5 text-left transition-colors">
+      <button
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className="flex w-full items-center gap-2 bg-red-500/8 px-3 py-2.5 text-left transition-colors cursor-pointer"
+      >
         <AlertCircle className="h-4 w-4 text-red-500" />
         <span className="text-foreground text-sm font-semibold">Resolve Non-Canonicals</span>
         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -66,7 +69,7 @@ export function NonCanonicalsPanel({
             <ChevronDown className="text-muted-foreground h-4 w-4" />
           )}
         </span>
-      </div>
+      </button>
 
       {/* Collapsible content */}
       {isOpen && (

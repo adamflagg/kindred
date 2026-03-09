@@ -35,21 +35,23 @@ export function AddCoordsPanel({
   return (
     <div
       data-testid="section-add-coords"
-      className="overflow-hidden rounded-xl border border-amber-500/20 cursor-pointer"
-      onClick={onToggle}
+      className="overflow-hidden rounded-xl border border-amber-500/20"
     >
       {/* Collapsible header */}
       <div className="flex w-full items-center gap-2 bg-amber-500/8 px-3 py-2.5 text-left transition-colors">
-        <AlertCircle className="h-4 w-4 text-amber-500" />
-        <span className="text-foreground text-sm font-semibold">Add Coordinates</span>
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-          {gaps.length}
-        </span>
         <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onBatchResolve()
-          }}
+          onClick={onToggle}
+          aria-expanded={isOpen}
+          className="flex flex-1 items-center gap-2 text-left cursor-pointer"
+        >
+          <AlertCircle className="h-4 w-4 text-amber-500" />
+          <span className="text-foreground text-sm font-semibold">Add Coordinates</span>
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            {gaps.length}
+          </span>
+        </button>
+        <button
+          onClick={onBatchResolve}
           disabled={isBatchResolving}
           className="text-forest-700 hover:text-forest-900 dark:text-forest-400 dark:hover:text-forest-200 ml-auto flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50"
         >
@@ -65,13 +67,13 @@ export function AddCoordsPanel({
             </>
           )}
         </button>
-        <span>
+        <button onClick={onToggle} aria-hidden="true" tabIndex={-1} className="cursor-pointer">
           {isOpen ? (
             <ChevronUp className="text-muted-foreground h-4 w-4" />
           ) : (
             <ChevronDown className="text-muted-foreground h-4 w-4" />
           )}
-        </span>
+        </button>
       </div>
 
       {/* Collapsible content */}
@@ -79,6 +81,7 @@ export function AddCoordsPanel({
         <div
           className="divide-border/30 max-h-64 divide-y overflow-y-auto border-t border-amber-500/20 bg-amber-500/8"
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
           role="presentation"
         >
           {gaps.map((item) => (
