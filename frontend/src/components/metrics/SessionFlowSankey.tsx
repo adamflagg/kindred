@@ -122,6 +122,7 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
           data={data}
           nodeWidth={14}
           nodePadding={24}
+          sort={false}
           margin={{ top: 10, right: 160, bottom: 10, left: 160 }}
           link={
             // Recharts Sankey passes link geometry props that don't match its own types
