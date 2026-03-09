@@ -1,8 +1,8 @@
 """Session name aliases for YoY comparison.
 
 When CampMinder creates new sessions (new cm_ids) that replace old ones,
-name-based matching can't bridge them. This map lets the forecast logic
-treat renamed sessions as the same row.
+name-based matching can't bridge them. This map lets the forecast and
+retention logic treat renamed sessions as the same entity.
 
 Keys: old/alternate session names -> Values: canonical (current year) name.
 """

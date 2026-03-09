@@ -137,7 +137,7 @@ class RetentionService:
             and int(getattr(person, "grade", 0)) >= RETENTION_AGED_OUT_GRADE
         }
 
-        # Base year attendee sessions (filtered by session_types and session_cm_id) for session flow
+        # Base year attendee sessions (filtered by session_types and base_session_cm_id) for session flow
         _, attendee_sessions_base_filtered = self._filter_base_attendees(
             attendees_base, session_types, base_session_cm_id
         )
