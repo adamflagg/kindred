@@ -38,4 +38,5 @@ class ForecastResponse(BaseModel):
     year: int
     sessions: list[SessionForecast] = Field(description="Per-session forecast data")
     grand_total: SessionForecast = Field(description="Summed totals across sessions")
-    snapshot_date: str | None = Field(None, description="Snapshot date if viewing historical data")
+    week_number: int | None = Field(None, description="Week number relative to registration anchor")
+    day_offset: int | None = Field(None, description="Days since registration anchor")
