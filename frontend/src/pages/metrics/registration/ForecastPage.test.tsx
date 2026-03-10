@@ -404,6 +404,40 @@ describe('ForecastPage', () => {
     expect(screen.queryByText('Grand Total')).not.toBeInTheDocument()
   })
 
+  // ---------- fee column removed ----------
+
+  it('does not render a Fee column header', async () => {
+    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Fee')).not.toBeInTheDocument()
+  })
+
+  it('does not render session_fee values in rows', async () => {
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      session_fee: 5000,
+    })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // $5,000 should not appear as a standalone cell (fee column removed)
+    expect(screen.queryByText('$5,000')).not.toBeInTheDocument()
+  })
+
   // ---------- summary cards ----------
 
   it('renders header with enrolled/goal summary', async () => {
