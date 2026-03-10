@@ -21,12 +21,13 @@ export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
   sessionTypes?: string,
-  sessionCmId?: number
+  sessionCmId?: number,
+  duration?: string
 ) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId),
+    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId, duration),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
         base_year: baseYear.toString(),
@@ -37,6 +38,9 @@ export function useRetentionMetrics(
       }
       if (sessionCmId !== undefined) {
         params.set('session_cm_id', sessionCmId.toString())
+      }
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`)
@@ -59,12 +63,13 @@ export function useRegistrationMetrics(
   year: number,
   sessionTypes?: string,
   statuses?: string,
-  sessionCmId?: number
+  sessionCmId?: number,
+  duration?: string
 ) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.registration(year, sessionTypes, statuses, sessionCmId),
+    queryKey: queryKeys.registration(year, sessionTypes, statuses, sessionCmId, duration),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
@@ -77,6 +82,9 @@ export function useRegistrationMetrics(
       }
       if (sessionCmId !== undefined) {
         params.set('session_cm_id', sessionCmId.toString())
+      }
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`)
@@ -129,11 +137,16 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
  *                      Uses name-matching across years to show trends
  *                      for the same session across multiple years.
  */
-export function useHistoricalTrends(years?: string, sessionTypes?: string, sessionCmId?: number) {
+export function useHistoricalTrends(
+  years?: string,
+  sessionTypes?: string,
+  sessionCmId?: number,
+  duration?: string
+) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.historical(years, sessionTypes, sessionCmId),
+    queryKey: queryKeys.historical(years, sessionTypes, sessionCmId, duration),
     queryFn: async (): Promise<HistoricalTrendsResponse> => {
       const params = new URLSearchParams()
       if (years) {
@@ -144,6 +157,9 @@ export function useHistoricalTrends(years?: string, sessionTypes?: string, sessi
       }
       if (sessionCmId !== undefined) {
         params.set('session_cm_id', sessionCmId.toString())
+      }
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const url = params.toString()
@@ -165,11 +181,16 @@ export function useHistoricalTrends(years?: string, sessionTypes?: string, sessi
 /**
  * Fetch waitlist analysis metrics for a single year.
  */
-export function useWaitlistMetrics(year: number, sessionTypes?: string, sessionCmId?: number) {
+export function useWaitlistMetrics(
+  year: number,
+  sessionTypes?: string,
+  sessionCmId?: number,
+  duration?: string
+) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.waitlist(year, sessionTypes, sessionCmId),
+    queryKey: queryKeys.waitlist(year, sessionTypes, sessionCmId, duration),
     queryFn: async (): Promise<WaitlistMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
@@ -179,6 +200,9 @@ export function useWaitlistMetrics(year: number, sessionTypes?: string, sessionC
       }
       if (sessionCmId !== undefined) {
         params.set('session_cm_id', sessionCmId.toString())
+      }
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/waitlist?${params}`)
@@ -197,11 +221,16 @@ export function useWaitlistMetrics(year: number, sessionTypes?: string, sessionC
 /**
  * Fetch cancellation analysis metrics for a single year.
  */
-export function useCancellationMetrics(year: number, sessionTypes?: string, sessionCmId?: number) {
+export function useCancellationMetrics(
+  year: number,
+  sessionTypes?: string,
+  sessionCmId?: number,
+  duration?: string
+) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.cancellations(year, sessionTypes, sessionCmId),
+    queryKey: queryKeys.cancellations(year, sessionTypes, sessionCmId, duration),
     queryFn: async (): Promise<CancellationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
@@ -211,6 +240,9 @@ export function useCancellationMetrics(year: number, sessionTypes?: string, sess
       }
       if (sessionCmId !== undefined) {
         params.set('session_cm_id', sessionCmId.toString())
+      }
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/cancellations?${params}`)

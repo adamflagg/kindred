@@ -42,7 +42,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes, durationParam } =
     useMetricsSession()
   const priorYear = currentYear - 1
 
@@ -54,6 +54,7 @@ export default function RetentionOverview() {
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
     statusFilter: ['enrolled'],
+    duration: durationParam,
   })
 
   const makeRetentionFilter = useCallback(
@@ -74,7 +75,8 @@ export default function RetentionOverview() {
     priorYear,
     currentYear,
     sessionTypesParam,
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    durationParam
   )
 
   // Build date lookup from API response (prior year sessions have start_date)

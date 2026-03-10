@@ -16,6 +16,8 @@ export interface UseRetentionTrendsOptions {
   sessionTypes?: string | undefined
   /** Filter to specific session by CampMinder ID */
   sessionCmId?: number | undefined
+  /** Filter by session duration category */
+  duration?: string | undefined
 }
 
 /**
@@ -30,10 +32,10 @@ export interface UseRetentionTrendsOptions {
  */
 export function useRetentionTrends(currentYear: number, options: UseRetentionTrendsOptions = {}) {
   const { fetchWithAuth } = useApiWithAuth()
-  const { numYears = 3, sessionTypes, sessionCmId } = options
+  const { numYears = 3, sessionTypes, sessionCmId, duration } = options
 
   return useQuery({
-    queryKey: queryKeys.retentionTrends(currentYear, numYears, sessionTypes, sessionCmId),
+    queryKey: queryKeys.retentionTrends(currentYear, numYears, sessionTypes, sessionCmId, duration),
     queryFn: async (): Promise<RetentionTrendsResponse> => {
       const params = new URLSearchParams({
         current_year: currentYear.toString(),
@@ -49,6 +51,10 @@ export function useRetentionTrends(currentYear: number, options: UseRetentionTre
 
       if (sessionCmId !== undefined) {
         params.set('session_cm_id', sessionCmId.toString())
+      }
+
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention-trends?${params}`)

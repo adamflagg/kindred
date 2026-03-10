@@ -119,6 +119,7 @@ export default function RegistrationOverview() {
     activeSessionTypes,
     compareYear,
     isComparing,
+    durationParam,
   } = useMetricsSession()
 
   // Always use enrolled status only
@@ -130,6 +131,7 @@ export default function RegistrationOverview() {
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
     statusFilter: [statusesParam],
+    duration: durationParam,
   })
 
   const handleNewVsReturningClick = useCallback(
@@ -161,7 +163,8 @@ export default function RegistrationOverview() {
     compareYear,
     sessionTypesParam,
     statusesParam,
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    durationParam
   )
   const { data, isLoading, error } = primary
   const compData = comparison?.data

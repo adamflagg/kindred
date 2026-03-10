@@ -16,6 +16,7 @@ interface UseDrilldownAttendeesOptions {
   sessionCmId?: number | undefined
   sessionTypes?: string[] | undefined
   statusFilter?: string[] | undefined
+  duration?: string | undefined
 }
 
 export function useDrilldownAttendees({
@@ -24,6 +25,7 @@ export function useDrilldownAttendees({
   sessionCmId,
   sessionTypes,
   statusFilter,
+  duration,
 }: UseDrilldownAttendeesOptions) {
   const { fetchWithAuth } = useApiWithAuth()
   const sessionTypesParam = sessionTypes?.join(',')
@@ -40,7 +42,8 @@ export function useDrilldownAttendees({
       sessionCmId,
       sessionTypesParam,
       statusFilterParam,
-      compareYear
+      compareYear,
+      duration
     ),
     queryFn: async (): Promise<DrilldownAttendee[]> => {
       if (!filter) {
@@ -64,6 +67,9 @@ export function useDrilldownAttendees({
       }
       if (compareYear) {
         params.set('compare_year', String(compareYear))
+      }
+      if (duration) {
+        params.set('duration', duration)
       }
 
       const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`)

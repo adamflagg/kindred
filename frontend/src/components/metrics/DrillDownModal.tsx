@@ -52,6 +52,7 @@ interface DrillDownModalProps {
   sessionCmId?: number | undefined
   sessionTypes?: string[] | undefined
   statusFilter?: string[] | undefined
+  duration?: string | undefined
   onClose: () => void
 }
 
@@ -75,6 +76,7 @@ export function DrillDownModal({
   sessionCmId,
   sessionTypes,
   statusFilter,
+  duration,
   onClose,
 }: DrillDownModalProps) {
   const isWaitlistDrilldown =
@@ -103,6 +105,7 @@ export function DrillDownModal({
     sessionCmId,
     sessionTypes,
     statusFilter,
+    duration,
   })
 
   // Handle escape key to close modal

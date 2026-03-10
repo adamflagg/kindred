@@ -111,6 +111,7 @@ export default function CancellationAnalysis() {
     activeSessionTypes,
     compareYear,
     isComparing,
+    durationParam,
   } = useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
@@ -119,7 +120,8 @@ export default function CancellationAnalysis() {
     currentYear,
     compareYear,
     sessionTypesParam,
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    durationParam
   )
   const { data, isLoading, error } = primary
   const compData = comparison?.data
@@ -129,6 +131,7 @@ export default function CancellationAnalysis() {
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
     statusFilter: ['cancelled', 'withdrawn', 'dismissed'],
+    duration: durationParam,
   })
 
   const primarySession = useMemo(

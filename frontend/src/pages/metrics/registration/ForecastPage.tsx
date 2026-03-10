@@ -132,7 +132,12 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 
 export default function ForecastPage() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam, sessions: metricsSessions } = useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessionTypesParam,
+    sessions: metricsSessions,
+    durationParam,
+  } = useMetricsSession()
   const [dayOffset, setDayOffset] = useState<number | null>(null)
   const { data: weekOptions = [] } = useWeekOptions(currentYear)
 
@@ -140,6 +145,7 @@ export default function ForecastPage() {
     sessionCmId: selectedSessionCmId,
     sessionTypes: sessionTypesParam,
     dayOffset,
+    duration: durationParam,
   })
 
   // Build lookups for camp-then-quest sorting from the session context

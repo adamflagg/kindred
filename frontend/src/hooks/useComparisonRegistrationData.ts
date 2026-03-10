@@ -12,16 +12,24 @@ export function useComparisonRegistrationData(
   compareYear: number | null,
   sessionTypesParam?: string,
   statuses?: string,
-  sessionCmId?: number
+  sessionCmId?: number,
+  duration?: string
 ) {
-  const primary = useRegistrationMetrics(primaryYear, sessionTypesParam, statuses, sessionCmId)
+  const primary = useRegistrationMetrics(
+    primaryYear,
+    sessionTypesParam,
+    statuses,
+    sessionCmId,
+    duration
+  )
 
   // Pass 0 to disable the query when not comparing (enabled: year > 0)
   const comparison = useRegistrationMetrics(
     compareYear ?? 0,
     sessionTypesParam,
     statuses,
-    sessionCmId
+    sessionCmId,
+    duration
   )
 
   return {
