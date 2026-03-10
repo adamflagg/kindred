@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from datetime import UTC, date, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -553,8 +554,8 @@ class MetricsSQLRepository:
     # ------------------------------------------------------------------
 
     async def fetch_enrollment_snapshots(self, year: int, session_cm_id: int | None = None) -> list[Any]:
-        """Fetch enrollment snapshots, sorted by date."""
-        sql = """SELECT snapshot_date, year, session_cm_id,
+        """Fetch enrollment snapshots, sorted by datetime."""
+        sql = """SELECT snapshot_datetime, year, session_cm_id,
                         enrolled_count, waitlisted_count, cancelled_count,
                         enrolled_male_count, enrolled_female_count,
                         waitlisted_male_count, waitlisted_female_count,
@@ -567,12 +568,12 @@ class MetricsSQLRepository:
             sql += " AND session_cm_id = ?"
             params.append(session_cm_id)
 
-        sql += " ORDER BY snapshot_date"
+        sql += " ORDER BY snapshot_datetime"
 
         rows = self._query(sql, params)
         return [
             SimpleNamespace(
-                snapshot_date=r["snapshot_date"],
+                snapshot_datetime=r["snapshot_datetime"],
                 year=r["year"],
                 session_cm_id=r["session_cm_id"],
                 enrolled_count=r["enrolled_count"],
@@ -687,10 +688,10 @@ class MetricsSQLRepository:
     async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
         """Return distinct snapshot dates for a year, sorted descending (newest first)."""
         rows = self._query(
-            "SELECT DISTINCT snapshot_date FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_date DESC",
+            "SELECT DISTINCT snapshot_datetime FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_datetime DESC",
             (year,),
         )
-        return [r["snapshot_date"].split("T")[0].split(" ")[0] for r in rows]
+        return [r["snapshot_datetime"].split("T")[0].split(" ")[0] for r in rows]
 
     # ------------------------------------------------------------------
     # 16. fetch_snapshot_counts
@@ -703,7 +704,7 @@ class MetricsSQLRepository:
         """
         rows = self._query(
             "SELECT session_cm_id, enrolled_count, waitlisted_count, cancelled_count "
-            "FROM enrollment_snapshots WHERE year = ? AND snapshot_date LIKE ?",
+            "FROM enrollment_snapshots WHERE year = ? AND snapshot_datetime LIKE ?",
             (year, f"{snapshot_date}%"),
         )
         result: dict[int, dict[str, int]] = {}
@@ -713,6 +714,72 @@ class MetricsSQLRepository:
                 "enrolled": int(r["enrolled_count"] or 0),
                 "waitlisted": int(r["waitlisted_count"] or 0),
                 "cancelled": int(r["cancelled_count"] or 0),
+            }
+        return result
+
+    # ------------------------------------------------------------------
+    # 18. fetch_snapshot_counts_for_camp_day
+    # ------------------------------------------------------------------
+
+    async def fetch_snapshot_counts_for_camp_day(self, year: int, camp_date: date) -> dict[int, dict[str, int | None]]:
+        """Return per-session snapshot counts for a camp date.
+
+        Finds the last snapshot taken during the camp day (9am Pacific to 9am next day).
+        Prefers the latest snapshot within the window for most accurate data.
+
+        Returns {session_cm_id: {"enrolled": N, "waitlisted": N, "cancelled": N,
+                 "enrolled_boys": N|None, "enrolled_girls": N|None}}.
+        """
+        from datetime import datetime as dt
+
+        from api.services.camp_calendar import CAMP_DAY_START_HOUR, CAMP_TZ
+
+        # Camp day window: 9am Pacific camp_date → 9am Pacific camp_date+1
+        camp_day_start_pacific = dt(
+            camp_date.year,
+            camp_date.month,
+            camp_date.day,
+            CAMP_DAY_START_HOUR,
+            0,
+            0,
+            tzinfo=CAMP_TZ,
+        )
+        camp_day_end_pacific = camp_day_start_pacific + timedelta(days=1)
+
+        # Convert to UTC strings for SQLite comparison
+        start_utc = camp_day_start_pacific.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+        end_utc = camp_day_end_pacific.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+
+        # Find the LATEST snapshot within this camp day window per session
+        rows = self._query(
+            """SELECT session_cm_id, enrolled_count, waitlisted_count, cancelled_count,
+                      enrolled_male_count, enrolled_female_count
+               FROM enrollment_snapshots
+               WHERE year = ?
+                 AND snapshot_datetime >= ?
+                 AND snapshot_datetime < ?
+                 AND snapshot_datetime = (
+                     SELECT MAX(e2.snapshot_datetime)
+                     FROM enrollment_snapshots e2
+                     WHERE e2.year = enrollment_snapshots.year
+                       AND e2.session_cm_id = enrollment_snapshots.session_cm_id
+                       AND e2.snapshot_datetime >= ?
+                       AND e2.snapshot_datetime < ?
+                 )""",
+            (year, start_utc, end_utc, start_utc, end_utc),
+        )
+
+        result: dict[int, dict[str, int | None]] = {}
+        for r in rows:
+            sid = int(r["session_cm_id"])
+            enrolled_male = r["enrolled_male_count"]
+            enrolled_female = r["enrolled_female_count"]
+            result[sid] = {
+                "enrolled": int(r["enrolled_count"] or 0),
+                "waitlisted": int(r["waitlisted_count"] or 0),
+                "cancelled": int(r["cancelled_count"] or 0),
+                "enrolled_boys": int(enrolled_male) if enrolled_male is not None else None,
+                "enrolled_girls": int(enrolled_female) if enrolled_female is not None else None,
             }
         return result
 
