@@ -909,9 +909,9 @@ class TestForecastSnapshotLookback:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts = AsyncMock(
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
             return_value={
-                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3},
+                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3, "enrolled_boys": None, "enrolled_girls": None},
             }
         )
         mock_repository.fetch_budget_config.return_value = dict(
@@ -920,7 +920,9 @@ class TestForecastSnapshotLookback:
 
         result = await service.calculate_forecast(year=2026, day_offset=123)
 
-        mock_repository.fetch_snapshot_counts.assert_called_once_with(2026, "2026-02-15")
+        from datetime import date
+
+        mock_repository.fetch_snapshot_counts_for_camp_day.assert_called_once_with(2026, date(2026, 2, 15))
         session = result.sessions[0]
         assert session.enrolled == 50
         assert session.waitlisted == 5
@@ -942,8 +944,8 @@ class TestForecastSnapshotLookback:
 
         result = await service.calculate_forecast(year=2026)
 
-        # Should NOT call fetch_snapshot_counts
-        assert not mock_repository.fetch_snapshot_counts.called
+        # Should NOT call fetch_snapshot_counts_for_camp_day
+        assert not mock_repository.fetch_snapshot_counts_for_camp_day.called
         assert result.sessions[0].enrolled == 1
 
     @pytest.mark.asyncio
@@ -954,9 +956,9 @@ class TestForecastSnapshotLookback:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts = AsyncMock(
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
             return_value={
-                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3},
+                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3, "enrolled_boys": None, "enrolled_girls": None},
             }
         )
         mock_repository.fetch_budget_config.return_value = dict(
@@ -977,8 +979,10 @@ class TestForecastSnapshotLookback:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts = AsyncMock(
-            return_value={1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3}}
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
+            return_value={
+                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3, "enrolled_boys": None, "enrolled_girls": None}
+            }
         )
 
         result = await service.calculate_forecast(year=2026, day_offset=123)
@@ -1038,8 +1042,10 @@ class TestForecastWithDayOffset:
         mock_repository.fetch_registration_dates.side_effect = fetch_reg_dates_side_effect
 
         # Current year has snapshot data
-        mock_repository.fetch_snapshot_counts = AsyncMock(
-            return_value={1001: {"enrolled": 75, "waitlisted": 3, "cancelled": 1}}
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
+            return_value={
+                1001: {"enrolled": 75, "waitlisted": 3, "cancelled": 1, "enrolled_boys": None, "enrolled_girls": None}
+            }
         )
         mock_repository.fetch_budget_config.return_value = {}
 
@@ -1120,8 +1126,10 @@ class TestForecastWithDayOffset:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts = AsyncMock(
-            return_value={1001: {"enrolled": 10, "waitlisted": 0, "cancelled": 0}}
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
+            return_value={
+                1001: {"enrolled": 10, "waitlisted": 0, "cancelled": 0, "enrolled_boys": None, "enrolled_girls": None}
+            }
         )
         mock_repository.fetch_budget_config.return_value = {}
 
@@ -1139,7 +1147,7 @@ class TestForecastWithDayOffset:
             "priority_reg_date": "2025-10-15",
         }
         # Empty snapshot → falls back to reconstruction
-        mock_repository.fetch_snapshot_counts = AsyncMock(return_value={})
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(return_value={})
         mock_repository.fetch_budget_config.return_value = {}
 
         from types import SimpleNamespace
@@ -1179,3 +1187,97 @@ class TestForecastWithDayOffset:
         s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
         # 15 attendees enrolled between Oct 20-24, all within 30 days of Oct 15
         assert s1.enrolled == 15
+
+
+# ============================================================================
+# Gender Fields Tests
+# ============================================================================
+
+
+class TestForecastGenderFields:
+    """Test gender field population from snapshot and live data."""
+
+    @pytest.mark.asyncio
+    async def test_gender_from_snapshots(self, service, mock_repository):
+        """Snapshot mode should populate enrolled_boys and enrolled_girls."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-10-15"}
+        mock_repository.fetch_budget_config.return_value = {}
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
+            return_value={
+                1001: {
+                    "enrolled": 80,
+                    "waitlisted": 5,
+                    "cancelled": 3,
+                    "enrolled_boys": 42,
+                    "enrolled_girls": 38,
+                }
+            }
+        )
+        mock_repository.fetch_attendees_with_dates = AsyncMock(return_value=[])
+
+        result = await service.calculate_forecast(year=2026, day_offset=7)
+        s1 = result.sessions[0]
+        assert s1.enrolled == 80
+        assert s1.enrolled_boys == 42
+        assert s1.enrolled_girls == 38
+
+    @pytest.mark.asyncio
+    async def test_gender_null_when_missing(self, service, mock_repository):
+        """Snapshot without gender data should return null gender fields."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-10-15"}
+        mock_repository.fetch_budget_config.return_value = {}
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
+            return_value={
+                1001: {
+                    "enrolled": 80,
+                    "waitlisted": 5,
+                    "cancelled": 3,
+                    "enrolled_boys": None,
+                    "enrolled_girls": None,
+                }
+            }
+        )
+        mock_repository.fetch_attendees_with_dates = AsyncMock(return_value=[])
+
+        result = await service.calculate_forecast(year=2026, day_offset=7)
+        s1 = result.sessions[0]
+        assert s1.enrolled_boys is None
+        assert s1.enrolled_girls is None
+
+    @pytest.mark.asyncio
+    async def test_gender_grand_total(self, service, mock_repository):
+        """Grand total should sum gender counts with null-aware logic."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+            1002: create_mock_session(1002, "Session 2"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-10-15"}
+        mock_repository.fetch_budget_config.return_value = {}
+        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
+            return_value={
+                1001: {
+                    "enrolled": 80,
+                    "waitlisted": 5,
+                    "cancelled": 0,
+                    "enrolled_boys": 42,
+                    "enrolled_girls": 38,
+                },
+                1002: {
+                    "enrolled": 60,
+                    "waitlisted": 3,
+                    "cancelled": 0,
+                    "enrolled_boys": 30,
+                    "enrolled_girls": 30,
+                },
+            }
+        )
+        mock_repository.fetch_attendees_with_dates = AsyncMock(return_value=[])
+
+        result = await service.calculate_forecast(year=2026, day_offset=7)
+        assert result.grand_total.enrolled_boys == 72
+        assert result.grand_total.enrolled_girls == 68

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, date
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -335,7 +336,7 @@ class MetricsRepository:
             filter_str += f" && session_cm_id = {session_cm_id}"
         return await asyncio.to_thread(
             self.pb.collection("enrollment_snapshots").get_full_list,
-            query_params={"filter": filter_str, "sort": "snapshot_date"},
+            query_params={"filter": filter_str, "sort": "snapshot_datetime"},
         )
 
     async def fetch_attendees_with_dates(
@@ -375,12 +376,12 @@ class MetricsRepository:
         """Return distinct snapshot dates for a year, sorted descending (newest first)."""
         snapshots = await asyncio.to_thread(
             self.pb.collection("enrollment_snapshots").get_full_list,
-            query_params={"filter": f"year = {year}", "sort": "-snapshot_date", "fields": "snapshot_date"},
+            query_params={"filter": f"year = {year}", "sort": "-snapshot_datetime", "fields": "snapshot_datetime"},
         )
         seen: set[str] = set()
         dates: list[str] = []
         for s in snapshots:
-            date_str = getattr(s, "snapshot_date", "").split("T")[0].split(" ")[0]
+            date_str = getattr(s, "snapshot_datetime", "").split("T")[0].split(" ")[0]
             if date_str and date_str not in seen:
                 seen.add(date_str)
                 dates.append(date_str)
@@ -388,7 +389,7 @@ class MetricsRepository:
 
     async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
         """Return per-session enrollment counts for a specific snapshot date."""
-        filter_str = f'year = {year} && snapshot_date ~ "{snapshot_date}"'
+        filter_str = f'year = {year} && snapshot_datetime ~ "{snapshot_date}"'
         snapshots = await asyncio.to_thread(
             self.pb.collection("enrollment_snapshots").get_full_list,
             query_params={"filter": filter_str},
@@ -400,6 +401,54 @@ class MetricsRepository:
                 "enrolled": int(getattr(s, "enrolled_count", 0) or 0),
                 "waitlisted": int(getattr(s, "waitlisted_count", 0) or 0),
                 "cancelled": int(getattr(s, "cancelled_count", 0) or 0),
+            }
+        return result
+
+    async def fetch_snapshot_counts_for_camp_day(self, year: int, camp_date: date) -> dict[int, dict[str, int | None]]:
+        """Return per-session snapshot counts for a camp date.
+
+        Finds the last snapshot within the 9am-to-9am Pacific camp-day window.
+        Delegates to MetricsSQLRepository when available (direct SQLite).
+        """
+        from datetime import datetime as dt
+        from datetime import timedelta
+
+        from api.services.camp_calendar import CAMP_DAY_START_HOUR, CAMP_TZ
+
+        camp_day_start = dt(
+            camp_date.year,
+            camp_date.month,
+            camp_date.day,
+            CAMP_DAY_START_HOUR,
+            0,
+            0,
+            tzinfo=CAMP_TZ,
+        )
+        camp_day_end = camp_day_start + timedelta(days=1)
+
+        start_utc = camp_day_start.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+        end_utc = camp_day_end.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+
+        filter_str = f'year = {year} && snapshot_datetime >= "{start_utc}" && snapshot_datetime < "{end_utc}"'
+        snapshots = await asyncio.to_thread(
+            self.pb.collection("enrollment_snapshots").get_full_list,
+            query_params={"filter": filter_str, "sort": "-snapshot_datetime"},
+        )
+
+        # Group by session, take latest per session
+        result: dict[int, dict[str, int | None]] = {}
+        for s in snapshots:
+            sid = int(getattr(s, "session_cm_id", 0))
+            if sid in result:
+                continue  # Already have the latest for this session
+            enrolled_male = getattr(s, "enrolled_male_count", None)
+            enrolled_female = getattr(s, "enrolled_female_count", None)
+            result[sid] = {
+                "enrolled": int(getattr(s, "enrolled_count", 0) or 0),
+                "waitlisted": int(getattr(s, "waitlisted_count", 0) or 0),
+                "cancelled": int(getattr(s, "cancelled_count", 0) or 0),
+                "enrolled_boys": int(enrolled_male) if enrolled_male is not None else None,
+                "enrolled_girls": int(enrolled_female) if enrolled_female is not None else None,
             }
         return result
 

@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
+from api.services.camp_calendar import get_camp_today
 from api.services.reconstruction import reconstruct_enrollment_at_offset
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
@@ -49,7 +50,7 @@ class ForecastService:
             List of WeekOption, empty if no anchor date or today < anchor.
         """
         if today is None:
-            today = datetime.now(tz=UTC).date()
+            today = get_camp_today()
 
         reg_dates = await self.repository.fetch_registration_dates(year)
 
@@ -137,7 +138,7 @@ class ForecastService:
             sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
 
         # Historical day_offset mode: use snapshot or reconstruction for enrollment counts
-        snapshot_counts: dict[int, dict[str, int]] | None = None
+        snapshot_counts: dict[int, dict[str, int | None]] | None = None
         reconstruction_counts: dict[int, int] | None = None
         if day_offset is not None:
             # Compute target date from registration anchor
@@ -146,10 +147,11 @@ class ForecastService:
             if not anchor_str:
                 raise ValueError(f"No registration anchor configured for {year}")
             season_start = datetime.strptime(anchor_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
-            target_date = (season_start + timedelta(days=day_offset)).date()
+            anchor_date = date.fromisoformat(anchor_str.split("T")[0].split(" ")[0])
+            target_camp_date = anchor_date + timedelta(days=day_offset)
 
-            # Try snapshots first for current year
-            snapshot_counts = await self.repository.fetch_snapshot_counts(year, target_date.isoformat())
+            # Try camp-day-aligned snapshots first
+            snapshot_counts = await self.repository.fetch_snapshot_counts_for_camp_day(year, target_camp_date)
             if not snapshot_counts:
                 # No snapshot data — reconstruct from attendee records
                 reconstruction_counts = await reconstruct_enrollment_at_offset(
@@ -193,10 +195,14 @@ class ForecastService:
                     continue
 
             # Each session counts only its own attendees (no AG merging)
+            enrolled_boys: int | None = None
+            enrolled_girls: int | None = None
             if snapshot_counts:
                 sc = snapshot_counts.get(sid, {})
-                enrolled = sc.get("enrolled", 0)
-                waitlisted = sc.get("waitlisted", 0)
+                enrolled = sc.get("enrolled", 0) or 0
+                waitlisted = sc.get("waitlisted", 0) or 0
+                enrolled_boys = sc.get("enrolled_boys")
+                enrolled_girls = sc.get("enrolled_girls")
             elif reconstruction_counts is not None:
                 enrolled = reconstruction_counts.get(sid, 0)
                 waitlisted = 0  # Reconstruction doesn't distinguish waitlisted
@@ -251,6 +257,8 @@ class ForecastService:
                     actual_revenue=actual_revenue,
                     revenue_delta=revenue_delta,
                     revenue_pct=revenue_pct,
+                    enrolled_boys=enrolled_boys,
+                    enrolled_girls=enrolled_girls,
                 )
             )
 
@@ -448,6 +456,12 @@ class ForecastService:
         if has_revenue and total_budget_rev > 0:
             revenue_pct = round(total_actual_rev / total_budget_rev * 100, 1)
 
+        # Gender totals (null-aware)
+        total_boys = sum(s.enrolled_boys or 0 for s in session_forecasts)
+        total_girls = sum(s.enrolled_girls or 0 for s in session_forecasts)
+        has_boys = any(s.enrolled_boys is not None for s in session_forecasts)
+        has_girls = any(s.enrolled_girls is not None for s in session_forecasts)
+
         return SessionForecast(
             session_cm_id=0,
             session_name="Grand Total",
@@ -465,4 +479,6 @@ class ForecastService:
             actual_revenue=total_actual_rev if has_revenue else None,
             revenue_delta=revenue_delta,
             revenue_pct=revenue_pct,
+            enrolled_boys=total_boys if has_boys else None,
+            enrolled_girls=total_girls if has_girls else None,
         )
