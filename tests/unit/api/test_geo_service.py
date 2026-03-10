@@ -1729,3 +1729,249 @@ class TestGapsStateDistribution:
             result = await service.get_gaps("school", 2025)
 
         assert result.non_canonical_grouped[0].state_distribution == {"JP": 2}
+
+
+# ============================================================================
+# Merge Canonical Tests
+# ============================================================================
+
+
+class TestMergeCanonical:
+    """Test merge_canonical service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_creates_merge_override(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Merging should create a geo_override record with override_type='merge'."""
+        overrides_mock = MagicMock()
+        mappings_mock = MagicMock()
+        mappings_mock.get_full_list.return_value = []
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "geo_overrides":
+                return overrides_mock
+            return mappings_mock
+
+        mock_pb.collection.side_effect = collection_router
+
+        await service.merge_canonical("Old School", "New School", "school", 2025)
+
+        overrides_mock.create.assert_called_once_with(
+            {
+                "category": "school",
+                "override_type": "merge",
+                "canonical_name": "Old School",
+                "merged_into": "New School",
+                "year": 2025,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_updates_mappings_to_target(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Merging should update all normalized_mappings from source to target."""
+        mapping1 = _make_mapping_record("old school", "Old School")
+        mapping1.id = "m1"
+        mapping2 = _make_mapping_record("old skool", "Old School")
+        mapping2.id = "m2"
+
+        overrides_mock = MagicMock()
+        mappings_mock = MagicMock()
+        mappings_mock.get_full_list.return_value = [mapping1, mapping2]
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "geo_overrides":
+                return overrides_mock
+            return mappings_mock
+
+        mock_pb.collection.side_effect = collection_router
+
+        count = await service.merge_canonical("Old School", "New School", "school", 2025)
+
+        assert count == 2
+        assert mappings_mock.update.call_count == 2
+        mappings_mock.update.assert_any_call("m1", {"normalized_value": "New School"})
+        mappings_mock.update.assert_any_call("m2", {"normalized_value": "New School"})
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Merging with no matching mappings should return 0."""
+        overrides_mock = MagicMock()
+        mappings_mock = MagicMock()
+        mappings_mock.get_full_list.return_value = []
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "geo_overrides":
+                return overrides_mock
+            return mappings_mock
+
+        mock_pb.collection.side_effect = collection_router
+
+        count = await service.merge_canonical("Old School", "New School", "school", 2025)
+
+        assert count == 0
+
+
+# ============================================================================
+# Approve Suggested Tests
+# ============================================================================
+
+
+class TestApproveSuggested:
+    """Test approve_suggested service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_creates_canonical_override(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Approving a suggested canonical should create a canonical override."""
+        await service.approve_suggested("Hillcrest Academy", "school", 2025, city="Springfield", state="IL")
+
+        mock_pb.collection.return_value.create.assert_called_once_with(
+            {
+                "category": "school",
+                "override_type": "canonical",
+                "canonical_name": "Hillcrest Academy",
+                "city": "Springfield",
+                "state": "IL",
+                "year": 2025,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_creates_override_with_defaults(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Approving without city/state should use empty strings."""
+        await service.approve_suggested("Unknown Place", "city", 2025)
+
+        mock_pb.collection.return_value.create.assert_called_once_with(
+            {
+                "category": "city",
+                "override_type": "canonical",
+                "canonical_name": "Unknown Place",
+                "city": "",
+                "state": "",
+                "year": 2025,
+            },
+        )
+
+
+# ============================================================================
+# Reject Suggested Tests
+# ============================================================================
+
+
+class TestRejectSuggested:
+    """Test reject_suggested service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_deletes_all_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Rejecting should delete all normalized_mappings for the canonical."""
+        mapping1 = _make_mapping_record("bad school", "Bad Canonical")
+        mapping1.id = "m1"
+        mapping2 = _make_mapping_record("bad skool", "Bad Canonical")
+        mapping2.id = "m2"
+
+        mock_pb.collection.return_value.get_full_list.return_value = [mapping1, mapping2]
+
+        count = await service.reject_suggested("Bad Canonical", "school", 2025)
+
+        assert count == 2
+        delete_mock = mock_pb.collection.return_value.delete
+        assert delete_mock.call_count == 2
+        delete_mock.assert_any_call("m1")
+        delete_mock.assert_any_call("m2")
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Rejecting with no matching mappings should return 0."""
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        count = await service.reject_suggested("Nonexistent", "school", 2025)
+
+        assert count == 0
+
+
+# ============================================================================
+# Merge/Approve/Reject Schema Tests
+# ============================================================================
+
+
+class TestMergeApproveRejectSchemas:
+    """Test Pydantic schemas for merge, approve, reject operations."""
+
+    def test_merge_request_fields(self) -> None:
+        """MergeRequest should have target, category, year."""
+        from api.schemas.geo import MergeRequest
+
+        req = MergeRequest(target="Target School", category="school", year=2025)
+        assert req.target == "Target School"
+        assert req.category == "school"
+        assert req.year == 2025
+
+    def test_merge_response_fields(self) -> None:
+        """MergeResponse should have merged_count."""
+        from api.schemas.geo import MergeResponse
+
+        resp = MergeResponse(merged_count=5)
+        assert resp.merged_count == 5
+
+    def test_approve_request_fields(self) -> None:
+        """ApproveRequest should have category, year, and optional city/state/country."""
+        from api.schemas.geo import ApproveRequest
+
+        req = ApproveRequest(category="school", year=2025, city="Oakland", state="CA", country="US")
+        assert req.category == "school"
+        assert req.year == 2025
+        assert req.city == "Oakland"
+        assert req.state == "CA"
+        assert req.country == "US"
+
+    def test_approve_request_defaults(self) -> None:
+        """ApproveRequest optional fields should default to empty strings."""
+        from api.schemas.geo import ApproveRequest
+
+        req = ApproveRequest(category="city", year=2025)
+        assert req.city == ""
+        assert req.state == ""
+        assert req.country == ""
+
+    def test_reject_request_fields(self) -> None:
+        """RejectRequest should have category and year."""
+        from api.schemas.geo import RejectRequest
+
+        req = RejectRequest(category="school", year=2025)
+        assert req.category == "school"
+        assert req.year == 2025
+
+    def test_reject_response_fields(self) -> None:
+        """RejectResponse should have dissolved_count."""
+        from api.schemas.geo import RejectResponse
+
+        resp = RejectResponse(dissolved_count=3)
+        assert resp.dissolved_count == 3
