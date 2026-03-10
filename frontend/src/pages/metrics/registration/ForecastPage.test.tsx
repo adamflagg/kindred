@@ -404,7 +404,7 @@ describe('ForecastPage', () => {
 
   // ---------- summary cards ----------
 
-  it('renders summary cards with grand total data', async () => {
+  it('renders header with enrolled/goal summary', async () => {
     const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
     setupMockFetch(
       mockResponse([s1], {
@@ -417,10 +417,9 @@ describe('ForecastPage', () => {
     renderWithProviders(<ForecastPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('Total Enrolled vs Goal')).toBeInTheDocument()
-      expect(screen.getByText('Overall % of Goal')).toBeInTheDocument()
-      expect(screen.getByText('Total Capacity')).toBeInTheDocument()
-      expect(screen.getByText('Overall Utilization')).toBeInTheDocument()
+      expect(screen.getByText('Registration Forecast')).toBeInTheDocument()
+      expect(screen.getByText(/80\/100/)).toBeInTheDocument()
+      expect(screen.getByText(/80\.0% of goal/)).toBeInTheDocument()
     })
   })
 })
