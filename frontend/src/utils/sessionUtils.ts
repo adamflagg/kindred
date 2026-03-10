@@ -285,6 +285,81 @@ export function splitCampAndQuest<T>(
   return { camp, quest }
 }
 
+// ============================================================================
+// Duration grouping utilities
+// ============================================================================
+
+/**
+ * Calculate session length category from start and end dates.
+ * Mirrors backend's get_session_length_category() in api/utils/session_metrics.py.
+ *
+ * Categories: '1-week' (1-7 days), '2-week' (8-14), '3-week' (15-21), '4-week+' (22+)
+ */
+export function getSessionLengthCategory(startDate: string, endDate: string): string {
+  if (!startDate || !endDate) return 'unknown'
+
+  const start = new Date(startDate.split('T')[0]!)
+  const end = new Date(endDate.split('T')[0]!)
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'unknown'
+
+  const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+  if (days <= 7) return '1-week'
+  if (days <= 14) return '2-week'
+  if (days <= 21) return '3-week'
+  return '4-week+'
+}
+
+/**
+ * Session with end_date, used for duration grouping.
+ * Extends the shape needed by getSessionLengthCategory.
+ */
+interface SessionWithDates {
+  cm_id: number
+  name: string
+  session_type: string
+  start_date: string
+  end_date: string
+}
+
+/** Duration categories in display order */
+export const DURATION_CATEGORIES = ['1-week', '2-week', '3-week', '4-week+'] as const
+export type DurationCategory = (typeof DURATION_CATEGORIES)[number]
+
+/**
+ * Group camp sessions (non-quest) by duration category.
+ * Returns a Map with only categories that have sessions, in display order.
+ */
+export function groupSessionsByDuration<T extends SessionWithDates>(
+  sessions: T[]
+): Map<DurationCategory, T[]> {
+  const groups = new Map<DurationCategory, T[]>()
+
+  // Filter to camp sessions only (exclude quest)
+  const campSessions = sessions.filter((s) => s.session_type !== 'quest')
+
+  for (const session of campSessions) {
+    const category = getSessionLengthCategory(session.start_date, session.end_date)
+    if (category === 'unknown') continue
+    const cat = category as DurationCategory
+    if (!groups.has(cat)) groups.set(cat, [])
+    groups.get(cat)!.push(session)
+  }
+
+  // Sort sessions within each group by start_date
+  for (const [, groupSessions] of groups) {
+    groupSessions.sort((a, b) => a.start_date.localeCompare(b.start_date))
+  }
+
+  // Return in canonical order (remove empty categories)
+  const ordered = new Map<DurationCategory, T[]>()
+  for (const cat of DURATION_CATEGORIES) {
+    if (groups.has(cat)) ordered.set(cat, groups.get(cat)!)
+  }
+  return ordered
+}
+
 /**
  * Compare two session names: camp sessions sort before quest sessions.
  * Within each group, sort by date (primary) then name (secondary).

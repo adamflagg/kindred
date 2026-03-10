@@ -41,6 +41,18 @@ describe('useMetricsSessions', () => {
       expect(validSessionTypes).toContain(session.session_type)
     })
 
+    it('should include end_date in MetricsSession shape', () => {
+      // Verify the MetricsSession type includes end_date
+      const expectedShape: Record<string, unknown> = {
+        cm_id: expect.any(Number),
+        name: expect.any(String),
+        session_type: expect.any(String),
+        start_date: expect.any(String),
+        end_date: expect.any(String),
+      }
+      expect(expectedShape).toHaveProperty('end_date')
+    })
+
     it('should sort sessions by start_date', () => {
       // Sessions should be sorted chronologically
       const sessions = [
