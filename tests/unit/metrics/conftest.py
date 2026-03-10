@@ -101,7 +101,7 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             id TEXT PRIMARY KEY,
             year INTEGER NOT NULL,
             session_cm_id INTEGER,
-            snapshot_date TEXT,
+            snapshot_datetime TEXT,
             enrolled_count INTEGER DEFAULT 0,
             waitlisted_count INTEGER DEFAULT 0,
             cancelled_count INTEGER DEFAULT 0,

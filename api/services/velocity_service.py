@@ -271,7 +271,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_date
+            date_str = snap.snapshot_datetime
 
             male_count = int(getattr(snap, "enrolled_male_count", 0) or 0)
             female_count = int(getattr(snap, "enrolled_female_count", 0) or 0)
@@ -586,11 +586,11 @@ class VelocityService:
         )
 
     @staticmethod
-    def _find_earliest_snapshot_date(snapshots: list[Any], season_start: datetime) -> datetime | None:
-        """Find the earliest snapshot_date >= season_start across all snapshots."""
+    def _find_earliest_snapshot_datetime(snapshots: list[Any], season_start: datetime) -> datetime | None:
+        """Find the earliest snapshot_datetime >= season_start across all snapshots."""
         earliest: datetime | None = None
         for snap in snapshots:
-            dt = datetime.strptime(snap.snapshot_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            dt = datetime.strptime(snap.snapshot_datetime.split("T")[0].split(" ")[0], "%Y-%m-%d")
             if dt.date() < season_start.date():
                 continue
             if earliest is None or dt < earliest:
@@ -721,7 +721,7 @@ class VelocityService:
         )
 
         # Determine if we need hybrid mode
-        earliest = self._find_earliest_snapshot_date(snapshots, season_start)
+        earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
         if earliest is None:
             return snap_result
 
@@ -774,7 +774,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_date
+            date_str = snap.snapshot_datetime
 
             session_date_data[effective_sid][date_str]["enrolled"] += int(snap.enrolled_count)
             session_date_data[effective_sid][date_str]["waitlisted"] += int(snap.waitlisted_count)
@@ -1263,7 +1263,7 @@ class VelocityService:
         )
 
         # Check if hybrid needed
-        earliest = self._find_earliest_snapshot_date(snapshots, season_start)
+        earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
         if earliest is None or _week_start(earliest, season_start) <= season_start:
             # Snapshots cover full season → pure snapshot fast path
             return self._assemble_gender_curves(year, session_cm_id, sessions, snap_gps, snap_totals)
@@ -1309,7 +1309,7 @@ class VelocityService:
         )
 
         # Determine if we need hybrid mode
-        earliest = self._find_earliest_snapshot_date(snapshots, season_start)
+        earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
         if earliest is None:
             return snap_result
 
@@ -1356,7 +1356,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_date
+            date_str = snap.snapshot_datetime
             cancelled = int(getattr(snap, "cancelled_count", 0) or 0)
             # Accumulate (multiple sessions on same date get summed per effective session)
             current = session_date_cancelled[effective_sid].get(date_str, 0)
