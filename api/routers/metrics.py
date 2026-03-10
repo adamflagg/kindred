@@ -492,9 +492,12 @@ async def get_forecast_snapshot_dates(
     year: int = Query(..., description="Year to get snapshot dates for"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> dict[str, list[str]]:
-    """Return available enrollment snapshot dates for the forecast date picker."""
+    """Return available enrollment snapshot dates filtered to weekly Mondays."""
+    from api.services.forecast_service import ForecastService
+
     repository = _create_repository()
-    dates = await repository.fetch_available_snapshot_dates(year)
+    service = ForecastService(repository)
+    dates = await service.get_filtered_snapshot_dates(year)
     return {"dates": dates}
 
 
