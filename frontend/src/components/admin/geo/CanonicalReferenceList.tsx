@@ -16,6 +16,7 @@ export interface CanonicalReferenceListProps {
   onReassignSource: (originalValue: string) => void
   onApprove?: (entry: CanonicalEntry) => void
   onReject?: (entry: CanonicalEntry) => void
+  onMerge?: (entry: CanonicalEntry) => void
 }
 
 type SortMode = 'popular' | 'alpha'
