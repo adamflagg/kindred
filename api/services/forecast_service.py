@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from api.schemas.forecast import ForecastResponse, SessionForecast
+from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
@@ -72,6 +72,81 @@ class ForecastService:
         # Intersect with actual snapshot dates
         all_dates = await self.repository.fetch_available_snapshot_dates(year)
         return sorted([d for d in all_dates if d in valid_dates], reverse=True)
+
+    async def get_week_options(self, year: int, today: date | None = None) -> list[WeekOption]:
+        """Generate week-relative options from registration anchor through today.
+
+        Returns a descending list (newest first) of week options:
+        - First entry: Today with exact day_offset and "(Today)" suffix
+        - Then each completed week from most recent down to Week 0
+        - Week 0 gets "(Priority Reg)" suffix
+        - If today falls on an exact week boundary, no duplicate is created
+
+        Args:
+            year: The camp year to look up registration dates for.
+            today: Override for current date (for testing). Defaults to date.today().
+
+        Returns:
+            List of WeekOption, empty if no anchor date or today < anchor.
+        """
+        if today is None:
+            today = datetime.now(tz=UTC).date()
+
+        reg_dates = await self.repository.fetch_registration_dates(year)
+
+        # Find anchor: priority_reg_date preferred, fall back to early_reg_date
+        anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date")
+        if not anchor_str:
+            return []
+        anchor_str = anchor_str.split("T")[0].split(" ")[0]
+        anchor = date.fromisoformat(anchor_str)
+
+        if today < anchor:
+            return []
+
+        total_days = (today - anchor).days
+        today_week = total_days // 7
+        today_on_boundary = total_days % 7 == 0
+
+        options: list[WeekOption] = []
+
+        # Today entry (always first)
+        today_label = f"Week {today_week} · {today.strftime('%b %-d')} (Today)"
+        options.append(
+            WeekOption(
+                week_number=today_week,
+                day_offset=total_days,
+                label=today_label,
+                is_today=True,
+            )
+        )
+
+        # Build set of week milestones to show below the Today entry.
+        # Completed weeks (1 through today_week-1) plus Week 0 as an anchor landmark.
+        # If today is on an exact boundary, that week is the Today entry — skip it.
+        weeks_to_show: set[int] = set(range(0, today_week))
+        # Always include Week 0 as anchor landmark when today > anchor
+        if total_days > 0:
+            weeks_to_show.add(0)
+        # Remove today's week if it's on a boundary (already the Today entry)
+        if today_on_boundary:
+            weeks_to_show.discard(today_week)
+
+        for week in sorted(weeks_to_show, reverse=True):
+            week_date = anchor + timedelta(days=week * 7)
+            label = f"Week {week} · {week_date.strftime('%b %-d')}"
+            if week == 0:
+                label += " (Priority Reg)"
+            options.append(
+                WeekOption(
+                    week_number=week,
+                    day_offset=week * 7,
+                    label=label,
+                    is_today=False,
+                )
+            )
+
+        return options
 
     async def calculate_forecast(
         self,
