@@ -53,6 +53,8 @@ class ForecastService:
 
         # Cap at July 31 of the camp year
         cap = date(year, 7, 31)
+        if anchor > cap:
+            return []
 
         # Build set of valid dates: anchor + every Monday from first Monday after anchor through cap
         valid_dates: set[str] = {anchor_str}

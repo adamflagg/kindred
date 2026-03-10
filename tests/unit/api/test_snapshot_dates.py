@@ -210,3 +210,38 @@ class TestSnapshotDateFiltering:
             "2025-10-20",
             "2025-10-15",
         ]
+
+    @pytest.mark.asyncio
+    async def test_anchor_after_july_31_returns_empty(self, service, mock_repository):
+        """If anchor date is after July 31 cap, return empty list."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2026-08-05",
+        }
+        mock_repository.fetch_available_snapshot_dates.return_value = [
+            "2026-08-11",
+            "2026-08-05",
+        ]
+
+        result = await service.get_filtered_snapshot_dates(2026)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_priority_reg_date_takes_precedence(self, service, mock_repository):
+        """When both priority and early reg dates exist, priority wins."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",  # Wed
+            "early_reg_date": "2025-11-05",  # Different date
+        }
+        mock_repository.fetch_available_snapshot_dates.return_value = [
+            "2025-10-20",  # Mon after priority anchor
+            "2025-10-15",  # priority anchor
+        ]
+
+        result = await service.get_filtered_snapshot_dates(2026)
+
+        # Should use Oct 15 (priority), not Nov 5 (early)
+        assert result == [
+            "2025-10-20",
+            "2025-10-15",
+        ]
