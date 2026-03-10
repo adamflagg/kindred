@@ -96,6 +96,8 @@ def mock_repository():
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_attendees = AsyncMock(return_value=[])
     repo.fetch_budget_config = AsyncMock(return_value={})
+    repo.fetch_registration_dates = AsyncMock(return_value={})
+    repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
     return repo
 
 
@@ -896,13 +898,17 @@ class TestForecastPriorYearFailure:
 
 
 class TestForecastSnapshotLookback:
-    """Test historical forecast viewing via snapshot_date parameter."""
+    """Test historical forecast viewing via day_offset parameter."""
 
     @pytest.mark.asyncio
-    async def test_snapshot_date_uses_snapshot_counts(self, service, mock_repository):
-        """When snapshot_date is provided, enrolled/waitlisted come from snapshots."""
+    async def test_day_offset_uses_snapshot_counts(self, service, mock_repository):
+        """When day_offset is provided and snapshots exist, enrolled/waitlisted come from snapshots."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
+        # day_offset=123, anchor=2025-10-15 → target_date=2026-02-15
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",
+        }
         mock_repository.fetch_snapshot_counts = AsyncMock(
             return_value={
                 1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3},
@@ -912,7 +918,7 @@ class TestForecastSnapshotLookback:
             [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
         )
 
-        result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
+        result = await service.calculate_forecast(year=2026, day_offset=123)
 
         mock_repository.fetch_snapshot_counts.assert_called_once_with(2026, "2026-02-15")
         session = result.sessions[0]
@@ -920,8 +926,8 @@ class TestForecastSnapshotLookback:
         assert session.waitlisted == 5
 
     @pytest.mark.asyncio
-    async def test_snapshot_date_none_uses_live_data(self, service, mock_repository):
-        """When snapshot_date is None (default), behavior is unchanged."""
+    async def test_day_offset_none_uses_live_data(self, service, mock_repository):
+        """When day_offset is None (default), behavior is unchanged — live attendee data."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
 
@@ -937,14 +943,17 @@ class TestForecastSnapshotLookback:
         result = await service.calculate_forecast(year=2026)
 
         # Should NOT call fetch_snapshot_counts
-        assert not hasattr(mock_repository, "fetch_snapshot_counts") or not mock_repository.fetch_snapshot_counts.called
+        assert not mock_repository.fetch_snapshot_counts.called
         assert result.sessions[0].enrolled == 1
 
     @pytest.mark.asyncio
-    async def test_snapshot_preserves_budget_config(self, service, mock_repository):
-        """Budget goals should use current config even in snapshot mode."""
+    async def test_day_offset_preserves_budget_config(self, service, mock_repository):
+        """Budget goals should use current config even in day_offset mode."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",
+        }
         mock_repository.fetch_snapshot_counts = AsyncMock(
             return_value={
                 1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3},
@@ -954,30 +963,219 @@ class TestForecastSnapshotLookback:
             [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
         )
 
-        result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
+        result = await service.calculate_forecast(year=2026, day_offset=123)
 
         session = result.sessions[0]
         assert session.participant_goal == 100
         assert session.session_fee == 1000
 
     @pytest.mark.asyncio
-    async def test_snapshot_date_in_response(self, service, mock_repository):
-        """Response should include the snapshot_date when provided."""
+    async def test_response_has_week_and_day_offset(self, service, mock_repository):
+        """Response should include week_number and day_offset when day_offset is set."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",
+        }
         mock_repository.fetch_snapshot_counts = AsyncMock(
             return_value={1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3}}
         )
 
-        result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
-        assert result.snapshot_date == "2026-02-15"
+        result = await service.calculate_forecast(year=2026, day_offset=123)
+        assert result.week_number == 17  # 123 // 7 = 17
+        assert result.day_offset == 123
 
     @pytest.mark.asyncio
-    async def test_no_snapshot_date_in_response_for_live(self, service, mock_repository):
-        """Response should have snapshot_date=None for live data."""
+    async def test_no_week_or_day_offset_in_response_for_live(self, service, mock_repository):
+        """Response should have week_number=None and day_offset=None for live data."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_attendees.return_value = []
 
         result = await service.calculate_forecast(year=2026)
-        assert result.snapshot_date is None
+        assert result.week_number is None
+        assert result.day_offset is None
+
+
+# ============================================================================
+# Day Offset with Reconstruction Tests
+# ============================================================================
+
+
+class TestForecastWithDayOffset:
+    """Test forecast with day_offset using reconstruction for prior years."""
+
+    @pytest.mark.asyncio
+    async def test_day_offset_uses_reconstruction_for_prior_year(self, mock_repository, service):
+        """Prior year counts should come from reconstruction at same offset."""
+        # Current year: 2026 with snapshot data available
+        current_sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026),
+        }
+        # Prior year: 2025
+        prior_sessions = {
+            9001: create_mock_session(9001, "Session 1", year=2025),
+        }
+
+        async def fetch_sessions_side_effect(year, session_types=None):
+            if year == 2026:
+                return current_sessions
+            if year == 2025:
+                return prior_sessions
+            return {}
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
+
+        # Current year anchor: Oct 15, 2025. day_offset=123 → target 2026-02-15
+        # Prior year anchor: Oct 10, 2024
+        async def fetch_reg_dates_side_effect(year):
+            if year == 2026:
+                return {"priority_reg_date": "2025-10-15"}
+            if year == 2025:
+                return {"priority_reg_date": "2024-10-10"}
+            return {}
+
+        mock_repository.fetch_registration_dates.side_effect = fetch_reg_dates_side_effect
+
+        # Current year has snapshot data
+        mock_repository.fetch_snapshot_counts = AsyncMock(
+            return_value={1001: {"enrolled": 75, "waitlisted": 3, "cancelled": 1}}
+        )
+        mock_repository.fetch_budget_config.return_value = {}
+
+        # Prior year reconstruction: simulate attendees_with_dates for 2025
+        # Provide attendees that reconstruct to 20 enrolled at offset 123 from 2024-10-10
+        from types import SimpleNamespace
+
+        prior_attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2025,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date=f"2024-10-{15 + (i % 10):02d}",
+                effective_date=f"2024-10-{15 + (i % 10):02d}",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=9001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2025-06-15",
+                        end_date="2025-07-15",
+                    )
+                },
+            )
+            for i in range(20)
+        ]
+
+        async def fetch_attendees_with_dates_side_effect(year):
+            if year == 2025:
+                return prior_attendees
+            return []
+
+        mock_repository.fetch_attendees_with_dates.side_effect = fetch_attendees_with_dates_side_effect
+
+        result = await service.calculate_forecast(year=2026, day_offset=123)
+
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        # Current year enrollment from snapshot
+        assert s1.enrolled == 75
+        # Prior year count from reconstruction (20 attendees enrolled within offset)
+        assert s1.prior_year_count == 20
+        assert s1.participants_vs_prior_year == 55  # 75 - 20
+
+    @pytest.mark.asyncio
+    async def test_day_offset_none_uses_live_mode(self, mock_repository, service):
+        """day_offset=None should use live attendee data (existing behavior)."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        enrolled = [create_mock_attendee(i, 1001) for i in range(5)]
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return enrolled
+            return []
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        assert result.sessions[0].enrolled == 5
+        # Live mode should NOT call fetch_registration_dates or fetch_attendees_with_dates
+        mock_repository.fetch_registration_dates.assert_not_called()
+        mock_repository.fetch_attendees_with_dates.assert_not_called()
+        assert result.week_number is None
+        assert result.day_offset is None
+
+    @pytest.mark.asyncio
+    async def test_response_has_week_number_and_day_offset(self, mock_repository, service):
+        """Response should include week_number and day_offset when day_offset is set."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",
+        }
+        mock_repository.fetch_snapshot_counts = AsyncMock(
+            return_value={1001: {"enrolled": 10, "waitlisted": 0, "cancelled": 0}}
+        )
+        mock_repository.fetch_budget_config.return_value = {}
+
+        result = await service.calculate_forecast(year=2026, day_offset=49)
+
+        assert result.week_number == 7  # 49 // 7 = 7
+        assert result.day_offset == 49
+
+    @pytest.mark.asyncio
+    async def test_day_offset_falls_back_to_reconstruction_when_no_snapshot(self, mock_repository, service):
+        """When day_offset is set but no snapshot data exists, use reconstruction for current year too."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",
+        }
+        # Empty snapshot → falls back to reconstruction
+        mock_repository.fetch_snapshot_counts = AsyncMock(return_value={})
+        mock_repository.fetch_budget_config.return_value = {}
+
+        from types import SimpleNamespace
+
+        current_attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date=f"2025-10-{20 + (i % 5):02d}",
+                effective_date=f"2025-10-{20 + (i % 5):02d}",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    )
+                },
+            )
+            for i in range(15)
+        ]
+
+        async def fetch_attendees_with_dates_side_effect(year):
+            if year == 2026:
+                return current_attendees
+            return []
+
+        mock_repository.fetch_attendees_with_dates.side_effect = fetch_attendees_with_dates_side_effect
+
+        result = await service.calculate_forecast(year=2026, day_offset=30)
+
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        # 15 attendees enrolled between Oct 20-24, all within 30 days of Oct 15
+        assert s1.enrolled == 15
