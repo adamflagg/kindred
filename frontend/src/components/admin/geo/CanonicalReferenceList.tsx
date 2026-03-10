@@ -224,7 +224,7 @@ function CanonicalRow({
           >
             {entry.country && !['US', 'USA', ''].includes(entry.country)
               ? `${entry.city || entry.canonical_name}, ${entry.country}`
-              : `${entry.city}${entry.state ? `, ${entry.state}` : ''}`}
+              : [entry.city, entry.state].filter(Boolean).join(', ') || entry.state}
           </span>
         )}
 
