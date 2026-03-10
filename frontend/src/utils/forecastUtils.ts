@@ -11,7 +11,7 @@ export interface ForecastSection {
  * Compute a section total across a list of sessions.
  * Mirrors the Python `_compute_grand_total()` logic from forecast_service.py:
  * - enrolled/waitlisted are always summed
- * - nullable fields (capacity, goal, prior, revenue) use null-aware aggregation:
+ * - nullable fields (goal, prior, revenue) use null-aware aggregation:
  *   return null if ALL sessions have null, otherwise sum treating null as 0
  * - derived fields (percentages, deltas) are computed from the aggregated totals
  */
@@ -19,12 +19,10 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
   const totalEnrolled = sessions.reduce((sum, s) => sum + s.enrolled, 0)
   const totalWaitlisted = sessions.reduce((sum, s) => sum + s.waitlisted, 0)
 
-  const totalCapacity = sessions.reduce((sum, s) => sum + (s.capacity ?? 0), 0)
   const totalGoal = sessions.reduce((sum, s) => sum + (s.participant_goal ?? 0), 0)
   const totalPrior = sessions.reduce((sum, s) => sum + (s.prior_year_count ?? 0), 0)
   const totalTwoYear = sessions.reduce((sum, s) => sum + (s.two_year_prior_count ?? 0), 0)
 
-  const hasCapacity = sessions.some((s) => s.capacity !== null)
   const hasGoal = sessions.some((s) => s.participant_goal !== null)
   const hasPrior = sessions.some((s) => s.prior_year_count !== null)
   const hasTwoYear = sessions.some((s) => s.two_year_prior_count !== null)
@@ -36,11 +34,6 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
   let pctOfGoal: number | null = null
   if (hasGoal && totalGoal > 0) {
     pctOfGoal = Math.round((totalEnrolled / totalGoal) * 1000) / 10
-  }
-
-  let utilizationPct: number | null = null
-  if (hasCapacity && totalCapacity > 0) {
-    utilizationPct = Math.round((totalEnrolled / totalCapacity) * 1000) / 10
   }
 
   const participantsVsBudget = hasGoal ? totalEnrolled - totalGoal : null
@@ -63,8 +56,6 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
     pct_of_goal: pctOfGoal,
     prior_year_count: hasPrior ? totalPrior : null,
     two_year_prior_count: hasTwoYear ? totalTwoYear : null,
-    capacity: hasCapacity ? totalCapacity : null,
-    utilization_pct: utilizationPct,
     participants_vs_budget: participantsVsBudget,
     participants_vs_prior_year: participantsVsPriorYear,
     budget_revenue: hasRevenue ? totalBudgetRev : null,

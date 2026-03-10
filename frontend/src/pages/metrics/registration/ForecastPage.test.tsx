@@ -61,8 +61,6 @@ function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
     pct_of_goal: 80.0,
     prior_year_count: 75,
     two_year_prior_count: 70,
-    capacity: 100,
-    utilization_pct: 80.0,
     participants_vs_budget: -20,
     participants_vs_prior_year: 5,
     budget_revenue: 500000,
@@ -406,25 +404,22 @@ describe('ForecastPage', () => {
 
   // ---------- summary cards ----------
 
-  it('renders summary cards with grand total data', async () => {
+  it('renders header with enrolled/goal summary', async () => {
     const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
     setupMockFetch(
       mockResponse([s1], {
         enrolled: 80,
         participant_goal: 100,
         pct_of_goal: 80.0,
-        capacity: 120,
-        utilization_pct: 66.7,
       })
     )
 
     renderWithProviders(<ForecastPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('Total Enrolled vs Goal')).toBeInTheDocument()
-      expect(screen.getByText('Overall % of Goal')).toBeInTheDocument()
-      expect(screen.getByText('Total Capacity')).toBeInTheDocument()
-      expect(screen.getByText('Overall Utilization')).toBeInTheDocument()
+      expect(screen.getByText('Registration Forecast')).toBeInTheDocument()
+      expect(screen.getByText(/80\/100/)).toBeInTheDocument()
+      expect(screen.getByText(/80\.0% of goal/)).toBeInTheDocument()
     })
   })
 })

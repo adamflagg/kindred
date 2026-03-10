@@ -1,4 +1,7 @@
-"""Pydantic models for registration forecast response."""
+"""Pydantic models for registration forecast response.
+
+Per-session forecast data with budget goals and revenue projections.
+"""
 
 from __future__ import annotations
 
@@ -16,8 +19,6 @@ class SessionForecast(BaseModel):
     pct_of_goal: float | None = Field(None, description="enrolled / goal * 100")
     prior_year_count: int | None = Field(None, description="Same session name, year-1")
     two_year_prior_count: int | None = Field(None, description="Same session name, year-2")
-    capacity: int | None = Field(None, description="bunk_plans count * defaultCapacity")
-    utilization_pct: float | None = Field(None, description="enrolled / capacity * 100")
     participants_vs_budget: int | None = Field(None, description="enrolled - participant_goal")
     participants_vs_prior_year: int | None = Field(None, description="enrolled - prior_year_count")
     budget_revenue: float | None = Field(None, description="goal * fee")
