@@ -27,6 +27,7 @@ async def get_session_availability(
         None,
         description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
     ),
+    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
     user: AuthUser = Depends(get_current_user),
 ) -> SessionAvailabilityResponse:
     """Get session availability matrix.
@@ -45,6 +46,7 @@ async def get_session_availability(
             year=year,
             session_types=type_filter,
             session_cm_id=session_cm_id,
+            duration=duration,
         )
     except Exception as e:
         logger.error(f"Error calculating session availability: {e}", exc_info=True)

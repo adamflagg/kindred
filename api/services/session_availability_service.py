@@ -19,6 +19,7 @@ from api.schemas.session_availability import (
     SessionAvailability,
     SessionAvailabilityResponse,
 )
+from api.utils.session_metrics import resolve_duration_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class SessionAvailabilityService:
         year: int,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> SessionAvailabilityResponse:
         """Calculate session availability matrix for a year."""
         effective_types = session_types if session_types is not None else self._DEFAULT_SESSION_TYPES
@@ -71,6 +73,11 @@ class SessionAvailabilityService:
         sessions, bunk_plans, default_capacity, attendees = await asyncio.gather(
             sessions_task, bunk_plans_task, capacity_config_task, enrolled_task
         )
+
+        # Filter sessions by duration category
+        if duration:
+            duration_session_ids = resolve_duration_sessions(sessions, duration)
+            sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
 
         # Fetch availability config from PocketBase
         config_records = await self._fetch_availability_config(year)

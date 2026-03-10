@@ -23,7 +23,7 @@ from api.schemas.metrics import (
     SynagogueEnrollment,
     YearEnrollment,
 )
-from api.utils.session_metrics import compute_summer_metrics
+from api.utils.session_metrics import compute_summer_metrics, resolve_duration_sessions
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
@@ -56,6 +56,7 @@ class RetentionTrendsService:
         num_years: int = 3,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> RetentionTrendsResponse:
         """Calculate retention trends across multiple year transitions.
 
@@ -86,6 +87,11 @@ class RetentionTrendsService:
             # Filter by specific session ID
             if session_cm_id is not None:
                 attendees = self._filter_by_session_cm_id(attendees, session_cm_id)
+
+            # Filter by duration category
+            if duration:
+                duration_session_ids = resolve_duration_sessions(year_data["sessions"], duration)
+                attendees = self._filter_by_session_cm_ids(attendees, duration_session_ids)
 
             # Update attendees and compute person_ids
             year_data["attendees"] = attendees
@@ -200,6 +206,28 @@ class RetentionTrendsService:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session and getattr(session, "cm_id", None) == session_cm_id:
+                filtered.append(a)
+        return filtered
+
+    def _filter_by_session_cm_ids(
+        self,
+        attendees: list[Any],
+        session_cm_ids: set[int],
+    ) -> list[Any]:
+        """Filter attendees to those in a set of session cm_ids (duration groups).
+
+        Args:
+            attendees: List of attendees.
+            session_cm_ids: Set of session cm_ids to include.
+
+        Returns:
+            Filtered list of attendees.
+        """
+        filtered = []
+        for a in attendees:
+            expand = getattr(a, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if session and getattr(session, "cm_id", None) in session_cm_ids:
                 filtered.append(a)
         return filtered
 

@@ -118,6 +118,7 @@ def filter_attendees_by_session(
     session_types: list[str] | None,
     session_cm_id: int | None = None,
     ag_session_ids: set[int] | None = None,
+    session_cm_ids: set[int] | None = None,
 ) -> list[Any]:
     """Filter attendees by session type and/or session cm_id.
 
@@ -149,6 +150,11 @@ def filter_attendees_by_session(
         # Apply session_cm_id filter if specified
         if session_cm_id is not None:
             if attendee_session_cm_id != session_cm_id and attendee_session_cm_id not in ag_session_ids:
+                continue
+
+        # Apply multi-session filter (duration groups)
+        if session_cm_ids is not None:
+            if attendee_session_cm_id not in session_cm_ids:
                 continue
 
         filtered.append(a)
@@ -188,6 +194,31 @@ def get_session_length_category(start_date: str, end_date: str) -> str:
             return "4-week+"
     except (ValueError, AttributeError):
         return "unknown"
+
+
+def resolve_duration_sessions(sessions: dict[int, Any], duration: str | None) -> set[int]:
+    """Resolve a duration category to a set of matching session cm_ids.
+
+    Args:
+        sessions: Dictionary mapping session cm_id to session record.
+        duration: Duration category string (e.g., '1-week', '2-week', '3-week').
+            Returns empty set if None.
+
+    Returns:
+        Set of session cm_ids that match the duration category.
+    """
+    if not duration:
+        return set()
+
+    matching: set[int] = set()
+    for sid, session in sessions.items():
+        start = getattr(session, "start_date", None)
+        end = getattr(session, "end_date", None)
+        if start and end:
+            category = get_session_length_category(str(start), str(end))
+            if category == duration:
+                matching.add(int(sid))
+    return matching
 
 
 def compute_summer_metrics(

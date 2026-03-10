@@ -26,7 +26,7 @@ from api.services.reconstruction import (
     _get_enrollment_date,
     _parse_date_only,
 )
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
 from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
@@ -351,6 +351,7 @@ class VelocityService:
         split_by_gender: bool = False,
         metric: str = "enrollment",
         today: date | None = None,
+        duration: str | None = None,
     ) -> VelocityResponse:
         """Get registration velocity curves with week-over-week data.
 
@@ -383,6 +384,10 @@ class VelocityService:
         season_end_dt = _season_end(season_start_dt)
         # Fetch sessions for the year
         sessions = await self.repo.fetch_sessions(year, session_types=session_types)
+        # Filter sessions by duration category
+        if duration:
+            duration_session_ids = resolve_duration_sessions(sessions, duration)
+            sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
         ag_parent_map = build_ag_parent_map(sessions)
 
         # Build curves for the primary year (dispatch by metric type)
@@ -435,6 +440,9 @@ class VelocityService:
                 prior_year_season_starts[prior_year] = prior_season_start.strftime("%Y-%m-%d")
                 prior_season_end = _season_end(prior_season_start)
                 prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
+                if duration:
+                    prior_duration_ids = resolve_duration_sessions(prior_sessions, duration)
+                    prior_sessions = {sid: s for sid, s in prior_sessions.items() if sid in prior_duration_ids}
                 prior_ag_map = build_ag_parent_map(prior_sessions)
 
                 if metric == "cancellation":

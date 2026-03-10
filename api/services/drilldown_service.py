@@ -17,6 +17,7 @@ from api.utils.session_metrics import (
     find_ag_sessions_for_parent,
     get_session_from_expand,
     get_session_length_category,
+    resolve_duration_sessions,
 )
 
 if TYPE_CHECKING:
@@ -109,6 +110,7 @@ class DrilldownService:
         session_types: list[str] | None = None,
         status_filter: list[str] | None = None,
         compare_year: int | None = None,
+        duration: str | None = None,
     ) -> list[DrilldownAttendee]:
         """Get attendees matching a specific breakdown criteria.
 
@@ -134,6 +136,7 @@ class DrilldownService:
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
         ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
+        duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
 
         # Retention card breakdowns (top cards: all, returned, not_returned)
         if breakdown_type in RETENTION_CARD_BREAKDOWNS and compare_year is not None:
@@ -209,7 +212,13 @@ class DrilldownService:
             attendees = filter_aged_out_attendees(attendees, persons)
 
         # Filter by session type and/or session_cm_id
-        filtered_attendees = filter_attendees_by_session(attendees, session_types, session_cm_id, ag_session_ids)
+        filtered_attendees = filter_attendees_by_session(
+            attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
+        )
 
         # For first_summer_year or summer_years breakdown, pre-compute metrics
         first_year_by_person: dict[int, int] = {}

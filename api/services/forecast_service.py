@@ -17,6 +17,7 @@ from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
     get_session_from_expand,
+    resolve_duration_sessions,
 )
 
 if TYPE_CHECKING:
@@ -108,6 +109,7 @@ class ForecastService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         day_offset: int | None = None,
+        duration: str | None = None,
     ) -> ForecastResponse:
         """Calculate forecast for the given year.
 
@@ -128,6 +130,11 @@ class ForecastService:
 
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
+
+        # Filter sessions by duration category
+        if duration:
+            duration_session_ids = resolve_duration_sessions(sessions, duration)
+            sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
 
         # Historical day_offset mode: use snapshot or reconstruction for enrollment counts
         snapshot_counts: dict[int, dict[str, int]] | None = None

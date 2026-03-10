@@ -30,6 +30,7 @@ from api.schemas.geo import (
     SourceMappingsResponse,
     SourcesResponse,
 )
+from api.utils.session_metrics import resolve_duration_sessions
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -165,19 +166,20 @@ class GeoService:
 
     def __init__(self, pb: PocketBase) -> None:
         self.pb = pb
-        self._person_id_cache: dict[tuple[int, tuple[str, ...], int | None], tuple[set[str], float]] = {}
+        self._person_id_cache: dict[tuple[int, tuple[str, ...], int | None, str | None], tuple[set[str], float]] = {}
 
     async def _fetch_active_person_pb_ids(
         self,
         year: int,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> set[str]:
         """Fetch PB IDs of persons with active enrolled attendee records.
 
-        Results are cached for 60 seconds keyed by (year, session_types, session_cm_id).
+        Results are cached for 60 seconds keyed by (year, session_types, session_cm_id, duration).
         """
-        cache_key = (year, tuple(session_types or []), session_cm_id)
+        cache_key = (year, tuple(session_types or []), session_cm_id, duration)
         now = time.monotonic()
 
         cached = self._person_id_cache.get(cache_key)
@@ -192,6 +194,22 @@ class GeoService:
         elif session_types:
             clauses = [f'session.session_type = "{t}"' for t in session_types]
             att_filter += f" && ({' || '.join(clauses)})"
+
+        # Apply duration filter by resolving to matching session cm_ids
+        if duration:
+            sessions_raw: list[Any] = await asyncio.to_thread(
+                self.pb.collection("sessions").get_full_list,
+                query_params={"filter": f"year = {year}"},
+            )
+            sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
+            duration_ids = resolve_duration_sessions(sessions_dict, duration)
+            if duration_ids:
+                id_clauses = [f"session.cm_id = {sid}" for sid in duration_ids]
+                att_filter += f" && ({' || '.join(id_clauses)})"
+            else:
+                # No sessions match the duration — return empty set
+                self._person_id_cache[cache_key] = (set(), now)
+                return set()
 
         attendees: list[Any] = await asyncio.to_thread(
             self.pb.collection("attendees").get_full_list,
@@ -250,6 +268,7 @@ class GeoService:
         active_only: bool = False,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> GapsResponse:
         """Classify normalized values without coordinates into three tiers.
 
@@ -273,7 +292,7 @@ class GeoService:
         )
 
         if active_only:
-            active_ids_task = self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            active_ids_task = self._fetch_active_person_pb_ids(year, session_types, session_cm_id, duration)
             mappings_raw, overrides_raw, active_ids = await asyncio.gather(
                 mappings_task, overrides_task, active_ids_task
             )
@@ -373,6 +392,7 @@ class GeoService:
         active_only: bool = False,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> CanonicalSearchResponse:
         """Search canonical entries by name, city, or state.
 
@@ -393,7 +413,7 @@ class GeoService:
         )
 
         if active_only:
-            active_ids_task = self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            active_ids_task = self._fetch_active_person_pb_ids(year, session_types, session_cm_id, duration)
             mappings_raw, overrides_raw, active_ids = await asyncio.gather(
                 mappings_task, overrides_task, active_ids_task
             )
@@ -484,6 +504,7 @@ class GeoService:
         active_only: bool = False,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> SourcesResponse:
         """Get raw value variants that map to a canonical name.
 
@@ -501,7 +522,7 @@ class GeoService:
 
         # Filter to active attendees if requested
         if active_only:
-            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id, duration)
             mappings = self._filter_and_dedup_mappings(mappings, active_ids)
 
         # Group by original_value, counting rows and tracking min confidence
@@ -549,6 +570,7 @@ class GeoService:
         active_only: bool = False,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> SourceMappingsResponse:
         """Get all source mappings grouped by normalized_value, then by original_value."""
         mappings: list[Any] = await asyncio.to_thread(
@@ -557,7 +579,7 @@ class GeoService:
         )
 
         if active_only:
-            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id)
+            active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id, duration)
             mappings = self._filter_and_dedup_mappings(mappings, active_ids)
 
         # Group: normalized_value -> original_value -> {count, confidence}

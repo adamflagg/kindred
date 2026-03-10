@@ -23,7 +23,7 @@ from api.schemas.metrics import (
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -48,6 +48,7 @@ class WaitlistService:
         year: int,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> WaitlistMetricsResponse:
         """Calculate waitlist metrics for all four use cases.
 
@@ -73,6 +74,9 @@ class WaitlistService:
         valid_session_ids = set(filtered_sessions.keys())
         if session_cm_id is not None:
             valid_session_ids = {sid for sid in valid_session_ids if sid == session_cm_id}
+        if duration:
+            duration_session_ids = resolve_duration_sessions(filtered_sessions, duration)
+            valid_session_ids = valid_session_ids & duration_session_ids
 
         # --- UC1 & UC2: Current waitlist ---
         waitlisted_attendees = await self.repository.fetch_attendees(year, status_filter="waitlisted")

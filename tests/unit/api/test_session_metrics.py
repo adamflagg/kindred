@@ -14,7 +14,7 @@ These tests are written FIRST before implementation (TDD).
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 # ============================================================================
 # Test Data Factories
@@ -785,3 +785,143 @@ class TestGetSessionLengthCategory:
         from api.utils.session_metrics import get_session_length_category
 
         assert get_session_length_category("", "") == "unknown"
+
+
+# ============================================================================
+# resolve_duration_sessions() Tests
+# ============================================================================
+
+
+def _make_session(cm_id: int, start_date: str | None, end_date: str | None, session_type: str = "main") -> MagicMock:
+    """Create a mock session object for testing."""
+    session = MagicMock()
+    session.cm_id = cm_id
+    session.start_date = start_date
+    session.end_date = end_date
+    session.session_type = session_type
+    return session
+
+
+class TestResolveDurationSessions:
+    def test_resolves_1_week_sessions(self) -> None:
+        from api.utils.session_metrics import resolve_duration_sessions
+
+        sessions = {
+            101: _make_session(101, "2026-06-01", "2026-06-07"),  # 7 days = 1-week
+            201: _make_session(201, "2026-06-15", "2026-06-28"),  # 14 days = 2-week
+        }
+        result = resolve_duration_sessions(sessions, "1-week")
+        assert result == {101}
+
+    def test_resolves_2_week_sessions(self) -> None:
+        from api.utils.session_metrics import resolve_duration_sessions
+
+        sessions = {
+            101: _make_session(101, "2026-06-01", "2026-06-07"),
+            201: _make_session(201, "2026-06-15", "2026-06-28"),
+            202: _make_session(202, "2026-07-01", "2026-07-14"),
+        }
+        result = resolve_duration_sessions(sessions, "2-week")
+        assert result == {201, 202}
+
+    def test_returns_empty_set_for_no_matches(self) -> None:
+        from api.utils.session_metrics import resolve_duration_sessions
+
+        sessions = {
+            101: _make_session(101, "2026-06-01", "2026-06-07"),
+        }
+        result = resolve_duration_sessions(sessions, "3-week")
+        assert result == set()
+
+    def test_returns_empty_set_for_empty_sessions(self) -> None:
+        from api.utils.session_metrics import resolve_duration_sessions
+
+        result = resolve_duration_sessions({}, "1-week")
+        assert result == set()
+
+    def test_returns_empty_set_for_none_duration(self) -> None:
+        from api.utils.session_metrics import resolve_duration_sessions
+
+        sessions = {101: _make_session(101, "2026-06-01", "2026-06-07")}
+        result = resolve_duration_sessions(sessions, None)
+        assert result == set()
+
+    def test_handles_sessions_with_missing_dates(self) -> None:
+        from api.utils.session_metrics import resolve_duration_sessions
+
+        sessions = {
+            101: _make_session(101, "2026-06-01", "2026-06-07"),
+            102: _make_session(102, None, None),
+        }
+        result = resolve_duration_sessions(sessions, "1-week")
+        assert result == {101}
+
+
+# ============================================================================
+# filter_attendees_by_session session_cm_ids Tests
+# ============================================================================
+
+
+class TestFilterAttendeesBySessionCmIds:
+    """Tests for the session_cm_ids parameter of filter_attendees_by_session."""
+
+    def _make_attendee(self, session_cm_id: int, session_type: str = "main") -> MagicMock:
+        attendee = MagicMock()
+        session = MagicMock()
+        session.cm_id = session_cm_id
+        session.session_type = session_type
+        attendee.expand = {"session": session}
+        return attendee
+
+    def test_filters_to_specific_session_cm_ids(self) -> None:
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee(101),
+            self._make_attendee(102),
+            self._make_attendee(201),
+        ]
+        result = filter_attendees_by_session(attendees, None, session_cm_ids={101, 102})
+        assert len(result) == 2
+
+    def test_session_cm_ids_none_returns_all(self) -> None:
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee(101),
+            self._make_attendee(201),
+        ]
+        result = filter_attendees_by_session(attendees, None, session_cm_ids=None)
+        assert len(result) == 2
+
+    def test_session_cm_ids_combined_with_session_types(self) -> None:
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee(101, "main"),
+            self._make_attendee(102, "quest"),
+            self._make_attendee(201, "main"),
+        ]
+        # Filter by both type=main AND cm_ids={101, 201}
+        result = filter_attendees_by_session(attendees, ["main"], session_cm_ids={101, 201})
+        assert len(result) == 2  # 101 and 201 (both main)
+
+    def test_session_cm_ids_empty_set_returns_none(self) -> None:
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [self._make_attendee(101)]
+        result = filter_attendees_by_session(attendees, None, session_cm_ids=set())
+        assert len(result) == 0
+
+    def test_session_cm_ids_and_session_cm_id_are_mutually_exclusive(self) -> None:
+        """In practice, callers set one or the other (never both).
+        If both are set, both filters apply (AND logic)."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee(101, "main"),
+            self._make_attendee(102, "main"),
+        ]
+        # session_cm_id=101 AND session_cm_ids={102} -> nothing passes both
+        result = filter_attendees_by_session(attendees, None, session_cm_id=101, session_cm_ids={102})
+        assert len(result) == 0
