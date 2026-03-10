@@ -89,6 +89,8 @@ function mockResponse(
     year: 2026,
     sessions,
     grand_total: grandTotal(grand_total_overrides),
+    week_number: null,
+    day_offset: null,
   }
 }
 

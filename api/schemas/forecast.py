@@ -8,6 +8,13 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class WeekOption(BaseModel):
+    week_number: int = Field(description="0-based week offset from registration anchor")
+    day_offset: int = Field(description="Days since registration anchor (canonical param for forecast)")
+    label: str = Field(description="Display label, e.g. 'Week 5 · Nov 19'")
+    is_today: bool = Field(description="Whether this entry represents today's live data")
+
+
 class SessionForecast(BaseModel):
     session_cm_id: int = Field(description="Session CampMinder ID")
     session_name: str = Field(description="Session display name")
@@ -31,4 +38,5 @@ class ForecastResponse(BaseModel):
     year: int
     sessions: list[SessionForecast] = Field(description="Per-session forecast data")
     grand_total: SessionForecast = Field(description="Summed totals across sessions")
-    snapshot_date: str | None = Field(None, description="Snapshot date if viewing historical data")
+    week_number: int | None = Field(None, description="Week number relative to registration anchor")
+    day_offset: int | None = Field(None, description="Days since registration anchor")

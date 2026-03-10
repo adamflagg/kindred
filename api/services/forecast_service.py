@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from api.schemas.forecast import ForecastResponse, SessionForecast
+from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
+from api.services.reconstruction import reconstruct_enrollment_at_offset
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
@@ -30,55 +31,83 @@ class ForecastService:
     def __init__(self, repository: MetricsRepository) -> None:
         self.repository = repository
 
-    async def get_filtered_snapshot_dates(self, year: int) -> list[str]:
-        """Return snapshot dates filtered to registration anchor + subsequent Mondays.
+    async def get_week_options(self, year: int, today: date | None = None) -> list[WeekOption]:
+        """Generate week-relative options from registration anchor through today.
 
-        Dates are filtered to:
-        1. The registration anchor date (priority_reg_date or early_reg_date)
-        2. Every subsequent Monday
-        3. Capped at July 31 of the camp year
-        4. Only dates that have actual snapshot data
+        Returns a descending list (newest first) of week options:
+        - First entry: Today with exact day_offset and "(Today)" suffix
+        - Then each completed week from most recent down to Week 0
+        - Week 0 gets "(Priority Reg)" suffix
+        - If today falls on an exact week boundary, no duplicate is created
 
-        Returns dates sorted descending (newest first).
+        Args:
+            year: The camp year to look up registration dates for.
+            today: Override for current date (for testing). Defaults to date.today().
+
+        Returns:
+            List of WeekOption, empty if no anchor date or today < anchor.
         """
+        if today is None:
+            today = datetime.now(tz=UTC).date()
+
         reg_dates = await self.repository.fetch_registration_dates(year)
 
-        # Find anchor date
+        # Find anchor: priority_reg_date preferred, fall back to early_reg_date
         anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date")
         if not anchor_str:
             return []
         anchor_str = anchor_str.split("T")[0].split(" ")[0]
         anchor = date.fromisoformat(anchor_str)
 
-        # Cap at July 31 of the camp year
-        cap = date(year, 7, 31)
-        if anchor > cap:
+        if today < anchor:
             return []
 
-        # Build set of valid dates: anchor + every Monday from first Monday after anchor through cap
-        valid_dates: set[str] = {anchor_str}
-        # Find first Monday after anchor (if anchor is Monday, start from next week)
-        days_until_monday = (7 - anchor.weekday()) % 7
-        if days_until_monday == 0:
-            next_monday = anchor + timedelta(days=7)
-        else:
-            next_monday = anchor + timedelta(days=days_until_monday)
+        total_days = (today - anchor).days
+        today_week = total_days // 7
+        today_on_boundary = total_days % 7 == 0
 
-        current = next_monday
-        while current <= cap:
-            valid_dates.add(current.isoformat())
-            current += timedelta(days=7)
+        options: list[WeekOption] = []
 
-        # Intersect with actual snapshot dates
-        all_dates = await self.repository.fetch_available_snapshot_dates(year)
-        return sorted([d for d in all_dates if d in valid_dates], reverse=True)
+        # Today entry (always first)
+        today_label = f"Week {today_week} · {today.strftime('%b %-d')} (Today)"
+        options.append(
+            WeekOption(
+                week_number=today_week,
+                day_offset=total_days,
+                label=today_label,
+                is_today=True,
+            )
+        )
+
+        # Build set of week milestones to show below the Today entry.
+        # All passed week boundaries (0 through today_week) as selectable milestones.
+        # If today is on an exact boundary, that week is the Today entry — skip it.
+        weeks_to_show: set[int] = set(range(0, today_week + 1))
+        if today_on_boundary:
+            weeks_to_show.discard(today_week)
+
+        for week in sorted(weeks_to_show, reverse=True):
+            week_date = anchor + timedelta(days=week * 7)
+            label = f"Week {week} · {week_date.strftime('%b %-d')}"
+            if week == 0:
+                label += " (Priority Reg)"
+            options.append(
+                WeekOption(
+                    week_number=week,
+                    day_offset=week * 7,
+                    label=label,
+                    is_today=False,
+                )
+            )
+
+        return options
 
     async def calculate_forecast(
         self,
         year: int = 2026,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
-        snapshot_date: str | None = None,
+        day_offset: int | None = None,
     ) -> ForecastResponse:
         """Calculate forecast for the given year.
 
@@ -86,7 +115,10 @@ class ForecastService:
             year: The year to forecast.
             session_types: Session types to include (default: main, embedded, ag).
             session_cm_id: Filter to a specific session (AG children included).
-            snapshot_date: If set, use historical snapshot counts instead of live data.
+            day_offset: Days since registration anchor. When set, compute enrollment
+                at that offset using snapshots (preferred) or reconstruction.
+                For prior years, always reconstructs at the same offset.
+                When None, uses live attendee data (existing behavior).
 
         Returns:
             ForecastResponse with per-session and grand total data.
@@ -97,11 +129,25 @@ class ForecastService:
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
 
-        # Historical snapshot mode: use snapshot counts instead of live attendee data
+        # Historical day_offset mode: use snapshot or reconstruction for enrollment counts
         snapshot_counts: dict[int, dict[str, int]] | None = None
-        if snapshot_date is not None:
-            # Snapshot mode: skip current-year attendee fetches (counts come from snapshot)
-            snapshot_counts = await self.repository.fetch_snapshot_counts(year, snapshot_date)
+        reconstruction_counts: dict[int, int] | None = None
+        if day_offset is not None:
+            # Compute target date from registration anchor
+            reg_dates = await self.repository.fetch_registration_dates(year)
+            anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date") or ""
+            if not anchor_str:
+                raise ValueError(f"No registration anchor configured for {year}")
+            season_start = datetime.strptime(anchor_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            target_date = (season_start + timedelta(days=day_offset)).date()
+
+            # Try snapshots first for current year
+            snapshot_counts = await self.repository.fetch_snapshot_counts(year, target_date.isoformat())
+            if not snapshot_counts:
+                # No snapshot data — reconstruct from attendee records
+                reconstruction_counts = await reconstruct_enrollment_at_offset(
+                    self.repository, year, sessions, day_offset, season_start
+                )
             enrolled_attendees: list[Any] = []
             waitlisted_attendees: list[Any] = []
             (budget_config,) = await asyncio.gather(
@@ -119,26 +165,8 @@ class ForecastService:
                 self.repository.fetch_budget_config(year),
             )
 
-        # Fetch prior year and two-year-prior data in parallel
-        # These are "nice to have" — failures degrade gracefully (show "---" instead)
-        try:
-            prior_sessions, prior_attendees, two_year_sessions, two_year_attendees = await asyncio.gather(
-                self.repository.fetch_sessions(year - 1, session_types),
-                self.repository.fetch_attendees(year - 1),
-                self.repository.fetch_sessions(year - 2, session_types),
-                self.repository.fetch_attendees(year - 2),
-            )
-        except Exception:
-            logger.warning(
-                "Failed to fetch prior year data, continuing without comparison",
-                exc_info=True,
-            )
-            prior_sessions, prior_attendees = {}, []
-            two_year_sessions, two_year_attendees = {}, []
-
-        # Build name-to-count maps for prior years
-        prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)
-        two_year_counts = self._count_by_session_name(two_year_sessions, two_year_attendees)
+        # Fetch prior year comparison data
+        prior_counts, two_year_counts = await self._fetch_prior_year_counts(year, session_types, day_offset)
 
         # Build AG parent map for session_cm_id filtering
         ag_parent_map = build_ag_parent_map(sessions)
@@ -158,10 +186,13 @@ class ForecastService:
                     continue
 
             # Each session counts only its own attendees (no AG merging)
-            if snapshot_counts is not None:
+            if snapshot_counts:
                 sc = snapshot_counts.get(sid, {})
                 enrolled = sc.get("enrolled", 0)
                 waitlisted = sc.get("waitlisted", 0)
+            elif reconstruction_counts is not None:
+                enrolled = reconstruction_counts.get(sid, 0)
+                waitlisted = 0  # Reconstruction doesn't distinguish waitlisted
             else:
                 enrolled = self._count_attendees_for_session(enrolled_attendees, sid, set())
                 waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, set())
@@ -223,7 +254,8 @@ class ForecastService:
             year=year,
             sessions=session_forecasts,
             grand_total=grand_total,
-            snapshot_date=snapshot_date,
+            week_number=day_offset // 7 if day_offset is not None else None,
+            day_offset=day_offset,
         )
 
     def _count_attendees_for_session(
@@ -242,6 +274,98 @@ class ForecastService:
             if att_cm_id == session_cm_id or att_cm_id in ag_children:
                 count += 1
         return count
+
+    async def _fetch_prior_year_counts(
+        self,
+        year: int,
+        session_types: list[str],
+        day_offset: int | None,
+    ) -> tuple[dict[str, int], dict[str, int]]:
+        """Fetch prior year and two-year-prior enrollment counts by canonical session name.
+
+        When day_offset is set, uses reconstruction at the same offset relative to
+        each prior year's own registration anchor. When None, uses live attendee data.
+
+        Returns:
+            Tuple of (prior_year_counts, two_year_prior_counts), each mapping
+            canonical session name to enrolled count. Empty dicts on failure.
+        """
+        try:
+            if day_offset is not None:
+                return await self._reconstruct_prior_year_counts(year, session_types, day_offset)
+            else:
+                return await self._fetch_live_prior_year_counts(year, session_types)
+        except Exception:
+            logger.warning(
+                "Failed to fetch prior year data, continuing without comparison",
+                exc_info=True,
+            )
+            return {}, {}
+
+    async def _fetch_live_prior_year_counts(
+        self,
+        year: int,
+        session_types: list[str],
+    ) -> tuple[dict[str, int], dict[str, int]]:
+        """Fetch prior year counts from live attendee data (existing behavior)."""
+        prior_sessions, prior_attendees, two_year_sessions, two_year_attendees = await asyncio.gather(
+            self.repository.fetch_sessions(year - 1, session_types),
+            self.repository.fetch_attendees(year - 1),
+            self.repository.fetch_sessions(year - 2, session_types),
+            self.repository.fetch_attendees(year - 2),
+        )
+        prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)
+        two_year_counts = self._count_by_session_name(two_year_sessions, two_year_attendees)
+        return prior_counts, two_year_counts
+
+    async def _reconstruct_prior_year_counts(
+        self,
+        year: int,
+        session_types: list[str],
+        day_offset: int,
+    ) -> tuple[dict[str, int], dict[str, int]]:
+        """Reconstruct prior year counts at the same day_offset using each year's anchor."""
+        prior_counts: dict[str, int] = {}
+        two_year_counts: dict[str, int] = {}
+
+        for offset_years, target_counts in [(1, prior_counts), (2, two_year_counts)]:
+            prior_year = year - offset_years
+            try:
+                prior_sessions = await self.repository.fetch_sessions(prior_year, session_types)
+                if not prior_sessions:
+                    continue
+
+                prior_reg_dates = await self.repository.fetch_registration_dates(prior_year)
+                prior_anchor_str = prior_reg_dates.get("priority_reg_date") or prior_reg_dates.get("early_reg_date")
+                if not prior_anchor_str:
+                    continue
+
+                prior_season_start = datetime.strptime(prior_anchor_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+
+                reconstructed = await reconstruct_enrollment_at_offset(
+                    self.repository,
+                    prior_year,
+                    prior_sessions,
+                    day_offset,
+                    prior_season_start,
+                    ag_parent_map=None,
+                )
+
+                # Convert cm_id → canonical name
+                for cm_id, count in reconstructed.items():
+                    session_obj = prior_sessions.get(cm_id)
+                    if session_obj:
+                        canonical = resolve_session_alias(getattr(session_obj, "name", ""))
+                        if canonical:
+                            target_counts[canonical] = target_counts.get(canonical, 0) + count
+            except Exception:
+                logger.warning(
+                    "Failed to reconstruct %d-year-prior data, skipping",
+                    offset_years,
+                    exc_info=True,
+                )
+
+        return prior_counts, two_year_counts
 
     def _count_by_session_name(
         self,
