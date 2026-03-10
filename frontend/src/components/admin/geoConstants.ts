@@ -34,8 +34,9 @@ export function sourceBadgeClasses(source: string): string {
       return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
     case 'suggested':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
-    case 'manual':
     case 'curated':
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+    case 'manual':
       return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
     default:
       return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
@@ -67,8 +68,9 @@ export function formatLocation(
   country?: string,
   fallbackName?: string
 ): string {
-  void country
-  void fallbackName
+  if (country && !['US', 'USA', ''].includes(country)) {
+    return `${city || fallbackName || ''}, ${country}`.replace(/^, /, '')
+  }
   return [city, state].filter(Boolean).join(', ')
 }
 

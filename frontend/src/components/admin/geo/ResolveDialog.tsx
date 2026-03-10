@@ -11,11 +11,11 @@
  *   Lat/lng input fields for adding coordinates to an existing canonical.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Search, Plus, MapPin } from 'lucide-react'
 import { Modal } from '../../ui/Modal'
 import { useAllCanonicals, useCreateOverride } from '../../../hooks/useGeoData'
-import { sourceLabel, sourceBadgeClasses, type GeoCategory } from '../geoConstants'
+import { sourceLabel, sourceBadgeClasses, formatLocation, type GeoCategory } from '../geoConstants'
 import type { OverrideCreateData, CanonicalEntry } from '../../../services/geoService'
 
 interface ResolveDialogProps {
@@ -71,6 +71,16 @@ export function ResolveDialog({
         entry.state.toLowerCase().includes(q)
     )
   }, [allCanonicals, searchQuery, searchAll])
+
+  // Clear stale selection when filter changes and selected entry is no longer visible
+  useEffect(() => {
+    if (
+      selectedEntry &&
+      !filteredResults.some((e) => e.canonical_name === selectedEntry.canonical_name)
+    ) {
+      setSelectedEntry(null)
+    }
+  }, [filteredResults, selectedEntry])
 
   const resetForm = useCallback(() => {
     setSearchQuery('')
@@ -243,9 +253,9 @@ export function ResolveDialog({
                     <MapPin className="text-forest-600 dark:text-forest-400 h-4 w-4 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-foreground font-medium">{entry.canonical_name}</div>
-                      {(entry.city || entry.state) && (
+                      {(entry.city || entry.state || entry.country) && (
                         <div className="text-muted-foreground text-xs">
-                          {[entry.city, entry.state].filter(Boolean).join(', ')}
+                          {formatLocation(entry.city, entry.state, entry.country)}
                         </div>
                       )}
                     </div>

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useAllCanonicals, useCanonicalSources } from '../../../hooks/useGeoData'
 import type { CanonicalEntry, SourcesResponse } from '../../../services/geoService'
-import { sourceLabel, sourceBadgeClasses, type GeoCategory } from '../geoConstants'
+import { sourceLabel, sourceBadgeClasses, formatLocation, type GeoCategory } from '../geoConstants'
 
 export interface CanonicalReferenceListProps {
   category: GeoCategory
@@ -26,6 +26,8 @@ export interface CanonicalReferenceListProps {
   onApprove?: (entry: CanonicalEntry) => void
   onReject?: (entry: CanonicalEntry) => void
   onMerge?: (entry: CanonicalEntry) => void
+  approvePending?: boolean | undefined
+  rejectPending?: boolean | undefined
 }
 
 type SortMode = 'popular' | 'alpha'
@@ -37,6 +39,8 @@ export function CanonicalReferenceList({
   onApprove,
   onReject,
   onMerge,
+  approvePending,
+  rejectPending,
 }: CanonicalReferenceListProps) {
   const [searchInput, setSearchInput] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('popular')
@@ -160,6 +164,8 @@ export function CanonicalReferenceList({
               onApprove={onApprove}
               onReject={onReject}
               onMerge={onMerge}
+              approvePending={approvePending}
+              rejectPending={rejectPending}
             />
           ))}
         </div>
@@ -192,6 +198,8 @@ interface CanonicalRowProps {
   onApprove?: ((entry: CanonicalEntry) => void) | undefined
   onReject?: ((entry: CanonicalEntry) => void) | undefined
   onMerge?: ((entry: CanonicalEntry) => void) | undefined
+  approvePending?: boolean | undefined
+  rejectPending?: boolean | undefined
 }
 
 function CanonicalRow({
@@ -204,6 +212,8 @@ function CanonicalRow({
   onApprove,
   onReject,
   onMerge,
+  approvePending,
+  rejectPending,
 }: CanonicalRowProps) {
   const { data: sourcesData } = useCanonicalSources(
     category,
@@ -236,9 +246,7 @@ function CanonicalRow({
               entry.source === 'suggested' ? 'italic' : ''
             }`}
           >
-            {entry.country && !['US', 'USA', ''].includes(entry.country)
-              ? `${entry.city || entry.canonical_name}, ${entry.country}`
-              : [entry.city, entry.state].filter(Boolean).join(', ') || entry.state}
+            {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name) || entry.state}
           </span>
         )}
 
@@ -279,6 +287,8 @@ function CanonicalRow({
           onReassignSource={onReassignSource}
           onApprove={onApprove}
           onReject={onReject}
+          approvePending={approvePending}
+          rejectPending={rejectPending}
         />
       )}
     </div>
@@ -295,6 +305,8 @@ interface ExpandedSourcesProps {
   onReassignSource: (originalValue: string) => void
   onApprove?: ((entry: CanonicalEntry) => void) | undefined
   onReject?: ((entry: CanonicalEntry) => void) | undefined
+  approvePending?: boolean | undefined
+  rejectPending?: boolean | undefined
 }
 
 function ExpandedSources({
@@ -303,6 +315,8 @@ function ExpandedSources({
   onReassignSource,
   onApprove,
   onReject,
+  approvePending,
+  rejectPending,
 }: ExpandedSourcesProps) {
   if (!sourcesData.sources.length) return null
 
@@ -360,11 +374,12 @@ function ExpandedSources({
               e.stopPropagation()
               onApprove?.(entry)
             }}
-            className="bg-forest-600 hover:bg-forest-700 flex items-center gap-1 rounded px-2.5 py-1 text-xs text-white"
+            disabled={approvePending}
+            className="bg-forest-600 hover:bg-forest-700 flex items-center gap-1 rounded px-2.5 py-1 text-xs text-white disabled:opacity-50"
             aria-label="Approve suggested canonical"
           >
             <Check className="h-3 w-3" />
-            Approve
+            {approvePending ? 'Approving...' : 'Approve'}
           </button>
           <button
             type="button"
@@ -372,16 +387,16 @@ function ExpandedSources({
               e.stopPropagation()
               onReject?.(entry)
             }}
-            className="flex items-center gap-1 rounded bg-red-50 px-2.5 py-1 text-xs text-red-600 hover:bg-red-100"
+            disabled={rejectPending}
+            className="flex items-center gap-1 rounded bg-red-50 px-2.5 py-1 text-xs text-red-600 hover:bg-red-100 disabled:opacity-50"
             aria-label="Reject suggested canonical"
           >
             <X className="h-3 w-3" />
-            Reject
+            {rejectPending ? 'Rejecting...' : 'Reject'}
           </button>
-          {(entry.city || entry.state) && (
+          {(entry.city || entry.state || entry.country) && (
             <span className="text-xs text-stone-400 italic">
-              Inferred: {entry.city}
-              {entry.state ? `, ${entry.state}` : ''}
+              Inferred: {formatLocation(entry.city, entry.state, entry.country)}
             </span>
           )}
         </div>

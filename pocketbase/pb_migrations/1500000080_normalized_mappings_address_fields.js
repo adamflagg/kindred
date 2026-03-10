@@ -19,7 +19,7 @@ migrate(
       required: false,
       presentable: false,
       min: 0,
-      max: 10
+      max: 100
     }))
 
     app.save(collection)

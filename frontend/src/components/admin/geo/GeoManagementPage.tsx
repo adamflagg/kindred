@@ -253,6 +253,8 @@ export function GeoManagementPage() {
             onMerge={handleMerge}
             onApprove={handleApprove}
             onReject={handleReject}
+            approvePending={approveMutation.isPending}
+            rejectPending={rejectMutation.isPending}
           />
         </div>
       </div>
