@@ -150,9 +150,10 @@ export async function searchCanonicals(
 export async function fetchAllCanonicals(
   category: string,
   year: number,
-  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+  inUse = true
 ): Promise<CanonicalSearchResponse> {
-  const params = new URLSearchParams({ category, year: String(year), in_use: 'true' })
+  const params = new URLSearchParams({ category, year: String(year), in_use: String(inUse) })
   const response = await fetchWithAuth(`${API_BASE}/canonicals?${params}`)
 
   if (!response.ok) {

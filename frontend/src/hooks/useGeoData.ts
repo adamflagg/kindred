@@ -51,11 +51,11 @@ export function useGeoGaps(category: string, year: number, activeOnly = true) {
  * Fetch all in-use canonicals for a category/year. Cached with syncDataOptions (1hr)
  * since this data only changes on sync. Used for instant client-side search.
  */
-export function useAllCanonicals(category: string, year: number) {
+export function useAllCanonicals(category: string, year: number, inUse = true) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery({
-    queryKey: queryKeys.geoAllCanonicals(category, year),
-    queryFn: () => geoService.fetchAllCanonicals(category, year, fetchWithAuth),
+    queryKey: queryKeys.geoAllCanonicals(category, year, inUse),
+    queryFn: () => geoService.fetchAllCanonicals(category, year, fetchWithAuth, inUse),
     ...syncDataOptions,
   })
 }
