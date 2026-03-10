@@ -10,6 +10,7 @@ import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 import type { OverrideCreateData } from '../services/geoService'
+import { mergeCanonical, approveSuggested, rejectSuggested } from '../services/geoService'
 import { GEO_CATEGORIES, type GeoCategory } from '../components/admin/geoConstants'
 
 /**
@@ -142,6 +143,50 @@ export function useBatchResolveCoords(category: string, year: number) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
+    },
+  })
+}
+
+export function useMergeCanonical(category: string, year: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { canonicalName: string; target: string }) =>
+      mergeCanonical(data.canonicalName, { target: data.target, category, year }, fetchWithAuth),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+    },
+  })
+}
+
+export function useApproveSuggested(category: string, year: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { canonicalName: string; city?: string; state?: string; country?: string }) =>
+      approveSuggested(data.canonicalName, { category, year, ...data }, fetchWithAuth),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+    },
+  })
+}
+
+export function useRejectSuggested(category: string, year: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { canonicalName: string }) =>
+      rejectSuggested(data.canonicalName, { category, year }, fetchWithAuth),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
   })
