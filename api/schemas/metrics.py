@@ -131,6 +131,19 @@ class SessionLengthBySessionBreakdown(BaseModel):
     total: int = Field(description="Total campers in this length category")
 
 
+class GenderBySessionLengthBreakdown(BaseModel):
+    """Gender breakdown for a specific session length category.
+
+    Shows male/female counts per session length for stacked bar chart visualization.
+    Note: Only M/F tracked since CampMinder sex field only has these values.
+    """
+
+    length_category: str = Field(description="Length category (1-week, 2-week, etc.)")
+    male_count: int = Field(description="Number of male campers")
+    female_count: int = Field(description="Number of female campers")
+    total: int = Field(description="Total campers in this length category")
+
+
 class SummerYearsBreakdown(BaseModel):
     """Breakdown by actual summer enrollment years.
 

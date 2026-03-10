@@ -13,6 +13,7 @@ from api.schemas.metrics import (
     FirstSummerYearBreakdown,
     GenderBreakdown,
     GenderByGradeBreakdown,
+    GenderBySessionLengthBreakdown,
     GradeBreakdown,
     NewVsReturning,
     RegistrationMetricsResponse,
@@ -629,3 +630,16 @@ class RegistrationService:
             )
             for fy, c in sorted(first_summer_year_stats.items())
         ]
+
+    def _compute_gender_by_session_length(
+        self,
+        attendees: list[Any],
+        sessions: dict[int, Any],
+        persons: dict[int, Any],
+    ) -> list[GenderBySessionLengthBreakdown]:
+        """Compute gender breakdown per session length category.
+
+        AG sessions are merged into their parent main sessions.
+        Persons are deduplicated within each length category.
+        """
+        raise NotImplementedError

@@ -2229,3 +2229,220 @@ class TestSynagogueBreakdownFromPersons:
         assert syn_map["Temple Beth El"].percentage == pytest.approx(66.67, rel=0.01)
         assert syn_map["Congregation Shalom"].count == 1
         assert syn_map["Congregation Shalom"].percentage == pytest.approx(33.33, rel=0.01)
+
+
+# ============================================================================
+# Gender by Session Length Tests
+# ============================================================================
+
+
+class TestGenderBySessionLength:
+    """Tests for by_gender_by_session_length breakdown.
+
+    Shows male/female enrollment counts per session length category
+    (1-week, 2-week, 3-week, etc.) for a stacked bar chart.
+    """
+
+    def test_gender_by_session_length_structure(
+        self,
+        sample_sessions_2026: list[Mock],
+        sample_attendees_2026: list[Mock],
+        sample_persons_2026: list[Mock],
+    ) -> None:
+        """by_gender_by_session_length should have male/female counts per length category.
+
+        From fixtures:
+        - All sessions are 3-week (Sessions 2, 3, 4)
+        - 4 males: Liam (102), Noah (104), Mason (106), Jackson (108)
+        - 4 females: Emma (101), Olivia (103), Ava (105), Sophia (107)
+
+        Expected:
+        [{ length_category: "3-week", male_count: 4, female_count: 4, total: 8 }]
+        """
+        from api.services.registration_service import RegistrationService
+
+        sessions_dict = {s.cm_id: s for s in sample_sessions_2026}
+        persons_dict = {p.cm_id: p for p in sample_persons_2026}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(sample_attendees_2026, sessions_dict, persons_dict)
+
+        assert len(result) == 1
+        assert result[0].length_category == "3-week"
+        assert result[0].male_count == 4
+        assert result[0].female_count == 4
+        assert result[0].total == 8
+
+    def test_gender_by_session_length_multiple_categories(self) -> None:
+        """Should group by length category with correct gender counts.
+
+        Create sessions of different lengths and verify gender counts per category.
+        """
+        from api.services.registration_service import RegistrationService
+
+        # 1-week session and 3-week session
+        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+
+        sessions_dict = {1001: taste, 2001: session_2}
+
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 5),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6),
+            104: create_mock_person(104, "Noah", "Williams", "M", 6),
+            105: create_mock_person(105, "Ava", "Brown", "F", 7),
+        }
+
+        attendees = [
+            create_mock_attendee(101, taste, 2026),  # Emma F -> 1-week
+            create_mock_attendee(102, taste, 2026),  # Liam M -> 1-week
+            create_mock_attendee(103, session_2, 2026),  # Olivia F -> 3-week
+            create_mock_attendee(104, session_2, 2026),  # Noah M -> 3-week
+            create_mock_attendee(105, session_2, 2026),  # Ava F -> 3-week
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        categories = {r.length_category: r for r in result}
+        assert "1-week" in categories
+        assert "3-week" in categories
+
+        # 1-week: 1M (Liam), 1F (Emma)
+        assert categories["1-week"].male_count == 1
+        assert categories["1-week"].female_count == 1
+        assert categories["1-week"].total == 2
+
+        # 3-week: 1M (Noah), 2F (Olivia, Ava)
+        assert categories["3-week"].male_count == 1
+        assert categories["3-week"].female_count == 2
+        assert categories["3-week"].total == 3
+
+    def test_gender_by_session_length_sorted_by_length(self) -> None:
+        """Categories should be sorted: 1-week, 2-week, 3-week, 4-week+, unknown."""
+        from api.services.registration_service import RegistrationService
+
+        one_week = create_mock_session(1001, "Short", 2026, "embedded", "2026-06-20", "2026-06-23")
+        three_week = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        four_week = create_mock_session(3001, "Long", 2026, "main", "2026-06-15", "2026-07-20")
+
+        sessions_dict = {1001: one_week, 2001: three_week, 3001: four_week}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+            102: create_mock_person(102, "Liam", "Garcia", "M"),
+            103: create_mock_person(103, "Olivia", "Chen", "F"),
+        }
+
+        attendees = [
+            create_mock_attendee(103, four_week, 2026),  # 4-week+ first
+            create_mock_attendee(101, one_week, 2026),  # 1-week second
+            create_mock_attendee(102, three_week, 2026),  # 3-week third
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        categories = [r.length_category for r in result]
+        assert categories == ["1-week", "3-week", "4-week+"]
+
+    def test_gender_by_session_length_empty_attendees(self) -> None:
+        """Should return empty list for no attendees."""
+        from api.services.registration_service import RegistrationService
+
+        sessions_dict = {
+            2001: create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05"),
+        }
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length([], sessions_dict, {})
+
+        assert result == []
+
+    def test_gender_by_session_length_missing_person(self) -> None:
+        """Attendees without matching person should be skipped."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        sessions_dict = {2001: session_2}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+            # person_id 102 NOT in persons_dict
+        }
+
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),
+            create_mock_attendee(102, session_2, 2026),  # No matching person
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        assert len(result) == 1
+        assert result[0].total == 1
+        assert result[0].female_count == 1
+        assert result[0].male_count == 0
+
+    def test_gender_by_session_length_ag_merged(self) -> None:
+        """AG session attendees should be counted under parent session's length category."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+
+        sessions_dict = {2001: session_2, 2005: ag_session_2}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+            102: create_mock_person(102, "Liam", "Garcia", "M"),
+            103: create_mock_person(103, "Olivia", "Chen", "F"),
+        }
+
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),  # Emma F -> main
+            create_mock_attendee(102, session_2, 2026),  # Liam M -> main
+            create_mock_attendee(103, ag_session_2, 2026),  # Olivia F -> AG (merges to parent)
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        # All should be under 3-week (parent session's length)
+        assert len(result) == 1
+        assert result[0].length_category == "3-week"
+        assert result[0].male_count == 1  # Liam
+        assert result[0].female_count == 2  # Emma + Olivia (AG merged)
+        assert result[0].total == 3
+
+    def test_gender_by_session_length_deduplicates_persons(self) -> None:
+        """A person enrolled in multiple sessions of the same length should be counted once."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_3 = create_mock_session(2002, "Session 3", 2026, "main", "2026-07-07", "2026-07-27")
+
+        sessions_dict = {2001: session_2, 2002: session_3}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+        }
+
+        # Emma is in both 3-week sessions
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),
+            create_mock_attendee(101, session_3, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        # Emma should only be counted once in 3-week
+        assert len(result) == 1
+        assert result[0].length_category == "3-week"
+        assert result[0].female_count == 1
+        assert result[0].total == 1
