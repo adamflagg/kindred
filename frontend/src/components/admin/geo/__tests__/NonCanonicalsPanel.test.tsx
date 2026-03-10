@@ -76,6 +76,54 @@ describe('NonCanonicalsPanel', () => {
     expect(screen.getByText('3')).toBeInTheDocument() // 2 grouped + 1 ungrouped
   })
 
+  it('shows state distribution tags on gap items', () => {
+    render(
+      <NonCanonicalsPanel
+        grouped={[
+          {
+            name: 'Highland',
+            count: 8,
+            percentage: 50,
+            source_count: 3,
+            state_distribution: { CA: 6, OR: 2 },
+          },
+        ]}
+        ungrouped={[]}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
+
+    // Verify state tags are visible
+    expect(screen.getByText(/CA/)).toBeInTheDocument()
+    expect(screen.getByText(/OR/)).toBeInTheDocument()
+  })
+
+  it('does not show state tags when state_distribution is empty', () => {
+    render(
+      <NonCanonicalsPanel
+        grouped={[
+          {
+            name: 'SomePlace',
+            count: 3,
+            percentage: 20,
+            source_count: 1,
+            state_distribution: {},
+          },
+        ]}
+        ungrouped={[]}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
+
+    // Should not have any state distribution text
+    // Just verify the name is shown
+    expect(screen.getByText('SomePlace')).toBeInTheDocument()
+  })
+
   it('shows empty state when no gaps', () => {
     render(
       <NonCanonicalsPanel

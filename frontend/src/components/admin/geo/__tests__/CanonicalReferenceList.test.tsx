@@ -605,6 +605,51 @@ describe('CanonicalReferenceList', () => {
     expect(onReject).toHaveBeenCalledWith(suggestedEntry)
   })
 
+  // ---------- Task 11: Merge button ----------
+
+  it('shows merge button on canonical rows', () => {
+    render(
+      <CanonicalReferenceList
+        category="school"
+        year={2025}
+        onReassignSource={vi.fn()}
+        onMerge={vi.fn()}
+      />
+    )
+
+    const mergeButtons = screen.getAllByRole('button', { name: /merge/i })
+    // Should have one merge button per canonical row
+    expect(mergeButtons).toHaveLength(entries.length)
+  })
+
+  it('calls onMerge callback when merge button clicked', async () => {
+    const onMerge = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <CanonicalReferenceList
+        category="school"
+        year={2025}
+        onReassignSource={vi.fn()}
+        onMerge={onMerge}
+      />
+    )
+
+    // Click the merge button on the first row (Riverside Elementary in popular sort)
+    const mergeButtons = screen.getAllByRole('button', { name: /merge/i })
+    await user.click(mergeButtons[0]!)
+
+    expect(onMerge).toHaveBeenCalledWith(entries[0])
+  })
+
+  it('does not show merge button when onMerge is not provided', () => {
+    render(
+      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />
+    )
+
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument()
+  })
+
   it('shows inferred location text for suggested canonicals', async () => {
     const suggestedEntry: CanonicalEntry = {
       canonical_name: 'Suggested School',
