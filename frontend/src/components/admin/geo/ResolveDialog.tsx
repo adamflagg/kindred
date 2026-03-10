@@ -11,11 +11,11 @@
  *   Lat/lng input fields for adding coordinates to an existing canonical.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Search, Plus, MapPin } from 'lucide-react'
 import { Modal } from '../../ui/Modal'
 import { useAllCanonicals, useCreateOverride } from '../../../hooks/useGeoData'
-import { sourceLabel, sourceBadgeClasses, type GeoCategory } from '../geoConstants'
+import { sourceLabel, sourceBadgeClasses, formatLocation, type GeoCategory } from '../geoConstants'
 import type { OverrideCreateData, CanonicalEntry } from '../../../services/geoService'
 
 interface ResolveDialogProps {
@@ -42,6 +42,7 @@ export function ResolveDialog({
 
   // Mode A state
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchAll, setSearchAll] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<CanonicalEntry | null>(null)
   const [newCanonicalName, setNewCanonicalName] = useState('')
   const [newCity, setNewCity] = useState('')
@@ -51,24 +52,39 @@ export function ResolveDialog({
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
 
-  const { data: allCanonicals } = useAllCanonicals(category, year)
+  const { data: allCanonicals } = useAllCanonicals(category, year, !searchAll)
   const createOverride = useCreateOverride(category, year)
 
   // Client-side filtering of prefetched canonicals
   const filteredResults = useMemo(() => {
     const results = allCanonicals?.results ?? []
-    if (!searchQuery.trim()) return results
-    const q = searchQuery.toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
+
+    // In search-all mode, require 3+ characters before showing results
+    if (searchAll && q.length < 3) return []
+
+    if (!q) return results
     return results.filter(
       (entry) =>
         entry.canonical_name.toLowerCase().includes(q) ||
         entry.city.toLowerCase().includes(q) ||
         entry.state.toLowerCase().includes(q)
     )
-  }, [allCanonicals, searchQuery])
+  }, [allCanonicals, searchQuery, searchAll])
+
+  // Clear stale selection when filter changes and selected entry is no longer visible
+  useEffect(() => {
+    if (
+      selectedEntry &&
+      !filteredResults.some((e) => e.canonical_name === selectedEntry.canonical_name)
+    ) {
+      setSelectedEntry(null)
+    }
+  }, [filteredResults, selectedEntry])
 
   const resetForm = useCallback(() => {
     setSearchQuery('')
+    setSearchAll(false)
     setSelectedEntry(null)
     setShowCreateForm(false)
     setNewCanonicalName('')
@@ -202,6 +218,18 @@ export function ResolveDialog({
             />
           </div>
 
+          {/* Search all toggle */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={searchAll}
+              onChange={(e) => setSearchAll(e.target.checked)}
+              className="checkbox-lodge"
+              aria-label="Search all"
+            />
+            <span className="text-muted-foreground">Search all</span>
+          </label>
+
           {/* Results list */}
           {filteredResults.length > 0 && (
             <div className="max-h-48 space-y-1 overflow-y-auto">
@@ -225,9 +253,9 @@ export function ResolveDialog({
                     <MapPin className="text-forest-600 dark:text-forest-400 h-4 w-4 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-foreground font-medium">{entry.canonical_name}</div>
-                      {(entry.city || entry.state) && (
+                      {(entry.city || entry.state || entry.country) && (
                         <div className="text-muted-foreground text-xs">
-                          {[entry.city, entry.state].filter(Boolean).join(', ')}
+                          {formatLocation(entry.city, entry.state, entry.country)}
                         </div>
                       )}
                     </div>
@@ -242,9 +270,20 @@ export function ResolveDialog({
             </div>
           )}
 
-          {filteredResults.length === 0 && searchQuery.trim() && (
-            <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
-          )}
+          {filteredResults.length === 0 &&
+            searchAll &&
+            searchQuery.trim().length > 0 &&
+            searchQuery.trim().length < 3 && (
+              <p className="text-muted-foreground px-2 text-sm">
+                Type 3+ characters to search all entries.
+              </p>
+            )}
+
+          {filteredResults.length === 0 &&
+            (!searchAll || searchQuery.trim().length >= 3) &&
+            searchQuery.trim() && (
+              <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
+            )}
 
           {/* Save selected + Create new */}
           <div className="border-border flex items-center justify-between border-t pt-3">

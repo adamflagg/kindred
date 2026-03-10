@@ -8,6 +8,7 @@ Uses token_sort_ratio which:
 
 import json
 import re
+from collections.abc import Sequence
 from importlib.resources import files
 from typing import TypedDict
 
@@ -614,22 +615,56 @@ def normalize_congregations(values: list[str]) -> dict[str, NormalizedResult]:
 
 def normalize_values(
     category: str,
-    values: list[str],
+    values: Sequence[str | dict[str, str]],
 ) -> dict[str, NormalizedResult]:
     """Normalize values based on category.
 
     Args:
         category: One of "city", "school", "congregation"
-        values: List of values to normalize
+        values: List of values to normalize. Each can be:
+            - A plain string (backwards compatible, treated as US)
+            - A dict with keys: value, state, country
 
     Returns:
         Dict mapping original values to {canonical, confidence}
     """
-    if category == "city":
-        return normalize_cities(values)
-    elif category == "school":
-        return normalize_schools(values)
-    elif category == "congregation":
-        return normalize_congregations(values)
-    else:
+    # Normalize input format
+    normalized_input: list[dict[str, str]] = []
+    for v in values:
+        if isinstance(v, str):
+            normalized_input.append({"value": v, "state": "", "country": ""})
+        else:
+            normalized_input.append(v)
+
+    # Split into US and non-US
+    us_items: list[dict[str, str]] = []
+    intl_items: list[dict[str, str]] = []
+    for item in normalized_input:
+        country = item.get("country", "").strip().upper()
+        if country and country not in ("US", "USA", "UNITED STATES"):
+            intl_items.append(item)
+        else:
+            us_items.append(item)
+
+    result: dict[str, NormalizedResult] = {}
+
+    # International items pass through as-is (no US fuzzy matching)
+    for item in intl_items:
+        result[item["value"]] = NormalizedResult(canonical=item["value"], confidence=1.0)
+
+    # Validate category early
+    if category not in ("city", "school", "congregation"):
         raise ValueError(f"Unknown category: {category}")
+
+    # US items go through normal category-specific matching
+    if us_items:
+        us_values = [item["value"] for item in us_items]
+        if category == "city":
+            us_result = normalize_cities(us_values)
+        elif category == "school":
+            us_result = normalize_schools(us_values)
+        else:  # congregation
+            us_result = normalize_congregations(us_values)
+        result.update(us_result)
+
+    return result

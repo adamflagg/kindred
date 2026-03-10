@@ -5,9 +5,15 @@ import { AddCoordsPanel } from '../AddCoordsPanel'
 import type { GapItem } from '../../../../services/geoService'
 
 const gaps: GapItem[] = [
-  { name: 'Riverside Elementary', count: 14, percentage: 8.2, source_count: 3 },
-  { name: 'Oak Valley Middle', count: 8, percentage: 4.7, source_count: 2 },
-  { name: 'Hillcrest High', count: 5, percentage: 1.8, source_count: 1 },
+  {
+    name: 'Riverside Elementary',
+    count: 14,
+    percentage: 8.2,
+    source_count: 3,
+    state_distribution: {},
+  },
+  { name: 'Oak Valley Middle', count: 8, percentage: 4.7, source_count: 2, state_distribution: {} },
+  { name: 'Hillcrest High', count: 5, percentage: 1.8, source_count: 1, state_distribution: {} },
 ]
 
 describe('AddCoordsPanel', () => {

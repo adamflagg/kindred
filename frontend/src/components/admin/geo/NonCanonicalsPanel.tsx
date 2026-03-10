@@ -94,6 +94,15 @@ export function NonCanonicalsPanel({
                 <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                   {item.count}
                 </span>
+                {/* State distribution tags */}
+                {Object.keys(item.state_distribution).length > 0 && (
+                  <span className="text-xs text-stone-400">
+                    {Object.entries(item.state_distribution)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([st, ct]) => `${st}\u00a0(${ct})`)
+                      .join(' \u00b7 ')}
+                  </span>
+                )}
                 <button
                   onClick={() => onResolve(item.name, item.gapType)}
                   className="text-forest-700 hover:text-forest-900 dark:text-forest-400 dark:hover:text-forest-200 shrink-0 text-xs font-medium transition-colors"

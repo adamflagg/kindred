@@ -6,6 +6,10 @@ Tests verify:
 - Canonical search with filtering and source badge detection
 - Source inspection (original_value grouping)
 - Override CRUD operations
+- Country field on canonical entries and source responses
+- State distribution on source items and gap items
+- Suggested source badge for non-lookup canonicals
+- Location inference from mapping address fields
 """
 
 from __future__ import annotations
@@ -36,6 +40,8 @@ def _make_mapping_record(
     confidence: float = 1.0,
     year: int = 2025,
     person: str = "",
+    address_state: str = "",
+    address_country: str = "",
 ) -> Mock:
     """Create a mock normalized_mappings record."""
     record = Mock()
@@ -45,6 +51,8 @@ def _make_mapping_record(
     record.confidence = confidence
     record.year = year
     record.person = person
+    record.address_state = address_state
+    record.address_country = address_country
     return record
 
 
@@ -1286,3 +1294,684 @@ class TestPersonIdCache:
 
         await service._fetch_active_person_pb_ids(2025)
         assert mock_pb.collection.return_value.get_full_list.call_count == 2
+
+
+# ============================================================================
+# Schema Country & State Distribution Tests
+# ============================================================================
+
+
+class TestSchemaCountryAndStateDistribution:
+    """Test that schemas include country and state_distribution fields."""
+
+    def test_canonical_entry_has_country_field(self) -> None:
+        """CanonicalEntry should have a country field defaulting to empty string."""
+        from api.schemas.geo import CanonicalEntry
+
+        entry = CanonicalEntry(canonical_name="Riverside Elementary")
+        assert entry.country == ""
+
+    def test_canonical_entry_country_can_be_set(self) -> None:
+        """CanonicalEntry country field can be set to a country code."""
+        from api.schemas.geo import CanonicalEntry
+
+        entry = CanonicalEntry(canonical_name="Tokyo International School", country="JP")
+        assert entry.country == "JP"
+
+    def test_source_item_has_state_distribution_field(self) -> None:
+        """SourceItem should have a state_distribution field defaulting to empty dict."""
+        from api.schemas.geo import SourceItem
+
+        item = SourceItem(original_value="riverside elem", count=3, confidence=0.95)
+        assert item.state_distribution == {}
+
+    def test_source_item_state_distribution_can_be_set(self) -> None:
+        """SourceItem state_distribution field can be populated."""
+        from api.schemas.geo import SourceItem
+
+        item = SourceItem(
+            original_value="riverside elem",
+            count=5,
+            confidence=0.95,
+            state_distribution={"CA": 3, "OR": 2},
+        )
+        assert item.state_distribution == {"CA": 3, "OR": 2}
+
+    def test_sources_response_has_country_field(self) -> None:
+        """SourcesResponse should have a country field defaulting to empty string."""
+        from api.schemas.geo import SourcesResponse
+
+        resp = SourcesResponse(canonical_name="Riverside Elementary", sources=[])
+        assert resp.country == ""
+
+    def test_gap_item_has_state_distribution_field(self) -> None:
+        """GapItem should have a state_distribution field defaulting to empty dict."""
+        from api.schemas.geo import GapItem
+
+        item = GapItem(name="Unknown School", count=5, percentage=10.0)
+        assert item.state_distribution == {}
+
+    def test_gap_item_state_distribution_can_be_set(self) -> None:
+        """GapItem state_distribution field can be populated."""
+        from api.schemas.geo import GapItem
+
+        item = GapItem(
+            name="Unknown School",
+            count=5,
+            percentage=10.0,
+            state_distribution={"CA": 3, "NY": 2},
+        )
+        assert item.state_distribution == {"CA": 3, "NY": 2}
+
+
+# ============================================================================
+# Suggested Canonical & Inferred Location Tests
+# ============================================================================
+
+
+class TestSuggestedCanonicalTier:
+    """Test suggested source badge and location inference for non-lookup canonicals."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_non_lookup_canonical_gets_suggested_source(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Non-lookup canonical entries with camper data should have source='suggested'."""
+        mappings = [
+            _make_mapping_record("oakwood academy", "Oakwood Academy", address_state="CA"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}  # Oakwood Academy is NOT in the static lookup
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.search_canonicals("school", "oakwood", 2025)
+
+        assert len(result.results) == 1
+        assert result.results[0].source == "suggested"
+
+    @pytest.mark.asyncio
+    async def test_suggested_canonical_infers_state_from_mappings(
+        self, service: GeoService, mock_pb: MagicMock
+    ) -> None:
+        """Suggested canonicals should infer state from majority of mapping address_state values."""
+        mappings = [
+            _make_mapping_record("oakwood academy", "Oakwood Academy", address_state="CA", address_country="US"),
+            _make_mapping_record("oakwood acad", "Oakwood Academy", address_state="CA", address_country="US"),
+            _make_mapping_record("the oakwood academy", "Oakwood Academy", address_state="OR", address_country="US"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.search_canonicals("school", "oakwood", 2025)
+
+        assert len(result.results) == 1
+        # CA appears 2 times vs OR 1 time → majority is CA
+        assert result.results[0].state == "CA"
+
+    @pytest.mark.asyncio
+    async def test_suggested_canonical_infers_country(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Suggested canonicals should infer country from majority of mapping address_country values."""
+        mappings = [
+            _make_mapping_record(
+                "tokyo intl school", "Tokyo International School", address_state="", address_country="JP"
+            ),
+            _make_mapping_record(
+                "tokyo international", "Tokyo International School", address_state="", address_country="JP"
+            ),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.search_canonicals("school", "tokyo", 2025)
+
+        assert len(result.results) == 1
+        assert result.results[0].country == "JP"
+
+    @pytest.mark.asyncio
+    async def test_lookup_canonical_keeps_original_source_badge(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Canonical entries from static lookup should keep their original source badge, not 'suggested'."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", address_state="IL"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {"riverside elementary": "Riverside Elementary"}
+            mock_coords.return_value = {}
+            mock_location.return_value = {"Riverside Elementary": {"city": "Springfield", "state": "IL"}}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.search_canonicals("school", "riverside", 2025)
+
+        assert len(result.results) == 1
+        assert result.results[0].source == "nces"  # not "suggested"
+
+
+# ============================================================================
+# _infer_location_from_mappings Tests
+# ============================================================================
+
+
+class TestInferLocationFromMappings:
+    """Test the static helper that infers city/state/country from mapping address fields."""
+
+    def test_infers_majority_state(self) -> None:
+        """Should return the state that appears most frequently."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            _make_mapping_record("a", "School A", address_state="CA", address_country="US"),
+            _make_mapping_record("b", "School A", address_state="CA", address_country="US"),
+            _make_mapping_record("c", "School A", address_state="OR", address_country="US"),
+        ]
+        result = GeoService._infer_location_from_mappings(mappings, "School A")
+        assert result.get("state") == "CA"
+
+    def test_infers_majority_country(self) -> None:
+        """Should return the country that appears most frequently."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            _make_mapping_record("a", "School A", address_state="", address_country="JP"),
+            _make_mapping_record("b", "School A", address_state="", address_country="JP"),
+            _make_mapping_record("c", "School A", address_state="", address_country="US"),
+        ]
+        result = GeoService._infer_location_from_mappings(mappings, "School A")
+        assert result.get("country") == "JP"
+
+    def test_ignores_unrelated_mappings(self) -> None:
+        """Should only consider mappings with matching normalized_value."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            _make_mapping_record("a", "School A", address_state="CA"),
+            _make_mapping_record("b", "School B", address_state="NY"),
+            _make_mapping_record("c", "School B", address_state="NY"),
+        ]
+        result = GeoService._infer_location_from_mappings(mappings, "School A")
+        assert result.get("state") == "CA"
+
+    def test_returns_empty_dict_when_no_address_data(self) -> None:
+        """Should return empty dict when no mappings have address fields."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            _make_mapping_record("a", "School A", address_state="", address_country=""),
+        ]
+        result = GeoService._infer_location_from_mappings(mappings, "School A")
+        assert result == {}
+
+    def test_returns_empty_dict_for_unknown_normalized_value(self) -> None:
+        """Should return empty dict when no mappings match the given normalized_value."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            _make_mapping_record("a", "School A", address_state="CA"),
+        ]
+        result = GeoService._infer_location_from_mappings(mappings, "Nonexistent School")
+        assert result == {}
+
+
+# ============================================================================
+# State Distribution in Sources Tests
+# ============================================================================
+
+
+class TestSourcesStateDistribution:
+    """Test state_distribution aggregation in get_sources."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_sources_aggregate_state_distribution(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """get_sources should aggregate address_state per original_value into state_distribution."""
+        mappings = [
+            _make_mapping_record(
+                "riverside elem", "Riverside Elementary", confidence=0.95, address_state="IL", address_country="US"
+            ),
+            _make_mapping_record(
+                "riverside elem", "Riverside Elementary", confidence=0.93, address_state="IL", address_country="US"
+            ),
+            _make_mapping_record(
+                "riverside elem", "Riverside Elementary", confidence=0.95, address_state="CA", address_country="US"
+            ),
+        ]
+
+        with patch("api.services.geo_service._load_static_location") as mock_location:
+            mock_location.return_value = {}
+            mock_pb.collection.return_value.get_full_list.return_value = mappings
+
+            result = await service.get_sources("school", "Riverside Elementary", 2025)
+
+        assert len(result.sources) == 1
+        dist = result.sources[0].state_distribution
+        assert dist == {"IL": 2, "CA": 1}
+
+    @pytest.mark.asyncio
+    async def test_sources_international_uses_country_code(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """For non-US entries, state_distribution should use the country code as label."""
+        mappings = [
+            _make_mapping_record(
+                "tokyo intl", "Tokyo International", confidence=0.9, address_state="", address_country="JP"
+            ),
+            _make_mapping_record(
+                "tokyo intl", "Tokyo International", confidence=0.9, address_state="", address_country="JP"
+            ),
+        ]
+
+        with patch("api.services.geo_service._load_static_location") as mock_location:
+            mock_location.return_value = {}
+            mock_pb.collection.return_value.get_full_list.return_value = mappings
+
+            result = await service.get_sources("school", "Tokyo International", 2025)
+
+        assert result.sources[0].state_distribution == {"JP": 2}
+
+    @pytest.mark.asyncio
+    async def test_sources_empty_state_distribution_when_no_address(
+        self, service: GeoService, mock_pb: MagicMock
+    ) -> None:
+        """state_distribution should be empty when mappings have no address data."""
+        mappings = [
+            _make_mapping_record(
+                "riverside elem", "Riverside Elementary", confidence=0.95, address_state="", address_country=""
+            ),
+        ]
+
+        with patch("api.services.geo_service._load_static_location") as mock_location:
+            mock_location.return_value = {}
+            mock_pb.collection.return_value.get_full_list.return_value = mappings
+
+            result = await service.get_sources("school", "Riverside Elementary", 2025)
+
+        assert result.sources[0].state_distribution == {}
+
+
+# ============================================================================
+# State Distribution in Gaps Tests
+# ============================================================================
+
+
+class TestGapsStateDistribution:
+    """Test state_distribution aggregation in get_gaps."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_gaps_include_state_distribution(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Gap items should include state_distribution from mapping address fields."""
+        mappings = [
+            _make_mapping_record("oakwood academy", "Oakwood Academy", address_state="CA", address_country="US"),
+            _make_mapping_record("oakwood acad", "Oakwood Academy", address_state="CA", address_country="US"),
+            _make_mapping_record("the oakwood", "Oakwood Academy", address_state="OR", address_country="US"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.get_gaps("school", 2025)
+
+        assert len(result.non_canonical_grouped) == 1
+        dist = result.non_canonical_grouped[0].state_distribution
+        assert dist == {"CA": 2, "OR": 1}
+
+    @pytest.mark.asyncio
+    async def test_gaps_international_state_distribution(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Gap items with non-US countries should use country code in state_distribution."""
+        mappings = [
+            _make_mapping_record("tokyo intl", "Tokyo International", address_state="", address_country="JP"),
+            _make_mapping_record("tokyo international", "Tokyo International", address_state="", address_country="JP"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.get_gaps("school", 2025)
+
+        assert result.non_canonical_grouped[0].state_distribution == {"JP": 2}
+
+
+# ============================================================================
+# Merge Canonical Tests
+# ============================================================================
+
+
+class TestMergeCanonical:
+    """Test merge_canonical service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_creates_merge_override(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Merging should create a geo_override record with override_type='merge'."""
+        overrides_mock = MagicMock()
+        mappings_mock = MagicMock()
+        mappings_mock.get_full_list.return_value = []
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "geo_overrides":
+                return overrides_mock
+            return mappings_mock
+
+        mock_pb.collection.side_effect = collection_router
+
+        await service.merge_canonical("Old School", "New School", "school", 2025)
+
+        overrides_mock.create.assert_called_once_with(
+            {
+                "category": "school",
+                "override_type": "merge",
+                "canonical_name": "Old School",
+                "merged_into": "New School",
+                "year": 2025,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_updates_mappings_to_target(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Merging should update all normalized_mappings from source to target."""
+        mapping1 = _make_mapping_record("old school", "Old School")
+        mapping1.id = "m1"
+        mapping2 = _make_mapping_record("old skool", "Old School")
+        mapping2.id = "m2"
+
+        overrides_mock = MagicMock()
+        mappings_mock = MagicMock()
+        mappings_mock.get_full_list.return_value = [mapping1, mapping2]
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "geo_overrides":
+                return overrides_mock
+            return mappings_mock
+
+        mock_pb.collection.side_effect = collection_router
+
+        count = await service.merge_canonical("Old School", "New School", "school", 2025)
+
+        assert count == 2
+        assert mappings_mock.update.call_count == 2
+        mappings_mock.update.assert_any_call("m1", {"normalized_value": "New School"})
+        mappings_mock.update.assert_any_call("m2", {"normalized_value": "New School"})
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Merging with no matching mappings should return 0."""
+        overrides_mock = MagicMock()
+        mappings_mock = MagicMock()
+        mappings_mock.get_full_list.return_value = []
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "geo_overrides":
+                return overrides_mock
+            return mappings_mock
+
+        mock_pb.collection.side_effect = collection_router
+
+        count = await service.merge_canonical("Old School", "New School", "school", 2025)
+
+        assert count == 0
+
+
+# ============================================================================
+# Approve Suggested Tests
+# ============================================================================
+
+
+class TestApproveSuggested:
+    """Test approve_suggested service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_creates_canonical_override(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Approving a suggested canonical should create a canonical override."""
+        await service.approve_suggested("Hillcrest Academy", "school", 2025, city="Springfield", state="IL")
+
+        mock_pb.collection.return_value.create.assert_called_once_with(
+            {
+                "category": "school",
+                "override_type": "canonical",
+                "canonical_name": "Hillcrest Academy",
+                "city": "Springfield",
+                "state": "IL",
+                "year": 2025,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_creates_override_with_defaults(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Approving without city/state should use empty strings."""
+        await service.approve_suggested("Unknown Place", "city", 2025)
+
+        mock_pb.collection.return_value.create.assert_called_once_with(
+            {
+                "category": "city",
+                "override_type": "canonical",
+                "canonical_name": "Unknown Place",
+                "city": "",
+                "state": "",
+                "year": 2025,
+            },
+        )
+
+
+# ============================================================================
+# Reject Suggested Tests
+# ============================================================================
+
+
+class TestRejectSuggested:
+    """Test reject_suggested service method."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_deletes_all_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Rejecting should delete all normalized_mappings for the canonical."""
+        mapping1 = _make_mapping_record("bad school", "Bad Canonical")
+        mapping1.id = "m1"
+        mapping2 = _make_mapping_record("bad skool", "Bad Canonical")
+        mapping2.id = "m2"
+
+        mock_pb.collection.return_value.get_full_list.return_value = [mapping1, mapping2]
+
+        count = await service.reject_suggested("Bad Canonical", "school", 2025)
+
+        assert count == 2
+        delete_mock = mock_pb.collection.return_value.delete
+        assert delete_mock.call_count == 2
+        delete_mock.assert_any_call("m1")
+        delete_mock.assert_any_call("m2")
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """Rejecting with no matching mappings should return 0."""
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        count = await service.reject_suggested("Nonexistent", "school", 2025)
+
+        assert count == 0
+
+
+# ============================================================================
+# Merge/Approve/Reject Schema Tests
+# ============================================================================
+
+
+class TestMergeApproveRejectSchemas:
+    """Test Pydantic schemas for merge, approve, reject operations."""
+
+    def test_merge_request_fields(self) -> None:
+        """MergeRequest should have target, category, year."""
+        from api.schemas.geo import MergeRequest
+
+        req = MergeRequest(target="Target School", category="school", year=2025)
+        assert req.target == "Target School"
+        assert req.category == "school"
+        assert req.year == 2025
+
+    def test_merge_response_fields(self) -> None:
+        """MergeResponse should have merged_count."""
+        from api.schemas.geo import MergeResponse
+
+        resp = MergeResponse(merged_count=5)
+        assert resp.merged_count == 5
+
+    def test_approve_request_fields(self) -> None:
+        """ApproveRequest should have category, year, and optional city/state/country."""
+        from api.schemas.geo import ApproveRequest
+
+        req = ApproveRequest(category="school", year=2025, city="Oakland", state="CA", country="US")
+        assert req.category == "school"
+        assert req.year == 2025
+        assert req.city == "Oakland"
+        assert req.state == "CA"
+        assert req.country == "US"
+
+    def test_approve_request_defaults(self) -> None:
+        """ApproveRequest optional fields should default to empty strings."""
+        from api.schemas.geo import ApproveRequest
+
+        req = ApproveRequest(category="city", year=2025)
+        assert req.city == ""
+        assert req.state == ""
+        assert req.country == ""
+
+    def test_reject_request_fields(self) -> None:
+        """RejectRequest should have category and year."""
+        from api.schemas.geo import RejectRequest
+
+        req = RejectRequest(category="school", year=2025)
+        assert req.category == "school"
+        assert req.year == 2025
+
+    def test_reject_response_fields(self) -> None:
+        """RejectResponse should have dissolved_count."""
+        from api.schemas.geo import RejectResponse
+
+        resp = RejectResponse(dissolved_count=3)
+        assert resp.dissolved_count == 3

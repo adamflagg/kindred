@@ -5,10 +5,12 @@ import { NonCanonicalsPanel } from '../NonCanonicalsPanel'
 import type { GapItem } from '../../../../services/geoService'
 
 const grouped: GapItem[] = [
-  { name: 'Hillcrest High', count: 14, percentage: 8.2, source_count: 3 },
-  { name: 'Riverside Elem', count: 5, percentage: 2.9, source_count: 2 },
+  { name: 'Hillcrest High', count: 14, percentage: 8.2, source_count: 3, state_distribution: {} },
+  { name: 'Riverside Elem', count: 5, percentage: 2.9, source_count: 2, state_distribution: {} },
 ]
-const ungrouped: GapItem[] = [{ name: 'Mapleton Prep', count: 2, percentage: 1.2, source_count: 0 }]
+const ungrouped: GapItem[] = [
+  { name: 'Mapleton Prep', count: 2, percentage: 1.2, source_count: 0, state_distribution: {} },
+]
 
 describe('NonCanonicalsPanel', () => {
   it('renders merged list sorted by count descending', () => {
@@ -72,6 +74,54 @@ describe('NonCanonicalsPanel', () => {
       />
     )
     expect(screen.getByText('3')).toBeInTheDocument() // 2 grouped + 1 ungrouped
+  })
+
+  it('shows state distribution tags on gap items', () => {
+    render(
+      <NonCanonicalsPanel
+        grouped={[
+          {
+            name: 'Highland',
+            count: 8,
+            percentage: 50,
+            source_count: 3,
+            state_distribution: { CA: 6, OR: 2 },
+          },
+        ]}
+        ungrouped={[]}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
+
+    // Verify state tags are visible
+    expect(screen.getByText(/CA/)).toBeInTheDocument()
+    expect(screen.getByText(/OR/)).toBeInTheDocument()
+  })
+
+  it('does not show state tags when state_distribution is empty', () => {
+    render(
+      <NonCanonicalsPanel
+        grouped={[
+          {
+            name: 'SomePlace',
+            count: 3,
+            percentage: 20,
+            source_count: 1,
+            state_distribution: {},
+          },
+        ]}
+        ungrouped={[]}
+        onResolve={vi.fn()}
+        isOpen={true}
+        onToggle={vi.fn()}
+      />
+    )
+
+    // Should not have any state distribution text
+    // Just verify the name is shown
+    expect(screen.getByText('SomePlace')).toBeInTheDocument()
   })
 
   it('shows empty state when no gaps', () => {

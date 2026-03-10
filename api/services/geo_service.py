@@ -202,6 +202,28 @@ class GeoService:
         return result
 
     @staticmethod
+    def _infer_location_from_mappings(mappings: list[Any], normalized_value: str) -> dict[str, str]:
+        """Infer city/state/country from majority of mappings for a normalized value."""
+        state_counts: dict[str, int] = {}
+        country_counts: dict[str, int] = {}
+        for m in mappings:
+            if m.normalized_value != normalized_value:
+                continue
+            state = getattr(m, "address_state", "") or ""
+            country = getattr(m, "address_country", "") or ""
+            if state:
+                state_counts[state] = state_counts.get(state, 0) + 1
+            if country:
+                country_counts[country] = country_counts.get(country, 0) + 1
+
+        result: dict[str, str] = {}
+        if state_counts:
+            result["state"] = max(state_counts, key=state_counts.get)  # type: ignore[arg-type]
+        if country_counts:
+            result["country"] = max(country_counts, key=country_counts.get)  # type: ignore[arg-type]
+        return result
+
+    @staticmethod
     def _filter_and_dedup_mappings(
         mappings: list[Any],
         active_person_ids: set[str] | None,
@@ -274,9 +296,14 @@ class GeoService:
         for m in mappings:
             nv: str = m.normalized_value
             if nv not in groups:
-                groups[nv] = {"count": 0, "sources": set()}
+                groups[nv] = {"count": 0, "sources": set(), "states": {}}
             groups[nv]["count"] += 1
             groups[nv]["sources"].add(m.original_value)
+            state_key = getattr(m, "address_state", "") or ""
+            country_key = getattr(m, "address_country", "") or ""
+            label = state_key if country_key in ("", "US", "USA") else country_key
+            if label:
+                groups[nv]["states"][label] = groups[nv]["states"].get(label, 0) + 1
 
         # Classify each group
         canonical_no_coords: list[GapItem] = []
@@ -295,13 +322,27 @@ class GeoService:
 
             total_gap_count += count
 
+            state_dist = info["states"]
+
             # Is it a canonical value (in lookup values)?
             if nv in canonical_values:
-                canonical_no_coords.append(GapItem(name=nv, count=count, percentage=0.0, source_count=source_count))
+                canonical_no_coords.append(
+                    GapItem(
+                        name=nv, count=count, percentage=0.0, source_count=source_count, state_distribution=state_dist
+                    )
+                )
             elif source_count > 1:
-                non_canonical_grouped.append(GapItem(name=nv, count=count, percentage=0.0, source_count=source_count))
+                non_canonical_grouped.append(
+                    GapItem(
+                        name=nv, count=count, percentage=0.0, source_count=source_count, state_distribution=state_dist
+                    )
+                )
             else:
-                non_canonical_ungrouped.append(GapItem(name=nv, count=count, percentage=0.0, source_count=source_count))
+                non_canonical_ungrouped.append(
+                    GapItem(
+                        name=nv, count=count, percentage=0.0, source_count=source_count, state_distribution=state_dist
+                    )
+                )
 
         # Sort each list by count descending
         canonical_no_coords.sort(key=lambda x: -x.count)
@@ -386,16 +427,17 @@ class GeoService:
                 camper_count=camper_counts.get(canonical_name, 0),
             )
 
-        # Add non-canonical entries that have camper data
+        # Add non-canonical entries that have camper data (suggested canonicals)
         for nv, count in camper_counts.items():
             if nv not in all_canonicals:
-                loc = location.get(nv, {})
+                inferred = self._infer_location_from_mappings(mappings, nv)
                 has_coords = nv in coords
                 all_canonicals[nv] = CanonicalEntry(
                     canonical_name=nv,
-                    city=loc.get("city", ""),
-                    state=loc.get("state", ""),
-                    source="",
+                    city=inferred.get("city", ""),
+                    state=inferred.get("state", ""),
+                    country=inferred.get("country", ""),
+                    source="suggested",
                     has_coords=has_coords,
                     camper_count=count,
                 )
@@ -467,12 +509,24 @@ class GeoService:
         for m in mappings:
             ov: str = m.original_value
             if ov not in source_groups:
-                source_groups[ov] = {"count": 0, "confidence": m.confidence}
+                source_groups[ov] = {"count": 0, "confidence": m.confidence, "states": {}}
             source_groups[ov]["count"] += 1
             source_groups[ov]["confidence"] = min(source_groups[ov]["confidence"], m.confidence)
+            # Aggregate state/country distribution
+            state_key = getattr(m, "address_state", "") or ""
+            country_key = getattr(m, "address_country", "") or ""
+            # For US entries, show state; for international, show country code
+            label = state_key if country_key in ("", "US", "USA") else country_key
+            if label:
+                source_groups[ov]["states"][label] = source_groups[ov]["states"].get(label, 0) + 1
 
         sources: list[SourceItem] = [
-            SourceItem(original_value=ov, count=g["count"], confidence=g["confidence"])
+            SourceItem(
+                original_value=ov,
+                count=g["count"],
+                confidence=g["confidence"],
+                state_distribution=g["states"],
+            )
             for ov, g in source_groups.items()
         ]
 
@@ -587,6 +641,92 @@ class GeoService:
             self.pb.collection("geo_overrides").delete,
             override_id,
         )
+
+    async def merge_canonical(self, source_name: str, target_name: str, category: str, year: int) -> int:
+        """Merge source canonical into target.
+
+        1. Create merge override (geo_overrides with override_type="merge")
+        2. Update all normalized_mappings from source -> target
+        3. Return count of updated mappings
+        """
+        # Create merge override
+        await asyncio.to_thread(
+            self.pb.collection("geo_overrides").create,
+            {
+                "category": category,
+                "override_type": "merge",
+                "canonical_name": source_name,
+                "merged_into": target_name,
+                "year": year,
+            },
+        )
+
+        # Update all mappings
+        mappings: list[Any] = await asyncio.to_thread(
+            self.pb.collection("normalized_mappings").get_full_list,
+            query_params={"filter": f'category = "{category}" && year = {year} && normalized_value = "{source_name}"'},
+        )
+
+        count = 0
+        for m in mappings:
+            await asyncio.to_thread(
+                self.pb.collection("normalized_mappings").update,
+                m.id,
+                {"normalized_value": target_name},
+            )
+            count += 1
+
+        return count
+
+    async def approve_suggested(
+        self,
+        canonical_name: str,
+        category: str,
+        year: int,
+        city: str = "",
+        state: str = "",
+        country: str = "",
+    ) -> None:
+        """Approve a suggested canonical by creating a canonical override."""
+        await asyncio.to_thread(
+            self.pb.collection("geo_overrides").create,
+            {
+                "category": category,
+                "override_type": "canonical",
+                "canonical_name": canonical_name,
+                "city": city,
+                "state": state,
+                "year": year,
+            },
+        )
+
+    async def reject_suggested(
+        self,
+        canonical_name: str,
+        category: str,
+        year: int,
+    ) -> int:
+        """Reject a suggested canonical by dissolving its cluster.
+
+        Deletes all normalized_mappings pointing at this canonical,
+        so source variants reappear as unresolved gaps.
+        """
+        mappings: list[Any] = await asyncio.to_thread(
+            self.pb.collection("normalized_mappings").get_full_list,
+            query_params={
+                "filter": f'category = "{category}" && year = {year} && normalized_value = "{canonical_name}"'
+            },
+        )
+
+        count = 0
+        for m in mappings:
+            await asyncio.to_thread(
+                self.pb.collection("normalized_mappings").delete,
+                m.id,
+            )
+            count += 1
+
+        return count
 
     def _check_name_ambiguity(self, category: str, canonical_name: str) -> bool:
         """Check if a canonical name exists in multiple locations in static data."""

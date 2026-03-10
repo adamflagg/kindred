@@ -16,6 +16,7 @@ export interface GapItem {
   count: number
   percentage: number
   source_count: number
+  state_distribution: Record<string, number>
 }
 
 export interface GapsResponse {
@@ -29,6 +30,7 @@ export interface CanonicalEntry {
   canonical_name: string
   city: string
   state: string
+  country: string
   source: string
   has_coords: boolean
   camper_count: number
@@ -42,12 +44,14 @@ export interface SourceItem {
   original_value: string
   count: number
   confidence: number
+  state_distribution: Record<string, number>
 }
 
 export interface SourcesResponse {
   canonical_name: string
   city: string
   state: string
+  country: string
   sources: SourceItem[]
 }
 
@@ -146,9 +150,10 @@ export async function searchCanonicals(
 export async function fetchAllCanonicals(
   category: string,
   year: number,
-  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+  inUse = true
 ): Promise<CanonicalSearchResponse> {
-  const params = new URLSearchParams({ category, year: String(year), in_use: 'true' })
+  const params = new URLSearchParams({ category, year: String(year), in_use: String(inUse) })
   const response = await fetchWithAuth(`${API_BASE}/canonicals?${params}`)
 
   if (!response.ok) {
@@ -285,5 +290,55 @@ export async function batchResolveCoords(
     const error = await response.json().catch(() => ({}))
     throw new Error((error as { detail?: string }).detail ?? 'Failed to batch resolve coords')
   }
+  return response.json()
+}
+
+/**
+ * Merge one canonical into another.
+ */
+export async function mergeCanonical(
+  canonicalName: string,
+  data: { target: string; category: string; year: number },
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+): Promise<{ merged_count: number }> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/canonicals/${encodeURIComponent(canonicalName)}/merge`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
+  )
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { detail?: string }).detail ?? 'Failed to merge canonical')
+  }
+  return response.json()
+}
+
+/**
+ * Approve a suggested canonical by creating a canonical override.
+ */
+export async function approveSuggested(
+  canonicalName: string,
+  data: { category: string; year: number; city?: string; state?: string; country?: string },
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/canonicals/${encodeURIComponent(canonicalName)}/approve`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
+  )
+  if (!response.ok) throw new Error('Failed to approve suggested canonical')
+}
+
+/**
+ * Reject a suggested canonical, dissolving its cluster.
+ */
+export async function rejectSuggested(
+  canonicalName: string,
+  data: { category: string; year: number },
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+): Promise<{ dissolved_count: number }> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/canonicals/${encodeURIComponent(canonicalName)}/reject`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
+  )
+  if (!response.ok) throw new Error('Failed to reject suggested canonical')
   return response.json()
 }

@@ -214,8 +214,8 @@ export const queryKeys = {
     ['geo', 'gaps', category, year, activeOnly] as const,
   geoCanonicals: (category: string, query: string, year: number) =>
     ['geo', 'canonicals', category, query, year] as const,
-  geoAllCanonicals: (category: string, year: number) =>
-    ['geo', 'all-canonicals', category, year] as const,
+  geoAllCanonicals: (category: string, year: number, inUse = true) =>
+    ['geo', 'all-canonicals', category, year, inUse] as const,
   geoSources: (category: string, canonicalName: string, year: number) =>
     ['geo', 'sources', category, canonicalName, year] as const,
   geoOverrides: (category: string, year: number) => ['geo', 'overrides', category, year] as const,

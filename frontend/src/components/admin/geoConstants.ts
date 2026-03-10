@@ -15,6 +15,8 @@ export function sourceLabel(source: string): string {
       return 'SimpleMaps'
     case 'curated':
       return 'Curated'
+    case 'suggested':
+      return 'Suggested'
     case 'manual':
       return 'Manual'
     default:
@@ -29,9 +31,12 @@ export function sourceBadgeClasses(source: string): string {
     case 'pss':
       return 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
     case 'simplemaps':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+    case 'suggested':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
-    case 'manual':
     case 'curated':
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+    case 'manual':
       return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
     default:
       return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
@@ -54,6 +59,19 @@ export const SUB_TAB_TO_CATEGORY: Record<string, GeoCategory> = {
   cities: 'city',
   schools: 'school',
   congregations: 'congregation',
+}
+
+/** Format location display: "City, ST" for US, "City, Country" for non-US. */
+export function formatLocation(
+  city?: string,
+  state?: string,
+  country?: string,
+  fallbackName?: string
+): string {
+  if (country && !['US', 'USA', ''].includes(country)) {
+    return `${city || fallbackName || ''}, ${country}`.replace(/^, /, '')
+  }
+  return [city, state].filter(Boolean).join(', ')
 }
 
 export function getActiveSubTab(pathname: string): string {

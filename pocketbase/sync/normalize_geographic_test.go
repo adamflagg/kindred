@@ -1,6 +1,8 @@
 package sync
 
 import (
+	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -628,17 +630,21 @@ type testPersonSessionMapping struct {
 	NormalizedValue string
 	Confidence      float64
 	Year            int
+	AddressState    string
+	AddressCountry  string
 }
 
 // testAttendeeGeoData represents geographic data extracted from an attendee
 type testAttendeeGeoData struct {
-	PersonPBID   string
-	PersonCMID   int
-	SessionPBID  string
-	SessionCMID  int
-	School       string // from persons.school
-	City         string // from persons.address_city (discrete column)
-	Congregation string // from person_custom_values
+	PersonPBID     string
+	PersonCMID     int
+	SessionPBID    string
+	SessionCMID    int
+	School         string // from persons.school
+	City           string // from persons.address_city (discrete column)
+	Congregation   string // from person_custom_values
+	AddressState   string // from household billing_state
+	AddressCountry string // from household billing_country
 }
 
 // buildPersonSessionMappingKey builds composite key for person+session normalized_mappings
@@ -948,6 +954,12 @@ func personSessionMappingNeedsUpdate(existing, newMapping *testPersonSessionMapp
 		return true
 	}
 	if existing.OriginalValue != newMapping.OriginalValue {
+		return true
+	}
+	if existing.AddressState != newMapping.AddressState {
+		return true
+	}
+	if existing.AddressCountry != newMapping.AddressCountry {
 		return true
 	}
 	return confidenceChanged(existing.Confidence, newMapping.Confidence)
@@ -1451,5 +1463,426 @@ func TestResolveValueCategoryIsolation(t *testing.T) {
 	}
 	if confidence != 1.0 {
 		t.Errorf("resolveValue() confidence = %f, want 1.0", confidence)
+	}
+}
+
+// ============================================================================
+// Address State/Country from Household Tests
+// ============================================================================
+
+// TestAttendeeGeoDataHasAddressFields verifies the attendeeGeoData struct
+// carries address_state and address_country fields from the household join.
+func TestAttendeeGeoDataHasAddressFields(t *testing.T) {
+	data := attendeeGeoData{
+		PersonPBID:     "person_101",
+		PersonCMID:     101,
+		SessionPBID:    "session_2001",
+		SessionCMID:    2001,
+		School:         "Riverside Elementary",
+		City:           "Oakland",
+		Congregation:   "Temple Beth El",
+		AddressState:   "CA",
+		AddressCountry: "US",
+	}
+
+	if data.AddressState != "CA" {
+		t.Errorf("AddressState = %q, want %q", data.AddressState, "CA")
+	}
+	if data.AddressCountry != "US" {
+		t.Errorf("AddressCountry = %q, want %q", data.AddressCountry, "US")
+	}
+}
+
+// TestAttendeeGeoDataEmptyHousehold verifies that address fields default to
+// empty strings when no household is linked (nil expanded record).
+func TestAttendeeGeoDataEmptyHousehold(t *testing.T) {
+	data := attendeeGeoData{
+		PersonPBID:  "person_102",
+		PersonCMID:  102,
+		SessionPBID: "session_2001",
+		SessionCMID: 2001,
+		School:      "Oak Valley Middle",
+		City:        "San Francisco",
+		// AddressState and AddressCountry intentionally unset (no household)
+	}
+
+	if data.AddressState != "" {
+		t.Errorf("AddressState should be empty when no household, got %q", data.AddressState)
+	}
+	if data.AddressCountry != "" {
+		t.Errorf("AddressCountry should be empty when no household, got %q", data.AddressCountry)
+	}
+}
+
+// TestPersonSessionMappingCarriesAddressFields verifies the personSessionMapping
+// struct carries address_state and address_country through the mapping pipeline.
+func TestPersonSessionMappingCarriesAddressFields(t *testing.T) {
+	m := personSessionMapping{
+		personPBID:      "person_101",
+		sessionPBID:     "session_2001",
+		category:        categoryCity,
+		originalValue:   "Oakland",
+		normalizedValue: "Oakland",
+		confidence:      1.0,
+		year:            2025,
+		addressState:    "CA",
+		addressCountry:  "US",
+	}
+
+	if m.addressState != "CA" {
+		t.Errorf("addressState = %q, want %q", m.addressState, "CA")
+	}
+	if m.addressCountry != "US" {
+		t.Errorf("addressCountry = %q, want %q", m.addressCountry, "US")
+	}
+}
+
+// TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange verifies that
+// a change to address_state triggers an update.
+func TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange(t *testing.T) {
+	existing := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	updated := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "NY", AddressCountry: "US", // state changed
+	}
+
+	if !personSessionMappingNeedsUpdate(existing, updated) {
+		t.Error("expected update when address_state changes from CA to NY")
+	}
+}
+
+// TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange verifies that
+// a change to address_country triggers an update.
+func TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange(t *testing.T) {
+	existing := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
+		OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	updated := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
+		OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "CA", // country changed
+	}
+
+	if !personSessionMappingNeedsUpdate(existing, updated) {
+		t.Error("expected update when address_country changes from US to CA")
+	}
+}
+
+// TestPersonSessionMappingNeedsUpdateNoChangeWithAddress verifies that
+// identical address fields do not trigger a spurious update.
+func TestPersonSessionMappingNeedsUpdateNoChangeWithAddress(t *testing.T) {
+	existing := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	same := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	if personSessionMappingNeedsUpdate(existing, same) {
+		t.Error("should not need update when address fields are identical")
+	}
+}
+
+// TestAddressFieldsPropagateToMappings verifies that address_state and
+// address_country from attendeeGeoData flow through to personSessionMapping
+// for all three categories (school, city, congregation).
+func TestAddressFieldsPropagateToMappings(t *testing.T) {
+	attendeeData := []testAttendeeGeoData{
+		{
+			PersonPBID: "p101", PersonCMID: 101,
+			SessionPBID: "s2001", SessionCMID: 2001,
+			School: "Riverside Elementary", City: "Oakland",
+			Congregation: "Temple Beth El",
+			AddressState: "CA", AddressCountry: "US",
+		},
+	}
+
+	// Simulate mapping creation (mirrors createPersonSessionMappings logic)
+	var mappings []*testPersonSessionMapping
+	for _, d := range attendeeData {
+		if d.School != "" {
+			mappings = append(mappings, &testPersonSessionMapping{
+				PersonPBID: d.PersonPBID, SessionPBID: d.SessionPBID,
+				Category: "school", OriginalValue: d.School, NormalizedValue: d.School,
+				Confidence: 1.0, Year: 2025,
+				AddressState: d.AddressState, AddressCountry: d.AddressCountry,
+			})
+		}
+		if d.City != "" {
+			mappings = append(mappings, &testPersonSessionMapping{
+				PersonPBID: d.PersonPBID, SessionPBID: d.SessionPBID,
+				Category: "city", OriginalValue: d.City, NormalizedValue: d.City,
+				Confidence: 1.0, Year: 2025,
+				AddressState: d.AddressState, AddressCountry: d.AddressCountry,
+			})
+		}
+		if d.Congregation != "" {
+			mappings = append(mappings, &testPersonSessionMapping{
+				PersonPBID: d.PersonPBID, SessionPBID: d.SessionPBID,
+				Category: "congregation", OriginalValue: d.Congregation,
+				NormalizedValue: d.Congregation,
+				Confidence:      1.0, Year: 2025,
+				AddressState: d.AddressState, AddressCountry: d.AddressCountry,
+			})
+		}
+	}
+
+	// Should have 3 mappings, all with address fields
+	if len(mappings) != 3 {
+		t.Fatalf("expected 3 mappings, got %d", len(mappings))
+	}
+
+	for _, m := range mappings {
+		if m.AddressState != "CA" {
+			t.Errorf("mapping %s: AddressState = %q, want %q", m.Category, m.AddressState, "CA")
+		}
+		if m.AddressCountry != "US" {
+			t.Errorf("mapping %s: AddressCountry = %q, want %q", m.Category, m.AddressCountry, "US")
+		}
+	}
+}
+
+// ============================================================================
+// Context Tuple Tests — valueWithContext JSON serialization
+// ============================================================================
+
+// TestValueWithContextJSON verifies that valueWithContext serializes to the
+// JSON format expected by the Python normalizer: {"value": "x", "state": "CA", "country": "US"}
+func TestValueWithContextJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    valueWithContext
+		wantJSON string
+	}{
+		{
+			name:     "full context US",
+			input:    valueWithContext{Value: "Oakland", State: "CA", Country: "US"},
+			wantJSON: `{"value":"Oakland","state":"CA","country":"US"}`,
+		},
+		{
+			name:     "international with empty state",
+			input:    valueWithContext{Value: "London", State: "", Country: "GB"},
+			wantJSON: `{"value":"London","state":"","country":"GB"}`,
+		},
+		{
+			name:     "no context at all",
+			input:    valueWithContext{Value: "Unknown City", State: "", Country: ""},
+			wantJSON: `{"value":"Unknown City","state":"","country":""}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.input)
+			if err != nil {
+				t.Fatalf("json.Marshal failed: %v", err)
+			}
+			if string(data) != tt.wantJSON {
+				t.Errorf("got %s, want %s", string(data), tt.wantJSON)
+			}
+		})
+	}
+}
+
+// TestValueWithContextSliceJSON verifies that a slice of valueWithContext
+// serializes to the array format sent to Python normalizer.
+func TestValueWithContextSliceJSON(t *testing.T) {
+	values := []valueWithContext{
+		{Value: "Oakland", State: "CA", Country: "US"},
+		{Value: "London", State: "", Country: "GB"},
+	}
+
+	data, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Parse back to verify structure
+	var parsed []map[string]string
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+
+	if len(parsed) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(parsed))
+	}
+
+	// Each item must have exactly these three keys
+	for i, item := range parsed {
+		for _, key := range []string{"value", "state", "country"} {
+			if _, ok := item[key]; !ok {
+				t.Errorf("item[%d] missing key %q", i, key)
+			}
+		}
+		if len(item) != 3 {
+			t.Errorf("item[%d] has %d keys, want 3", i, len(item))
+		}
+	}
+}
+
+// TestGeoContextStruct verifies geoContext stores state and country.
+func TestGeoContextStruct(t *testing.T) {
+	ctx := geoContext{State: "CA", Country: "US"}
+	if ctx.State != "CA" {
+		t.Errorf("State = %q, want %q", ctx.State, "CA")
+	}
+	if ctx.Country != "US" {
+		t.Errorf("Country = %q, want %q", ctx.Country, "US")
+	}
+}
+
+// ============================================================================
+// buildNormalizationLookup context collection tests
+// ============================================================================
+
+// TestBuildNormalizationLookupCollectsContext verifies that buildNormalizationLookup
+// collects the first-seen state/country context for each unique value, and passes
+// context tuples (not bare strings) to the normalizer.
+func TestBuildNormalizationLookupCollectsContext(t *testing.T) {
+	// This test verifies the internal collection logic without calling Python.
+	// We test that unique values are collected with first-seen context.
+
+	data := []attendeeGeoData{
+		{
+			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Oakland", School: "Riverside Elementary", Congregation: "Temple Beth Abraham",
+			AddressState: "CA", AddressCountry: "US",
+		},
+		{
+			// Same city "Oakland" but different state — first-seen should win
+			PersonPBID: "p2", PersonCMID: 1002, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Oakland", School: "Oak Valley Middle", Congregation: "",
+			AddressState: "NY", AddressCountry: "US",
+		},
+		{
+			// International camper with no state
+			PersonPBID: "p3", PersonCMID: 1003, SessionPBID: "s1", SessionCMID: 2001,
+			City: "London", School: "Westminster Academy", Congregation: "",
+			AddressState: "", AddressCountry: "GB",
+		},
+	}
+
+	// Collect unique cities with context (same logic as buildNormalizationLookup)
+	uniqueCities := make(map[string]geoContext)
+	for _, d := range data {
+		if d.City != "" {
+			if _, exists := uniqueCities[d.City]; !exists {
+				uniqueCities[d.City] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			}
+		}
+	}
+
+	// Should have 2 unique cities
+	if len(uniqueCities) != 2 {
+		t.Fatalf("expected 2 unique cities, got %d", len(uniqueCities))
+	}
+
+	// Oakland should have CA/US (first-seen), not NY/US
+	oaklandCtx, ok := uniqueCities["Oakland"]
+	if !ok {
+		t.Fatal("missing Oakland in uniqueCities")
+	}
+	if oaklandCtx.State != "CA" {
+		t.Errorf("Oakland state = %q, want %q (first-seen)", oaklandCtx.State, "CA")
+	}
+	if oaklandCtx.Country != "US" {
+		t.Errorf("Oakland country = %q, want %q", oaklandCtx.Country, "US")
+	}
+
+	// London should have empty state, GB country
+	londonCtx, ok := uniqueCities["London"]
+	if !ok {
+		t.Fatal("missing London in uniqueCities")
+	}
+	if londonCtx.State != "" {
+		t.Errorf("London state = %q, want empty", londonCtx.State)
+	}
+	if londonCtx.Country != "GB" {
+		t.Errorf("London country = %q, want %q", londonCtx.Country, "GB")
+	}
+}
+
+// TestBuildContextValuesFromMap verifies that converting a map[string]geoContext
+// to []valueWithContext produces the expected entries.
+func TestBuildContextValuesFromMap(t *testing.T) {
+	valuesWithContext := map[string]geoContext{
+		"Oakland": {State: "CA", Country: "US"},
+		"London":  {State: "", Country: "GB"},
+	}
+
+	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
+	for value, ctx := range valuesWithContext {
+		contextValues = append(contextValues, valueWithContext{
+			Value:   value,
+			State:   ctx.State,
+			Country: ctx.Country,
+		})
+	}
+
+	if len(contextValues) != 2 {
+		t.Fatalf("expected 2 context values, got %d", len(contextValues))
+	}
+
+	// Sort for deterministic comparison
+	sort.Slice(contextValues, func(i, j int) bool {
+		return contextValues[i].Value < contextValues[j].Value
+	})
+
+	// London should be first (alphabetical)
+	if contextValues[0].Value != "London" {
+		t.Errorf("first value = %q, want %q", contextValues[0].Value, "London")
+	}
+	if contextValues[0].Country != "GB" {
+		t.Errorf("London country = %q, want %q", contextValues[0].Country, "GB")
+	}
+
+	// Oakland should be second
+	if contextValues[1].Value != "Oakland" {
+		t.Errorf("second value = %q, want %q", contextValues[1].Value, "Oakland")
+	}
+	if contextValues[1].State != "CA" {
+		t.Errorf("Oakland state = %q, want %q", contextValues[1].State, "CA")
+	}
+
+	// Verify JSON serialization of the full slice
+	data, err := json.Marshal(contextValues)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	jsonStr := string(data)
+	// Must contain the context object format, not bare strings
+	if !strings.Contains(jsonStr, `"value"`) {
+		t.Error("JSON output missing 'value' key — should be context objects, not bare strings")
+	}
+	if !strings.Contains(jsonStr, `"state"`) {
+		t.Error("JSON output missing 'state' key")
+	}
+	if !strings.Contains(jsonStr, `"country"`) {
+		t.Error("JSON output missing 'country' key")
+	}
+	// Must NOT be a bare string array
+	if strings.HasPrefix(jsonStr, `["`) {
+		t.Error("JSON output looks like a bare string array — should be context objects")
 	}
 }

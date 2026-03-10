@@ -18,6 +18,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Riverside Elementary',
     city: 'Oakland',
     state: 'CA',
+    country: '',
     source: 'nces',
     has_coords: true,
     camper_count: 12,
@@ -26,6 +27,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Oak Valley Middle',
     city: 'Portland',
     state: 'OR',
+    country: '',
     source: 'simplemaps',
     has_coords: true,
     camper_count: 8,
@@ -34,6 +36,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Hillcrest High',
     city: 'Denver',
     state: 'CO',
+    country: '',
     source: 'manual',
     has_coords: false,
     camper_count: 0,
@@ -42,6 +45,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Birchwood Academy',
     city: 'Seattle',
     state: 'WA',
+    country: '',
     source: 'pss',
     has_coords: true,
     camper_count: 5,
@@ -162,9 +166,15 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
+        country: '',
         sources: [
-          { original_value: 'Riverside Elem', count: 7, confidence: 0.92 },
-          { original_value: 'Riverside Elementary School', count: 5, confidence: 1.0 },
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+          {
+            original_value: 'Riverside Elementary School',
+            count: 5,
+            confidence: 1.0,
+            state_distribution: {},
+          },
         ],
       },
       isLoading: false,
@@ -195,9 +205,15 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
+        country: '',
         sources: [
-          { original_value: 'Riverside Elem', count: 7, confidence: 0.92 },
-          { original_value: 'Riverside Elementary School', count: 5, confidence: 1.0 },
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+          {
+            original_value: 'Riverside Elementary School',
+            count: 5,
+            confidence: 1.0,
+            state_distribution: {},
+          },
         ],
       },
       isLoading: false,
@@ -224,7 +240,10 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
-        sources: [{ original_value: 'Riverside Elem', count: 7, confidence: 0.92 }],
+        country: '',
+        sources: [
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+        ],
       },
       isLoading: false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -314,9 +333,358 @@ describe('CanonicalReferenceList', () => {
     expect(pssBadge).toHaveClass('bg-forest-100')
 
     const simpleBadge = screen.getByText('SimpleMaps')
-    expect(simpleBadge).toHaveClass('bg-amber-100')
+    expect(simpleBadge).toHaveClass('bg-blue-100')
 
     const manualBadge = screen.getByText('Manual')
     expect(manualBadge).toHaveClass('bg-stone-100')
+  })
+
+  // ---------- Task 9: State/Country display ----------
+
+  it('shows state distribution tags on source variants', async () => {
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Riverside Elementary',
+        city: 'Oakland',
+        state: 'CA',
+        country: '',
+        sources: [
+          {
+            original_value: 'Riverside Elem',
+            count: 7,
+            confidence: 0.92,
+            state_distribution: { CA: 5, OR: 2 },
+          },
+          {
+            original_value: 'Riverside Elementary School',
+            count: 5,
+            confidence: 1.0,
+            state_distribution: { CA: 5 },
+          },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    const rows = screen.getAllByTestId('canonical-row')
+    await user.click(rows[0]!)
+
+    // Source variants should appear
+    expect(screen.getByText('Source Variants')).toBeInTheDocument()
+
+    // State distribution tags should be visible
+    // Uses non-breaking space (\u00a0) in source, but testing-library normalizes to regular space
+    expect(screen.getByText(/CA \(5\).*OR \(2\)/)).toBeInTheDocument()
+    expect(screen.getByText(/^CA \(5\)$/)).toBeInTheDocument()
+  })
+
+  it('shows country in location badge for non-US entries', () => {
+    mockUseAllCanonicals.mockReturnValue({
+      data: {
+        results: [
+          {
+            canonical_name: 'Westminster Academy',
+            city: 'London',
+            state: '',
+            country: 'GB',
+            source: 'manual',
+            has_coords: true,
+            camper_count: 3,
+          },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    // Should show "London, GB" not "London, "
+    expect(screen.getByText('London, GB')).toBeInTheDocument()
+  })
+
+  it('shows italic location badge for suggested canonicals', () => {
+    mockUseAllCanonicals.mockReturnValue({
+      data: {
+        results: [
+          {
+            canonical_name: 'Suggested School',
+            city: 'Portland',
+            state: 'OR',
+            country: 'US',
+            source: 'suggested',
+            has_coords: false,
+            camper_count: 2,
+          },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    const locationBadge = screen.getByText('Portland, OR')
+    expect(locationBadge).toHaveClass('italic')
+  })
+
+  // ---------- Task 10: Approve/Reject UI ----------
+
+  it('shows approve and reject buttons on suggested canonicals', async () => {
+    const suggestedEntry: CanonicalEntry = {
+      canonical_name: 'Suggested School',
+      city: 'Portland',
+      state: 'OR',
+      country: 'US',
+      source: 'suggested',
+      has_coords: false,
+      camper_count: 2,
+    }
+
+    mockUseAllCanonicals.mockReturnValue({
+      data: { results: [suggestedEntry] },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Suggested School',
+        city: 'Portland',
+        state: 'OR',
+        country: 'US',
+        sources: [
+          { original_value: 'Suggested Schl', count: 2, confidence: 0.85, state_distribution: {} },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    // Expand the suggested row
+    const rows = screen.getAllByTestId('canonical-row')
+    await user.click(rows[0]!)
+
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
+  })
+
+  it('does not show approve/reject on non-suggested canonicals', async () => {
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Riverside Elementary',
+        city: 'Oakland',
+        state: 'CA',
+        country: '',
+        sources: [
+          {
+            original_value: 'Riverside Elementary School',
+            count: 5,
+            confidence: 1.0,
+            state_distribution: {},
+          },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    // Expand an nces entry (first in popular sort)
+    const rows = screen.getAllByTestId('canonical-row')
+    await user.click(rows[0]!)
+
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
+  })
+
+  it('calls onApprove when approve button clicked', async () => {
+    const onApprove = vi.fn()
+    const suggestedEntry: CanonicalEntry = {
+      canonical_name: 'Suggested School',
+      city: 'Portland',
+      state: 'OR',
+      country: 'US',
+      source: 'suggested',
+      has_coords: false,
+      camper_count: 2,
+    }
+
+    mockUseAllCanonicals.mockReturnValue({
+      data: { results: [suggestedEntry] },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Suggested School',
+        city: 'Portland',
+        state: 'OR',
+        country: 'US',
+        sources: [
+          { original_value: 'Suggested Schl', count: 2, confidence: 0.85, state_distribution: {} },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(
+      <CanonicalReferenceList
+        category="school"
+        year={2025}
+        onReassignSource={vi.fn()}
+        onApprove={onApprove}
+      />
+    )
+
+    const rows = screen.getAllByTestId('canonical-row')
+    await user.click(rows[0]!)
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+
+    expect(onApprove).toHaveBeenCalledWith(suggestedEntry)
+  })
+
+  it('calls onReject when reject button clicked', async () => {
+    const onReject = vi.fn()
+    const suggestedEntry: CanonicalEntry = {
+      canonical_name: 'Suggested School',
+      city: 'Portland',
+      state: 'OR',
+      country: 'US',
+      source: 'suggested',
+      has_coords: false,
+      camper_count: 2,
+    }
+
+    mockUseAllCanonicals.mockReturnValue({
+      data: { results: [suggestedEntry] },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Suggested School',
+        city: 'Portland',
+        state: 'OR',
+        country: 'US',
+        sources: [
+          { original_value: 'Suggested Schl', count: 2, confidence: 0.85, state_distribution: {} },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(
+      <CanonicalReferenceList
+        category="school"
+        year={2025}
+        onReassignSource={vi.fn()}
+        onReject={onReject}
+      />
+    )
+
+    const rows = screen.getAllByTestId('canonical-row')
+    await user.click(rows[0]!)
+    await user.click(screen.getByRole('button', { name: /reject/i }))
+
+    expect(onReject).toHaveBeenCalledWith(suggestedEntry)
+  })
+
+  // ---------- Task 11: Merge button ----------
+
+  it('shows merge button on canonical rows', () => {
+    render(
+      <CanonicalReferenceList
+        category="school"
+        year={2025}
+        onReassignSource={vi.fn()}
+        onMerge={vi.fn()}
+      />
+    )
+
+    const mergeButtons = screen.getAllByRole('button', { name: /merge/i })
+    // Should have one merge button per canonical row
+    expect(mergeButtons).toHaveLength(entries.length)
+  })
+
+  it('calls onMerge callback when merge button clicked', async () => {
+    const onMerge = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <CanonicalReferenceList
+        category="school"
+        year={2025}
+        onReassignSource={vi.fn()}
+        onMerge={onMerge}
+      />
+    )
+
+    // Click the merge button on the first row (Riverside Elementary in popular sort)
+    const mergeButtons = screen.getAllByRole('button', { name: /merge/i })
+    await user.click(mergeButtons[0]!)
+
+    expect(onMerge).toHaveBeenCalledWith(entries[0])
+  })
+
+  it('does not show merge button when onMerge is not provided', () => {
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument()
+  })
+
+  it('shows inferred location text for suggested canonicals', async () => {
+    const suggestedEntry: CanonicalEntry = {
+      canonical_name: 'Suggested School',
+      city: 'Portland',
+      state: 'OR',
+      country: 'US',
+      source: 'suggested',
+      has_coords: false,
+      camper_count: 2,
+    }
+
+    mockUseAllCanonicals.mockReturnValue({
+      data: { results: [suggestedEntry] },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Suggested School',
+        city: 'Portland',
+        state: 'OR',
+        country: 'US',
+        sources: [
+          { original_value: 'Suggested Schl', count: 2, confidence: 0.85, state_distribution: {} },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    const rows = screen.getAllByTestId('canonical-row')
+    await user.click(rows[0]!)
+
+    expect(screen.getByText('Inferred: Portland, OR')).toBeInTheDocument()
   })
 })

@@ -3,11 +3,19 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { AlertCircle, MapPin } from 'lucide-react'
 import { SUB_TABS, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
 import type { GeoCategory } from '../geoConstants'
-import { useGeoGaps, useBatchResolveCoords, useGeoPagePrefetch } from '../../../hooks/useGeoData'
+import {
+  useGeoGaps,
+  useBatchResolveCoords,
+  useGeoPagePrefetch,
+  useApproveSuggested,
+  useRejectSuggested,
+} from '../../../hooks/useGeoData'
+import type { CanonicalEntry } from '../../../services/geoService'
 import { NonCanonicalsPanel } from './NonCanonicalsPanel'
 import { AddCoordsPanel } from './AddCoordsPanel'
 import { CanonicalReferenceList } from './CanonicalReferenceList'
 import { ResolveDialog } from './ResolveDialog'
+import { MergeDialog } from './MergeDialog'
 import { useYear } from '../../../hooks/useCurrentYear'
 
 interface ResolveDialogState {
@@ -36,11 +44,17 @@ export function GeoManagementPage() {
     gapName: '',
     gapType: '',
   })
+  const [mergeDialog, setMergeDialog] = useState<{
+    open: boolean
+    sourceCanonical: string
+  }>({ open: false, sourceCanonical: '' })
 
   const { data: gaps, isLoading, isError } = useGeoGaps(category, year, activeOnly)
   useGeoPagePrefetch(category, year, activeOnly)
   const totalGaps = gaps?.total_gaps ?? 0
   const batchResolve = useBatchResolveCoords(category, year)
+  const approveMutation = useApproveSuggested(category, year)
+  const rejectMutation = useRejectSuggested(category, year)
 
   const nonCanonicalsCount =
     (gaps?.non_canonical_grouped.length ?? 0) + (gaps?.non_canonical_ungrouped.length ?? 0)
@@ -57,6 +71,23 @@ export function GeoManagementPage() {
   const handleBatchResolve = useCallback(() => {
     void batchResolve.mutateAsync()
   }, [batchResolve])
+
+  function handleMerge(entry: CanonicalEntry) {
+    setMergeDialog({ open: true, sourceCanonical: entry.canonical_name })
+  }
+
+  function handleApprove(entry: CanonicalEntry) {
+    approveMutation.mutate({
+      canonicalName: entry.canonical_name,
+      city: entry.city,
+      state: entry.state,
+      country: entry.country,
+    })
+  }
+
+  function handleReject(entry: CanonicalEntry) {
+    rejectMutation.mutate({ canonicalName: entry.canonical_name })
+  }
 
   // Default redirect
   useEffect(() => {
@@ -219,6 +250,11 @@ export function GeoManagementPage() {
             onReassignSource={(originalValue) =>
               handleOpenResolve(originalValue, 'non_canonical_grouped')
             }
+            onMerge={handleMerge}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            approvePending={approveMutation.isPending}
+            rejectPending={rejectMutation.isPending}
           />
         </div>
       </div>
@@ -246,6 +282,15 @@ export function GeoManagementPage() {
         onClose={handleCloseResolve}
         gapName={resolveDialog.gapName}
         gapType={resolveDialog.gapType}
+        category={category}
+        year={year}
+      />
+
+      {/* Merge dialog */}
+      <MergeDialog
+        open={mergeDialog.open}
+        onClose={() => setMergeDialog({ open: false, sourceCanonical: '' })}
+        sourceCanonical={mergeDialog.sourceCanonical}
         category={category}
         year={year}
       />

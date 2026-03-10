@@ -5,15 +5,29 @@
  * lazy-loaded source variants, and [Fix] buttons for fuzzy matches.
  */
 import { useState, useMemo } from 'react'
-import { Search, Compass, ArrowDownWideNarrow, ArrowDownAZ, Wrench } from 'lucide-react'
+import {
+  Search,
+  Compass,
+  ArrowDownWideNarrow,
+  ArrowDownAZ,
+  Wrench,
+  Check,
+  X,
+  GitMerge,
+} from 'lucide-react'
 import { useAllCanonicals, useCanonicalSources } from '../../../hooks/useGeoData'
 import type { CanonicalEntry, SourcesResponse } from '../../../services/geoService'
-import { sourceLabel, sourceBadgeClasses, type GeoCategory } from '../geoConstants'
+import { sourceLabel, sourceBadgeClasses, formatLocation, type GeoCategory } from '../geoConstants'
 
 export interface CanonicalReferenceListProps {
   category: GeoCategory
   year: number
   onReassignSource: (originalValue: string) => void
+  onApprove?: (entry: CanonicalEntry) => void
+  onReject?: (entry: CanonicalEntry) => void
+  onMerge?: (entry: CanonicalEntry) => void
+  approvePending?: boolean | undefined
+  rejectPending?: boolean | undefined
 }
 
 type SortMode = 'popular' | 'alpha'
@@ -22,6 +36,11 @@ export function CanonicalReferenceList({
   category,
   year,
   onReassignSource,
+  onApprove,
+  onReject,
+  onMerge,
+  approvePending,
+  rejectPending,
 }: CanonicalReferenceListProps) {
   const [searchInput, setSearchInput] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('popular')
@@ -142,6 +161,11 @@ export function CanonicalReferenceList({
               isExpanded={expandedName === entry.canonical_name}
               onToggle={() => handleToggleExpand(entry.canonical_name)}
               onReassignSource={onReassignSource}
+              onApprove={onApprove}
+              onReject={onReject}
+              onMerge={onMerge}
+              approvePending={approvePending}
+              rejectPending={rejectPending}
             />
           ))}
         </div>
@@ -171,6 +195,11 @@ interface CanonicalRowProps {
   isExpanded: boolean
   onToggle: () => void
   onReassignSource: (originalValue: string) => void
+  onApprove?: ((entry: CanonicalEntry) => void) | undefined
+  onReject?: ((entry: CanonicalEntry) => void) | undefined
+  onMerge?: ((entry: CanonicalEntry) => void) | undefined
+  approvePending?: boolean | undefined
+  rejectPending?: boolean | undefined
 }
 
 function CanonicalRow({
@@ -180,6 +209,11 @@ function CanonicalRow({
   isExpanded,
   onToggle,
   onReassignSource,
+  onApprove,
+  onReject,
+  onMerge,
+  approvePending,
+  rejectPending,
 }: CanonicalRowProps) {
   const { data: sourcesData } = useCanonicalSources(
     category,
@@ -205,10 +239,15 @@ function CanonicalRow({
           {entry.canonical_name}
         </span>
 
-        {/* City/State badge */}
-        {entry.city && entry.state && (
-          <span className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-400">
-            {entry.city}, {entry.state}
+        {/* Location badge */}
+        {(entry.city || entry.state || entry.country) && (
+          <span
+            className={`shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-400 ${
+              entry.source === 'suggested' ? 'italic' : ''
+            }`}
+          >
+            {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name) ||
+              entry.state}
           </span>
         )}
 
@@ -220,6 +259,21 @@ function CanonicalRow({
           {sourceLabel(entry.source)}
         </span>
 
+        {/* Merge button */}
+        {onMerge && (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-forest-700 hover:bg-forest-100 dark:hover:text-forest-400 dark:hover:bg-forest-800 shrink-0 rounded p-1 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation()
+              onMerge(entry)
+            }}
+            aria-label="Merge canonical"
+          >
+            <GitMerge className="h-3.5 w-3.5" />
+          </button>
+        )}
+
         {/* Camper count */}
         <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
           {entry.camper_count}
@@ -228,7 +282,15 @@ function CanonicalRow({
 
       {/* Expanded: source variants */}
       {isExpanded && sourcesData?.sources && (
-        <ExpandedSources sourcesData={sourcesData} onReassignSource={onReassignSource} />
+        <ExpandedSources
+          entry={entry}
+          sourcesData={sourcesData}
+          onReassignSource={onReassignSource}
+          onApprove={onApprove}
+          onReject={onReject}
+          approvePending={approvePending}
+          rejectPending={rejectPending}
+        />
       )}
     </div>
   )
@@ -239,11 +301,24 @@ function CanonicalRow({
 // ---------------------------------------------------------------------------
 
 interface ExpandedSourcesProps {
+  entry: CanonicalEntry
   sourcesData: SourcesResponse
   onReassignSource: (originalValue: string) => void
+  onApprove?: ((entry: CanonicalEntry) => void) | undefined
+  onReject?: ((entry: CanonicalEntry) => void) | undefined
+  approvePending?: boolean | undefined
+  rejectPending?: boolean | undefined
 }
 
-function ExpandedSources({ sourcesData, onReassignSource }: ExpandedSourcesProps) {
+function ExpandedSources({
+  entry,
+  sourcesData,
+  onReassignSource,
+  onApprove,
+  onReject,
+  approvePending,
+  rejectPending,
+}: ExpandedSourcesProps) {
   if (!sourcesData.sources.length) return null
 
   return (
@@ -264,6 +339,15 @@ function ExpandedSources({ sourcesData, onReassignSource }: ExpandedSourcesProps
               <span className="text-muted-foreground shrink-0 text-xs">
                 {Math.round(src.confidence * 100)}%
               </span>
+              {/* State distribution tags */}
+              {src.state_distribution && Object.keys(src.state_distribution).length > 0 && (
+                <span className="ml-1.5 text-xs text-stone-400">
+                  {Object.entries(src.state_distribution)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([st, ct]) => `${st}\u00a0(${ct})`)
+                    .join(' \u00b7 ')}
+                </span>
+              )}
               {isFuzzy && (
                 <button
                   type="button"
@@ -281,6 +365,43 @@ function ExpandedSources({ sourcesData, onReassignSource }: ExpandedSourcesProps
           )
         })}
       </div>
+
+      {/* Approve/Reject for suggested canonicals */}
+      {entry.source === 'suggested' && (
+        <div className="mt-2 flex items-center gap-2 border-t border-stone-100 pt-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onApprove?.(entry)
+            }}
+            disabled={approvePending}
+            className="bg-forest-600 hover:bg-forest-700 flex items-center gap-1 rounded px-2.5 py-1 text-xs text-white disabled:opacity-50"
+            aria-label="Approve suggested canonical"
+          >
+            <Check className="h-3 w-3" />
+            {approvePending ? 'Approving...' : 'Approve'}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onReject?.(entry)
+            }}
+            disabled={rejectPending}
+            className="flex items-center gap-1 rounded bg-red-50 px-2.5 py-1 text-xs text-red-600 hover:bg-red-100 disabled:opacity-50"
+            aria-label="Reject suggested canonical"
+          >
+            <X className="h-3 w-3" />
+            {rejectPending ? 'Rejecting...' : 'Reject'}
+          </button>
+          {(entry.city || entry.state || entry.country) && (
+            <span className="text-xs text-stone-400 italic">
+              Inferred: {formatLocation(entry.city, entry.state, entry.country)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
