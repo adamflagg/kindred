@@ -23,27 +23,33 @@ interface MergeDialogProps {
 export function MergeDialog({ open, onClose, sourceCanonical, category, year }: MergeDialogProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedEntry, setSelectedEntry] = useState<CanonicalEntry | null>(null)
+  const [searchAll, setSearchAll] = useState(false)
 
-  const { data: allCanonicals } = useAllCanonicals(category, year)
+  const { data: allCanonicals } = useAllCanonicals(category, year, !searchAll)
   const mergeMutation = useMergeCanonical(category, year)
 
   // Client-side filtering: exclude the source canonical and filter by query
   const filteredResults = useMemo(() => {
     const results = allCanonicals?.results ?? []
     const withoutSource = results.filter((entry) => entry.canonical_name !== sourceCanonical)
-    if (!searchQuery.trim()) return withoutSource
-    const q = searchQuery.toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
+
+    // In search-all mode, require 3+ characters before showing results
+    if (searchAll && q.length < 3) return []
+
+    if (!q) return withoutSource
     return withoutSource.filter(
       (entry) =>
         entry.canonical_name.toLowerCase().includes(q) ||
         entry.city.toLowerCase().includes(q) ||
         entry.state.toLowerCase().includes(q)
     )
-  }, [allCanonicals, searchQuery, sourceCanonical])
+  }, [allCanonicals, searchQuery, sourceCanonical, searchAll])
 
   const resetForm = useCallback(() => {
     setSearchQuery('')
     setSelectedEntry(null)
+    setSearchAll(false)
   }, [])
 
   const handleClose = useCallback(() => {
@@ -84,6 +90,18 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
             autoFocus
           />
         </div>
+
+        {/* Search all toggle */}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={searchAll}
+            onChange={(e) => setSearchAll(e.target.checked)}
+            className="checkbox-lodge"
+            aria-label="Search all"
+          />
+          <span className="text-muted-foreground">Search all</span>
+        </label>
 
         {/* Results list */}
         {filteredResults.length > 0 && (
@@ -130,9 +148,20 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
           </div>
         )}
 
-        {filteredResults.length === 0 && searchQuery.trim() && (
-          <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
-        )}
+        {filteredResults.length === 0 &&
+          searchAll &&
+          searchQuery.trim().length > 0 &&
+          searchQuery.trim().length < 3 && (
+            <p className="text-muted-foreground px-2 text-sm">
+              Type 3+ characters to search all entries.
+            </p>
+          )}
+
+        {filteredResults.length === 0 &&
+          (!searchAll || searchQuery.trim().length >= 3) &&
+          searchQuery.trim() && (
+            <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
+          )}
 
         {/* Cancel + Merge */}
         <div className="border-border flex items-center justify-end gap-3 border-t pt-3">
