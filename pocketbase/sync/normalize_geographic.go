@@ -472,6 +472,22 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	return aliasOverrides, mergeOverrides, nil
 }
 
+// geoContext holds the first-seen address state and country for a geographic value.
+// Used to pass location context to the Python normalizer for country-aware matching.
+type geoContext struct {
+	State   string `json:"state"`
+	Country string `json:"country"`
+}
+
+// valueWithContext is the JSON structure sent to the Python normalizer.
+// Each value includes its address context so the normalizer can apply
+// country-specific matching rules (e.g., skip normalization for non-US cities).
+type valueWithContext struct {
+	Value   string `json:"value"`
+	State   string `json:"state"`
+	Country string `json:"country"`
+}
+
 // normalizationLookup maps original values to normalized values per category
 type normalizationLookup struct {
 	city         map[string]string // original → normalized
@@ -498,14 +514,28 @@ func buildPythonNormalizerCommand(category, valuesJSON string) (program string, 
 	return "uv", append([]string{"run", "python"}, moduleArgs...)
 }
 
-// normalizeWithPython calls the Python geo_normalizer CLI for fuzzy matching
-func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category string) (map[string]string, error) {
-	if len(values) == 0 {
+// normalizeWithPython calls the Python geo_normalizer CLI for fuzzy matching.
+// It sends context tuples (value + state + country) so the normalizer can apply
+// country-aware matching rules.
+func (n *NormalizeGeographicSync) normalizeWithPython(
+	valuesWithContext map[string]geoContext, category string,
+) (map[string]string, error) {
+	if len(valuesWithContext) == 0 {
 		return make(map[string]string), nil
 	}
 
+	// Build context array for JSON
+	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
+	for value, ctx := range valuesWithContext {
+		contextValues = append(contextValues, valueWithContext{
+			Value:   value,
+			State:   ctx.State,
+			Country: ctx.Country,
+		})
+	}
+
 	// Serialize values to JSON
-	valuesJSON, err := json.Marshal(values)
+	valuesJSON, err := json.Marshal(contextValues)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling values: %w", err)
 	}
@@ -563,20 +593,26 @@ func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category 
 // buildNormalizationLookup builds lookup maps from unique values
 // Uses Python RapidFuzz for advanced fuzzy matching
 func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) (*normalizationLookup, error) {
-	// Collect unique values per category
-	uniqueCities := make(map[string]bool)
-	uniqueSchools := make(map[string]bool)
-	uniqueCongregations := make(map[string]bool)
+	// Collect unique values per category WITH first-seen context
+	uniqueCities := make(map[string]geoContext)
+	uniqueSchools := make(map[string]geoContext)
+	uniqueCongregations := make(map[string]geoContext)
 
 	for _, d := range data {
 		if d.City != "" {
-			uniqueCities[d.City] = true
+			if _, exists := uniqueCities[d.City]; !exists {
+				uniqueCities[d.City] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			}
 		}
 		if d.School != "" {
-			uniqueSchools[d.School] = true
+			if _, exists := uniqueSchools[d.School]; !exists {
+				uniqueSchools[d.School] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			}
 		}
 		if d.Congregation != "" {
-			uniqueCongregations[d.Congregation] = true
+			if _, exists := uniqueCongregations[d.Congregation]; !exists {
+				uniqueCongregations[d.Congregation] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			}
 		}
 	}
 
@@ -593,29 +629,24 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 		congregation: make(map[string]string),
 	}
 
-	// Convert maps to slices for Python normalizer
-	cityValues := mapKeysToSlice(uniqueCities)
-	schoolValues := mapKeysToSlice(uniqueSchools)
-	congregationValues := mapKeysToSlice(uniqueCongregations)
-
-	if len(cityValues) > 0 {
-		result, err := n.normalizeWithPython(cityValues, categoryCity)
+	if len(uniqueCities) > 0 {
+		result, err := n.normalizeWithPython(uniqueCities, categoryCity)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
 		lookup.city = result
 	}
 
-	if len(schoolValues) > 0 {
-		result, err := n.normalizeWithPython(schoolValues, categorySchool)
+	if len(uniqueSchools) > 0 {
+		result, err := n.normalizeWithPython(uniqueSchools, categorySchool)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing schools: %w", err)
 		}
 		lookup.school = result
 	}
 
-	if len(congregationValues) > 0 {
-		result, err := n.normalizeWithPython(congregationValues, categoryCongregation)
+	if len(uniqueCongregations) > 0 {
+		result, err := n.normalizeWithPython(uniqueCongregations, categoryCongregation)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing congregations: %w", err)
 		}
@@ -623,15 +654,6 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	return lookup, nil
-}
-
-// mapKeysToSlice converts a map[string]bool to a []string
-func mapKeysToSlice(m map[string]bool) []string {
-	result := make([]string, 0, len(m))
-	for k := range m {
-		result = append(result, k)
-	}
-	return result
 }
 
 // createPersonSessionMappings creates mappings for each person+session.

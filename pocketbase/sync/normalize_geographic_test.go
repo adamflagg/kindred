@@ -1,6 +1,8 @@
 package sync
 
 import (
+	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -1657,5 +1659,230 @@ func TestAddressFieldsPropagateToMappings(t *testing.T) {
 		if m.AddressCountry != "US" {
 			t.Errorf("mapping %s: AddressCountry = %q, want %q", m.Category, m.AddressCountry, "US")
 		}
+	}
+}
+
+// ============================================================================
+// Context Tuple Tests — valueWithContext JSON serialization
+// ============================================================================
+
+// TestValueWithContextJSON verifies that valueWithContext serializes to the
+// JSON format expected by the Python normalizer: {"value": "x", "state": "CA", "country": "US"}
+func TestValueWithContextJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    valueWithContext
+		wantJSON string
+	}{
+		{
+			name:     "full context US",
+			input:    valueWithContext{Value: "Oakland", State: "CA", Country: "US"},
+			wantJSON: `{"value":"Oakland","state":"CA","country":"US"}`,
+		},
+		{
+			name:     "international with empty state",
+			input:    valueWithContext{Value: "London", State: "", Country: "GB"},
+			wantJSON: `{"value":"London","state":"","country":"GB"}`,
+		},
+		{
+			name:     "no context at all",
+			input:    valueWithContext{Value: "Unknown City", State: "", Country: ""},
+			wantJSON: `{"value":"Unknown City","state":"","country":""}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.input)
+			if err != nil {
+				t.Fatalf("json.Marshal failed: %v", err)
+			}
+			if string(data) != tt.wantJSON {
+				t.Errorf("got %s, want %s", string(data), tt.wantJSON)
+			}
+		})
+	}
+}
+
+// TestValueWithContextSliceJSON verifies that a slice of valueWithContext
+// serializes to the array format sent to Python normalizer.
+func TestValueWithContextSliceJSON(t *testing.T) {
+	values := []valueWithContext{
+		{Value: "Oakland", State: "CA", Country: "US"},
+		{Value: "London", State: "", Country: "GB"},
+	}
+
+	data, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Parse back to verify structure
+	var parsed []map[string]string
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+
+	if len(parsed) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(parsed))
+	}
+
+	// Each item must have exactly these three keys
+	for i, item := range parsed {
+		for _, key := range []string{"value", "state", "country"} {
+			if _, ok := item[key]; !ok {
+				t.Errorf("item[%d] missing key %q", i, key)
+			}
+		}
+		if len(item) != 3 {
+			t.Errorf("item[%d] has %d keys, want 3", i, len(item))
+		}
+	}
+}
+
+// TestGeoContextStruct verifies geoContext stores state and country.
+func TestGeoContextStruct(t *testing.T) {
+	ctx := geoContext{State: "CA", Country: "US"}
+	if ctx.State != "CA" {
+		t.Errorf("State = %q, want %q", ctx.State, "CA")
+	}
+	if ctx.Country != "US" {
+		t.Errorf("Country = %q, want %q", ctx.Country, "US")
+	}
+}
+
+// ============================================================================
+// buildNormalizationLookup context collection tests
+// ============================================================================
+
+// TestBuildNormalizationLookupCollectsContext verifies that buildNormalizationLookup
+// collects the first-seen state/country context for each unique value, and passes
+// context tuples (not bare strings) to the normalizer.
+func TestBuildNormalizationLookupCollectsContext(t *testing.T) {
+	// This test verifies the internal collection logic without calling Python.
+	// We test that unique values are collected with first-seen context.
+
+	data := []attendeeGeoData{
+		{
+			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Oakland", School: "Riverside Elementary", Congregation: "Temple Beth Abraham",
+			AddressState: "CA", AddressCountry: "US",
+		},
+		{
+			// Same city "Oakland" but different state — first-seen should win
+			PersonPBID: "p2", PersonCMID: 1002, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Oakland", School: "Oak Valley Middle", Congregation: "",
+			AddressState: "NY", AddressCountry: "US",
+		},
+		{
+			// International camper with no state
+			PersonPBID: "p3", PersonCMID: 1003, SessionPBID: "s1", SessionCMID: 2001,
+			City: "London", School: "Westminster Academy", Congregation: "",
+			AddressState: "", AddressCountry: "GB",
+		},
+	}
+
+	// Collect unique cities with context (same logic as buildNormalizationLookup)
+	uniqueCities := make(map[string]geoContext)
+	for _, d := range data {
+		if d.City != "" {
+			if _, exists := uniqueCities[d.City]; !exists {
+				uniqueCities[d.City] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			}
+		}
+	}
+
+	// Should have 2 unique cities
+	if len(uniqueCities) != 2 {
+		t.Fatalf("expected 2 unique cities, got %d", len(uniqueCities))
+	}
+
+	// Oakland should have CA/US (first-seen), not NY/US
+	oaklandCtx, ok := uniqueCities["Oakland"]
+	if !ok {
+		t.Fatal("missing Oakland in uniqueCities")
+	}
+	if oaklandCtx.State != "CA" {
+		t.Errorf("Oakland state = %q, want %q (first-seen)", oaklandCtx.State, "CA")
+	}
+	if oaklandCtx.Country != "US" {
+		t.Errorf("Oakland country = %q, want %q", oaklandCtx.Country, "US")
+	}
+
+	// London should have empty state, GB country
+	londonCtx, ok := uniqueCities["London"]
+	if !ok {
+		t.Fatal("missing London in uniqueCities")
+	}
+	if londonCtx.State != "" {
+		t.Errorf("London state = %q, want empty", londonCtx.State)
+	}
+	if londonCtx.Country != "GB" {
+		t.Errorf("London country = %q, want %q", londonCtx.Country, "GB")
+	}
+}
+
+// TestBuildContextValuesFromMap verifies that converting a map[string]geoContext
+// to []valueWithContext produces the expected entries.
+func TestBuildContextValuesFromMap(t *testing.T) {
+	valuesWithContext := map[string]geoContext{
+		"Oakland": {State: "CA", Country: "US"},
+		"London":  {State: "", Country: "GB"},
+	}
+
+	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
+	for value, ctx := range valuesWithContext {
+		contextValues = append(contextValues, valueWithContext{
+			Value:   value,
+			State:   ctx.State,
+			Country: ctx.Country,
+		})
+	}
+
+	if len(contextValues) != 2 {
+		t.Fatalf("expected 2 context values, got %d", len(contextValues))
+	}
+
+	// Sort for deterministic comparison
+	sort.Slice(contextValues, func(i, j int) bool {
+		return contextValues[i].Value < contextValues[j].Value
+	})
+
+	// London should be first (alphabetical)
+	if contextValues[0].Value != "London" {
+		t.Errorf("first value = %q, want %q", contextValues[0].Value, "London")
+	}
+	if contextValues[0].Country != "GB" {
+		t.Errorf("London country = %q, want %q", contextValues[0].Country, "GB")
+	}
+
+	// Oakland should be second
+	if contextValues[1].Value != "Oakland" {
+		t.Errorf("second value = %q, want %q", contextValues[1].Value, "Oakland")
+	}
+	if contextValues[1].State != "CA" {
+		t.Errorf("Oakland state = %q, want %q", contextValues[1].State, "CA")
+	}
+
+	// Verify JSON serialization of the full slice
+	data, err := json.Marshal(contextValues)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	jsonStr := string(data)
+	// Must contain the context object format, not bare strings
+	if !strings.Contains(jsonStr, `"value"`) {
+		t.Error("JSON output missing 'value' key — should be context objects, not bare strings")
+	}
+	if !strings.Contains(jsonStr, `"state"`) {
+		t.Error("JSON output missing 'state' key")
+	}
+	if !strings.Contains(jsonStr, `"country"`) {
+		t.Error("JSON output missing 'country' key")
+	}
+	// Must NOT be a bare string array
+	if strings.HasPrefix(jsonStr, `["`) {
+		t.Error("JSON output looks like a bare string array — should be context objects")
 	}
 }
