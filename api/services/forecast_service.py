@@ -29,6 +29,49 @@ class ForecastService:
     def __init__(self, repository: MetricsRepository) -> None:
         self.repository = repository
 
+    async def get_filtered_snapshot_dates(self, year: int) -> list[str]:
+        """Return snapshot dates filtered to registration anchor + subsequent Mondays.
+
+        Dates are filtered to:
+        1. The registration anchor date (priority_reg_date or early_reg_date)
+        2. Every subsequent Monday
+        3. Capped at July 31 of the camp year
+        4. Only dates that have actual snapshot data
+
+        Returns dates sorted descending (newest first).
+        """
+        from datetime import date, timedelta
+
+        reg_dates = await self.repository.fetch_registration_dates(year)
+
+        # Find anchor date
+        anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date")
+        if not anchor_str:
+            return []
+        anchor_str = anchor_str.split("T")[0].split(" ")[0]
+        anchor = date.fromisoformat(anchor_str)
+
+        # Cap at July 31 of the camp year
+        cap = date(year, 7, 31)
+
+        # Build set of valid dates: anchor + every Monday from first Monday after anchor through cap
+        valid_dates: set[str] = {anchor_str}
+        # Find first Monday after anchor (if anchor is Monday, start from next week)
+        days_until_monday = (7 - anchor.weekday()) % 7
+        if days_until_monday == 0:
+            next_monday = anchor + timedelta(days=7)
+        else:
+            next_monday = anchor + timedelta(days=days_until_monday)
+
+        current = next_monday
+        while current <= cap:
+            valid_dates.add(current.isoformat())
+            current += timedelta(days=7)
+
+        # Intersect with actual snapshot dates
+        all_dates = await self.repository.fetch_available_snapshot_dates(year)
+        return [d for d in all_dates if d in valid_dates]
+
     async def calculate_forecast(
         self,
         year: int = 2026,
