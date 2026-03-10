@@ -42,6 +42,7 @@ export function ResolveDialog({
 
   // Mode A state
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchAll, setSearchAll] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<CanonicalEntry | null>(null)
   const [newCanonicalName, setNewCanonicalName] = useState('')
   const [newCity, setNewCity] = useState('')
@@ -51,24 +52,29 @@ export function ResolveDialog({
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
 
-  const { data: allCanonicals } = useAllCanonicals(category, year)
+  const { data: allCanonicals } = useAllCanonicals(category, year, !searchAll)
   const createOverride = useCreateOverride(category, year)
 
   // Client-side filtering of prefetched canonicals
   const filteredResults = useMemo(() => {
     const results = allCanonicals?.results ?? []
-    if (!searchQuery.trim()) return results
-    const q = searchQuery.toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
+
+    // In search-all mode, require 3+ characters before showing results
+    if (searchAll && q.length < 3) return []
+
+    if (!q) return results
     return results.filter(
       (entry) =>
         entry.canonical_name.toLowerCase().includes(q) ||
         entry.city.toLowerCase().includes(q) ||
         entry.state.toLowerCase().includes(q)
     )
-  }, [allCanonicals, searchQuery])
+  }, [allCanonicals, searchQuery, searchAll])
 
   const resetForm = useCallback(() => {
     setSearchQuery('')
+    setSearchAll(false)
     setSelectedEntry(null)
     setShowCreateForm(false)
     setNewCanonicalName('')
@@ -202,6 +208,18 @@ export function ResolveDialog({
             />
           </div>
 
+          {/* Search all toggle */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={searchAll}
+              onChange={(e) => setSearchAll(e.target.checked)}
+              className="checkbox-lodge"
+              aria-label="Search all"
+            />
+            <span className="text-muted-foreground">Search all</span>
+          </label>
+
           {/* Results list */}
           {filteredResults.length > 0 && (
             <div className="max-h-48 space-y-1 overflow-y-auto">
@@ -242,9 +260,20 @@ export function ResolveDialog({
             </div>
           )}
 
-          {filteredResults.length === 0 && searchQuery.trim() && (
-            <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
-          )}
+          {filteredResults.length === 0 &&
+            searchAll &&
+            searchQuery.trim().length > 0 &&
+            searchQuery.trim().length < 3 && (
+              <p className="text-muted-foreground px-2 text-sm">
+                Type 3+ characters to search all entries.
+              </p>
+            )}
+
+          {filteredResults.length === 0 &&
+            (!searchAll || searchQuery.trim().length >= 3) &&
+            searchQuery.trim() && (
+              <p className="text-muted-foreground px-2 text-sm">No matching entries found.</p>
+            )}
 
           {/* Save selected + Create new */}
           <div className="border-border flex items-center justify-between border-t pt-3">
