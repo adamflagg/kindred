@@ -373,9 +373,13 @@ describe('CanonicalReferenceList', () => {
     const rows = screen.getAllByTestId('canonical-row')
     await user.click(rows[0]!)
 
-    // State distribution tags should be visible (non-breaking space between state and count)
-    expect(screen.getByText(/CA\u00a0\(5\)/)).toBeInTheDocument()
-    expect(screen.getByText(/OR\u00a0\(2\)/)).toBeInTheDocument()
+    // Source variants should appear
+    expect(screen.getByText('Source Variants')).toBeInTheDocument()
+
+    // State distribution tags should be visible
+    // Uses non-breaking space (\u00a0) in source, but testing-library normalizes to regular space
+    expect(screen.getByText(/CA \(5\).*OR \(2\)/)).toBeInTheDocument()
+    expect(screen.getByText(/^CA \(5\)$/)).toBeInTheDocument()
   })
 
   it('shows country in location badge for non-US entries', () => {
