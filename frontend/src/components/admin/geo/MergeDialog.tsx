@@ -138,7 +138,12 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
                     <div className="text-foreground font-medium">{entry.canonical_name}</div>
                     {(entry.city || entry.state || entry.country) && (
                       <div className="text-muted-foreground text-xs">
-                        {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name)}
+                        {formatLocation(
+                          entry.city,
+                          entry.state,
+                          entry.country,
+                          entry.canonical_name
+                        )}
                       </div>
                     )}
                   </div>

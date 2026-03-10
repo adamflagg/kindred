@@ -246,7 +246,8 @@ function CanonicalRow({
               entry.source === 'suggested' ? 'italic' : ''
             }`}
           >
-            {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name) || entry.state}
+            {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name) ||
+              entry.state}
           </span>
         )}
 
