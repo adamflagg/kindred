@@ -642,6 +642,92 @@ class GeoService:
             override_id,
         )
 
+    async def merge_canonical(self, source_name: str, target_name: str, category: str, year: int) -> int:
+        """Merge source canonical into target.
+
+        1. Create merge override (geo_overrides with override_type="merge")
+        2. Update all normalized_mappings from source -> target
+        3. Return count of updated mappings
+        """
+        # Create merge override
+        await asyncio.to_thread(
+            self.pb.collection("geo_overrides").create,
+            {
+                "category": category,
+                "override_type": "merge",
+                "canonical_name": source_name,
+                "merged_into": target_name,
+                "year": year,
+            },
+        )
+
+        # Update all mappings
+        mappings: list[Any] = await asyncio.to_thread(
+            self.pb.collection("normalized_mappings").get_full_list,
+            query_params={"filter": f'category = "{category}" && year = {year} && normalized_value = "{source_name}"'},
+        )
+
+        count = 0
+        for m in mappings:
+            await asyncio.to_thread(
+                self.pb.collection("normalized_mappings").update,
+                m.id,
+                {"normalized_value": target_name},
+            )
+            count += 1
+
+        return count
+
+    async def approve_suggested(
+        self,
+        canonical_name: str,
+        category: str,
+        year: int,
+        city: str = "",
+        state: str = "",
+        country: str = "",
+    ) -> None:
+        """Approve a suggested canonical by creating a canonical override."""
+        await asyncio.to_thread(
+            self.pb.collection("geo_overrides").create,
+            {
+                "category": category,
+                "override_type": "canonical",
+                "canonical_name": canonical_name,
+                "city": city,
+                "state": state,
+                "year": year,
+            },
+        )
+
+    async def reject_suggested(
+        self,
+        canonical_name: str,
+        category: str,
+        year: int,
+    ) -> int:
+        """Reject a suggested canonical by dissolving its cluster.
+
+        Deletes all normalized_mappings pointing at this canonical,
+        so source variants reappear as unresolved gaps.
+        """
+        mappings: list[Any] = await asyncio.to_thread(
+            self.pb.collection("normalized_mappings").get_full_list,
+            query_params={
+                "filter": f'category = "{category}" && year = {year} && normalized_value = "{canonical_name}"'
+            },
+        )
+
+        count = 0
+        for m in mappings:
+            await asyncio.to_thread(
+                self.pb.collection("normalized_mappings").delete,
+                m.id,
+            )
+            count += 1
+
+        return count
+
     def _check_name_ambiguity(self, category: str, canonical_name: str) -> bool:
         """Check if a canonical name exists in multiple locations in static data."""
         location_data = _load_static_location(category)

@@ -21,11 +21,16 @@ from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
 from ..schemas.geo import (
+    ApproveRequest,
     BatchResolveResponse,
     CanonicalSearchResponse,
     GapsResponse,
+    MergeRequest,
+    MergeResponse,
     OverrideCreate,
     OverrideResponse,
+    RejectRequest,
+    RejectResponse,
     SourceMappingsResponse,
     SourcesResponse,
 )
@@ -212,3 +217,44 @@ async def delete_override(
     service = _get_service()
     await service.delete_override(override_id)
     return Response(status_code=204)
+
+
+# ============================================================================
+# Canonical Action Endpoints (Merge, Approve, Reject)
+# ============================================================================
+
+
+@router.post("/canonicals/{canonical_name}/merge")
+async def merge_canonical(
+    canonical_name: str,
+    body: MergeRequest,
+    _: None = Depends(require_permission(Permission.METRICS_GEO)),
+    service: GeoService = Depends(_get_service),
+) -> MergeResponse:
+    """Merge one canonical into another, reassigning all mappings."""
+    count = await service.merge_canonical(canonical_name, body.target, body.category, body.year)
+    return MergeResponse(merged_count=count)
+
+
+@router.post("/canonicals/{canonical_name}/approve")
+async def approve_suggested(
+    canonical_name: str,
+    body: ApproveRequest,
+    _: None = Depends(require_permission(Permission.METRICS_GEO)),
+    service: GeoService = Depends(_get_service),
+) -> dict[str, str]:
+    """Approve a suggested canonical by creating a canonical override."""
+    await service.approve_suggested(canonical_name, body.category, body.year, body.city, body.state, body.country)
+    return {"status": "approved"}
+
+
+@router.post("/canonicals/{canonical_name}/reject")
+async def reject_suggested(
+    canonical_name: str,
+    body: RejectRequest,
+    _: None = Depends(require_permission(Permission.METRICS_GEO)),
+    service: GeoService = Depends(_get_service),
+) -> RejectResponse:
+    """Reject a suggested canonical by dissolving its cluster."""
+    count = await service.reject_suggested(canonical_name, body.category, body.year)
+    return RejectResponse(dissolved_count=count)

@@ -132,6 +132,43 @@ class OverrideResponse(BaseModel):
     )
 
 
+class MergeRequest(BaseModel):
+    """Request body for merging one canonical into another."""
+
+    target: str = Field(description="Target canonical name to merge into")
+    category: str = Field(description="Category: city, school, or congregation")
+    year: int = Field(description="Year scope")
+
+
+class MergeResponse(BaseModel):
+    """Response for canonical merge operation."""
+
+    merged_count: int = Field(description="Number of mappings reassigned")
+
+
+class ApproveRequest(BaseModel):
+    """Request body for approving a suggested canonical."""
+
+    category: str = Field(description="Category: city, school, or congregation")
+    year: int = Field(description="Year scope")
+    city: str = Field(default="", description="Confirmed city")
+    state: str = Field(default="", description="Confirmed state")
+    country: str = Field(default="", description="Confirmed country")
+
+
+class RejectRequest(BaseModel):
+    """Request body for rejecting a suggested canonical."""
+
+    category: str = Field(description="Category: city, school, or congregation")
+    year: int = Field(description="Year scope")
+
+
+class RejectResponse(BaseModel):
+    """Response for rejecting a suggested canonical."""
+
+    dissolved_count: int = Field(description="Number of mappings dissolved")
+
+
 class BatchResolveResponse(BaseModel):
     """Response for batch coordinate resolution."""
 
