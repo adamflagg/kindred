@@ -986,9 +986,9 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 	// Build person PBID → raw congregation map from attendee data
 	// (congregation comes from person_custom_values, not persons table)
 	congregationByPerson := make(map[string]string)
-	for _, d := range attendeeData {
-		if d.Congregation != "" {
-			congregationByPerson[d.PersonPBID] = d.Congregation
+	for i := range attendeeData {
+		if attendeeData[i].Congregation != "" {
+			congregationByPerson[attendeeData[i].PersonPBID] = attendeeData[i].Congregation
 		}
 	}
 
