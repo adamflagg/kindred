@@ -545,3 +545,125 @@ class TestLocationMetadata:
         # Spot check a known city
         sample = next(iter(data["location"].values()))
         assert "state" in sample
+
+
+class TestCountryAwareNormalization:
+    """Tests for country-aware normalization via normalize_values.
+
+    When values include country context, non-US entries should pass through
+    without US-specific fuzzy matching, while US entries continue to be
+    normalized as before.
+    """
+
+    def test_normalize_cities_skips_non_us(self) -> None:
+        """Non-US city passes through as-is without fuzzy matching.
+
+        'London' with country='GB' should NOT match 'London' Ohio or any
+        US city. It should pass through unchanged.
+        """
+        from bunking.geo_normalizer import normalize_values
+
+        result = normalize_values(
+            "city",
+            [{"value": "London", "state": "", "country": "GB"}],
+        )
+        assert result["London"]["canonical"] == "London"
+        assert result["London"]["confidence"] == 1.0
+
+    def test_normalize_cities_us_default(self) -> None:
+        """Empty country treated as US; normal fuzzy matching works.
+
+        A city dict with empty country should go through normal US
+        normalization (e.g., typo correction).
+        """
+        from bunking.geo_normalizer import normalize_values
+
+        result = normalize_values(
+            "city",
+            [{"value": "San Francico", "state": "CA", "country": ""}],
+        )
+        assert result["San Francico"]["canonical"] == "San Francisco"
+
+    def test_normalize_schools_skips_non_us(self) -> None:
+        """Non-US school passes through without fuzzy matching."""
+        from bunking.geo_normalizer import normalize_values
+
+        result = normalize_values(
+            "school",
+            [{"value": "Eton College", "state": "", "country": "GB"}],
+        )
+        assert result["Eton College"]["canonical"] == "Eton College"
+        assert result["Eton College"]["confidence"] == 1.0
+
+    def test_normalize_congregations_skips_non_us(self) -> None:
+        """Non-US congregation passes through without fuzzy matching."""
+        from bunking.geo_normalizer import normalize_values
+
+        result = normalize_values(
+            "congregation",
+            [{"value": "Great Synagogue of Jerusalem", "state": "", "country": "IL"}],
+        )
+        assert result["Great Synagogue of Jerusalem"]["canonical"] == "Great Synagogue of Jerusalem"
+        assert result["Great Synagogue of Jerusalem"]["confidence"] == 1.0
+
+    def test_normalize_values_backwards_compatible(self) -> None:
+        """Plain string list still works (no regression).
+
+        The existing call signature with list[str] must continue to work.
+        """
+        from bunking.geo_normalizer import normalize_values
+
+        result = normalize_values("city", ["Oakland", "oakland"])
+        assert result["Oakland"]["canonical"] == "Oakland"
+        assert result["oakland"]["canonical"] == "Oakland"
+
+    def test_normalize_values_mixed_format(self) -> None:
+        """Mix of strings and dicts in the same list.
+
+        Some callers may send a mix until migration is complete.
+        """
+        from bunking.geo_normalizer import normalize_values
+
+        result = normalize_values(
+            "city",
+            [
+                "Oakland",
+                {"value": "London", "state": "", "country": "GB"},
+                {"value": "San Francico", "state": "CA", "country": "US"},
+            ],
+        )
+        # Plain string treated as US, normal fuzzy matching
+        assert result["Oakland"]["canonical"] == "Oakland"
+        # Non-US passes through
+        assert result["London"]["canonical"] == "London"
+        assert result["London"]["confidence"] == 1.0
+        # US dict goes through normal matching
+        assert result["San Francico"]["canonical"] == "San Francisco"
+
+    def test_normalize_values_various_non_us_country_codes(self) -> None:
+        """Various non-US country codes all pass through."""
+        from bunking.geo_normalizer import normalize_values
+
+        values = [
+            {"value": "Toronto", "state": "ON", "country": "CA"},
+            {"value": "Melbourne", "state": "VIC", "country": "AU"},
+            {"value": "Tel Aviv", "state": "", "country": "IL"},
+        ]
+        result = normalize_values("city", values)
+        for item in values:
+            city = item["value"]
+            assert result[city]["canonical"] == city
+            assert result[city]["confidence"] == 1.0
+
+    def test_normalize_values_us_country_variants(self) -> None:
+        """US, USA, and UNITED STATES all treated as domestic."""
+        from bunking.geo_normalizer import normalize_values
+
+        values = [
+            {"value": "Oakland", "state": "CA", "country": "US"},
+            {"value": "Oakland", "state": "CA", "country": "USA"},
+            {"value": "Oakland", "state": "CA", "country": "United States"},
+        ]
+        # All should go through normal US normalization
+        result = normalize_values("city", values)
+        assert result["Oakland"]["canonical"] == "Oakland"
