@@ -4,7 +4,6 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useForecast } from '../../../hooks/useForecast'
 import { useSnapshotDates } from '../../../hooks/useSnapshotDates'
-import { MetricCard } from '../../../components/metrics/MetricCard'
 import { SnapshotDateSelector } from '../../../components/metrics/SnapshotDateSelector'
 import {
   buildSessionDateLookup,
@@ -72,8 +71,6 @@ function ForecastTableHeader() {
         <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">vs Prior</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">Capacity</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">Util%</th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Fee</th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
           Budget Rev
@@ -114,10 +111,6 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
         {fmtSigned(session.participants_vs_prior_year)}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.two_year_prior_count)}</td>
-      <td className="px-3 py-2 text-right text-sm">{fmt(session.capacity)}</td>
-      <td className={`px-3 py-2 text-right text-sm ${pctColor(session.utilization_pct)}`}>
-        {fmtPct(session.utilization_pct)}
-      </td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
         {fmtCurrency(session.session_fee)}
       </td>
@@ -205,73 +198,34 @@ export default function ForecastPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Registration Forecast</h2>
-        <p className="text-muted-foreground text-sm">
-          {snapshotDate
-            ? `Enrollment as of ${new Date(snapshotDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} — budget and capacity are current`
-            : `Budget goals, capacity, and revenue projections for ${currentYear}`}
-        </p>
-        <div className="mt-2 flex items-center gap-3">
-          <SnapshotDateSelector
-            snapshotDate={snapshotDate}
-            onDateChange={setSnapshotDate}
-            onClear={() => setSnapshotDate(null)}
-            availableDates={snapshotDates}
-          />
-          {snapshotDate && (
-            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-              Snapshot:{' '}
-              {new Date(snapshotDate + 'T00:00:00').toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-              })}
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 className="text-lg font-semibold">Registration Forecast</h2>
+          {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
+            <span className="text-muted-foreground text-sm">
+              <span className="font-medium text-foreground">
+                {grand_total.enrolled.toLocaleString()}/{grand_total.participant_goal.toLocaleString()}
+              </span>
+              {' enrolled'}
+              {grand_total.pct_of_goal !== null && (
+                <span className={`ml-1 font-medium ${pctColor(grand_total.pct_of_goal)}`}>
+                  ({grand_total.pct_of_goal.toFixed(1)}% of goal)
+                </span>
+              )}
             </span>
           )}
+          <div className="ml-auto">
+            <SnapshotDateSelector
+              snapshotDate={snapshotDate}
+              onDateChange={setSnapshotDate}
+              availableDates={snapshotDates}
+            />
+          </div>
         </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <MetricCard
-          title="Total Enrolled vs Goal"
-          value={grand_total.enrolled}
-          subtitle={
-            grand_total.participant_goal !== null
-              ? `Goal: ${grand_total.participant_goal.toLocaleString()}`
-              : 'No goal set'
-          }
-        />
-        <MetricCard
-          title="Overall % of Goal"
-          value={
-            grand_total.pct_of_goal !== null ? `${grand_total.pct_of_goal.toFixed(1)}%` : 'N/A'
-          }
-          subtitle={
-            grand_total.pct_of_goal !== null
-              ? `${grand_total.enrolled} / ${grand_total.participant_goal}`
-              : 'No budget configured'
-          }
-        />
-        <MetricCard
-          title="Total Capacity"
-          value={grand_total.capacity !== null ? grand_total.capacity.toLocaleString() : 'N/A'}
-          subtitle={
-            grand_total.capacity !== null ? `${allSessions.length} sessions` : 'No bunk plans'
-          }
-        />
-        <MetricCard
-          title="Overall Utilization"
-          value={
-            grand_total.utilization_pct !== null
-              ? `${grand_total.utilization_pct.toFixed(1)}%`
-              : 'N/A'
-          }
-          subtitle={
-            grand_total.capacity !== null
-              ? `${grand_total.enrolled} / ${grand_total.capacity}`
-              : 'No capacity data'
-          }
-        />
+        <p className="text-muted-foreground text-sm">
+          {snapshotDate
+            ? `Enrollment as of ${new Date(snapshotDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+            : `Budget goals and revenue projections for ${currentYear}`}
+        </p>
       </div>
 
       {/* Section tables */}
