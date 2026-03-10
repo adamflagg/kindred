@@ -296,3 +296,57 @@ describe('ResolveDialog — shared behavior', () => {
     expect(defaultProps.onClose).toHaveBeenCalled()
   })
 })
+
+// ============================================================================
+// Search All toggle
+// ============================================================================
+describe('ResolveDialog — Search All toggle', () => {
+  it('renders "Search all" checkbox unchecked by default', () => {
+    render(<ResolveDialog {...defaultProps} />)
+    const checkbox = screen.getByRole('checkbox', { name: /search all/i })
+    expect(checkbox).not.toBeChecked()
+  })
+
+  it('when search-all is on, calls useAllCanonicals with inUse=false', async () => {
+    render(<ResolveDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('checkbox', { name: /search all/i }))
+
+    expect(mockUseAllCanonicals).toHaveBeenCalledWith('school', 2025, false)
+  })
+
+  it('when search-all is on, requires 3+ chars before showing results', async () => {
+    render(<ResolveDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('checkbox', { name: /search all/i }))
+
+    // With < 3 chars, results should be hidden and hint shown
+    const input = screen.getByPlaceholderText(/search/i)
+    await user.type(input, 'Oa')
+
+    expect(screen.queryByText('Oak Valley Middle')).not.toBeInTheDocument()
+    expect(screen.getByText(/type 3\+ characters/i)).toBeInTheDocument()
+  })
+
+  it('when search-all is on, shows results after 3+ chars', async () => {
+    render(<ResolveDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('checkbox', { name: /search all/i }))
+
+    const input = screen.getByPlaceholderText(/search/i)
+    await user.type(input, 'Oak')
+
+    expect(screen.getByText('Oak Valley Middle')).toBeInTheDocument()
+  })
+
+  it('when search-all is off, shows all results without min-char restriction', () => {
+    render(<ResolveDialog {...defaultProps} />)
+
+    // Default state (search-all off): all results shown immediately
+    expect(screen.getByText('Oak Valley Middle')).toBeInTheDocument()
+    expect(screen.getByText('Riverside Elementary')).toBeInTheDocument()
+  })
+})
