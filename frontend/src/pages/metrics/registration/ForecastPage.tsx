@@ -202,8 +202,9 @@ export default function ForecastPage() {
           <h2 className="text-lg font-semibold">Registration Forecast</h2>
           {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
             <span className="text-muted-foreground text-sm">
-              <span className="font-medium text-foreground">
-                {grand_total.enrolled.toLocaleString()}/{grand_total.participant_goal.toLocaleString()}
+              <span className="text-foreground font-medium">
+                {grand_total.enrolled.toLocaleString()}/
+                {grand_total.participant_goal.toLocaleString()}
               </span>
               {' enrolled'}
               {grand_total.pct_of_goal !== null && (

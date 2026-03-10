@@ -15,7 +15,11 @@ describe('SnapshotDateSelector', () => {
 
   it('shows Today as default selection', () => {
     render(
-      <SnapshotDateSelector snapshotDate={null} onDateChange={vi.fn()} availableDates={availableDates} />
+      <SnapshotDateSelector
+        snapshotDate={null}
+        onDateChange={vi.fn()}
+        availableDates={availableDates}
+      />
     )
     const select = screen.getByRole('combobox') as HTMLSelectElement
     expect(select.value).toBe('__today__')
@@ -24,7 +28,11 @@ describe('SnapshotDateSelector', () => {
   it('calls onDateChange with date string when date selected', async () => {
     const onDateChange = vi.fn()
     render(
-      <SnapshotDateSelector snapshotDate={null} onDateChange={onDateChange} availableDates={availableDates} />
+      <SnapshotDateSelector
+        snapshotDate={null}
+        onDateChange={onDateChange}
+        availableDates={availableDates}
+      />
     )
     const select = screen.getByRole('combobox')
     await userEvent.selectOptions(select, '2025-10-20')
@@ -34,7 +42,11 @@ describe('SnapshotDateSelector', () => {
   it('calls onDateChange with null when Today selected', async () => {
     const onDateChange = vi.fn()
     render(
-      <SnapshotDateSelector snapshotDate="2025-10-20" onDateChange={onDateChange} availableDates={availableDates} />
+      <SnapshotDateSelector
+        snapshotDate="2025-10-20"
+        onDateChange={onDateChange}
+        availableDates={availableDates}
+      />
     )
     const select = screen.getByRole('combobox')
     await userEvent.selectOptions(select, '__today__')
@@ -43,7 +55,11 @@ describe('SnapshotDateSelector', () => {
 
   it('shows selected snapshot date as current value', () => {
     render(
-      <SnapshotDateSelector snapshotDate="2025-10-20" onDateChange={vi.fn()} availableDates={availableDates} />
+      <SnapshotDateSelector
+        snapshotDate="2025-10-20"
+        onDateChange={vi.fn()}
+        availableDates={availableDates}
+      />
     )
     const select = screen.getByRole('combobox') as HTMLSelectElement
     expect(select.value).toBe('2025-10-20')

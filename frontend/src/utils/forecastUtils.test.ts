@@ -245,10 +245,7 @@ describe('computeSectionTotal', () => {
   })
 
   it('rounds percentages to one decimal place', () => {
-    const total = computeSectionTotal(
-      [session({ enrolled: 33, participant_goal: 100 })],
-      'Total'
-    )
+    const total = computeSectionTotal([session({ enrolled: 33, participant_goal: 100 })], 'Total')
     expect(total.pct_of_goal).toBe(33.0)
   })
 })
