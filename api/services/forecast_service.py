@@ -31,49 +31,6 @@ class ForecastService:
     def __init__(self, repository: MetricsRepository) -> None:
         self.repository = repository
 
-    async def get_filtered_snapshot_dates(self, year: int) -> list[str]:
-        """Return snapshot dates filtered to registration anchor + subsequent Mondays.
-
-        Dates are filtered to:
-        1. The registration anchor date (priority_reg_date or early_reg_date)
-        2. Every subsequent Monday
-        3. Capped at July 31 of the camp year
-        4. Only dates that have actual snapshot data
-
-        Returns dates sorted descending (newest first).
-        """
-        reg_dates = await self.repository.fetch_registration_dates(year)
-
-        # Find anchor date
-        anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date")
-        if not anchor_str:
-            return []
-        anchor_str = anchor_str.split("T")[0].split(" ")[0]
-        anchor = date.fromisoformat(anchor_str)
-
-        # Cap at July 31 of the camp year
-        cap = date(year, 7, 31)
-        if anchor > cap:
-            return []
-
-        # Build set of valid dates: anchor + every Monday from first Monday after anchor through cap
-        valid_dates: set[str] = {anchor_str}
-        # Find first Monday after anchor (if anchor is Monday, start from next week)
-        days_until_monday = (7 - anchor.weekday()) % 7
-        if days_until_monday == 0:
-            next_monday = anchor + timedelta(days=7)
-        else:
-            next_monday = anchor + timedelta(days=days_until_monday)
-
-        current = next_monday
-        while current <= cap:
-            valid_dates.add(current.isoformat())
-            current += timedelta(days=7)
-
-        # Intersect with actual snapshot dates
-        all_dates = await self.repository.fetch_available_snapshot_dates(year)
-        return sorted([d for d in all_dates if d in valid_dates], reverse=True)
-
     async def get_week_options(self, year: int, today: date | None = None) -> list[WeekOption]:
         """Generate week-relative options from registration anchor through today.
 
@@ -123,13 +80,9 @@ class ForecastService:
         )
 
         # Build set of week milestones to show below the Today entry.
-        # Completed weeks (1 through today_week-1) plus Week 0 as an anchor landmark.
+        # All passed week boundaries (0 through today_week) as selectable milestones.
         # If today is on an exact boundary, that week is the Today entry — skip it.
-        weeks_to_show: set[int] = set(range(0, today_week))
-        # Always include Week 0 as anchor landmark when today > anchor
-        if total_days > 0:
-            weeks_to_show.add(0)
-        # Remove today's week if it's on a boundary (already the Today entry)
+        weeks_to_show: set[int] = set(range(0, today_week + 1))
         if today_on_boundary:
             weeks_to_show.discard(today_week)
 
@@ -183,6 +136,8 @@ class ForecastService:
             # Compute target date from registration anchor
             reg_dates = await self.repository.fetch_registration_dates(year)
             anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date") or ""
+            if not anchor_str:
+                raise ValueError(f"No registration anchor configured for {year}")
             season_start = datetime.strptime(anchor_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
             target_date = (season_start + timedelta(days=day_offset)).date()
 

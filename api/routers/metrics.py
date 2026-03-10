@@ -505,7 +505,7 @@ async def get_forecast(
     year: int = Query(..., description="Year to forecast"),
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
-    day_offset: int | None = Query(None, description="Days since registration anchor (week-relative mode)"),
+    day_offset: int | None = Query(None, ge=0, description="Days since registration anchor (week-relative mode)"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals and revenue projections."""

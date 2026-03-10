@@ -133,19 +133,18 @@ class TestWeekOptionsBasic:
         today = date(2025, 11, 7)
         result = await service.get_week_options(year=2026, today=today)
 
-        # Today (day 23, week 3) + Week 3 + Week 2 + Week 1 + Week 0 = 5 entries
-        # Wait: 23 days = 3 complete weeks + 2 days, so weeks 0,1,2,3 completed
-        # Actually 23 // 7 = 3, so completed weeks are 0, 1, 2 (week 3 is in progress)
-        # Today (mid-week 3) + Week 2 + Week 1 + Week 0 = 4 entries
-        assert len(result) == 4
+        # Today (day 23, mid-week 3) + Week 3 + Week 2 + Week 1 + Week 0 = 5 entries
+        # Week 3's boundary (day 21) has already passed, so it's selectable
+        assert len(result) == 5
 
         # First is today (newest)
         assert result[0].is_today is True
 
         # Then descending week numbers
-        assert result[1].week_number == 2
-        assert result[2].week_number == 1
-        assert result[3].week_number == 0
+        assert result[1].week_number == 3
+        assert result[2].week_number == 2
+        assert result[3].week_number == 1
+        assert result[4].week_number == 0
 
         # All non-today entries have is_today=False
         for entry in result[1:]:
