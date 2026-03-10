@@ -23,5 +23,14 @@ export interface ForecastResponse {
   year: number
   sessions: SessionForecast[]
   grand_total: SessionForecast
-  snapshot_date?: string | null
+  week_number: number | null
+  day_offset: number | null
+}
+
+/** A selectable week in the forecast dropdown. */
+export interface WeekOption {
+  week_number: number
+  day_offset: number
+  label: string
+  is_today: boolean
 }

@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { ForecastResponse } from '../forecast'
+import type { ForecastResponse, WeekOption } from '../forecast'
 
 describe('forecast types', () => {
   it('ForecastResponse has week_number and day_offset', () => {
-    // Construct a full ForecastResponse including new week-relative fields.
-    // After the type update, this will also be validated via `satisfies`.
     const response: ForecastResponse = {
       year: 2026,
       sessions: [],
@@ -26,23 +24,15 @@ describe('forecast types', () => {
         revenue_delta: null,
         revenue_pct: null,
       },
-      // @ts-expect-error - week_number not yet on ForecastResponse (TDD red phase)
       week_number: 22,
-      // day_offset assigned below to avoid TS error on literal
+      day_offset: 159,
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(response as any).day_offset = 159
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((response as any).week_number).toBe(22)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((response as any).day_offset).toBe(159)
+    expect(response.week_number).toBe(22)
+    expect(response.day_offset).toBe(159)
   })
 
   it('WeekOption has required fields', () => {
-    // WeekOption type will be added in the implementation commit.
-    // For now, validate the shape at runtime.
-    const opt = {
+    const opt: WeekOption = {
       week_number: 5,
       day_offset: 35,
       label: 'Week 5 · Nov 19',
