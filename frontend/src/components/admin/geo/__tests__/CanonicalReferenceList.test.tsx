@@ -18,6 +18,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Riverside Elementary',
     city: 'Oakland',
     state: 'CA',
+    country: '',
     source: 'nces',
     has_coords: true,
     camper_count: 12,
@@ -26,6 +27,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Oak Valley Middle',
     city: 'Portland',
     state: 'OR',
+    country: '',
     source: 'simplemaps',
     has_coords: true,
     camper_count: 8,
@@ -34,6 +36,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Hillcrest High',
     city: 'Denver',
     state: 'CO',
+    country: '',
     source: 'manual',
     has_coords: false,
     camper_count: 0,
@@ -42,6 +45,7 @@ const entries: CanonicalEntry[] = [
     canonical_name: 'Birchwood Academy',
     city: 'Seattle',
     state: 'WA',
+    country: '',
     source: 'pss',
     has_coords: true,
     camper_count: 5,
@@ -162,9 +166,15 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
+        country: '',
         sources: [
-          { original_value: 'Riverside Elem', count: 7, confidence: 0.92 },
-          { original_value: 'Riverside Elementary School', count: 5, confidence: 1.0 },
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+          {
+            original_value: 'Riverside Elementary School',
+            count: 5,
+            confidence: 1.0,
+            state_distribution: {},
+          },
         ],
       },
       isLoading: false,
@@ -195,9 +205,15 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
+        country: '',
         sources: [
-          { original_value: 'Riverside Elem', count: 7, confidence: 0.92 },
-          { original_value: 'Riverside Elementary School', count: 5, confidence: 1.0 },
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+          {
+            original_value: 'Riverside Elementary School',
+            count: 5,
+            confidence: 1.0,
+            state_distribution: {},
+          },
         ],
       },
       isLoading: false,
@@ -224,7 +240,10 @@ describe('CanonicalReferenceList', () => {
         canonical_name: 'Riverside Elementary',
         city: 'Oakland',
         state: 'CA',
-        sources: [{ original_value: 'Riverside Elem', count: 7, confidence: 0.92 }],
+        country: '',
+        sources: [
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+        ],
       },
       isLoading: false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -314,7 +333,7 @@ describe('CanonicalReferenceList', () => {
     expect(pssBadge).toHaveClass('bg-forest-100')
 
     const simpleBadge = screen.getByText('SimpleMaps')
-    expect(simpleBadge).toHaveClass('bg-amber-100')
+    expect(simpleBadge).toHaveClass('bg-blue-100')
 
     const manualBadge = screen.getByText('Manual')
     expect(manualBadge).toHaveClass('bg-stone-100')

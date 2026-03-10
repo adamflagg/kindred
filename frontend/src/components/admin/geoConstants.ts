@@ -15,6 +15,8 @@ export function sourceLabel(source: string): string {
       return 'SimpleMaps'
     case 'curated':
       return 'Curated'
+    case 'suggested':
+      return 'Suggested'
     case 'manual':
       return 'Manual'
     default:
@@ -29,6 +31,8 @@ export function sourceBadgeClasses(source: string): string {
     case 'pss':
       return 'bg-forest-100 text-forest-700 dark:bg-forest-800 dark:text-forest-300'
     case 'simplemaps':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+    case 'suggested':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
     case 'manual':
     case 'curated':
