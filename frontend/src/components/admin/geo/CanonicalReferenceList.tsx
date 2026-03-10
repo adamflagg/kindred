@@ -5,7 +5,16 @@
  * lazy-loaded source variants, and [Fix] buttons for fuzzy matches.
  */
 import { useState, useMemo } from 'react'
-import { Search, Compass, ArrowDownWideNarrow, ArrowDownAZ, Wrench, Check, X } from 'lucide-react'
+import {
+  Search,
+  Compass,
+  ArrowDownWideNarrow,
+  ArrowDownAZ,
+  Wrench,
+  Check,
+  X,
+  GitMerge,
+} from 'lucide-react'
 import { useAllCanonicals, useCanonicalSources } from '../../../hooks/useGeoData'
 import type { CanonicalEntry, SourcesResponse } from '../../../services/geoService'
 import { sourceLabel, sourceBadgeClasses, type GeoCategory } from '../geoConstants'
@@ -27,6 +36,7 @@ export function CanonicalReferenceList({
   onReassignSource,
   onApprove,
   onReject,
+  onMerge,
 }: CanonicalReferenceListProps) {
   const [searchInput, setSearchInput] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('popular')
@@ -149,6 +159,7 @@ export function CanonicalReferenceList({
               onReassignSource={onReassignSource}
               onApprove={onApprove}
               onReject={onReject}
+              onMerge={onMerge}
             />
           ))}
         </div>
@@ -180,6 +191,7 @@ interface CanonicalRowProps {
   onReassignSource: (originalValue: string) => void
   onApprove?: ((entry: CanonicalEntry) => void) | undefined
   onReject?: ((entry: CanonicalEntry) => void) | undefined
+  onMerge?: ((entry: CanonicalEntry) => void) | undefined
 }
 
 function CanonicalRow({
@@ -191,6 +203,7 @@ function CanonicalRow({
   onReassignSource,
   onApprove,
   onReject,
+  onMerge,
 }: CanonicalRowProps) {
   const { data: sourcesData } = useCanonicalSources(
     category,
@@ -236,6 +249,21 @@ function CanonicalRow({
         >
           {sourceLabel(entry.source)}
         </span>
+
+        {/* Merge button */}
+        {onMerge && (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-forest-700 hover:bg-forest-100 dark:hover:text-forest-400 dark:hover:bg-forest-800 shrink-0 rounded p-1 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation()
+              onMerge(entry)
+            }}
+            aria-label="Merge canonical"
+          >
+            <GitMerge className="h-3.5 w-3.5" />
+          </button>
+        )}
 
         {/* Camper count */}
         <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
