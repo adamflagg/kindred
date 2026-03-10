@@ -19,27 +19,38 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
     data: [
       {
         cm_id: 1001,
-        name: 'Session 1',
+        name: 'Taste of Camp 1',
         session_type: 'main',
-        start_date: '2026-06-15',
+        start_date: '2026-06-01',
+        end_date: '2026-06-07',
       },
       {
         cm_id: 1002,
-        name: 'Session 2',
+        name: 'Taste of Camp 2',
         session_type: 'main',
-        start_date: '2026-07-01',
+        start_date: '2026-06-08',
+        end_date: '2026-06-14',
       },
       {
         cm_id: 1003,
+        name: 'Session 1',
+        session_type: 'main',
+        start_date: '2026-06-15',
+        end_date: '2026-06-28',
+      },
+      {
+        cm_id: 1004,
         name: 'Session 2a',
         session_type: 'embedded',
         start_date: '2026-07-01',
+        end_date: '2026-07-14',
       },
       {
         cm_id: 2001,
         name: 'Teen Adventure Quest',
         session_type: 'quest',
         start_date: '2026-06-10',
+        end_date: '2026-06-16',
       },
     ],
     isLoading: false,
@@ -94,7 +105,7 @@ describe('MetricsSessionSelector', () => {
         wrapper: createWrapper('/metrics/registration?session=1001'),
       })
 
-      expect(screen.getByText('Session 1')).toBeInTheDocument()
+      expect(screen.getByText('Taste of Camp 1')).toBeInTheDocument()
     })
 
     it('should render all session options when dropdown is opened', () => {
@@ -105,8 +116,8 @@ describe('MetricsSessionSelector', () => {
       fireEvent.click(button)
 
       // All sessions should be visible
+      expect(screen.getByText('Taste of Camp 1')).toBeInTheDocument()
       expect(screen.getByText('Session 1')).toBeInTheDocument()
-      expect(screen.getByText('Session 2')).toBeInTheDocument()
       expect(screen.getByText('Session 2a')).toBeInTheDocument()
     })
 
@@ -130,12 +141,12 @@ describe('MetricsSessionSelector', () => {
       const button = screen.getByRole('button')
       fireEvent.click(button)
 
-      // Select Session 2
-      const sessionOption = screen.getByText('Session 2')
+      // Select Taste of Camp 2
+      const sessionOption = screen.getByText('Taste of Camp 2')
       fireEvent.click(sessionOption)
 
-      // Button should now show Session 2
-      expect(screen.getByRole('button')).toHaveTextContent('Session 2')
+      // Button should now show Taste of Camp 2
+      expect(screen.getByRole('button')).toHaveTextContent('Taste of Camp 2')
     })
 
     it('should clear selection when "At Camp" is selected', () => {
@@ -238,8 +249,8 @@ describe('MetricsSessionSelector', () => {
       fireEvent.click(button)
 
       // Camp sessions should be listed
+      expect(screen.getByRole('option', { name: 'Taste of Camp 1' })).toBeInTheDocument()
       expect(screen.getByRole('option', { name: 'Session 1' })).toBeInTheDocument()
-      expect(screen.getByRole('option', { name: 'Session 2' })).toBeInTheDocument()
       expect(screen.getByRole('option', { name: 'Session 2a' })).toBeInTheDocument()
 
       // Quest sessions should be listed
@@ -295,6 +306,43 @@ describe('MetricsSessionSelector', () => {
       fireEvent.click(allSummerOption)
 
       expect(screen.getByRole('button')).toHaveTextContent('All Summer')
+    })
+  })
+
+  describe('duration groups', () => {
+    it('should show duration group headers when dropdown is opened', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+      fireEvent.click(screen.getByRole('button'))
+      expect(screen.getByText('By Duration')).toBeInTheDocument()
+      expect(screen.getByText('Camp Sessions')).toBeInTheDocument()
+    })
+
+    it('should show duration options based on session dates', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+      fireEvent.click(screen.getByRole('button'))
+      expect(screen.getByRole('option', { name: '1 Week' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: '2 Week' })).toBeInTheDocument()
+    })
+
+    it('should not show duration categories with no sessions', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+      fireEvent.click(screen.getByRole('button'))
+      // No 3-week sessions in mock data
+      expect(screen.queryByRole('option', { name: '3 Week' })).not.toBeInTheDocument()
+    })
+
+    it('should show "1 Week" as button text when duration is selected', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?duration=1-week'),
+      })
+      expect(screen.getByRole('button')).toHaveTextContent('1 Week')
+    })
+
+    it('should show Quests header', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+      fireEvent.click(screen.getByRole('button'))
+      // "Quests" appears as both a ListboxOption and section header
+      expect(screen.getAllByText('Quests').length).toBeGreaterThanOrEqual(2)
     })
   })
 })

@@ -21,11 +21,12 @@ import {
   ALL_SESSION_TYPES,
   type MetricsViewMode,
 } from '../constants/sessionTypes'
-import { sortSessionsByDate } from '../utils/sessionUtils'
+import { sortSessionsByDate, groupSessionsByDuration, type DurationCategory, DURATION_CATEGORIES } from '../utils/sessionUtils'
 
 const SESSION_PARAM = 'session'
 const VIEW_PARAM = 'view'
 const COMPARE_PARAM = 'compare'
+const DURATION_PARAM = 'duration'
 
 /**
  * Parse session param from URL
@@ -35,6 +36,17 @@ function parseSessionParam(param: string | null): number | null {
   if (!param) return null
   const parsed = parseInt(param, 10)
   return isNaN(parsed) ? null : parsed
+}
+
+/**
+ * Parse duration param from URL
+ * Returns null for invalid/missing values
+ */
+function parseDurationParam(param: string | null): DurationCategory | null {
+  if (param && (DURATION_CATEGORIES as readonly string[]).includes(param)) {
+    return param as DurationCategory
+  }
+  return null
 }
 
 /**
@@ -65,6 +77,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     return parseViewParam(searchParams.get(VIEW_PARAM))
   }, [searchParams])
 
+  // Get duration from URL param
+  const selectedDuration = useMemo(() => {
+    return parseDurationParam(searchParams.get(DURATION_PARAM))
+  }, [searchParams])
+
   // Get compare year from URL param
   const compareYear = useMemo(() => {
     return parseSessionParam(searchParams.get(COMPARE_PARAM))
@@ -81,10 +98,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
   // Derive active session types based on view mode and selection
   const activeSessionTypes = useMemo(() => {
     if (selectedSessionCmId !== null) return ALL_SESSION_TYPES
+    if (selectedDuration) return CAMP_SESSION_TYPES
     if (viewMode === 'all') return ALL_SESSION_TYPES
     if (viewMode === 'quests') return QUEST_SESSION_TYPES
     return CAMP_SESSION_TYPES
-  }, [selectedSessionCmId, viewMode])
+  }, [selectedSessionCmId, selectedDuration, viewMode])
 
   const sessionTypesParam = useMemo(() => {
     return activeSessionTypes.join(',')
@@ -99,12 +117,42 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     return sortSessionsByDate(sessions.filter((s) => s.session_type === 'quest'))
   }, [sessions])
 
-  // Update URL param when session changes (clears view param)
+  // Group camp sessions by duration for dropdown
+  const durationGroups = useMemo(() => {
+    return groupSessionsByDuration(campSessions)
+  }, [campSessions])
+
+  // Duration param for API calls
+  const durationParam = selectedDuration ?? undefined
+
+  // Set duration filter (clears session and view params)
+  const setSelectedDuration = useCallback(
+    (duration: DurationCategory | null) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          newParams.delete(SESSION_PARAM)
+          newParams.delete(VIEW_PARAM)
+          if (duration) {
+            newParams.set(DURATION_PARAM, duration)
+          } else {
+            newParams.delete(DURATION_PARAM)
+          }
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
+  // Update URL param when session changes (clears view and duration params)
   const setSelectedSessionCmId = useCallback(
     (cmId: number | null) => {
       setSearchParams(
         (prev) => {
           const newParams = new URLSearchParams(prev)
+          newParams.delete(DURATION_PARAM)
           if (cmId === null) {
             newParams.delete(SESSION_PARAM)
           } else {
@@ -119,13 +167,14 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     [setSearchParams]
   )
 
-  // Set view mode (clears session param)
+  // Set view mode (clears session and duration params)
   const setViewMode = useCallback(
     (mode: MetricsViewMode) => {
       setSearchParams(
         (prev) => {
           const newParams = new URLSearchParams(prev)
           newParams.delete(SESSION_PARAM)
+          newParams.delete(DURATION_PARAM)
           if (mode === 'quests') {
             newParams.set(VIEW_PARAM, 'quests')
           } else if (mode === 'all') {
@@ -179,6 +228,10 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       sessionTypesParam,
       campSessions,
       questSessions,
+      selectedDuration,
+      setSelectedDuration,
+      durationParam,
+      durationGroups,
       expandedRetention,
       setExpandedRetention,
       compareYear,
@@ -198,6 +251,10 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       sessionTypesParam,
       campSessions,
       questSessions,
+      selectedDuration,
+      setSelectedDuration,
+      durationParam,
+      durationGroups,
       expandedRetention,
       compareYear,
       setCompareYear,
