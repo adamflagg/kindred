@@ -5,21 +5,21 @@ import type { ForecastResponse } from '../types/forecast'
 
 export function useForecast(
   year: number,
-  params: { sessionCmId?: number | null; sessionTypes?: string; snapshotDate?: string | null }
+  params: { sessionCmId?: number | null; sessionTypes?: string; dayOffset?: number | null }
 ) {
   const { fetchWithAuth } = useApiWithAuth()
 
   const searchParams = new URLSearchParams({ year: String(year) })
   if (params.sessionCmId) searchParams.set('session_cm_id', String(params.sessionCmId))
   if (params.sessionTypes) searchParams.set('session_types', params.sessionTypes)
-  if (params.snapshotDate) searchParams.set('snapshot_date', params.snapshotDate)
+  if (params.dayOffset != null) searchParams.set('day_offset', String(params.dayOffset))
 
   return useQuery({
     queryKey: queryKeys.forecast(
       year,
       params.sessionTypes,
       params.sessionCmId ?? undefined,
-      params.snapshotDate ?? undefined
+      params.dayOffset ?? undefined
     ),
     queryFn: async (): Promise<ForecastResponse> => {
       const response = await fetchWithAuth(`/api/metrics/forecast?${searchParams}`)

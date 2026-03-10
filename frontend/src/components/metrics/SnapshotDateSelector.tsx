@@ -1,47 +1,42 @@
 import { Calendar } from 'lucide-react'
+import type { WeekOption } from '../../types/forecast'
 
-interface SnapshotDateSelectorProps {
-  snapshotDate: string | null
-  onDateChange: (date: string | null) => void
-  availableDates: string[]
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+interface WeekSelectorProps {
+  dayOffset: number | null
+  onOffsetChange: (offset: number | null) => void
+  weekOptions: WeekOption[]
 }
 
 /** Value used in the <select> for live/today mode. */
 const TODAY_VALUE = '__today__'
 
 export function SnapshotDateSelector({
-  snapshotDate,
-  onDateChange,
-  availableDates,
-}: SnapshotDateSelectorProps) {
-  if (!availableDates.length) return null
+  dayOffset,
+  onOffsetChange,
+  weekOptions,
+}: WeekSelectorProps) {
+  if (!weekOptions.length) return null
+
+  // Find the today entry to use as the "live" option
+  const todayOption = weekOptions.find((o) => o.is_today)
+  const historicalOptions = weekOptions.filter((o) => !o.is_today)
 
   return (
     <div className="flex items-center gap-1.5 text-sm">
       <Calendar className="text-muted-foreground h-3.5 w-3.5" />
       <select
-        aria-label="Snapshot date"
-        value={snapshotDate ?? TODAY_VALUE}
+        aria-label="Forecast week"
+        value={dayOffset == null ? TODAY_VALUE : String(dayOffset)}
         onChange={(e) => {
           const val = e.target.value
-          onDateChange(val === TODAY_VALUE ? null : val)
+          onOffsetChange(val === TODAY_VALUE ? null : Number(val))
         }}
         className="border-border bg-background text-foreground focus:ring-primary rounded-lg border px-2 py-1 text-sm focus:ring-1 focus:outline-none"
       >
-        <option value={TODAY_VALUE}>Today</option>
-        {availableDates.map((date) => (
-          <option key={date} value={date}>
-            {formatDate(date)}
+        {todayOption && <option value={TODAY_VALUE}>{todayOption.label}</option>}
+        {historicalOptions.map((opt) => (
+          <option key={opt.day_offset} value={String(opt.day_offset)}>
+            {opt.label}
           </option>
         ))}
       </select>
