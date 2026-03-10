@@ -22,6 +22,7 @@ const defaultProps = {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
   mockUseAllCanonicals.mockReturnValue({
     data: {
       results: [
@@ -165,6 +166,30 @@ describe('MergeDialog', () => {
     // Camper counts
     expect(screen.getByText('8')).toBeInTheDocument()
     expect(screen.getByText('5')).toBeInTheDocument()
+  })
+
+  it('clears selected entry when filter changes and selection is no longer visible', async () => {
+    render(<MergeDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    // Select Oak Valley Middle
+    await user.click(screen.getByText('Oak Valley Middle'))
+    const oakButton = screen.getByText('Oak Valley Middle').closest('button')!
+    expect(oakButton).toHaveClass('ring-2')
+
+    // Type a query that excludes Oak Valley Middle
+    const input = screen.getByPlaceholderText(/search/i)
+    await user.type(input, 'Hillcrest')
+
+    // Oak Valley Middle should be gone
+    expect(screen.queryByText('Oak Valley Middle')).not.toBeInTheDocument()
+
+    // Clear the search to show all again
+    await user.clear(input)
+
+    // Oak Valley Middle should reappear but NOT be selected
+    const oakButtonAfter = screen.getByText('Oak Valley Middle').closest('button')!
+    expect(oakButtonAfter).not.toHaveClass('ring-2')
   })
 
   it('highlights selected entry', async () => {

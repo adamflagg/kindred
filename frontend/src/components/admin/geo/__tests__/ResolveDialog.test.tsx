@@ -23,6 +23,7 @@ const defaultProps = {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
   mockUseAllCanonicals.mockReturnValue({
     data: {
       results: [
@@ -30,6 +31,7 @@ beforeEach(() => {
           canonical_name: 'Oak Valley Middle',
           city: 'Oakland',
           state: 'CA',
+          country: '',
           source: 'nces',
           has_coords: true,
           camper_count: 10,
@@ -38,6 +40,7 @@ beforeEach(() => {
           canonical_name: 'Riverside Elementary',
           city: 'San Francisco',
           state: 'CA',
+          country: '',
           source: 'nces',
           has_coords: true,
           camper_count: 5,
@@ -46,6 +49,7 @@ beforeEach(() => {
           canonical_name: 'Hillcrest Academy',
           city: 'Los Angeles',
           state: 'CA',
+          country: '',
           source: 'pss',
           has_coords: true,
           camper_count: 3,
@@ -188,6 +192,32 @@ describe('ResolveDialog — Mode A (non-canonical)', () => {
     // Should be back in search mode
     expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/city/i)).not.toBeInTheDocument()
+  })
+
+  it('clears selected entry when filter changes and selection is no longer visible', async () => {
+    render(<ResolveDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    // Select Oak Valley Middle
+    await user.click(screen.getByText('Oak Valley Middle'))
+
+    // Verify selection by checking ring-2 class
+    const oakButton = screen.getByText('Oak Valley Middle').closest('button')!
+    expect(oakButton).toHaveClass('ring-2')
+
+    // Type a query that excludes Oak Valley Middle
+    const input = screen.getByPlaceholderText(/search/i)
+    await user.type(input, 'Riverside')
+
+    // Oak Valley Middle should be gone
+    expect(screen.queryByText('Oak Valley Middle')).not.toBeInTheDocument()
+
+    // Clear the search to show all again
+    await user.clear(input)
+
+    // Oak Valley Middle should reappear but NOT be selected
+    const oakButtonAfter = screen.getByText('Oak Valley Middle').closest('button')!
+    expect(oakButtonAfter).not.toHaveClass('ring-2')
   })
 
   it('shows source badge and city/state for each canonical result', async () => {

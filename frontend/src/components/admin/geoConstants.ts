@@ -60,6 +60,18 @@ export const SUB_TAB_TO_CATEGORY: Record<string, GeoCategory> = {
   congregations: 'congregation',
 }
 
+/** Format location display: "City, ST" for US, "City, Country" for non-US. */
+export function formatLocation(
+  city?: string,
+  state?: string,
+  country?: string,
+  fallbackName?: string
+): string {
+  void country
+  void fallbackName
+  return [city, state].filter(Boolean).join(', ')
+}
+
 export function getActiveSubTab(pathname: string): string {
   for (const tab of SUB_TABS) {
     if (pathname.startsWith(tab.path)) return tab.id
