@@ -14,6 +14,8 @@ export interface CanonicalReferenceListProps {
   category: GeoCategory
   year: number
   onReassignSource: (originalValue: string) => void
+  onApprove?: (entry: CanonicalEntry) => void
+  onReject?: (entry: CanonicalEntry) => void
 }
 
 type SortMode = 'popular' | 'alpha'
