@@ -48,13 +48,15 @@ type NormalizeGeographicSync struct {
 
 // attendeeGeoData holds geographic data for one attendee
 type attendeeGeoData struct {
-	PersonPBID   string
-	PersonCMID   int
-	SessionPBID  string
-	SessionCMID  int
-	School       string // from persons.school
-	City         string // from persons.address.city
-	Congregation string // from person_custom_values (HH-Name of Congregation)
+	PersonPBID     string
+	PersonCMID     int
+	SessionPBID    string
+	SessionCMID    int
+	School         string // from persons.school
+	City           string // from persons.address.city
+	Congregation   string // from person_custom_values (HH-Name of Congregation)
+	AddressState   string // from household billing_state
+	AddressCountry string // from household billing_country
 }
 
 // personSessionMapping holds a computed mapping for person+session
@@ -66,6 +68,8 @@ type personSessionMapping struct {
 	normalizedValue string
 	confidence      float64
 	year            int
+	addressState    string // from household billing_state
+	addressCountry  string // from household billing_country
 }
 
 // NewNormalizeGeographicSync creates a new normalize geographic sync service
@@ -278,6 +282,19 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			slog.Warn("Some relation expansions failed", "page", page, "errors", errs)
 		}
 
+		// Expand primary_childhood_household on person records for address state/country
+		var personRecords []*core.Record
+		for _, record := range records {
+			if pr := record.ExpandedOne("person"); pr != nil {
+				personRecords = append(personRecords, pr)
+			}
+		}
+		if len(personRecords) > 0 {
+			if errs := n.App.ExpandRecords(personRecords, []string{"primary_childhood_household"}, nil); len(errs) > 0 {
+				slog.Warn("Some household expansions failed", "page", page, "errors", errs)
+			}
+		}
+
 		for _, record := range records {
 			// Get person expand
 			personRecord := record.ExpandedOne("person")
@@ -298,6 +315,12 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 				SessionCMID: int(sessionRecord.GetFloat("cm_id")),
 				School:      personRecord.GetString("school"),
 				City:        personRecord.GetString("address_city"),
+			}
+
+			// Get address state/country from household
+			if household := personRecord.ExpandedOne("primary_childhood_household"); household != nil {
+				data.AddressState = household.GetString("billing_state")
+				data.AddressCountry = household.GetString("billing_country")
 			}
 
 			// Get congregation from person_custom_values
@@ -636,6 +659,8 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					normalizedValue: normalized,
 					confidence:      confidence,
 					year:            year,
+					addressState:    d.AddressState,
+					addressCountry:  d.AddressCountry,
 				})
 			}
 		}
@@ -653,6 +678,8 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					normalizedValue: normalized,
 					confidence:      confidence,
 					year:            year,
+					addressState:    d.AddressState,
+					addressCountry:  d.AddressCountry,
 				})
 			}
 		}
@@ -671,6 +698,8 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					normalizedValue: normalized,
 					confidence:      confidence,
 					year:            year,
+					addressState:    d.AddressState,
+					addressCountry:  d.AddressCountry,
 				})
 			}
 		}
@@ -758,6 +787,8 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 			"normalized_value": m.normalizedValue,
 			"confidence":       m.confidence,
 			"year":             year,
+			"address_state":    m.addressState,
+			"address_country":  m.addressCountry,
 		}
 
 		existing := existingMappings[key]
@@ -815,6 +846,14 @@ func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	// Compare original_value
 	newOriginal, _ := newData["original_value"].(string)
 	if existing.GetString("original_value") != newOriginal {
+		return true
+	}
+	// Compare address_state
+	if existing.GetString("address_state") != fmt.Sprint(newData["address_state"]) {
+		return true
+	}
+	// Compare address_country
+	if existing.GetString("address_country") != fmt.Sprint(newData["address_country"]) {
 		return true
 	}
 	// Compare confidence with epsilon for float precision

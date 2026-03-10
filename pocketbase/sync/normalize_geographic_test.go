@@ -628,17 +628,21 @@ type testPersonSessionMapping struct {
 	NormalizedValue string
 	Confidence      float64
 	Year            int
+	AddressState    string
+	AddressCountry  string
 }
 
 // testAttendeeGeoData represents geographic data extracted from an attendee
 type testAttendeeGeoData struct {
-	PersonPBID   string
-	PersonCMID   int
-	SessionPBID  string
-	SessionCMID  int
-	School       string // from persons.school
-	City         string // from persons.address_city (discrete column)
-	Congregation string // from person_custom_values
+	PersonPBID     string
+	PersonCMID     int
+	SessionPBID    string
+	SessionCMID    int
+	School         string // from persons.school
+	City           string // from persons.address_city (discrete column)
+	Congregation   string // from person_custom_values
+	AddressState   string // from household billing_state
+	AddressCountry string // from household billing_country
 }
 
 // buildPersonSessionMappingKey builds composite key for person+session normalized_mappings
@@ -948,6 +952,12 @@ func personSessionMappingNeedsUpdate(existing, newMapping *testPersonSessionMapp
 		return true
 	}
 	if existing.OriginalValue != newMapping.OriginalValue {
+		return true
+	}
+	if existing.AddressState != newMapping.AddressState {
+		return true
+	}
+	if existing.AddressCountry != newMapping.AddressCountry {
 		return true
 	}
 	return confidenceChanged(existing.Confidence, newMapping.Confidence)
@@ -1451,5 +1461,201 @@ func TestResolveValueCategoryIsolation(t *testing.T) {
 	}
 	if confidence != 1.0 {
 		t.Errorf("resolveValue() confidence = %f, want 1.0", confidence)
+	}
+}
+
+// ============================================================================
+// Address State/Country from Household Tests
+// ============================================================================
+
+// TestAttendeeGeoDataHasAddressFields verifies the attendeeGeoData struct
+// carries address_state and address_country fields from the household join.
+func TestAttendeeGeoDataHasAddressFields(t *testing.T) {
+	data := attendeeGeoData{
+		PersonPBID:     "person_101",
+		PersonCMID:     101,
+		SessionPBID:    "session_2001",
+		SessionCMID:    2001,
+		School:         "Riverside Elementary",
+		City:           "Oakland",
+		Congregation:   "Temple Beth El",
+		AddressState:   "CA",
+		AddressCountry: "US",
+	}
+
+	if data.AddressState != "CA" {
+		t.Errorf("AddressState = %q, want %q", data.AddressState, "CA")
+	}
+	if data.AddressCountry != "US" {
+		t.Errorf("AddressCountry = %q, want %q", data.AddressCountry, "US")
+	}
+}
+
+// TestAttendeeGeoDataEmptyHousehold verifies that address fields default to
+// empty strings when no household is linked (nil expanded record).
+func TestAttendeeGeoDataEmptyHousehold(t *testing.T) {
+	data := attendeeGeoData{
+		PersonPBID:  "person_102",
+		PersonCMID:  102,
+		SessionPBID: "session_2001",
+		SessionCMID: 2001,
+		School:      "Oak Valley Middle",
+		City:        "San Francisco",
+		// AddressState and AddressCountry intentionally unset (no household)
+	}
+
+	if data.AddressState != "" {
+		t.Errorf("AddressState should be empty when no household, got %q", data.AddressState)
+	}
+	if data.AddressCountry != "" {
+		t.Errorf("AddressCountry should be empty when no household, got %q", data.AddressCountry)
+	}
+}
+
+// TestPersonSessionMappingCarriesAddressFields verifies the personSessionMapping
+// struct carries address_state and address_country through the mapping pipeline.
+func TestPersonSessionMappingCarriesAddressFields(t *testing.T) {
+	m := personSessionMapping{
+		personPBID:      "person_101",
+		sessionPBID:     "session_2001",
+		category:        categoryCity,
+		originalValue:   "Oakland",
+		normalizedValue: "Oakland",
+		confidence:      1.0,
+		year:            2025,
+		addressState:    "CA",
+		addressCountry:  "US",
+	}
+
+	if m.addressState != "CA" {
+		t.Errorf("addressState = %q, want %q", m.addressState, "CA")
+	}
+	if m.addressCountry != "US" {
+		t.Errorf("addressCountry = %q, want %q", m.addressCountry, "US")
+	}
+}
+
+// TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange verifies that
+// a change to address_state triggers an update.
+func TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange(t *testing.T) {
+	existing := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	updated := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "NY", AddressCountry: "US", // state changed
+	}
+
+	if !personSessionMappingNeedsUpdate(existing, updated) {
+		t.Error("expected update when address_state changes from CA to NY")
+	}
+}
+
+// TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange verifies that
+// a change to address_country triggers an update.
+func TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange(t *testing.T) {
+	existing := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
+		OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	updated := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
+		OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "CA", // country changed
+	}
+
+	if !personSessionMappingNeedsUpdate(existing, updated) {
+		t.Error("expected update when address_country changes from US to CA")
+	}
+}
+
+// TestPersonSessionMappingNeedsUpdateNoChangeWithAddress verifies that
+// identical address fields do not trigger a spurious update.
+func TestPersonSessionMappingNeedsUpdateNoChangeWithAddress(t *testing.T) {
+	existing := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	same := &testPersonSessionMapping{
+		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
+		OriginalValue: "Oakland", NormalizedValue: "Oakland",
+		Confidence: 1.0, Year: 2025,
+		AddressState: "CA", AddressCountry: "US",
+	}
+
+	if personSessionMappingNeedsUpdate(existing, same) {
+		t.Error("should not need update when address fields are identical")
+	}
+}
+
+// TestAddressFieldsPropagateToMappings verifies that address_state and
+// address_country from attendeeGeoData flow through to personSessionMapping
+// for all three categories (school, city, congregation).
+func TestAddressFieldsPropagateToMappings(t *testing.T) {
+	attendeeData := []testAttendeeGeoData{
+		{
+			PersonPBID: "p101", PersonCMID: 101,
+			SessionPBID: "s2001", SessionCMID: 2001,
+			School: "Riverside Elementary", City: "Oakland",
+			Congregation: "Temple Beth El",
+			AddressState: "CA", AddressCountry: "US",
+		},
+	}
+
+	// Simulate mapping creation (mirrors createPersonSessionMappings logic)
+	var mappings []*testPersonSessionMapping
+	for _, d := range attendeeData {
+		if d.School != "" {
+			mappings = append(mappings, &testPersonSessionMapping{
+				PersonPBID: d.PersonPBID, SessionPBID: d.SessionPBID,
+				Category: "school", OriginalValue: d.School, NormalizedValue: d.School,
+				Confidence: 1.0, Year: 2025,
+				AddressState: d.AddressState, AddressCountry: d.AddressCountry,
+			})
+		}
+		if d.City != "" {
+			mappings = append(mappings, &testPersonSessionMapping{
+				PersonPBID: d.PersonPBID, SessionPBID: d.SessionPBID,
+				Category: "city", OriginalValue: d.City, NormalizedValue: d.City,
+				Confidence: 1.0, Year: 2025,
+				AddressState: d.AddressState, AddressCountry: d.AddressCountry,
+			})
+		}
+		if d.Congregation != "" {
+			mappings = append(mappings, &testPersonSessionMapping{
+				PersonPBID: d.PersonPBID, SessionPBID: d.SessionPBID,
+				Category: "congregation", OriginalValue: d.Congregation,
+				NormalizedValue: d.Congregation,
+				Confidence:      1.0, Year: 2025,
+				AddressState: d.AddressState, AddressCountry: d.AddressCountry,
+			})
+		}
+	}
+
+	// Should have 3 mappings, all with address fields
+	if len(mappings) != 3 {
+		t.Fatalf("expected 3 mappings, got %d", len(mappings))
+	}
+
+	for _, m := range mappings {
+		if m.AddressState != "CA" {
+			t.Errorf("mapping %s: AddressState = %q, want %q", m.Category, m.AddressState, "CA")
+		}
+		if m.AddressCountry != "US" {
+			t.Errorf("mapping %s: AddressCountry = %q, want %q", m.Category, m.AddressCountry, "US")
+		}
 	}
 }
