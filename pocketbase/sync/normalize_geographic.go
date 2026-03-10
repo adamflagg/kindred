@@ -341,14 +341,14 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 	withCity := 0
 	withSchool := 0
 	withCongregation := 0
-	for _, d := range result {
-		if d.City != "" {
+	for i := range result {
+		if result[i].City != "" {
 			withCity++
 		}
-		if d.School != "" {
+		if result[i].School != "" {
 			withSchool++
 		}
-		if d.Congregation != "" {
+		if result[i].Congregation != "" {
 			withCongregation++
 		}
 	}
@@ -598,7 +598,8 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	uniqueSchools := make(map[string]geoContext)
 	uniqueCongregations := make(map[string]geoContext)
 
-	for _, d := range data {
+	for i := range data {
+		d := &data[i]
 		if d.City != "" {
 			if _, exists := uniqueCities[d.City]; !exists {
 				uniqueCities[d.City] = geoContext{State: d.AddressState, Country: d.AddressCountry}
@@ -667,7 +668,8 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 ) []*personSessionMapping {
 	var mappings []*personSessionMapping
 
-	for _, d := range data {
+	for i := range data {
+		d := &data[i]
 		// School mapping
 		if d.School != "" {
 			normalized, confidence := resolveValue(

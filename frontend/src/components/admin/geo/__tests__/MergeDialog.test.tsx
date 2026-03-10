@@ -91,7 +91,10 @@ describe('MergeDialog', () => {
     // Source canonical should NOT be in the results list
     // The title has it, but the results list should not
     const resultButtons = screen.getAllByRole('button').filter((btn) => {
-      return btn.textContent?.includes('Oak Valley Middle') || btn.textContent?.includes('Hillcrest High')
+      return (
+        btn.textContent?.includes('Oak Valley Middle') ||
+        btn.textContent?.includes('Hillcrest High')
+      )
     })
     expect(resultButtons.length).toBeGreaterThan(0)
 

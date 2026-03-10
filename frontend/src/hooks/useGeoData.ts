@@ -168,8 +168,12 @@ export function useApproveSuggested(category: string, year: number) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (data: { canonicalName: string; city?: string; state?: string; country?: string }) =>
-      approveSuggested(data.canonicalName, { category, year, ...data }, fetchWithAuth),
+    mutationFn: (data: {
+      canonicalName: string
+      city?: string
+      state?: string
+      country?: string
+    }) => approveSuggested(data.canonicalName, { category, year, ...data }, fetchWithAuth),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGapsPrefix(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })

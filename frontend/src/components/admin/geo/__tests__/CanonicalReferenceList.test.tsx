@@ -643,9 +643,7 @@ describe('CanonicalReferenceList', () => {
   })
 
   it('does not show merge button when onMerge is not provided', () => {
-    render(
-      <CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />
-    )
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument()
   })

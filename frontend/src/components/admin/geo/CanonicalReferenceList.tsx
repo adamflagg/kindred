@@ -325,15 +325,14 @@ function ExpandedSources({
                 {Math.round(src.confidence * 100)}%
               </span>
               {/* State distribution tags */}
-              {src.state_distribution &&
-                Object.keys(src.state_distribution).length > 0 && (
-                  <span className="ml-1.5 text-xs text-stone-400">
-                    {Object.entries(src.state_distribution)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([st, ct]) => `${st}\u00a0(${ct})`)
-                      .join(' \u00b7 ')}
-                  </span>
-                )}
+              {src.state_distribution && Object.keys(src.state_distribution).length > 0 && (
+                <span className="ml-1.5 text-xs text-stone-400">
+                  {Object.entries(src.state_distribution)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([st, ct]) => `${st}\u00a0(${ct})`)
+                    .join(' \u00b7 ')}
+                </span>
+              )}
               {isFuzzy && (
                 <button
                   type="button"
@@ -361,7 +360,7 @@ function ExpandedSources({
               e.stopPropagation()
               onApprove?.(entry)
             }}
-            className="flex items-center gap-1 rounded bg-forest-600 px-2.5 py-1 text-xs text-white hover:bg-forest-700"
+            className="bg-forest-600 hover:bg-forest-700 flex items-center gap-1 rounded px-2.5 py-1 text-xs text-white"
             aria-label="Approve suggested canonical"
           >
             <Check className="h-3 w-3" />
@@ -380,7 +379,7 @@ function ExpandedSources({
             Reject
           </button>
           {(entry.city || entry.state) && (
-            <span className="text-xs italic text-stone-400">
+            <span className="text-xs text-stone-400 italic">
               Inferred: {entry.city}
               {entry.state ? `, ${entry.state}` : ''}
             </span>
