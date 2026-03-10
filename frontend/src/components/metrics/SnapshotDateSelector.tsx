@@ -25,6 +25,7 @@ export function SnapshotDateSelector({
     <div className="flex items-center gap-1.5 text-sm">
       <Calendar className="text-muted-foreground h-3.5 w-3.5" />
       <select
+        aria-label="Snapshot date"
         value={snapshotDate ?? TODAY_VALUE}
         onChange={(e) => {
           const val = e.target.value

@@ -17,8 +17,6 @@ function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
     pct_of_goal: null,
     prior_year_count: null,
     two_year_prior_count: null,
-    capacity: null,
-    utilization_pct: null,
     participants_vs_budget: null,
     participants_vs_prior_year: null,
     budget_revenue: null,
@@ -64,22 +62,6 @@ describe('computeSectionTotal', () => {
   })
 
   // --- null-aware aggregation ---
-
-  it('returns null for capacity when all sessions have null capacity', () => {
-    const total = computeSectionTotal(
-      [session({ capacity: null }), session({ capacity: null })],
-      'Total'
-    )
-    expect(total.capacity).toBeNull()
-  })
-
-  it('sums capacity treating null as 0 when at least one session has a value', () => {
-    const total = computeSectionTotal(
-      [session({ capacity: 100 }), session({ capacity: null })],
-      'Total'
-    )
-    expect(total.capacity).toBe(100)
-  })
 
   it('returns null for participant_goal when all sessions have null goal', () => {
     const total = computeSectionTotal(
@@ -165,25 +147,6 @@ describe('computeSectionTotal', () => {
     expect(total.pct_of_goal).toBeNull()
   })
 
-  it('computes utilization_pct when capacity is available and > 0', () => {
-    const total = computeSectionTotal(
-      [session({ enrolled: 50, capacity: 60 }), session({ enrolled: 40, capacity: 60 })],
-      'Total'
-    )
-    // 90 / 120 * 100 = 75.0
-    expect(total.utilization_pct).toBe(75.0)
-  })
-
-  it('returns null for utilization_pct when all capacities are null', () => {
-    const total = computeSectionTotal([session({ enrolled: 50 })], 'Total')
-    expect(total.utilization_pct).toBeNull()
-  })
-
-  it('returns null for utilization_pct when total capacity is 0', () => {
-    const total = computeSectionTotal([session({ enrolled: 50, capacity: 0 })], 'Total')
-    expect(total.utilization_pct).toBeNull()
-  })
-
   it('computes participants_vs_budget when goal is available', () => {
     const total = computeSectionTotal(
       [
@@ -266,31 +229,27 @@ describe('computeSectionTotal', () => {
     const total = computeSectionTotal([], 'Empty Total')
     expect(total.enrolled).toBe(0)
     expect(total.waitlisted).toBe(0)
-    expect(total.capacity).toBeNull()
     expect(total.participant_goal).toBeNull()
     expect(total.pct_of_goal).toBeNull()
-    expect(total.utilization_pct).toBeNull()
     expect(total.session_name).toBe('Empty Total')
   })
 
   it('handles single session input', () => {
     const total = computeSectionTotal(
-      [session({ enrolled: 50, waitlisted: 3, capacity: 60, participant_goal: 55 })],
+      [session({ enrolled: 50, waitlisted: 3, participant_goal: 55 })],
       'Single'
     )
     expect(total.enrolled).toBe(50)
     expect(total.waitlisted).toBe(3)
-    expect(total.capacity).toBe(60)
     expect(total.participant_goal).toBe(55)
   })
 
   it('rounds percentages to one decimal place', () => {
     const total = computeSectionTotal(
-      [session({ enrolled: 33, participant_goal: 100, capacity: 100 })],
+      [session({ enrolled: 33, participant_goal: 100 })],
       'Total'
     )
     expect(total.pct_of_goal).toBe(33.0)
-    expect(total.utilization_pct).toBe(33.0)
   })
 })
 

@@ -2,7 +2,7 @@
 TDD tests for the forecast service.
 
 Tests verify per-session enrollment vs budget goals, prior year comparison,
-capacity calculation, and revenue projections.
+and revenue projections.
 
 These tests are written FIRST before implementation (TDD).
 """
@@ -70,20 +70,6 @@ def create_mock_attendee(
     return attendee
 
 
-def create_mock_bunk_plan(
-    session_pb_id: str,
-    bunk_name: str = "B-1",
-) -> Mock:
-    """Create a mock bunk_plan with bunk expand."""
-    plan = Mock()
-    plan.session = session_pb_id
-
-    bunk = Mock()
-    bunk.name = bunk_name
-    plan.expand = {"bunk": bunk}
-    return plan
-
-
 def create_mock_budget_config(
     session_cm_id: int,
     participant_goal: int | None = None,
@@ -109,8 +95,6 @@ def mock_repository():
     repo = AsyncMock()
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_attendees = AsyncMock(return_value=[])
-    repo.fetch_bunk_plans = AsyncMock(return_value=[])
-    repo.fetch_capacity_config = AsyncMock(return_value=12)
     repo.fetch_budget_config = AsyncMock(return_value={})
     return repo
 
@@ -350,51 +334,6 @@ class TestForecastAGSeparateRows:
 
 
 # ============================================================================
-# Capacity Tests
-# ============================================================================
-
-
-class TestForecastCapacity:
-    """Test capacity calculation from bunk plans."""
-
-    @pytest.mark.asyncio
-    async def test_forecast_capacity_from_bunk_plans(self, service, mock_repository):
-        """Capacity = count(bunk_plans for session) * defaultCapacity.
-
-        utilization_pct = enrolled / capacity * 100.
-        """
-        sessions = {1001: create_mock_session(1001, "Session 1")}
-        mock_repository.fetch_sessions.return_value = sessions
-        mock_repository.fetch_capacity_config.return_value = 12
-
-        bunk_plans = [
-            create_mock_bunk_plan("pb_1001", "B-1"),
-            create_mock_bunk_plan("pb_1001", "B-2"),
-            create_mock_bunk_plan("pb_1001", "G-1"),
-            create_mock_bunk_plan("pb_1001", "G-2"),
-            create_mock_bunk_plan("pb_1001", "G-3"),
-        ]
-        mock_repository.fetch_bunk_plans.return_value = bunk_plans
-
-        enrolled = [create_mock_attendee(i, 1001) for i in range(30)]
-
-        async def fetch_attendees_side_effect(year, status_filter=None):
-            if status_filter == "waitlisted":
-                return []
-            if year == 2026:
-                return enrolled
-            return []
-
-        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
-
-        result = await service.calculate_forecast(year=2026)
-
-        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
-        assert s1.capacity == 60  # 5 bunks * 12
-        assert s1.utilization_pct == 50.0  # 30/60 * 100
-
-
-# ============================================================================
 # Prior Year Comparison Tests
 # ============================================================================
 
@@ -516,22 +455,12 @@ class TestForecastGrandTotal:
 
     @pytest.mark.asyncio
     async def test_forecast_grand_total(self, service, mock_repository):
-        """Grand total sums enrolled, waitlisted, capacity. Fee fields are None."""
+        """Grand total sums enrolled and waitlisted. Fee fields are None."""
         sessions = {
             1001: create_mock_session(1001, "Session 1"),
             1002: create_mock_session(1002, "Session 2"),
         }
         mock_repository.fetch_sessions.return_value = sessions
-        mock_repository.fetch_capacity_config.return_value = 10
-
-        bunk_plans = [
-            create_mock_bunk_plan("pb_1001", "B-1"),
-            create_mock_bunk_plan("pb_1001", "B-2"),
-            create_mock_bunk_plan("pb_1002", "G-1"),
-            create_mock_bunk_plan("pb_1002", "G-2"),
-            create_mock_bunk_plan("pb_1002", "G-3"),
-        ]
-        mock_repository.fetch_bunk_plans.return_value = bunk_plans
 
         enrolled = [
             *[create_mock_attendee(i, 1001) for i in range(20)],
@@ -558,7 +487,6 @@ class TestForecastGrandTotal:
         gt = result.grand_total
         assert gt.enrolled == 35  # 20 + 15
         assert gt.waitlisted == 3  # 1 + 2
-        assert gt.capacity == 50  # (2 + 3) bunks * 10
 
         # Fee-related fields should be None in grand total
         assert gt.session_fee is None
@@ -1013,8 +941,8 @@ class TestForecastSnapshotLookback:
         assert result.sessions[0].enrolled == 1
 
     @pytest.mark.asyncio
-    async def test_snapshot_preserves_budget_and_capacity(self, service, mock_repository):
-        """Budget goals and capacity should use current config even in snapshot mode."""
+    async def test_snapshot_preserves_budget_config(self, service, mock_repository):
+        """Budget goals should use current config even in snapshot mode."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_snapshot_counts = AsyncMock(
@@ -1025,16 +953,11 @@ class TestForecastSnapshotLookback:
         mock_repository.fetch_budget_config.return_value = dict(
             [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
         )
-        mock_repository.fetch_bunk_plans.return_value = [
-            create_mock_bunk_plan("pb_1001"),
-            create_mock_bunk_plan("pb_1001", bunk_name="B-2"),
-        ]
 
         result = await service.calculate_forecast(year=2026, snapshot_date="2026-02-15")
 
         session = result.sessions[0]
         assert session.participant_goal == 100
-        assert session.capacity == 24  # 2 bunks * default_capacity (12)
         assert session.session_fee == 1000
 
     @pytest.mark.asyncio

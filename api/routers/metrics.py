@@ -492,7 +492,7 @@ async def get_forecast_snapshot_dates(
     year: int = Query(..., description="Year to get snapshot dates for"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> dict[str, list[str]]:
-    """Return available enrollment snapshot dates filtered to weekly Mondays."""
+    """Return available enrollment snapshot dates filtered to registration anchor + subsequent Mondays."""
     from api.services.forecast_service import ForecastService
 
     repository = _create_repository()
@@ -509,7 +509,7 @@ async def get_forecast(
     snapshot_date: str | None = Query(None, description="Historical snapshot date (YYYY-MM-DD)"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> ForecastResponse:
-    """Get registration forecast with budget goals, capacity, and revenue projections."""
+    """Get registration forecast with budget goals and revenue projections."""
     from api.services.forecast_service import ForecastService
 
     cache_params = {

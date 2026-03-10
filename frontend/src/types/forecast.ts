@@ -1,4 +1,4 @@
-/** Per-session forecast data with budget goals, capacity, and revenue. */
+/** Per-session forecast data with budget goals and revenue. */
 export interface SessionForecast {
   session_cm_id: number
   session_name: string
@@ -10,8 +10,6 @@ export interface SessionForecast {
   pct_of_goal: number | null
   prior_year_count: number | null
   two_year_prior_count: number | null
-  capacity: number | null
-  utilization_pct: number | null
   participants_vs_budget: number | null
   participants_vs_prior_year: number | null
   budget_revenue: number | null

@@ -61,8 +61,6 @@ function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
     pct_of_goal: 80.0,
     prior_year_count: 75,
     two_year_prior_count: 70,
-    capacity: 100,
-    utilization_pct: 80.0,
     participants_vs_budget: -20,
     participants_vs_prior_year: 5,
     budget_revenue: 500000,
@@ -413,8 +411,6 @@ describe('ForecastPage', () => {
         enrolled: 80,
         participant_goal: 100,
         pct_of_goal: 80.0,
-        capacity: 120,
-        utilization_pct: 66.7,
       })
     )
 
