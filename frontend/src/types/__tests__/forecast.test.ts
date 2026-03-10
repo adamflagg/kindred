@@ -23,6 +23,8 @@ describe('forecast types', () => {
         actual_revenue: null,
         revenue_delta: null,
         revenue_pct: null,
+        enrolled_boys: null,
+        enrolled_girls: null,
       },
       week_number: 22,
       day_offset: 159,

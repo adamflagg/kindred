@@ -67,6 +67,8 @@ function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
     actual_revenue: 400000,
     revenue_delta: -100000,
     revenue_pct: 80.0,
+    enrolled_boys: null,
+    enrolled_girls: null,
     ...overrides,
   }
 }
