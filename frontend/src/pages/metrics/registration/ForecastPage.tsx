@@ -71,7 +71,6 @@ function ForecastTableHeader() {
         <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">vs Prior</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Fee</th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
           Budget Rev
         </th>
@@ -111,9 +110,6 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
         {fmtSigned(session.participants_vs_prior_year)}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.two_year_prior_count)}</td>
-      <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
-        {fmtCurrency(session.session_fee)}
-      </td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
         {fmtCurrency(session.budget_revenue)}
       </td>
