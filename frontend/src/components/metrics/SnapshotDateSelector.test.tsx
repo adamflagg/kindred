@@ -2,66 +2,73 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { SnapshotDateSelector } from './SnapshotDateSelector'
+import type { WeekOption } from '../../types/forecast'
+
+function weekOption(overrides: Partial<WeekOption> = {}): WeekOption {
+  return {
+    week_number: 5,
+    day_offset: 35,
+    label: 'Week 5 · Nov 19',
+    is_today: false,
+    ...overrides,
+  }
+}
 
 describe('SnapshotDateSelector', () => {
-  const availableDates = ['2025-10-27', '2025-10-20', '2025-10-15']
+  const weekOptions: WeekOption[] = [
+    weekOption({ week_number: 22, day_offset: 154, label: 'Week 22 (Today)', is_today: true }),
+    weekOption({ week_number: 21, day_offset: 147, label: 'Week 21 · Mar 2' }),
+    weekOption({ week_number: 20, day_offset: 140, label: 'Week 20 · Feb 23' }),
+  ]
 
-  it('renders nothing when no dates available', () => {
+  it('renders nothing when no week options available', () => {
     const { container } = render(
-      <SnapshotDateSelector snapshotDate={null} onDateChange={vi.fn()} availableDates={[]} />
+      <SnapshotDateSelector dayOffset={null} onOffsetChange={vi.fn()} weekOptions={[]} />
     )
     expect(container.firstChild).toBeNull()
   })
 
-  it('shows Today as default selection', () => {
+  it('shows today option as default selection', () => {
     render(
-      <SnapshotDateSelector
-        snapshotDate={null}
-        onDateChange={vi.fn()}
-        availableDates={availableDates}
-      />
+      <SnapshotDateSelector dayOffset={null} onOffsetChange={vi.fn()} weekOptions={weekOptions} />
     )
     const select = screen.getByRole('combobox') as HTMLSelectElement
     expect(select.value).toBe('__today__')
   })
 
-  it('calls onDateChange with date string when date selected', async () => {
-    const onDateChange = vi.fn()
+  it('calls onOffsetChange with day_offset when week selected', async () => {
+    const onOffsetChange = vi.fn()
     render(
       <SnapshotDateSelector
-        snapshotDate={null}
-        onDateChange={onDateChange}
-        availableDates={availableDates}
+        dayOffset={null}
+        onOffsetChange={onOffsetChange}
+        weekOptions={weekOptions}
       />
     )
     const select = screen.getByRole('combobox')
-    await userEvent.selectOptions(select, '2025-10-20')
-    expect(onDateChange).toHaveBeenCalledWith('2025-10-20')
+    await userEvent.selectOptions(select, '147')
+    expect(onOffsetChange).toHaveBeenCalledWith(147)
   })
 
-  it('calls onDateChange with null when Today selected', async () => {
-    const onDateChange = vi.fn()
+  it('calls onOffsetChange with null when Today selected', async () => {
+    const onOffsetChange = vi.fn()
     render(
       <SnapshotDateSelector
-        snapshotDate="2025-10-20"
-        onDateChange={onDateChange}
-        availableDates={availableDates}
+        dayOffset={147}
+        onOffsetChange={onOffsetChange}
+        weekOptions={weekOptions}
       />
     )
     const select = screen.getByRole('combobox')
     await userEvent.selectOptions(select, '__today__')
-    expect(onDateChange).toHaveBeenCalledWith(null)
+    expect(onOffsetChange).toHaveBeenCalledWith(null)
   })
 
-  it('shows selected snapshot date as current value', () => {
+  it('shows selected day offset as current value', () => {
     render(
-      <SnapshotDateSelector
-        snapshotDate="2025-10-20"
-        onDateChange={vi.fn()}
-        availableDates={availableDates}
-      />
+      <SnapshotDateSelector dayOffset={147} onOffsetChange={vi.fn()} weekOptions={weekOptions} />
     )
     const select = screen.getByRole('combobox') as HTMLSelectElement
-    expect(select.value).toBe('2025-10-20')
+    expect(select.value).toBe('147')
   })
 })

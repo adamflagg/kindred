@@ -3,7 +3,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useForecast } from '../../../hooks/useForecast'
-import { useSnapshotDates } from '../../../hooks/useSnapshotDates'
+import { useWeekOptions } from '../../../hooks/useWeekOptions'
 import { SnapshotDateSelector } from '../../../components/metrics/SnapshotDateSelector'
 import {
   buildSessionDateLookup,
@@ -137,13 +137,13 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 export default function ForecastPage() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessionTypesParam, sessions: metricsSessions } = useMetricsSession()
-  const [snapshotDate, setSnapshotDate] = useState<string | null>(null)
-  const { data: snapshotDates = [] } = useSnapshotDates(currentYear)
+  const [dayOffset, setDayOffset] = useState<number | null>(null)
+  const { data: weekOptions = [] } = useWeekOptions(currentYear)
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,
     sessionTypes: sessionTypesParam,
-    snapshotDate,
+    dayOffset,
   })
 
   // Build lookups for camp-then-quest sorting from the session context
@@ -216,15 +216,15 @@ export default function ForecastPage() {
           )}
           <div className="ml-auto">
             <SnapshotDateSelector
-              snapshotDate={snapshotDate}
-              onDateChange={setSnapshotDate}
-              availableDates={snapshotDates}
+              dayOffset={dayOffset}
+              onOffsetChange={setDayOffset}
+              weekOptions={weekOptions}
             />
           </div>
         </div>
         <p className="text-muted-foreground text-sm">
-          {snapshotDate
-            ? `Enrollment as of ${new Date(snapshotDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+          {dayOffset != null
+            ? `Enrollment at Week ${data?.week_number ?? Math.floor(dayOffset / 7)} (${dayOffset} days after priority reg)`
             : `Budget goals and revenue projections for ${currentYear}`}
         </p>
       </div>
