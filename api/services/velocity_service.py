@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from api.schemas.velocity import (
     PhaseMarker,
@@ -20,6 +20,12 @@ from api.schemas.velocity import (
     WeeklyDataPoint,
 )
 from api.services.extractors import extract_gender
+from api.services.reconstruction import (
+    CANCELLATION_STATUSES,
+    ENROLLMENT_STATUSES,
+    _get_enrollment_date,
+    _parse_date_only,
+)
 from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
 from api.utils.session_swap import detect_session_swaps
 
@@ -946,26 +952,6 @@ class VelocityService:
                 return point_map[prev_week]
         return None
 
-    @staticmethod
-    def _parse_date_only(value: str) -> str:
-        """Extract YYYY-MM-DD from a datetime string that may include time/timezone."""
-        return value.split("T")[0].split(" ")[0]
-
-    @staticmethod
-    def _get_enrollment_date(att: Any) -> str | None:
-        """Get the enrollment date for an attendee, preferring effective_date over enrollment_date."""
-        ed = getattr(att, "effective_date", "") or ""
-        if ed:
-            return VelocityService._parse_date_only(ed)
-        fallback = getattr(att, "enrollment_date", "") or ""
-        if fallback:
-            return VelocityService._parse_date_only(fallback)
-        return None
-
-    # Statuses that count as enrollments in velocity curves
-    _ENROLLMENT_STATUSES: ClassVar[set[int]] = {2, 32, 256}  # enrolled, cancelled, withdrawn
-    _CANCELLATION_STATUSES: ClassVar[set[int]] = {32, 256}  # cancelled, withdrawn
-
     async def _curves_from_reconstruction(
         self,
         year: int,
@@ -1000,14 +986,14 @@ class VelocityService:
                 continue
 
             status_id = getattr(att, "status_id", 0) or 0
-            if status_id not in self._ENROLLMENT_STATUSES:
+            if status_id not in ENROLLMENT_STATUSES:
                 continue
 
             raw_sid = int(session.cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
 
             # Enrollment event: use effective_date (original registration date)
-            enroll_date_str = self._get_enrollment_date(att)
+            enroll_date_str = _get_enrollment_date(att)
             if enroll_date_str:
                 dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
                 if season_start.date() <= dt.date() <= season_end.date():
@@ -1015,10 +1001,10 @@ class VelocityService:
                     session_daily_enrollments[effective_sid][date_key] += 1
 
             # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
-            if status_id in self._CANCELLATION_STATUSES:
+            if status_id in CANCELLATION_STATUSES:
                 cancel_date_raw = getattr(att, "enrollment_date", "") or ""
                 if cancel_date_raw:
-                    cancel_date_str = self._parse_date_only(cancel_date_raw)
+                    cancel_date_str = _parse_date_only(cancel_date_raw)
                     cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
                     if season_start.date() <= cancel_dt.date() <= season_end.date():
                         session_daily_cancellations[effective_sid][cancel_date_str] += 1
@@ -1150,7 +1136,7 @@ class VelocityService:
                 continue
 
             status_id = getattr(att, "status_id", 0) or 0
-            if status_id not in self._ENROLLMENT_STATUSES:
+            if status_id not in ENROLLMENT_STATUSES:
                 continue
 
             raw_sid = int(session.cm_id)
@@ -1161,7 +1147,7 @@ class VelocityService:
             if gender not in ("M", "F"):
                 continue
 
-            enroll_date_str = self._get_enrollment_date(att)
+            enroll_date_str = _get_enrollment_date(att)
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
