@@ -211,3 +211,53 @@ describe('MergeDialog', () => {
     expect(defaultProps.onClose).toHaveBeenCalled()
   })
 })
+
+describe('MergeDialog — Search All toggle', () => {
+  it('renders "Search all" checkbox unchecked by default', () => {
+    render(<MergeDialog {...defaultProps} />)
+    const checkbox = screen.getByRole('checkbox', { name: /search all/i })
+    expect(checkbox).not.toBeChecked()
+  })
+
+  it('when search-all is on, calls useAllCanonicals with inUse=false', async () => {
+    render(<MergeDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('checkbox', { name: /search all/i }))
+
+    expect(mockUseAllCanonicals).toHaveBeenCalledWith('school', 2025, false)
+  })
+
+  it('when search-all is on, requires 3+ chars before showing results', async () => {
+    render(<MergeDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('checkbox', { name: /search all/i }))
+
+    const input = screen.getByPlaceholderText(/search/i)
+    await user.type(input, 'Oa')
+
+    expect(screen.queryByText('Oak Valley Middle')).not.toBeInTheDocument()
+    expect(screen.getByText(/type 3\+ characters/i)).toBeInTheDocument()
+  })
+
+  it('when search-all is on, shows results after 3+ chars', async () => {
+    render(<MergeDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('checkbox', { name: /search all/i }))
+
+    const input = screen.getByPlaceholderText(/search/i)
+    await user.type(input, 'Oak')
+
+    expect(screen.getByText('Oak Valley Middle')).toBeInTheDocument()
+  })
+
+  it('when search-all is off, shows all results without min-char restriction', () => {
+    render(<MergeDialog {...defaultProps} />)
+
+    // Default state (search-all off): results shown immediately (minus source canonical)
+    expect(screen.getByText('Oak Valley Middle')).toBeInTheDocument()
+    expect(screen.getByText('Hillcrest High')).toBeInTheDocument()
+  })
+})
