@@ -58,12 +58,9 @@ function fmtCount(value: number | null, approximate?: boolean): string {
   return `${prefix}${value.toLocaleString()}`
 }
 
-/** Check if a tier date is in the future */
+/** Check if a tier's registration window hasn't started yet */
 function isFutureTier(tier: Day1TierData): boolean {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tierDate = new Date(tier.date + 'T00:00:00')
-  return tierDate > today
+  return new Date(tier.window_start).getTime() > Date.now()
 }
 
 /** Format date as "Mon DD" (e.g., "Jan 15") */

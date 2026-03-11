@@ -318,14 +318,18 @@ export default function CancellationVelocityPage() {
   // Phase day offsets for ReferenceArea bands on daily chart
   const phaseDayOffsets = useMemo(() => {
     if (!data?.phase_markers || !data?.season_start) return []
-    const seasonStart = new Date(data.season_start + 'T00:00:00').getTime()
-    return data.phase_markers.map((marker) => ({
-      phase: marker.phase,
-      label: marker.label,
-      dayOffset: Math.floor(
-        (new Date(marker.date + 'T00:00:00').getTime() - seasonStart) / 86400000
-      ),
-    }))
+    const sp = data.season_start.split('-')
+    const seasonStartUtc = Date.UTC(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]))
+    return data.phase_markers.map((marker) => {
+      const mp = marker.date.split('-')
+      return {
+        phase: marker.phase,
+        label: marker.label,
+        dayOffset: Math.floor(
+          (Date.UTC(Number(mp[0]), Number(mp[1]) - 1, Number(mp[2])) - seasonStartUtc) / 86400000
+        ),
+      }
+    })
   }, [data?.phase_markers, data?.season_start])
 
   // Weekly milestone indices in dailyChartData for zoom dropdown (every 7th day)
@@ -335,7 +339,7 @@ export default function CancellationVelocityPage() {
     dailyChartData.forEach((pt, i) => {
       const offset = pt['day_offset'] as number
       if (offset % 7 === 0) {
-        const weekNum = offset / 7
+        const weekNum = Math.floor(offset / 7) + 1
         const dateStr = pt['date'] as string
         const dateLabel = dateStr ? formatDateShort(dateStr) : ''
         milestones.push({ index: i, label: `Wk ${weekNum}${dateLabel ? ` - ${dateLabel}` : ''}` })
@@ -751,7 +755,7 @@ export default function CancellationVelocityPage() {
                   const dayOffset = label as number
                   const row = dailyChartData.find((d) => d['day_offset'] === dayOffset)
                   const dateStr = row?.['date'] as string
-                  const weekNum = Math.floor(dayOffset / 7)
+                  const weekNum = Math.floor(dayOffset / 7) + 1
                   const dateLabel = dateStr
                     ? formatDateShort(dateStr)
                     : dailyTickFormatter(dayOffset)

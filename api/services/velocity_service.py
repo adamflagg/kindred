@@ -907,9 +907,10 @@ class VelocityService:
         # Merge daily data: reconstruction before first snapshot, snapshots from that date onward
         merged_daily = self._merge_hybrid_daily(recon_result.combined.daily, snap_result.combined.daily)
         season_start_date = season_start.date() if isinstance(season_start, datetime) else season_start
+        season_end_date = season_end.date() if isinstance(season_end, datetime) else season_end
         ref = today or datetime.now(tz=UTC).date()
-        is_current_year = year == ref.year
-        combined_weekly = rollup_daily_to_weekly(merged_daily, season_start_date, is_current_year=is_current_year)
+        is_current_season = season_start_date <= ref <= season_end_date
+        combined_weekly = rollup_daily_to_weekly(merged_daily, season_start_date, is_current_year=is_current_season)
 
         # Fall back to weekly merge if daily merge produced no data
         if not combined_weekly:
@@ -1389,9 +1390,10 @@ class VelocityService:
 
         # Build daily data via reconstruct_daily
         season_start_date = season_start.date() if isinstance(season_start, datetime) else season_start
+        season_end_date = season_end.date() if isinstance(season_end, datetime) else season_end
         ref = today or datetime.now(tz=UTC).date()
-        is_current_year = year == ref.year
-        end_date = ref if is_current_year else season_end.date() if isinstance(season_end, datetime) else season_end
+        is_current_season = season_start_date <= ref <= season_end_date
+        end_date = ref if is_current_season else season_end_date
         daily_data = reconstruct_daily(
             attendees=attendees,
             season_start=season_start_date,
@@ -1402,7 +1404,7 @@ class VelocityService:
         )
 
         # Derive weekly from daily for combined curve
-        combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_year)
+        combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_season)
 
         combined = VelocityCurve(
             year=year,
@@ -1691,7 +1693,6 @@ class VelocityService:
             per_session_data[sid] = points
 
         combined_data = self._combine_weekly_curves(per_session_data)
-        # daily data populated in Task 11 (cancellation page update)
         combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
 
         # cancelled_to_date = final combined cancelled count
@@ -1775,7 +1776,6 @@ class VelocityService:
             per_session_data[sid] = points
 
         combined_data = self._combine_weekly_curves(per_session_data)
-        # daily data populated in Task 11 (cancellation page update)
         combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
 
         by_session = self._build_session_curves(year, sessions, per_session_data)

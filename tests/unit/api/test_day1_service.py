@@ -19,10 +19,13 @@ def _make_attendee(
     *, session_cm_id: int, status_id: int = 2, enrollment_date: str, session_type: str = "main"
 ) -> MagicMock:
     att = MagicMock()
-    att.session_cm_id = session_cm_id
     att.status_id = status_id
     att.enrollment_date = enrollment_date
     att.effective_date = enrollment_date.split("T")[0] if "T" in enrollment_date else enrollment_date
+    # Use expand-dict pattern matching PocketBase expanded session relation
+    session_mock = MagicMock()
+    session_mock.cm_id = session_cm_id
+    att.expand = {"session": session_mock}
     return att
 
 

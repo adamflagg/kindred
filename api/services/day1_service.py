@@ -23,7 +23,6 @@ from api.services.reconstruction import ENROLLMENT_STATUSES
 
 logger = logging.getLogger(__name__)
 
-CAMP_TZ = ZoneInfo("America/Los_Angeles")
 AT_CAMP_TYPES = {"main", "embedded", "ag"}
 QUEST_TYPES = {"quest"}
 
@@ -107,8 +106,11 @@ class Day1Service:
                     if not (window_start_utc <= enroll_dt < window_end_utc):
                         continue
 
-                # Categorize by session type
-                stype = session_type_map.get(att.session_cm_id, "")
+                # Categorize by session type (access via expand dict)
+                expand = getattr(att, "expand", {}) or {}
+                session = expand.get("session") if isinstance(expand, dict) else None
+                sid = int(session.cm_id) if session else 0
+                stype = session_type_map.get(sid, "")
                 if stype in AT_CAMP_TYPES:
                     at_camp_count += 1
                 elif stype in QUEST_TYPES:
