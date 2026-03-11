@@ -13,12 +13,23 @@
 migrate((app) => {
   const rolesCol = app.findCollectionByNameOrId("roles")
 
+  // PocketBase JSVM returns JSON fields as raw byte arrays, not parsed JS arrays.
+  // Array.from() on bytes yields [91, 34, 98, ...] (char codes) instead of strings.
+  // This helper converts bytes → string → parsed array.
+  function parsePerms(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw) && (raw.length === 0 || typeof raw[0] === "string")) return raw
+    const bytes = Array.from(raw)
+    const str = bytes.map((b) => String.fromCharCode(b)).join("")
+    try { return JSON.parse(str) } catch (_e) { return [] }
+  }
+
   // Helper: add a permission to a role if not present
   function addPermToRole(slug, perm) {
     const records = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
     if (records.length === 0) return null
     const role = records[0]
-    const perms = Array.from(role.get("permissions") || [])
+    const perms = parsePerms(role.get("permissions"))
     if (!perms.includes(perm)) {
       role.set("permissions", [...perms, perm])
       app.save(role)
@@ -50,7 +61,7 @@ migrate((app) => {
       const permSet = new Set()
       for (const aur of allUserRoles) {
         const role = app.findRecordById(rolesCol.id, aur.get("role"))
-        for (const p of Array.from(role.get("permissions") || [])) {
+        for (const p of parsePerms(role.get("permissions"))) {
           permSet.add(p)
         }
       }
@@ -81,12 +92,20 @@ migrate((app) => {
   // Revert: remove new permissions from roles, restore strict admin rules
   const rolesCol = app.findCollectionByNameOrId("roles")
 
+  function parsePerms(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw) && (raw.length === 0 || typeof raw[0] === "string")) return raw
+    const bytes = Array.from(raw)
+    const str = bytes.map((b) => String.fromCharCode(b)).join("")
+    try { return JSON.parse(str) } catch (_e) { return [] }
+  }
+
   // Helper: remove a permission from a role
   function removePermFromRole(slug, perm) {
     const records = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
     if (records.length === 0) return
     const role = records[0]
-    const perms = Array.from(role.get("permissions") || []).filter((p) => p !== perm)
+    const perms = parsePerms(role.get("permissions")).filter((p) => p !== perm)
     role.set("permissions", perms)
     app.save(role)
   }
