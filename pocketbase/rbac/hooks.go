@@ -78,10 +78,28 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 	return nil
 }
 
+// extractBusinessCategory extracts metadata.business_category from a raw value.
+func extractBusinessCategory(raw any) string {
+	if raw == nil {
+		return ""
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return ""
+	}
+	var metaMap map[string]any
+	if err := json.Unmarshal(data, &metaMap); err != nil {
+		return ""
+	}
+	cat, _ := metaMap["business_category"].(string)
+	return cat
+}
+
 // guardConfigWrite ensures non-admin users can only write registration-category configs.
 // Admin users bypass this check (they can write any config).
 // Non-admin users with registration.manage can only write configs where
-// metadata.business_category is "registration".
+// metadata.business_category is "registration" — both on the existing record
+// AND in the incoming request body (to prevent category mutation).
 func guardConfigWrite(e *core.RecordRequestEvent) error {
 	if e.Auth == nil {
 		return apis.NewUnauthorizedError("Authentication required", nil)
@@ -92,25 +110,19 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 		return e.Next()
 	}
 
-	// Check the record's metadata.business_category
-	metadata := e.Record.Get("metadata")
-	if metadata == nil {
-		return apis.NewForbiddenError("Admin access required for this config", nil)
-	}
-
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		return apis.NewForbiddenError("Admin access required for this config", nil)
-	}
-
-	var metaMap map[string]any
-	if err := json.Unmarshal(data, &metaMap); err != nil {
-		return apis.NewForbiddenError("Admin access required for this config", nil)
-	}
-
-	businessCategory, _ := metaMap["business_category"].(string)
-	if businessCategory != "registration" {
+	// Check the existing record's business_category
+	if extractBusinessCategory(e.Record.Get("metadata")) != "registration" {
 		return apis.NewForbiddenError("Admin access required for this config category", nil)
+	}
+
+	// Also check the incoming request body to prevent category mutation
+	info, err := e.RequestInfo()
+	if err == nil && info != nil && info.Body != nil {
+		if newMeta, ok := info.Body["metadata"]; ok {
+			if newCat := extractBusinessCategory(newMeta); newCat != "" && newCat != "registration" {
+				return apis.NewForbiddenError("Cannot change config category", nil)
+			}
+		}
 	}
 
 	return e.Next()
@@ -156,12 +168,8 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 
 	// Guard config writes: non-admin users with registration.manage can only
 	// write to configs with business_category = "registration"
-	app.OnRecordCreateRequest("config").BindFunc(func(e *core.RecordRequestEvent) error {
-		return guardConfigWrite(e)
-	})
-	app.OnRecordUpdateRequest("config").BindFunc(func(e *core.RecordRequestEvent) error {
-		return guardConfigWrite(e)
-	})
+	app.OnRecordCreateRequest("config").BindFunc(guardConfigWrite)
+	app.OnRecordUpdateRequest("config").BindFunc(guardConfigWrite)
 
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)
