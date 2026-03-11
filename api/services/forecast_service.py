@@ -192,8 +192,8 @@ class ForecastService:
             enrolled_girls: int | None = None
             if reconstruction is not None:
                 rc = reconstruction.get(sid, {})
-                enrolled = rc.get("enrolled", 0) or 0
-                waitlisted = rc.get("waitlisted", 0) or 0
+                enrolled = rc.get("enrolled") or 0
+                waitlisted = rc.get("waitlisted") or 0
                 enrolled_boys = rc.get("enrolled_boys")
                 enrolled_girls = rc.get("enrolled_girls")
             else:
@@ -449,8 +449,7 @@ class ForecastService:
         # Gender totals (null-aware)
         total_boys = sum(s.enrolled_boys or 0 for s in session_forecasts)
         total_girls = sum(s.enrolled_girls or 0 for s in session_forecasts)
-        has_boys = any(s.enrolled_boys is not None for s in session_forecasts)
-        has_girls = any(s.enrolled_girls is not None for s in session_forecasts)
+        has_gender = any(s.enrolled_boys is not None for s in session_forecasts)
 
         return SessionForecast(
             session_cm_id=0,
@@ -469,6 +468,6 @@ class ForecastService:
             actual_revenue=total_actual_rev if has_revenue else None,
             revenue_delta=revenue_delta,
             revenue_pct=revenue_pct,
-            enrolled_boys=total_boys if has_boys else None,
-            enrolled_girls=total_girls if has_girls else None,
+            enrolled_boys=total_boys if has_gender else None,
+            enrolled_girls=total_girls if has_gender else None,
         )
