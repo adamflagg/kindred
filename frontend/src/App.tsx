@@ -15,6 +15,8 @@ import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
 import { Permission } from './constants/permissions'
 import { usePermissions } from './hooks/usePermissions'
+import { useAuth } from './contexts/AuthContext'
+import { MANAGE_TABS } from './config/manageTabs'
 import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -133,14 +135,15 @@ function CamperRedirect() {
 
 // Smart redirect to first permitted manage tab
 function ManageRedirect() {
+  const { isLoading } = useAuth()
   const { hasPermission, isAdmin } = usePermissions()
-  const tabs = [
-    { path: '/manage/geo', permission: Permission.METRICS_GEO },
-    { path: '/manage/registration', permission: Permission.REGISTRATION_MANAGE },
-    { path: '/manage/sheets', permission: Permission.SHEETS_EXPORT },
-  ]
-  const firstPermitted = tabs.find((t) => isAdmin || hasPermission(t.permission))
-  return <Navigate to={firstPermitted?.path ?? '/manage/geo'} replace />
+
+  if (isLoading) return null // parent Suspense shows skeleton
+
+  const firstPermitted = MANAGE_TABS.find(
+    (tab) => isAdmin || hasPermission(tab.requiredPermission)
+  )
+  return <Navigate to={firstPermitted?.path ?? MANAGE_TABS[0]!.path} replace />
 }
 
 function App() {
@@ -220,10 +223,6 @@ function App() {
                                 element={<Navigate to="/admin/config/solver" replace />}
                               />
                               <Route
-                                path="config/registration"
-                                element={<Navigate to="/manage/registration" replace />}
-                              />
-                              <Route
                                 path="config/:category"
                                 element={
                                   <ErrorBoundary>
@@ -232,14 +231,6 @@ function App() {
                                     </Suspense>
                                   </ErrorBoundary>
                                 }
-                              />
-                              <Route
-                                path="geo/*"
-                                element={<Navigate to="/manage/geo" replace />}
-                              />
-                              <Route
-                                path="sheets"
-                                element={<Navigate to="/manage/sheets" replace />}
                               />
                             </Route>
                           </Route>
