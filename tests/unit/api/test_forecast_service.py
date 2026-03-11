@@ -10,6 +10,7 @@ These tests are written FIRST before implementation (TDD).
 from __future__ import annotations
 
 import os
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -1031,7 +1032,7 @@ class TestForecastReconstructionLookback:
         mock_repository.fetch_attendees_with_dates.return_value = []
 
         result = await service.calculate_forecast(year=2026, day_offset=123)
-        assert result.week_number == 17  # 123 // 7 = 17
+        assert result.week_number == 18  # 123 // 7 + 1 = 18 (1-based)
         assert result.day_offset == 123
 
     @pytest.mark.asyncio
@@ -1046,8 +1047,8 @@ class TestForecastReconstructionLookback:
         assert result.day_offset is None
 
     @pytest.mark.asyncio
-    async def test_week_zero_includes_first_day(self, service, mock_repository):
-        """Week 0 (day_offset=0) should include registration data from the anchor date."""
+    async def test_week_one_includes_first_day(self, service, mock_repository):
+        """Week 1 (day_offset=0) should include registration data from the anchor date."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_registration_dates.return_value = {
@@ -1088,7 +1089,7 @@ class TestForecastReconstructionLookback:
         s1 = result.sessions[0]
         # day_offset=0 with inclusive cutoff should count these 3 attendees
         assert s1.enrolled == 3
-        assert result.week_number == 0
+        assert result.week_number == 1  # 0 // 7 + 1 = 1 (1-based)
 
 
 # ============================================================================
@@ -1233,7 +1234,7 @@ class TestForecastWithDayOffset:
 
         result = await service.calculate_forecast(year=2026, day_offset=49)
 
-        assert result.week_number == 7  # 49 // 7 = 7
+        assert result.week_number == 8  # 49 // 7 + 1 = 8 (1-based)
         assert result.day_offset == 49
 
 
@@ -1544,3 +1545,77 @@ class TestForecastGenderFields:
         result = await service.calculate_forecast(year=2026)
         assert result.grand_total.enrolled_boys == 30  # 20 + 10
         assert result.grand_total.enrolled_girls == 40  # 15 + 25
+
+
+# ============================================================================
+# Week Options Tests
+# ============================================================================
+
+
+class TestGetWeekOptions:
+    """Tests for 1-based week option labels with date ranges and tier suffixes."""
+
+    @pytest.mark.asyncio
+    async def test_week_options_1_based_numbering(self, service, mock_repository):
+        """Week numbering starts at 1 (not 0)."""
+        # Mock: anchor=Nov 12, today=Nov 18 (day 6, still Week 1)
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        result = await service.get_week_options(2026, today=date(2025, 11, 18))
+        # Today entry should be Week 1
+        assert result[0].week_number == 1
+        assert result[0].is_today is True
+
+    @pytest.mark.asyncio
+    async def test_week_options_label_format_with_date_range(self, service, mock_repository):
+        """Labels include date ranges: 'Week 1 · Nov 12–18 (Priority Reg)'."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        result = await service.get_week_options(2026, today=date(2025, 11, 25))
+        # Week 1 should have date range and Priority Reg suffix
+        wk1 = next(o for o in result if o.week_number == 1 and not o.is_today)
+        assert "Nov 12" in wk1.label
+        assert "18" in wk1.label
+        assert "Priority Reg" in wk1.label
+
+    @pytest.mark.asyncio
+    async def test_week_options_cross_month_label(self, service, mock_repository):
+        """Week crossing month boundary shows both month names."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        # Week 3: Nov 26–Dec 2
+        result = await service.get_week_options(2026, today=date(2025, 12, 5))
+        wk3 = next(o for o in result if o.week_number == 3 and not o.is_today)
+        assert "Nov" in wk3.label
+        assert "Dec" in wk3.label
+
+    @pytest.mark.asyncio
+    async def test_week_options_tier_suffixes(self, service, mock_repository):
+        """Early and Open reg weeks get appropriate tier suffixes."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+            "early_reg_date": "2025-11-19",
+            "open_reg_date": "2025-12-03",
+        }
+        result = await service.get_week_options(2026, today=date(2025, 12, 10))
+        wk2 = next(o for o in result if o.week_number == 2 and not o.is_today)
+        assert "Early Reg" in wk2.label
+        wk4 = next(o for o in result if o.week_number == 4 and not o.is_today)
+        assert "Open Reg" in wk4.label
+
+    @pytest.mark.asyncio
+    async def test_week_options_combined_today_and_tier(self, service, mock_repository):
+        """If Today falls on a tier week, both suffixes combine."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+            "early_reg_date": "2025-11-19",
+        }
+        # Today = Nov 20, falls in Week 2 which is also Early Reg week
+        result = await service.get_week_options(2026, today=date(2025, 11, 20))
+        today_entry = result[0]
+        assert today_entry.is_today is True
+        assert "Today" in today_entry.label
+        assert "Early Reg" in today_entry.label

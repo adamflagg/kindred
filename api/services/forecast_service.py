@@ -36,10 +36,11 @@ class ForecastService:
     async def get_week_options(self, year: int, today: date | None = None) -> list[WeekOption]:
         """Generate week-relative options from registration anchor through today.
 
-        Returns a descending list (newest first) of week options:
-        - First entry: Today with exact day_offset and "(Today)" suffix
-        - Then each completed week from most recent down to Week 0
-        - Week 0 gets "(Priority Reg)" suffix
+        Returns a descending list (newest first) of week options with 1-based numbering,
+        date ranges, and registration tier suffixes:
+        - First entry: Today with exact day_offset, tier suffix if applicable
+        - Then each completed week from most recent down to Week 1
+        - Weeks get tier suffixes (Priority Reg, Early Reg, Open Reg) based on reg dates
         - If today falls on an exact week boundary, no duplicate is created
 
         Args:
@@ -65,13 +66,35 @@ class ForecastService:
             return []
 
         total_days = (today - anchor).days
-        today_week = total_days // 7
+        today_week = total_days // 7 + 1  # 1-based
         today_on_boundary = total_days % 7 == 0
+
+        # Build tier suffix map: week_number -> suffix label
+        tier_suffixes: dict[int, str] = {}
+        tier_labels = [
+            ("priority_reg_date", "Priority Reg"),
+            ("early_reg_date", "Early Reg"),
+            ("open_reg_date", "Open Reg"),
+        ]
+        for key, label in tier_labels:
+            tier_str = reg_dates.get(key)
+            if tier_str:
+                tier_str = tier_str.split("T")[0].split(" ")[0]
+                tier_date = date.fromisoformat(tier_str)
+                if tier_date >= anchor:
+                    tier_week = (tier_date - anchor).days // 7 + 1  # 1-based
+                    tier_suffixes[tier_week] = label
 
         options: list[WeekOption] = []
 
         # Today entry (always first)
-        today_label = f"Week {today_week} · {today.strftime('%b %-d')} (Today)"
+        today_suffixes = ["Today"]
+        tier_suffix = tier_suffixes.get(today_week)
+        if tier_suffix:
+            today_suffixes.insert(0, tier_suffix)
+        today_suffix_str = " · ".join(today_suffixes)
+        today_date_range = self._format_week_date_range(anchor, today_week)
+        today_label = f"Week {today_week} · {today_date_range} ({today_suffix_str})"
         options.append(
             WeekOption(
                 week_number=today_week,
@@ -82,27 +105,48 @@ class ForecastService:
         )
 
         # Build set of week milestones to show below the Today entry.
-        # All passed week boundaries (0 through today_week) as selectable milestones.
+        # All passed week boundaries (1 through today_week) as selectable milestones.
         # If today is on an exact boundary, that week is the Today entry — skip it.
-        weeks_to_show: set[int] = set(range(0, today_week + 1))
+        weeks_to_show: set[int] = set(range(1, today_week + 1))
         if today_on_boundary:
             weeks_to_show.discard(today_week)
 
         for week in sorted(weeks_to_show, reverse=True):
-            week_date = anchor + timedelta(days=week * 7)
-            label = f"Week {week} · {week_date.strftime('%b %-d')}"
-            if week == 0:
-                label += " (Priority Reg)"
+            date_range = self._format_week_date_range(anchor, week)
+            label = f"Week {week} · {date_range}"
+            suffix = tier_suffixes.get(week)
+            if suffix:
+                label += f" ({suffix})"
             options.append(
                 WeekOption(
                     week_number=week,
-                    day_offset=week * 7,
+                    day_offset=(week - 1) * 7,
                     label=label,
                     is_today=False,
                 )
             )
 
         return options
+
+    @staticmethod
+    def _format_week_date_range(anchor: date, week_num: int) -> str:
+        """Format a date range string for a 1-based week number.
+
+        Args:
+            anchor: Registration anchor date (start of Week 1).
+            week_num: 1-based week number.
+
+        Returns:
+            Formatted date range, e.g. "Nov 12–18" or "Nov 26–Dec 2".
+        """
+        week_start = anchor + timedelta(days=(week_num - 1) * 7)
+        week_end = anchor + timedelta(days=week_num * 7 - 1)
+        start_fmt = week_start.strftime("%b %-d")
+        if week_start.month == week_end.month:
+            end_fmt = str(week_end.day)
+        else:
+            end_fmt = week_end.strftime("%b %-d")
+        return f"{start_fmt}\u2013{end_fmt}"
 
     async def calculate_forecast(
         self,
@@ -259,7 +303,7 @@ class ForecastService:
             year=year,
             sessions=session_forecasts,
             grand_total=grand_total,
-            week_number=day_offset // 7 if day_offset is not None else None,
+            week_number=(day_offset // 7) + 1 if day_offset is not None else None,
             day_offset=day_offset,
         )
 
