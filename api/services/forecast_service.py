@@ -270,14 +270,7 @@ class ForecastService:
         ag_children: set[int],
     ) -> int:
         """Count attendees for a session including AG children."""
-        count = 0
-        for a in attendees:
-            session = get_session_from_expand(a)
-            if not session:
-                continue
-            att_cm_id = getattr(session, "cm_id", None)
-            if att_cm_id == session_cm_id or att_cm_id in ag_children:
-                count += 1
+        count, _, _ = self._count_attendees_with_gender_for_session(attendees, session_cm_id, ag_children)
         return count
 
     def _count_attendees_with_gender_for_session(

@@ -10,6 +10,7 @@ These tests are written FIRST before implementation (TDD).
 from __future__ import annotations
 
 import os
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -55,8 +56,9 @@ def create_mock_attendee(
     status: str = "enrolled",
     is_active: bool = True,
     status_id: int = 2,
+    gender: str | None = None,
 ) -> Mock:
-    """Create a mock attendee with session expand."""
+    """Create a mock attendee with session expand and optional person/gender."""
     attendee = Mock()
     attendee.person_id = person_id
     attendee.year = year
@@ -66,7 +68,13 @@ def create_mock_attendee(
 
     session = Mock()
     session.cm_id = session_cm_id
-    attendee.expand = {"session": session}
+    expand: dict[str, Any] = {"session": session}
+    if gender is not None:
+        person = Mock()
+        person.gender = gender
+        person.cm_id = person_id + 1000
+        expand["person"] = person
+    attendee.expand = expand
     return attendee
 
 
@@ -1466,37 +1474,9 @@ class TestForecastGenderFields:
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
 
-        from types import SimpleNamespace
-
-        boys = [
-            SimpleNamespace(
-                person_id=i,
-                year=2026,
-                status="enrolled",
-                status_id=2,
-                is_active=True,
-                expand={
-                    "session": SimpleNamespace(cm_id=1001),
-                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
-                },
-            )
-            for i in range(45)
+        enrolled = [create_mock_attendee(i, 1001, gender="M") for i in range(45)] + [
+            create_mock_attendee(i + 100, 1001, gender="F") for i in range(35)
         ]
-        girls = [
-            SimpleNamespace(
-                person_id=i + 100,
-                year=2026,
-                status="enrolled",
-                status_id=2,
-                is_active=True,
-                expand={
-                    "session": SimpleNamespace(cm_id=1001),
-                    "person": SimpleNamespace(gender="F", cm_id=i + 2000),
-                },
-            )
-            for i in range(35)
-        ]
-        enrolled = boys + girls
 
         async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
@@ -1545,67 +1525,14 @@ class TestForecastGenderFields:
         }
         mock_repository.fetch_sessions.return_value = sessions
 
-        from types import SimpleNamespace
-
-        enrolled = []
         # Session 1001: 20 boys + 15 girls
-        for i in range(20):
-            enrolled.append(
-                SimpleNamespace(
-                    person_id=i,
-                    year=2026,
-                    status="enrolled",
-                    status_id=2,
-                    is_active=True,
-                    expand={
-                        "session": SimpleNamespace(cm_id=1001),
-                        "person": SimpleNamespace(gender="M", cm_id=i + 1000),
-                    },
-                )
-            )
-        for i in range(15):
-            enrolled.append(
-                SimpleNamespace(
-                    person_id=i + 100,
-                    year=2026,
-                    status="enrolled",
-                    status_id=2,
-                    is_active=True,
-                    expand={
-                        "session": SimpleNamespace(cm_id=1001),
-                        "person": SimpleNamespace(gender="F", cm_id=i + 2000),
-                    },
-                )
-            )
         # Session 1002: 10 boys + 25 girls
-        for i in range(10):
-            enrolled.append(
-                SimpleNamespace(
-                    person_id=i + 200,
-                    year=2026,
-                    status="enrolled",
-                    status_id=2,
-                    is_active=True,
-                    expand={
-                        "session": SimpleNamespace(cm_id=1002),
-                        "person": SimpleNamespace(gender="M", cm_id=i + 3000),
-                    },
-                )
-            )
-        for i in range(25):
-            enrolled.append(
-                SimpleNamespace(
-                    person_id=i + 300,
-                    year=2026,
-                    status="enrolled",
-                    status_id=2,
-                    is_active=True,
-                    expand={
-                        "session": SimpleNamespace(cm_id=1002),
-                        "person": SimpleNamespace(gender="F", cm_id=i + 4000),
-                    },
-                )
-            )
+        enrolled = (
+            [create_mock_attendee(i, 1001, gender="M") for i in range(20)]
+            + [create_mock_attendee(i + 100, 1001, gender="F") for i in range(15)]
+            + [create_mock_attendee(i + 200, 1002, gender="M") for i in range(10)]
+            + [create_mock_attendee(i + 300, 1002, gender="F") for i in range(25)]
+        )
 
         async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":

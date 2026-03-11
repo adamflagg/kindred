@@ -97,37 +97,19 @@ class MetricsSQLRepository:
         expand_person: bool = False,
     ) -> list[Any]:
         """Fetch attendees with session expansion."""
+        columns = """a.person_id, a.year, a.status, a.status_id, a.is_active,
+                       a.enrollment_date, a.effective_date,
+                       cs.cm_id AS _session_cm_id, cs.name AS _session_name,
+                       cs.session_type AS _session_type, cs.parent_id AS _session_parent_id,
+                       cs.start_date AS _session_start_date, cs.end_date AS _session_end_date"""
+        joins = "JOIN camp_sessions cs ON a.session = cs.id"
         if expand_person:
-            base = """
-                SELECT a.person_id, a.year, a.status, a.status_id, a.is_active,
-                       a.enrollment_date,
-                       a.effective_date,
-                       cs.cm_id  AS _session_cm_id,
-                       cs.name   AS _session_name,
-                       cs.session_type AS _session_type,
-                       cs.parent_id    AS _session_parent_id,
-                       cs.start_date   AS _session_start_date,
-                       cs.end_date     AS _session_end_date,
-                       p.gender  AS _person_gender,
-                       p.cm_id   AS _person_cm_id
+            columns += ", p.gender AS _person_gender, p.cm_id AS _person_cm_id"
+            joins += "\n                LEFT JOIN persons p ON a.person = p.id"
+        base = f"""
+                SELECT {columns}
                 FROM attendees a
-                JOIN camp_sessions cs ON a.session = cs.id
-                LEFT JOIN persons p ON a.person = p.id
-                WHERE a.year = ?
-            """
-        else:
-            base = """
-                SELECT a.person_id, a.year, a.status, a.status_id, a.is_active,
-                       a.enrollment_date,
-                       a.effective_date,
-                       cs.cm_id  AS _session_cm_id,
-                       cs.name   AS _session_name,
-                       cs.session_type AS _session_type,
-                       cs.parent_id    AS _session_parent_id,
-                       cs.start_date   AS _session_start_date,
-                       cs.end_date     AS _session_end_date
-                FROM attendees a
-                JOIN camp_sessions cs ON a.session = cs.id
+                {joins}
                 WHERE a.year = ?
             """
         params: list[Any] = [year]
