@@ -20,18 +20,28 @@ export const SESSION_COLORS = [
 export const DID_NOT_RETURN_COLOR = '#9ca3af'
 
 /** Build a map from CampMinder session ID to a palette color. */
-export function buildCmIdColorMap(
-  _nodes: Array<{ cmId: number | null }>,
-): Map<number, string> {
-  // TODO: implement
-  return new Map()
+export function buildCmIdColorMap(nodes: Array<{ cmId: number | null }>): Map<number, string> {
+  const map = new Map<number, string>()
+  let colorIdx = 0
+  for (const node of nodes) {
+    if (node.cmId != null && !map.has(node.cmId)) {
+      map.set(node.cmId, SESSION_COLORS[colorIdx % SESSION_COLORS.length]!)
+      colorIdx++
+    }
+  }
+  return map
 }
 
-/** Resolve the display color for a node (or node-like object from Recharts). */
+/**
+ * Resolve the display color for a node or node-like object.
+ *
+ * Recharts Sankey passes `payload.source` and `payload.target` as full node
+ * objects (not numeric indices), so this accepts any object with a `cmId`.
+ */
 export function resolveNodeColor(
-  _node: { cmId?: number | null },
-  _cmIdColorMap: Map<number, string>,
+  node: { cmId?: number | null },
+  cmIdColorMap: Map<number, string>,
 ): string {
-  // TODO: implement
-  return DID_NOT_RETURN_COLOR
+  if (node.cmId == null) return DID_NOT_RETURN_COLOR
+  return cmIdColorMap.get(node.cmId) ?? DID_NOT_RETURN_COLOR
 }

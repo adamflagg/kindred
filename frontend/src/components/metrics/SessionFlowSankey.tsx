@@ -10,7 +10,7 @@ import { useState, useMemo } from 'react'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import type { SankeyData } from '../../utils/retentionTransforms'
 
-import { SESSION_COLORS, DID_NOT_RETURN_COLOR } from './sankeyColors'
+import { buildCmIdColorMap, resolveNodeColor, DID_NOT_RETURN_COLOR } from './sankeyColors'
 
 function stripSuffix(name: string): string {
   return name.replace(/ \(from\)$/, '').replace(/ \(to\)$/, '')
@@ -51,7 +51,12 @@ function SankeyTooltip({ active, payload, sankeyData }: CustomTooltipProps) {
   )
 }
 
-/** Props passed by Recharts to custom link renderer */
+/**
+ * Props passed by Recharts to custom link renderer.
+ *
+ * Note: Recharts passes source/target as full enriched node objects, not
+ * numeric indices (despite what Recharts' own types suggest).
+ */
 interface SankeyLinkProps {
   sourceX: number
   sourceY: number
@@ -61,7 +66,11 @@ interface SankeyLinkProps {
   targetControlX: number
   linkWidth: number
   index: number
-  payload: { source: number; target: number; value: number }
+  payload: {
+    source: { cmId?: number | null; name?: string }
+    target: { cmId?: number | null; name?: string }
+    value: number
+  }
 }
 
 interface SessionFlowSankeyProps {
@@ -76,32 +85,16 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
   const height = Math.max(500, sourceCount * 100)
 
   // Build a unified color map: cm_id -> color, applied to both sides
-  const colorMap = useMemo(() => {
+  const cmIdColorMap = useMemo(() => buildCmIdColorMap(data.nodes), [data])
+
+  // Node index -> color (for the node renderer which still receives indices)
+  const nodeIndexColorMap = useMemo(() => {
     const map = new Map<number, string>()
-    const cmIdToColor = new Map<number, string>()
-    let colorIdx = 0
-
-    // Assign colors by cm_id (first appearance order)
-    for (const node of data.nodes) {
-      const cmId = node.cmId
-      if (cmId == null) continue
-      if (!cmIdToColor.has(cmId)) {
-        cmIdToColor.set(cmId, SESSION_COLORS[colorIdx % SESSION_COLORS.length] ?? '#059669')
-        colorIdx++
-      }
-    }
-
-    // Map node index -> color
     data.nodes.forEach((node, idx) => {
-      if (node.cmId == null) {
-        map.set(idx, DID_NOT_RETURN_COLOR)
-      } else {
-        map.set(idx, cmIdToColor.get(node.cmId) ?? DID_NOT_RETURN_COLOR)
-      }
+      map.set(idx, resolveNodeColor(node, cmIdColorMap))
     })
-
     return map
-  }, [data])
+  }, [data, cmIdColorMap])
 
   return (
     <div className="card-lodge p-4">
@@ -128,24 +121,36 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
                 index,
                 payload,
               } = props as SankeyLinkProps
-              const strokeColor = colorMap.get(payload.source) ?? '#d1d5db'
 
-              let opacity = 0.3
+              // payload.source/target are node objects (not indices)
+              const sourceColor = resolveNodeColor(payload.source, cmIdColorMap)
+              const targetColor = resolveNodeColor(payload.target, cmIdColorMap)
+              const gradientId = `sankey-gradient-${index}`
+
+              let opacity = 0.45
               if (hoveredLinkIndex !== null) {
                 opacity = index === hoveredLinkIndex ? 0.7 : 0.1
               }
 
               return (
-                <path
-                  d={`M${sourceX},${sourceY} C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={linkWidth}
-                  strokeOpacity={opacity}
-                  style={{ transition: 'stroke-opacity 0.15s ease' }}
-                  onMouseEnter={() => setHoveredLinkIndex(index)}
-                  onMouseLeave={() => setHoveredLinkIndex(null)}
-                />
+                <g>
+                  <defs>
+                    <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor={sourceColor} />
+                      <stop offset="100%" stopColor={targetColor} />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d={`M${sourceX},${sourceY} C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
+                    fill="none"
+                    stroke={`url(#${gradientId})`}
+                    strokeWidth={linkWidth}
+                    strokeOpacity={opacity}
+                    style={{ transition: 'stroke-opacity 0.15s ease' }}
+                    onMouseEnter={() => setHoveredLinkIndex(index)}
+                    onMouseLeave={() => setHoveredLinkIndex(null)}
+                  />
+                </g>
               )
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
             }) as any
@@ -166,7 +171,7 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
             const name = data.nodes[index]?.name ?? ''
             const displayName = stripSuffix(name)
             const isSource = index < sourceCount
-            const color = colorMap.get(index) ?? DID_NOT_RETURN_COLOR
+            const color = nodeIndexColorMap.get(index) ?? DID_NOT_RETURN_COLOR
 
             return (
               <g>
