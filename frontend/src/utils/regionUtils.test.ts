@@ -76,6 +76,24 @@ describe('classifyCity', () => {
   it('should classify "Mill Valley, CA" as marin', () => {
     expect(classifyCity('Mill Valley, CA')).toBe('marin')
   })
+
+  // Canadian province codes must NOT be treated as US states
+  it('should classify "London, ON" as International (Ontario, not US)', () => {
+    expect(classifyCity('London, ON')).toBe('International')
+  })
+
+  it('should classify "Vancouver, BC" as International', () => {
+    expect(classifyCity('Vancouver, BC')).toBe('International')
+  })
+
+  it('should classify "Montreal, QC" as International', () => {
+    expect(classifyCity('Montreal, QC')).toBe('International')
+  })
+
+  // Other international cities with 2-letter suffixes
+  it('should classify "Munich, DE" as International (Germany)', () => {
+    expect(classifyCity('Munich, DE')).toBe('International')
+  })
 })
 
 describe('REGION_DISPLAY_NAMES', () => {

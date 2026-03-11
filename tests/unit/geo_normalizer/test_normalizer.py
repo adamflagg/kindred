@@ -127,12 +127,12 @@ class TestStateAwareCityNormalization:
         assert canonical == "Xyzzyburgh, CA"
         assert conf == 0.5
 
-    def test_no_match_no_state(self) -> None:
+    def test_no_match_no_state_low_confidence(self) -> None:
         from bunking.geo_normalizer.normalizer import normalize_city_value
 
         canonical, conf = normalize_city_value("Xyzzyburgh")
         assert canonical == "Xyzzyburgh"
-        assert conf == 0.5
+        assert conf == 0.3  # low confidence: unknown city, no state context
 
 
 class TestCityNormalization:
