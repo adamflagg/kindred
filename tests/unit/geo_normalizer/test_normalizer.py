@@ -678,6 +678,26 @@ class TestLocationMetadata:
         assert "state" in sample
 
 
+class TestNormalizeValuesStateThreading:
+    def test_city_with_state_context(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_values
+
+        result = normalize_values("city", [{"value": "Lafayette", "state": "CA", "country": ""}])
+        assert result["Lafayette"]["canonical"] == "Lafayette, CA"
+
+    def test_school_with_state_context(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_values
+
+        result = normalize_values("school", [{"value": "Acalanes High School", "state": "CA", "country": ""}])
+        assert "Acalanes High School" in result
+
+    def test_string_input_backwards_compat(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_values
+
+        result = normalize_values("city", ["Oakland"])
+        assert "Oakland" in result
+
+
 class TestCountryAwareNormalization:
     """Tests for country-aware normalization via normalize_values.
 

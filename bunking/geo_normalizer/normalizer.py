@@ -769,15 +769,14 @@ def normalize_values(
     if category not in ("city", "school", "congregation"):
         raise ValueError(f"Unknown category: {category}")
 
-    # US items go through normal category-specific matching
+    # US items go through normal category-specific matching (pass full dicts for state context)
     if us_items:
-        us_values = [item["value"] for item in us_items]
         if category == "city":
-            us_result = normalize_cities(us_values)
+            us_result = normalize_cities(us_items)
         elif category == "school":
-            us_result = normalize_schools(us_values)
+            us_result = normalize_schools(us_items)
         else:  # congregation
-            us_result = normalize_congregations(us_values)
+            us_result = normalize_congregations(us_items)
         result.update(us_result)
 
     return result
