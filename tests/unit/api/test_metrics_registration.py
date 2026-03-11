@@ -2518,3 +2518,37 @@ class TestGenderBySessionLength:
         assert len(result) == 1
         assert result[0].female_count == 1
         assert result[0].total == 1
+
+    def test_gender_by_session_length_unknown_gender_in_total(self) -> None:
+        """Persons with unknown/null gender should still count toward the total.
+
+        The total should reflect unique persons in the category, not just M+F.
+        This ensures the gender chart total matches the enrollment chart's
+        person-deduped count even when some persons lack gender data.
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        sessions_dict = {2001: session_2}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+            102: create_mock_person(102, "Liam", "Garcia", "M"),
+            103: create_mock_person(103, "Olivia", "Chen", ""),  # Empty gender
+            104: create_mock_person(104, "Noah", "Williams", "X"),  # Non-binary / other
+        }
+
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),
+            create_mock_attendee(102, session_2, 2026),
+            create_mock_attendee(103, session_2, 2026),
+            create_mock_attendee(104, session_2, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        assert len(result) == 1
+        assert result[0].male_count == 1  # Liam
+        assert result[0].female_count == 1  # Emma
+        assert result[0].total == 4  # All 4 persons, not just M+F
