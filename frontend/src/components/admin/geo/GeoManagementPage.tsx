@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { AlertCircle, MapPin } from 'lucide-react'
-import { SUB_TABS, SUB_TAB_TO_CATEGORY, getActiveSubTab } from '../geoConstants'
+import { SUB_TABS, SUB_TAB_TO_CATEGORY, getActiveSubTab, geoBasePath } from '../geoConstants'
 import type { GeoCategory } from '../geoConstants'
 import {
   useGeoGaps,
@@ -28,6 +28,7 @@ export function GeoManagementPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const year = useYear()
+  const basePath = geoBasePath(location.pathname)
   const activeSubTab = getActiveSubTab(location.pathname)
   const category = (SUB_TAB_TO_CATEGORY[activeSubTab] ?? 'city') as GeoCategory
   const [activeOnly, setActiveOnly] = useState(true)
@@ -91,10 +92,10 @@ export function GeoManagementPage() {
 
   // Default redirect
   useEffect(() => {
-    if (location.pathname === '/admin/geo' || location.pathname === '/admin/geo/') {
-      void navigate('/admin/geo/cities', { replace: true })
+    if (location.pathname === basePath || location.pathname === `${basePath}/`) {
+      void navigate(`${basePath}/cities`, { replace: true })
     }
-  }, [location.pathname, navigate])
+  }, [location.pathname, navigate, basePath])
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col">
@@ -122,7 +123,7 @@ export function GeoManagementPage() {
           return (
             <Link
               key={tab.id}
-              to={tab.path}
+              to={`${basePath}/${tab.slug}`}
               data-active={isActive}
               className={`flex items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                 isActive
