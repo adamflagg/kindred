@@ -10,18 +10,7 @@ import { useState, useMemo } from 'react'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import type { SankeyData } from '../../utils/retentionTransforms'
 
-// Unified palette: each cm_id gets one color regardless of source/target side
-const SESSION_COLORS = [
-  '#059669',
-  '#2563eb',
-  '#7c3aed',
-  '#d97706',
-  '#dc2626',
-  '#0891b2',
-  '#c026d3',
-  '#65a30d',
-]
-const DID_NOT_RETURN_COLOR = '#9ca3af'
+import { SESSION_COLORS, DID_NOT_RETURN_COLOR } from './sankeyColors'
 
 function stripSuffix(name: string): string {
   return name.replace(/ \(from\)$/, '').replace(/ \(to\)$/, '')
