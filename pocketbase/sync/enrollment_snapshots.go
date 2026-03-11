@@ -225,15 +225,9 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			datePrefix, sessionCMID, year,
 		)
 		var record *core.Record
-		existing, err := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
-		if err != nil {
-			slog.Error("Error looking up existing enrollment snapshot",
-				"session_cm_id", sessionCMID,
-				"error", err,
-			)
-			s.Stats.Errors++
-			continue
-		}
+		// FindFirstRecordByFilter returns sql.ErrNoRows when no match exists,
+		// so we ignore the error — nil existing means "create new record".
+		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
 		if existing != nil {
 			record = existing
 		} else {
