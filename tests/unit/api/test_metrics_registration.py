@@ -725,6 +725,22 @@ class TestRegistrationEndpointWithSessionFilter:
                 # Once implemented, should have by_first_summer_year field
                 assert "by_first_summer_year" in data
 
+    def test_response_includes_gender_by_session_length(self, client: TestClient) -> None:
+        """Response should include by_gender_by_session_length breakdown."""
+        with patch("api.routers.metrics.pb") as mock_pb:
+            mock_collection = Mock()
+            mock_collection.get_full_list = Mock(return_value=[])
+            mock_pb.collection = Mock(return_value=mock_collection)
+
+            response = client.get(
+                "/api/metrics/registration",
+                params={"year": 2026},
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                assert "by_gender_by_session_length" in data
+
 
 # ============================================================================
 # Waitlisted/Cancelled Deduplication Tests
@@ -2447,14 +2463,14 @@ class TestGenderBySessionLength:
         assert result[0].female_count == 1
         assert result[0].total == 1
 
-    def test_gender_by_session_length_excludes_quest_sessions(self) -> None:
-        """Quest sessions should be excluded, matching DISPLAY_SESSION_TYPES filter."""
+    def test_gender_by_session_length_excludes_non_display_sessions(self) -> None:
+        """Non-display session types (e.g. family) should be excluded."""
         from api.services.registration_service import RegistrationService
 
         session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
-        quest = create_mock_session(3001, "Quest Trip", 2026, "quest", "2026-07-07", "2026-07-13")
+        family = create_mock_session(9001, "Family Camp", 2026, "family", "2026-08-20", "2026-08-24")
 
-        sessions_dict = {2001: session_2, 3001: quest}
+        sessions_dict = {2001: session_2, 9001: family}
         persons_dict = {
             101: create_mock_person(101, "Emma", "Johnson", "F"),
             102: create_mock_person(102, "Liam", "Garcia", "M"),
@@ -2462,14 +2478,14 @@ class TestGenderBySessionLength:
 
         attendees = [
             create_mock_attendee(101, session_2, 2026),  # Emma F -> main (included)
-            create_mock_attendee(102, quest, 2026),  # Liam M -> quest (excluded)
+            create_mock_attendee(102, family, 2026),  # Liam M -> family (excluded)
         ]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)
         result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
 
-        # Only main session should appear; quest excluded
+        # Only main session should appear; family excluded
         assert len(result) == 1
         assert result[0].length_category == "3-week"
         assert result[0].female_count == 1

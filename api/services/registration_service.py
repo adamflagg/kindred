@@ -673,6 +673,10 @@ class RegistrationService:
             if not session_obj:
                 continue
 
+            # Skip non-display session types (family, etc.)
+            if getattr(session_obj, "session_type", None) not in DISPLAY_SESSION_TYPES:
+                continue
+
             start_date = getattr(session_obj, "start_date", "") or ""
             end_date = getattr(session_obj, "end_date", "") or ""
             length = get_session_length_category(start_date, end_date)
@@ -683,7 +687,7 @@ class RegistrationService:
 
             if length not in length_persons:
                 length_persons[length] = set()
-            length_persons[length].add(person_id)
+            length_persons[length].add(int(person_id))
 
         # Count genders per length category
         length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}

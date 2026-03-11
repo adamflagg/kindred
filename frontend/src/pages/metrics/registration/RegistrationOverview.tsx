@@ -607,6 +607,21 @@ export default function RegistrationOverview() {
                   />
                 )}
               </div>
+              {(data.by_gender_by_session_length ?? []).length > 0 && (
+                <ComparisonSummaryTable
+                  title="Gender by Session Length Comparison"
+                  primaryYear={currentYear}
+                  compareYear={compareYear!}
+                  primaryData={(data.by_gender_by_session_length ?? []).map((g) => ({
+                    name: g.length_category,
+                    value: g.total,
+                  }))}
+                  compareData={(compData.by_gender_by_session_length ?? []).map((g) => ({
+                    name: g.length_category,
+                    value: g.total,
+                  }))}
+                />
+              )}
             </>
           ) : (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
