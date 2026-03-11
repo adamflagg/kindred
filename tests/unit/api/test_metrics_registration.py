@@ -2446,3 +2446,59 @@ class TestGenderBySessionLength:
         assert result[0].length_category == "3-week"
         assert result[0].female_count == 1
         assert result[0].total == 1
+
+    def test_gender_by_session_length_excludes_quest_sessions(self) -> None:
+        """Quest sessions should be excluded, matching DISPLAY_SESSION_TYPES filter."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        quest = create_mock_session(3001, "Quest Trip", 2026, "quest", "2026-07-07", "2026-07-13")
+
+        sessions_dict = {2001: session_2, 3001: quest}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+            102: create_mock_person(102, "Liam", "Garcia", "M"),
+        }
+
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),  # Emma F -> main (included)
+            create_mock_attendee(102, quest, 2026),  # Liam M -> quest (excluded)
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
+
+        # Only main session should appear; quest excluded
+        assert len(result) == 1
+        assert result[0].length_category == "3-week"
+        assert result[0].female_count == 1
+        assert result[0].male_count == 0
+        assert result[0].total == 1
+
+    def test_gender_by_session_length_person_id_cast_to_int(self) -> None:
+        """person_id should be cast to int for consistent dict lookup.
+
+        The persons dict is keyed by int. If person_id arrives as a
+        different type (e.g. string), lookup must still succeed.
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        sessions_dict = {2001: session_2}
+        persons_dict = {
+            101: create_mock_person(101, "Emma", "Johnson", "F"),
+        }
+
+        # Simulate person_id as a different numeric type
+        attendee = create_mock_attendee(101, session_2, 2026)
+        attendee.person_id = "101"  # String instead of int
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_gender_by_session_length([attendee], sessions_dict, persons_dict)
+
+        # Should still find the person despite string person_id
+        assert len(result) == 1
+        assert result[0].female_count == 1
+        assert result[0].total == 1
