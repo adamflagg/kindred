@@ -3,10 +3,7 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 describe('SocialNetworkGraph safety guards', () => {
-  const source = readFileSync(
-    resolve(__dirname, './SocialNetworkGraph.tsx'),
-    'utf-8'
-  )
+  const source = readFileSync(resolve(__dirname, './SocialNetworkGraph.tsx'), 'utf-8')
 
   it('has a cancellation guard in the init effect to prevent stale async work', () => {
     // The init effect uses addElementsStaged().then(runLayout) which is async.

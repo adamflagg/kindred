@@ -8,7 +8,12 @@ describe('parseIssueMessage', () => {
       type: 'campers_with_unsatisfied_valid_requests',
       severity: 'warning',
       message: '8 campers have valid requests but NONE are satisfied',
-      details: { count: 8, total_valid_requests: 20, total_satisfied: 0, explicit_unsatisfied_count: 3 },
+      details: {
+        count: 8,
+        total_valid_requests: 20,
+        total_satisfied: 0,
+        explicit_unsatisfied_count: 3,
+      },
     }
     const parsed = parseIssueMessage(issue)
     expect(parsed.primary).toBe('8 campers')
@@ -52,7 +57,9 @@ describe('parseIssueMessage', () => {
 
 describe('getIssueTypeLabel', () => {
   it('returns label for campers_with_unsatisfied_valid_requests', () => {
-    expect(getIssueTypeLabel('campers_with_unsatisfied_valid_requests')).toBe('Unsatisfied Requests')
+    expect(getIssueTypeLabel('campers_with_unsatisfied_valid_requests')).toBe(
+      'Unsatisfied Requests'
+    )
   })
 
   it('returns label for known types', () => {
