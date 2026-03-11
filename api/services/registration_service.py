@@ -33,6 +33,7 @@ from api.utils.session_metrics import (
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
     get_session_length_category,
+    resolve_duration_sessions,
 )
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
@@ -66,6 +67,7 @@ class RegistrationService:
         session_types: list[str] | None = None,
         status_filter: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> RegistrationMetricsResponse:
         """Calculate registration metrics for a year.
 
@@ -87,6 +89,7 @@ class RegistrationService:
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
         ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
+        duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
 
         # Fetch data in parallel
         results = await asyncio.gather(
@@ -109,16 +112,32 @@ class RegistrationService:
 
         # Filter attendees by session
         combined_attendees = filter_attendees_by_session(
-            requested_attendees, session_types, session_cm_id, ag_session_ids
+            requested_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
         enrolled_attendees = filter_attendees_by_session(
-            enrolled_attendees, session_types, session_cm_id, ag_session_ids
+            enrolled_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
         waitlisted_attendees = filter_attendees_by_session(
-            waitlisted_attendees, session_types, session_cm_id, ag_session_ids
+            waitlisted_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
         cancelled_attendees = filter_attendees_by_session(
-            cancelled_attendees, session_types, session_cm_id, ag_session_ids
+            cancelled_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
 
         # Get unique person IDs (deduplicated)

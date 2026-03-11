@@ -23,7 +23,11 @@ from api.schemas.metrics import (
     SynagogueEnrollment,
     YearEnrollment,
 )
-from api.utils.session_metrics import compute_summer_metrics
+from api.utils.session_metrics import (
+    compute_summer_metrics,
+    filter_attendees_by_session,
+    resolve_duration_sessions,
+)
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
@@ -56,6 +60,7 @@ class RetentionTrendsService:
         num_years: int = 3,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> RetentionTrendsResponse:
         """Calculate retention trends across multiple year transitions.
 
@@ -86,6 +91,11 @@ class RetentionTrendsService:
             # Filter by specific session ID
             if session_cm_id is not None:
                 attendees = self._filter_by_session_cm_id(attendees, session_cm_id)
+
+            # Filter by duration category
+            if duration:
+                duration_session_ids = resolve_duration_sessions(year_data["sessions"], duration)
+                attendees = filter_attendees_by_session(attendees, None, session_cm_ids=duration_session_ids)
 
             # Update attendees and compute person_ids
             year_data["attendees"] = attendees

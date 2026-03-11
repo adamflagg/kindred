@@ -26,7 +26,7 @@ from api.services.reconstruction import (
     _get_enrollment_date,
     _parse_date_only,
 )
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
 from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
@@ -209,6 +209,25 @@ class VelocityService:
         ]
 
     @staticmethod
+    def _attendee_session_in(attendee: Any, session_ids: set[int]) -> bool:
+        """Check if an attendee's session cm_id is in the given set.
+
+        Args:
+            attendee: Attendee record with expand containing session.
+            session_ids: Set of session cm_ids to check against.
+
+        Returns:
+            True if the attendee's session cm_id is in session_ids.
+        """
+        session_info = get_session_from_expand(attendee)
+        if not session_info:
+            return False
+        sid = getattr(session_info, "cm_id", None)
+        if sid is None:
+            return False
+        return int(sid) in session_ids
+
+    @staticmethod
     def _snapshots_have_gender_data(snapshots: list[Any]) -> bool:
         """Check if snapshots contain gender count data.
 
@@ -351,6 +370,7 @@ class VelocityService:
         split_by_gender: bool = False,
         metric: str = "enrollment",
         today: date | None = None,
+        duration: str | None = None,
     ) -> VelocityResponse:
         """Get registration velocity curves with week-over-week data.
 
@@ -383,6 +403,10 @@ class VelocityService:
         season_end_dt = _season_end(season_start_dt)
         # Fetch sessions for the year
         sessions = await self.repo.fetch_sessions(year, session_types=session_types)
+        # Filter sessions by duration category
+        if duration:
+            duration_session_ids = resolve_duration_sessions(sessions, duration)
+            sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
         ag_parent_map = build_ag_parent_map(sessions)
 
         # Build curves for the primary year (dispatch by metric type)
@@ -435,6 +459,9 @@ class VelocityService:
                 prior_year_season_starts[prior_year] = prior_season_start.strftime("%Y-%m-%d")
                 prior_season_end = _season_end(prior_season_start)
                 prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
+                if duration:
+                    prior_duration_ids = resolve_duration_sessions(prior_sessions, duration)
+                    prior_sessions = {sid: s for sid, s in prior_sessions.items() if sid in prior_duration_ids}
                 prior_ag_map = build_ag_parent_map(prior_sessions)
 
                 if metric == "cancellation":
@@ -515,10 +542,20 @@ class VelocityService:
         session_swap_count = 0
         if metric == "cancellation":
             all_attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
+            # Filter attendees to duration-scoped sessions so swap count
+            # reflects the same scope as the cancellation curves.
+            duration_scoped_sids = set(sessions.keys())
             cancelled_atts = [
-                a for a in all_attendees if getattr(a, "status", "") in ("cancelled", "withdrawn", "dismissed")
+                a
+                for a in all_attendees
+                if getattr(a, "status", "") in ("cancelled", "withdrawn", "dismissed")
+                and self._attendee_session_in(a, duration_scoped_sids)
             ]
-            enrolled_atts = [a for a in all_attendees if getattr(a, "status", "") == "enrolled"]
+            enrolled_atts = [
+                a
+                for a in all_attendees
+                if getattr(a, "status", "") == "enrolled" and self._attendee_session_in(a, duration_scoped_sids)
+            ]
             swap_pids = detect_session_swaps(cancelled_atts, enrolled_atts)
             if session_cm_id is not None:
                 # Filter swap_pids to those with cancellations in the viewed session

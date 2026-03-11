@@ -68,7 +68,7 @@ function PartialWeekDot(props: any) {
 }
 
 export default function CancellationVelocityPage() {
-  const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
   const [splitByGender, setSplitByGender] = useState(false)
@@ -85,6 +85,7 @@ export default function CancellationVelocityPage() {
     sessionTypes: sessionTypesParam,
     splitByGender,
     metric: 'cancellation',
+    duration: durationParam,
   })
 
   // Build unified chart data aligned by week_number

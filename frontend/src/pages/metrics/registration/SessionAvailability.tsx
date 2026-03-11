@@ -187,11 +187,12 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
 
 export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, durationParam } = useMetricsSession()
   const { data, isLoading, error } = useSessionAvailability(
     currentYear,
     sessionTypesParam,
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    durationParam
   )
 
   const { camp: campSessions, quest: questSessions } = useMemo(
@@ -217,6 +218,14 @@ export default function SessionAvailability() {
   }
 
   if (!data) return null
+
+  if (data.sessions.length === 0 && data.ag_sessions.length === 0) {
+    return (
+      <div className="text-muted-foreground flex items-center justify-center py-12">
+        No availability data for the selected filters
+      </div>
+    )
+  }
 
   const { ag_sessions } = data
 

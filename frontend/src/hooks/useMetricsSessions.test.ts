@@ -41,6 +41,12 @@ describe('useMetricsSessions', () => {
       expect(validSessionTypes).toContain(session.session_type)
     })
 
+    it('should include end_date in MetricsSession type', async () => {
+      // Type-level verification: this test fails to compile if end_date is removed from MetricsSession
+      const verifyShape = (s: import('./useMetricsSessions').MetricsSession) => s.end_date
+      expect(verifyShape).toBeDefined()
+    })
+
     it('should sort sessions by start_date', () => {
       // Sessions should be sorted chronologically
       const sessions = [

@@ -106,50 +106,41 @@ export const queryKeys = {
     baseYear: number,
     compareYear: number,
     sessionTypes?: string,
-    sessionCmId?: number
+    sessionCmId?: number,
+    duration?: string
   ) =>
-    sessionCmId
-      ? (['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId] as const)
-      : sessionTypes
-        ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
-        : (['metrics', 'retention', baseYear, compareYear] as const),
+    ['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId, duration] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
-  registration: (year: number, sessionTypes?: string, statuses?: string, sessionCmId?: number) =>
-    sessionCmId
-      ? (['metrics', 'registration', year, sessionTypes, statuses, sessionCmId] as const)
-      : sessionTypes || statuses
-        ? (['metrics', 'registration', year, sessionTypes, statuses] as const)
-        : (['metrics', 'registration', year] as const),
+  registration: (
+    year: number,
+    sessionTypes?: string,
+    statuses?: string,
+    sessionCmId?: number,
+    duration?: string
+  ) => ['metrics', 'registration', year, sessionTypes, statuses, sessionCmId, duration] as const,
   comparison: (yearA: number, yearB: number) => ['metrics', 'comparison', yearA, yearB] as const,
-  historical: (years?: string, sessionTypes?: string, sessionCmId?: number) =>
-    sessionCmId !== undefined
-      ? (['metrics', 'historical', years, sessionTypes, sessionCmId] as const)
-      : years || sessionTypes
-        ? (['metrics', 'historical', years, sessionTypes] as const)
-        : (['metrics', 'historical'] as const),
+  historical: (years?: string, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
+    ['metrics', 'historical', years, sessionTypes, sessionCmId, duration] as const,
   retentionTrends: (
     currentYear: number,
     numYears?: number,
     sessionTypes?: string,
-    sessionCmId?: number
+    sessionCmId?: number,
+    duration?: string
   ) =>
-    sessionCmId
-      ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes, sessionCmId] as const)
-      : numYears || sessionTypes
-        ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes] as const)
-        : (['metrics', 'retention-trends', currentYear] as const),
-  waitlist: (year: number, sessionTypes?: string, sessionCmId?: number) =>
-    sessionCmId
-      ? (['metrics', 'waitlist', year, sessionTypes, sessionCmId] as const)
-      : sessionTypes
-        ? (['metrics', 'waitlist', year, sessionTypes] as const)
-        : (['metrics', 'waitlist', year] as const),
-  cancellations: (year: number, sessionTypes?: string, sessionCmId?: number) =>
-    sessionCmId
-      ? (['metrics', 'cancellations', year, sessionTypes, sessionCmId] as const)
-      : sessionTypes
-        ? (['metrics', 'cancellations', year, sessionTypes] as const)
-        : (['metrics', 'cancellations', year] as const),
+    [
+      'metrics',
+      'retention-trends',
+      currentYear,
+      numYears,
+      sessionTypes,
+      sessionCmId,
+      duration,
+    ] as const,
+  waitlist: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
+    ['metrics', 'waitlist', year, sessionTypes, sessionCmId, duration] as const,
+  cancellations: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
+    ['metrics', 'cancellations', year, sessionTypes, sessionCmId, duration] as const,
   drilldown: (
     year: number,
     breakdownType?: string,
@@ -157,7 +148,8 @@ export const queryKeys = {
     sessionCmId?: number,
     sessionTypes?: string,
     statusFilter?: string,
-    compareYear?: number
+    compareYear?: number,
+    duration?: string
   ) =>
     [
       'metrics',
@@ -169,24 +161,28 @@ export const queryKeys = {
       sessionTypes,
       statusFilter,
       compareYear,
+      duration,
     ] as const,
 
   // Registration Config (Tier 2 - user data)
   registrationDatesConfig: (year: number) => ['registration-dates-config', year] as const,
   gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,
-  sessionAvailability: (year: number, sessionTypes?: string, sessionCmId?: number) =>
-    ['session-availability', year, sessionTypes, sessionCmId] as const,
+  sessionAvailability: (
+    year: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+    duration?: string
+  ) => ['session-availability', year, sessionTypes, sessionCmId, duration] as const,
   sessionBudgetConfig: (year: number) => ['session-budget-config', year] as const,
 
   // Forecast (Tier 1 - sync data)
-  forecast: (year: number, sessionTypes?: string, sessionCmId?: number, dayOffset?: number) =>
-    dayOffset != null
-      ? (['metrics', 'forecast', year, sessionTypes, sessionCmId, dayOffset] as const)
-      : sessionCmId
-        ? (['metrics', 'forecast', year, sessionTypes, sessionCmId] as const)
-        : sessionTypes
-          ? (['metrics', 'forecast', year, sessionTypes] as const)
-          : (['metrics', 'forecast', year] as const),
+  forecast: (
+    year: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+    dayOffset?: number,
+    duration?: string
+  ) => ['metrics', 'forecast', year, sessionTypes, sessionCmId, dayOffset, duration] as const,
   forecastWeekOptions: (year: number) => ['metrics', 'forecast', 'week-options', year] as const,
 
   // Staff (Tier 1 - sync data)
@@ -198,7 +194,8 @@ export const queryKeys = {
     year: number,
     activeOnly?: boolean,
     sessionTypes?: readonly string[],
-    sessionCmId?: number
+    sessionCmId?: number,
+    duration?: string
   ) =>
     [
       'geo',
@@ -208,6 +205,7 @@ export const queryKeys = {
       activeOnly,
       sessionTypes ? [...sessionTypes] : undefined,
       sessionCmId,
+      duration,
     ] as const,
   geoGapsPrefix: (category: string, year: number) => ['geo', 'gaps', category, year] as const,
   geoGaps: (category: string, year: number, activeOnly?: boolean) =>
@@ -228,7 +226,8 @@ export const queryKeys = {
     compareYears?: string,
     sessionTypes?: string,
     splitByGender?: boolean,
-    metric?: string
+    metric?: string,
+    duration?: string
   ) =>
     [
       'metrics',
@@ -239,6 +238,7 @@ export const queryKeys = {
       sessionTypes,
       splitByGender,
       metric,
+      duration,
     ] as const,
 }
 

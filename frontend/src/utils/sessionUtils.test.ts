@@ -11,6 +11,8 @@ import {
   isValidTab,
   VALID_TABS,
   splitCampAndQuest,
+  getSessionLengthCategory,
+  groupSessionsByDuration,
 } from './sessionUtils'
 import type { Session } from '../types/app-types'
 
@@ -870,5 +872,123 @@ describe('splitCampAndQuest', () => {
 
     expect(camp.map((s) => s.label)).toEqual(['A', 'C'])
     expect(quest.map((s) => s.label)).toEqual(['B'])
+  })
+})
+
+// ============================================================================
+// Duration grouping utilities
+// ============================================================================
+
+describe('getSessionLengthCategory', () => {
+  it('should categorize 1-7 day sessions as 1-week', () => {
+    expect(getSessionLengthCategory('2026-06-01', '2026-06-07')).toBe('1-week')
+    expect(getSessionLengthCategory('2026-06-01', '2026-06-01')).toBe('1-week') // 1 day
+  })
+
+  it('should categorize 8-14 day sessions as 2-week', () => {
+    expect(getSessionLengthCategory('2026-06-01', '2026-06-08')).toBe('2-week') // 8 days = boundary
+    expect(getSessionLengthCategory('2026-06-15', '2026-06-28')).toBe('2-week') // 14 days
+  })
+
+  it('should categorize 15-21 day sessions as 3-week', () => {
+    expect(getSessionLengthCategory('2026-06-15', '2026-07-05')).toBe('3-week')
+  })
+
+  it('should categorize 22+ day sessions as 4-week+', () => {
+    expect(getSessionLengthCategory('2026-06-01', '2026-07-01')).toBe('4-week+')
+  })
+
+  it('should return unknown for missing dates', () => {
+    expect(getSessionLengthCategory('', '2026-06-07')).toBe('unknown')
+    expect(getSessionLengthCategory('2026-06-01', '')).toBe('unknown')
+  })
+
+  it('should handle ISO datetime strings by extracting date part', () => {
+    expect(getSessionLengthCategory('2026-06-01T00:00:00Z', '2026-06-07T23:59:59Z')).toBe('1-week')
+  })
+})
+
+describe('groupSessionsByDuration', () => {
+  const sessions = [
+    {
+      cm_id: 101,
+      name: 'Taste of Camp 1',
+      session_type: 'main' as const,
+      start_date: '2026-06-01',
+      end_date: '2026-06-07',
+    },
+    {
+      cm_id: 102,
+      name: 'Taste of Camp 2',
+      session_type: 'main' as const,
+      start_date: '2026-06-08',
+      end_date: '2026-06-14',
+    },
+    {
+      cm_id: 201,
+      name: 'Session 1',
+      session_type: 'main' as const,
+      start_date: '2026-06-15',
+      end_date: '2026-06-28',
+    },
+    {
+      cm_id: 202,
+      name: 'Session 2',
+      session_type: 'main' as const,
+      start_date: '2026-07-01',
+      end_date: '2026-07-14',
+    },
+    {
+      cm_id: 301,
+      name: 'Session 2a',
+      session_type: 'embedded' as const,
+      start_date: '2026-07-01',
+      end_date: '2026-07-21',
+    },
+  ]
+
+  it('should group sessions by duration category', () => {
+    const groups = groupSessionsByDuration(sessions)
+    expect(groups.get('1-week')?.map((s) => s.cm_id)).toEqual([101, 102])
+    expect(groups.get('2-week')?.map((s) => s.cm_id)).toEqual([201, 202])
+    expect(groups.get('3-week')?.map((s) => s.cm_id)).toEqual([301])
+  })
+
+  it('should only include non-quest sessions', () => {
+    const withQuest = [
+      ...sessions,
+      {
+        cm_id: 901,
+        name: 'Quest 1',
+        session_type: 'quest' as const,
+        start_date: '2026-06-01',
+        end_date: '2026-06-07',
+      },
+    ]
+    const groups = groupSessionsByDuration(withQuest)
+    // Quest should not appear in any group
+    for (const [, groupSessions] of groups) {
+      expect(groupSessions.every((s) => s.session_type !== 'quest')).toBe(true)
+    }
+  })
+
+  it('should omit empty duration categories', () => {
+    const oneWeekOnly = sessions.filter((s) => s.cm_id <= 102)
+    const groups = groupSessionsByDuration(oneWeekOnly)
+    expect(groups.has('1-week')).toBe(true)
+    expect(groups.has('2-week')).toBe(false)
+    expect(groups.has('3-week')).toBe(false)
+  })
+
+  it('should return empty map for empty input', () => {
+    expect(groupSessionsByDuration([])).toEqual(new Map())
+  })
+
+  it('should sort sessions within each group by start_date', () => {
+    const reversed = [...sessions].reverse()
+    const groups = groupSessionsByDuration(reversed)
+    const oneWeek = groups.get('1-week')!
+    expect(oneWeek[0]!.name).toBe('Taste of Camp 1')
+    expect(oneWeek[1]!.name).toBe('Taste of Camp 2')
   })
 })

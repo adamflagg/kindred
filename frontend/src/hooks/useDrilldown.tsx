@@ -33,6 +33,8 @@ interface UseDrilldownOptions {
   sessionTypes: string[]
   /** Status filter (e.g., ['enrolled']) */
   statusFilter: string[]
+  /** Filter by session duration category */
+  duration?: string | undefined
 }
 
 interface UseDrilldownReturn {
@@ -51,6 +53,7 @@ export function useDrilldown({
   sessionCmId,
   sessionTypes,
   statusFilter,
+  duration,
 }: UseDrilldownOptions): UseDrilldownReturn {
   const [filter, setFilterState] = useState<DrilldownFilter | null>(null)
 
@@ -75,11 +78,12 @@ export function useDrilldown({
           sessionCmId={sessionCmId}
           sessionTypes={sessionTypes}
           statusFilter={statusFilter}
+          duration={duration}
           onClose={clearFilter}
         />
       )
     }
-  }, [filter, year, sessionCmId, sessionTypes, statusFilter, clearFilter])
+  }, [filter, year, sessionCmId, sessionTypes, statusFilter, duration, clearFilter])
 
   return {
     filter,

@@ -11,12 +11,13 @@ export function useComparisonWaitlistData(
   primaryYear: number,
   compareYear: number | null,
   sessionTypesParam?: string,
-  sessionCmId?: number
+  sessionCmId?: number,
+  duration?: string
 ) {
-  const primary = useWaitlistMetrics(primaryYear, sessionTypesParam, sessionCmId)
+  const primary = useWaitlistMetrics(primaryYear, sessionTypesParam, sessionCmId, duration)
 
   // Pass 0 to disable the query when not comparing (enabled: year > 0)
-  const comparison = useWaitlistMetrics(compareYear ?? 0, sessionTypesParam, sessionCmId)
+  const comparison = useWaitlistMetrics(compareYear ?? 0, sessionTypesParam, sessionCmId, duration)
 
   return {
     primary,

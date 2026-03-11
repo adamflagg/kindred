@@ -17,6 +17,7 @@ from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
     get_session_from_expand,
+    resolve_duration_sessions,
 )
 
 if TYPE_CHECKING:
@@ -108,6 +109,7 @@ class ForecastService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         day_offset: int | None = None,
+        duration: str | None = None,
     ) -> ForecastResponse:
         """Calculate forecast for the given year.
 
@@ -128,6 +130,11 @@ class ForecastService:
 
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
+
+        # Filter sessions by duration category
+        if duration:
+            duration_session_ids = resolve_duration_sessions(sessions, duration)
+            sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
 
         # Historical day_offset mode: use snapshot or reconstruction for enrollment counts
         snapshot_counts: dict[int, dict[str, int]] | None = None
@@ -166,7 +173,7 @@ class ForecastService:
             )
 
         # Fetch prior year comparison data
-        prior_counts, two_year_counts = await self._fetch_prior_year_counts(year, session_types, day_offset)
+        prior_counts, two_year_counts = await self._fetch_prior_year_counts(year, session_types, day_offset, duration)
 
         # Build AG parent map for session_cm_id filtering
         ag_parent_map = build_ag_parent_map(sessions)
@@ -280,11 +287,19 @@ class ForecastService:
         year: int,
         session_types: list[str],
         day_offset: int | None,
+        duration: str | None = None,
     ) -> tuple[dict[str, int], dict[str, int]]:
         """Fetch prior year and two-year-prior enrollment counts by canonical session name.
 
         When day_offset is set, uses reconstruction at the same offset relative to
         each prior year's own registration anchor. When None, uses live attendee data.
+
+        Args:
+            year: Current year.
+            session_types: Session types to include.
+            day_offset: Days since registration anchor, or None for live data.
+            duration: Duration category filter (e.g., '1-week'). When set, only
+                prior-year sessions matching this duration are included.
 
         Returns:
             Tuple of (prior_year_counts, two_year_prior_counts), each mapping
@@ -292,9 +307,9 @@ class ForecastService:
         """
         try:
             if day_offset is not None:
-                return await self._reconstruct_prior_year_counts(year, session_types, day_offset)
+                return await self._reconstruct_prior_year_counts(year, session_types, day_offset, duration)
             else:
-                return await self._fetch_live_prior_year_counts(year, session_types)
+                return await self._fetch_live_prior_year_counts(year, session_types, duration)
         except Exception:
             logger.warning(
                 "Failed to fetch prior year data, continuing without comparison",
@@ -306,6 +321,7 @@ class ForecastService:
         self,
         year: int,
         session_types: list[str],
+        duration: str | None = None,
     ) -> tuple[dict[str, int], dict[str, int]]:
         """Fetch prior year counts from live attendee data (existing behavior)."""
         prior_sessions, prior_attendees, two_year_sessions, two_year_attendees = await asyncio.gather(
@@ -314,6 +330,14 @@ class ForecastService:
             self.repository.fetch_sessions(year - 2, session_types),
             self.repository.fetch_attendees(year - 2),
         )
+
+        # Filter prior-year sessions by duration category
+        if duration:
+            prior_duration_ids = resolve_duration_sessions(prior_sessions, duration)
+            prior_sessions = {sid: s for sid, s in prior_sessions.items() if sid in prior_duration_ids}
+            two_year_duration_ids = resolve_duration_sessions(two_year_sessions, duration)
+            two_year_sessions = {sid: s for sid, s in two_year_sessions.items() if sid in two_year_duration_ids}
+
         prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)
         two_year_counts = self._count_by_session_name(two_year_sessions, two_year_attendees)
         return prior_counts, two_year_counts
@@ -323,6 +347,7 @@ class ForecastService:
         year: int,
         session_types: list[str],
         day_offset: int,
+        duration: str | None = None,
     ) -> tuple[dict[str, int], dict[str, int]]:
         """Reconstruct prior year counts at the same day_offset using each year's anchor."""
         prior_counts: dict[str, int] = {}
@@ -334,6 +359,13 @@ class ForecastService:
                 prior_sessions = await self.repository.fetch_sessions(prior_year, session_types)
                 if not prior_sessions:
                     continue
+
+                # Filter prior-year sessions by duration category
+                if duration:
+                    dur_ids = resolve_duration_sessions(prior_sessions, duration)
+                    prior_sessions = {sid: s for sid, s in prior_sessions.items() if sid in dur_ids}
+                    if not prior_sessions:
+                        continue
 
                 prior_reg_dates = await self.repository.fetch_registration_dates(prior_year)
                 prior_anchor_str = prior_reg_dates.get("priority_reg_date") or prior_reg_dates.get("early_reg_date")

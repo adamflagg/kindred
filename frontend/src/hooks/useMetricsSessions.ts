@@ -14,6 +14,7 @@ export interface MetricsSession {
   name: string
   session_type: 'main' | 'embedded' | 'quest'
   start_date: string
+  end_date: string
 }
 
 /**
@@ -36,6 +37,7 @@ export function useMetricsSessions(year: number) {
         name: s.name,
         session_type: s.session_type as 'main' | 'embedded' | 'quest',
         start_date: s.start_date,
+        end_date: s.end_date,
       }))
       return sortSessionsByDate(mapped)
     },

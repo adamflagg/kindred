@@ -24,7 +24,7 @@ from api.schemas.metrics import (
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
 from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
@@ -56,6 +56,7 @@ class CancellationService:
         year: int,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> CancellationMetricsResponse:
         """Calculate cancellation metrics.
 
@@ -81,6 +82,9 @@ class CancellationService:
         valid_session_ids = set(filtered_sessions.keys())
         if session_cm_id is not None:
             valid_session_ids = {sid for sid in valid_session_ids if sid == session_cm_id}
+        if duration:
+            duration_session_ids = resolve_duration_sessions(filtered_sessions, duration)
+            valid_session_ids = valid_session_ids & duration_session_ids
 
         # --- Fetch cancelled and enrolled attendees ---
         cancelled_attendees = await self.repository.fetch_attendees(year, status_filter=CANCELLED_STATUSES)
@@ -254,7 +258,7 @@ class CancellationService:
             other_prior_status=summary_other_prior,
             has_other_sessions=summary_has_other,
             no_other_sessions=summary_no_other,
-            total_re_enrolled=len(re_enrolled_persons),
+            total_re_enrolled=len(re_enrolled_persons & seen_for_summary) if duration else len(re_enrolled_persons),
             session_swap_count=session_swap_count,
             true_departure_count=true_departure_count,
             avg_days_to_cancellation=timing_data["avg"],

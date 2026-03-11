@@ -8,10 +8,11 @@ retention rates, and year-over-year comparisons.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_admin, require_permission
 from bunking.rbac.permissions import Permission
@@ -61,6 +62,9 @@ async def get_retention_metrics(
         None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
     ),
     session_cm_id: int | None = Query(None, description="Filter to specific session by CampMinder ID"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
@@ -68,6 +72,8 @@ async def get_retention_metrics(
     Calculates what percentage of campers from base_year returned in compare_year,
     broken down by gender, grade, session, and years at camp.
     """
+    check_duration_session_exclusive(duration, session_cm_id)
+
     from api.services.retention_service import RetentionService
 
     cache_params = {
@@ -75,6 +81,7 @@ async def get_retention_metrics(
         "compare_year": compare_year,
         "session_types": session_types,
         "session_cm_id": session_cm_id,
+        "duration": duration,
     }
     cached: RetentionMetricsResponse | None = metrics_cache.get("retention", **cache_params)
     if cached is not None:
@@ -88,6 +95,7 @@ async def get_retention_metrics(
         compare_year=compare_year,
         session_types=type_filter,
         session_cm_id=session_cm_id,
+        duration=duration,
     )
     metrics_cache.set("retention", result, **cache_params)
     return result
@@ -113,6 +121,9 @@ async def get_registration_metrics(
         None,
         description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
     ),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
@@ -124,6 +135,7 @@ async def get_registration_metrics(
     in the enrollment counts and breakdowns. Multiple statuses can be combined
     for flexible dashboard views.
     """
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.registration_service import RegistrationService
 
@@ -132,6 +144,7 @@ async def get_registration_metrics(
         "session_types": session_types,
         "statuses": statuses,
         "session_cm_id": session_cm_id,
+        "duration": duration,
     }
     cached: RegistrationMetricsResponse | None = metrics_cache.get("registration", **cache_params)
     if cached is not None:
@@ -141,7 +154,7 @@ async def get_registration_metrics(
     status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
     repository = _create_repository()
     service = RegistrationService(repository)
-    result = await service.calculate_registration(year, type_filter, status_filter, session_cm_id)
+    result = await service.calculate_registration(year, type_filter, status_filter, session_cm_id, duration=duration)
     metrics_cache.set("registration", result, **cache_params)
     return result
 
@@ -198,6 +211,9 @@ async def get_historical_trends(
         None,
         description="Filter to specific session by CampMinder ID. Uses name-matching across years.",
     ),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> HistoricalTrendsResponse:
     """Get historical trends across multiple years.
@@ -209,9 +225,16 @@ async def get_historical_trends(
     across years. CampMinder often reuses cm_ids year-over-year, but names can change
     (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
     """
+    check_duration_session_exclusive(duration, session_cm_id)
+
     from api.services.historical_service import HistoricalService
 
-    cache_params = {"years": years, "session_types": session_types, "session_cm_id": session_cm_id}
+    cache_params = {
+        "years": years,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+    }
     cached: HistoricalTrendsResponse | None = metrics_cache.get("historical", **cache_params)
     if cached is not None:
         return cached
@@ -224,6 +247,7 @@ async def get_historical_trends(
         years=year_list,
         session_types=type_filter,
         session_cm_id=session_cm_id,
+        duration=duration,
     )
     metrics_cache.set("historical", result, **cache_params)
     return result
@@ -246,6 +270,9 @@ async def get_retention_trends(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RetentionTrendsResponse:
     """Get retention trends across multiple year transitions.
@@ -259,6 +286,7 @@ async def get_retention_trends(
     This enables line charts for overall retention and grouped bar charts
     for breakdown categories.
     """
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.retention_trends_service import RetentionTrendsService
 
@@ -267,6 +295,7 @@ async def get_retention_trends(
         "num_years": num_years,
         "session_types": session_types,
         "session_cm_id": session_cm_id,
+        "duration": duration,
     }
     cached: RetentionTrendsResponse | None = metrics_cache.get("retention_trends", **cache_params)
     if cached is not None:
@@ -280,6 +309,7 @@ async def get_retention_trends(
         num_years=num_years,
         session_types=type_filter,
         session_cm_id=session_cm_id,
+        duration=duration,
     )
     metrics_cache.set("retention_trends", result, **cache_params)
     return result
@@ -301,6 +331,9 @@ async def get_waitlist_metrics(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> WaitlistMetricsResponse:
     """Get waitlist analysis metrics.
@@ -311,10 +344,11 @@ async def get_waitlist_metrics(
     - Previously waitlisted, now accepted (enrolled)
     - Previously waitlisted, declined (cancelled/withdrawn/dismissed)
     """
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.waitlist_service import WaitlistService
 
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id}
+    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
     cached: WaitlistMetricsResponse | None = metrics_cache.get("waitlist", **cache_params)
     if cached is not None:
         return cached
@@ -326,6 +360,7 @@ async def get_waitlist_metrics(
         year=year,
         session_types=type_filter,
         session_cm_id=session_cm_id,
+        duration=duration,
     )
     metrics_cache.set("waitlist", result, **cache_params)
     return result
@@ -347,6 +382,9 @@ async def get_cancellation_metrics(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> CancellationMetricsResponse:
     """Get cancellation analysis metrics.
@@ -356,9 +394,11 @@ async def get_cancellation_metrics(
     - Has other sessions vs no other sessions remaining
     - Re-enrolled (cancelled then returned)
     """
+    check_duration_session_exclusive(duration, session_cm_id)
+
     from api.services.cancellation_service import CancellationService
 
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id}
+    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
     cached: CancellationMetricsResponse | None = metrics_cache.get("cancellations", **cache_params)
     if cached is not None:
         return cached
@@ -370,6 +410,7 @@ async def get_cancellation_metrics(
         year=year,
         session_types=type_filter,
         session_cm_id=session_cm_id,
+        duration=duration,
     )
     metrics_cache.set("cancellations", result, **cache_params)
     return result
@@ -409,6 +450,9 @@ async def get_drilldown_attendees(
         description="Compare year for retention drilldowns. When set, is_returning reflects "
         "whether camper returned to the compare year instead of years_at_camp > 1.",
     ),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> list[DrilldownAttendee]:
     """Get attendee list for a specific breakdown value.
@@ -416,6 +460,8 @@ async def get_drilldown_attendees(
     Click a chart segment (e.g., "Grade 5" bar) to see all matching campers.
     Returns individual attendee records with person details for modal display.
     """
+    check_duration_session_exclusive(duration, session_cm_id)
+
     from api.services.drilldown_service import DrilldownService
 
     session_types_list = session_types.split(",") if session_types else None
@@ -432,6 +478,7 @@ async def get_drilldown_attendees(
         session_types=session_types_list,
         status_filter=status_list,
         compare_year=compare_year,
+        duration=duration,
     )
 
 
@@ -448,9 +495,13 @@ async def get_velocity(
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
     split_by_gender: bool = Query(False, description="Split enrollment by gender (M/F)"),
     metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> VelocityResponse:
     """Get registration velocity curves with week-over-week data."""
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.velocity_service import VelocityService
 
@@ -461,6 +512,7 @@ async def get_velocity(
         "session_types": session_types,
         "split_by_gender": split_by_gender,
         "metric": metric,
+        "duration": duration,
     }
     cached: VelocityResponse | None = metrics_cache.get("velocity", **cache_params)
     if cached is not None:
@@ -477,6 +529,7 @@ async def get_velocity(
         session_types=type_filter,
         split_by_gender=split_by_gender,
         metric=metric,
+        duration=duration,
     )
     metrics_cache.set("velocity", result, **cache_params)
     return result
@@ -506,9 +559,14 @@ async def get_forecast(
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     day_offset: int | None = Query(None, ge=0, description="Days since registration anchor (week-relative mode)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals and revenue projections."""
+    check_duration_session_exclusive(duration, session_cm_id)
+
     from api.services.forecast_service import ForecastService
 
     cache_params = {
@@ -516,6 +574,7 @@ async def get_forecast(
         "session_types": session_types,
         "session_cm_id": session_cm_id,
         "day_offset": day_offset,
+        "duration": duration,
     }
     cached: ForecastResponse | None = metrics_cache.get("forecast", **cache_params)
     if cached is not None:
@@ -529,6 +588,7 @@ async def get_forecast(
         session_types=type_filter,
         session_cm_id=session_cm_id,
         day_offset=day_offset,
+        duration=duration,
     )
     metrics_cache.set("forecast", result, **cache_params)
     return result

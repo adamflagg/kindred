@@ -15,6 +15,7 @@ export function useVelocity(
     sessionTypes?: string
     splitByGender?: boolean
     metric?: 'enrollment' | 'cancellation'
+    duration?: string | null | undefined
   } = {}
 ) {
   const { fetchWithAuth } = useApiWithAuth()
@@ -25,6 +26,7 @@ export function useVelocity(
   if (params.sessionTypes) searchParams.set('session_types', params.sessionTypes)
   if (params.splitByGender) searchParams.set('split_by_gender', 'true')
   if (params.metric && params.metric !== 'enrollment') searchParams.set('metric', params.metric)
+  if (params.duration) searchParams.set('duration', params.duration)
 
   return useQuery({
     queryKey: queryKeys.velocity(
@@ -33,7 +35,8 @@ export function useVelocity(
       params.compareYears?.join(','),
       params.sessionTypes,
       params.splitByGender,
-      params.metric
+      params.metric,
+      params.duration ?? undefined
     ),
     queryFn: async (): Promise<VelocityResponse> => {
       const response = await fetchWithAuth(`/api/metrics/velocity?${searchParams}`)

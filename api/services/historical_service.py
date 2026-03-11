@@ -18,7 +18,11 @@ from api.schemas.metrics import (
     NewVsReturning,
     YearMetrics,
 )
-from api.utils.session_metrics import filter_attendees_by_session, find_ag_sessions_for_parent
+from api.utils.session_metrics import (
+    filter_attendees_by_session,
+    find_ag_sessions_for_parent,
+    resolve_duration_sessions,
+)
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .extractors import extract_gender
@@ -38,6 +42,7 @@ class HistoricalService:
         years: list[int] | None = None,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> HistoricalTrendsResponse:
         """Calculate historical trends across multiple years.
 
@@ -80,7 +85,7 @@ class HistoricalService:
             years, all_attendees, all_persons, all_sessions, all_cancel_counts, strict=True
         ):
             # Filter attendees by session type and/or session name
-            filtered = self._filter_attendees(attendees, sessions, session_types, session_cm_id, session_name)
+            filtered = self._filter_attendees(attendees, sessions, session_types, session_cm_id, session_name, duration)
 
             # Deduplicate by person_id
             person_ids = {pid for a in filtered if (pid := getattr(a, "person_id", None)) is not None}
@@ -97,6 +102,7 @@ class HistoricalService:
         session_types: list[str] | None,
         session_cm_id: int | None,
         session_name: str | None,
+        duration: str | None = None,
     ) -> list[Any]:
         """Filter attendees by session type and optionally by session name.
 
@@ -115,7 +121,14 @@ class HistoricalService:
                 return []
 
         ag_session_ids = find_ag_sessions_for_parent(sessions, target_session_cm_id or session_cm_id)
-        return filter_attendees_by_session(attendees, session_types, target_session_cm_id, ag_session_ids)
+        duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
+        return filter_attendees_by_session(
+            attendees,
+            session_types,
+            target_session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
+        )
 
     async def _get_session_name_for_filtering(
         self,

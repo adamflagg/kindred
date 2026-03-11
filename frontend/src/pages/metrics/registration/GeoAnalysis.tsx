@@ -58,8 +58,14 @@ export default function GeoAnalysis() {
   const [expandedCategories, setExpandedCategories] = useState<Set<GeoCategoryExtended>>(new Set())
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessionTypesParam, activeSessionTypes, compareYear, isComparing } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessionTypesParam,
+    activeSessionTypes,
+    compareYear,
+    isComparing,
+    durationParam,
+  } = useMetricsSession()
 
   // Force sources/gaps off when entering compare mode
   useEffect(() => {
@@ -75,6 +81,7 @@ export default function GeoAnalysis() {
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
     statusFilter: DEFAULT_STATUS_FILTER,
+    duration: durationParam,
   })
 
   // Fetch source mappings from backend with active_only filtering
@@ -83,9 +90,11 @@ export default function GeoAnalysis() {
     activeOnly: boolean
     sessionTypes: readonly string[]
     sessionCmId?: number
+    duration?: string | null | undefined
   } = {
     activeOnly: true,
     sessionTypes: [...activeSessionTypes],
+    duration: durationParam,
   }
   if (selectedSessionCmId != null) {
     sourceMappingOptions.sessionCmId = selectedSessionCmId
@@ -115,7 +124,8 @@ export default function GeoAnalysis() {
     compareYear,
     sessionTypesParam,
     'enrolled',
-    selectedSessionCmId ?? undefined
+    selectedSessionCmId ?? undefined,
+    durationParam
   )
   const { data, isLoading, error } = primary
   const compData = comparison?.data

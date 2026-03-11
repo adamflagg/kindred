@@ -15,6 +15,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 from starlette.responses import Response
 
+from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
@@ -58,12 +59,17 @@ async def get_gaps(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> GapsResponse:
     """Get three-tier gap classification for normalized values missing coordinates."""
+    check_duration_session_exclusive(duration, session_cm_id)
+
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
-    return await service.get_gaps(category, year, active_only, types_list, session_cm_id)
+    return await service.get_gaps(category, year, active_only, types_list, session_cm_id, duration=duration)
 
 
 # ============================================================================
@@ -82,9 +88,14 @@ async def search_canonicals(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> CanonicalSearchResponse:
     """Search canonical entries by name, city, or state."""
+    check_duration_session_exclusive(duration, session_cm_id)
+
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
     return await service.search_canonicals(
@@ -95,6 +106,7 @@ async def search_canonicals(
         active_only=active_only,
         session_types=types_list,
         session_cm_id=session_cm_id,
+        duration=duration,
     )
 
 
@@ -113,9 +125,14 @@ async def get_sources(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> SourcesResponse:
     """Get raw value variants that map to a canonical name."""
+    check_duration_session_exclusive(duration, session_cm_id)
+
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
     return await service.get_sources(
@@ -125,6 +142,7 @@ async def get_sources(
         active_only,
         types_list,
         session_cm_id,
+        duration=duration,
     )
 
 
@@ -142,12 +160,17 @@ async def get_source_mappings(
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> SourceMappingsResponse:
     """Get all source mappings grouped by normalized_value with attendee filtering."""
+    check_duration_session_exclusive(duration, session_cm_id)
+
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
-    return await service.get_source_mappings(category, year, active_only, types_list, session_cm_id)
+    return await service.get_source_mappings(category, year, active_only, types_list, session_cm_id, duration=duration)
 
 
 # ============================================================================

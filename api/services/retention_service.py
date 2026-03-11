@@ -27,6 +27,7 @@ from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
     compute_summer_metrics,
+    resolve_duration_sessions,
 )
 
 from .breakdown_calculator import compute_breakdown, safe_rate
@@ -61,6 +62,7 @@ class RetentionService:
         compare_year: int,
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> RetentionMetricsResponse:
         """Calculate retention metrics comparing two years.
 
@@ -98,6 +100,10 @@ class RetentionService:
         summer_types = list(DISPLAY_SESSION_TYPES)
         effective_types = session_types if session_types is not None else summer_types
 
+        # Resolve duration filter for both years
+        duration_session_ids_base = resolve_duration_sessions(sessions_base_all, duration) if duration else None
+        duration_session_ids_compare = resolve_duration_sessions(sessions_compare_all, duration) if duration else None
+
         # Resolve session_cm_id per year via alias system. When a session is
         # renamed across years (e.g. "Session 2b" → "Taste of Camp 2"), the
         # picker's cm_id may only exist in one year. Resolve to the equivalent
@@ -107,10 +113,14 @@ class RetentionService:
         )
 
         # Get unique person IDs for base year, filtered by session
-        person_ids_base, _ = self._filter_base_attendees(attendees_base, effective_types, base_session_cm_id)
+        person_ids_base, _ = self._filter_base_attendees(
+            attendees_base, effective_types, base_session_cm_id, duration_session_ids_base
+        )
 
         # Get person IDs for compare year, filtered by session type and cm_id
-        person_ids_compare, _ = self._filter_base_attendees(attendees_compare, effective_types, compare_session_cm_id)
+        person_ids_compare, _ = self._filter_base_attendees(
+            attendees_compare, effective_types, compare_session_cm_id, duration_session_ids_compare
+        )
 
         # "Unfiltered" pools for session chart semantics and session flow.
         # Still filtered to summer types (no session_cm_id filter) so non-summer
@@ -139,7 +149,7 @@ class RetentionService:
 
         # Base year attendee sessions (filtered by session_types and base_session_cm_id) for session flow
         _, attendee_sessions_base_filtered = self._filter_base_attendees(
-            attendees_base, session_types, base_session_cm_id
+            attendees_base, session_types, base_session_cm_id, duration_session_ids_base
         )
 
         # Calculate returned campers
@@ -235,6 +245,7 @@ class RetentionService:
             session_types,
             base_session_cm_id,
             aged_out_person_ids=aged_out_person_ids,
+            session_cm_ids=duration_session_ids_base,
         )
 
         # Session flow: Sankey diagram data showing session-to-session transitions
@@ -275,6 +286,7 @@ class RetentionService:
         attendees: list[Any],
         session_types: list[str] | None,
         session_cm_id: int | None,
+        session_cm_ids: set[int] | None = None,
     ) -> tuple[set[int], dict[int, list[int]]]:
         """Filter base year attendees and collect session mappings.
 
@@ -282,6 +294,7 @@ class RetentionService:
             attendees: List of attendee records with session expansion.
             session_types: Optional session types to filter.
             session_cm_id: Optional specific session ID to filter.
+            session_cm_ids: Optional set of session cm_ids to filter (duration groups).
 
         Returns:
             Tuple of (person_ids set, dict mapping person_id to session cm_ids).
@@ -307,6 +320,10 @@ class RetentionService:
 
             # Filter by specific session if specified
             if session_cm_id is not None and attendee_session_cm_id != session_cm_id:
+                continue
+
+            # Apply multi-session filter (duration groups)
+            if session_cm_ids is not None and attendee_session_cm_id not in session_cm_ids:
                 continue
 
             person_ids.add(person_id)
@@ -520,6 +537,7 @@ class RetentionService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         aged_out_person_ids: set[int] | None = None,
+        session_cm_ids: set[int] | None = None,
     ) -> list[RetentionByPriorSession]:
         """Build session breakdown for base year (Chart 2: "Retention by 2025 Session").
 
@@ -534,6 +552,7 @@ class RetentionService:
             session_types: If set, only show prior sessions matching these types.
             session_cm_id: If set, only show the prior session with this cm_id.
             aged_out_person_ids: Person IDs to exclude (aged out of eligible sessions).
+            session_cm_ids: If set, only include attendees in these sessions (duration filter).
 
         Returns:
             List of RetentionByPriorSession models.
@@ -563,6 +582,10 @@ class RetentionService:
             if raw_sid is None:
                 continue
             sid = int(raw_sid)
+
+            # Filter by duration group if specified
+            if session_cm_ids is not None and sid not in session_cm_ids:
+                continue
 
             # Merge AG into parent
             target_sid = ag_parent_map.get(sid, sid)

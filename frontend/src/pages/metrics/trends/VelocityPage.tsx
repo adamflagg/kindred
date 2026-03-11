@@ -110,7 +110,7 @@ function priorYearDateLabel(
 }
 
 export default function VelocityPage() {
-  const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
   const [splitByGender, setSplitByGender] = useState(false)
@@ -127,6 +127,7 @@ export default function VelocityPage() {
     compareYears: selectedPriorYears,
     sessionTypes: sessionTypesParam,
     splitByGender,
+    duration: durationParam,
   })
 
   // Build unified chart data aligned by week_number
