@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
@@ -14,6 +16,9 @@ import (
 
 // MaxScreenshotSize is the maximum allowed screenshot file size (5MB).
 const MaxScreenshotSize = 5 * 1024 * 1024
+
+// maxRequestBody is the hard cap on total request body size.
+const maxRequestBody = MaxScreenshotSize + 1024*1024
 
 // RegisterRoutes registers the feedback endpoint on the PocketBase router.
 func RegisterRoutes(e *core.ServeEvent) {
@@ -40,17 +45,19 @@ func HandleFeedback(e *core.RequestEvent) error {
 		return apis.NewApiError(503, "Feedback is not configured", nil)
 	}
 
+	// Enforce a hard cap on total request body size
+	e.Request.Body = http.MaxBytesReader(nil, e.Request.Body, maxRequestBody)
+
 	// Parse multipart form
-	if err := e.Request.ParseMultipartForm(MaxScreenshotSize + 1024*1024); err != nil {
+	if err := e.Request.ParseMultipartForm(maxRequestBody); err != nil {
 		return apis.NewBadRequestError("Invalid form data", err)
 	}
 
 	// Extract and validate required fields
 	category := e.Request.FormValue("category")
-	description := e.Request.FormValue("description")
-
-	if description == "" {
-		return apis.NewBadRequestError("Description is required", nil)
+	description, err := validateDescription(e.Request.FormValue("description"))
+	if err != nil {
+		return apis.NewBadRequestError(err.Error(), nil)
 	}
 	if err := validateCategory(category); err != nil {
 		return apis.NewBadRequestError(err.Error(), nil)
@@ -92,23 +99,35 @@ func HandleFeedback(e *core.RequestEvent) error {
 	if err == nil {
 		defer func() { _ = file.Close() }()
 
-		// Check file size
+		// Check declared file size
 		if header.Size > MaxScreenshotSize {
 			return apis.NewBadRequestError("Screenshot must be under 5MB", nil)
 		}
 
-		data, err := io.ReadAll(file)
+		// Read with a hard limit to prevent memory exhaustion
+		data, err := io.ReadAll(io.LimitReader(file, MaxScreenshotSize+1))
 		if err != nil {
 			slog.Error("Failed to read screenshot", "error", err)
 			return apis.NewBadRequestError("Failed to read screenshot", err)
 		}
+		if int64(len(data)) > MaxScreenshotSize {
+			return apis.NewBadRequestError("Screenshot must be under 5MB", nil)
+		}
 
-		screenshotURL, err := client.UploadScreenshot(data, header.Filename, timestamp)
+		// Validate that the file is actually an image
+		if err := validateScreenshotContent(data); err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		filename := sanitizeFilename(header.Filename)
+		screenshotURL, err := client.UploadScreenshot(data, filename, timestamp)
 		if err != nil {
 			slog.Error("Failed to upload screenshot to GitHub", "error", err)
 			return apis.NewApiError(502, "Failed to submit feedback. Please try again.", nil)
 		}
 		params.ScreenshotURL = screenshotURL
+	} else if err != http.ErrMissingFile {
+		return apis.NewBadRequestError("Invalid screenshot upload", err)
 	}
 
 	// Create the GitHub issue
@@ -119,7 +138,6 @@ func HandleFeedback(e *core.RequestEvent) error {
 
 	slog.Info("Feedback submitted",
 		"category", category,
-		"user", userEmail,
 		"page", pageURL,
 	)
 
@@ -128,18 +146,26 @@ func HandleFeedback(e *core.RequestEvent) error {
 
 // sanitizeFilename strips path components from a user-supplied filename.
 func sanitizeFilename(name string) string {
-	return name
+	return filepath.Base(name)
 }
 
 // validateDescription checks that a description is non-empty after trimming whitespace.
 func validateDescription(desc string) (string, error) {
-	if desc == "" {
+	trimmed := strings.TrimSpace(desc)
+	if trimmed == "" {
 		return "", fmt.Errorf("description is required")
 	}
-	return desc, nil
+	return trimmed, nil
 }
 
-// validateScreenshotContent checks that the data has an image content type.
-func validateScreenshotContent(_ []byte) error {
+// validateScreenshotContent checks that the uploaded data has an image content type.
+func validateScreenshotContent(data []byte) error {
+	if len(data) == 0 {
+		return fmt.Errorf("screenshot file is empty")
+	}
+	contentType := http.DetectContentType(data)
+	if !strings.HasPrefix(contentType, "image/") {
+		return fmt.Errorf("uploaded file is not an image (detected: %s)", contentType)
+	}
 	return nil
 }

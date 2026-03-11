@@ -106,8 +106,9 @@ func TestValidateScreenshotContent(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "valid WebP accepted",
-			data:    append([]byte("RIFF"), append([]byte{0x00, 0x00, 0x00, 0x00}, []byte("WEBP")...)...),
+			name: "valid WebP accepted",
+			// http.DetectContentType needs at least the RIFF....WEBPVP8 header
+			data:    []byte("RIFF\x00\x00\x00\x00WEBPVP8 \x00\x00\x00\x00\x00\x00\x00\x00\x00"),
 			wantErr: false,
 		},
 		{

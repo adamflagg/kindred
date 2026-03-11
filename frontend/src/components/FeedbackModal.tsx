@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Loader2, Camera } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -67,9 +67,20 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   const handleClose = () => {
     if (!submitMutation.isPending) {
+      resetForm()
+      submitMutation.reset()
       onClose()
     }
   }
+
+  // Reset form when modal is reopened
+  useEffect(() => {
+    if (isOpen) {
+      resetForm()
+      submitMutation.reset()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null

@@ -3,7 +3,6 @@ package feedback
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // GitHubClient handles communication with the GitHub API.
@@ -59,6 +59,9 @@ func (c *GitHubClient) apiURL(path string) string {
 	return base + path
 }
 
+// httpClient is used for all GitHub API requests with an explicit timeout.
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Response, error) {
 	var reqBody io.Reader
 	if body != nil {
@@ -69,7 +72,7 @@ func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Re
 		reqBody = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), method, url, reqBody)
+	req, err := http.NewRequest(method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -78,7 +81,7 @@ func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Re
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}

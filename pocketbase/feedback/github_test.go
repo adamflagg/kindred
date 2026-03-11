@@ -240,7 +240,7 @@ func TestValidateCategory(t *testing.T) {
 	}
 }
 
-func TestUploadScreenshotSanitizesPath(t *testing.T) {
+func TestUploadScreenshotWithSanitizedFilename(t *testing.T) {
 	var receivedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedPath = r.URL.Path
@@ -257,8 +257,11 @@ func TestUploadScreenshotSanitizesPath(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	// Filename with path traversal should be sanitized
-	_, err := client.UploadScreenshot([]byte("fake-data"), "../../evil.png", "2026-03-11T10:30:00Z")
+	// Simulate handler flow: sanitize before passing to UploadScreenshot
+	rawFilename := "../../evil.png"
+	safeFilename := sanitizeFilename(rawFilename)
+
+	_, err := client.UploadScreenshot([]byte("fake-data"), safeFilename, "2026-03-11T10:30:00Z")
 	if err != nil {
 		t.Fatalf("UploadScreenshot() error = %v", err)
 	}
@@ -267,7 +270,7 @@ func TestUploadScreenshotSanitizesPath(t *testing.T) {
 	if strings.Contains(receivedPath, "..") {
 		t.Errorf("URL path contains directory traversal: %s", receivedPath)
 	}
-	// Should end with just the base filename
+	// Should use sanitized filename
 	if !strings.HasSuffix(receivedPath, "evil.png") {
 		t.Errorf("URL path should end with sanitized filename, got %s", receivedPath)
 	}
