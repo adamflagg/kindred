@@ -1,10 +1,12 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useAuth } from '../contexts/AuthContext'
 import { useApiWithAuth } from './useApiWithAuth'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import type { Day1Response } from '../types/day1'
 
 export function useDay1(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
+  const { isLoading } = useAuth()
 
   return useQuery<Day1Response>({
     queryKey: queryKeys.day1(year),
@@ -17,7 +19,7 @@ export function useDay1(year: number) {
       }
       return response.json()
     },
-    enabled: year > 0,
+    enabled: !isLoading && year > 0,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })
