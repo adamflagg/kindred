@@ -191,6 +191,14 @@ export default function ForecastPage() {
 
   if (!data) return null
 
+  if (data.sessions.length === 0) {
+    return (
+      <div className="text-muted-foreground flex items-center justify-center py-12">
+        No forecast data available for the selected filters
+      </div>
+    )
+  }
+
   const { grand_total } = data
 
   const sections = buildForecastSections(campSessions, questSessions)
