@@ -136,13 +136,11 @@ function CamperRedirect() {
 // Smart redirect to first permitted manage tab
 function ManageRedirect() {
   const { isLoading } = useAuth()
-  const { hasPermission, isAdmin } = usePermissions()
+  const { hasPermission } = usePermissions()
 
   if (isLoading) return null // parent Suspense shows skeleton
 
-  const firstPermitted = MANAGE_TABS.find(
-    (tab) => isAdmin || hasPermission(tab.requiredPermission)
-  )
+  const firstPermitted = MANAGE_TABS.find((tab) => hasPermission(tab.requiredPermission))
   return <Navigate to={firstPermitted?.path ?? MANAGE_TABS[0]!.path} replace />
 }
 

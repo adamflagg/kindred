@@ -3,7 +3,7 @@ import { MapPin, CalendarDays, FileSpreadsheet } from 'lucide-react'
 import { Permission } from '../constants/permissions'
 
 export interface ManageTabConfig {
-  id: string
+  id: 'geo' | 'registration' | 'sheets'
   label: string
   path: string
   icon: LucideIcon

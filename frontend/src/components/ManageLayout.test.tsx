@@ -8,15 +8,11 @@ let mockIsAdmin = false
 
 vi.mock('../hooks/usePermissions', () => ({
   usePermissions: () => ({
-    hasPermission: mockHasPermission,
-    hasAnyPermission: (...perms: string[]) => perms.some(mockHasPermission),
+    hasPermission: (perm: string) => mockIsAdmin || mockHasPermission(perm),
+    hasAnyPermission: (...perms: string[]) => mockIsAdmin || perms.some(mockHasPermission),
     isAdmin: mockIsAdmin,
     permissions: [],
   }),
-}))
-
-vi.mock('../hooks/useIsAdmin', () => ({
-  useIsAdmin: () => mockIsAdmin,
 }))
 
 // Must import after mocks

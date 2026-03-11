@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 
 	"github.com/pocketbase/pocketbase"
@@ -78,20 +79,16 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 	return nil
 }
 
+const permRegistrationManage = "registration.manage"
+
 // extractBusinessCategory extracts metadata.business_category from a raw value.
+// PocketBase decodes JSON fields into map[string]any, so a direct assertion suffices.
 func extractBusinessCategory(raw any) string {
-	if raw == nil {
+	m, ok := raw.(map[string]any)
+	if !ok {
 		return ""
 	}
-	data, err := json.Marshal(raw)
-	if err != nil {
-		return ""
-	}
-	var metaMap map[string]any
-	if err := json.Unmarshal(data, &metaMap); err != nil {
-		return ""
-	}
-	cat, _ := metaMap["business_category"].(string)
+	cat, _ := m["business_category"].(string)
 	return cat
 }
 
@@ -111,15 +108,7 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 	}
 
 	// Non-admin must have registration.manage permission
-	cachedPerms := e.Auth.GetStringSlice("cached_permissions")
-	hasRegistrationManage := false
-	for _, p := range cachedPerms {
-		if p == "registration.manage" {
-			hasRegistrationManage = true
-			break
-		}
-	}
-	if !hasRegistrationManage {
+	if !slices.Contains(e.Auth.GetStringSlice("cached_permissions"), permRegistrationManage) {
 		return apis.NewForbiddenError("Missing registration.manage permission", nil)
 	}
 

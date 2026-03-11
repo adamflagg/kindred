@@ -45,7 +45,7 @@ export const AppLayout = () => {
   const { theme, toggleTheme } = useTheme()
   const { user, isAuthenticated, logout } = useAuth()
   const { hasPermission, isAdmin } = usePermissions()
-  const canAccessManage = isAdmin || MANAGE_TABS.some((tab) => hasPermission(tab.requiredPermission))
+  const canAccessManage = MANAGE_TABS.some((tab) => hasPermission(tab.requiredPermission))
   const { fetchWithAuth } = useApiWithAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)

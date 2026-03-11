@@ -6,11 +6,9 @@ import { MANAGE_TABS, type ManageTabConfig } from '../config/manageTabs'
 
 function ManageLayoutInner() {
   const location = useLocation()
-  const { hasPermission, isAdmin } = usePermissions()
+  const { hasPermission } = usePermissions()
 
-  const visibleTabs = MANAGE_TABS.filter(
-    (tab) => isAdmin || hasPermission(tab.requiredPermission)
-  )
+  const visibleTabs = MANAGE_TABS.filter((tab) => hasPermission(tab.requiredPermission))
 
   const isTabActive = (tab: ManageTabConfig) => location.pathname.startsWith(tab.path)
   const showTabs = visibleTabs.length > 1
