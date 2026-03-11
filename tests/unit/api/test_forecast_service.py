@@ -1037,6 +1037,51 @@ class TestForecastReconstructionLookback:
         assert result.week_number is None
         assert result.day_offset is None
 
+    @pytest.mark.asyncio
+    async def test_week_zero_includes_first_day(self, service, mock_repository):
+        """Week 0 (day_offset=0) should include registration data from the anchor date."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-15",
+        }
+        mock_repository.fetch_budget_config.return_value = {}
+
+        from types import SimpleNamespace
+
+        # 3 attendees registered on the anchor date itself (Oct 15)
+        attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date="2025-10-15",
+                effective_date="2025-10-15",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                },
+            )
+            for i in range(3)
+        ]
+        mock_repository.fetch_attendees_with_dates.return_value = attendees
+
+        result = await service.calculate_forecast(year=2026, day_offset=0)
+
+        s1 = result.sessions[0]
+        # day_offset=0 with inclusive cutoff should count these 3 attendees
+        assert s1.enrolled == 3
+        assert result.week_number == 0
+
 
 # ============================================================================
 # Day Offset with Reconstruction Tests
