@@ -43,7 +43,7 @@ export const AppLayout = () => {
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
   const { user, isAuthenticated, logout } = useAuth()
-  const { hasPermission, isAdmin } = usePermissions()
+  const { hasPermission, hasAnyPermission, isAdmin } = usePermissions()
   const { fetchWithAuth } = useApiWithAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
@@ -263,6 +263,19 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
+                {(isAdmin ||
+                  hasAnyPermission(
+                    Permission.METRICS_GEO,
+                    Permission.REGISTRATION_MANAGE,
+                    Permission.SHEETS_EXPORT
+                  )) && (
+                  <Link
+                    to="/manage"
+                    className={`nav-link-lodge ${isActiveRoute('/manage') ? 'active' : ''}`}
+                  >
+                    Manage
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"
@@ -504,6 +517,24 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
+                {(isAdmin ||
+                  hasAnyPermission(
+                    Permission.METRICS_GEO,
+                    Permission.REGISTRATION_MANAGE,
+                    Permission.SHEETS_EXPORT
+                  )) && (
+                  <Link
+                    to="/manage"
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
+                      isActiveRoute('/manage')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Manage
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"
