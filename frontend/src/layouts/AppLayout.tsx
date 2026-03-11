@@ -35,6 +35,7 @@ import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
+import { MANAGE_TABS } from '../config/manageTabs'
 import { useTour } from '../hooks/useTour'
 import { TourReplayButton } from '../components/tour'
 
@@ -43,7 +44,8 @@ export const AppLayout = () => {
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
   const { user, isAuthenticated, logout } = useAuth()
-  const { hasPermission, hasAnyPermission, isAdmin } = usePermissions()
+  const { hasPermission, isAdmin } = usePermissions()
+  const canAccessManage = isAdmin || MANAGE_TABS.some((tab) => hasPermission(tab.requiredPermission))
   const { fetchWithAuth } = useApiWithAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
@@ -263,12 +265,7 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                {(isAdmin ||
-                  hasAnyPermission(
-                    Permission.METRICS_GEO,
-                    Permission.REGISTRATION_MANAGE,
-                    Permission.SHEETS_EXPORT
-                  )) && (
+                {canAccessManage && (
                   <Link
                     to="/manage"
                     className={`nav-link-lodge ${isActiveRoute('/manage') ? 'active' : ''}`}
@@ -517,12 +514,7 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                {(isAdmin ||
-                  hasAnyPermission(
-                    Permission.METRICS_GEO,
-                    Permission.REGISTRATION_MANAGE,
-                    Permission.SHEETS_EXPORT
-                  )) && (
+                {canAccessManage && (
                   <Link
                     to="/manage"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
