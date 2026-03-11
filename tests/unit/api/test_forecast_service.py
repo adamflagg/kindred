@@ -893,39 +893,58 @@ class TestForecastPriorYearFailure:
 
 
 # ============================================================================
-# Snapshot Lookback Tests
+# Reconstruction Lookback Tests
 # ============================================================================
 
 
-class TestForecastSnapshotLookback:
-    """Test historical forecast viewing via day_offset parameter."""
+class TestForecastReconstructionLookback:
+    """Test historical forecast viewing via day_offset using reconstruction."""
 
     @pytest.mark.asyncio
-    async def test_day_offset_uses_snapshot_counts(self, service, mock_repository):
-        """When day_offset is provided and snapshots exist, enrolled/waitlisted come from snapshots."""
+    async def test_day_offset_uses_reconstruction(self, service, mock_repository):
+        """When day_offset is provided, enrolled/waitlisted come from reconstruction."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
-        # day_offset=123, anchor=2025-10-15 → target_date=2026-02-15
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3, "enrolled_boys": None, "enrolled_girls": None},
-            }
-        )
         mock_repository.fetch_budget_config.return_value = dict(
             [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
         )
 
+        from types import SimpleNamespace
+
+        # Provide attendees that reconstruct to 50 enrolled at offset 123
+        current_attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date=f"2025-10-{16 + (i % 10):02d}",
+                effective_date=f"2025-10-{16 + (i % 10):02d}",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                },
+            )
+            for i in range(50)
+        ]
+
+        mock_repository.fetch_attendees_with_dates.return_value = current_attendees
+
         result = await service.calculate_forecast(year=2026, day_offset=123)
 
-        from datetime import date
-
-        mock_repository.fetch_snapshot_counts_for_camp_day.assert_called_once_with(2026, date(2026, 2, 15))
         session = result.sessions[0]
         assert session.enrolled == 50
-        assert session.waitlisted == 5
 
     @pytest.mark.asyncio
     async def test_day_offset_none_uses_live_data(self, service, mock_repository):
@@ -944,8 +963,6 @@ class TestForecastSnapshotLookback:
 
         result = await service.calculate_forecast(year=2026)
 
-        # Should NOT call fetch_snapshot_counts_for_camp_day
-        assert not mock_repository.fetch_snapshot_counts_for_camp_day.called
         assert result.sessions[0].enrolled == 1
 
     @pytest.mark.asyncio
@@ -956,14 +973,37 @@ class TestForecastSnapshotLookback:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3, "enrolled_boys": None, "enrolled_girls": None},
-            }
-        )
         mock_repository.fetch_budget_config.return_value = dict(
             [create_mock_budget_config(1001, participant_goal=100, session_fee=1000)]
         )
+
+        from types import SimpleNamespace
+
+        current_attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date="2025-10-20",
+                effective_date="2025-10-20",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                },
+            )
+            for i in range(50)
+        ]
+
+        mock_repository.fetch_attendees_with_dates.return_value = current_attendees
 
         result = await service.calculate_forecast(year=2026, day_offset=123)
 
@@ -979,11 +1019,8 @@ class TestForecastSnapshotLookback:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {"enrolled": 50, "waitlisted": 5, "cancelled": 3, "enrolled_boys": None, "enrolled_girls": None}
-            }
-        )
+        mock_repository.fetch_budget_config.return_value = {}
+        mock_repository.fetch_attendees_with_dates.return_value = []
 
         result = await service.calculate_forecast(year=2026, day_offset=123)
         assert result.week_number == 17  # 123 // 7 = 17
@@ -1012,11 +1049,9 @@ class TestForecastWithDayOffset:
     @pytest.mark.asyncio
     async def test_day_offset_uses_reconstruction_for_prior_year(self, mock_repository, service):
         """Prior year counts should come from reconstruction at same offset."""
-        # Current year: 2026 with snapshot data available
         current_sessions = {
             1001: create_mock_session(1001, "Session 1", year=2026),
         }
-        # Prior year: 2025
         prior_sessions = {
             9001: create_mock_session(9001, "Session 1", year=2025),
         }
@@ -1030,8 +1065,6 @@ class TestForecastWithDayOffset:
 
         mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
 
-        # Current year anchor: Oct 15, 2025. day_offset=123 → target 2026-02-15
-        # Prior year anchor: Oct 10, 2024
         async def fetch_reg_dates_side_effect(year):
             if year == 2026:
                 return {"priority_reg_date": "2025-10-15"}
@@ -1040,19 +1073,36 @@ class TestForecastWithDayOffset:
             return {}
 
         mock_repository.fetch_registration_dates.side_effect = fetch_reg_dates_side_effect
-
-        # Current year has snapshot data
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {"enrolled": 75, "waitlisted": 3, "cancelled": 1, "enrolled_boys": None, "enrolled_girls": None}
-            }
-        )
         mock_repository.fetch_budget_config.return_value = {}
 
-        # Prior year reconstruction: simulate attendees_with_dates for 2025
-        # Provide attendees that reconstruct to 20 enrolled at offset 123 from 2024-10-10
         from types import SimpleNamespace
 
+        # Current year: 75 attendees enrolled within offset 123 of 2025-10-15
+        current_attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date=f"2025-10-{16 + (i % 10):02d}",
+                effective_date=f"2025-10-{16 + (i % 10):02d}",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                },
+            )
+            for i in range(75)
+        ]
+
+        # Prior year: 20 attendees enrolled within offset 123 of 2024-10-10
         prior_attendees = [
             SimpleNamespace(
                 person_id=i,
@@ -1076,7 +1126,9 @@ class TestForecastWithDayOffset:
             for i in range(20)
         ]
 
-        async def fetch_attendees_with_dates_side_effect(year):
+        async def fetch_attendees_with_dates_side_effect(year, expand_person=False):
+            if year == 2026:
+                return current_attendees
             if year == 2025:
                 return prior_attendees
             return []
@@ -1086,9 +1138,7 @@ class TestForecastWithDayOffset:
         result = await service.calculate_forecast(year=2026, day_offset=123)
 
         s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
-        # Current year enrollment from snapshot
         assert s1.enrolled == 75
-        # Prior year count from reconstruction (20 attendees enrolled within offset)
         assert s1.prior_year_count == 20
         assert s1.participants_vs_prior_year == 55  # 75 - 20
 
@@ -1112,7 +1162,6 @@ class TestForecastWithDayOffset:
         result = await service.calculate_forecast(year=2026)
 
         assert result.sessions[0].enrolled == 5
-        # Live mode should NOT call fetch_registration_dates or fetch_attendees_with_dates
         mock_repository.fetch_registration_dates.assert_not_called()
         mock_repository.fetch_attendees_with_dates.assert_not_called()
         assert result.week_number is None
@@ -1126,67 +1175,13 @@ class TestForecastWithDayOffset:
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {"enrolled": 10, "waitlisted": 0, "cancelled": 0, "enrolled_boys": None, "enrolled_girls": None}
-            }
-        )
         mock_repository.fetch_budget_config.return_value = {}
+        mock_repository.fetch_attendees_with_dates.return_value = []
 
         result = await service.calculate_forecast(year=2026, day_offset=49)
 
         assert result.week_number == 7  # 49 // 7 = 7
         assert result.day_offset == 49
-
-    @pytest.mark.asyncio
-    async def test_day_offset_falls_back_to_reconstruction_when_no_snapshot(self, mock_repository, service):
-        """When day_offset is set but no snapshot data exists, use reconstruction for current year too."""
-        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
-        mock_repository.fetch_sessions.return_value = sessions
-        mock_repository.fetch_registration_dates.return_value = {
-            "priority_reg_date": "2025-10-15",
-        }
-        # Empty snapshot → falls back to reconstruction
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(return_value={})
-        mock_repository.fetch_budget_config.return_value = {}
-
-        from types import SimpleNamespace
-
-        current_attendees = [
-            SimpleNamespace(
-                person_id=i,
-                year=2026,
-                status="enrolled",
-                status_id=2,
-                is_active=1,
-                enrollment_date=f"2025-10-{20 + (i % 5):02d}",
-                effective_date=f"2025-10-{20 + (i % 5):02d}",
-                expand={
-                    "session": SimpleNamespace(
-                        cm_id=1001,
-                        name="Session 1",
-                        session_type="main",
-                        parent_id=None,
-                        start_date="2026-06-15",
-                        end_date="2026-07-15",
-                    )
-                },
-            )
-            for i in range(15)
-        ]
-
-        async def fetch_attendees_with_dates_side_effect(year):
-            if year == 2026:
-                return current_attendees
-            return []
-
-        mock_repository.fetch_attendees_with_dates.side_effect = fetch_attendees_with_dates_side_effect
-
-        result = await service.calculate_forecast(year=2026, day_offset=30)
-
-        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
-        # 15 attendees enrolled between Oct 20-24, all within 30 days of Oct 15
-        assert s1.enrolled == 15
 
 
 # ============================================================================
@@ -1195,27 +1190,67 @@ class TestForecastWithDayOffset:
 
 
 class TestForecastGenderFields:
-    """Test gender field population from snapshot and live data."""
+    """Test gender field population from reconstruction and live data."""
 
     @pytest.mark.asyncio
-    async def test_gender_from_snapshots(self, service, mock_repository):
-        """Snapshot mode should populate enrolled_boys and enrolled_girls."""
+    async def test_gender_from_reconstruction(self, service, mock_repository):
+        """Reconstruction mode should populate enrolled_boys and enrolled_girls."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-10-15"}
         mock_repository.fetch_budget_config.return_value = {}
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {
-                    "enrolled": 80,
-                    "waitlisted": 5,
-                    "cancelled": 3,
-                    "enrolled_boys": 42,
-                    "enrolled_girls": 38,
-                }
-            }
-        )
-        mock_repository.fetch_attendees_with_dates = AsyncMock(return_value=[])
+
+        from types import SimpleNamespace
+
+        # 42 boys + 38 girls = 80 enrolled
+        boys = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date="2025-10-20",
+                effective_date="2025-10-20",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                },
+            )
+            for i in range(42)
+        ]
+        girls = [
+            SimpleNamespace(
+                person_id=i + 100,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date="2025-10-20",
+                effective_date="2025-10-20",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="F", cm_id=i + 2000),
+                },
+            )
+            for i in range(38)
+        ]
+
+        mock_repository.fetch_attendees_with_dates.return_value = boys + girls
 
         result = await service.calculate_forecast(year=2026, day_offset=7)
         s1 = result.sessions[0]
@@ -1224,27 +1259,44 @@ class TestForecastGenderFields:
         assert s1.enrolled_girls == 38
 
     @pytest.mark.asyncio
-    async def test_gender_null_when_missing(self, service, mock_repository):
-        """Snapshot without gender data should return null gender fields."""
+    async def test_gender_null_when_no_person_expand(self, service, mock_repository):
+        """Reconstruction without person expand should return null gender fields."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-10-15"}
         mock_repository.fetch_budget_config.return_value = {}
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {
-                    "enrolled": 80,
-                    "waitlisted": 5,
-                    "cancelled": 3,
-                    "enrolled_boys": None,
-                    "enrolled_girls": None,
-                }
-            }
-        )
-        mock_repository.fetch_attendees_with_dates = AsyncMock(return_value=[])
+
+        from types import SimpleNamespace
+
+        # Attendees without person expand
+        attendees = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=1,
+                enrollment_date="2025-10-20",
+                effective_date="2025-10-20",
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=1001,
+                        name="Session 1",
+                        session_type="main",
+                        parent_id=None,
+                        start_date="2026-06-15",
+                        end_date="2026-07-15",
+                    ),
+                },
+            )
+            for i in range(10)
+        ]
+
+        mock_repository.fetch_attendees_with_dates.return_value = attendees
 
         result = await service.calculate_forecast(year=2026, day_offset=7)
         s1 = result.sessions[0]
+        assert s1.enrolled == 10
         assert s1.enrolled_boys is None
         assert s1.enrolled_girls is None
 
@@ -1258,25 +1310,106 @@ class TestForecastGenderFields:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-10-15"}
         mock_repository.fetch_budget_config.return_value = {}
-        mock_repository.fetch_snapshot_counts_for_camp_day = AsyncMock(
-            return_value={
-                1001: {
-                    "enrolled": 80,
-                    "waitlisted": 5,
-                    "cancelled": 0,
-                    "enrolled_boys": 42,
-                    "enrolled_girls": 38,
-                },
-                1002: {
-                    "enrolled": 60,
-                    "waitlisted": 3,
-                    "cancelled": 0,
-                    "enrolled_boys": 30,
-                    "enrolled_girls": 30,
-                },
-            }
-        )
-        mock_repository.fetch_attendees_with_dates = AsyncMock(return_value=[])
+
+        from types import SimpleNamespace
+
+        # Session 1001: 42 boys + 38 girls = 80
+        # Session 1002: 30 boys + 30 girls = 60
+        attendees = []
+        for i in range(42):
+            attendees.append(
+                SimpleNamespace(
+                    person_id=i,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=1,
+                    enrollment_date="2025-10-20",
+                    effective_date="2025-10-20",
+                    expand={
+                        "session": SimpleNamespace(
+                            cm_id=1001,
+                            name="Session 1",
+                            session_type="main",
+                            parent_id=None,
+                            start_date="2026-06-15",
+                            end_date="2026-07-15",
+                        ),
+                        "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                    },
+                )
+            )
+        for i in range(38):
+            attendees.append(
+                SimpleNamespace(
+                    person_id=i + 100,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=1,
+                    enrollment_date="2025-10-20",
+                    effective_date="2025-10-20",
+                    expand={
+                        "session": SimpleNamespace(
+                            cm_id=1001,
+                            name="Session 1",
+                            session_type="main",
+                            parent_id=None,
+                            start_date="2026-06-15",
+                            end_date="2026-07-15",
+                        ),
+                        "person": SimpleNamespace(gender="F", cm_id=i + 2000),
+                    },
+                )
+            )
+        for i in range(30):
+            attendees.append(
+                SimpleNamespace(
+                    person_id=i + 200,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=1,
+                    enrollment_date="2025-10-20",
+                    effective_date="2025-10-20",
+                    expand={
+                        "session": SimpleNamespace(
+                            cm_id=1002,
+                            name="Session 2",
+                            session_type="main",
+                            parent_id=None,
+                            start_date="2026-06-15",
+                            end_date="2026-07-15",
+                        ),
+                        "person": SimpleNamespace(gender="M", cm_id=i + 3000),
+                    },
+                )
+            )
+        for i in range(30):
+            attendees.append(
+                SimpleNamespace(
+                    person_id=i + 300,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=1,
+                    enrollment_date="2025-10-20",
+                    effective_date="2025-10-20",
+                    expand={
+                        "session": SimpleNamespace(
+                            cm_id=1002,
+                            name="Session 2",
+                            session_type="main",
+                            parent_id=None,
+                            start_date="2026-06-15",
+                            end_date="2026-07-15",
+                        ),
+                        "person": SimpleNamespace(gender="F", cm_id=i + 4000),
+                    },
+                )
+            )
+
+        mock_repository.fetch_attendees_with_dates.return_value = attendees
 
         result = await service.calculate_forecast(year=2026, day_offset=7)
         assert result.grand_total.enrolled_boys == 72
