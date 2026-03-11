@@ -564,6 +564,49 @@ export default function RegistrationOverview() {
                   )
                 })()}
               </div>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {(data.by_gender_by_session_length ?? []).length > 0 && (
+                  <CssVerticalStackedBarChart
+                    title={`${currentYear} Gender by Session Length`}
+                    data={(data.by_gender_by_session_length ?? []).map((g) => ({
+                      name: g.length_category,
+                      total: g.total,
+                      male_count: g.male_count,
+                      female_count: g.female_count,
+                    }))}
+                    segments={[
+                      { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                      { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                    ]}
+                    showTotalLabel
+                    height={300}
+                    onBarClick={(item) =>
+                      setFilter({
+                        type: 'session_length',
+                        value: String(item['name'] ?? ''),
+                        label: `${item['name']} Sessions`,
+                      })
+                    }
+                  />
+                )}
+                {(compData.by_gender_by_session_length ?? []).length > 0 && (
+                  <CssVerticalStackedBarChart
+                    title={`${compareYear} Gender by Session Length`}
+                    data={(compData.by_gender_by_session_length ?? []).map((g) => ({
+                      name: g.length_category,
+                      total: g.total,
+                      male_count: g.male_count,
+                      female_count: g.female_count,
+                    }))}
+                    segments={[
+                      { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                      { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                    ]}
+                    showTotalLabel
+                    height={300}
+                  />
+                )}
+              </div>
             </>
           ) : (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -602,6 +645,31 @@ export default function RegistrationOverview() {
                   />
                 )
               })()}
+              {(data.by_gender_by_session_length ?? []).length > 0 && (
+                <CssVerticalStackedBarChart
+                  key={`gender-session-length-${selectedSessionCmId ?? 'all'}`}
+                  title="Gender by Session Length"
+                  data={(data.by_gender_by_session_length ?? []).map((g) => ({
+                    name: g.length_category,
+                    total: g.total,
+                    male_count: g.male_count,
+                    female_count: g.female_count,
+                  }))}
+                  segments={[
+                    { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                    { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                  ]}
+                  showTotalLabel
+                  height={300}
+                  onBarClick={(item) =>
+                    setFilter({
+                      type: 'session_length',
+                      value: String(item['name'] ?? ''),
+                      label: `${item['name']} Sessions`,
+                    })
+                  }
+                />
+              )}
             </div>
           )}
         </>

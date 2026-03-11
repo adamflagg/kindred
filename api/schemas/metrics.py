@@ -368,6 +368,9 @@ class RegistrationMetricsResponse(BaseModel):
     by_session_length_by_session: list[SessionLengthBySessionBreakdown] = Field(
         default_factory=list, description="Session breakdown by length category (for stacked bar chart)"
     )
+    by_gender_by_session_length: list[GenderBySessionLengthBreakdown] = Field(
+        default_factory=list, description="Gender breakdown by session length category (for stacked bar chart)"
+    )
     by_summer_years: list[SummerYearsBreakdown] = Field(
         default_factory=list, description="Enrollment by summer years (calculated from attendees)"
     )

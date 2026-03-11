@@ -91,6 +91,13 @@ export interface GenderByGradeBreakdown {
   total: number
 }
 
+export interface GenderBySessionLengthBreakdown {
+  length_category: string
+  male_count: number
+  female_count: number
+  total: number
+}
+
 export interface SummerYearsBreakdown {
   summer_years: number
   count: number
@@ -235,6 +242,7 @@ export interface RegistrationMetrics {
   // New breakdowns for registration tab redesign
   by_gender_grade?: GenderByGradeBreakdown[]
   by_session_length_by_session?: SessionLengthBySessionBreakdown[]
+  by_gender_by_session_length?: GenderBySessionLengthBreakdown[]
   by_summer_years?: SummerYearsBreakdown[]
   by_first_summer_year?: FirstSummerYearBreakdown[]
 }
