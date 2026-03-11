@@ -112,7 +112,7 @@ class MetricsSQLRepository:
                        p.cm_id   AS _person_cm_id
                 FROM attendees a
                 JOIN camp_sessions cs ON a.session = cs.id
-                JOIN persons p ON a.person = p.id
+                LEFT JOIN persons p ON a.person = p.id
                 WHERE a.year = ?
             """
         else:
