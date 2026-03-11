@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -77,6 +78,44 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 	return nil
 }
 
+// guardConfigWrite ensures non-admin users can only write registration-category configs.
+// Admin users bypass this check (they can write any config).
+// Non-admin users with registration.manage can only write configs where
+// metadata.business_category is "registration".
+func guardConfigWrite(e *core.RecordRequestEvent) error {
+	if e.Auth == nil {
+		return apis.NewUnauthorizedError("Authentication required", nil)
+	}
+
+	// Admin bypass
+	if e.Auth.GetBool("is_admin") {
+		return e.Next()
+	}
+
+	// Check the record's metadata.business_category
+	metadata := e.Record.Get("metadata")
+	if metadata == nil {
+		return apis.NewForbiddenError("Admin access required for this config", nil)
+	}
+
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return apis.NewForbiddenError("Admin access required for this config", nil)
+	}
+
+	var metaMap map[string]any
+	if err := json.Unmarshal(data, &metaMap); err != nil {
+		return apis.NewForbiddenError("Admin access required for this config", nil)
+	}
+
+	businessCategory, _ := metaMap["business_category"].(string)
+	if businessCategory != "registration" {
+		return apis.NewForbiddenError("Admin access required for this config category", nil)
+	}
+
+	return e.Next()
+}
+
 // RegisterHooks registers RBAC-related hooks on the PocketBase app.
 func RegisterHooks(app *pocketbase.PocketBase) {
 	// On user_roles create: recompute affected user's permissions
@@ -113,6 +152,15 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 			}
 		}
 		return e.Next()
+	})
+
+	// Guard config writes: non-admin users with registration.manage can only
+	// write to configs with business_category = "registration"
+	app.OnRecordCreateRequest("config").BindFunc(func(e *core.RecordRequestEvent) error {
+		return guardConfigWrite(e)
+	})
+	app.OnRecordUpdateRequest("config").BindFunc(func(e *core.RecordRequestEvent) error {
+		return guardConfigWrite(e)
 	})
 
 	// Register OIDC admin group sync hook
