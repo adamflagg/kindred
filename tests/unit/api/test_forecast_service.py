@@ -1459,3 +1459,161 @@ class TestForecastGenderFields:
         result = await service.calculate_forecast(year=2026, day_offset=7)
         assert result.grand_total.enrolled_boys == 72
         assert result.grand_total.enrolled_girls == 68
+
+    @pytest.mark.asyncio
+    async def test_gender_from_live_mode(self, service, mock_repository):
+        """Live mode (day_offset=None) should populate gender fields from person expand."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        from types import SimpleNamespace
+
+        boys = [
+            SimpleNamespace(
+                person_id=i,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=True,
+                expand={
+                    "session": SimpleNamespace(cm_id=1001),
+                    "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                },
+            )
+            for i in range(45)
+        ]
+        girls = [
+            SimpleNamespace(
+                person_id=i + 100,
+                year=2026,
+                status="enrolled",
+                status_id=2,
+                is_active=True,
+                expand={
+                    "session": SimpleNamespace(cm_id=1001),
+                    "person": SimpleNamespace(gender="F", cm_id=i + 2000),
+                },
+            )
+            for i in range(35)
+        ]
+        enrolled = boys + girls
+
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+        s1 = result.sessions[0]
+        assert s1.enrolled == 80
+        assert s1.enrolled_boys == 45
+        assert s1.enrolled_girls == 35
+
+        # Verify repository was called with expand_person=True
+        mock_repository.fetch_attendees.assert_any_call(2026, expand_person=True)
+
+    @pytest.mark.asyncio
+    async def test_gender_null_in_live_mode_without_person(self, service, mock_repository):
+        """Live mode without person expand should return null gender fields."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        # create_mock_attendee builds expand={"session": ...} with no "person" key
+        enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
+
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+        s1 = result.sessions[0]
+        assert s1.enrolled == 10
+        assert s1.enrolled_boys is None
+        assert s1.enrolled_girls is None
+
+    @pytest.mark.asyncio
+    async def test_gender_grand_total_live_mode(self, service, mock_repository):
+        """Grand total should aggregate gender counts in live mode."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+            1002: create_mock_session(1002, "Session 2"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+
+        from types import SimpleNamespace
+
+        enrolled = []
+        # Session 1001: 20 boys + 15 girls
+        for i in range(20):
+            enrolled.append(
+                SimpleNamespace(
+                    person_id=i,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=True,
+                    expand={
+                        "session": SimpleNamespace(cm_id=1001),
+                        "person": SimpleNamespace(gender="M", cm_id=i + 1000),
+                    },
+                )
+            )
+        for i in range(15):
+            enrolled.append(
+                SimpleNamespace(
+                    person_id=i + 100,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=True,
+                    expand={
+                        "session": SimpleNamespace(cm_id=1001),
+                        "person": SimpleNamespace(gender="F", cm_id=i + 2000),
+                    },
+                )
+            )
+        # Session 1002: 10 boys + 25 girls
+        for i in range(10):
+            enrolled.append(
+                SimpleNamespace(
+                    person_id=i + 200,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=True,
+                    expand={
+                        "session": SimpleNamespace(cm_id=1002),
+                        "person": SimpleNamespace(gender="M", cm_id=i + 3000),
+                    },
+                )
+            )
+        for i in range(25):
+            enrolled.append(
+                SimpleNamespace(
+                    person_id=i + 300,
+                    year=2026,
+                    status="enrolled",
+                    status_id=2,
+                    is_active=True,
+                    expand={
+                        "session": SimpleNamespace(cm_id=1002),
+                        "person": SimpleNamespace(gender="F", cm_id=i + 4000),
+                    },
+                )
+            )
+
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+        assert result.grand_total.enrolled_boys == 30  # 20 + 10
+        assert result.grand_total.enrolled_girls == 40  # 15 + 25
