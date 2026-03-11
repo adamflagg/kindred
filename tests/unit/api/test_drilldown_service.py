@@ -334,6 +334,89 @@ class TestSessionLengthBreakdown:
         assert len(result) == 1
         assert result[0].person_id == 104
 
+    @pytest.mark.asyncio
+    async def test_filter_by_session_length_resolves_ag_to_parent(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+    ) -> None:
+        """AG session attendees should use parent session dates for length classification.
+
+        An AG session might have different dates than its parent, but the length
+        category should be based on the parent session's dates.
+        """
+        # Parent is 3-week (June 15 - July 5 = 20 days)
+        parent_session = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        # AG session has same dates as parent but that's not always the case
+        ag_session = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+
+        sessions = {2001: parent_session, 2005: ag_session}
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
+        }
+        attendees = [
+            create_mock_attendee(101, ag_session, 2026),  # Emma in AG session
+        ]
+
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="session_length",
+            breakdown_value="3-week",
+        )
+
+        # Emma's AG session should resolve to parent (3-week), so she should appear
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_filter_by_session_length_ag_with_different_dates(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+    ) -> None:
+        """AG session with dates that differ from parent should still use parent's length.
+
+        Even if the AG session dates would classify as a different length category,
+        the parent session's dates determine the category.
+        """
+        # Parent is 3-week (June 15 - July 5 = 20 days)
+        parent_session = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        # AG session has shorter dates (would be 2-week if classified independently)
+        ag_session = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-06-28", parent_id=2001)
+
+        sessions = {2001: parent_session, 2005: ag_session}
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
+        }
+        attendees = [
+            create_mock_attendee(101, ag_session, 2026),  # Emma in AG (dates say 2-week)
+        ]
+
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        # Should NOT match 2-week (even though AG dates say 2-week)
+        result_2week = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="session_length",
+            breakdown_value="2-week",
+        )
+        assert len(result_2week) == 0
+
+        # Should match 3-week (parent's length)
+        result_3week = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="session_length",
+            breakdown_value="3-week",
+        )
+        assert len(result_3week) == 1
+        assert result_3week[0].person_id == 101
+
 
 # ============================================================================
 # Tests for first_summer_year breakdown type
@@ -1364,7 +1447,7 @@ class TestPersonLevelDeduplication:
         assert result[0].session_cm_id == 1002
 
     @pytest.mark.asyncio
-    async def test_session_length_no_dedup(
+    async def test_session_length_dedup(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
@@ -1372,7 +1455,11 @@ class TestPersonLevelDeduplication:
         multi_session_persons: dict[int, Mock],
         multi_session_attendees: list[Mock],
     ) -> None:
-        """Session length breakdown does NOT deduplicate."""
+        """Session length breakdown deduplicates: one row per person with all sessions listed.
+
+        Emma is in Session 2a (2-week) and Session 3a (2-week). She should appear
+        once in the drilldown with both sessions in her sessions list.
+        """
         mock_repository.fetch_sessions.return_value = multi_session_sessions
         mock_repository.fetch_persons.return_value = multi_session_persons
         mock_repository.fetch_attendees.return_value = multi_session_attendees
@@ -1383,9 +1470,13 @@ class TestPersonLevelDeduplication:
             breakdown_value="2-week",
         )
 
-        # Session 2a (June 15 - June 28 = 13 days) is 2-week, Session 3a is also ~2-week
-        # Each attendee record is separate since session_length is per-attendee
-        assert all(r.session_cm_id in (1002, 1003) for r in result)
+        # Emma (101) is in two 2-week sessions but should be deduped to one row
+        # Liam (102) is in Session 2 (3-week), so not included
+        emma_results = [r for r in result if r.person_id == 101]
+        assert len(emma_results) == 1
+        assert len(emma_results[0].sessions) == 2
+        session_names = {s.session_name for s in emma_results[0].sessions}
+        assert session_names == {"Session 2a", "Session 3a"}
 
     @pytest.mark.asyncio
     async def test_returning_null_years(
