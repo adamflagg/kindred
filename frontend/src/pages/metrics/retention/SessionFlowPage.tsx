@@ -35,7 +35,7 @@ export default function SessionFlowPage() {
   const priorYear = currentYear - 1
 
   // Fetch prior year sessions for source-side ordering
-  const { data: priorSessions = [] } = useMetricsSessions(priorYear)
+  const { data: priorSessions = [], isLoading: priorLoading } = useMetricsSessions(priorYear)
 
   // Each side gets its own year's date/type lookups for correct ordering
   const comparators = useMemo(
@@ -57,7 +57,7 @@ export default function SessionFlowPage() {
   return (
     <div className="space-y-4">
       <MetricsQueryGuard
-        isLoading={isLoading}
+        isLoading={isLoading || priorLoading}
         error={error}
         data={data}
         label="session flow"
