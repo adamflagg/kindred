@@ -116,3 +116,24 @@ async def reconstruct_enrollment_at_offset(
         result[sid] = net
 
     return result
+
+
+async def reconstruct_enrollment_with_gender(
+    repository: MetricsRepository,
+    year: int,
+    sessions: dict[int, Any],
+    day_offset: int,
+    season_start: datetime,
+    ag_parent_map: dict[int, int] | None = None,
+) -> dict[int, dict[str, int | None]]:
+    """Reconstruct enrollment counts with gender breakdown.
+
+    Returns {session_cm_id: {
+        "enrolled": int, "waitlisted": int, "cancelled": int,
+        "enrolled_boys": int | None, "enrolled_girls": int | None
+    }}
+
+    Gender is derived from the person relation. If expand_person data
+    is available, gender counts are populated; otherwise None.
+    """
+    raise NotImplementedError("Gender-aware reconstruction not yet implemented")
