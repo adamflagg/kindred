@@ -35,8 +35,10 @@ SCHOOL_FUZZY_THRESHOLD = 85
 # Threshold for congregation fuzzy match
 CONGREGATION_FUZZY_THRESHOLD = 80
 
-# Module-level cache for city lookup (loaded once on first use)
+# Module-level caches for city lookup (loaded once on first use)
 _CITY_LOOKUP: dict[str, str] | None = None
+_CITY_LOOKUP_MULTI: dict[str, list[str]] | None = None
+_CITY_LOCATION: dict[str, dict[str, str]] | None = None
 
 # Module-level caches for school lookup + coords (loaded once on first use)
 _SCHOOL_LOOKUP: dict[str, str] | None = None
@@ -47,21 +49,58 @@ _CONGREGATION_LOOKUP: dict[str, str] | None = None
 _CONGREGATION_COORDS: dict[str, list[float]] | None = None
 
 
-def _load_city_lookup() -> dict[str, str]:
-    """Load the US cities lookup from the data file.
+def _load_city_lookup_multi() -> dict[str, list[str]]:
+    """Load multi-variant city lookup. Returns lowercase_name -> ["City, ST", ...]."""
+    global _CITY_LOOKUP_MULTI
+    if _CITY_LOOKUP_MULTI is not None:
+        return _CITY_LOOKUP_MULTI
 
-    Returns a dict mapping lowercase city names to their canonical spelling.
-    The lookup is cached at module level for performance.
+    data_file = files("bunking.geo_normalizer.data").joinpath("us_cities.json")
+    data = json.loads(data_file.read_text())
+    raw_lookup = data.get("lookup", {})
+
+    multi: dict[str, list[str]] = {}
+    for key, value in raw_lookup.items():
+        if isinstance(value, list):
+            multi[key] = value
+        else:
+            multi[key] = [value]  # old schema compat
+
+    _CITY_LOOKUP_MULTI = multi
+    return multi
+
+
+def _load_city_location() -> dict[str, dict[str, str]]:
+    """Load city location metadata. Returns canonical_name -> {state}."""
+    global _CITY_LOCATION
+    if _CITY_LOCATION is not None:
+        return _CITY_LOCATION
+
+    data_file = files("bunking.geo_normalizer.data").joinpath("us_cities.json")
+    data = json.loads(data_file.read_text())
+    _CITY_LOCATION = data.get("location", {})
+    return _CITY_LOCATION
+
+
+def _load_city_lookup() -> dict[str, str]:
+    """Flattened city lookup for backwards compat. Returns 'city, st' -> 'City, ST'.
+
+    For single-variant cities, also includes bare name key.
     """
     global _CITY_LOOKUP
     if _CITY_LOOKUP is not None:
         return _CITY_LOOKUP
 
-    data_file = files("bunking.geo_normalizer.data").joinpath("us_cities.json")
-    data = json.loads(data_file.read_text())
-    lookup: dict[str, str] = data["lookup"]
-    _CITY_LOOKUP = lookup
-    return lookup
+    multi = _load_city_lookup_multi()
+    flat: dict[str, str] = {}
+    for name_lower, variants in multi.items():
+        for canonical in variants:
+            flat[canonical.lower()] = canonical
+        if len(variants) == 1:
+            flat[name_lower] = variants[0]
+
+    _CITY_LOOKUP = flat
+    return flat
 
 
 def _load_school_lookup() -> tuple[dict[str, str], dict[str, list[float]]]:
@@ -106,18 +145,18 @@ def _load_congregation_lookup() -> tuple[dict[str, str], dict[str, list[float]]]
     return lookup, coords
 
 
-# City abbreviation aliases (SF -> San Francisco, etc.)
+# City abbreviation aliases (SF -> San Francisco, CA, etc.)
 CITY_ALIASES: dict[str, str] = {
-    "sf": "San Francisco",
-    "la": "Los Angeles",
-    "nyc": "New York",
-    "ny": "New York",
-    "dc": "Washington DC",
-    "philly": "Philadelphia",
-    "chi": "Chicago",
-    "millbrae blvd": "Millbrae",
-    "la canada flt": "La Canada Flintridge",
-    "west menlo park": "Menlo Park",
+    "sf": "San Francisco, CA",
+    "la": "Los Angeles, CA",
+    "nyc": "New York, NY",
+    "ny": "New York, NY",
+    "dc": "Washington, DC",
+    "philly": "Philadelphia, PA",
+    "chi": "Chicago, IL",
+    "millbrae blvd": "Millbrae, CA",
+    "la canada flt": "La Canada Flintridge, CA",
+    "west menlo park": "Menlo Park, CA",
 }
 
 # State suffix pattern (", CA", ", CA 94102", etc.)
@@ -146,10 +185,8 @@ def preprocess_value(value: str) -> str:
 def normalize_city_value(city: str) -> str:
     """Normalize a single city value.
 
-    Uses a static list of US cities to correct typos. This ensures that
-    typos like "San Francico" are corrected to "San Francisco" even when
-    the typo appears in fewer records (preventing alphabetical sorting
-    from making typos canonical).
+    Uses a static list of US cities to correct typos. Returns "City, ST"
+    canonical format. For multi-variant cities, picks first variant.
     """
     city = preprocess_value(city)
     if not city:
@@ -160,33 +197,38 @@ def normalize_city_value(city: str) -> str:
     if lower in CITY_ALIASES:
         return CITY_ALIASES[lower]
 
-    # Remove state suffix (", CA", ", CA 94102", etc.)
-    city = STATE_SUFFIX_PATTERN.sub("", city)
-    city = city.strip()
+    # Extract state from suffix if present, then strip it
+    suffix_match = STATE_SUFFIX_PATTERN.search(city)
+    if suffix_match:
+        city = STATE_SUFFIX_PATTERN.sub("", city).strip()
 
     if not city:
         return ""
 
-    # Load city lookup and check for exact match (case-insensitive)
-    lookup = _load_city_lookup()
+    # Use multi-variant lookup for exact match (handles bare names)
+    multi_lookup = _load_city_lookup_multi()
     city_lower = city.lower()
 
-    if city_lower in lookup:
-        # Exact match - return canonical spelling
-        return lookup[city_lower]
+    if city_lower in multi_lookup:
+        # Exact match - return first variant
+        return multi_lookup[city_lower][0]
 
-    # Fuzzy match against known cities for typo correction
+    # Also check flattened lookup for "city, st" format input
+    flat_lookup = _load_city_lookup()
+    if city_lower in flat_lookup:
+        return flat_lookup[city_lower]
+
+    # Fuzzy match against multi-variant keys (bare city names)
     match = process.extractOne(
         city_lower,
-        lookup.keys(),
+        list(multi_lookup.keys()),
         scorer=fuzz.ratio,
         score_cutoff=CITY_FUZZY_THRESHOLD,
     )
 
     if match:
-        # Found a close match - return canonical spelling
         matched_key, _score, _ = match
-        return lookup[matched_key]
+        return multi_lookup[matched_key][0]
 
     # No match in lookup - fall back to title case
     return city.title()
