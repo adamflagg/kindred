@@ -890,6 +890,12 @@ export function getCityCoords(cityName: string): LatLng | undefined {
   const cityOnly = cityName.split(',')[0]?.trim() ?? cityName
   if (cityOnly !== cityName) return getCityCoords(cityOnly)
 
+  // 5. Bare name → first "Name, XX" match in US coords
+  const prefix = lowerName + ', '
+  for (const [city, coords] of Object.entries(US_CITY_COORDS)) {
+    if (city.toLowerCase().startsWith(prefix)) return coords
+  }
+
   return undefined
 }
 

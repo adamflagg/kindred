@@ -11,9 +11,9 @@ import { GeoDetailList } from './GeoDetailList'
 import type { GeoDataItem } from './GeoMap'
 
 const cityItems: GeoDataItem[] = [
-  { name: 'San Francisco', count: 25, percentage: 30 },
-  { name: 'Portland', count: 10, percentage: 12 },
-  { name: 'Denver', count: 5, percentage: 6 },
+  { name: 'San Francisco, CA', count: 25, percentage: 30 },
+  { name: 'Portland, OR', count: 10, percentage: 12 },
+  { name: 'Denver, CO', count: 5, percentage: 6 },
 ]
 
 describe('GeoDetailList', () => {
@@ -23,25 +23,25 @@ describe('GeoDetailList', () => {
     // Click header to expand
     fireEvent.click(screen.getByText('Cities'))
 
-    expect(screen.getByText('San Francisco')).toBeInTheDocument()
-    expect(screen.getByText('Portland')).toBeInTheDocument()
-    expect(screen.getByText('Denver')).toBeInTheDocument()
+    expect(screen.getByText('San Francisco, CA')).toBeInTheDocument()
+    expect(screen.getByText('Portland, OR')).toBeInTheDocument()
+    expect(screen.getByText('Denver, CO')).toBeInTheDocument()
   })
 
-  it('displays state abbreviation after city name for city category', () => {
+  it('displays city names with state suffix from "City, ST" format', () => {
     render(<GeoDetailList data={cityItems} category="city" />)
 
     // Click header to expand
     fireEvent.click(screen.getByText('Cities'))
 
-    // State abbreviations are in child spans, so check via textContent
+    // City names already include state suffix in "City, ST" format
     const rows = screen.getAllByRole('row')
     const sfRow = rows.find((row) => row.textContent?.includes('San Francisco'))
-    expect(sfRow?.textContent).toContain(', CA')
+    expect(sfRow?.textContent).toContain('San Francisco, CA')
     const portlandRow = rows.find((row) => row.textContent?.includes('Portland'))
-    expect(portlandRow?.textContent).toContain(', OR')
+    expect(portlandRow?.textContent).toContain('Portland, OR')
     const denverRow = rows.find((row) => row.textContent?.includes('Denver'))
-    expect(denverRow?.textContent).toContain(', CO')
+    expect(denverRow?.textContent).toContain('Denver, CO')
   })
 
   it('does not display state abbreviation for school category', () => {
@@ -57,7 +57,7 @@ describe('GeoDetailList', () => {
 
   it('shows gap indicator for cities without coords when showGaps is true', () => {
     const itemsWithGaps: GeoDataItem[] = [
-      { name: 'San Francisco', count: 25, percentage: 30 },
+      { name: 'San Francisco, CA', count: 25, percentage: 30 },
       { name: 'Harduf', count: 2, percentage: 2 }, // International, not in coord lookup
     ]
 
@@ -120,7 +120,7 @@ describe('GeoDetailList', () => {
       render(<GeoDetailList data={cityItems} category="city" isOpen={true} />)
 
       // Should be expanded because isOpen=true
-      expect(screen.getByText('San Francisco')).toBeInTheDocument()
+      expect(screen.getByText('San Francisco, CA')).toBeInTheDocument()
     })
 
     it('stays collapsed when isOpen=false even after header click', () => {
@@ -128,13 +128,13 @@ describe('GeoDetailList', () => {
       render(<GeoDetailList data={cityItems} category="city" isOpen={false} onToggle={onToggle} />)
 
       // Should be collapsed
-      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+      expect(screen.queryByText('San Francisco, CA')).not.toBeInTheDocument()
 
       // Click header — should call onToggle but NOT expand (controlled mode)
       fireEvent.click(screen.getByText('Cities'))
       expect(onToggle).toHaveBeenCalledTimes(1)
       // Still collapsed because isOpen is still false (controlled by parent)
-      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+      expect(screen.queryByText('San Francisco, CA')).not.toBeInTheDocument()
     })
 
     it('calls onToggle when header is clicked in controlled mode', () => {
@@ -149,15 +149,15 @@ describe('GeoDetailList', () => {
       render(<GeoDetailList data={cityItems} category="city" />)
 
       // Initially collapsed
-      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+      expect(screen.queryByText('San Francisco, CA')).not.toBeInTheDocument()
 
       // Click to expand
       fireEvent.click(screen.getByText('Cities'))
-      expect(screen.getByText('San Francisco')).toBeInTheDocument()
+      expect(screen.getByText('San Francisco, CA')).toBeInTheDocument()
 
       // Click to collapse
       fireEvent.click(screen.getByText('Cities'))
-      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+      expect(screen.queryByText('San Francisco, CA')).not.toBeInTheDocument()
     })
   })
 
@@ -170,8 +170,8 @@ describe('GeoDetailList', () => {
 
     expect(onDrilldown).toHaveBeenCalledWith({
       type: 'city',
-      value: 'San Francisco',
-      label: 'San Francisco',
+      value: 'San Francisco, CA',
+      label: 'San Francisco, CA',
     })
   })
 })

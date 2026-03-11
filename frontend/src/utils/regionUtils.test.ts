@@ -28,8 +28,8 @@ describe('classifyCity', () => {
     expect(classifyCity('Los Angeles')).toBe('Other CA')
   })
 
-  it('should classify Denver as Rest of US', () => {
-    expect(classifyCity('Denver')).toBe('Rest of US')
+  it('should classify Denver, CO as Rest of US', () => {
+    expect(classifyCity('Denver, CO')).toBe('Rest of US')
   })
 
   it('should classify Tokyo as International', () => {
@@ -54,6 +54,27 @@ describe('classifyCity', () => {
 
   it('should classify Napa as napaSonoma', () => {
     expect(classifyCity('Napa')).toBe('napaSonoma')
+  })
+
+  // "City, ST" format support
+  it('should classify "Oakland, CA" as eastBay', () => {
+    expect(classifyCity('Oakland, CA')).toBe('eastBay')
+  })
+
+  it('should classify "San Francisco, CA" as sf', () => {
+    expect(classifyCity('San Francisco, CA')).toBe('sf')
+  })
+
+  it('should classify "Los Angeles, CA" as Other CA', () => {
+    expect(classifyCity('Los Angeles, CA')).toBe('Other CA')
+  })
+
+  it('should classify "Denver, CO" as Rest of US', () => {
+    expect(classifyCity('Denver, CO')).toBe('Rest of US')
+  })
+
+  it('should classify "Mill Valley, CA" as marin', () => {
+    expect(classifyCity('Mill Valley, CA')).toBe('marin')
   })
 })
 
@@ -80,7 +101,7 @@ describe('aggregateCityCountsByRegion', () => {
       { city: 'Oakland', count: 30, percentage: 30 },
       { city: 'Berkeley', count: 20, percentage: 20 },
       { city: 'San Francisco', count: 40, percentage: 40 },
-      { city: 'Denver', count: 10, percentage: 10 },
+      { city: 'Denver, CO', count: 10, percentage: 10 },
     ]
 
     const result = aggregateCityCountsByRegion(byCity)
@@ -112,7 +133,7 @@ describe('aggregateCityCountsByRegion', () => {
 
   it('should sort by count descending', () => {
     const byCity: CityBreakdown[] = [
-      { city: 'Denver', count: 5, percentage: 5 },
+      { city: 'Denver, CO', count: 5, percentage: 5 },
       { city: 'Oakland', count: 50, percentage: 50 },
       { city: 'San Francisco', count: 30, percentage: 30 },
       { city: 'Los Angeles', count: 15, percentage: 15 },
