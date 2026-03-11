@@ -125,6 +125,8 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
               // payload.source/target are node objects (not indices)
               const sourceColor = resolveNodeColor(payload.source, cmIdColorMap)
               const targetColor = resolveNodeColor(payload.target, cmIdColorMap)
+              const isFallbackLink =
+                sourceColor === DID_NOT_RETURN_COLOR || targetColor === DID_NOT_RETURN_COLOR
               const gradientId = `sankey-gradient-${index}`
 
               let opacity = 0.45
@@ -134,16 +136,18 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
 
               return (
                 <g>
-                  <defs>
-                    <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor={sourceColor} />
-                      <stop offset="100%" stopColor={targetColor} />
-                    </linearGradient>
-                  </defs>
+                  {!isFallbackLink && (
+                    <defs>
+                      <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor={sourceColor} />
+                        <stop offset="100%" stopColor={targetColor} />
+                      </linearGradient>
+                    </defs>
+                  )}
                   <path
                     d={`M${sourceX},${sourceY} C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
                     fill="none"
-                    stroke={`url(#${gradientId})`}
+                    stroke={isFallbackLink ? DID_NOT_RETURN_COLOR : `url(#${gradientId})`}
                     strokeWidth={linkWidth}
                     strokeOpacity={opacity}
                     style={{ transition: 'stroke-opacity 0.15s ease' }}
