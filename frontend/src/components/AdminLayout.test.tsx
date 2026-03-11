@@ -40,7 +40,6 @@ const renderWithRouter = (initialPath: string, { isAdmin = true } = {}) => {
             <Route path="sync" element={<TestChild text="Sync Content" />} />
             <Route path="config" element={<Navigate to="/admin/config/solver" replace />} />
             <Route path="config/:category" element={<TestChild text="Config Content" />} />
-            <Route path="sheets" element={<TestChild text="Sheets Content" />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -62,18 +61,6 @@ describe('AdminLayout', () => {
     expect(screen.getByRole('link', { name: /configuration/i })).toBeInTheDocument()
   })
 
-  it('renders sheets tab for admin users', () => {
-    renderWithRouter('/admin/sync', { isAdmin: true })
-
-    expect(screen.getByRole('link', { name: /sheets/i })).toBeInTheDocument()
-  })
-
-  it('hides sheets tab for non-admin users', () => {
-    renderWithRouter('/admin/sync', { isAdmin: false })
-
-    expect(screen.queryByRole('link', { name: /sheets/i })).not.toBeInTheDocument()
-  })
-
   it('highlights active tab based on route - sync', () => {
     renderWithRouter('/admin/sync')
 
@@ -92,14 +79,6 @@ describe('AdminLayout', () => {
 
     expect(configLink.className).toContain('shadow-sm')
     expect(syncLink.className).not.toContain('shadow-sm')
-  })
-
-  it('highlights active tab based on route - sheets', () => {
-    renderWithRouter('/admin/sheets', { isAdmin: true })
-
-    const sheetsLink = screen.getByRole('link', { name: /sheets/i })
-
-    expect(sheetsLink.className).toContain('shadow-sm')
   })
 
   it('renders child content via Outlet on sync tab', () => {
@@ -127,9 +106,4 @@ describe('AdminLayout', () => {
     )
   })
 
-  it('sheets link points to correct path for admin', () => {
-    renderWithRouter('/admin/sync', { isAdmin: true })
-
-    expect(screen.getByRole('link', { name: /sheets/i })).toHaveAttribute('href', '/admin/sheets')
-  })
 })
