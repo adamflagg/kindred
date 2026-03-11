@@ -7,6 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 
 from ..dependencies import pb
@@ -38,8 +39,7 @@ async def get_session_availability(
     Returns per-session, per-gender enrollment counts, capacity,
     and availability status (open/limited/waitlist).
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.metrics_repository import MetricsRepository
     from api.services.session_availability_service import SessionAvailabilityService

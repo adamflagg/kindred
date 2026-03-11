@@ -10,8 +10,9 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
+from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_admin, require_permission
 from bunking.rbac.permissions import Permission
@@ -71,8 +72,7 @@ async def get_retention_metrics(
     Calculates what percentage of campers from base_year returned in compare_year,
     broken down by gender, grade, session, and years at camp.
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.retention_service import RetentionService
 
@@ -135,8 +135,7 @@ async def get_registration_metrics(
     in the enrollment counts and breakdowns. Multiple statuses can be combined
     for flexible dashboard views.
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.registration_service import RegistrationService
 
@@ -226,8 +225,7 @@ async def get_historical_trends(
     across years. CampMinder often reuses cm_ids year-over-year, but names can change
     (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.historical_service import HistoricalService
 
@@ -288,8 +286,7 @@ async def get_retention_trends(
     This enables line charts for overall retention and grouped bar charts
     for breakdown categories.
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.retention_trends_service import RetentionTrendsService
 
@@ -347,8 +344,7 @@ async def get_waitlist_metrics(
     - Previously waitlisted, now accepted (enrolled)
     - Previously waitlisted, declined (cancelled/withdrawn/dismissed)
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.waitlist_service import WaitlistService
 
@@ -398,8 +394,7 @@ async def get_cancellation_metrics(
     - Has other sessions vs no other sessions remaining
     - Re-enrolled (cancelled then returned)
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.cancellation_service import CancellationService
 
@@ -465,8 +460,7 @@ async def get_drilldown_attendees(
     Click a chart segment (e.g., "Grade 5" bar) to see all matching campers.
     Returns individual attendee records with person details for modal display.
     """
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.drilldown_service import DrilldownService
 
@@ -507,8 +501,7 @@ async def get_velocity(
     user: AuthUser = Depends(get_current_user),
 ) -> VelocityResponse:
     """Get registration velocity curves with week-over-week data."""
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.velocity_service import VelocityService
 
@@ -572,8 +565,7 @@ async def get_forecast(
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals and revenue projections."""
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     from api.services.forecast_service import ForecastService
 

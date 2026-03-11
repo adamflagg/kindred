@@ -23,7 +23,11 @@ from api.schemas.metrics import (
     SynagogueEnrollment,
     YearEnrollment,
 )
-from api.utils.session_metrics import compute_summer_metrics, resolve_duration_sessions
+from api.utils.session_metrics import (
+    compute_summer_metrics,
+    filter_attendees_by_session,
+    resolve_duration_sessions,
+)
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
@@ -91,7 +95,7 @@ class RetentionTrendsService:
             # Filter by duration category
             if duration:
                 duration_session_ids = resolve_duration_sessions(year_data["sessions"], duration)
-                attendees = self._filter_by_session_cm_ids(attendees, duration_session_ids)
+                attendees = filter_attendees_by_session(attendees, None, session_cm_ids=duration_session_ids)
 
             # Update attendees and compute person_ids
             year_data["attendees"] = attendees
@@ -206,28 +210,6 @@ class RetentionTrendsService:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session and getattr(session, "cm_id", None) == session_cm_id:
-                filtered.append(a)
-        return filtered
-
-    def _filter_by_session_cm_ids(
-        self,
-        attendees: list[Any],
-        session_cm_ids: set[int],
-    ) -> list[Any]:
-        """Filter attendees to those in a set of session cm_ids (duration groups).
-
-        Args:
-            attendees: List of attendees.
-            session_cm_ids: Set of session cm_ids to include.
-
-        Returns:
-            Filtered list of attendees.
-        """
-        filtered = []
-        for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            if session and int(getattr(session, "cm_id", 0)) in session_cm_ids:
                 filtered.append(a)
         return filtered
 

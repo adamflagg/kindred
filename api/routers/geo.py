@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from starlette.responses import Response
 
+from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
@@ -64,8 +65,7 @@ async def get_gaps(
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> GapsResponse:
     """Get three-tier gap classification for normalized values missing coordinates."""
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
@@ -94,8 +94,7 @@ async def search_canonicals(
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> CanonicalSearchResponse:
     """Search canonical entries by name, city, or state."""
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
@@ -132,8 +131,7 @@ async def get_sources(
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> SourcesResponse:
     """Get raw value variants that map to a canonical name."""
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
@@ -168,8 +166,7 @@ async def get_source_mappings(
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> SourceMappingsResponse:
     """Get all source mappings grouped by normalized_value with attendee filtering."""
-    if duration is not None and session_cm_id is not None:
-        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+    check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
     types_list = session_types.split(",") if session_types else None
