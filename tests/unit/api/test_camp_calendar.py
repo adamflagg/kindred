@@ -56,7 +56,7 @@ class TestGetCampDate:
         assert get_camp_date(utc_dt) == date(2026, 3, 14)
 
     def test_3am_utc_sync_time(self):
-        """3am UTC (daily sync) = 7pm PST → current camp date."""
+        """3am UTC (daily sync) = 7pm PST previous day → previous camp date."""
         utc_dt = datetime(2026, 1, 15, 3, 0, 0, tzinfo=UTC)
         # 3am UTC = 7pm PST Jan 14 → camp date Jan 14
         assert get_camp_date(utc_dt) == date(2026, 1, 14)

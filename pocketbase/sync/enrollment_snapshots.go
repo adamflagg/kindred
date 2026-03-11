@@ -248,8 +248,6 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 	slog.Info("Enrollment snapshots completed",
 		"year", year,
 		"created", s.Stats.Created,
-		"updated", s.Stats.Updated,
-		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 

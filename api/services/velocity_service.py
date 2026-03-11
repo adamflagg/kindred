@@ -271,7 +271,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_datetime
+            date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
 
             male_count = int(getattr(snap, "enrolled_male_count", 0) or 0)
             female_count = int(getattr(snap, "enrolled_female_count", 0) or 0)
@@ -774,7 +774,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_datetime
+            date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
 
             session_date_data[effective_sid][date_str]["enrolled"] += int(snap.enrolled_count)
             session_date_data[effective_sid][date_str]["waitlisted"] += int(snap.waitlisted_count)
@@ -1356,7 +1356,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_datetime
+            date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
             cancelled = int(getattr(snap, "cancelled_count", 0) or 0)
             # Accumulate (multiple sessions on same date get summed per effective session)
             current = session_date_cancelled[effective_sid].get(date_str, 0)
