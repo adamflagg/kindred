@@ -38,56 +38,13 @@ import {
   buildSessionTypeLookup,
 } from '../../../utils/sessionUtils'
 import { PHASE_COLORS } from './phaseColors'
-
-const PRIOR_YEAR_COLORS = [
-  'hsl(220, 60%, 65%)',
-  'hsl(280, 50%, 60%)',
-  'hsl(35, 70%, 55%)',
-  'hsl(340, 55%, 60%)',
-  'hsl(180, 50%, 45%)',
-]
-
-const GENDER_COLORS = {
-  boys: 'hsl(210, 70%, 55%)',
-  girls: 'hsl(340, 65%, 55%)',
-}
-
-/** Custom dot renderer that shows a hollow dashed circle on partial week data points. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function PartialWeekDot(props: any) {
-  const { cx, cy, payload, stroke } = props
-  if (!payload?.is_partial) return null
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={5}
-      fill="white"
-      stroke={stroke}
-      strokeWidth={2}
-      strokeDasharray="3 3"
-    />
-  )
-}
-
-/** Format a date string (YYYY-MM-DD) to short display. */
-function formatDateShort(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-/** Compute the calendar date for a prior year at a given day offset from its season start. */
-function priorYearDailyDateLabel(
-  seasonStarts: Record<number, string> | undefined,
-  year: number,
-  dayOffset: number
-): string | null {
-  const seasonStart = seasonStarts?.[year]
-  if (!seasonStart) return null
-  const d = new Date(seasonStart + 'T00:00:00')
-  d.setDate(d.getDate() + dayOffset)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
+import {
+  PRIOR_YEAR_COLORS,
+  GENDER_COLORS,
+  formatDateShort,
+  priorYearDailyDateLabel,
+} from './chartConstants'
+import PartialWeekDot from './PartialWeekDot'
 
 export default function CancellationVelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()

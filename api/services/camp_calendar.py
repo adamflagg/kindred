@@ -50,6 +50,23 @@ def camp_week_offset(camp_date: date, anchor: date) -> int:
     return camp_day_offset(camp_date, anchor) // 7
 
 
+def format_week_date_range(anchor: date, week_num: int) -> str:
+    """Format a date range for a 1-based week number, e.g. "Nov 12\u201318" or "Nov 26\u2013Dec 2".
+
+    Args:
+        anchor: Registration anchor date (start of Week 1).
+        week_num: 1-based week number.
+    """
+    week_start = anchor + timedelta(days=(week_num - 1) * 7)
+    week_end = anchor + timedelta(days=week_num * 7 - 1)
+    start_fmt = week_start.strftime("%b %-d")
+    if week_start.month == week_end.month:
+        end_fmt = str(week_end.day)
+    else:
+        end_fmt = week_end.strftime("%b %-d")
+    return f"{start_fmt}\u2013{end_fmt}"
+
+
 def day1_window(tier_date: date) -> tuple[datetime, datetime]:
     """Return the 9am-to-9am PT window for a registration tier opening day.
 

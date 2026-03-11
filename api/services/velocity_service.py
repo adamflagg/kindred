@@ -21,6 +21,7 @@ from api.schemas.velocity import (
     VelocityResponse,
     WeeklyDataPoint,
 )
+from api.services.camp_calendar import format_week_date_range
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     CANCELLATION_STATUSES,
@@ -74,13 +75,7 @@ def rollup_daily_to_weekly(
         week_start_date = season_start + timedelta(days=(week_num - 1) * 7)
         week_end_date = season_start + timedelta(days=week_num * 7 - 1)
 
-        # Week label: "Wk N (Mon D–Mon D)" — omit end month if same
-        start_fmt = week_start_date.strftime("%b %-d")
-        if week_start_date.month == week_end_date.month:
-            end_fmt = str(week_end_date.day)
-        else:
-            end_fmt = week_end_date.strftime("%b %-d")
-        week_label = f"Wk {week_num} ({start_fmt}\u2013{end_fmt})"
+        week_label = f"Wk {week_num} ({format_week_date_range(season_start, week_num)})"
 
         # Aggregations
         weekly_new = sum(dp.daily_new for dp in points)
@@ -131,13 +126,7 @@ def _week_start(d: datetime, season_start: datetime) -> datetime:
 def _week_label(d: datetime, season_start: datetime) -> str:
     """Format a date as a week label like 'Wk N (Jan 6–12)'."""
     week_num = _week_number(d, season_start)
-    week_end = d + timedelta(days=6)
-    start_fmt = d.strftime("%b %-d")
-    if d.month == week_end.month:
-        end_fmt = str(week_end.day)
-    else:
-        end_fmt = week_end.strftime("%b %-d")
-    return f"Wk {week_num} ({start_fmt}\u2013{end_fmt})"
+    return f"Wk {week_num} ({format_week_date_range(season_start.date() if isinstance(season_start, datetime) else season_start, week_num)})"
 
 
 def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | None:

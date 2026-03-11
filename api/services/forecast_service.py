@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
-from api.services.camp_calendar import get_camp_today
+from api.services.camp_calendar import format_week_date_range, get_camp_today
 from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
@@ -93,7 +93,7 @@ class ForecastService:
         if tier_suffix:
             today_suffixes.insert(0, tier_suffix)
         today_suffix_str = " · ".join(today_suffixes)
-        today_date_range = self._format_week_date_range(anchor, today_week)
+        today_date_range = format_week_date_range(anchor, today_week)
         today_label = f"Week {today_week} · {today_date_range} ({today_suffix_str})"
         options.append(
             WeekOption(
@@ -112,7 +112,7 @@ class ForecastService:
             weeks_to_show.discard(today_week)
 
         for week in sorted(weeks_to_show, reverse=True):
-            date_range = self._format_week_date_range(anchor, week)
+            date_range = format_week_date_range(anchor, week)
             label = f"Week {week} · {date_range}"
             suffix = tier_suffixes.get(week)
             if suffix:
@@ -127,26 +127,6 @@ class ForecastService:
             )
 
         return options
-
-    @staticmethod
-    def _format_week_date_range(anchor: date, week_num: int) -> str:
-        """Format a date range string for a 1-based week number.
-
-        Args:
-            anchor: Registration anchor date (start of Week 1).
-            week_num: 1-based week number.
-
-        Returns:
-            Formatted date range, e.g. "Nov 12–18" or "Nov 26–Dec 2".
-        """
-        week_start = anchor + timedelta(days=(week_num - 1) * 7)
-        week_end = anchor + timedelta(days=week_num * 7 - 1)
-        start_fmt = week_start.strftime("%b %-d")
-        if week_start.month == week_end.month:
-            end_fmt = str(week_end.day)
-        else:
-            end_fmt = week_end.strftime("%b %-d")
-        return f"{start_fmt}\u2013{end_fmt}"
 
     async def calculate_forecast(
         self,
