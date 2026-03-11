@@ -13,9 +13,12 @@
 migrate((app) => {
   const collection = app.findCollectionByNameOrId("enrollment_snapshots");
 
-  // Remove old indexes that reference snapshot_date
+  // Remove old indexes (filter by index name to catch all, including
+  // idx_enrollment_snapshots_year_session which doesn't mention snapshot_date)
   collection.indexes = collection.indexes.filter(
-    (idx) => !idx.includes("snapshot_date")
+    (idx) =>
+      !idx.includes("idx_enrollment_snapshots_unique") &&
+      !idx.includes("idx_enrollment_snapshots_year_session")
   );
 
   // Rename field: snapshot_date → snapshot_datetime
@@ -36,9 +39,11 @@ migrate((app) => {
 }, (app) => {
   const collection = app.findCollectionByNameOrId("enrollment_snapshots");
 
-  // Remove new indexes
+  // Remove new indexes (filter by index name to catch all)
   collection.indexes = collection.indexes.filter(
-    (idx) => !idx.includes("snapshot_datetime")
+    (idx) =>
+      !idx.includes("idx_enrollment_snapshots_unique") &&
+      !idx.includes("idx_enrollment_snapshots_year_session")
   );
 
   // Rename field back: snapshot_datetime → snapshot_date
