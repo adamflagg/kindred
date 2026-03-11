@@ -316,3 +316,18 @@ class TestSchoolNormalizationGradeAnnotation:
         from bunking.geo_normalizer.normalizer import normalize_school_value
 
         assert normalize_school_value("Highland Elementary") == "Highland Elementary"
+
+
+class TestStateAwareSchoolNormalization:
+    def test_school_accepts_state_param(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        result = normalize_school_value("Acalanes High School", state="CA")
+        assert result
+
+    def test_normalize_schools_batch_with_state(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_schools
+
+        items: list[dict[str, str]] = [{"value": "Acalanes High School", "state": "CA"}]
+        result = normalize_schools(items)
+        assert "Acalanes High School" in result

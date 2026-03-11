@@ -308,7 +308,7 @@ def _school_match_has_token_overlap(query: str, candidate: str) -> bool:
     return bool(query_tokens & candidate_tokens)
 
 
-def normalize_school_value(school: str) -> str:
+def normalize_school_value(school: str, state: str = "") -> str:
     """Normalize a single school value using canonical lookup.
 
     Uses a static list of California schools (from NCES data) to resolve
@@ -354,7 +354,7 @@ def normalize_school_value(school: str) -> str:
     return stripped
 
 
-def normalize_congregation_value(congregation: str) -> str:
+def normalize_congregation_value(congregation: str, state: str = "") -> str:
     """Normalize a single congregation value using canonical lookup.
 
     Uses a curated list of Bay Area congregations to resolve names to
@@ -525,8 +525,10 @@ def normalize_cities(
     return result
 
 
-def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
-    """Normalize a list of school values.
+def normalize_schools(
+    values: list[str] | list[dict[str, str]],
+) -> dict[str, NormalizedResult]:
+    """Normalize a list of school values with optional state context.
 
     Uses token_sort_ratio for fuzzy matching which handles:
     - Word reordering ("Elementary School Riverside" vs "Riverside Elementary School")
@@ -539,13 +541,20 @@ def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
     Only unknown values (no canonical match) are clustered.
 
     Args:
-        values: List of school names
+        values: List of school names (strings) or dicts with {value, state}.
 
     Returns:
         Dict mapping original values to {canonical, confidence}
     """
     if not values:
         return {}
+
+    items: list[tuple[str, str]] = []
+    for v in values:
+        if isinstance(v, str):
+            items.append((v, ""))
+        else:
+            items.append((v["value"], v.get("state", "")))
 
     lookup, _ = _load_school_lookup()
 
@@ -554,8 +563,8 @@ def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
     canonical_values: dict[str, str] = {}  # normalized -> canonical (from lookup)
     unknown_values: list[str] = []  # values not in canonical lookup
 
-    for original in values:
-        normalized = normalize_school_value(original)
+    for original, item_state in items:
+        normalized = normalize_school_value(original, state=item_state)
         if not normalized:
             continue
         normalized_map[original] = normalized
@@ -662,8 +671,10 @@ def cluster_similar_values_token_set(
     return result
 
 
-def normalize_congregations(values: list[str]) -> dict[str, NormalizedResult]:
-    """Normalize a list of congregation values.
+def normalize_congregations(
+    values: list[str] | list[dict[str, str]],
+) -> dict[str, NormalizedResult]:
+    """Normalize a list of congregation values with optional state context.
 
     Uses token_set_ratio for fuzzy matching which handles:
     - Word reordering ("Temple Beth Israel" vs "Beth Israel Temple")
@@ -674,7 +685,7 @@ def normalize_congregations(values: list[str]) -> dict[str, NormalizedResult]:
     contains all tokens of "Beth Shalom" -> matches at 100%.
 
     Args:
-        values: List of congregation names
+        values: List of congregation names (strings) or dicts with {value, state}.
 
     Returns:
         Dict mapping original values to {canonical, confidence}
@@ -682,12 +693,19 @@ def normalize_congregations(values: list[str]) -> dict[str, NormalizedResult]:
     if not values:
         return {}
 
+    items: list[tuple[str, str]] = []
+    for v in values:
+        if isinstance(v, str):
+            items.append((v, ""))
+        else:
+            items.append((v["value"], v.get("state", "")))
+
     # Step 1: Normalize each value (minimal preprocessing)
     normalized_map: dict[str, str] = {}
     normalized_values: list[str] = []
 
-    for original in values:
-        normalized = normalize_congregation_value(original)
+    for original, item_state in items:
+        normalized = normalize_congregation_value(original, state=item_state)
         if normalized:
             normalized_map[original] = normalized
             normalized_values.append(normalized)
