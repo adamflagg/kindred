@@ -129,7 +129,7 @@ def make_weekly_point(
         week_label=week_label,
         week_number=week_number,
         enrolled=enrolled,
-        waitlisted=waitlisted,
+        waitlisted=waitlisted,  # type: ignore[call-arg]
         delta=delta,
         data_source=data_source,
         gross_enrolled=gross_enrolled if gross_enrolled is not None else enrolled,
@@ -1830,7 +1830,7 @@ class TestSchemaNewFields:
             week_label="Jan 5",
             week_number=0,
             enrolled=10,
-            waitlisted=0,
+            waitlisted=0,  # type: ignore[call-arg]
             delta=10,
             data_source="snapshot",
             gross_enrolled=0,
@@ -1849,7 +1849,7 @@ class TestSchemaNewFields:
             week_label="Jan 5",
             week_number=0,
             enrolled=10,
-            waitlisted=0,
+            waitlisted=0,  # type: ignore[call-arg]
             delta=10,
             data_source="snapshot",
             gross_enrolled=0,
@@ -1868,7 +1868,7 @@ class TestSchemaNewFields:
             week_label="Jan 5",
             week_number=0,
             enrolled=10,
-            waitlisted=0,
+            waitlisted=0,  # type: ignore[call-arg]
             delta=10,
             data_source="snapshot",
             gross_enrolled=0,
@@ -1887,7 +1887,7 @@ class TestSchemaNewFields:
             week_label="Jan 5",
             week_number=0,
             enrolled=45,
-            waitlisted=0,
+            waitlisted=0,  # type: ignore[call-arg]
             delta=10,
             data_source="snapshot",
             gross_enrolled=50,
@@ -3310,7 +3310,7 @@ class TestPartialWeekSchemaDefaults:
             week_label="Jan 5",
             week_number=0,
             enrolled=100,
-            waitlisted=10,
+            waitlisted=10,  # type: ignore[call-arg]
             delta=100,
             data_source="snapshot",
             gross_enrolled=0,
@@ -3329,7 +3329,7 @@ class TestPartialWeekSchemaDefaults:
             week_label="Jan 5",
             week_number=0,
             enrolled=100,
-            waitlisted=10,
+            waitlisted=10,  # type: ignore[call-arg]
             delta=100,
             data_source="snapshot",
             gross_enrolled=0,
