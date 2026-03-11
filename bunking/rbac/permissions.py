@@ -13,6 +13,9 @@ class Permission:
     BUNKING_MANAGE = "bunking.manage"
     METRICS_FINANCIAL = "metrics.financial"
     METRICS_GEO = "metrics.geo"
+    REGISTRATION_MANAGE = "registration.manage"
+    SHEETS_EXPORT = "sheets.export"
+    USERS_MANAGE = "users.manage"
 
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(getattr(Permission, attr) for attr in dir(Permission) if attr.isupper())
@@ -21,4 +24,7 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.BUNKING_MANAGE: "Manage requests, scenarios, solver runs",
     Permission.METRICS_FINANCIAL: "View financial projections and revenue data",
     Permission.METRICS_GEO: "View and manage geographic data",
+    Permission.REGISTRATION_MANAGE: "Edit registration dates, budgets, and grade eligibility",
+    Permission.SHEETS_EXPORT: "Trigger and view Google Sheets exports",
+    Permission.USERS_MANAGE: "Assign and revoke roles on other users",
 }
