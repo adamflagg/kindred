@@ -183,15 +183,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         setIsComputingLayout(false)
         setTimeout(() => {
           try {
-            // Draw bunk bubbles after layout if enabled
-            if (showBubbles) {
-              drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
-            }
+            adjustLabelPositions(cy)
           } catch (error) {
-            console.error('Error drawing bunk bubbles:', error)
+            console.error('Error adjusting labels:', error)
           }
-          // Adjust label positions to prevent overlap
-          adjustLabelPositions(cy)
         }, 500)
       }
 
@@ -270,7 +265,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     return () => {
       cleanupCytoscape(cyRef, layoutRef, bubblesetsRef, poppersRef)
     }
-  }, [graphData, viewMode, bunksData, showBubbles, showEdges, showLabels, bubbleRefs]) // Removed isExpanded - handled by separate effect
+  }, [graphData, viewMode, bunksData, showEdges, showLabels, bubbleRefs]) // Removed isExpanded - handled by separate effect
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
@@ -297,6 +292,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
           // Clear existing bubblesets using the utility
           clearBubbles(bubbleRefs)
           drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
+        } else if (!showBubbles) {
+          clearBubbles(bubbleRefs)
         }
       }
     }, 200)
