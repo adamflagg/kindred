@@ -687,10 +687,11 @@ class MetricsSQLRepository:
     async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
         """Return distinct snapshot dates for a year, sorted descending (newest first)."""
         rows = self._query(
-            "SELECT DISTINCT snapshot_datetime FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_datetime DESC",
+            "SELECT DISTINCT substr(snapshot_datetime, 1, 10) AS snapshot_date"
+            " FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_date DESC",
             (year,),
         )
-        return [r["snapshot_datetime"].split("T")[0].split(" ")[0] for r in rows]
+        return [r["snapshot_date"] for r in rows]
 
     # ------------------------------------------------------------------
     # 16. fetch_registration_dates

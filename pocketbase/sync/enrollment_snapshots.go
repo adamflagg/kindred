@@ -225,7 +225,15 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			datePrefix, sessionCMID, year,
 		)
 		var record *core.Record
-		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
+		existing, err := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
+		if err != nil {
+			slog.Error("Error looking up existing enrollment snapshot",
+				"session_cm_id", sessionCMID,
+				"error", err,
+			)
+			s.Stats.Errors++
+			continue
+		}
 		if existing != nil {
 			record = existing
 		} else {
@@ -264,6 +272,8 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 	slog.Info("Enrollment snapshots completed",
 		"year", year,
 		"created", s.Stats.Created,
+		"updated", s.Stats.Updated,
+		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 
