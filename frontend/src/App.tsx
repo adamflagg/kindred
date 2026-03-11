@@ -14,6 +14,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
 import { Permission } from './constants/permissions'
+import { usePermissions } from './hooks/usePermissions'
 import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -42,6 +43,14 @@ const SheetsTab = lazy(() =>
 )
 const GeoDataTab = lazy(() =>
   import('./components/admin/GeoDataTab').then((m) => ({ default: m.GeoDataTab }))
+)
+const ManageLayout = lazy(() =>
+  import('./components/ManageLayout').then((m) => ({ default: m.ManageLayout }))
+)
+const ManageRegistrationPage = lazy(() =>
+  import('./components/manage/ManageRegistrationPage').then((m) => ({
+    default: m.ManageRegistrationPage,
+  }))
 )
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -122,6 +131,18 @@ function CamperRedirect() {
   return <Navigate to={`/camper/${camperId}`} replace />
 }
 
+// Smart redirect to first permitted manage tab
+function ManageRedirect() {
+  const { hasPermission, isAdmin } = usePermissions()
+  const tabs = [
+    { path: '/manage/geo', permission: Permission.METRICS_GEO },
+    { path: '/manage/registration', permission: Permission.REGISTRATION_MANAGE },
+    { path: '/manage/sheets', permission: Permission.SHEETS_EXPORT },
+  ]
+  const firstPermitted = tabs.find((t) => isAdmin || hasPermission(t.permission))
+  return <Navigate to={firstPermitted?.path ?? '/manage/geo'} replace />
+}
+
 function App() {
   // PocketBase auth is ready immediately since it's initialized synchronously
 
@@ -199,6 +220,10 @@ function App() {
                                 element={<Navigate to="/admin/config/solver" replace />}
                               />
                               <Route
+                                path="config/registration"
+                                element={<Navigate to="/manage/registration" replace />}
+                              />
+                              <Route
                                 path="config/:category"
                                 element={
                                   <ErrorBoundary>
@@ -209,17 +234,28 @@ function App() {
                                 }
                               />
                               <Route
-                                path="sheets"
-                                element={
-                                  <AdminRoute>
-                                    <ErrorBoundary>
-                                      <Suspense fallback={<PageSkeleton />}>
-                                        <SheetsTab />
-                                      </Suspense>
-                                    </ErrorBoundary>
-                                  </AdminRoute>
-                                }
+                                path="geo/*"
+                                element={<Navigate to="/manage/geo" replace />}
                               />
+                              <Route
+                                path="sheets"
+                                element={<Navigate to="/manage/sheets" replace />}
+                              />
+                            </Route>
+                          </Route>
+
+                          {/* Manage routes - staff-facing management tools */}
+                          <Route path="/manage" element={<AppLayout />}>
+                            <Route index element={<ManageRedirect />} />
+                            <Route
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <ManageLayout />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            >
                               <Route
                                 path="geo/*"
                                 element={
@@ -227,6 +263,30 @@ function App() {
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <GeoDataTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </RequirePermission>
+                                }
+                              />
+                              <Route
+                                path="registration"
+                                element={
+                                  <RequirePermission permission={Permission.REGISTRATION_MANAGE}>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <ManageRegistrationPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </RequirePermission>
+                                }
+                              />
+                              <Route
+                                path="sheets"
+                                element={
+                                  <RequirePermission permission={Permission.SHEETS_EXPORT}>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <SheetsTab />
                                       </Suspense>
                                     </ErrorBoundary>
                                   </RequirePermission>
