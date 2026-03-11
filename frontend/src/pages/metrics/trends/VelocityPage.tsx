@@ -198,7 +198,6 @@ export default function VelocityPage() {
         label: weekLabel,
         week_start: current?.week_start ?? '',
         enrolled: current?.enrolled ?? null,
-        waitlisted: current?.waitlisted ?? null,
         delta: current?.delta ?? null,
         gross_enrolled: current?.gross_enrolled ?? null,
         weekly_new: current?.weekly_new ?? null,
