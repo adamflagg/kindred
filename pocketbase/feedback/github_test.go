@@ -102,6 +102,9 @@ func TestBuildIssueBodyWithScreenshot(t *testing.T) {
 func TestCreateIssue(t *testing.T) {
 	var receivedBody map[string]interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/repos/org/feedback/issues" {
+			t.Errorf("expected issues endpoint, got %s", got)
+		}
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
@@ -180,6 +183,9 @@ func TestCreateIssueAPIError(t *testing.T) {
 
 func TestUploadScreenshot(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.URL.Path, "/repos/org/feedback/contents/attachments/2026-03-11T10-30-00Z-screenshot.png"; got != want {
+			t.Errorf("URL path = %q, want %q", got, want)
+		}
 		if r.Method != http.MethodPut {
 			t.Errorf("expected PUT, got %s", r.Method)
 		}
@@ -231,6 +237,39 @@ func TestValidateCategory(t *testing.T) {
 		if err := validateCategory(c); err == nil {
 			t.Errorf("validateCategory(%q) expected error", c)
 		}
+	}
+}
+
+func TestUploadScreenshotSanitizesPath(t *testing.T) {
+	var receivedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		resp := `{"content": {"download_url": "https://example.com/test.png"}}`
+		_, _ = w.Write([]byte(resp))
+	}))
+	defer server.Close()
+
+	client := &GitHubClient{
+		Token:   "test-token",
+		Repo:    "org/feedback",
+		BaseURL: server.URL,
+	}
+
+	// Filename with path traversal should be sanitized
+	_, err := client.UploadScreenshot([]byte("fake-data"), "../../evil.png", "2026-03-11T10:30:00Z")
+	if err != nil {
+		t.Fatalf("UploadScreenshot() error = %v", err)
+	}
+
+	// Path should NOT contain directory traversal
+	if strings.Contains(receivedPath, "..") {
+		t.Errorf("URL path contains directory traversal: %s", receivedPath)
+	}
+	// Should end with just the base filename
+	if !strings.HasSuffix(receivedPath, "evil.png") {
+		t.Errorf("URL path should end with sanitized filename, got %s", receivedPath)
 	}
 }
 

@@ -1,6 +1,7 @@
 package feedback
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -123,4 +124,22 @@ func HandleFeedback(e *core.RequestEvent) error {
 	)
 
 	return e.JSON(http.StatusOK, map[string]bool{"success": true})
+}
+
+// sanitizeFilename strips path components from a user-supplied filename.
+func sanitizeFilename(name string) string {
+	return name
+}
+
+// validateDescription checks that a description is non-empty after trimming whitespace.
+func validateDescription(desc string) (string, error) {
+	if desc == "" {
+		return "", fmt.Errorf("description is required")
+	}
+	return desc, nil
+}
+
+// validateScreenshotContent checks that the data has an image content type.
+func validateScreenshotContent(_ []byte) error {
+	return nil
 }

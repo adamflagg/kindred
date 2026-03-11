@@ -112,6 +112,45 @@ describe('FeedbackModal', () => {
     })
   })
 
+  it('resets form state when modal is closed and reopened', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen={true} onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+
+    // Fill in form data
+    fireEvent.click(screen.getByText('Bug'))
+    const textarea = screen.getByPlaceholderText(/what happened/i)
+    fireEvent.change(textarea, { target: { value: 'Some feedback text' } })
+
+    // Close modal
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen={false} onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+
+    // Reopen modal
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen={true} onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+
+    // Form should be reset
+    const newTextarea = screen.getByPlaceholderText(/what happened/i)
+    expect(newTextarea).toHaveValue('')
+
+    // Category should not be pre-selected (submit should be disabled)
+    const submitButton = screen.getByRole('button', { name: /submit/i })
+    expect(submitButton).toBeDisabled()
+  })
+
   it('preserves text on submission error', async () => {
     const { pb } = await import('../lib/pocketbase')
     vi.mocked(pb.send).mockRejectedValueOnce(new Error('Network error'))

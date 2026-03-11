@@ -84,10 +84,6 @@ vi.mock('../components/VersionInfo', () => ({
   VersionInfo: () => null,
 }))
 
-vi.mock('../components/tour', () => ({
-  TourReplayButton: () => null,
-}))
-
 vi.mock('../components/FeedbackModal', () => ({
   FeedbackModal: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="feedback-modal">Feedback Modal</div> : null,
@@ -134,12 +130,25 @@ describe('Help Menu', () => {
     expect(screen.getByTestId('feedback-modal')).toBeInTheDocument()
   })
 
-  it('shows Tour This Page only when tourId is truthy', () => {
-    // With tourId: 'test-tour' (from mock), Tour This Page should appear
+  it('shows Tour This Page when tourId is truthy', () => {
     renderAppLayout()
     fireEvent.click(screen.getByLabelText('Help menu'))
 
     expect(screen.getByText('Report a Problem')).toBeInTheDocument()
     expect(screen.getByText('Tour This Page')).toBeInTheDocument()
+  })
+
+  it('hides Tour This Page when tourId is falsy', async () => {
+    const useTourModule = await import('../hooks/useTour')
+    vi.spyOn(useTourModule, 'useTour').mockReturnValue({
+      tourId: null,
+      replay: vi.fn(),
+    } as ReturnType<typeof useTourModule.useTour>)
+
+    renderAppLayout()
+    fireEvent.click(screen.getByLabelText('Help menu'))
+
+    expect(screen.getByText('Report a Problem')).toBeInTheDocument()
+    expect(screen.queryByText('Tour This Page')).not.toBeInTheDocument()
   })
 })
