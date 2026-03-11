@@ -218,8 +218,20 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			continue
 		}
 
-		// Always create a new snapshot record (no upsert — multiple per day allowed)
-		record := core.NewRecord(col)
+		// Upsert: match on date portion of snapshot_datetime + session + year
+		datePrefix := now.Format("2006-01-02")
+		existingFilter := fmt.Sprintf(
+			"snapshot_datetime ~ '%s' && session_cm_id = %d && year = %d",
+			datePrefix, sessionCMID, year,
+		)
+		var record *core.Record
+		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
+		if existing != nil {
+			record = existing
+		} else {
+			record = core.NewRecord(col)
+		}
+
 		record.Set("snapshot_datetime", snapshotDateStr)
 		record.Set("year", year)
 		record.Set("session_cm_id", sessionCMID)
@@ -235,14 +247,18 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		record.Set("cancelled_female_count", cancelledFemale)
 
 		if err := s.App.Save(record); err != nil {
-			slog.Error("Error creating enrollment snapshot",
+			slog.Error("Error saving enrollment snapshot",
 				"session_cm_id", sessionCMID,
 				"error", err,
 			)
 			s.Stats.Errors++
 			continue
 		}
-		s.Stats.Created++
+		if existing != nil {
+			s.Stats.Updated++
+		} else {
+			s.Stats.Created++
+		}
 	}
 
 	slog.Info("Enrollment snapshots completed",
