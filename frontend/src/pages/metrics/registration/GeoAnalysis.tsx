@@ -90,9 +90,11 @@ export default function GeoAnalysis() {
     activeOnly: boolean
     sessionTypes: readonly string[]
     sessionCmId?: number
+    duration?: string | null | undefined
   } = {
     activeOnly: true,
     sessionTypes: [...activeSessionTypes],
+    duration: durationParam,
   }
   if (selectedSessionCmId != null) {
     sourceMappingOptions.sessionCmId = selectedSessionCmId

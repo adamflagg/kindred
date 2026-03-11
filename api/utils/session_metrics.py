@@ -152,9 +152,9 @@ def filter_attendees_by_session(
             if attendee_session_cm_id != session_cm_id and attendee_session_cm_id not in ag_session_ids:
                 continue
 
-        # Apply multi-session filter (duration groups)
+        # Apply multi-session filter (duration groups) — allow AG children through
         if session_cm_ids is not None:
-            if attendee_session_cm_id not in session_cm_ids:
+            if attendee_session_cm_id not in session_cm_ids and attendee_session_cm_id not in ag_session_ids:
                 continue
 
         filtered.append(a)

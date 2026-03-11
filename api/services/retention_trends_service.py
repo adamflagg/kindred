@@ -227,7 +227,7 @@ class RetentionTrendsService:
         for a in attendees:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            if session and getattr(session, "cm_id", None) in session_cm_ids:
+            if session and int(getattr(session, "cm_id", 0)) in session_cm_ids:
                 filtered.append(a)
         return filtered
 

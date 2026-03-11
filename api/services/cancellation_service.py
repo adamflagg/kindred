@@ -258,7 +258,7 @@ class CancellationService:
             other_prior_status=summary_other_prior,
             has_other_sessions=summary_has_other,
             no_other_sessions=summary_no_other,
-            total_re_enrolled=len(re_enrolled_persons & seen_for_summary),
+            total_re_enrolled=len(re_enrolled_persons & seen_for_summary) if duration else len(re_enrolled_persons),
             session_swap_count=session_swap_count,
             true_departure_count=true_departure_count,
             avg_days_to_cancellation=timing_data["avg"],

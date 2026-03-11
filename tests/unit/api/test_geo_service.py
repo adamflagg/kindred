@@ -1844,7 +1844,7 @@ class TestDurationFilteringRespectsSessionTypes:
 
         mock_pb.collection.side_effect = collection_router
 
-        await service._fetch_duration_person_pb_ids(2025, "1-week", session_types=["main"])  # type: ignore[call-arg]
+        await service._fetch_duration_person_pb_ids(2025, "1-week", session_types=["main"])
 
         # The attendee filter should only include session 1001 (main), not 1002 (quest)
         assert len(call_filters) == 1
