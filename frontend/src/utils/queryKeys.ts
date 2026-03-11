@@ -109,15 +109,7 @@ export const queryKeys = {
     sessionCmId?: number,
     duration?: string
   ) =>
-    [
-      'metrics',
-      'retention',
-      baseYear,
-      compareYear,
-      sessionTypes,
-      sessionCmId,
-      duration,
-    ] as const,
+    ['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId, duration] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
   registration: (
     year: number,
@@ -125,16 +117,7 @@ export const queryKeys = {
     statuses?: string,
     sessionCmId?: number,
     duration?: string
-  ) =>
-    [
-      'metrics',
-      'registration',
-      year,
-      sessionTypes,
-      statuses,
-      sessionCmId,
-      duration,
-    ] as const,
+  ) => ['metrics', 'registration', year, sessionTypes, statuses, sessionCmId, duration] as const,
   comparison: (yearA: number, yearB: number) => ['metrics', 'comparison', yearA, yearB] as const,
   historical: (years?: string, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'historical', years, sessionTypes, sessionCmId, duration] as const,
@@ -184,8 +167,12 @@ export const queryKeys = {
   // Registration Config (Tier 2 - user data)
   registrationDatesConfig: (year: number) => ['registration-dates-config', year] as const,
   gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,
-  sessionAvailability: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
-    ['session-availability', year, sessionTypes, sessionCmId, duration] as const,
+  sessionAvailability: (
+    year: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+    duration?: string
+  ) => ['session-availability', year, sessionTypes, sessionCmId, duration] as const,
   sessionBudgetConfig: (year: number) => ['session-budget-config', year] as const,
 
   // Forecast (Tier 1 - sync data)
@@ -195,16 +182,7 @@ export const queryKeys = {
     sessionCmId?: number,
     dayOffset?: number,
     duration?: string
-  ) =>
-    [
-      'metrics',
-      'forecast',
-      year,
-      sessionTypes,
-      sessionCmId,
-      dayOffset,
-      duration,
-    ] as const,
+  ) => ['metrics', 'forecast', year, sessionTypes, sessionCmId, dayOffset, duration] as const,
   forecastWeekOptions: (year: number) => ['metrics', 'forecast', 'week-options', year] as const,
 
   // Staff (Tier 1 - sync data)

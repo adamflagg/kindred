@@ -21,7 +21,12 @@ import {
   ALL_SESSION_TYPES,
   type MetricsViewMode,
 } from '../constants/sessionTypes'
-import { sortSessionsByDate, groupSessionsByDuration, type DurationCategory, DURATION_CATEGORIES } from '../utils/sessionUtils'
+import {
+  sortSessionsByDate,
+  groupSessionsByDuration,
+  type DurationCategory,
+  DURATION_CATEGORIES,
+} from '../utils/sessionUtils'
 
 const SESSION_PARAM = 'session'
 const VIEW_PARAM = 'view'

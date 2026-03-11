@@ -263,7 +263,12 @@ export async function fetchSourceMappings(
   category: string,
   year: number,
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-  options?: { activeOnly?: boolean; sessionTypes?: string[]; sessionCmId?: number; duration?: string }
+  options?: {
+    activeOnly?: boolean
+    sessionTypes?: string[]
+    sessionCmId?: number
+    duration?: string
+  }
 ): Promise<SourceMappingsResponse> {
   const params = new URLSearchParams({ category, year: String(year) })
   if (options?.activeOnly) params.set('active_only', 'true')

@@ -107,7 +107,7 @@ export function MetricsSessionSelector() {
             {durationEntries.length > 0 && (
               <>
                 <div className="border-border my-1 border-t" />
-                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold uppercase tracking-wider">
+                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase">
                   By Duration
                 </div>
                 {durationEntries.map(([category]) => (
@@ -126,7 +126,7 @@ export function MetricsSessionSelector() {
             {campSessions.length > 0 && (
               <>
                 <div className="border-border my-1 border-t" />
-                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold uppercase tracking-wider">
+                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase">
                   Camp Sessions
                 </div>
                 {campSessions.map((session) => (
@@ -145,7 +145,7 @@ export function MetricsSessionSelector() {
             {questSessions.length > 0 && (
               <>
                 <div className="border-border my-1 border-t" />
-                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold uppercase tracking-wider">
+                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase">
                   Quests
                 </div>
                 {questSessions.map((session) => (
