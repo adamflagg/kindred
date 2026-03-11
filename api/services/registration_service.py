@@ -13,6 +13,7 @@ from api.schemas.metrics import (
     FirstSummerYearBreakdown,
     GenderBreakdown,
     GenderByGradeBreakdown,
+    GenderBySessionLengthBreakdown,
     GradeBreakdown,
     NewVsReturning,
     RegistrationMetricsResponse,
@@ -27,6 +28,7 @@ from api.schemas.metrics import (
 )
 from api.utils.session_metrics import (
     DISPLAY_SESSION_TYPES,
+    SESSION_LENGTH_ORDER,
     compute_summer_metrics,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
@@ -147,6 +149,9 @@ class RegistrationService:
         # Session length by session (stacked bar chart showing sessions per length category)
         by_session_length_by_session = self._compute_session_length_by_session(combined_attendees, sessions)
 
+        # Gender by session length (stacked bar chart showing boys vs girls per length category)
+        by_gender_by_session_length = self._compute_gender_by_session_length(combined_attendees, sessions, persons)
+
         # Summer enrollment history metrics (uses shared utility)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
         summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, enrolled_person_ids)
@@ -169,6 +174,7 @@ class RegistrationService:
             by_synagogue=by_synagogue,
             by_gender_grade=by_gender_grade,
             by_session_length_by_session=by_session_length_by_session,
+            by_gender_by_session_length=by_gender_by_session_length,
             by_summer_years=by_summer_years,
             by_first_summer_year=by_first_summer_year,
         )
@@ -419,7 +425,7 @@ class RegistrationService:
             )
             for length, c in sorted(
                 length_counts.items(),
-                key=lambda x: {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}.get(x[0], 5),
+                key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5),
             )
         ]
 
@@ -565,11 +571,9 @@ class RegistrationService:
             length_session_counts[length][sid] = count
 
         # Step 4: Build result sorted by length category
-        length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}
-
         result = []
         for length, session_counts_for_length in sorted(
-            length_session_counts.items(), key=lambda x: length_order.get(x[0], 5)
+            length_session_counts.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)
         ):
             session_list = []
             total = 0
@@ -629,3 +633,85 @@ class RegistrationService:
             )
             for fy, c in sorted(first_summer_year_stats.items())
         ]
+
+    def _compute_gender_by_session_length(
+        self,
+        attendees: list[Any],
+        sessions: dict[int, Any],
+        persons: dict[int, Any],
+    ) -> list[GenderBySessionLengthBreakdown]:
+        """Compute gender breakdown per session length category.
+
+        AG sessions are merged into their parent main sessions.
+        Persons are deduplicated within each length category.
+        """
+        # Build AG -> parent mapping
+        ag_parent_map: dict[int, int] = {}
+        for sid, session in sessions.items():
+            if getattr(session, "session_type", None) == "ag":
+                parent_id = getattr(session, "parent_id", None)
+                if parent_id:
+                    ag_parent_map[int(sid)] = int(parent_id)
+
+        # Collect unique person IDs per length category
+        length_persons: dict[str, set[int]] = {}
+        for a in attendees:
+            expand = getattr(a, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not session:
+                continue
+
+            session_cm_id = getattr(session, "cm_id", None)
+            if not session_cm_id:
+                continue
+            sid = int(session_cm_id)
+
+            # Resolve AG to parent for length lookup
+            resolved_sid = ag_parent_map.get(sid, sid)
+            session_obj = sessions.get(resolved_sid)
+            if not session_obj:
+                continue
+
+            # Skip non-display session types (family, etc.)
+            if getattr(session_obj, "session_type", None) not in DISPLAY_SESSION_TYPES:
+                continue
+
+            start_date = getattr(session_obj, "start_date", "") or ""
+            end_date = getattr(session_obj, "end_date", "") or ""
+            length = get_session_length_category(start_date, end_date)
+
+            person_id = getattr(a, "person_id", None)
+            if person_id is None:
+                continue
+
+            if length not in length_persons:
+                length_persons[length] = set()
+            length_persons[length].add(int(person_id))
+
+        # Count genders per length category
+        result = []
+        for length, person_ids in sorted(length_persons.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)):
+            male_count = 0
+            female_count = 0
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                gender = getattr(person, "gender", "") or ""
+                if gender == "M":
+                    male_count += 1
+                elif gender == "F":
+                    female_count += 1
+
+            total = male_count + female_count
+            if total > 0:
+                result.append(
+                    GenderBySessionLengthBreakdown(
+                        length_category=length,
+                        male_count=male_count,
+                        female_count=female_count,
+                        total=total,
+                    )
+                )
+
+        return result

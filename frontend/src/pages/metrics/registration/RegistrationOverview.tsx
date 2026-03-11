@@ -40,7 +40,7 @@ import {
   transformFirstSummerYearData,
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
-import { GENDER_COLORS } from '../../../components/metrics/genderColors'
+import { GENDER_COLORS, GENDER_SEGMENTS } from '../../../components/metrics/genderColors'
 import { Loader2, AlertCircle } from 'lucide-react'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
@@ -203,6 +203,20 @@ export default function RegistrationOverview() {
   const summerYearsData = transformSummerYearsData(data.by_summer_years)
   const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year)
   const newVsReturningData = transformNewVsReturningData(data.new_vs_returning)
+  const genderByLengthData = (data.by_gender_by_session_length ?? []).map((g) => ({
+    name: g.length_category,
+    total: g.total,
+    male_count: g.male_count,
+    female_count: g.female_count,
+  }))
+  const compGenderByLengthData = compData
+    ? (compData.by_gender_by_session_length ?? []).map((g) => ({
+        name: g.length_category,
+        total: g.total,
+        male_count: g.male_count,
+        female_count: g.female_count,
+      }))
+    : []
 
   // Fallback to years_at_camp if summer years not available
   const yearsChartData =
@@ -564,6 +578,48 @@ export default function RegistrationOverview() {
                   )
                 })()}
               </div>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {genderByLengthData.length > 0 && (
+                  <CssVerticalStackedBarChart
+                    title={`${currentYear} Gender by Session Length`}
+                    data={genderByLengthData}
+                    segments={GENDER_SEGMENTS}
+                    showTotalLabel
+                    height={300}
+                    onBarClick={(item) =>
+                      setFilter({
+                        type: 'session_length',
+                        value: String(item['name'] ?? ''),
+                        label: `${item['name']} Sessions`,
+                      })
+                    }
+                  />
+                )}
+                {compGenderByLengthData.length > 0 && (
+                  <CssVerticalStackedBarChart
+                    title={`${compareYear} Gender by Session Length`}
+                    data={compGenderByLengthData}
+                    segments={GENDER_SEGMENTS}
+                    showTotalLabel
+                    height={300}
+                  />
+                )}
+              </div>
+              {genderByLengthData.length > 0 && (
+                <ComparisonSummaryTable
+                  title="Gender by Session Length Comparison"
+                  primaryYear={currentYear}
+                  compareYear={compareYear!}
+                  primaryData={genderByLengthData.map((g) => ({
+                    name: g.name,
+                    value: g.total,
+                  }))}
+                  compareData={compGenderByLengthData.map((g) => ({
+                    name: g.name,
+                    value: g.total,
+                  }))}
+                />
+              )}
             </>
           ) : (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -602,6 +658,23 @@ export default function RegistrationOverview() {
                   />
                 )
               })()}
+              {genderByLengthData.length > 0 && (
+                <CssVerticalStackedBarChart
+                  key={`gender-session-length-${selectedSessionCmId ?? 'all'}`}
+                  title="Gender by Session Length"
+                  data={genderByLengthData}
+                  segments={GENDER_SEGMENTS}
+                  showTotalLabel
+                  height={300}
+                  onBarClick={(item) =>
+                    setFilter({
+                      type: 'session_length',
+                      value: String(item['name'] ?? ''),
+                      label: `${item['name']} Sessions`,
+                    })
+                  }
+                />
+              )}
             </div>
           )}
         </>
