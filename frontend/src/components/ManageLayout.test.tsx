@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 
 // Mock hooks
 const mockHasPermission = vi.fn()
-const mockIsAdmin = false
+let mockIsAdmin = false
 
 vi.mock('../hooks/usePermissions', () => ({
   usePermissions: () => ({
@@ -25,6 +25,7 @@ const { ManageLayout } = await import('./ManageLayout')
 describe('ManageLayout', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
+    mockIsAdmin = false
   })
 
   it('renders the Management header', () => {
@@ -77,5 +78,25 @@ describe('ManageLayout', () => {
     // Should have tab links
     expect(screen.getByRole('link', { name: /Geo Data/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /Registration/i })).toBeTruthy()
+  })
+
+  it('shows all tabs for admin users regardless of permissions', () => {
+    mockIsAdmin = true
+    mockHasPermission.mockReturnValue(false) // no individual permissions
+    render(
+      <MemoryRouter initialEntries={['/manage/geo']}>
+        <Routes>
+          <Route element={<ManageLayout />}>
+            <Route path="/manage/geo" element={<div>Geo Content</div>} />
+            <Route path="/manage/registration" element={<div>Reg Content</div>} />
+            <Route path="/manage/sheets" element={<div>Sheets Content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+    // Admin sees all tabs even without individual permissions
+    expect(screen.getByRole('link', { name: /Geo Data/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Registration/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Sheets/i })).toBeTruthy()
   })
 })
