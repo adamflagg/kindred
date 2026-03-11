@@ -28,6 +28,7 @@ from api.schemas.metrics import (
 )
 from api.utils.session_metrics import (
     DISPLAY_SESSION_TYPES,
+    SESSION_LENGTH_ORDER,
     compute_summer_metrics,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
@@ -424,7 +425,7 @@ class RegistrationService:
             )
             for length, c in sorted(
                 length_counts.items(),
-                key=lambda x: {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}.get(x[0], 5),
+                key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5),
             )
         ]
 
@@ -570,11 +571,9 @@ class RegistrationService:
             length_session_counts[length][sid] = count
 
         # Step 4: Build result sorted by length category
-        length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}
-
         result = []
         for length, session_counts_for_length in sorted(
-            length_session_counts.items(), key=lambda x: length_order.get(x[0], 5)
+            length_session_counts.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)
         ):
             session_list = []
             total = 0
@@ -690,9 +689,8 @@ class RegistrationService:
             length_persons[length].add(int(person_id))
 
         # Count genders per length category
-        length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}
         result = []
-        for length, person_ids in sorted(length_persons.items(), key=lambda x: length_order.get(x[0], 5)):
+        for length, person_ids in sorted(length_persons.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)):
             male_count = 0
             female_count = 0
             for pid in person_ids:

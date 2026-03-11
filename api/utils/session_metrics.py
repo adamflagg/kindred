@@ -39,6 +39,16 @@ DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 # - tli: Teen Leadership Initiative
 BUNK_SESSION_TYPES = ("main", "embedded", "ag")
 
+# Canonical sort order for session length categories.
+# Used wherever length categories need consistent ordering.
+SESSION_LENGTH_ORDER: dict[str, int] = {
+    "1-week": 0,
+    "2-week": 1,
+    "3-week": 2,
+    "4-week+": 3,
+    "unknown": 4,
+}
+
 # Session types that count toward "summers at camp" / "years as camper"
 # Used for metrics calculations: "Summers at Camp", "First Summer Year".
 # Quest counts toward camper history to match CampMinder's years_at_camp.
