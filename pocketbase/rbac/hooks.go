@@ -104,7 +104,7 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 
 	// Admin bypass
 	if e.Auth.GetBool("is_admin") {
-		return e.Next()
+		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
 	}
 
 	// Non-admin must have registration.manage permission
@@ -127,7 +127,7 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 		}
 	}
 
-	return e.Next()
+	return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
 }
 
 // RegisterHooks registers RBAC-related hooks on the PocketBase app.

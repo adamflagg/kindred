@@ -26,9 +26,27 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 const mockUsers = [
-  { id: 'user-1', name: 'Emma Johnson', email: 'emma@example.com', is_admin: false, created: '2026-01-01' },
-  { id: 'user-2', name: 'Liam Garcia', email: 'liam@example.com', is_admin: false, created: '2026-01-02' },
-  { id: 'user-admin', name: 'Admin User', email: 'admin@example.com', is_admin: true, created: '2026-01-03' },
+  {
+    id: 'user-1',
+    name: 'Emma Johnson',
+    email: 'emma@example.com',
+    is_admin: false,
+    created: '2026-01-01',
+  },
+  {
+    id: 'user-2',
+    name: 'Liam Garcia',
+    email: 'liam@example.com',
+    is_admin: false,
+    created: '2026-01-02',
+  },
+  {
+    id: 'user-admin',
+    name: 'Admin User',
+    email: 'admin@example.com',
+    is_admin: true,
+    created: '2026-01-03',
+  },
 ]
 
 vi.mock('../lib/pocketbase', () => ({
