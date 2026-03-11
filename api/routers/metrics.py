@@ -8,9 +8,9 @@ retention rates, and year-over-year comparisons.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_admin, require_permission
@@ -61,7 +61,9 @@ async def get_retention_metrics(
         None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
     ),
     session_cm_id: int | None = Query(None, description="Filter to specific session by CampMinder ID"),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
@@ -69,6 +71,9 @@ async def get_retention_metrics(
     Calculates what percentage of campers from base_year returned in compare_year,
     broken down by gender, grade, session, and years at camp.
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+
     from api.services.retention_service import RetentionService
 
     cache_params = {
@@ -116,7 +121,9 @@ async def get_registration_metrics(
         None,
         description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
     ),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
@@ -128,6 +135,8 @@ async def get_registration_metrics(
     in the enrollment counts and breakdowns. Multiple statuses can be combined
     for flexible dashboard views.
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
 
     from api.services.registration_service import RegistrationService
 
@@ -203,7 +212,9 @@ async def get_historical_trends(
         None,
         description="Filter to specific session by CampMinder ID. Uses name-matching across years.",
     ),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> HistoricalTrendsResponse:
     """Get historical trends across multiple years.
@@ -215,6 +226,9 @@ async def get_historical_trends(
     across years. CampMinder often reuses cm_ids year-over-year, but names can change
     (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+
     from api.services.historical_service import HistoricalService
 
     cache_params = {
@@ -258,7 +272,9 @@ async def get_retention_trends(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RetentionTrendsResponse:
     """Get retention trends across multiple year transitions.
@@ -272,6 +288,8 @@ async def get_retention_trends(
     This enables line charts for overall retention and grouped bar charts
     for breakdown categories.
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
 
     from api.services.retention_trends_service import RetentionTrendsService
 
@@ -316,7 +334,9 @@ async def get_waitlist_metrics(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> WaitlistMetricsResponse:
     """Get waitlist analysis metrics.
@@ -327,6 +347,8 @@ async def get_waitlist_metrics(
     - Previously waitlisted, now accepted (enrolled)
     - Previously waitlisted, declined (cancelled/withdrawn/dismissed)
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
 
     from api.services.waitlist_service import WaitlistService
 
@@ -364,7 +386,9 @@ async def get_cancellation_metrics(
         None,
         description="Filter to specific session by CampMinder ID",
     ),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> CancellationMetricsResponse:
     """Get cancellation analysis metrics.
@@ -374,6 +398,9 @@ async def get_cancellation_metrics(
     - Has other sessions vs no other sessions remaining
     - Re-enrolled (cancelled then returned)
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+
     from api.services.cancellation_service import CancellationService
 
     cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
@@ -428,7 +455,9 @@ async def get_drilldown_attendees(
         description="Compare year for retention drilldowns. When set, is_returning reflects "
         "whether camper returned to the compare year instead of years_at_camp > 1.",
     ),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> list[DrilldownAttendee]:
     """Get attendee list for a specific breakdown value.
@@ -436,6 +465,9 @@ async def get_drilldown_attendees(
     Click a chart segment (e.g., "Grade 5" bar) to see all matching campers.
     Returns individual attendee records with person details for modal display.
     """
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+
     from api.services.drilldown_service import DrilldownService
 
     session_types_list = session_types.split(",") if session_types else None
@@ -469,10 +501,14 @@ async def get_velocity(
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
     split_by_gender: bool = Query(False, description="Split enrollment by gender (M/F)"),
     metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> VelocityResponse:
     """Get registration velocity curves with week-over-week data."""
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
 
     from api.services.velocity_service import VelocityService
 
@@ -530,10 +566,15 @@ async def get_forecast(
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     day_offset: int | None = Query(None, ge=0, description="Days since registration anchor (week-relative mode)"),
-    duration: str | None = Query(None, description="Filter by session duration category (1-week, 2-week, 3-week)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
     user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals and revenue projections."""
+    if duration is not None and session_cm_id is not None:
+        raise HTTPException(status_code=422, detail="duration and session_cm_id are mutually exclusive")
+
     from api.services.forecast_service import ForecastService
 
     cache_params = {

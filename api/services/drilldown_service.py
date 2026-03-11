@@ -147,6 +147,7 @@ class DrilldownService:
                 sessions=sessions,
                 session_types=session_types,
                 status_filter=status_filter,
+                duration_session_ids=duration_session_ids,
             )
 
         # retention_session needs special handling - different from other breakdowns
@@ -158,6 +159,7 @@ class DrilldownService:
                 sessions=sessions,
                 session_types=session_types,
                 status_filter=status_filter,
+                duration_session_ids=duration_session_ids,
             )
 
         # Cancellation breakdown types need separate fetching logic
@@ -170,6 +172,7 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
+                duration_session_ids=duration_session_ids,
             )
 
         # Waitlist breakdown types need separate fetching logic
@@ -182,6 +185,7 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
+                duration_session_ids=duration_session_ids,
             )
 
         # Person-level breakdowns with waitlisted status need special handling
@@ -199,6 +203,7 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
+                duration_session_ids=duration_session_ids,
             )
 
         # Fetch data in parallel
@@ -435,6 +440,7 @@ class DrilldownService:
         sessions: dict[int, Any],
         session_types: list[str] | None,
         status_filter: list[str],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle retention_session breakdown - find base year campers who returned to a specific compare year session.
 
@@ -445,6 +451,7 @@ class DrilldownService:
             sessions: Base year sessions dict.
             session_types: Session type filter.
             status_filter: Status filter for attendees.
+            duration_session_ids: Optional set of session cm_ids matching the duration filter.
 
         Returns:
             List of DrilldownAttendee records from the base year.
@@ -460,6 +467,9 @@ class DrilldownService:
 
         # Exclude aged-out persons from retention drilldowns
         base_attendees = filter_aged_out_attendees(base_attendees, persons)
+
+        # Apply duration filter to base year attendees
+        base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
 
         # Find compare year person_ids enrolled in the target session
         target_person_ids: set[int] = set()
@@ -514,6 +524,7 @@ class DrilldownService:
         sessions: dict[int, Any],
         session_types: list[str] | None,
         status_filter: list[str],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle retention top-card drilldowns (all, returned, not_returned).
 
@@ -524,6 +535,7 @@ class DrilldownService:
             sessions: Base year sessions dict.
             session_types: Session type filter.
             status_filter: Status filter for attendees.
+            duration_session_ids: Optional set of session cm_ids matching the duration filter.
 
         Returns:
             List of DrilldownAttendee records from the base year.
@@ -538,6 +550,9 @@ class DrilldownService:
 
         # Exclude aged-out persons from retention drilldowns
         base_attendees = filter_aged_out_attendees(base_attendees, persons)
+
+        # Apply duration filter to base year attendees
+        base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
 
         # Build returned_person_ids and enrolled_attendee_groups from compare year
         returned_person_ids: set[int] = set()
@@ -707,6 +722,7 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist-specific breakdown types.
 
@@ -722,6 +738,7 @@ class DrilldownService:
             session_cm_id: Optional session filter.
             session_types: Optional session type filter.
             ag_session_ids: AG sessions for the filtered parent session.
+            duration_session_ids: Optional set of session cm_ids matching the duration filter.
 
         Returns:
             List of DrilldownAttendee records.
@@ -742,6 +759,7 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
+                duration_session_ids=duration_session_ids,
             )
 
         # UC3: accepted (waitlisted -> enrolled)
@@ -804,9 +822,11 @@ class DrilldownService:
 
             # Apply session filter
             session_info = get_session_from_expand(record)
-            if session_cm_id is not None and session_info:
+            if session_info:
                 record_sid = int(getattr(session_info, "cm_id", 0))
-                if record_sid != session_cm_id and record_sid not in ag_session_ids:
+                if session_cm_id is not None and record_sid != session_cm_id and record_sid not in ag_session_ids:
+                    continue
+                if duration_session_ids is not None and record_sid not in duration_session_ids:
                     continue
 
             seen_persons.add(pid)
@@ -870,6 +890,7 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist_no_enrollment, waitlist_has_enrollment, and waitlist_total breakdowns.
 
@@ -906,7 +927,11 @@ class DrilldownService:
 
         # Filter waitlisted by session (controls which persons appear in results)
         waitlisted_attendees = filter_attendees_by_session(
-            waitlisted_attendees, session_types, effective_session_cm_id, ag_session_ids
+            waitlisted_attendees,
+            session_types,
+            effective_session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
 
         # Build enrolled person groups: person_id -> list of enrolled attendee records
@@ -957,6 +982,7 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle person-level breakdowns (grade, gender, etc.) with waitlisted status.
 
@@ -989,7 +1015,11 @@ class DrilldownService:
 
         # Filter waitlisted by session (controls which persons appear)
         filtered_waitlisted = filter_attendees_by_session(
-            waitlisted_attendees, session_types, session_cm_id, ag_session_ids
+            waitlisted_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
 
         # Filter by breakdown criteria (grade, gender, etc.)
@@ -1033,6 +1063,7 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle cancellation-specific breakdown types.
 
@@ -1055,6 +1086,7 @@ class DrilldownService:
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
                 effective_types=effective_types,
+                duration_session_ids=duration_session_ids,
             )
 
         cancelled_attendees, enrolled_attendees, persons = await asyncio.gather(
@@ -1065,7 +1097,11 @@ class DrilldownService:
 
         # Filter cancelled by session
         cancelled_attendees = filter_attendees_by_session(
-            cancelled_attendees, session_types, session_cm_id, ag_session_ids
+            cancelled_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
 
         # Build enrolled person set
@@ -1140,6 +1176,7 @@ class DrilldownService:
         session_types: list[str] | None,
         ag_session_ids: set[int],
         effective_types: list[str],
+        duration_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle cancellation_re_enrolled breakdown.
 
@@ -1174,7 +1211,11 @@ class DrilldownService:
 
         # Filter enrolled attendees by session
         filtered_enrolled = filter_attendees_by_session(
-            enrolled_attendees, session_types, session_cm_id, ag_session_ids
+            enrolled_attendees,
+            session_types,
+            session_cm_id,
+            ag_session_ids,
+            session_cm_ids=duration_session_ids,
         )
 
         # Build person groups for enrolled sessions display
