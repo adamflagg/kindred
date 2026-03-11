@@ -182,56 +182,86 @@ def preprocess_value(value: str) -> str:
     return " ".join(value.split())
 
 
-def normalize_city_value(city: str) -> str:
-    """Normalize a single city value.
+def normalize_city_value(city: str, state: str = "") -> tuple[str, float]:
+    """Normalize a city value with state-aware disambiguation.
 
-    Uses a static list of US cities to correct typos. Returns "City, ST"
-    canonical format. For multi-variant cities, picks first variant.
+    Returns (canonical_name, confidence) where canonical is "City, ST" format.
     """
     city = preprocess_value(city)
     if not city:
-        return ""
+        return "", 0.0
 
-    # Check aliases first (case-insensitive)
     lower = city.lower()
     if lower in CITY_ALIASES:
-        return CITY_ALIASES[lower]
+        return CITY_ALIASES[lower], 1.0
 
-    # Extract state from suffix if present, then strip it
+    # Extract state from suffix if present, use as fallback
     suffix_match = STATE_SUFFIX_PATTERN.search(city)
+    extracted_state = ""
     if suffix_match:
+        state_match = re.search(r"[A-Z]{2}", suffix_match.group(0), re.IGNORECASE)
+        if state_match:
+            extracted_state = state_match.group(0).upper()
         city = STATE_SUFFIX_PATTERN.sub("", city).strip()
 
     if not city:
-        return ""
+        return "", 0.0
 
-    # Use multi-variant lookup for exact match (handles bare names)
+    effective_state = state.upper() if state else extracted_state
+
     multi_lookup = _load_city_lookup_multi()
+    location = _load_city_location()
     city_lower = city.lower()
 
+    # Exact match
     if city_lower in multi_lookup:
-        # Exact match - return first variant
-        return multi_lookup[city_lower][0]
+        canonical, state_matched = _pick_variant(multi_lookup[city_lower], effective_state, location)
+        if state_matched:
+            return canonical, 1.0
+        elif effective_state:
+            return canonical, 0.7  # state mismatch fallback
+        else:
+            return canonical, 0.9  # no state context
 
-    # Also check flattened lookup for "city, st" format input
-    flat_lookup = _load_city_lookup()
-    if city_lower in flat_lookup:
-        return flat_lookup[city_lower]
-
-    # Fuzzy match against multi-variant keys (bare city names)
+    # Fuzzy match against bare city names
     match = process.extractOne(
         city_lower,
         list(multi_lookup.keys()),
         scorer=fuzz.ratio,
         score_cutoff=CITY_FUZZY_THRESHOLD,
     )
-
     if match:
         matched_key, _score, _ = match
-        return multi_lookup[matched_key][0]
+        canonical, state_matched = _pick_variant(multi_lookup[matched_key], effective_state, location)
+        if state_matched:
+            return canonical, 0.85
+        elif effective_state:
+            return canonical, 0.65  # fuzzy + state mismatch
+        else:
+            return canonical, 0.8  # fuzzy, no state context
 
-    # No match in lookup - fall back to title case
-    return city.title()
+    # No match
+    title = city.title()
+    if effective_state:
+        return f"{title}, {effective_state}", 0.5
+    return title, 0.5
+
+
+def _pick_variant(variants: list[str], state: str, location: dict[str, dict[str, str]]) -> tuple[str, bool]:
+    """Pick best variant. Returns (canonical, state_matched)."""
+    if len(variants) == 1:
+        if state:
+            loc = location.get(variants[0], {})
+            return variants[0], loc.get("state", "").upper() == state.upper()
+        return variants[0], False
+
+    if state:
+        for v in variants:
+            loc = location.get(v, {})
+            if loc.get("state", "").upper() == state.upper():
+                return v, True
+
+    return variants[0], False
 
 
 _SCHOOL_GRADE_PAREN_PATTERN = re.compile(
@@ -431,43 +461,66 @@ def cluster_similar_values(
     return result
 
 
-def normalize_cities(values: list[str]) -> dict[str, NormalizedResult]:
-    """Normalize a list of city values.
-
-    1. Apply city-specific normalization (aliases, state suffix removal)
-    2. Cluster similar values using fuzzy matching
+def normalize_cities(
+    values: list[str] | list[dict[str, str]],
+) -> dict[str, NormalizedResult]:
+    """Normalize city values with optional state context.
 
     Args:
-        values: List of city names
-
-    Returns:
-        Dict mapping original values to {canonical, confidence}
+        values: List of city names (strings) or dicts with {value, state}.
     """
     if not values:
         return {}
 
-    # Step 1: Normalize each value
-    normalized_map: dict[str, str] = {}  # original -> normalized
-    normalized_values: list[str] = []
+    items: list[tuple[str, str]] = []
+    for v in values:
+        if isinstance(v, str):
+            items.append((v, ""))
+        else:
+            items.append((v["value"], v.get("state", "")))
 
-    for original in values:
-        normalized = normalize_city_value(original)
-        if normalized:
-            normalized_map[original] = normalized
-            normalized_values.append(normalized)
+    multi_lookup = _load_city_lookup_multi()
+    normalized_map: dict[str, tuple[str, float]] = {}  # original -> (canonical, confidence)
+    canonical_values: set[str] = set()
+    unknown_values: list[str] = []
 
-    # Step 2: Cluster similar normalized values
-    clusters = cluster_similar_values(normalized_values)
+    for original, item_state in items:
+        canonical, confidence = normalize_city_value(original, state=item_state)
+        if canonical:
+            normalized_map[original] = (canonical, confidence)
+            # Check if from canonical lookup (exact or fuzzy against known cities)
+            bare = preprocess_value(original)
+            bare = STATE_SUFFIX_PATTERN.sub("", bare).strip().lower()
+            if bare in multi_lookup:
+                canonical_values.add(canonical)
+            else:
+                # Check fuzzy match against known cities
+                match = process.extractOne(
+                    bare,
+                    list(multi_lookup.keys()),
+                    scorer=fuzz.ratio,
+                    score_cutoff=CITY_FUZZY_THRESHOLD,
+                )
+                if match:
+                    canonical_values.add(canonical)
+                else:
+                    unknown_values.append(canonical)
 
-    # Step 3: Build final result mapping original -> canonical
+    # Only cluster unknown values
+    unknown_clusters = cluster_similar_values(unknown_values)
+
     result: dict[str, NormalizedResult] = {}
-    for original, normalized in normalized_map.items():
-        if normalized in clusters:
-            cluster_result = clusters[normalized]
+    for original, (canonical, confidence) in normalized_map.items():
+        if canonical in canonical_values:
+            result[original] = NormalizedResult(canonical=canonical, confidence=confidence)
+        elif canonical in unknown_clusters:
+            cluster_result = unknown_clusters[canonical]
             result[original] = NormalizedResult(
                 canonical=cluster_result["canonical"],
                 confidence=cluster_result["confidence"],
             )
+        else:
+            result[original] = NormalizedResult(canonical=canonical, confidence=confidence)
 
     return result
 

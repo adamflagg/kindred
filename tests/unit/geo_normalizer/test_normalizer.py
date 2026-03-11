@@ -46,6 +46,95 @@ class TestCityLookupMultiVariant:
         assert "oakland" in lookup or "oakland, ca" in lookup
 
 
+class TestStateAwareCityNormalization:
+    """Tests for state-aware city normalization."""
+
+    def test_single_variant_returns_city_st(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Oakland", state="CA")
+        assert canonical == "Oakland, CA"
+        assert conf == 1.0
+
+    def test_multi_variant_prefers_state_match(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Lafayette", state="CA")
+        assert canonical == "Lafayette, CA"
+        assert conf == 1.0
+
+        canonical, conf = normalize_city_value("Lafayette", state="LA")
+        assert canonical == "Lafayette, LA"
+        assert conf == 1.0
+
+    def test_multi_variant_no_state_reduces_confidence(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Lafayette", state="")
+        assert canonical.startswith("Lafayette, ")
+        assert conf == 0.9  # no state context
+
+    def test_multi_variant_wrong_state_reduces_confidence(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Lafayette", state="NY")
+        assert canonical.startswith("Lafayette, ")
+        assert conf == 0.7  # state mismatch fallback
+
+    def test_alias_returns_city_st(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, _ = normalize_city_value("SF")
+        assert canonical == "San Francisco, CA"
+
+    def test_millbrae_blvd_alias(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, _ = normalize_city_value("Millbrae Blvd")
+        assert canonical == "Millbrae, CA"
+
+    def test_state_suffix_in_input(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Oakland, CA")
+        assert canonical == "Oakland, CA"
+        assert conf == 1.0
+
+    def test_state_suffix_with_zip(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, _ = normalize_city_value("Oakland, CA 94611")
+        assert canonical == "Oakland, CA"
+
+    def test_fuzzy_match_with_state(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Lafayete", state="CA")
+        assert canonical == "Lafayette, CA"
+        assert conf == 0.85  # fuzzy + state match
+
+    def test_fuzzy_match_wrong_state(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Lafayete", state="NY")
+        assert canonical.startswith("Lafayette, ")
+        assert conf == 0.65  # fuzzy + state mismatch
+
+    def test_no_match_with_state(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Xyzzyburgh", state="CA")
+        assert canonical == "Xyzzyburgh, CA"
+        assert conf == 0.5
+
+    def test_no_match_no_state(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_city_value
+
+        canonical, conf = normalize_city_value("Xyzzyburgh")
+        assert canonical == "Xyzzyburgh"
+        assert conf == 0.5
+
+
 class TestCityNormalization:
     """Tests for city name normalization."""
 
@@ -62,7 +151,7 @@ class TestCityNormalization:
 
         result = normalize_cities(["San Francisco"])
         assert result["San Francisco"]["canonical"] == "San Francisco, CA"
-        assert result["San Francisco"]["confidence"] == 1.0
+        assert result["San Francisco"]["confidence"] >= 0.9
 
     def test_normalize_case_variations(self) -> None:
         """Case variations should cluster together."""
@@ -273,11 +362,11 @@ class TestConfidenceScoring:
     """Tests for confidence score calculation."""
 
     def test_exact_match_confidence(self) -> None:
-        """Exact match should have confidence 1.0."""
+        """Exact match without state context has confidence 0.9."""
         from bunking.geo_normalizer import normalize_cities
 
         result = normalize_cities(["Oakland"])
-        assert result["Oakland"]["confidence"] == 1.0
+        assert result["Oakland"]["confidence"] >= 0.9
 
     def test_fuzzy_match_lower_confidence(self) -> None:
         """Fuzzy matches should have confidence < 1.0 when clustering occurs."""
@@ -380,7 +469,7 @@ class TestCityTypoCorrection:
         for city in ca_cities:
             assert result[city]["canonical"].endswith(", CA"), f"{city} not CA"
             assert city.split(",")[0] in result[city]["canonical"]
-            assert result[city]["confidence"] == 1.0
+            assert result[city]["confidence"] >= 0.9
 
     def test_case_insensitive_lookup(self) -> None:
         """City lookup should be case-insensitive."""
