@@ -68,7 +68,8 @@ interface ParsedIssue {
   }
 }
 
-function parseIssueMessage(issue: Issue): ParsedIssue {
+// eslint-disable-next-line react-refresh/only-export-components -- Utility function exported for testing
+export function parseIssueMessage(issue: Issue): ParsedIssue {
   const msg = issue.message
 
   // Handle unsatisfied request messages
@@ -205,13 +206,20 @@ function parseIssueMessage(issue: Issue): ParsedIssue {
     }
   }
 
-  // Handle no requests satisfied messages
-  const noReqMatch = msg.match(/(\d+) campers? have bunking requests but none were satisfied/i)
-  if (noReqMatch?.[1]) {
-    return {
-      primary: `${noReqMatch[1]} camper${parseInt(noReqMatch[1]) > 1 ? 's' : ''}`,
-      badge: '0 satisfied',
-      badgeColor: 'red',
+  // Handle unsatisfied request summary messages (two variants with identical display)
+  const unsatisfiedPatterns = [
+    /(\d+) campers? have bunking requests but none were satisfied/i,
+    /(\d+) campers? have valid requests but NONE are satisfied/i,
+  ]
+  for (const pattern of unsatisfiedPatterns) {
+    const match = msg.match(pattern)
+    if (match?.[1]) {
+      const count = parseInt(match[1])
+      return {
+        primary: `${count} camper${count !== 1 ? 's' : ''}`,
+        badge: '0 satisfied',
+        badgeColor: 'red' as const,
+      }
     }
   }
 
@@ -233,7 +241,8 @@ function parseIssueMessage(issue: Issue): ParsedIssue {
 }
 
 // Get a human-readable label for issue types
-function getIssueTypeLabel(type: string): string {
+// eslint-disable-next-line react-refresh/only-export-components -- Utility function exported for testing
+export function getIssueTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     unsatisfied_request: 'Unfulfilled Requests',
     capacity_exceeded: 'Over Capacity',
@@ -246,6 +255,7 @@ function getIssueTypeLabel(type: string): string {
     isolation_risk: 'Isolation Risk',
     no_requests_satisfied: 'No Requests Met',
     negative_request_violated: 'Separation Violated',
+    campers_with_unsatisfied_valid_requests: 'Unsatisfied Requests',
   }
   return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
