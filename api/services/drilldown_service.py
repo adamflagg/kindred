@@ -34,6 +34,7 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "city",
         "synagogue",
         "status",
+        "session_length",
         "first_summer_year",
         "summer_years",
         "waitlist_no_enrollment",
@@ -396,8 +397,17 @@ class DrilldownService:
 
             elif breakdown_type == "session_length":
                 if session:
-                    start_date = getattr(session, "start_date", "") or ""
-                    end_date = getattr(session, "end_date", "") or ""
+                    # Resolve AG sessions to parent for length classification
+                    resolved_session = session
+                    session_cm_id_val = getattr(session, "cm_id", None)
+                    if getattr(session, "session_type", None) == "ag":
+                        parent_id = getattr(session, "parent_id", None)
+                        if parent_id and int(parent_id) in sessions:
+                            resolved_session = sessions[int(parent_id)]
+                    elif session_cm_id_val and int(session_cm_id_val) in sessions:
+                        resolved_session = sessions[int(session_cm_id_val)]
+                    start_date = getattr(resolved_session, "start_date", "") or ""
+                    end_date = getattr(resolved_session, "end_date", "") or ""
                     length_category = get_session_length_category(start_date, end_date)
                     if length_category == breakdown_value:
                         filtered.append(a)

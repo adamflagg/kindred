@@ -693,17 +693,18 @@ class RegistrationService:
         for length, person_ids in sorted(length_persons.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)):
             male_count = 0
             female_count = 0
+            total = 0
             for pid in person_ids:
                 person = persons.get(pid)
                 if not person:
                     continue
+                total += 1
                 gender = getattr(person, "gender", "") or ""
                 if gender == "M":
                     male_count += 1
                 elif gender == "F":
                     female_count += 1
 
-            total = male_count + female_count
             if total > 0:
                 result.append(
                     GenderBySessionLengthBreakdown(
