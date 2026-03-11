@@ -162,7 +162,7 @@ class ForecastService:
                 waitlisted_attendees,
                 budget_config,
             ) = await asyncio.gather(
-                self.repository.fetch_attendees(year),
+                self.repository.fetch_attendees(year, expand_person=True),
                 self.repository.fetch_attendees(year, status_filter="waitlisted"),
                 self.repository.fetch_budget_config(year),
             )
@@ -188,8 +188,6 @@ class ForecastService:
                     continue
 
             # Each session counts only its own attendees (no AG merging)
-            enrolled_boys: int | None = None
-            enrolled_girls: int | None = None
             if reconstruction is not None:
                 rc = reconstruction.get(sid, {})
                 enrolled = rc.get("enrolled") or 0
@@ -197,7 +195,9 @@ class ForecastService:
                 enrolled_boys = rc.get("enrolled_boys")
                 enrolled_girls = rc.get("enrolled_girls")
             else:
-                enrolled = self._count_attendees_for_session(enrolled_attendees, sid, set())
+                enrolled, enrolled_boys, enrolled_girls = self._count_attendees_with_gender_for_session(
+                    enrolled_attendees, sid, set()
+                )
                 waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, set())
 
             # Budget config
@@ -279,6 +279,39 @@ class ForecastService:
             if att_cm_id == session_cm_id or att_cm_id in ag_children:
                 count += 1
         return count
+
+    def _count_attendees_with_gender_for_session(
+        self,
+        attendees: list[Any],
+        session_cm_id: int,
+        ag_children: set[int],
+    ) -> tuple[int, int | None, int | None]:
+        """Count attendees for a session with gender breakdown.
+
+        Returns (count, boys, girls). Boys/girls are None if no attendees
+        have gender data; otherwise integer counts (may be 0).
+        """
+        count = 0
+        boys = 0
+        girls = 0
+        has_gender = False
+        for a in attendees:
+            session = get_session_from_expand(a)
+            if not session:
+                continue
+            att_cm_id = getattr(session, "cm_id", None)
+            if att_cm_id == session_cm_id or att_cm_id in ag_children:
+                count += 1
+                expand = getattr(a, "expand", {}) or {}
+                person = expand.get("person") if isinstance(expand, dict) else None
+                gender = getattr(person, "gender", None) if person else None
+                if gender is not None:
+                    has_gender = True
+                    if gender == "M":
+                        boys += 1
+                    elif gender == "F":
+                        girls += 1
+        return count, (boys if has_gender else None), (girls if has_gender else None)
 
     async def _fetch_prior_year_counts(
         self,

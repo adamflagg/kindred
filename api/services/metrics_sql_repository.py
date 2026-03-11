@@ -94,22 +94,42 @@ class MetricsSQLRepository:
         self,
         year: int,
         status_filter: str | list[str] | None = None,
+        expand_person: bool = False,
     ) -> list[Any]:
         """Fetch attendees with session expansion."""
-        base = """
-            SELECT a.person_id, a.year, a.status, a.status_id, a.is_active,
-                   a.enrollment_date,
-                   a.effective_date,
-                   cs.cm_id  AS _session_cm_id,
-                   cs.name   AS _session_name,
-                   cs.session_type AS _session_type,
-                   cs.parent_id    AS _session_parent_id,
-                   cs.start_date   AS _session_start_date,
-                   cs.end_date     AS _session_end_date
-            FROM attendees a
-            JOIN camp_sessions cs ON a.session = cs.id
-            WHERE a.year = ?
-        """
+        if expand_person:
+            base = """
+                SELECT a.person_id, a.year, a.status, a.status_id, a.is_active,
+                       a.enrollment_date,
+                       a.effective_date,
+                       cs.cm_id  AS _session_cm_id,
+                       cs.name   AS _session_name,
+                       cs.session_type AS _session_type,
+                       cs.parent_id    AS _session_parent_id,
+                       cs.start_date   AS _session_start_date,
+                       cs.end_date     AS _session_end_date,
+                       p.gender  AS _person_gender,
+                       p.cm_id   AS _person_cm_id
+                FROM attendees a
+                JOIN camp_sessions cs ON a.session = cs.id
+                JOIN persons p ON a.person = p.id
+                WHERE a.year = ?
+            """
+        else:
+            base = """
+                SELECT a.person_id, a.year, a.status, a.status_id, a.is_active,
+                       a.enrollment_date,
+                       a.effective_date,
+                       cs.cm_id  AS _session_cm_id,
+                       cs.name   AS _session_name,
+                       cs.session_type AS _session_type,
+                       cs.parent_id    AS _session_parent_id,
+                       cs.start_date   AS _session_start_date,
+                       cs.end_date     AS _session_end_date
+                FROM attendees a
+                JOIN camp_sessions cs ON a.session = cs.id
+                WHERE a.year = ?
+            """
         params: list[Any] = [year]
 
         if status_filter is None or status_filter == "enrolled":
@@ -132,7 +152,10 @@ class MetricsSQLRepository:
                 is_active=r["is_active"],
                 enrollment_date=r["enrollment_date"],
                 effective_date=r["effective_date"],
-                expand={"session": self._session_ns(r)},
+                expand={
+                    "session": self._session_ns(r),
+                    **({"person": self._person_ns(r)} if expand_person else {}),
+                },
             )
             for r in rows
         ]
