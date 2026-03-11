@@ -135,7 +135,7 @@ class TestForecastBasicEnrollment:
             create_mock_attendee(202, 1002),
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -194,7 +194,7 @@ class TestForecastWithBudgetConfig:
             *[create_mock_attendee(i + 100, 1002) for i in range(40)],
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -234,7 +234,7 @@ class TestForecastWithBudgetConfig:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(60)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -265,7 +265,7 @@ class TestForecastWithBudgetConfig:
         budget = dict([create_mock_budget_config(1001, participant_goal=100, session_fee=2000.0)])
         mock_repository.fetch_budget_config.return_value = budget
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             return []
 
         mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
@@ -308,7 +308,7 @@ class TestForecastAGSeparateRows:
             create_mock_attendee(202, 2001),  # AG attendee
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -385,7 +385,7 @@ class TestForecastPriorYear:
                 return two_year_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -429,7 +429,7 @@ class TestForecastWaitlist:
         enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
         waitlisted = [create_mock_attendee(100 + i, 1001, status="waitlisted") for i in range(3)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 if year == 2026:
                     return waitlisted
@@ -473,7 +473,7 @@ class TestForecastGrandTotal:
             *[create_mock_attendee(300 + i, 1002, status="waitlisted") for i in range(2)],
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 if year == 2026:
                     return waitlisted
@@ -525,7 +525,7 @@ class TestForecastSessionFilter:
             *[create_mock_attendee(i + 200, 2001) for i in range(3)],
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -590,7 +590,7 @@ class TestForecastSessionAliasMatching:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -635,7 +635,7 @@ class TestForecastSessionAliasMatching:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -674,7 +674,7 @@ class TestForecastDeltaFields:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(50)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -709,7 +709,7 @@ class TestForecastDeltaFields:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -734,7 +734,7 @@ class TestForecastDeltaFields:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -788,7 +788,7 @@ class TestForecastDeltaFields:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -850,7 +850,7 @@ class TestForecastPriorYearFailure:
             # Prior year fetches fail
             raise Exception("PocketBase 400: expand relation session not found")
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -954,7 +954,7 @@ class TestForecastReconstructionLookback:
 
         enrolled = [create_mock_attendee(101, 1001)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             return enrolled
@@ -1195,7 +1195,7 @@ class TestForecastWithDayOffset:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(5)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
