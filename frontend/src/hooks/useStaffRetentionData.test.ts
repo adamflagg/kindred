@@ -223,10 +223,11 @@ describe('buildStaffRetentionData', () => {
   })
 
   describe('AG session handling', () => {
-    it('should match AG bunk staff to retention data using session name without AG suffix', () => {
-      // Staff key has "Session 1 AG|AG-8", retention data merges AG into parent "Session 1"
+    it('should match AG bunk staff using normalized parent session name', () => {
+      // useBunkStaff now normalizes AG session names to parent session names,
+      // so bunkStaff key already uses "Session 1" (not "All-Gender Cabin-Session 1")
       const bunkStaff = new Map<string, BunkStaffInfo[]>([
-        ['Session 1 AG|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
+        ['Session 1|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
         {
@@ -242,38 +243,38 @@ describe('buildStaffRetentionData', () => {
 
       expect(result.staffRows).toHaveLength(1)
       expect(result.staffRows[0]!.overallRetention).toBeCloseTo(0.667, 2)
-      // Session name in sessionData should use the original AG session name
-      expect(result.staffRows[0]!.sessionData.has('Session 1 AG')).toBe(true)
+      // Session name in sessionData uses the normalized parent name
+      expect(result.staffRows[0]!.sessionData.has('Session 1')).toBe(true)
     })
 
-    it('should prefer direct key match over AG fallback', () => {
-      // If there's a direct match for "Session 1 AG|AG-8", use it
+    it('should show AG staff alongside regular staff in same session', () => {
+      // AG staff (AG-8) and regular staff (B-3) both keyed under "Session 1"
       const bunkStaff = new Map<string, BunkStaffInfo[]>([
-        ['Session 1 AG|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
+        ['Session 1|B-3', [{ name: 'Emma Johnson', personId: '101' }]],
+        ['Session 1|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        // Both exist: direct match and parent match
         {
-          session: 'Session 1 AG',
+          session: 'Session 1',
+          bunk: 'B-3',
+          base_count: 10,
+          returned_count: 7,
+          retention_rate: 0.7,
+        },
+        {
+          session: 'Session 1',
           bunk: 'AG-8',
           base_count: 6,
           returned_count: 4,
           retention_rate: 0.667,
         },
-        {
-          session: 'Session 1',
-          bunk: 'AG-8',
-          base_count: 10,
-          returned_count: 5,
-          retention_rate: 0.5,
-        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
 
-      expect(result.staffRows).toHaveLength(1)
-      // Should use the direct match (0.667) not the parent (0.5)
-      expect(result.staffRows[0]!.overallRetention).toBeCloseTo(0.667, 2)
+      expect(result.staffRows).toHaveLength(2)
+      const names = result.staffRows.map((r) => r.name).sort()
+      expect(names).toEqual(['Emma Johnson', 'Noah Williams'])
     })
   })
 
@@ -313,10 +314,11 @@ describe('buildStaffRetentionData', () => {
       expect(result.sessions).toEqual(['Session 1', 'Session 2', 'Session 3'])
     })
 
-    it('should include AG session names (not parent session names)', () => {
+    it('should include parent session name for AG staff (not raw AG session name)', () => {
+      // After AG normalization, AG staff appear under parent session name
       const bunkStaff = new Map<string, BunkStaffInfo[]>([
         ['Session 1|B-1', [{ name: 'Emma Johnson', personId: '101' }]],
-        ['Session 1 AG|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
+        ['Session 1|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
         {
@@ -337,8 +339,10 @@ describe('buildStaffRetentionData', () => {
 
       const result = buildStaffRetentionData(bunkStaff, retention)
 
-      expect(result.sessions).toContain('Session 1')
-      expect(result.sessions).toContain('Session 1 AG')
+      // Both regular and AG staff appear under "Session 1"
+      expect(result.sessions).toEqual(['Session 1'])
+      expect(result.sessions).not.toContain('Session 1 AG')
+      expect(result.sessions).not.toContain('All-Gender Cabin-Session 1')
     })
   })
 

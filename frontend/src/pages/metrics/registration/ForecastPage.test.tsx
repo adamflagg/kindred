@@ -67,6 +67,8 @@ function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
     actual_revenue: 400000,
     revenue_delta: -100000,
     revenue_pct: 80.0,
+    enrolled_boys: null,
+    enrolled_girls: null,
     ...overrides,
   }
 }
@@ -436,6 +438,62 @@ describe('ForecastPage', () => {
 
     // $5,000 should not appear as a standalone cell (fee column removed)
     expect(screen.queryByText('$5,000')).not.toBeInTheDocument()
+  })
+
+  // ---------- gender (B / G) column ----------
+
+  it('renders B / G column header', async () => {
+    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('B / G')).toBeInTheDocument()
+    })
+  })
+
+  it('renders gender counts with colors when data is present', async () => {
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled_boys: 45,
+      enrolled_girls: 35,
+    })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('45')).toBeInTheDocument()
+      expect(screen.getByText('35')).toBeInTheDocument()
+    })
+
+    // Boys in blue, girls in pink
+    const boysEl = screen.getByText('45')
+    const girlsEl = screen.getByText('35')
+    expect(boysEl.className).toContain('text-blue')
+    expect(girlsEl.className).toContain('text-pink')
+  })
+
+  it('renders dash when gender data is null', async () => {
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled_boys: null,
+      enrolled_girls: null,
+    })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('--')).toBeInTheDocument()
   })
 
   // ---------- summary cards ----------

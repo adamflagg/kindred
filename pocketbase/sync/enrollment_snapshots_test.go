@@ -3,6 +3,7 @@ package sync
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
@@ -193,5 +194,23 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 	}
 	if len(americanRecords) != 0 {
 		t.Errorf("expected 0 records with American spelling 'canceled', got %d", len(americanRecords))
+	}
+}
+
+func TestSnapshotUsesFullTimestamp(t *testing.T) {
+	// Verify the format string produces a full datetime (not date-only or midnight-truncated).
+	// Use a known non-midnight time to confirm the time component is preserved.
+	sample := time.Date(2026, 6, 15, 14, 30, 45, 0, time.UTC)
+	formatted := sample.Format("2006-01-02 15:04:05.000Z")
+
+	if len(formatted) < 23 {
+		t.Errorf("snapshot date should be full datetime, got %s", formatted)
+	}
+	if formatted[11:19] == "00:00:00" {
+		t.Errorf("snapshot date should preserve time component, got %s", formatted)
+	}
+	expected := "2026-06-15 14:30:45.000Z"
+	if formatted != expected {
+		t.Errorf("expected %s, got %s", expected, formatted)
 	}
 }

@@ -45,6 +45,10 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
     revenuePct = Math.round((totalActualRev / totalBudgetRev) * 1000) / 10
   }
 
+  const totalBoys = sessions.reduce((sum, s) => sum + (s.enrolled_boys ?? 0), 0)
+  const totalGirls = sessions.reduce((sum, s) => sum + (s.enrolled_girls ?? 0), 0)
+  const hasGender = sessions.some((s) => s.enrolled_boys !== null)
+
   return {
     session_cm_id: 0,
     session_name: label,
@@ -62,6 +66,8 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
     actual_revenue: hasRevenue ? totalActualRev : null,
     revenue_delta: revenueDelta,
     revenue_pct: revenuePct,
+    enrolled_boys: hasGender ? totalBoys : null,
+    enrolled_girls: hasGender ? totalGirls : null,
   }
 }
 

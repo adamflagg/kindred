@@ -32,6 +32,8 @@ class SessionForecast(BaseModel):
     actual_revenue: float | None = Field(None, description="enrolled * fee")
     revenue_delta: float | None = Field(None, description="actual_revenue - budget_revenue")
     revenue_pct: float | None = Field(None, description="actual / budget * 100")
+    enrolled_boys: int | None = Field(None, description="Enrolled male count (from reconstruction or live)")
+    enrolled_girls: int | None = Field(None, description="Enrolled female count (from reconstruction or live)")
 
 
 class ForecastResponse(BaseModel):

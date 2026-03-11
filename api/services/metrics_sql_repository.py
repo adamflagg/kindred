@@ -1,6 +1,6 @@
 """Direct SQLite repository for metrics — bypasses PocketBase HTTP API.
 
-Drop-in replacement for MetricsRepository. All 17 methods return objects
+Drop-in replacement for MetricsRepository. All 16 methods return objects
 with the same attribute interface (SimpleNamespace + expand dicts) that
 service-layer code expects.
 """
@@ -553,8 +553,8 @@ class MetricsSQLRepository:
     # ------------------------------------------------------------------
 
     async def fetch_enrollment_snapshots(self, year: int, session_cm_id: int | None = None) -> list[Any]:
-        """Fetch enrollment snapshots, sorted by date."""
-        sql = """SELECT snapshot_date, year, session_cm_id,
+        """Fetch enrollment snapshots, sorted by datetime."""
+        sql = """SELECT snapshot_datetime, year, session_cm_id,
                         enrolled_count, waitlisted_count, cancelled_count,
                         enrolled_male_count, enrolled_female_count,
                         waitlisted_male_count, waitlisted_female_count,
@@ -567,12 +567,12 @@ class MetricsSQLRepository:
             sql += " AND session_cm_id = ?"
             params.append(session_cm_id)
 
-        sql += " ORDER BY snapshot_date"
+        sql += " ORDER BY snapshot_datetime"
 
         rows = self._query(sql, params)
         return [
             SimpleNamespace(
-                snapshot_date=r["snapshot_date"],
+                snapshot_datetime=r["snapshot_datetime"],
                 year=r["year"],
                 session_cm_id=r["session_cm_id"],
                 enrolled_count=r["enrolled_count"],
@@ -687,37 +687,14 @@ class MetricsSQLRepository:
     async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
         """Return distinct snapshot dates for a year, sorted descending (newest first)."""
         rows = self._query(
-            "SELECT DISTINCT snapshot_date FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_date DESC",
+            "SELECT DISTINCT substr(snapshot_datetime, 1, 10) AS snapshot_date"
+            " FROM enrollment_snapshots WHERE year = ? ORDER BY snapshot_date DESC",
             (year,),
         )
-        return [r["snapshot_date"].split("T")[0].split(" ")[0] for r in rows]
+        return [r["snapshot_date"] for r in rows]
 
     # ------------------------------------------------------------------
-    # 16. fetch_snapshot_counts
-    # ------------------------------------------------------------------
-
-    async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
-        """Return per-session enrollment counts for a specific snapshot date.
-
-        Returns {session_cm_id: {"enrolled": N, "waitlisted": N, "cancelled": N}}.
-        """
-        rows = self._query(
-            "SELECT session_cm_id, enrolled_count, waitlisted_count, cancelled_count "
-            "FROM enrollment_snapshots WHERE year = ? AND snapshot_date LIKE ?",
-            (year, f"{snapshot_date}%"),
-        )
-        result: dict[int, dict[str, int]] = {}
-        for r in rows:
-            sid = int(r["session_cm_id"])
-            result[sid] = {
-                "enrolled": int(r["enrolled_count"] or 0),
-                "waitlisted": int(r["waitlisted_count"] or 0),
-                "cancelled": int(r["cancelled_count"] or 0),
-            }
-        return result
-
-    # ------------------------------------------------------------------
-    # 17. fetch_registration_dates
+    # 16. fetch_registration_dates
     # ------------------------------------------------------------------
 
     async def fetch_registration_dates(self, year: int) -> dict[str, str]:

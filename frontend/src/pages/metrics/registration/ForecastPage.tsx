@@ -65,6 +65,7 @@ function ForecastTableHeader() {
         <th className="px-3 py-2 text-left text-xs font-semibold">Session</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">Goal</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">Enrolled</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">B / G</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">WL</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
@@ -95,6 +96,17 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
       <td className="px-3 py-2 text-right text-sm">{fmt(session.participant_goal)}</td>
       <td className="px-3 py-2 text-right text-sm font-medium">
         {session.enrolled.toLocaleString()}
+      </td>
+      <td className="px-3 py-2 text-right text-sm whitespace-nowrap">
+        {session.enrolled_boys !== null && session.enrolled_girls !== null ? (
+          <>
+            <span className="text-blue-800 dark:text-blue-300">{session.enrolled_boys}</span>
+            <span className="text-muted-foreground"> / </span>
+            <span className="text-pink-800 dark:text-pink-300">{session.enrolled_girls}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">--</span>
+        )}
       </td>
       <td className="px-3 py-2 text-right text-sm">{session.waitlisted.toLocaleString()}</td>
       <td className={`px-3 py-2 text-right text-sm font-medium ${pctColor(session.pct_of_goal)}`}>
