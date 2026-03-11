@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
 from api.services.camp_calendar import get_camp_today
-from api.services.reconstruction import reconstruct_enrollment_at_offset
+from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
@@ -44,7 +44,7 @@ class ForecastService:
 
         Args:
             year: The camp year to look up registration dates for.
-            today: Override for current date (for testing). Defaults to date.today().
+            today: Override for current date (for testing). Defaults to get_camp_today().
 
         Returns:
             List of WeekOption, empty if no anchor date or today < anchor.
@@ -137,31 +137,24 @@ class ForecastService:
             duration_session_ids = resolve_duration_sessions(sessions, duration)
             sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
 
-        # Historical day_offset mode: use snapshot or reconstruction for enrollment counts
-        snapshot_counts: dict[int, dict[str, int | None]] | None = None
-        reconstruction_counts: dict[int, int] | None = None
+        # Historical day_offset mode: use reconstruction for enrollment counts
+        reconstruction: dict[int, dict[str, int | None]] | None = None
         if day_offset is not None:
-            # Compute target date from registration anchor
             reg_dates = await self.repository.fetch_registration_dates(year)
             anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date") or ""
             if not anchor_str:
                 raise ValueError(f"No registration anchor configured for {year}")
             anchor_date = date.fromisoformat(anchor_str.split("T")[0].split(" ")[0])
             season_start = datetime(anchor_date.year, anchor_date.month, anchor_date.day)  # noqa: DTZ001
-            target_camp_date = anchor_date + timedelta(days=day_offset)
 
-            # Try camp-day-aligned snapshots first
-            snapshot_counts = await self.repository.fetch_snapshot_counts_for_camp_day(year, target_camp_date)
-            if not snapshot_counts:
-                # No snapshot data — reconstruct from attendee records
-                reconstruction_counts = await reconstruct_enrollment_at_offset(
-                    self.repository, year, sessions, day_offset, season_start
-                )
+            # Reconstruct from attendee records — precise to actual enrollment timestamps
+            reconstruction = await reconstruct_enrollment_with_gender(
+                self.repository, year, sessions, day_offset, season_start
+            )
+
             enrolled_attendees: list[Any] = []
             waitlisted_attendees: list[Any] = []
-            (budget_config,) = await asyncio.gather(
-                self.repository.fetch_budget_config(year),
-            )
+            budget_config = await self.repository.fetch_budget_config(year)
         else:
             # Live mode: fetch all current-year data in parallel
             (
@@ -197,15 +190,12 @@ class ForecastService:
             # Each session counts only its own attendees (no AG merging)
             enrolled_boys: int | None = None
             enrolled_girls: int | None = None
-            if snapshot_counts:
-                sc = snapshot_counts.get(sid, {})
-                enrolled = sc.get("enrolled", 0) or 0
-                waitlisted = sc.get("waitlisted", 0) or 0
-                enrolled_boys = sc.get("enrolled_boys")
-                enrolled_girls = sc.get("enrolled_girls")
-            elif reconstruction_counts is not None:
-                enrolled = reconstruction_counts.get(sid, 0)
-                waitlisted = 0  # Reconstruction doesn't distinguish waitlisted
+            if reconstruction is not None:
+                rc = reconstruction.get(sid, {})
+                enrolled = rc.get("enrolled", 0) or 0
+                waitlisted = rc.get("waitlisted", 0) or 0
+                enrolled_boys = rc.get("enrolled_boys")
+                enrolled_girls = rc.get("enrolled_girls")
             else:
                 enrolled = self._count_attendees_for_session(enrolled_attendees, sid, set())
                 waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, set())
