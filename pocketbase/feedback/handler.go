@@ -74,7 +74,7 @@ func HandleFeedback(e *core.RequestEvent) error {
 		Repo:  repo,
 	}
 
-	params := IssueParams{
+	params := &IssueParams{
 		Description: description,
 		Category:    category,
 		UserName:    userName,
@@ -89,7 +89,7 @@ func HandleFeedback(e *core.RequestEvent) error {
 	// Handle optional screenshot
 	file, header, err := e.Request.FormFile("screenshot")
 	if err == nil {
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		// Check file size
 		if header.Size > MaxScreenshotSize {

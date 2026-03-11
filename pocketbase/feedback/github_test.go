@@ -63,7 +63,7 @@ func TestBuildIssueBody(t *testing.T) {
 		Timestamp:   "2026-03-11T10:30:00Z",
 	}
 
-	body := buildIssueBody(params)
+	body := buildIssueBody(&params)
 
 	// Check key content is present
 	if !containsAll(body,
@@ -92,7 +92,7 @@ func TestBuildIssueBodyWithScreenshot(t *testing.T) {
 		ScreenshotURL: "https://raw.githubusercontent.com/org/repo/main/attachments/screenshot.png",
 	}
 
-	body := buildIssueBody(params)
+	body := buildIssueBody(&params)
 
 	if !containsAll(body, "![Screenshot]", "screenshot.png") {
 		t.Errorf("issue body missing screenshot markdown:\n%s", body)
@@ -127,7 +127,7 @@ func TestCreateIssue(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	err := client.CreateIssue(IssueParams{
+	err := client.CreateIssue(&IssueParams{
 		Description: "Test issue",
 		Category:    "bug",
 		UserName:    "Jane Smith",
@@ -167,7 +167,7 @@ func TestCreateIssueAPIError(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	err := client.CreateIssue(IssueParams{
+	err := client.CreateIssue(&IssueParams{
 		Description: "Test",
 		Category:    "bug",
 		UserName:    "Jane",
@@ -197,7 +197,9 @@ func TestUploadScreenshot(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"content": {"download_url": "https://raw.githubusercontent.com/org/repo/main/attachments/test.png"}}`))
+		resp := `{"content": {"download_url": ` +
+			`"https://raw.githubusercontent.com/org/repo/main/attachments/test.png"}}`
+		_, _ = w.Write([]byte(resp))
 	}))
 	defer server.Close()
 

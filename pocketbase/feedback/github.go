@@ -1,7 +1,9 @@
+// Package feedback implements user feedback intake via GitHub Issues API.
 package feedback
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -41,7 +43,10 @@ var validCategories = map[string]bool{
 
 func validateCategory(category string) error {
 	if !validCategories[category] {
-		return fmt.Errorf("invalid category %q: must be one of bug, text-change, feature-request, question", category)
+		return fmt.Errorf(
+			"invalid category %q: must be one of bug, text-change, feature-request, question",
+			category,
+		)
 	}
 	return nil
 }
@@ -64,7 +69,7 @@ func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Re
 		reqBody = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(method, url, reqBody)
+	req, err := http.NewRequestWithContext(context.Background(), method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -73,11 +78,15 @@ func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Re
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 
-	return http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("executing request: %w", err)
+	}
+	return resp, nil
 }
 
 // CreateIssue creates a GitHub issue in the configured repo.
-func (c *GitHubClient) CreateIssue(params IssueParams) error {
+func (c *GitHubClient) CreateIssue(params *IssueParams) error {
 	url := c.apiURL(fmt.Sprintf("/repos/%s/issues", c.Repo))
 
 	body := map[string]interface{}{
@@ -90,7 +99,7 @@ func (c *GitHubClient) CreateIssue(params IssueParams) error {
 	if err != nil {
 		return fmt.Errorf("creating issue: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -121,7 +130,7 @@ func (c *GitHubClient) UploadScreenshot(data []byte, filename, timestamp string)
 	if err != nil {
 		return "", fmt.Errorf("uploading screenshot: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -159,7 +168,7 @@ func buildIssueTitle(description string) string {
 	return truncated
 }
 
-func buildIssueBody(params IssueParams) string {
+func buildIssueBody(params *IssueParams) string {
 	var b strings.Builder
 
 	b.WriteString(params.Description)
