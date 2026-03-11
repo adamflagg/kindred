@@ -19,7 +19,7 @@ import pytest
 os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
-from api.services.reconstruction import reconstruct_enrollment_at_offset
+from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
 
 # ============================================================================
 # Constants
@@ -391,3 +391,152 @@ class TestReconstructEnrollmentAtOffset:
         )
         # Enrolled +1, withdrawn -1 = net 0
         assert result.get(1000, 0) == 0
+
+
+# ============================================================================
+# Gender-Aware Reconstruction Tests
+# ============================================================================
+
+
+def _make_attendee_with_person(
+    status_id: int,
+    enrollment_date: str,
+    effective_date: str,
+    gender: str,
+    session_cm_id: int = 1001,
+    person_cm_id: int = 1000,
+    *,
+    status: str = "enrolled",
+    is_active: int = 1,
+) -> SimpleNamespace:
+    """Create a mock attendee with expanded person for gender."""
+    person = SimpleNamespace(gender=gender, cm_id=person_cm_id)
+    return SimpleNamespace(
+        person_id=person_cm_id,
+        year=2025,
+        status=status,
+        status_id=status_id,
+        is_active=is_active,
+        enrollment_date=enrollment_date,
+        effective_date=effective_date,
+        expand={
+            "session": SimpleNamespace(
+                cm_id=session_cm_id,
+                name="Session 1",
+                session_type="main",
+                parent_id=None,
+                start_date="2025-06-15",
+                end_date="2025-07-15",
+            ),
+            "person": person,
+        },
+    )
+
+
+def _mock_repo_with_person(attendees: list[SimpleNamespace]) -> AsyncMock:
+    """Create a mock repository that returns attendees with person expand."""
+    repo = AsyncMock()
+    repo.fetch_attendees_with_dates.return_value = attendees
+    return repo
+
+
+class TestReconstructionWithGender:
+    """Tests for reconstruct_enrollment_with_gender."""
+
+    @pytest.mark.asyncio
+    async def test_gender_counts_from_person_expand(self) -> None:
+        """Gender breakdown comes from person expand data."""
+        attendees = [
+            _make_attendee_with_person(2, "2025-10-16", "2025-10-16", "M", person_cm_id=1),
+            _make_attendee_with_person(2, "2025-10-17", "2025-10-17", "M", person_cm_id=2),
+            _make_attendee_with_person(2, "2025-10-18", "2025-10-18", "F", person_cm_id=3),
+        ]
+        repo = _mock_repo_with_person(attendees)
+        sessions = {1001: SimpleNamespace(cm_id=1001, name="S1")}
+
+        result = await reconstruct_enrollment_with_gender(repo, 2025, sessions, 7, SEASON_START)
+
+        assert result[1001]["enrolled"] == 3
+        assert result[1001]["enrolled_boys"] == 2
+        assert result[1001]["enrolled_girls"] == 1
+
+    @pytest.mark.asyncio
+    async def test_cancellation_decrements_gender_count(self) -> None:
+        """Cancelled attendee with known gender decrements their gender count."""
+        attendees = [
+            _make_attendee_with_person(2, "2025-10-16", "2025-10-16", "M", person_cm_id=1),
+            _make_attendee_with_person(2, "2025-10-17", "2025-10-17", "F", person_cm_id=2),
+            _make_attendee_with_person(
+                32,
+                "2025-10-20",
+                "2025-10-16",
+                "M",
+                person_cm_id=3,
+                status="cancelled",
+                is_active=0,
+            ),
+        ]
+        repo = _mock_repo_with_person(attendees)
+        sessions = {1001: SimpleNamespace(cm_id=1001, name="S1")}
+
+        result = await reconstruct_enrollment_with_gender(repo, 2025, sessions, 10, SEASON_START)
+
+        # 3 enrolled (person 1 M, person 2 F, person 3 M enrolled)
+        # 1 cancelled (person 3 M cancelled within offset)
+        # Net: 2 enrolled, 1 boy (2 enrolled - 1 cancelled), 1 girl
+        assert result[1001]["enrolled"] == 2
+        assert result[1001]["enrolled_boys"] == 1
+        assert result[1001]["enrolled_girls"] == 1
+
+    @pytest.mark.asyncio
+    async def test_gender_none_without_person_expand(self) -> None:
+        """When person expand is missing, gender counts are None."""
+        att = SimpleNamespace(
+            person_id=1,
+            year=2025,
+            status="enrolled",
+            status_id=2,
+            is_active=1,
+            enrollment_date="2025-10-16",
+            effective_date="2025-10-16",
+            expand={
+                "session": SimpleNamespace(
+                    cm_id=1001,
+                    name="S1",
+                    session_type="main",
+                    parent_id=None,
+                    start_date="2025-06-15",
+                    end_date="2025-07-15",
+                ),
+            },
+        )
+        repo = _mock_repo_with_person([att])
+        sessions = {1001: SimpleNamespace(cm_id=1001, name="S1")}
+
+        result = await reconstruct_enrollment_with_gender(repo, 2025, sessions, 7, SEASON_START)
+
+        assert result[1001]["enrolled"] == 1
+        assert result[1001]["enrolled_boys"] is None
+        assert result[1001]["enrolled_girls"] is None
+
+    @pytest.mark.asyncio
+    async def test_multiple_sessions_gender_split(self) -> None:
+        """Gender counts are tracked per session."""
+        attendees = [
+            _make_attendee_with_person(2, "2025-10-16", "2025-10-16", "M", session_cm_id=1001, person_cm_id=1),
+            _make_attendee_with_person(2, "2025-10-17", "2025-10-17", "F", session_cm_id=1001, person_cm_id=2),
+            _make_attendee_with_person(2, "2025-10-16", "2025-10-16", "F", session_cm_id=2001, person_cm_id=3),
+            _make_attendee_with_person(2, "2025-10-17", "2025-10-17", "F", session_cm_id=2001, person_cm_id=4),
+        ]
+        repo = _mock_repo_with_person(attendees)
+        sessions = {
+            1001: SimpleNamespace(cm_id=1001, name="S1"),
+            2001: SimpleNamespace(cm_id=2001, name="S2"),
+        }
+
+        result = await reconstruct_enrollment_with_gender(repo, 2025, sessions, 7, SEASON_START)
+
+        assert result[1001]["enrolled_boys"] == 1
+        assert result[1001]["enrolled_girls"] == 1
+        assert result[2001]["enrolled_boys"] == 0
+        assert result[2001]["enrolled_girls"] == 2

@@ -42,6 +42,100 @@ def _get_enrollment_date(att: Any) -> str | None:
     return None
 
 
+def _reconstruct_core(
+    attendees: list[Any],
+    sessions: dict[int, Any],
+    day_offset: int,
+    season_start: datetime,
+    ag_parent_map: dict[int, int] | None = None,
+) -> dict[int, dict[str, int | None]]:
+    """Core reconstruction loop — shared by both public functions.
+
+    Iterates attendees once, counting enrollments and cancellations per session.
+    Gender counts are populated per-session: if any attendee in a session has
+    gender data, that session gets integer gender counts; otherwise None.
+    """
+    if not attendees:
+        return {}
+
+    cutoff_date = (season_start + timedelta(days=day_offset)).date()
+
+    # Per-session counters
+    session_enrollments: dict[int, int] = defaultdict(int)
+    session_cancellations: dict[int, int] = defaultdict(int)
+    session_boys_enrolled: dict[int, int] = defaultdict(int)
+    session_girls_enrolled: dict[int, int] = defaultdict(int)
+    session_boys_cancelled: dict[int, int] = defaultdict(int)
+    session_girls_cancelled: dict[int, int] = defaultdict(int)
+    session_has_gender: set[int] = set()
+
+    for att in attendees:
+        expand = getattr(att, "expand", {}) or {}
+        session = expand.get("session") if isinstance(expand, dict) else None
+        if not session:
+            continue
+
+        status_id = getattr(att, "status_id", 0) or 0
+        if status_id not in ENROLLMENT_STATUSES:
+            continue
+
+        raw_sid = int(session.cm_id)
+        effective_sid = ag_parent_map.get(raw_sid, raw_sid) if ag_parent_map is not None else raw_sid
+
+        # Get gender from person expand (may be absent)
+        person = expand.get("person") if isinstance(expand, dict) else None
+        gender = getattr(person, "gender", None) if person else None
+        if gender is not None:
+            session_has_gender.add(effective_sid)
+
+        # Enrollment event: use effective_date (original registration date)
+        enroll_date_str = _get_enrollment_date(att)
+        if enroll_date_str:
+            dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
+            if season_start.date() <= dt.date() <= cutoff_date:
+                session_enrollments[effective_sid] += 1
+                if gender == "M":
+                    session_boys_enrolled[effective_sid] += 1
+                elif gender == "F":
+                    session_girls_enrolled[effective_sid] += 1
+
+        # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
+        if status_id in CANCELLATION_STATUSES:
+            cancel_date_raw = getattr(att, "enrollment_date", "") or ""
+            if cancel_date_raw:
+                cancel_date_str = _parse_date_only(cancel_date_raw)
+                cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
+                if season_start.date() <= cancel_dt.date() <= cutoff_date:
+                    session_cancellations[effective_sid] += 1
+                    if gender == "M":
+                        session_boys_cancelled[effective_sid] += 1
+                    elif gender == "F":
+                        session_girls_cancelled[effective_sid] += 1
+
+    # Build result — gender availability tracked per-session
+    result: dict[int, dict[str, int | None]] = {}
+    all_sids = set(session_enrollments.keys()) | set(session_cancellations.keys())
+    for sid in all_sids:
+        if sid not in sessions:
+            continue
+        net = session_enrollments.get(sid, 0) - session_cancellations.get(sid, 0)
+        if sid in session_has_gender:
+            boys = session_boys_enrolled.get(sid, 0) - session_boys_cancelled.get(sid, 0)
+            girls = session_girls_enrolled.get(sid, 0) - session_girls_cancelled.get(sid, 0)
+        else:
+            boys = None
+            girls = None
+        result[sid] = {
+            "enrolled": net,
+            "waitlisted": 0,
+            "cancelled": session_cancellations.get(sid, 0),
+            "enrolled_boys": boys,
+            "enrolled_girls": girls,
+        }
+
+    return result
+
+
 async def reconstruct_enrollment_at_offset(
     repository: MetricsRepository,
     year: int,
@@ -67,52 +161,28 @@ async def reconstruct_enrollment_at_offset(
         Dict of session cm_id -> net enrolled count at the given offset.
     """
     attendees = await repository.fetch_attendees_with_dates(year)
+    full = _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map)
+    # "enrolled" is always int in _reconstruct_core result
+    return {sid: counts["enrolled"] or 0 for sid, counts in full.items()}
 
-    if not attendees:
-        return {}
 
-    cutoff_date = (season_start + timedelta(days=day_offset)).date()
+async def reconstruct_enrollment_with_gender(
+    repository: MetricsRepository,
+    year: int,
+    sessions: dict[int, Any],
+    day_offset: int,
+    season_start: datetime,
+    ag_parent_map: dict[int, int] | None = None,
+) -> dict[int, dict[str, int | None]]:
+    """Reconstruct enrollment counts with gender breakdown.
 
-    # Count enrollments and cancellations per session
-    session_enrollments: dict[int, int] = defaultdict(int)
-    session_cancellations: dict[int, int] = defaultdict(int)
+    Returns {session_cm_id: {
+        "enrolled": int, "waitlisted": int, "cancelled": int,
+        "enrolled_boys": int | None, "enrolled_girls": int | None
+    }}
 
-    for att in attendees:
-        expand = getattr(att, "expand", {}) or {}
-        session = expand.get("session") if isinstance(expand, dict) else None
-        if not session:
-            continue
-
-        status_id = getattr(att, "status_id", 0) or 0
-        if status_id not in ENROLLMENT_STATUSES:
-            continue
-
-        raw_sid = int(session.cm_id)
-        effective_sid = ag_parent_map.get(raw_sid, raw_sid) if ag_parent_map is not None else raw_sid
-
-        # Enrollment event: use effective_date (original registration date)
-        enroll_date_str = _get_enrollment_date(att)
-        if enroll_date_str:
-            dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if season_start.date() <= dt.date() <= cutoff_date:
-                session_enrollments[effective_sid] += 1
-
-        # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
-        if status_id in CANCELLATION_STATUSES:
-            cancel_date_raw = getattr(att, "enrollment_date", "") or ""
-            if cancel_date_raw:
-                cancel_date_str = _parse_date_only(cancel_date_raw)
-                cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                if season_start.date() <= cancel_dt.date() <= cutoff_date:
-                    session_cancellations[effective_sid] += 1
-
-    # Filter to known sessions and compute net
-    result: dict[int, int] = {}
-    all_sids = set(session_enrollments.keys()) | set(session_cancellations.keys())
-    for sid in all_sids:
-        if sid not in sessions:
-            continue
-        net = session_enrollments.get(sid, 0) - session_cancellations.get(sid, 0)
-        result[sid] = net
-
-    return result
+    Gender is derived from the person relation. If expand_person data
+    is available, gender counts are populated per-session; otherwise None.
+    """
+    attendees = await repository.fetch_attendees_with_dates(year, expand_person=True)
+    return _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map)

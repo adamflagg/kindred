@@ -16,6 +16,8 @@ export interface SessionForecast {
   actual_revenue: number | null
   revenue_delta: number | null
   revenue_pct: number | null
+  enrolled_boys: number | null
+  enrolled_girls: number | null
 }
 
 /** Full forecast response with per-session data and grand total. */

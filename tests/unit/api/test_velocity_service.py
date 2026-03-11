@@ -79,7 +79,7 @@ def create_mock_snapshot(
 ) -> Mock:
     """Create a mock enrollment snapshot record."""
     snap = Mock()
-    snap.snapshot_date = snapshot_date
+    snap.snapshot_datetime = snapshot_date
     snap.session_cm_id = session_cm_id
     snap.year = year
     snap.enrolled_count = enrolled

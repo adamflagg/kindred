@@ -528,7 +528,7 @@ class TestFetchEnrollmentSnapshots:
         repo = _make_repo(sql_db)
         result = await repo.fetch_enrollment_snapshots(2025)
         assert len(result) == 3
-        dates = [r.snapshot_date for r in result]
+        dates = [r.snapshot_datetime for r in result]
         assert dates == sorted(dates)
 
     @pytest.mark.asyncio

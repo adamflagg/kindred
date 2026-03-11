@@ -23,6 +23,8 @@ function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
     actual_revenue: null,
     revenue_delta: null,
     revenue_pct: null,
+    enrolled_boys: null,
+    enrolled_girls: null,
     ...overrides,
   }
 }
@@ -329,5 +331,41 @@ describe('buildForecastSections', () => {
     // Quest total: 20
     expect(sections[1]!.total.enrolled).toBe(20)
     expect(sections[1]!.total.session_name).toBe('Quests')
+  })
+})
+
+// ==========================================================================
+// computeSectionTotal gender fields
+// ==========================================================================
+
+describe('computeSectionTotal gender fields', () => {
+  it('sums gender counts when present', () => {
+    const sessions = [
+      session({ enrolled: 80, enrolled_boys: 42, enrolled_girls: 38 }),
+      session({ session_cm_id: 1002, enrolled: 60, enrolled_boys: 30, enrolled_girls: 30 }),
+    ]
+    const total = computeSectionTotal(sessions, 'Total')
+    expect(total.enrolled_boys).toBe(72)
+    expect(total.enrolled_girls).toBe(68)
+  })
+
+  it('returns null gender when all sessions have null', () => {
+    const sessions = [
+      session({ enrolled: 80, enrolled_boys: null, enrolled_girls: null }),
+      session({ session_cm_id: 1002, enrolled: 60, enrolled_boys: null, enrolled_girls: null }),
+    ]
+    const total = computeSectionTotal(sessions, 'Total')
+    expect(total.enrolled_boys).toBeNull()
+    expect(total.enrolled_girls).toBeNull()
+  })
+
+  it('treats null as 0 when some sessions have gender data', () => {
+    const sessions = [
+      session({ enrolled: 80, enrolled_boys: 42, enrolled_girls: 38 }),
+      session({ session_cm_id: 1002, enrolled: 60, enrolled_boys: null, enrolled_girls: null }),
+    ]
+    const total = computeSectionTotal(sessions, 'Total')
+    expect(total.enrolled_boys).toBe(42)
+    expect(total.enrolled_girls).toBe(38)
   })
 })

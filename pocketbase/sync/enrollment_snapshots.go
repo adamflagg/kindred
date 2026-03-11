@@ -119,10 +119,9 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		"dry_run", s.DryRun,
 	)
 
-	// Get today's snapshot date (midnight UTC)
+	// Get current UTC timestamp for the snapshot (no midnight truncation)
 	now := time.Now().UTC()
-	snapshotDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	snapshotDateStr := snapshotDate.Format("2006-01-02 15:04:05.000Z")
+	snapshotDateStr := now.Format("2006-01-02 15:04:05.000Z")
 
 	// Fetch all sessions for the year
 	sessionFilter := fmt.Sprintf(
@@ -219,84 +218,47 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			continue
 		}
 
-		// Upsert: find existing by snapshot_date + session_cm_id + year
+		// Upsert: match on date portion of snapshot_datetime + session + year
+		datePrefix := now.Format("2006-01-02")
 		existingFilter := fmt.Sprintf(
-			"snapshot_date = '%s' && session_cm_id = %d && year = %d",
-			snapshotDateStr, sessionCMID, year,
+			"snapshot_datetime ~ '%s' && session_cm_id = %d && year = %d",
+			datePrefix, sessionCMID, year,
 		)
+		var record *core.Record
+		// FindFirstRecordByFilter returns sql.ErrNoRows when no match exists,
+		// so we ignore the error — nil existing means "create new record".
 		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
-
 		if existing != nil {
-			// Check if anything actually changed
-			existingEnrolled, _ := existing.Get("enrolled_count").(float64)
-			existingWaitlisted, _ := existing.Get("waitlisted_count").(float64)
-			existingCancelled, _ := existing.Get("cancelled_count").(float64)
-			existingEnrolledMale, _ := existing.Get("enrolled_male_count").(float64)
-			existingEnrolledFemale, _ := existing.Get("enrolled_female_count").(float64)
-			existingWaitlistedMale, _ := existing.Get("waitlisted_male_count").(float64)
-			existingWaitlistedFemale, _ := existing.Get("waitlisted_female_count").(float64)
-			existingCancelledMale, _ := existing.Get("cancelled_male_count").(float64)
-			existingCancelledFemale, _ := existing.Get("cancelled_female_count").(float64)
+			record = existing
+		} else {
+			record = core.NewRecord(col)
+		}
 
-			if int(existingEnrolled) == enrolledCount &&
-				int(existingWaitlisted) == waitlistedCount &&
-				int(existingCancelled) == cancelledCount &&
-				int(existingEnrolledMale) == enrolledMale &&
-				int(existingEnrolledFemale) == enrolledFemale &&
-				int(existingWaitlistedMale) == waitlistedMale &&
-				int(existingWaitlistedFemale) == waitlistedFemale &&
-				int(existingCancelledMale) == cancelledMale &&
-				int(existingCancelledFemale) == cancelledFemale {
-				s.Stats.Skipped++
-				continue
-			}
+		record.Set("snapshot_datetime", snapshotDateStr)
+		record.Set("year", year)
+		record.Set("session_cm_id", sessionCMID)
+		record.Set("session", sessionPBID)
+		record.Set("enrolled_count", enrolledCount)
+		record.Set("waitlisted_count", waitlistedCount)
+		record.Set("cancelled_count", cancelledCount)
+		record.Set("enrolled_male_count", enrolledMale)
+		record.Set("enrolled_female_count", enrolledFemale)
+		record.Set("waitlisted_male_count", waitlistedMale)
+		record.Set("waitlisted_female_count", waitlistedFemale)
+		record.Set("cancelled_male_count", cancelledMale)
+		record.Set("cancelled_female_count", cancelledFemale)
 
-			// Update existing record
-			existing.Set("enrolled_count", enrolledCount)
-			existing.Set("waitlisted_count", waitlistedCount)
-			existing.Set("cancelled_count", cancelledCount)
-			existing.Set("enrolled_male_count", enrolledMale)
-			existing.Set("enrolled_female_count", enrolledFemale)
-			existing.Set("waitlisted_male_count", waitlistedMale)
-			existing.Set("waitlisted_female_count", waitlistedFemale)
-			existing.Set("cancelled_male_count", cancelledMale)
-			existing.Set("cancelled_female_count", cancelledFemale)
-			existing.Set("session", sessionPBID)
-
-			if err := s.App.Save(existing); err != nil {
-				slog.Error("Error updating enrollment snapshot",
-					"session_cm_id", sessionCMID,
-					"error", err,
-				)
-				s.Stats.Errors++
-				continue
-			}
+		if err := s.App.Save(record); err != nil {
+			slog.Error("Error saving enrollment snapshot",
+				"session_cm_id", sessionCMID,
+				"error", err,
+			)
+			s.Stats.Errors++
+			continue
+		}
+		if existing != nil {
 			s.Stats.Updated++
 		} else {
-			// Create new record
-			record := core.NewRecord(col)
-			record.Set("snapshot_date", snapshotDateStr)
-			record.Set("year", year)
-			record.Set("session_cm_id", sessionCMID)
-			record.Set("session", sessionPBID)
-			record.Set("enrolled_count", enrolledCount)
-			record.Set("waitlisted_count", waitlistedCount)
-			record.Set("cancelled_count", cancelledCount)
-			record.Set("enrolled_male_count", enrolledMale)
-			record.Set("enrolled_female_count", enrolledFemale)
-			record.Set("waitlisted_male_count", waitlistedMale)
-			record.Set("waitlisted_female_count", waitlistedFemale)
-			record.Set("cancelled_male_count", cancelledMale)
-			record.Set("cancelled_female_count", cancelledFemale)
-
-			if err := s.App.Save(record); err != nil {
-				slog.Error("Error creating enrollment snapshot",
-					"session_cm_id", sessionCMID,
-					"error", err,
-				)
-				s.Stats.Errors++
-				continue
-			}
 			s.Stats.Created++
 		}
 	}
