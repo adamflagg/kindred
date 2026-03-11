@@ -55,7 +55,7 @@ func TestBuildIssueBody(t *testing.T) {
 		Description: "The save button does not work",
 		Category:    "bug",
 		UserName:    "Jane Smith",
-		UserEmail:   "jane@camp.org",
+		UserEmail:   "jane@example.com",
 		PageURL:     "/summer/sessions",
 		Browser:     "Mozilla/5.0",
 		Viewport:    "1920x1080",
@@ -70,7 +70,7 @@ func TestBuildIssueBody(t *testing.T) {
 		"The save button does not work",
 		"bug",
 		"Jane Smith",
-		"jane@camp.org",
+		"jane@example.com",
 		"/summer/sessions",
 		"v0.8.0",
 	) {
@@ -83,7 +83,7 @@ func TestBuildIssueBodyWithScreenshot(t *testing.T) {
 		Description:   "Button is broken",
 		Category:      "bug",
 		UserName:      "Jane Smith",
-		UserEmail:     "jane@camp.org",
+		UserEmail:     "jane@example.com",
 		PageURL:       "/summer/sessions",
 		Browser:       "Mozilla/5.0",
 		Viewport:      "1920x1080",
@@ -134,7 +134,7 @@ func TestCreateIssue(t *testing.T) {
 		Description: "Test issue",
 		Category:    "bug",
 		UserName:    "Jane Smith",
-		UserEmail:   "jane@camp.org",
+		UserEmail:   "jane@example.com",
 		PageURL:     "/sessions",
 		Browser:     "Mozilla/5.0",
 		Viewport:    "1920x1080",
@@ -174,7 +174,7 @@ func TestCreateIssueAPIError(t *testing.T) {
 		Description: "Test",
 		Category:    "bug",
 		UserName:    "Jane",
-		UserEmail:   "jane@camp.org",
+		UserEmail:   "jane@example.com",
 	})
 	if err == nil {
 		t.Fatal("expected error for non-201 response")

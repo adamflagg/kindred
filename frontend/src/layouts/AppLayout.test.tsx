@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 // Mock all heavy dependencies before importing AppLayout
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 'user-1', name: 'Jane Smith', email: 'jane@camp.org', avatar: '' },
+    user: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com', avatar: '' },
     isAuthenticated: true,
     isLoading: false,
     logout: vi.fn(),

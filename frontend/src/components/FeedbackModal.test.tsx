@@ -8,7 +8,7 @@ import { FeedbackModal } from './FeedbackModal'
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     authStore: {
-      record: { id: 'user-1', name: 'Jane Smith', email: 'jane@camp.org' },
+      record: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' },
     },
     send: vi.fn(),
   },
@@ -17,7 +17,7 @@ vi.mock('../lib/pocketbase', () => ({
 // Mock useAuth
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 'user-1', name: 'Jane Smith', email: 'jane@camp.org' },
+    user: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' },
     isAuthenticated: true,
     isLoading: false,
   }),
