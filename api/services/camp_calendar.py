@@ -48,3 +48,17 @@ def camp_day_offset(camp_date: date, anchor: date) -> int:
 def camp_week_offset(camp_date: date, anchor: date) -> int:
     """Weeks between anchor and camp_date (integer division of day offset)."""
     return camp_day_offset(camp_date, anchor) // 7
+
+
+def day1_window(tier_date: date) -> tuple[datetime, datetime]:
+    """Return the 9am-to-9am PT window for a registration tier opening day.
+
+    Used by Day 1 page to count first-24h registrations with hour accuracy.
+
+    The window spans 9am Pacific on tier_date to 9am Pacific the following
+    calendar day. Across a DST transition this may be 23 or 25 UTC hours.
+    """
+    next_day = tier_date + timedelta(days=1)
+    start = datetime(tier_date.year, tier_date.month, tier_date.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
+    end = datetime(next_day.year, next_day.month, next_day.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
+    return (start, end)

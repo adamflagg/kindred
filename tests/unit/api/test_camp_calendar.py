@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.camp_calendar import (
+    CAMP_TZ,
     camp_day_offset,
     camp_week_offset,
+    day1_window,
     get_camp_date,
     get_camp_today,
 )
@@ -108,3 +111,31 @@ class TestCampWeekOffset:
 
     def test_day_20_is_week_two(self):
         assert camp_week_offset(date(2026, 11, 4), date(2026, 10, 15)) == 2
+
+
+class TestDay1Window:
+    """day1_window computes 9am-9am PT windows for tier opening dates."""
+
+    def test_day1_window_basic(self):
+        """Priority reg Nov 12 2025 should give 9am-9am PT window."""
+        start, end = day1_window(date(2025, 11, 12))
+        assert start == datetime(2025, 11, 12, 9, 0, tzinfo=CAMP_TZ)
+        assert end == datetime(2025, 11, 13, 9, 0, tzinfo=CAMP_TZ)
+
+    def test_day1_window_dst_boundary(self):
+        """March date spanning DST transition should use correct PT offset."""
+        # March 8, 2025: 9am PST; March 9 9am is PDT (DST springs at 2am March 9).
+        # 9am PST (UTC-8) → 17:00 UTC; 9am PDT (UTC-7) → 16:00 UTC = 23h apart.
+        start, end = day1_window(date(2025, 3, 8))
+        assert start.tzinfo == CAMP_TZ
+        assert end.tzinfo == CAMP_TZ
+        start_utc = start.astimezone(ZoneInfo("UTC"))
+        end_utc = end.astimezone(ZoneInfo("UTC"))
+        diff_hours = (end_utc - start_utc).total_seconds() / 3600
+        assert diff_hours == 23.0  # DST spring forward: 9am PST → 9am PDT = 23h
+
+    def test_day1_window_november_pst(self):
+        """November dates should be PST (UTC-8)."""
+        start, end = day1_window(date(2025, 11, 12))
+        start_utc = start.astimezone(ZoneInfo("UTC"))
+        assert start_utc.hour == 17  # 9am PST = 5pm UTC
