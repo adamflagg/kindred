@@ -10,6 +10,7 @@ These tests are written FIRST before implementation (TDD).
 from __future__ import annotations
 
 import os
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -55,8 +56,9 @@ def create_mock_attendee(
     status: str = "enrolled",
     is_active: bool = True,
     status_id: int = 2,
+    gender: str | None = None,
 ) -> Mock:
-    """Create a mock attendee with session expand."""
+    """Create a mock attendee with session expand and optional person/gender."""
     attendee = Mock()
     attendee.person_id = person_id
     attendee.year = year
@@ -66,7 +68,13 @@ def create_mock_attendee(
 
     session = Mock()
     session.cm_id = session_cm_id
-    attendee.expand = {"session": session}
+    expand: dict[str, Any] = {"session": session}
+    if gender is not None:
+        person = Mock()
+        person.gender = gender
+        person.cm_id = person_id + 1000
+        expand["person"] = person
+    attendee.expand = expand
     return attendee
 
 
@@ -135,7 +143,7 @@ class TestForecastBasicEnrollment:
             create_mock_attendee(202, 1002),
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -194,7 +202,7 @@ class TestForecastWithBudgetConfig:
             *[create_mock_attendee(i + 100, 1002) for i in range(40)],
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -234,7 +242,7 @@ class TestForecastWithBudgetConfig:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(60)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -265,7 +273,7 @@ class TestForecastWithBudgetConfig:
         budget = dict([create_mock_budget_config(1001, participant_goal=100, session_fee=2000.0)])
         mock_repository.fetch_budget_config.return_value = budget
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             return []
 
         mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
@@ -308,7 +316,7 @@ class TestForecastAGSeparateRows:
             create_mock_attendee(202, 2001),  # AG attendee
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -385,7 +393,7 @@ class TestForecastPriorYear:
                 return two_year_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -429,7 +437,7 @@ class TestForecastWaitlist:
         enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
         waitlisted = [create_mock_attendee(100 + i, 1001, status="waitlisted") for i in range(3)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 if year == 2026:
                     return waitlisted
@@ -473,7 +481,7 @@ class TestForecastGrandTotal:
             *[create_mock_attendee(300 + i, 1002, status="waitlisted") for i in range(2)],
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 if year == 2026:
                     return waitlisted
@@ -525,7 +533,7 @@ class TestForecastSessionFilter:
             *[create_mock_attendee(i + 200, 2001) for i in range(3)],
         ]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -590,7 +598,7 @@ class TestForecastSessionAliasMatching:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -635,7 +643,7 @@ class TestForecastSessionAliasMatching:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -674,7 +682,7 @@ class TestForecastDeltaFields:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(50)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -709,7 +717,7 @@ class TestForecastDeltaFields:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -734,7 +742,7 @@ class TestForecastDeltaFields:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -788,7 +796,7 @@ class TestForecastDeltaFields:
                 return prior_sessions
             return {}
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -850,7 +858,7 @@ class TestForecastPriorYearFailure:
             # Prior year fetches fail
             raise Exception("PocketBase 400: expand relation session not found")
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -954,7 +962,7 @@ class TestForecastReconstructionLookback:
 
         enrolled = [create_mock_attendee(101, 1001)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             return enrolled
@@ -1195,7 +1203,7 @@ class TestForecastWithDayOffset:
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(5)]
 
-        async def fetch_attendees_side_effect(year, status_filter=None):
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
             if status_filter == "waitlisted":
                 return []
             if year == 2026:
@@ -1459,3 +1467,80 @@ class TestForecastGenderFields:
         result = await service.calculate_forecast(year=2026, day_offset=7)
         assert result.grand_total.enrolled_boys == 72
         assert result.grand_total.enrolled_girls == 68
+
+    @pytest.mark.asyncio
+    async def test_gender_from_live_mode(self, service, mock_repository):
+        """Live mode (day_offset=None) should populate gender fields from person expand."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        enrolled = [create_mock_attendee(i, 1001, gender="M") for i in range(45)] + [
+            create_mock_attendee(i + 100, 1001, gender="F") for i in range(35)
+        ]
+
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+        s1 = result.sessions[0]
+        assert s1.enrolled == 80
+        assert s1.enrolled_boys == 45
+        assert s1.enrolled_girls == 35
+
+        # Verify repository was called with expand_person=True
+        mock_repository.fetch_attendees.assert_any_call(2026, expand_person=True)
+
+    @pytest.mark.asyncio
+    async def test_gender_null_in_live_mode_without_person(self, service, mock_repository):
+        """Live mode without person expand should return null gender fields."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        # create_mock_attendee builds expand={"session": ...} with no "person" key
+        enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
+
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+        s1 = result.sessions[0]
+        assert s1.enrolled == 10
+        assert s1.enrolled_boys is None
+        assert s1.enrolled_girls is None
+
+    @pytest.mark.asyncio
+    async def test_gender_grand_total_live_mode(self, service, mock_repository):
+        """Grand total should aggregate gender counts in live mode."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+            1002: create_mock_session(1002, "Session 2"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+
+        # Session 1001: 20 boys + 15 girls
+        # Session 1002: 10 boys + 25 girls
+        enrolled = (
+            [create_mock_attendee(i, 1001, gender="M") for i in range(20)]
+            + [create_mock_attendee(i + 100, 1001, gender="F") for i in range(15)]
+            + [create_mock_attendee(i + 200, 1002, gender="M") for i in range(10)]
+            + [create_mock_attendee(i + 300, 1002, gender="F") for i in range(25)]
+        )
+
+        async def fetch_attendees_side_effect(year, status_filter=None, **kwargs):
+            if status_filter == "waitlisted":
+                return []
+            return enrolled
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+        assert result.grand_total.enrolled_boys == 30  # 20 + 10
+        assert result.grand_total.enrolled_girls == 40  # 15 + 25

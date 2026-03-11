@@ -38,6 +38,7 @@ class MetricsRepository:
         self,
         year: int,
         status_filter: str | list[str] | None = None,
+        expand_person: bool = False,
     ) -> list[Any]:
         """Fetch attendees for a given year with optional status filter.
 
@@ -65,9 +66,10 @@ class MetricsRepository:
             # Single non-enrolled status
             filter_str = f'year = {year} && status = "{status_filter}"'
 
+        expand = "person,session" if expand_person else "session"
         return await asyncio.to_thread(
             self.pb.collection("attendees").get_full_list,
-            query_params={"filter": filter_str, "expand": "session"},
+            query_params={"filter": filter_str, "expand": expand},
         )
 
     async def fetch_persons(self, year: int) -> dict[int, Any]:
