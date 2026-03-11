@@ -104,6 +104,23 @@ def _make_override_record(
     return record
 
 
+def _make_session_record(
+    cm_id: int,
+    start_date: str = "2025-06-15",
+    end_date: str = "2025-06-22",
+    session_type: str = "main",
+    year: int = 2025,
+) -> Mock:
+    """Create a mock sessions record for duration resolution."""
+    record = Mock()
+    record.cm_id = cm_id
+    record.start_date = start_date
+    record.end_date = end_date
+    record.session_type = session_type
+    record.year = year
+    return record
+
+
 def _route_collections(collection_data: dict[str, list[Mock]]) -> Any:
     """Create a mock_pb.collection side_effect that routes by collection name."""
 
@@ -1536,6 +1553,251 @@ class TestInferLocationFromMappings:
         ]
         result = GeoService._infer_location_from_mappings(mappings, "School A")
         assert result.get("country") == "JP"
+
+
+# ============================================================================
+# Duration Filtering Without active_only Tests
+# ============================================================================
+
+
+class TestDurationFilteringWithoutActiveOnly:
+    """Test that duration filtering works even when active_only=False.
+
+    The duration parameter should filter to attendees in matching sessions
+    regardless of the active_only flag. active_only controls the active enrollee
+    filter; duration controls WHICH sessions to include. These are orthogonal.
+    """
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_get_gaps_duration_without_active_only(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """get_gaps with duration but active_only=False should still filter by duration sessions."""
+        # p1 is in a 1-week session, p2 is in a 2-week session
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),
+            _make_mapping_record("oak valley middle", "Oak Valley Middle", person="p2"),
+        ]
+        # 1-week session (7 days) and 2-week session (14 days)
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+        ]
+        # p1 attends session 1001 (1-week), p2 attends session 1002 (2-week)
+        attendees = [
+            _make_attendee_record("p1"),  # in 1-week session
+            _make_attendee_record("p2"),  # in 2-week session
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "sessions": sessions,
+                    "attendees": attendees,
+                }
+            )
+
+            # Request 1-week duration, active_only=False
+            result = await service.get_gaps("school", 2025, active_only=False, duration="1-week")
+
+        # Only p1 is in a 1-week session, so only Riverside Elementary should appear
+        all_gap_names = [g.name for g in result.non_canonical_ungrouped + result.non_canonical_grouped]
+        assert "Riverside Elementary" in all_gap_names
+        # Oak Valley Middle (p2 only, 2-week session) should be excluded
+        assert "Oak Valley Middle" not in all_gap_names
+
+    @pytest.mark.asyncio
+    async def test_search_canonicals_duration_without_active_only(
+        self, service: GeoService, mock_pb: MagicMock
+    ) -> None:
+        """search_canonicals with duration but active_only=False should filter by duration sessions."""
+        mappings = [
+            _make_mapping_record("park day", "Park Day School", person="p1"),
+            _make_mapping_record("park day", "Park Day School", person="p2"),
+            _make_mapping_record("park day", "Park Day School", person="p3"),
+        ]
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+        ]
+        # Only p1 and p2 are in 1-week sessions
+        attendees = [
+            _make_attendee_record("p1"),
+            _make_attendee_record("p2"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {"park day school": "Park Day School"}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "sessions": sessions,
+                    "attendees": attendees,
+                }
+            )
+
+            result = await service.search_canonicals("school", "park", 2025, active_only=False, duration="1-week")
+
+        # Only p1 and p2 are in 1-week sessions, so camper_count should be 2
+        assert result.results[0].camper_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_sources_duration_without_active_only(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """get_sources with duration but active_only=False should filter by duration sessions."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.95, person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.93, person="p2"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.90, person="p3"),
+        ]
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+        ]
+        # Only p1 and p2 are in 1-week sessions
+        attendees = [
+            _make_attendee_record("p1"),
+            _make_attendee_record("p2"),
+        ]
+
+        with patch("api.services.geo_service._load_static_location") as mock_location:
+            mock_location.return_value = {}
+
+            mock_pb.collection.return_value.get_full_list.side_effect = [
+                mappings,
+                sessions,
+                attendees,
+            ]
+
+            result = await service.get_sources(
+                "school", "Riverside Elementary", 2025, active_only=False, duration="1-week"
+            )
+
+        # Only p1 and p2 are in 1-week sessions
+        assert result.sources[0].count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_source_mappings_duration_without_active_only(
+        self, service: GeoService, mock_pb: MagicMock
+    ) -> None:
+        """get_source_mappings with duration but active_only=False should filter by duration sessions."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p3"),
+        ]
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+        ]
+        # Only p1 is in a 1-week session
+        attendees = [
+            _make_attendee_record("p1"),
+        ]
+
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            mappings,
+            sessions,
+            attendees,
+        ]
+
+        result = await service.get_source_mappings("school", 2025, active_only=False, duration="1-week")
+
+        sources = result.mappings["Riverside Elementary"]
+        assert sources[0].count == 1  # only p1
+
+    @pytest.mark.asyncio
+    async def test_duration_no_matching_sessions_returns_empty(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """When duration matches no sessions, all data should be filtered out."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+        ]
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week only
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                    "sessions": sessions,
+                    "attendees": [],
+                }
+            )
+
+            # Request 1-week but only 2-week sessions exist
+            result = await service.get_gaps("school", 2025, active_only=False, duration="1-week")
+
+        assert result.total_gaps == 0
+
+    @pytest.mark.asyncio
+    async def test_no_duration_without_active_only_returns_all(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """When neither active_only nor duration is set, all mappings should be returned unfiltered."""
+        mappings = [
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p2"),
+            _make_mapping_record("riverside elem", "Riverside Elementary", person="p3"),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": mappings,
+                    "geo_overrides": [],
+                }
+            )
+
+            result = await service.get_gaps("school", 2025, active_only=False)
+
+        # All 3 should be counted
+        assert result.non_canonical_ungrouped[0].count == 3
+
+
+class TestInferLocationFromMappingsExtended:
+    """Additional tests for _infer_location_from_mappings (continued)."""
 
     def test_ignores_unrelated_mappings(self) -> None:
         """Should only consider mappings with matching normalized_value."""
