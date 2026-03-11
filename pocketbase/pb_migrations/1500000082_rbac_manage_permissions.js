@@ -18,10 +18,9 @@ migrate((app) => {
     const records = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
     if (records.length === 0) return null
     const role = records[0]
-    const perms = role.get("permissions") || []
+    const perms = Array.from(role.get("permissions") || [])
     if (!perms.includes(perm)) {
-      perms.push(perm)
-      role.set("permissions", perms)
+      role.set("permissions", [...perms, perm])
       app.save(role)
     }
     return role.id
@@ -51,7 +50,7 @@ migrate((app) => {
       const permSet = new Set()
       for (const aur of allUserRoles) {
         const role = app.findRecordById(rolesCol.id, aur.get("role"))
-        for (const p of (role.get("permissions") || [])) {
+        for (const p of Array.from(role.get("permissions") || [])) {
           permSet.add(p)
         }
       }
@@ -87,7 +86,7 @@ migrate((app) => {
     const records = app.findRecordsByFilter(rolesCol.id, `slug = "${slug}"`, "", 1, 0)
     if (records.length === 0) return
     const role = records[0]
-    const perms = (role.get("permissions") || []).filter((p) => p !== perm)
+    const perms = Array.from(role.get("permissions") || []).filter((p) => p !== perm)
     role.set("permissions", perms)
     app.save(role)
   }
