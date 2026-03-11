@@ -143,10 +143,10 @@ class TestCongregationNormalizationBulk:
 
 
 class TestStateAwareCongregationNormalization:
-    def test_congregation_accepts_state_param(self) -> None:
+    def test_congregation_normalizes_known_value(self) -> None:
         from bunking.geo_normalizer.normalizer import normalize_congregation_value
 
-        result = normalize_congregation_value("Temple Isaiah", state="CA")
+        result = normalize_congregation_value("Temple Isaiah")
         assert result
 
     def test_normalize_congregations_batch_with_state(self) -> None:

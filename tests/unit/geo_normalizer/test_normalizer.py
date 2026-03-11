@@ -35,15 +35,15 @@ class TestCityLookupMultiVariant:
         lookup2 = _load_city_lookup_multi()
         assert lookup1 is lookup2
 
-    def test_flattened_lookup_has_city_st_keys(self) -> None:
-        """Flattened lookup should have 'city, st' lowercase keys."""
-        from bunking.geo_normalizer.normalizer import _load_city_lookup
+    def test_multi_variant_lookup_has_city_st_values(self) -> None:
+        """Multi-variant lookup should have 'City, ST' formatted values."""
+        from bunking.geo_normalizer.normalizer import _load_city_lookup_multi
 
-        lookup = _load_city_lookup()
-        # Multi-variant city: must have state-qualified keys
-        assert "lafayette, ca" in lookup or "lafayette, la" in lookup
-        # Single-variant city: also has bare name key
-        assert "oakland" in lookup or "oakland, ca" in lookup
+        lookup = _load_city_lookup_multi()
+        # Multi-variant city: must have state-qualified variants
+        assert "lafayette" in lookup
+        for variant in lookup["lafayette"]:
+            assert ", " in variant
 
 
 class TestStateAwareCityNormalization:
@@ -541,63 +541,62 @@ class TestStaticCityList:
 
     def test_city_list_loads_successfully(self) -> None:
         """The city list should load without errors."""
-        from bunking.geo_normalizer.normalizer import _load_city_lookup
+        from bunking.geo_normalizer.normalizer import _load_city_lookup_multi
 
-        lookup = _load_city_lookup()
+        lookup = _load_city_lookup_multi()
 
         assert isinstance(lookup, dict)
         assert len(lookup) > 0
 
     def test_city_list_contains_california_cities(self) -> None:
         """The city list should contain major California cities."""
-        from bunking.geo_normalizer.normalizer import _load_city_lookup
+        from bunking.geo_normalizer.normalizer import _load_city_lookup_multi
 
-        lookup = _load_city_lookup()
+        lookup = _load_city_lookup_multi()
 
-        # Major CA cities should be present (as "city, ca" keys)
         expected = [
-            "san francisco, ca",
-            "los angeles, ca",
-            "oakland, ca",
-            "berkeley, ca",
-            "palo alto, ca",
-            "san jose, ca",
-            "sacramento, ca",
-            "san diego, ca",
+            "san francisco",
+            "los angeles",
+            "oakland",
+            "berkeley",
+            "palo alto",
+            "san jose",
+            "sacramento",
+            "san diego",
         ]
 
         for city in expected:
             assert city in lookup, f"Expected {city} in lookup"
+            assert any("CA" in v for v in lookup[city]), f"Expected CA variant for {city}"
 
     def test_city_list_contains_major_us_cities(self) -> None:
         """The city list should contain major US cities outside California."""
-        from bunking.geo_normalizer.normalizer import _load_city_lookup
+        from bunking.geo_normalizer.normalizer import _load_city_lookup_multi
 
-        lookup = _load_city_lookup()
+        lookup = _load_city_lookup_multi()
 
-        # Major non-CA cities (as "city, st" keys)
         expected = [
-            "new york, ny",
-            "chicago, il",
-            "houston, tx",
-            "phoenix, az",
-            "seattle, wa",
-            "denver, co",
-            "boston, ma",
+            "new york",
+            "chicago",
+            "houston",
+            "phoenix",
+            "seattle",
+            "denver",
+            "boston",
         ]
 
         for city in expected:
             assert city in lookup, f"Expected {city} in lookup"
 
-    def test_lookup_returns_proper_case(self) -> None:
+    def test_lookup_returns_city_st_format(self) -> None:
         """Lookup values should have proper City, ST format."""
-        from bunking.geo_normalizer.normalizer import _load_city_lookup
+        from bunking.geo_normalizer.normalizer import _load_city_lookup_multi
 
-        lookup = _load_city_lookup()
+        lookup = _load_city_lookup_multi()
 
-        assert lookup.get("san francisco, ca") == "San Francisco, CA"
-        assert lookup.get("los angeles, ca") == "Los Angeles, CA"
-        assert lookup.get("new york, ny") == "New York, NY"
+        assert "San Francisco, CA" in lookup["san francisco"]
+        assert "Los Angeles, CA" in lookup["los angeles"]
+        assert "New York, NY" in lookup["new york"]
 
 
 class TestCityAliases:

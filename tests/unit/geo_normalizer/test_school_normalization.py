@@ -319,10 +319,10 @@ class TestSchoolNormalizationGradeAnnotation:
 
 
 class TestStateAwareSchoolNormalization:
-    def test_school_accepts_state_param(self) -> None:
+    def test_school_normalizes_known_value(self) -> None:
         from bunking.geo_normalizer.normalizer import normalize_school_value
 
-        result = normalize_school_value("Acalanes High School", state="CA")
+        result = normalize_school_value("Acalanes High School")
         assert result
 
     def test_normalize_schools_batch_with_state(self) -> None:

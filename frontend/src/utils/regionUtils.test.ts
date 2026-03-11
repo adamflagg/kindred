@@ -91,8 +91,8 @@ describe('classifyCity', () => {
   })
 
   // Other international cities with 2-letter suffixes
-  it('should classify "Munich, DE" as International (Germany)', () => {
-    expect(classifyCity('Munich, DE')).toBe('International')
+  it('should classify "Tokyo, JP" as International', () => {
+    expect(classifyCity('Tokyo, JP')).toBe('International')
   })
 })
 

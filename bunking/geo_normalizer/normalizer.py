@@ -36,7 +36,6 @@ SCHOOL_FUZZY_THRESHOLD = 85
 CONGREGATION_FUZZY_THRESHOLD = 80
 
 # Module-level caches for city lookup (loaded once on first use)
-_CITY_LOOKUP: dict[str, str] | None = None
 _CITY_LOOKUP_MULTI: dict[str, list[str]] | None = None
 _CITY_LOCATION: dict[str, dict[str, str]] | None = None
 
@@ -80,27 +79,6 @@ def _load_city_location() -> dict[str, dict[str, str]]:
     data = json.loads(data_file.read_text())
     _CITY_LOCATION = data.get("location", {})
     return _CITY_LOCATION
-
-
-def _load_city_lookup() -> dict[str, str]:
-    """Flattened city lookup for backwards compat. Returns 'city, st' -> 'City, ST'.
-
-    For single-variant cities, also includes bare name key.
-    """
-    global _CITY_LOOKUP
-    if _CITY_LOOKUP is not None:
-        return _CITY_LOOKUP
-
-    multi = _load_city_lookup_multi()
-    flat: dict[str, str] = {}
-    for name_lower, variants in multi.items():
-        for canonical in variants:
-            flat[canonical.lower()] = canonical
-        if len(variants) == 1:
-            flat[name_lower] = variants[0]
-
-    _CITY_LOOKUP = flat
-    return flat
 
 
 def _load_school_lookup() -> tuple[dict[str, str], dict[str, list[float]]]:
@@ -240,11 +218,12 @@ def normalize_city_value(city: str, state: str = "") -> tuple[str, float]:
         else:
             return canonical, 0.8  # fuzzy, no state context
 
-    # No match
+    # No match - unknown city
     title = city.title()
     if effective_state:
         return f"{title}, {effective_state}", 0.5
-    return title, 0.5
+    # No state context: very low confidence (unknown city, can't determine region)
+    return title, 0.3
 
 
 def _pick_variant(variants: list[str], state: str, location: dict[str, dict[str, str]]) -> tuple[str, bool]:
@@ -308,12 +287,12 @@ def _school_match_has_token_overlap(query: str, candidate: str) -> bool:
     return bool(query_tokens & candidate_tokens)
 
 
-def normalize_school_value(school: str, state: str = "") -> str:
+def normalize_school_value(school: str) -> str:
     """Normalize a single school value using canonical lookup.
 
     Uses a static list of California schools (from NCES data) to resolve
     names to canonical spelling. Falls back to the original value for
-    unknown schools. Uses token_sort_ratio with threshold 80 to accommodate
+    unknown schools. Uses token_sort_ratio with threshold 85 to accommodate
     common variations like "Elem" vs "Elementary".
 
     Grade annotations like "(2nd)" are stripped before matching to prevent
@@ -354,7 +333,7 @@ def normalize_school_value(school: str, state: str = "") -> str:
     return stripped
 
 
-def normalize_congregation_value(congregation: str, state: str = "") -> str:
+def normalize_congregation_value(congregation: str) -> str:
     """Normalize a single congregation value using canonical lookup.
 
     Uses a curated list of Bay Area congregations to resolve names to
@@ -563,8 +542,8 @@ def normalize_schools(
     canonical_values: dict[str, str] = {}  # normalized -> canonical (from lookup)
     unknown_values: list[str] = []  # values not in canonical lookup
 
-    for original, item_state in items:
-        normalized = normalize_school_value(original, state=item_state)
+    for original, _state in items:
+        normalized = normalize_school_value(original)
         if not normalized:
             continue
         normalized_map[original] = normalized
@@ -704,8 +683,8 @@ def normalize_congregations(
     normalized_map: dict[str, str] = {}
     normalized_values: list[str] = []
 
-    for original, item_state in items:
-        normalized = normalize_congregation_value(original, state=item_state)
+    for original, _state in items:
+        normalized = normalize_congregation_value(original)
         if normalized:
             normalized_map[original] = normalized
             normalized_values.append(normalized)

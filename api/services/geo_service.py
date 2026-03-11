@@ -42,6 +42,7 @@ logger = get_logger(__name__)
 # ============================================================================
 
 _STATIC_CACHE: dict[str, dict[str, Any]] = {}
+_STATIC_LOOKUP_CACHE: dict[str, dict[str, str]] = {}
 
 
 def _load_json_file(category: str) -> dict[str, Any]:
@@ -69,7 +70,11 @@ def _load_static_lookup(category: str) -> dict[str, str]:
 
     For cities, the JSON uses multi-variant arrays (e.g. "lafayette": ["Lafayette, CA", ...]).
     This function flattens them so each "City, ST" canonical is keyed by its lowercase form.
+    Results are cached at module level to avoid rebuilding the dict on each call.
     """
+    if category in _STATIC_LOOKUP_CACHE:
+        return _STATIC_LOOKUP_CACHE[category]
+
     data = _load_json_file(category)
     raw_lookup: dict[str, Any] = data.get("lookup", {})
 
@@ -82,6 +87,7 @@ def _load_static_lookup(category: str) -> dict[str, str]:
         else:
             result[key] = value
 
+    _STATIC_LOOKUP_CACHE[category] = result
     return result
 
 

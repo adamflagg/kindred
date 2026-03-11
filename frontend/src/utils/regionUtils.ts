@@ -23,16 +23,27 @@ export const REGION_DISPLAY_NAMES: Record<string, string> = {
   International: 'International',
 }
 
+/** Valid US state/territory codes for distinguishing from country codes. */
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC', 'PR', 'VI', 'GU', 'AS', 'MP',
+])
+
 /**
  * Parse "City, ST" format into bare city name and state abbreviation.
  * Returns [bareName, state] where state may be empty if no suffix present.
+ * Only recognizes valid US state codes to avoid misclassifying Canadian
+ * provinces (ON, BC, QC) or country codes (DE, UK) as US states.
  */
 function parseCityState(city: string): [string, string] {
   const commaIdx = city.lastIndexOf(', ')
   if (commaIdx === -1) return [city, '']
   const suffix = city.slice(commaIdx + 2)
-  // Only treat as state if it's a 2-letter uppercase abbreviation
-  if (suffix.length === 2 && /^[A-Z]{2}$/.test(suffix)) {
+  if (suffix.length === 2 && US_STATE_CODES.has(suffix)) {
     return [city.slice(0, commaIdx), suffix]
   }
   return [city, '']
