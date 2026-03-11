@@ -90,7 +90,6 @@ describe('ConfigTab', () => {
     expect(screen.getAllByRole('link', { name: /bunk optimizer/i })).toHaveLength(2)
     expect(screen.getAllByRole('link', { name: /request processing/i })).toHaveLength(2)
     expect(screen.getAllByRole('link', { name: /data & history/i })).toHaveLength(2)
-    expect(screen.getAllByRole('link', { name: /registration/i })).toHaveLength(2)
   })
 
   it('category links point to correct paths', () => {
@@ -105,9 +104,6 @@ describe('ConfigTab', () => {
     }
     for (const link of screen.getAllByRole('link', { name: /data & history/i })) {
       expect(link).toHaveAttribute('href', '/admin/config/history')
-    }
-    for (const link of screen.getAllByRole('link', { name: /registration/i })) {
-      expect(link).toHaveAttribute('href', '/admin/config/registration')
     }
   })
 

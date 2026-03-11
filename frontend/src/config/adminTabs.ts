@@ -1,17 +1,8 @@
 import type { LucideIcon } from 'lucide-react'
-import {
-  RefreshCw,
-  Sliders,
-  FileSpreadsheet,
-  Workflow,
-  Database,
-  CalendarDays,
-  MapPin,
-} from 'lucide-react'
-import { Permission } from '../constants/permissions'
+import { RefreshCw, Sliders, Workflow, Database } from 'lucide-react'
 
 export interface AdminTabConfig {
-  id: 'sync' | 'config' | 'sheets' | 'geo'
+  id: 'sync' | 'config'
   label: string
   path: string
   icon: LucideIcon
@@ -33,20 +24,6 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     path: '/admin/config',
     icon: Sliders,
     requiredPermission: 'admin',
-  },
-  {
-    id: 'sheets',
-    label: 'Sheets',
-    path: '/admin/sheets',
-    icon: FileSpreadsheet,
-    requiredPermission: 'admin',
-  },
-  {
-    id: 'geo',
-    label: 'Geo Data',
-    path: '/admin/geo',
-    icon: MapPin,
-    requiredPermission: Permission.METRICS_GEO,
   },
 ]
 
@@ -79,12 +56,5 @@ export const CONFIG_CATEGORIES: ConfigCategoryDef[] = [
     path: '/admin/config/history',
     icon: Database,
     description: 'Historical context & tracking',
-  },
-  {
-    id: 'registration',
-    name: 'Registration',
-    path: '/admin/config/registration',
-    icon: CalendarDays,
-    description: 'Registration dates & budgets',
   },
 ]

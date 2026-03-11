@@ -43,16 +43,18 @@ export function sourceBadgeClasses(source: string): string {
   }
 }
 
+/** Sub-tab slugs — paths are relative, resolved at render time via geoBasePath(). */
 export const SUB_TABS = [
-  { id: 'cities', label: 'Cities', path: '/admin/geo/cities', icon: Building2 },
-  { id: 'schools', label: 'Schools', path: '/admin/geo/schools', icon: School },
-  {
-    id: 'congregations',
-    label: 'Congregations',
-    path: '/admin/geo/congregations',
-    icon: Landmark,
-  },
+  { id: 'cities', label: 'Cities', slug: 'cities', icon: Building2 },
+  { id: 'schools', label: 'Schools', slug: 'schools', icon: School },
+  { id: 'congregations', label: 'Congregations', slug: 'congregations', icon: Landmark },
 ] as const
+
+/** Detect base path from current URL (works under /admin/geo or /manage/geo). */
+export function geoBasePath(pathname: string): string {
+  const match = pathname.match(/^(\/(?:admin|manage)\/geo)/)
+  return match?.[1] ?? '/manage/geo'
+}
 
 /** Map sub-tab id to API category value */
 export const SUB_TAB_TO_CATEGORY: Record<string, GeoCategory> = {
@@ -75,8 +77,9 @@ export function formatLocation(
 }
 
 export function getActiveSubTab(pathname: string): string {
+  const base = geoBasePath(pathname)
   for (const tab of SUB_TABS) {
-    if (pathname.startsWith(tab.path)) return tab.id
+    if (pathname.startsWith(`${base}/${tab.slug}`)) return tab.id
   }
   return 'cities'
 }

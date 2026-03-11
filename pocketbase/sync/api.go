@@ -297,7 +297,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 	// Multi-workbook export endpoint (per-year workbooks)
 	e.Router.POST("/api/custom/sync/multi-workbook-export",
-		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+		requirePermission("sheets.export", func(e *core.RequestEvent) error {
 			return handleMultiWorkbookExport(e, scheduler)
 		}))
 

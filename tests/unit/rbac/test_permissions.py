@@ -14,6 +14,9 @@ class TestPermissionConstants:
             "bunking.manage",
             "metrics.financial",
             "metrics.geo",
+            "registration.manage",
+            "sheets.export",
+            "users.manage",
         }
         assert expected == ALL_PERMISSIONS
 
@@ -21,6 +24,9 @@ class TestPermissionConstants:
         assert Permission.BUNKING_MANAGE == "bunking.manage"
         assert Permission.METRICS_FINANCIAL == "metrics.financial"
         assert Permission.METRICS_GEO == "metrics.geo"
+        assert Permission.REGISTRATION_MANAGE == "registration.manage"
+        assert Permission.SHEETS_EXPORT == "sheets.export"
+        assert Permission.USERS_MANAGE == "users.manage"
 
     def test_no_duplicate_values(self):
         values = [getattr(Permission, a) for a in dir(Permission) if a.isupper()]

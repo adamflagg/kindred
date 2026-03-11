@@ -12,6 +12,9 @@ export const Permission = {
   BUNKING_MANAGE: 'bunking.manage',
   METRICS_FINANCIAL: 'metrics.financial',
   METRICS_GEO: 'metrics.geo',
+  REGISTRATION_MANAGE: 'registration.manage',
+  SHEETS_EXPORT: 'sheets.export',
+  USERS_MANAGE: 'users.manage',
 } as const
 
 export type PermissionValue = (typeof Permission)[keyof typeof Permission]

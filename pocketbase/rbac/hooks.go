@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -77,6 +79,57 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 	return nil
 }
 
+const permRegistrationManage = "registration.manage"
+
+// extractBusinessCategory extracts metadata.business_category from a raw value.
+// PocketBase decodes JSON fields into map[string]any, so a direct assertion suffices.
+func extractBusinessCategory(raw any) string {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	cat, _ := m["business_category"].(string)
+	return cat
+}
+
+// guardConfigWrite ensures non-admin users can only write registration-category configs.
+// Admin users bypass this check (they can write any config).
+// Non-admin users with registration.manage can only write configs where
+// metadata.business_category is "registration" — both on the existing record
+// AND in the incoming request body (to prevent category mutation).
+func guardConfigWrite(e *core.RecordRequestEvent) error {
+	if e.Auth == nil {
+		return apis.NewUnauthorizedError("Authentication required", nil)
+	}
+
+	// Admin bypass
+	if e.Auth.GetBool("is_admin") {
+		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+	}
+
+	// Non-admin must have registration.manage permission
+	if !slices.Contains(e.Auth.GetStringSlice("cached_permissions"), permRegistrationManage) {
+		return apis.NewForbiddenError("Missing registration.manage permission", nil)
+	}
+
+	// Check the existing record's business_category
+	if extractBusinessCategory(e.Record.Get("metadata")) != "registration" {
+		return apis.NewForbiddenError("Admin access required for this config category", nil)
+	}
+
+	// Also check the incoming request body to prevent category mutation
+	info, err := e.RequestInfo()
+	if err == nil && info != nil && info.Body != nil {
+		if newMeta, ok := info.Body["metadata"]; ok {
+			if newCat := extractBusinessCategory(newMeta); newCat != "" && newCat != "registration" {
+				return apis.NewForbiddenError("Cannot change config category", nil)
+			}
+		}
+	}
+
+	return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+}
+
 // RegisterHooks registers RBAC-related hooks on the PocketBase app.
 func RegisterHooks(app *pocketbase.PocketBase) {
 	// On user_roles create: recompute affected user's permissions
@@ -114,6 +167,11 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 		}
 		return e.Next()
 	})
+
+	// Guard config writes: non-admin users with registration.manage can only
+	// write to configs with business_category = "registration"
+	app.OnRecordCreateRequest("config").BindFunc(guardConfigWrite)
+	app.OnRecordUpdateRequest("config").BindFunc(guardConfigWrite)
 
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)

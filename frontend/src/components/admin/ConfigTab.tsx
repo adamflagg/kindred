@@ -6,10 +6,6 @@ import { useSolverConfig, type ConfigSection } from '../../hooks/useSolverConfig
 import { useUpdateSolverConfig, useResetSolverConfig } from '../../hooks/useSolverConfigMutation'
 import { SectionCard } from './SectionCard'
 import { ScaleGuideSidebar } from './ScaleGuideSidebar'
-import { RegistrationDatesConfig } from './RegistrationDatesConfig'
-import { GradeEligibilityConfig } from './GradeEligibilityConfig'
-import { SessionBudgetConfig } from './SessionBudgetConfig'
-import { PopulateFromPreviousYear } from './PopulateFromPreviousYear'
 import { CONFIG_CATEGORIES } from '../../config/adminTabs'
 
 export function ConfigTab() {
@@ -29,7 +25,6 @@ export function ConfigTab() {
       solver: [],
       processing: [],
       history: [],
-      registration: [],
     }
 
     sections.forEach((section) => {
@@ -240,33 +235,24 @@ export function ConfigTab() {
         </div>
 
         {/* Sections */}
-        {activeCategory === 'registration' ? (
-          <>
-            <PopulateFromPreviousYear />
-            <RegistrationDatesConfig />
-            <GradeEligibilityConfig />
-            <SessionBudgetConfig />
-          </>
-        ) : (
-          <div className="space-y-4">
-            {filteredSections.map((section, index) => (
-              <SectionCard
-                key={section.id}
-                section={section}
-                editedValues={editedValues}
-                onValueChange={handleValueChange}
-                defaultExpanded={index < 3}
-              />
-            ))}
+        <div className="space-y-4">
+          {filteredSections.map((section, index) => (
+            <SectionCard
+              key={section.id}
+              section={section}
+              editedValues={editedValues}
+              onValueChange={handleValueChange}
+              defaultExpanded={index < 3}
+            />
+          ))}
 
-            {filteredSections.length === 0 && (
-              <div className="text-muted-foreground py-12 text-center">
-                <Search className="mx-auto mb-3 h-10 w-10 opacity-50" />
-                <p className="text-base">No settings found</p>
-              </div>
-            )}
-          </div>
-        )}
+          {filteredSections.length === 0 && (
+            <div className="text-muted-foreground py-12 text-center">
+              <Search className="mx-auto mb-3 h-10 w-10 opacity-50" />
+              <p className="text-base">No settings found</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Floating Action Buttons */}

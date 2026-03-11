@@ -35,6 +35,7 @@ import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
+import { MANAGE_TABS } from '../config/manageTabs'
 import { useTour } from '../hooks/useTour'
 import { TourReplayButton } from '../components/tour'
 
@@ -44,6 +45,7 @@ export const AppLayout = () => {
   const { theme, toggleTheme } = useTheme()
   const { user, isAuthenticated, logout } = useAuth()
   const { hasPermission, isAdmin } = usePermissions()
+  const canAccessManage = MANAGE_TABS.some((tab) => hasPermission(tab.requiredPermission))
   const { fetchWithAuth } = useApiWithAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
@@ -263,6 +265,14 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
+                {canAccessManage && (
+                  <Link
+                    to="/manage"
+                    className={`nav-link-lodge ${isActiveRoute('/manage') ? 'active' : ''}`}
+                  >
+                    Manage
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"
@@ -504,6 +514,19 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
+                {canAccessManage && (
+                  <Link
+                    to="/manage"
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
+                      isActiveRoute('/manage')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Manage
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"
