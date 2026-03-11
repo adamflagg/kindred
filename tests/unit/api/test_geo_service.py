@@ -1589,13 +1589,14 @@ class TestDurationFilteringWithoutActiveOnly:
         ]
         # 1-week session (7 days) and 2-week session (14 days)
         sessions = [
-            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
-            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21"),  # 1-week (7 days)
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-28"),  # 2-week (14 days)
         ]
-        # p1 attends session 1001 (1-week), p2 attends session 1002 (2-week)
+        # Only p1 attends 1-week session 1001; p2 is only in the 2-week session
+        # (mock returns all attendees regardless of filter, so we only include
+        # attendees who would match the duration-filtered query)
         attendees = [
-            _make_attendee_record("p1"),  # in 1-week session
-            _make_attendee_record("p2"),  # in 2-week session
+            _make_attendee_record("p1"),  # in 1-week session only
         ]
 
         with (
@@ -1636,8 +1637,8 @@ class TestDurationFilteringWithoutActiveOnly:
             _make_mapping_record("park day", "Park Day School", person="p3"),
         ]
         sessions = [
-            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
-            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21"),  # 1-week (7 days)
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-28"),  # 2-week (14 days)
         ]
         # Only p1 and p2 are in 1-week sessions
         attendees = [
@@ -1677,8 +1678,8 @@ class TestDurationFilteringWithoutActiveOnly:
             _make_mapping_record("riverside elem", "Riverside Elementary", confidence=0.90, person="p3"),
         ]
         sessions = [
-            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
-            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21"),  # 1-week (7 days)
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-28"),  # 2-week (14 days)
         ]
         # Only p1 and p2 are in 1-week sessions
         attendees = [
@@ -1713,8 +1714,8 @@ class TestDurationFilteringWithoutActiveOnly:
             _make_mapping_record("riverside elem", "Riverside Elementary", person="p3"),
         ]
         sessions = [
-            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-22"),  # 1-week
-            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21"),  # 1-week (7 days)
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-28"),  # 2-week (14 days)
         ]
         # Only p1 is in a 1-week session
         attendees = [
@@ -1739,7 +1740,7 @@ class TestDurationFilteringWithoutActiveOnly:
             _make_mapping_record("riverside elem", "Riverside Elementary", person="p1"),
         ]
         sessions = [
-            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-29"),  # 2-week only
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-28"),  # 2-week only (14 days)
         ]
 
         with (
