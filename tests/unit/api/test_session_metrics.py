@@ -925,3 +925,21 @@ class TestFilterAttendeesBySessionCmIds:
         # session_cm_id=101 AND session_cm_ids={102} -> nothing passes both
         result = filter_attendees_by_session(attendees, None, session_cm_id=101, session_cm_ids={102})
         assert len(result) == 0
+
+    def test_session_cm_ids_includes_ag_sessions_via_passthrough(self) -> None:
+        """AG sessions should pass through the session_cm_ids filter via ag_session_ids,
+        just like they do for the session_cm_id (singular) filter."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        # Attendee is in AG session 301 (child of main session 101)
+        ag_attendee = self._make_attendee(301, "main")
+        main_attendee = self._make_attendee(101, "main")
+
+        result = filter_attendees_by_session(
+            [ag_attendee, main_attendee],
+            None,
+            session_cm_ids={101, 102},
+            ag_session_ids={301},
+        )
+        # Both should pass: 101 is in the set, 301 is an AG child
+        assert len(result) == 2
