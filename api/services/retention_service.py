@@ -245,6 +245,7 @@ class RetentionService:
             session_types,
             base_session_cm_id,
             aged_out_person_ids=aged_out_person_ids,
+            session_cm_ids=duration_session_ids_base,
         )
 
         # Session flow: Sankey diagram data showing session-to-session transitions
@@ -536,6 +537,7 @@ class RetentionService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         aged_out_person_ids: set[int] | None = None,
+        session_cm_ids: set[int] | None = None,
     ) -> list[RetentionByPriorSession]:
         """Build session breakdown for base year (Chart 2: "Retention by 2025 Session").
 
@@ -550,6 +552,7 @@ class RetentionService:
             session_types: If set, only show prior sessions matching these types.
             session_cm_id: If set, only show the prior session with this cm_id.
             aged_out_person_ids: Person IDs to exclude (aged out of eligible sessions).
+            session_cm_ids: If set, only include attendees in these sessions (duration filter).
 
         Returns:
             List of RetentionByPriorSession models.
@@ -579,6 +582,10 @@ class RetentionService:
             if raw_sid is None:
                 continue
             sid = int(raw_sid)
+
+            # Filter by duration group if specified
+            if session_cm_ids is not None and sid not in session_cm_ids:
+                continue
 
             # Merge AG into parent
             target_sid = ag_parent_map.get(sid, sid)
