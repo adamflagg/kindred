@@ -66,10 +66,14 @@ describe('Users page access control', () => {
     expect(screen.getByText('System Access')).toBeTruthy()
   })
 
-  it('does not show role management for users without users.manage', () => {
+  it('does not show role management for users without users.manage', async () => {
     mockHasPermission.mockReturnValue(false)
     renderUsers()
-    expect(screen.getByText('System Access')).toBeTruthy()
+    // Wait for users to load
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    // No user rows should have cursor-pointer (no one is manageable without permission)
+    const liamRow = screen.getByText('Liam Garcia').closest('[class*="flex items-center gap"]')
+    expect(liamRow?.className).not.toContain('cursor-pointer')
   })
 
   it('shows cursor pointer for non-admin, non-self users when user has users.manage', async () => {

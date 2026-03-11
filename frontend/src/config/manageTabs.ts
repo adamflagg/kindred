@@ -7,7 +7,7 @@ export interface ManageTabConfig {
   label: string
   path: string
   icon: LucideIcon
-  /** Permission required to see this tab */
+  /** Permission required to see this tab (always a real permission codename, not a sentinel like 'admin'/'authenticated') */
   requiredPermission: string
 }
 

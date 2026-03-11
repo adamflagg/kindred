@@ -110,6 +110,19 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 		return e.Next()
 	}
 
+	// Non-admin must have registration.manage permission
+	cachedPerms := e.Auth.GetStringSlice("cached_permissions")
+	hasRegistrationManage := false
+	for _, p := range cachedPerms {
+		if p == "registration.manage" {
+			hasRegistrationManage = true
+			break
+		}
+	}
+	if !hasRegistrationManage {
+		return apis.NewForbiddenError("Missing registration.manage permission", nil)
+	}
+
 	// Check the existing record's business_category
 	if extractBusinessCategory(e.Record.Get("metadata")) != "registration" {
 		return apis.NewForbiddenError("Admin access required for this config category", nil)

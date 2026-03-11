@@ -1,0 +1,1 @@
+export { ManageRegistrationPage } from './ManageRegistrationPage'
