@@ -75,7 +75,7 @@ class TestAISchemas:
 
         with pytest.raises(ValidationError) as exc_info:
             AIBunkRequestItem(
-                request_type="unknown",  # type: ignore[arg-type]  # Invalid!
+                request_type="unknown",  # Invalid!
                 target_name="Someone",
             )
         assert "request_type" in str(exc_info.value)
@@ -88,7 +88,7 @@ class TestAISchemas:
             AIBunkRequestItem(
                 request_type="bunk_with",
                 target_name="Someone",
-                source_type="invalid",  # type: ignore[arg-type]  # Invalid!
+                source_type="invalid",  # Invalid!
             )
         assert "source_type" in str(exc_info.value)
 
