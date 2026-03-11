@@ -65,9 +65,23 @@ def _load_json_file(category: str) -> dict[str, Any]:
 
 
 def _load_static_lookup(category: str) -> dict[str, str]:
-    """Load the static lookup dict (raw_lower -> canonical_name) for a category."""
+    """Load the static lookup dict (raw_lower -> canonical_name) for a category.
+
+    For cities, the JSON uses multi-variant arrays (e.g. "lafayette": ["Lafayette, CA", ...]).
+    This function flattens them so each "City, ST" canonical is keyed by its lowercase form.
+    """
     data = _load_json_file(category)
-    result: dict[str, str] = data.get("lookup", {})
+    raw_lookup: dict[str, Any] = data.get("lookup", {})
+
+    result: dict[str, str] = {}
+    for key, value in raw_lookup.items():
+        if isinstance(value, list):
+            # Multi-variant: each canonical gets its own entry
+            for canonical in value:
+                result[canonical.lower()] = canonical
+        else:
+            result[key] = value
+
     return result
 
 
