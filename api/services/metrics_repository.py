@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -386,56 +385,6 @@ class MetricsRepository:
                 seen.add(date_str)
                 dates.append(date_str)
         return dates
-
-    async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
-        """Return per-session enrollment counts for a specific snapshot date."""
-        filter_str = f'year = {year} && snapshot_datetime ~ "{snapshot_date}"'
-        snapshots = await asyncio.to_thread(
-            self.pb.collection("enrollment_snapshots").get_full_list,
-            query_params={"filter": filter_str},
-        )
-        result: dict[int, dict[str, int]] = {}
-        for s in snapshots:
-            sid = int(getattr(s, "session_cm_id", 0))
-            result[sid] = {
-                "enrolled": int(getattr(s, "enrolled_count", 0) or 0),
-                "waitlisted": int(getattr(s, "waitlisted_count", 0) or 0),
-                "cancelled": int(getattr(s, "cancelled_count", 0) or 0),
-            }
-        return result
-
-    async def fetch_snapshot_counts_for_camp_day(self, year: int, camp_date: date) -> dict[int, dict[str, int | None]]:
-        """Return per-session snapshot counts for a camp date.
-
-        Finds the last snapshot within the 9am-to-9am Pacific camp-day window.
-        PocketBase HTTP API fallback; MetricsSQLRepository overrides this with direct SQLite.
-        """
-        from api.services.camp_calendar import get_camp_day_utc_bounds
-
-        start_utc, end_utc = get_camp_day_utc_bounds(camp_date)
-
-        filter_str = f'year = {year} && snapshot_datetime >= "{start_utc}" && snapshot_datetime < "{end_utc}"'
-        snapshots = await asyncio.to_thread(
-            self.pb.collection("enrollment_snapshots").get_full_list,
-            query_params={"filter": filter_str, "sort": "-snapshot_datetime"},
-        )
-
-        # Group by session, take latest per session
-        result: dict[int, dict[str, int | None]] = {}
-        for s in snapshots:
-            sid = int(getattr(s, "session_cm_id", 0))
-            if sid in result:
-                continue  # Already have the latest for this session
-            enrolled_male = getattr(s, "enrolled_male_count", None)
-            enrolled_female = getattr(s, "enrolled_female_count", None)
-            result[sid] = {
-                "enrolled": int(getattr(s, "enrolled_count", 0) or 0),
-                "waitlisted": int(getattr(s, "waitlisted_count", 0) or 0),
-                "cancelled": int(getattr(s, "cancelled_count", 0) or 0),
-                "enrolled_boys": int(enrolled_male) if enrolled_male is not None else None,
-                "enrolled_girls": int(enrolled_female) if enrolled_female is not None else None,
-            }
-        return result
 
     async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
         """Fetch budget config for all sessions.

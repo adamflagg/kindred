@@ -1,6 +1,6 @@
 """Direct SQLite repository for metrics — bypasses PocketBase HTTP API.
 
-Drop-in replacement for MetricsRepository. All 18 methods return objects
+Drop-in replacement for MetricsRepository. All 16 methods return objects
 with the same attribute interface (SimpleNamespace + expand dicts) that
 service-layer code expects.
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -694,81 +693,7 @@ class MetricsSQLRepository:
         return [r["snapshot_datetime"].split("T")[0].split(" ")[0] for r in rows]
 
     # ------------------------------------------------------------------
-    # 16. fetch_snapshot_counts
-    # ------------------------------------------------------------------
-
-    async def fetch_snapshot_counts(self, year: int, snapshot_date: str) -> dict[int, dict[str, int]]:
-        """Return per-session enrollment counts for a specific snapshot date.
-
-        Returns {session_cm_id: {"enrolled": N, "waitlisted": N, "cancelled": N}}.
-        """
-        rows = self._query(
-            "SELECT session_cm_id, enrolled_count, waitlisted_count, cancelled_count "
-            "FROM enrollment_snapshots WHERE year = ? AND snapshot_datetime LIKE ?",
-            (year, f"{snapshot_date}%"),
-        )
-        result: dict[int, dict[str, int]] = {}
-        for r in rows:
-            sid = int(r["session_cm_id"])
-            result[sid] = {
-                "enrolled": int(r["enrolled_count"] or 0),
-                "waitlisted": int(r["waitlisted_count"] or 0),
-                "cancelled": int(r["cancelled_count"] or 0),
-            }
-        return result
-
-    # ------------------------------------------------------------------
-    # 18. fetch_snapshot_counts_for_camp_day
-    # ------------------------------------------------------------------
-
-    async def fetch_snapshot_counts_for_camp_day(self, year: int, camp_date: date) -> dict[int, dict[str, int | None]]:
-        """Return per-session snapshot counts for a camp date.
-
-        Finds the last snapshot taken during the camp day (9am Pacific to 9am next day).
-        Prefers the latest snapshot within the window for most accurate data.
-
-        Returns {session_cm_id: {"enrolled": N, "waitlisted": N, "cancelled": N,
-                 "enrolled_boys": N|None, "enrolled_girls": N|None}}.
-        """
-        from api.services.camp_calendar import get_camp_day_utc_bounds
-
-        start_utc, end_utc = get_camp_day_utc_bounds(camp_date)
-
-        # Find the LATEST snapshot within this camp day window per session
-        rows = self._query(
-            """SELECT session_cm_id, enrolled_count, waitlisted_count, cancelled_count,
-                      enrolled_male_count, enrolled_female_count
-               FROM enrollment_snapshots
-               WHERE year = ?
-                 AND snapshot_datetime >= ?
-                 AND snapshot_datetime < ?
-                 AND snapshot_datetime = (
-                     SELECT MAX(e2.snapshot_datetime)
-                     FROM enrollment_snapshots e2
-                     WHERE e2.year = enrollment_snapshots.year
-                       AND e2.session_cm_id = enrollment_snapshots.session_cm_id
-                       AND e2.snapshot_datetime >= ?
-                       AND e2.snapshot_datetime < ?
-                 )""",
-            (year, start_utc, end_utc, start_utc, end_utc),
-        )
-
-        result: dict[int, dict[str, int | None]] = {}
-        for r in rows:
-            sid = int(r["session_cm_id"])
-            enrolled_male = r["enrolled_male_count"]
-            enrolled_female = r["enrolled_female_count"]
-            result[sid] = {
-                "enrolled": int(r["enrolled_count"] or 0),
-                "waitlisted": int(r["waitlisted_count"] or 0),
-                "cancelled": int(r["cancelled_count"] or 0),
-                "enrolled_boys": int(enrolled_male) if enrolled_male is not None else None,
-                "enrolled_girls": int(enrolled_female) if enrolled_female is not None else None,
-            }
-        return result
-
-    # ------------------------------------------------------------------
-    # 17. fetch_registration_dates
+    # 16. fetch_registration_dates
     # ------------------------------------------------------------------
 
     async def fetch_registration_dates(self, year: int) -> dict[str, str]:

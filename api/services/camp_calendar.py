@@ -48,26 +48,3 @@ def camp_day_offset(camp_date: date, anchor: date) -> int:
 def camp_week_offset(camp_date: date, anchor: date) -> int:
     """Weeks between anchor and camp_date (integer division of day offset)."""
     return camp_day_offset(camp_date, anchor) // 7
-
-
-def get_camp_day_utc_bounds(camp_date: date) -> tuple[str, str]:
-    """Return UTC datetime strings for the start and end of a camp day.
-
-    A camp day runs from 9am Pacific to 9am Pacific the next day.
-    Returns (start_utc, end_utc) formatted for PocketBase/SQLite comparison.
-    """
-    start_pacific = datetime(
-        camp_date.year,
-        camp_date.month,
-        camp_date.day,
-        CAMP_DAY_START_HOUR,
-        0,
-        0,
-        tzinfo=CAMP_TZ,
-    )
-    end_pacific = start_pacific + timedelta(days=1)
-    fmt = "%Y-%m-%d %H:%M:%S.000Z"
-    return (
-        start_pacific.astimezone(UTC).strftime(fmt),
-        end_pacific.astimezone(UTC).strftime(fmt),
-    )
