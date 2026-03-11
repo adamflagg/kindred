@@ -40,7 +40,7 @@ export function buildCmIdColorMap(nodes: Array<{ cmId: number | null }>): Map<nu
  */
 export function resolveNodeColor(
   node: { cmId?: number | null },
-  cmIdColorMap: Map<number, string>,
+  cmIdColorMap: Map<number, string>
 ): string {
   if (node.cmId == null) return DID_NOT_RETURN_COLOR
   return cmIdColorMap.get(node.cmId) ?? DID_NOT_RETURN_COLOR
