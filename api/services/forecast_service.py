@@ -146,8 +146,8 @@ class ForecastService:
             anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date") or ""
             if not anchor_str:
                 raise ValueError(f"No registration anchor configured for {year}")
-            season_start = datetime.strptime(anchor_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
             anchor_date = date.fromisoformat(anchor_str.split("T")[0].split(" ")[0])
+            season_start = datetime(anchor_date.year, anchor_date.month, anchor_date.day)  # noqa: DTZ001
             target_camp_date = anchor_date + timedelta(days=day_offset)
 
             # Try camp-day-aligned snapshots first

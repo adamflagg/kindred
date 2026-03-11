@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import UTC, date, timedelta
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -730,25 +730,9 @@ class MetricsSQLRepository:
         Returns {session_cm_id: {"enrolled": N, "waitlisted": N, "cancelled": N,
                  "enrolled_boys": N|None, "enrolled_girls": N|None}}.
         """
-        from datetime import datetime as dt
+        from api.services.camp_calendar import get_camp_day_utc_bounds
 
-        from api.services.camp_calendar import CAMP_DAY_START_HOUR, CAMP_TZ
-
-        # Camp day window: 9am Pacific camp_date → 9am Pacific camp_date+1
-        camp_day_start_pacific = dt(
-            camp_date.year,
-            camp_date.month,
-            camp_date.day,
-            CAMP_DAY_START_HOUR,
-            0,
-            0,
-            tzinfo=CAMP_TZ,
-        )
-        camp_day_end_pacific = camp_day_start_pacific + timedelta(days=1)
-
-        # Convert to UTC strings for SQLite comparison
-        start_utc = camp_day_start_pacific.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
-        end_utc = camp_day_end_pacific.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+        start_utc, end_utc = get_camp_day_utc_bounds(camp_date)
 
         # Find the LATEST snapshot within this camp day window per session
         rows = self._query(

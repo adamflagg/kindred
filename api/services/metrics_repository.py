@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, date
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -410,24 +410,9 @@ class MetricsRepository:
         Finds the last snapshot within the 9am-to-9am Pacific camp-day window.
         PocketBase HTTP API fallback; MetricsSQLRepository overrides this with direct SQLite.
         """
-        from datetime import datetime as dt
-        from datetime import timedelta
+        from api.services.camp_calendar import get_camp_day_utc_bounds
 
-        from api.services.camp_calendar import CAMP_DAY_START_HOUR, CAMP_TZ
-
-        camp_day_start = dt(
-            camp_date.year,
-            camp_date.month,
-            camp_date.day,
-            CAMP_DAY_START_HOUR,
-            0,
-            0,
-            tzinfo=CAMP_TZ,
-        )
-        camp_day_end = camp_day_start + timedelta(days=1)
-
-        start_utc = camp_day_start.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
-        end_utc = camp_day_end.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+        start_utc, end_utc = get_camp_day_utc_bounds(camp_date)
 
         filter_str = f'year = {year} && snapshot_datetime >= "{start_utc}" && snapshot_datetime < "{end_utc}"'
         snapshots = await asyncio.to_thread(
