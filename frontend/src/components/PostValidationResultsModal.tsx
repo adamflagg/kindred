@@ -206,13 +206,20 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
     }
   }
 
-  // Handle no requests satisfied messages
-  const noReqMatch = msg.match(/(\d+) campers? have bunking requests but none were satisfied/i)
-  if (noReqMatch?.[1]) {
-    return {
-      primary: `${noReqMatch[1]} camper${parseInt(noReqMatch[1]) > 1 ? 's' : ''}`,
-      badge: '0 satisfied',
-      badgeColor: 'red',
+  // Handle unsatisfied request summary messages (two variants with identical display)
+  const unsatisfiedPatterns = [
+    /(\d+) campers? have bunking requests but none were satisfied/i,
+    /(\d+) campers? have valid requests but NONE are satisfied/i,
+  ]
+  for (const pattern of unsatisfiedPatterns) {
+    const match = msg.match(pattern)
+    if (match?.[1]) {
+      const count = parseInt(match[1])
+      return {
+        primary: `${count} camper${count !== 1 ? 's' : ''}`,
+        badge: '0 satisfied',
+        badgeColor: 'red' as const,
+      }
     }
   }
 
@@ -222,17 +229,6 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
     return {
       primary: `${negReqMatch[1]} "avoid" request${parseInt(negReqMatch[1]) > 1 ? 's' : ''}`,
       badge: 'violated',
-      badgeColor: 'red',
-    }
-  }
-
-  // Handle campers with unsatisfied valid requests summary
-  const unsatValidMatch = msg.match(/(\d+) campers? have valid requests but NONE are satisfied/i)
-  if (unsatValidMatch?.[1]) {
-    const count = parseInt(unsatValidMatch[1])
-    return {
-      primary: `${count} camper${count !== 1 ? 's' : ''}`,
-      badge: '0 satisfied',
       badgeColor: 'red',
     }
   }
