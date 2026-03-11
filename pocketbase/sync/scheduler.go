@@ -65,16 +65,6 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("adding daily schedule: %w", err)
 	}
 
-	// Add daily targeted sync for post-9am-Pacific enrollment snapshots
-	// 5pm UTC = 9am PST / 10am PDT — captures complete camp day (9am-to-9am boundary)
-	_, err = s.cron.AddFunc("0 17 * * *", func() {
-		slog.Info("Starting targeted enrollment snapshot sync (post-9am Pacific boundary)")
-		s.runSnapshotSync()
-	})
-	if err != nil {
-		return fmt.Errorf("adding snapshot sync schedule: %w", err)
-	}
-
 	// Add weekly schedule for global data (runs Sunday at 2am, before daily sync)
 	// These are expensive syncs (N API calls per entity) not suitable for daily runs
 	// Currently includes: person_tag_defs, custom_field_defs
@@ -150,27 +140,6 @@ func (s *Scheduler) runDailySync() {
 	} else {
 		slog.Info("Daily sync completed successfully")
 	}
-}
-
-// runSnapshotSync runs a targeted attendees refresh + enrollment snapshot capture.
-// Scheduled at 5pm UTC (9am+ Pacific) to capture the complete camp day boundary.
-func (s *Scheduler) runSnapshotSync() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	// Refresh attendee data first (blocking — must complete before snapshot)
-	if err := s.orchestrator.runSyncAndWait(ctx, "attendees"); err != nil {
-		slog.Error("Targeted snapshot sync: attendees refresh failed", "error", err)
-		return
-	}
-
-	// Capture enrollment snapshot with fresh data
-	if err := s.orchestrator.runSyncAndWait(ctx, "enrollment_snapshots"); err != nil {
-		slog.Error("Targeted snapshot sync: snapshot capture failed", "error", err)
-		return
-	}
-
-	slog.Info("Targeted snapshot sync completed successfully")
 }
 
 // runWeeklySync runs the weekly sync tasks (global data)
