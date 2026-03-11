@@ -155,18 +155,22 @@ func (s *Scheduler) runDailySync() {
 // runSnapshotSync runs a targeted attendees refresh + enrollment snapshot capture.
 // Scheduled at 5pm UTC (9am+ Pacific) to capture the complete camp day boundary.
 func (s *Scheduler) runSnapshotSync() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-	// Refresh attendee data first (source sync from CampMinder)
-	if err := s.orchestrator.RunSingleSync(ctx, "attendees"); err != nil {
+	// Refresh attendee data first (blocking — must complete before snapshot)
+	if err := s.orchestrator.runSyncAndWait(ctx, "attendees"); err != nil {
 		slog.Error("Targeted snapshot sync: attendees refresh failed", "error", err)
 		return
 	}
 
 	// Capture enrollment snapshot with fresh data
-	if err := s.orchestrator.RunSingleSync(ctx, "enrollment_snapshots"); err != nil {
+	if err := s.orchestrator.runSyncAndWait(ctx, "enrollment_snapshots"); err != nil {
 		slog.Error("Targeted snapshot sync: snapshot capture failed", "error", err)
+		return
 	}
+
+	slog.Info("Targeted snapshot sync completed successfully")
 }
 
 // runWeeklySync runs the weekly sync tasks (global data)

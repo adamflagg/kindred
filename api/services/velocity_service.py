@@ -268,38 +268,41 @@ class VelocityService:
         # Track latest snapshot per session for breakdown
         session_latest: dict[int, tuple[str, int, int]] = {}  # sid -> (date, male, female)
 
+        # First pass: deduplicate — keep latest snapshot per raw session per date.
+        raw_gender: dict[tuple[int, str], tuple[int, int, int, int]] = {}
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
-            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
             date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
+            raw_gender[(raw_sid, date_str)] = (
+                int(getattr(snap, "enrolled_male_count", 0) or 0),
+                int(getattr(snap, "enrolled_female_count", 0) or 0),
+                int(getattr(snap, "cancelled_male_count", 0) or 0),
+                int(getattr(snap, "cancelled_female_count", 0) or 0),
+            )
 
-            male_count = int(getattr(snap, "enrolled_male_count", 0) or 0)
-            female_count = int(getattr(snap, "enrolled_female_count", 0) or 0)
-            cancelled_male = int(getattr(snap, "cancelled_male_count", 0) or 0)
-            cancelled_female = int(getattr(snap, "cancelled_female_count", 0) or 0)
-
-            # Accumulate into per-gender per-session per-date
+        # Second pass: merge AG children into parent sessions
+        for (raw_sid, date_str), (male, female, canc_m, canc_f) in raw_gender.items():
+            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
             gender_session_date["M"][effective_sid][date_str] = (
-                gender_session_date["M"][effective_sid].get(date_str, 0) + male_count
+                gender_session_date["M"][effective_sid].get(date_str, 0) + male
             )
             gender_session_date["F"][effective_sid][date_str] = (
-                gender_session_date["F"][effective_sid].get(date_str, 0) + female_count
+                gender_session_date["F"][effective_sid].get(date_str, 0) + female
             )
             gender_session_cancelled["M"][effective_sid][date_str] = (
-                gender_session_cancelled["M"][effective_sid].get(date_str, 0) + cancelled_male
+                gender_session_cancelled["M"][effective_sid].get(date_str, 0) + canc_m
             )
             gender_session_cancelled["F"][effective_sid][date_str] = (
-                gender_session_cancelled["F"][effective_sid].get(date_str, 0) + cancelled_female
+                gender_session_cancelled["F"][effective_sid].get(date_str, 0) + canc_f
             )
 
             # Track latest snapshot per session for breakdown (accumulate AG)
             prev = session_latest.get(effective_sid)
             if prev is None or date_str >= prev[0]:
                 if prev is not None and date_str == prev[0]:
-                    # Same date, accumulate (AG merging)
-                    session_latest[effective_sid] = (date_str, prev[1] + male_count, prev[2] + female_count)
+                    session_latest[effective_sid] = (date_str, prev[1] + male, prev[2] + female)
                 else:
-                    session_latest[effective_sid] = (date_str, male_count, female_count)
+                    session_latest[effective_sid] = (date_str, male, female)
 
         # Filter by session_cm_id if specified
         if session_cm_id is not None:
@@ -771,14 +774,23 @@ class VelocityService:
         # Track cancelled counts per session (latest snapshot per session per date)
         session_date_cancelled: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
+        # First pass: deduplicate — keep latest snapshot per raw session per date.
+        # With always-create snapshots, multiple records may exist per session per day.
+        raw_latest: dict[tuple[int, str], tuple[int, int, int]] = {}
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
-            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
             date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
+            raw_latest[(raw_sid, date_str)] = (
+                int(snap.enrolled_count),
+                int(snap.waitlisted_count),
+                int(getattr(snap, "cancelled_count", 0) or 0),
+            )
 
-            session_date_data[effective_sid][date_str]["enrolled"] += int(snap.enrolled_count)
-            session_date_data[effective_sid][date_str]["waitlisted"] += int(snap.waitlisted_count)
-            cancelled = int(getattr(snap, "cancelled_count", 0) or 0)
+        # Second pass: merge AG children into parent sessions
+        for (raw_sid, date_str), (enrolled, waitlisted, cancelled) in raw_latest.items():
+            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
+            session_date_data[effective_sid][date_str]["enrolled"] += enrolled
+            session_date_data[effective_sid][date_str]["waitlisted"] += waitlisted
             session_date_cancelled[effective_sid][date_str] += cancelled
 
         # Filter by session if specified

@@ -1,6 +1,6 @@
 """Direct SQLite repository for metrics — bypasses PocketBase HTTP API.
 
-Drop-in replacement for MetricsRepository. All 17 methods return objects
+Drop-in replacement for MetricsRepository. All 18 methods return objects
 with the same attribute interface (SimpleNamespace + expand dicts) that
 service-layer code expects.
 """

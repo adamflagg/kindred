@@ -408,7 +408,7 @@ class MetricsRepository:
         """Return per-session snapshot counts for a camp date.
 
         Finds the last snapshot within the 9am-to-9am Pacific camp-day window.
-        Delegates to MetricsSQLRepository when available (direct SQLite).
+        PocketBase HTTP API fallback; MetricsSQLRepository overrides this with direct SQLite.
         """
         from datetime import datetime as dt
         from datetime import timedelta
