@@ -133,7 +133,7 @@ describe('useBunkStaff', () => {
       const source = sourceContent.default
 
       expect(source).toContain('session_type')
-      expect(source).toContain("'ag'")
+      expect(source).toContain('CampSessionsSessionTypeOptions.ag')
     })
 
     it('should resolve parent_id to parent session name', async () => {
