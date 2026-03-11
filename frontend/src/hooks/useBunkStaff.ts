@@ -3,9 +3,14 @@
  * session×bunk staff lookup Map.
  *
  * Used by SessionBunkHeatmap to show staff tooltips on individual cells.
- * Two-step query:
+ * Three-step query:
  * 1. Fetch staff with bunk_staff=true (expanded person for display names)
- * 2. Fetch bunk_assignments for those staff (expanded session + bunk for names)
+ * 2. Fetch camp_sessions for AG→parent session name normalization
+ * 3. Fetch bunk_assignments for those staff (expanded session + bunk for names)
+ *
+ * AG session names are normalized to their parent session names so map keys
+ * match the retention backend (which merges AG into parent sessions).
+ *
  * Returns Map<"sessionName|bunkName", BunkStaffInfo[]>
  */
 import { useQuery } from '@tanstack/react-query'
@@ -18,6 +23,7 @@ import type {
   CampSessionsResponse,
   BunksResponse,
 } from '../types/pocketbase-types'
+import { CampSessionsSessionTypeOptions } from '../types/pocketbase-types'
 
 export interface BunkStaffInfo {
   name: string
@@ -63,6 +69,18 @@ export function useBunkStaff(year: number) {
         return new Map<string, BunkStaffInfo[]>()
       }
 
+      // Step 1b: Fetch camp_sessions to resolve AG session names to parent names
+      // AG sessions are merged into parent session names in retention data,
+      // so the bunkStaff map keys must use parent names for lookups to match.
+      const sessions = await pb.collection('camp_sessions').getFullList<CampSessionsResponse>({
+        filter: `year = ${year}`,
+        fields: 'cm_id,name,session_type,parent_id',
+      })
+      const sessionNameByCmId = new Map<number, string>()
+      for (const s of sessions) {
+        if (s.cm_id) sessionNameByCmId.set(s.cm_id, s.name)
+      }
+
       // Step 2: Fetch bunk_assignments for those staff persons
       // Build filter: year = X && (person = "id1" || person = "id2" || ...)
       const personFilter = staffPersonPBIDs.map((id) => `person = "${id}"`).join(' || ')
@@ -80,11 +98,21 @@ export function useBunkStaff(year: number) {
 
       for (const assignment of assignmentRecords) {
         const expanded = assignment.expand
-        const sessionName = expanded?.session?.name
+        const session = expanded?.session
+        let sessionName = session?.name
         const bunkName = expanded?.bunk?.name
         const personPBID = assignment.person
 
         if (!sessionName || !bunkName) continue
+
+        // Normalize AG session names to parent session names
+        // so map keys match retention data (which merges AG into parent)
+        if (session?.session_type === CampSessionsSessionTypeOptions.ag && session?.parent_id) {
+          const parentName = sessionNameByCmId.get(session.parent_id)
+          if (parentName) {
+            sessionName = parentName
+          }
+        }
 
         const info = personPBIDToInfo.get(personPBID)
         if (!info) continue

@@ -119,6 +119,31 @@ describe('useBunkStaff', () => {
     })
   })
 
+  describe('AG session normalization', () => {
+    it('should fetch camp_sessions for AG parent resolution', async () => {
+      const sourceContent = await import('./useBunkStaff?raw')
+      const source = sourceContent.default
+
+      // Must fetch camp_sessions to build cm_id→name lookup for AG parents
+      expect(source).toContain("collection('camp_sessions')")
+    })
+
+    it('should check session_type for AG detection', async () => {
+      const sourceContent = await import('./useBunkStaff?raw')
+      const source = sourceContent.default
+
+      expect(source).toContain('session_type')
+      expect(source).toContain('CampSessionsSessionTypeOptions.ag')
+    })
+
+    it('should resolve parent_id to parent session name', async () => {
+      const sourceContent = await import('./useBunkStaff?raw')
+      const source = sourceContent.default
+
+      expect(source).toContain('parent_id')
+    })
+  })
+
   describe('caching options', () => {
     it('should use syncDataOptions (Tier 1 long cache)', async () => {
       const sourceContent = await import('./useBunkStaff?raw')
