@@ -68,17 +68,8 @@ export function buildStaffRetentionData(
     const [sessionName, bunkName] = key.split('|')
     if (!sessionName || !bunkName) continue
 
-    // Look up retention data - try direct match first
-    let retentionItem = retentionLookup.get(key)
-
-    // AG fallback: if bunk is AG-* and no direct match, try stripping " AG" suffix from session name
-    if (!retentionItem && bunkName.startsWith('AG-')) {
-      const parentSession = sessionName.replace(/ AG$/, '')
-      if (parentSession !== sessionName) {
-        retentionItem = retentionLookup.get(`${parentSession}|${bunkName}`)
-      }
-    }
-
+    // Look up retention data for this session|bunk key
+    const retentionItem = retentionLookup.get(key)
     if (!retentionItem) continue
 
     for (const staff of staffList) {
