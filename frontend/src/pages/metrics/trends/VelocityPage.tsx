@@ -1372,7 +1372,6 @@ export default function VelocityPage() {
                     </th>
                   </>
                 )}
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Source</th>
               </tr>
             </thead>
             <tbody>
@@ -1426,9 +1425,6 @@ export default function VelocityPage() {
                         </td>
                       </>
                     )}
-                    <td className="text-muted-foreground px-4 py-3 text-right text-xs capitalize">
-                      {week.data_source}
-                    </td>
                   </tr>
                 )
               })}
