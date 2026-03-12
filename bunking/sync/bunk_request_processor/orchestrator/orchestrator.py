@@ -55,6 +55,7 @@ from ..shared.constants import (
     UNRESOLVED_ID_MAX,
     UNRESOLVED_ID_MIN,
     is_no_preference,
+    strip_na_prefix,
 )
 from ..social.adapters import SocialGraphSignalsAdapter
 from ..social.social_graph import SocialGraph
@@ -198,6 +199,7 @@ class RequestOrchestrator:
             "duplicates_removed": 0,
             "reciprocal_pairs": 0,
             "no_preference_skipped": 0,
+            "na_prefix_stripped": 0,
             "status_resolved": 0,
             "status_pending": 0,
             "status_declined": 0,
@@ -1138,6 +1140,17 @@ class RequestOrchestrator:
                     self._stats["no_preference_skipped"] += 1
                     continue
 
+                # Strip N/A prefix if present (e.g., "N/A; their grade" -> "their grade")
+                stripped = strip_na_prefix(request_text)
+                if stripped is not None:
+                    logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
+                    self._stats["na_prefix_stripped"] += 1
+                    request_text = stripped
+                elif request_text.lower().startswith(("n/a", "na")) and len(request_text) < 8:
+                    # Short N/A-like text with no useful content (e.g., "N/A -")
+                    self._stats["no_preference_skipped"] += 1
+                    continue
+
                 # Extract staff signatures from bunking_notes before AI parsing
                 # bunking_notes has STAFFNAME (DATETIME) patterns; internal_bunk_notes does not
                 staff_metadata = None
@@ -1242,6 +1255,7 @@ class RequestOrchestrator:
             f"skipped_no_text={skipped_no_text}, "
             f"skipped_no_session={skipped_no_session}, "
             f"no_preference={self._stats.get('no_preference_skipped', 0)}, "
+            f"na_prefix_stripped={self._stats.get('na_prefix_stripped', 0)}, "
             f"parse_requests={len(parse_requests)}, "
             f"pre_parsed={len(pre_parsed_results)}"
         )

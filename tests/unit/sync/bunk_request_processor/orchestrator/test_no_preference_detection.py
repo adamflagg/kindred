@@ -349,3 +349,151 @@ class TestStripNaPrefix:
 
         result = strip_na_prefix("N/A - but if possible, put her with Sarah Chen")
         assert result == "but if possible, put her with Sarah Chen"
+
+
+class TestNaPrefixStrippingInPrepare:
+    """Test that _prepare_parse_requests strips N/A prefixes before AI."""
+
+    @pytest.mark.asyncio
+    async def test_na_prefix_stripped_before_ai(self):
+        """N/A-prefixed text should have prefix stripped, remainder sent to AI."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Test",
+                "last_name": "User",
+                "share_bunk_with": "N/A; their own grade/younger",
+                "do_not_share_bunk_with": "",
+                "bunking_notes_notes": "",
+                "internal_bunk_notes": "",
+                "ret_parent_socialize_with_best": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 1
+        assert parse_requests[0].request_text == "their own grade/younger"
+
+    @pytest.mark.asyncio
+    async def test_na_dash_prefix_stripped(self):
+        """N/A with dash should have prefix stripped."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Test",
+                "last_name": "User",
+                "share_bunk_with": "N/A- same age or older",
+                "do_not_share_bunk_with": "",
+                "bunking_notes_notes": "",
+                "internal_bunk_notes": "",
+                "ret_parent_socialize_with_best": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 1
+        assert parse_requests[0].request_text == "same age or older"
+
+    @pytest.mark.asyncio
+    async def test_na_whitespace_only_after_separator_skipped(self):
+        """N/A with separator but only whitespace after should produce no request."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Test",
+                "last_name": "User",
+                "share_bunk_with": "N/A -   ",
+                "do_not_share_bunk_with": "",
+                "bunking_notes_notes": "",
+                "internal_bunk_notes": "",
+                "ret_parent_socialize_with_best": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        # N/A with no meaningful trailing text -> no parse request
+        assert len(parse_requests) == 0
+
+    @pytest.mark.asyncio
+    async def test_normal_text_unchanged(self):
+        """Non-N/A text should pass through unchanged."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Test",
+                "last_name": "User",
+                "share_bunk_with": "Sarah Chen",
+                "do_not_share_bunk_with": "",
+                "bunking_notes_notes": "",
+                "internal_bunk_notes": "",
+                "ret_parent_socialize_with_best": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 1
+        assert parse_requests[0].request_text == "Sarah Chen"
+
+    @pytest.mark.asyncio
+    async def test_na_prefix_stripped_stat_tracked(self):
+        """Orchestrator should track count of N/A-stripped fields."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Test",
+                "last_name": "User",
+                "share_bunk_with": "N/A; their own grade",
+                "do_not_share_bunk_with": "N/A- same age",
+                "bunking_notes_notes": "",
+                "internal_bunk_notes": "",
+                "ret_parent_socialize_with_best": "",
+            }
+        ]
+
+        await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert orchestrator._stats.get("na_prefix_stripped", 0) == 2
