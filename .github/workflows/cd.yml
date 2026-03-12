@@ -113,7 +113,7 @@ jobs:
         fi
 
     - name: Check for file changes
-      uses: dorny/paths-filter@ce10459c8b92cd8901166c0a222fbb033ef39365 # master (node24, post-v3.0.2)
+      uses: dorny/paths-filter@9d7afb8d214ad99e78fbd4247752c4caed2b6e4c # v4
       id: filter
       with:
         base: ${{ steps.get-base-sha.outputs.base_sha }}
@@ -280,7 +280,7 @@ jobs:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
+      uses: astral-sh/setup-uv@e06108dd0aef18192324c70427afc47652e63a82 # v7
 
     - name: Setup Node.js
       uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
