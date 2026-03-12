@@ -1079,7 +1079,7 @@ export default function VelocityPage() {
                     <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                       <p className="text-foreground mb-1 font-medium">{dateLabel}</p>
                       <p className="text-muted-foreground mb-1 text-xs">
-                        Day {dayOffset} (Week {weekNum})
+                        Day {dayOffset + 1} (Week {weekNum})
                       </p>
                       {validPayload.map((entry) => {
                         const yearMatch = entry.name?.match(/\b(\d{4})\b/)
