@@ -1619,3 +1619,23 @@ class TestGetWeekOptions:
         assert today_entry.is_today is True
         assert "Today" in today_entry.label
         assert "Early Reg" in today_entry.label
+
+    @pytest.mark.asyncio
+    async def test_week_options_day_offset_end_of_week(self, service, mock_repository):
+        """Week options use end-of-week day_offset: Week 1 = 6, Week 2 = 13, etc."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+            "early_reg_date": "2025-11-19",
+            "open_reg_date": "2025-12-04",
+        }
+        # 22 days after anchor (NOT on a week boundary, so all weeks 1-3 appear as milestones)
+        result = await service.get_week_options(2026, today=date(2025, 12, 4))
+
+        # Filter out the "today" entry to check week milestones only
+        milestones = [o for o in result if not o.is_today]
+
+        # Week 3 = day_offset 20 (days 14-20), Week 2 = day_offset 13, Week 1 = day_offset 6
+        week_offsets = {o.week_number: o.day_offset for o in milestones}
+        assert week_offsets[1] == 6, f"Week 1 should be day_offset=6 (end of days 0-6), got {week_offsets[1]}"
+        assert week_offsets[2] == 13, f"Week 2 should be day_offset=13 (end of days 7-13), got {week_offsets[2]}"
+        assert week_offsets[3] == 20, f"Week 3 should be day_offset=20 (end of days 14-20), got {week_offsets[3]}"
