@@ -187,7 +187,15 @@ class DirectBunkingSolver:
         return valid_bunks
 
     def _validate_requests(self) -> None:
-        """Validate requests and categorize as possible (can be satisfied) or impossible (reference out-of-session people)."""
+        """Validate requests and categorize as possible or impossible.
+
+        Impossible cases:
+        - Requested person is not in the solver at all
+        - bunk_with targeting a person in a different session (session boundaries
+          prevent sharing a bunk). not_bunk_with across sessions is still possible
+          since separation is guaranteed by session boundaries.
+        """
+        person_by_cm_id = self.input.person_by_cm_id
         total_requests = 0
         impossible_count = 0
         affected_campers = set()
@@ -205,13 +213,24 @@ class DirectBunkingSolver:
                 # Check if this is a request that references another person
                 if request.request_type in ["bunk_with", "not_bunk_with"]:
                     if request.requested_person_cm_id:
-                        # Check if requested person is in this session
-                        if request.requested_person_cm_id in self.person_idx_map:
-                            self.possible_requests[person_cm_id].append(request)
-                        else:
+                        if request.requested_person_cm_id not in self.person_idx_map:
+                            # Requested person not in solver at all
                             self.impossible_requests[person_cm_id].append(request)
                             impossible_count += 1
                             affected_campers.add(person_cm_id)
+                        elif (
+                            request.request_type == "bunk_with"
+                            and person_by_cm_id[person_cm_id].session_cm_id
+                            != person_by_cm_id[request.requested_person_cm_id].session_cm_id
+                        ):
+                            # bunk_with across sessions is impossible — session
+                            # boundary constraints prevent sharing a bunk.
+                            # (not_bunk_with across sessions is trivially satisfied.)
+                            self.impossible_requests[person_cm_id].append(request)
+                            impossible_count += 1
+                            affected_campers.add(person_cm_id)
+                        else:
+                            self.possible_requests[person_cm_id].append(request)
                     else:
                         # No requested person specified - treat as impossible
                         self.impossible_requests[person_cm_id].append(request)
@@ -224,7 +243,7 @@ class DirectBunkingSolver:
         if impossible_count > 0:
             logger.warning(
                 f"Request validation: {impossible_count} of {total_requests} requests "
-                f"reference people not in this session"
+                f"are infeasible (person not in solver or in a different session)"
             )
             logger.warning(f"Affected campers: {len(affected_campers)}")
 
@@ -232,12 +251,16 @@ class DirectBunkingSolver:
             if self.debug_mode:
                 logger.debug("Impossible requests by camper:")
                 for person_cm_id in list(affected_campers)[:10]:  # Show first 10
-                    person = self.input.person_by_cm_id[person_cm_id]
+                    person = person_by_cm_id[person_cm_id]
                     impossible_reqs = self.impossible_requests[person_cm_id]
                     for req in impossible_reqs:
+                        if req.requested_person_cm_id and req.requested_person_cm_id in self.person_idx_map:
+                            reason = "different session"
+                        else:
+                            reason = "not in solver"
                         logger.debug(
                             f"  - {person.name}: {req.request_type} request for "
-                            f"ID {req.requested_person_cm_id} (not in session)"
+                            f"ID {req.requested_person_cm_id} ({reason})"
                         )
 
         # Store summary for later use

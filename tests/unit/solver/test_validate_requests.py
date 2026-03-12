@@ -1,0 +1,209 @@
+"""Tests for DirectBunkingSolver._validate_requests() cross-session handling.
+
+When a bunk_with request targets a camper in a different session, it should be
+classified as impossible — session boundary constraints make it unsatisfiable.
+
+When a not_bunk_with request targets a camper in a different session, it should
+remain possible — session boundaries already guarantee separation.
+"""
+
+from __future__ import annotations
+
+from bunking.config import ConfigLoader
+from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
+from bunking.solver.direct_solver import DirectBunkingSolver
+
+_FICTIONAL_NAMES = [
+    ("Emma", "Johnson"),
+    ("Liam", "Garcia"),
+    ("Olivia", "Chen"),
+    ("Noah", "Williams"),
+    ("Ava", "Martinez"),
+    ("Ethan", "Brown"),
+]
+
+
+def _make_person(cm_id: int, session: int, *, gender: str = "F") -> DirectPerson:
+    first, last = _FICTIONAL_NAMES[cm_id % len(_FICTIONAL_NAMES)]
+    return DirectPerson(
+        campminder_person_id=cm_id,
+        first_name=first,
+        last_name=last,
+        grade=6,
+        birthdate="2014-03-15",
+        gender=gender,
+        session_cm_id=session,
+    )
+
+
+def _make_bunk(cm_id: int, session: int, *, gender: str = "F", name: str | None = None) -> DirectBunk:
+    return DirectBunk(
+        id=f"bunk_{cm_id}",
+        campminder_id=cm_id,
+        name=name or f"B-{cm_id}",
+        capacity=12,
+        gender=gender,
+        session_cm_id=session,
+    )
+
+
+def _make_request(
+    req_id: str,
+    requester: int,
+    requested: int | None,
+    session: int,
+    *,
+    request_type: str = "bunk_with",
+) -> DirectBunkRequest:
+    return DirectBunkRequest(
+        id=req_id,
+        requester_person_cm_id=requester,
+        requested_person_cm_id=requested,
+        request_type=request_type,
+        session_cm_id=session,
+        year=2026,
+        status="resolved",
+    )
+
+
+class TestValidateRequestsCrossSession:
+    """_validate_requests must check session compatibility, not just solver membership."""
+
+    def test_bunk_with_same_session_is_possible(self, mock_config):
+        """bunk_with targeting a camper in the same session is possible."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100), _make_person(1002, 100)],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 100)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_bunk_with_different_session_is_impossible(self, mock_config):
+        """bunk_with targeting a camper in a different session is impossible.
+
+        Even though the requestee is in the solver (person_idx_map), session
+        boundary constraints prevent them from ever sharing a bunk.
+        """
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100), _make_person(1002, 200)],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1
+
+    def test_not_bunk_with_different_session_is_possible(self, mock_config):
+        """not_bunk_with targeting a camper in a different session is still possible.
+
+        Session boundaries already guarantee they'll be in different bunks,
+        so this request is trivially satisfied — not impossible.
+        """
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100), _make_person(1002, 200)],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="not_bunk_with")],
+                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_not_bunk_with_same_session_is_possible(self, mock_config):
+        """not_bunk_with targeting a camper in the same session is possible."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100), _make_person(1002, 100)],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="not_bunk_with")],
+                bunks=[_make_bunk(2001, 100)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_bunk_with_person_not_in_solver_is_impossible(self, mock_config):
+        """bunk_with targeting someone not in the solver at all (existing behavior)."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100)],
+                requests=[_make_request("r1", 1001, 9999, 100, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 100)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1
+
+    def test_mixed_requests_split_correctly(self, mock_config):
+        """Camper with both same-session and cross-session requests gets correct split."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100),
+                    _make_person(1002, 100),  # same session
+                    _make_person(1003, 200),  # different session
+                ],
+                requests=[
+                    _make_request("r1", 1001, 1002, 100, request_type="bunk_with"),
+                    _make_request("r2", 1001, 1003, 100, request_type="bunk_with"),
+                ],
+                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert solver.possible_requests[1001][0].id == "r1"
+        assert len(solver.impossible_requests[1001]) == 1
+        assert solver.impossible_requests[1001][0].id == "r2"
+
+    def test_age_preference_always_possible(self, mock_config):
+        """age_preference requests are always possible regardless of session."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100)],
+                requests=[
+                    DirectBunkRequest(
+                        id="r1",
+                        requester_person_cm_id=1001,
+                        request_type="age_preference",
+                        age_preference_target="older",
+                        session_cm_id=100,
+                        year=2026,
+                        status="resolved",
+                    ),
+                ],
+                bunks=[_make_bunk(2001, 100)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_validation_summary_counts_cross_session_as_impossible(self, mock_config):
+        """request_validation_summary should count cross-session requests as impossible."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100), _make_person(1002, 200)],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert solver.request_validation_summary["impossible_requests"] == 1
+        assert solver.request_validation_summary["affected_campers"] == 1
