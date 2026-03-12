@@ -259,34 +259,39 @@ async def fetch_lock_groups(
     """
     client = pb_client or pb
 
-    # Build session context to get PB relation filter
-    # (locked_groups.session is a PB relation, not a CM ID)
-    ctx = await build_session_context(session_cm_id, year, client)
+    try:
+        # Build session context to get PB relation filter
+        # (locked_groups.session is a PB relation, not a CM ID)
+        ctx = await build_session_context(session_cm_id, year, client)
 
-    # Fetch locked groups for this scenario/session/year
-    groups = await asyncio.to_thread(
-        client.collection("locked_groups").get_full_list,
-        query_params={
-            "filter": f'scenario = "{scenario}" && ({ctx.session_pb_id_filter}) && year = {year}',
-        },
-    )
+        # Fetch locked groups for this scenario/session/year
+        groups = await asyncio.to_thread(
+            client.collection("locked_groups").get_full_list,
+            query_params={
+                "filter": f'scenario = "{scenario}" && ({ctx.session_pb_id_filter}) && year = {year}',
+            },
+        )
 
-    if not groups:
-        logger.info(f"No lock groups found for scenario {scenario}")
+        if not groups:
+            logger.info(f"No lock groups found for scenario {scenario}")
+            return {}
+
+        group_ids = [g.id for g in groups]
+        logger.info(f"Found {len(group_ids)} lock groups for scenario {scenario}")
+
+        # Fetch all members for these groups, expanding attendee to get person_id
+        group_filter = " || ".join([f'group = "{gid}"' for gid in group_ids])
+        members = await asyncio.to_thread(
+            client.collection("locked_group_members").get_full_list,
+            query_params={
+                "filter": group_filter,
+                "expand": "attendee",
+            },
+        )
+
+    except ClientResponseError as e:
+        logger.warning(f"Failed to fetch lock groups for scenario {scenario}: {e}")
         return {}
-
-    group_ids = [g.id for g in groups]
-    logger.info(f"Found {len(group_ids)} lock groups for scenario {scenario}")
-
-    # Fetch all members for these groups, expanding attendee to get person_id
-    group_filter = " || ".join([f'group = "{gid}"' for gid in group_ids])
-    members = await asyncio.to_thread(
-        client.collection("locked_group_members").get_full_list,
-        query_params={
-            "filter": group_filter,
-            "expand": "attendee",
-        },
-    )
 
     # Build group_id -> list of person CM IDs
     result: dict[str, list[int]] = {}
@@ -304,6 +309,7 @@ async def fetch_lock_groups(
 
         group_id = getattr(member, "group", None)
         if not group_id:
+            logger.warning(f"Lock group member {member.id} missing group reference, skipping")
             continue
         if group_id not in result:
             result[group_id] = []
