@@ -29,7 +29,7 @@ def _make_parse_request(request_text: str = "some source text") -> ParseRequest:
     return ParseRequest(
         request_text=request_text,
         field_name="Share Bunk With",
-        requester_name="Test User",
+        requester_name="Emma Johnson",
         requester_cm_id=12345,
         requester_grade="5",
         session_cm_id=1234567,

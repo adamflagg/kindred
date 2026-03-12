@@ -180,8 +180,8 @@ class TestNoPreferenceIntegration:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "none",  # Should be skipped
                 "do_not_share_bunk_with": "",
                 "bunking_notes_notes": "",
@@ -212,8 +212,8 @@ class TestNoPreferenceIntegration:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "John Smith",  # Valid - should create ParseRequest
                 "do_not_share_bunk_with": "n/a",  # Should be skipped
                 "bunking_notes_notes": "no preference",  # Should be skipped
@@ -252,8 +252,8 @@ class TestNoPreferenceIntegration:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "none",
                 "do_not_share_bunk_with": "n/a",
                 "bunking_notes_notes": "no preference",
@@ -368,8 +368,8 @@ class TestNaPrefixStrippingInPrepare:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "N/A; their own grade/younger",
                 "do_not_share_bunk_with": "",
                 "bunking_notes_notes": "",
@@ -397,8 +397,8 @@ class TestNaPrefixStrippingInPrepare:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "N/A- same age or older",
                 "do_not_share_bunk_with": "",
                 "bunking_notes_notes": "",
@@ -426,8 +426,8 @@ class TestNaPrefixStrippingInPrepare:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "N/A -   ",
                 "do_not_share_bunk_with": "",
                 "bunking_notes_notes": "",
@@ -455,8 +455,8 @@ class TestNaPrefixStrippingInPrepare:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "Sarah Chen",
                 "do_not_share_bunk_with": "",
                 "bunking_notes_notes": "",
@@ -484,8 +484,8 @@ class TestNaPrefixStrippingInPrepare:
         raw_requests = [
             {
                 "requester_cm_id": 12345,
-                "first_name": "Test",
-                "last_name": "User",
+                "first_name": "Emma",
+                "last_name": "Johnson",
                 "share_bunk_with": "N/A; their own grade",
                 "do_not_share_bunk_with": "N/A- same age",
                 "bunking_notes_notes": "",

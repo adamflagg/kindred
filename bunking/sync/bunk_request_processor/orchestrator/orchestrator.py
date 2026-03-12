@@ -522,26 +522,26 @@ class RequestOrchestrator:
                     rejected_count += 1
                     continue
 
-                # Check if any part of the name appears in the source text
+                # Check if any part of the name appears as a whole word in source
                 name_parts = target_lower.split()
-                full_name_clean = re.sub(r"[^\w\s]", " ", target_lower)
+                source_words = source_text_clean.split()
                 found = False
 
-                # Check full name first
-                if full_name_clean in source_text_clean:
-                    found = True
-                else:
-                    # Check individual name parts (first name, last name)
-                    for part in name_parts:
-                        if len(part) > 1 and part in source_text_clean.split():
-                            found = True
-                            break
+                for part in name_parts:
+                    if len(part) > 1 and part in source_words:
+                        found = True
+                        break
 
                 if found:
                     validated_requests.append(parsed_req)
                     kept_count += 1
                 else:
                     logger.warning(
+                        f"Rejected hallucinated target: "
+                        f"requester={result.parse_request.requester_cm_id if result.parse_request else 'unknown'}, "
+                        f"field={parsed_req.source_field}"
+                    )
+                    logger.debug(
                         f"Rejected hallucinated target '{target}' — "
                         f"not found in source text: "
                         f"'{result.parse_request.request_text if result.parse_request else ''}'"
@@ -1255,8 +1255,8 @@ class RequestOrchestrator:
                     logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
                     self._stats["na_prefix_stripped"] += 1
                     request_text = stripped
-                elif request_text.lower().startswith(("n/a", "na")) and len(request_text) < 8:
-                    # Short N/A-like text with no useful content (e.g., "N/A -")
+                elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
+                    # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
                     self._stats["no_preference_skipped"] += 1
                     continue
 
