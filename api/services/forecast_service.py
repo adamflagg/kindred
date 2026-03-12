@@ -120,7 +120,7 @@ class ForecastService:
             options.append(
                 WeekOption(
                     week_number=week,
-                    day_offset=(week - 1) * 7,
+                    day_offset=week * 7 - 1,
                     label=label,
                     is_today=False,
                 )
