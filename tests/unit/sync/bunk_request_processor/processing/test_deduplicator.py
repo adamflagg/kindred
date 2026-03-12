@@ -22,6 +22,7 @@ from bunking.sync.bunk_request_processor.core.models import (
 from bunking.sync.bunk_request_processor.processing.deduplicator import (
     Deduplicator,
 )
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 class TestDeduplicator:
@@ -413,7 +414,7 @@ class TestDeduplicator:
             priority=3,
             confidence_score=0.95,
             source=RequestSource.FAMILY,
-            source_field="socialize_with",  # Special field - should never dedupe
+            source_field=SourceField.SOCIALIZE_WITH,  # Special field - should never dedupe
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
