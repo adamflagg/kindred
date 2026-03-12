@@ -1,6 +1,7 @@
 package feedback
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -55,12 +56,12 @@ func HandleFeedback(e *core.RequestEvent) error {
 
 	// Extract and validate required fields
 	category := e.Request.FormValue("category")
-	description, err := validateDescription(e.Request.FormValue("description"))
-	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+	description, descErr := validateDescription(e.Request.FormValue("description"))
+	if descErr != nil {
+		return apis.NewBadRequestError(descErr.Error(), nil)
 	}
-	if err := validateCategory(category); err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+	if catErr := validateCategory(category); catErr != nil {
+		return apis.NewBadRequestError(catErr.Error(), nil)
 	}
 
 	// Extract metadata
@@ -95,8 +96,8 @@ func HandleFeedback(e *core.RequestEvent) error {
 	}
 
 	// Handle optional screenshot
-	file, header, err := e.Request.FormFile("screenshot")
-	if err == nil {
+	file, header, fileErr := e.Request.FormFile("screenshot")
+	if fileErr == nil {
 		defer func() { _ = file.Close() }()
 
 		// Check declared file size
@@ -105,34 +106,34 @@ func HandleFeedback(e *core.RequestEvent) error {
 		}
 
 		// Read with a hard limit to prevent memory exhaustion
-		data, err := io.ReadAll(io.LimitReader(file, MaxScreenshotSize+1))
-		if err != nil {
-			slog.Error("Failed to read screenshot", "error", err)
-			return apis.NewBadRequestError("Failed to read screenshot", err)
+		data, readErr := io.ReadAll(io.LimitReader(file, MaxScreenshotSize+1))
+		if readErr != nil {
+			slog.Error("Failed to read screenshot", "error", readErr)
+			return apis.NewBadRequestError("Failed to read screenshot", readErr)
 		}
 		if int64(len(data)) > MaxScreenshotSize {
 			return apis.NewBadRequestError("Screenshot must be under 5MB", nil)
 		}
 
 		// Validate that the file is actually an image
-		if err := validateScreenshotContent(data); err != nil {
-			return apis.NewBadRequestError(err.Error(), nil)
+		if contentErr := validateScreenshotContent(data); contentErr != nil {
+			return apis.NewBadRequestError(contentErr.Error(), nil)
 		}
 
 		filename := sanitizeFilename(header.Filename)
-		screenshotURL, err := client.UploadScreenshot(data, filename, timestamp)
-		if err != nil {
-			slog.Error("Failed to upload screenshot to GitHub", "error", err)
+		screenshotURL, uploadErr := client.UploadScreenshot(data, filename, timestamp)
+		if uploadErr != nil {
+			slog.Error("Failed to upload screenshot to GitHub", "error", uploadErr)
 			return apis.NewApiError(502, "Failed to submit feedback. Please try again.", nil)
 		}
 		params.ScreenshotURL = screenshotURL
-	} else if err != http.ErrMissingFile {
-		return apis.NewBadRequestError("Invalid screenshot upload", err)
+	} else if !errors.Is(fileErr, http.ErrMissingFile) {
+		return apis.NewBadRequestError("Invalid screenshot upload", fileErr)
 	}
 
 	// Create the GitHub issue
-	if err := client.CreateIssue(params); err != nil {
-		slog.Error("Failed to create GitHub issue", "error", err)
+	if createErr := client.CreateIssue(params); createErr != nil {
+		slog.Error("Failed to create GitHub issue", "error", createErr)
 		return apis.NewApiError(502, "Failed to submit feedback. Please try again.", nil)
 	}
 

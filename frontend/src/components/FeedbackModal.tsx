@@ -120,7 +120,10 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
       {/* Description */}
       <div className="mb-4">
-        <label htmlFor="feedback-description" className="text-foreground mb-2 block text-sm font-medium">
+        <label
+          htmlFor="feedback-description"
+          className="text-foreground mb-2 block text-sm font-medium"
+        >
           Description
         </label>
         <textarea
@@ -129,13 +132,16 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="What happened? What did you expect?"
           rows={4}
-          className="border-border bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary w-full rounded-xl border px-3 py-2 text-sm focus:ring-1 focus:outline-none"
         />
       </div>
 
       {/* Screenshot */}
       <div className="mb-6">
-        <label htmlFor="feedback-screenshot" className="text-foreground mb-2 flex items-center gap-2 text-sm font-medium">
+        <label
+          htmlFor="feedback-screenshot"
+          className="text-foreground mb-2 flex items-center gap-2 text-sm font-medium"
+        >
           <Camera className="h-4 w-4" />
           Screenshot (optional)
         </label>
@@ -147,9 +153,7 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           aria-label="Screenshot"
           className="text-foreground file:bg-muted file:text-foreground file:border-border w-full text-sm file:mr-3 file:rounded-lg file:border file:px-3 file:py-1.5 file:text-sm file:font-medium"
         />
-        {fileSizeError && (
-          <p className="mt-1 text-sm text-red-500">Screenshot must be under 5MB</p>
-        )}
+        {fileSizeError && <p className="mt-1 text-sm text-red-500">Screenshot must be under 5MB</p>}
         {screenshot && !fileSizeError && (
           <p className="text-muted-foreground mt-1 text-sm">{screenshot.name}</p>
         )}

@@ -183,7 +183,8 @@ func TestCreateIssueAPIError(t *testing.T) {
 
 func TestUploadScreenshot(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got, want := r.URL.Path, "/repos/org/feedback/contents/attachments/2026-03-11T10-30-00Z-screenshot.png"; got != want {
+		want := "/repos/org/feedback/contents/attachments/2026-03-11T10-30-00Z-screenshot.png"
+		if got := r.URL.Path; got != want {
 			t.Errorf("URL path = %q, want %q", got, want)
 		}
 		if r.Method != http.MethodPut {

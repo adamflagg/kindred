@@ -3,6 +3,7 @@ package feedback
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -72,7 +73,7 @@ func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Re
 		reqBody = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(method, url, reqBody)
+	req, err := http.NewRequestWithContext(context.Background(), method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
