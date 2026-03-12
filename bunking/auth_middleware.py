@@ -380,6 +380,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        # Skip auth for internal service-to-service endpoints.
+        # These are only reachable on the Docker internal network (Caddy blocks external access).
+        if request.url.path.startswith("/api/internal/"):
+            response = await call_next(request)
+            return response
+
         user: AuthUser | None = None
 
         # Determine user based on auth mode

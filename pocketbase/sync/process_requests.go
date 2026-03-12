@@ -1,25 +1,26 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const boolTrue = "true"
-
 // RequestProcessor processes original_bunk_requests into structured bunk_requests
-// All processing is now done in Python - this is just a thin wrapper that:
-// 1. Handles PocketBase auth
-// 2. Calls Python subprocess
+// All processing is done in Python via the FastAPI process-requests endpoint.
+// This is a thin wrapper that:
+// 1. Optionally clears processed flags (force mode)
+// 2. Calls the FastAPI HTTP endpoint
 // 3. Collects stats for the sync status UI
 type RequestProcessor struct {
 	BaseSyncService
@@ -49,7 +50,7 @@ func (p *RequestProcessor) Name() string {
 	return "process_requests"
 }
 
-// Sync executes the processing by calling Python
+// Sync executes the processing by calling the FastAPI process-requests endpoint.
 // Python handles all 5 field types:
 // - bunk_with, not_bunk_with, bunking_notes, internal_notes -> AI parsing
 // - socialize_with -> direct parsing (dropdown values)
@@ -57,7 +58,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 	p.Stats = Stats{}
 	p.SyncSuccessful = false
 
-	slog.Info("Starting request processing via Python",
+	slog.Info("Starting request processing via API",
 		"session", p.Session,
 		"limit", p.Limit,
 		"force", p.Force,
@@ -76,10 +77,25 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		slog.Info("Cleared processed flags for force reprocess", "count", cleared)
 	}
 
-	pythonStats, err := p.callPythonProcessor(ctx)
+	// Get year from environment
+	year := os.Getenv("CAMPMINDER_SEASON_ID")
+	if year == "" {
+		year = "2025"
+	}
+
+	apiURL := getAPIURL()
+	pythonStats, err := callAPIProcessor(ctx, apiURL, apiProcessorRequest{
+		Year:          func() int { y, _ := strconv.Atoi(year); return y }(),
+		Session:       p.Session,
+		SourceFields:  p.SourceFields,
+		Limit:         p.Limit,
+		ClearExisting: p.Force,
+		Debug:         p.Debug,
+		Trace:         p.Trace,
+	})
 	if err != nil {
-		slog.Error("Python processing failed", "error", err)
-		return fmt.Errorf("python processing failed: %w", err)
+		slog.Error("API processing failed", "error", err)
+		return fmt.Errorf("api processing failed: %w", err)
 	}
 
 	// Use Python stats
@@ -100,128 +116,66 @@ func (p *RequestProcessor) GetStats() Stats {
 	return p.Stats
 }
 
-// callPythonProcessor invokes the Python bunk request processor
-func (p *RequestProcessor) callPythonProcessor(ctx context.Context) (Stats, error) {
-	// Get year from environment
-	year := os.Getenv("CAMPMINDER_SEASON_ID")
-	if year == "" {
-		year = "2025"
-	}
+// apiProcessorRequest is the JSON body for the process-requests API
+type apiProcessorRequest struct {
+	Year          int      `json:"year"`
+	Session       string   `json:"session"`
+	SourceFields  []string `json:"source_fields,omitempty"`
+	Limit         int      `json:"limit"`
+	ClearExisting bool     `json:"clear_existing"`
+	Debug         bool     `json:"debug"`
+	Trace         bool     `json:"trace"`
+}
 
-	// Find project root and Python path
-	projectRoot := p.getProjectRoot()
-	pythonPath := p.getPythonPath(projectRoot)
+// apiProcessorResponse is the JSON response from the process-requests API
+type apiProcessorResponse struct {
+	Success          bool   `json:"success"`
+	Created          int    `json:"created"`
+	Updated          int    `json:"updated"`
+	Skipped          int    `json:"skipped"`
+	Errors           int    `json:"errors"`
+	AlreadyProcessed int    `json:"already_processed"`
+	Error            string `json:"error,omitempty"`
+}
 
-	// Create temp file for stats output
-	statsFile, err := os.CreateTemp("", "bunk_processor_stats_*.json")
+// callAPIProcessor calls the FastAPI process-requests endpoint
+func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorRequest) (Stats, error) {
+	bodyBytes, err := json.Marshal(req)
 	if err != nil {
-		return Stats{}, fmt.Errorf("creating temp file: %w", err)
-	}
-	statsFilePath := statsFile.Name()
-	_ = statsFile.Close()                           // Close so Python can write to it
-	defer func() { _ = os.Remove(statsFilePath) }() // Clean up after we're done
-
-	// Build args slice - always include base args
-	args := []string{
-		"-m",
-		"bunking.sync.bunk_request_processor.process_requests",
-		"--year", year,
-		"--session", p.Session,
-		"--stats-output", statsFilePath,
+		return Stats{}, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	// Add source field filters (applied before session filter in Python)
-	for _, field := range p.SourceFields {
-		args = append(args, "--source-field", field)
-	}
+	// Use a long timeout — processing can take up to 30 minutes
+	client := &http.Client{Timeout: 35 * time.Minute}
 
-	// Add optional limit if specified (applied last in Python)
-	if p.Limit > 0 {
-		args = append(args, "--test-limit", fmt.Sprintf("%d", p.Limit))
-	}
-
-	// Add clear-existing flag when force reprocessing
-	if p.Force {
-		args = append(args, "--clear-existing")
-	}
-
-	// Add debug flag for verbose logging
-	if p.Debug {
-		args = append(args, "--debug")
-	}
-
-	// Add trace flag for very verbose logging (overrides debug)
-	if p.Trace {
-		args = append(args, "--trace")
-	}
-
-	//nolint:gosec // G204: args are from trusted internal config
-	cmd := exec.CommandContext(ctx, pythonPath, args...)
-	cmd.Dir = projectRoot
-
-	// Set environment variables for Python
-	cmd.Env = append(os.Environ(),
-		"PYTHONPATH="+projectRoot,
-	)
-
-	slog.Info("Running Python processor", "command", cmd.String())
-	slog.Debug("Stats output file", "path", statsFilePath)
-
-	output, err := cmd.CombinedOutput()
-
-	// In debug/trace mode, log Python output for visibility
-	if (p.Debug || p.Trace) && len(output) > 0 {
-		slog.Info("Python processor output", "output", string(output))
-	}
-
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/internal/process-requests", bytes.NewReader(bodyBytes))
 	if err != nil {
-		// Try to read stats file even on error - Python may have written error stats
-		statsData, readErr := os.ReadFile(statsFilePath) //nolint:gosec // G304: trusted temp file
-		if readErr == nil && len(statsData) > 0 {
-			slog.Warn("Python failed but wrote stats file, attempting to parse")
-			var result struct {
-				Success          bool `json:"success"`
-				Created          int  `json:"created"`
-				Updated          int  `json:"updated"`
-				Skipped          int  `json:"skipped"`
-				Errors           int  `json:"errors"`
-				AlreadyProcessed int  `json:"already_processed"`
-			}
-			if json.Unmarshal(statsData, &result) == nil {
-				return Stats{
-					Created:          result.Created,
-					Updated:          result.Updated,
-					Skipped:          result.Skipped,
-					Errors:           result.Errors,
-					AlreadyProcessed: result.AlreadyProcessed,
-				}, nil
-			}
-		}
-		return Stats{}, fmt.Errorf("python subprocess failed: %w\nOutput: %s", err, string(output))
+		return Stats{}, fmt.Errorf("building process-requests request: %w", err)
 	}
+	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Read stats from temp file
-	statsData, err := os.ReadFile(statsFilePath) //nolint:gosec // G304: trusted temp file
+	resp, err := client.Do(httpReq)
 	if err != nil {
-		return Stats{}, fmt.Errorf("reading stats file: %w", err)
+		return Stats{}, fmt.Errorf("calling process-requests API: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Stats{}, fmt.Errorf("reading response: %w", err)
 	}
 
-	// Parse JSON stats
-	var result struct {
-		Success          bool `json:"success"`
-		Created          int  `json:"created"`
-		Updated          int  `json:"updated"`
-		Skipped          int  `json:"skipped"`
-		Errors           int  `json:"errors"`
-		AlreadyProcessed int  `json:"already_processed"`
+	if resp.StatusCode != http.StatusOK {
+		return Stats{}, fmt.Errorf("process-requests API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	if err := json.Unmarshal(statsData, &result); err != nil {
-		return Stats{}, fmt.Errorf("parsing stats JSON: %w\nRaw content: %s", err, string(statsData))
+	var result apiProcessorResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return Stats{}, fmt.Errorf("parsing process-requests response: %w\nRaw: %s", err, string(respBody))
 	}
 
 	if !result.Success {
-		slog.Warn("Python processor reported failure")
+		slog.Warn("Process requests API reported failure", "error", result.Error)
 	}
 
 	return Stats{
@@ -231,40 +185,6 @@ func (p *RequestProcessor) callPythonProcessor(ctx context.Context) (Stats, erro
 		Errors:           result.Errors,
 		AlreadyProcessed: result.AlreadyProcessed,
 	}, nil
-}
-
-// getProjectRoot returns the project root directory (parent of pocketbase)
-func (p *RequestProcessor) getProjectRoot() string {
-	// In Docker, project root is /app
-	if os.Getenv("IS_DOCKER") == boolTrue {
-		return "/app"
-	}
-
-	// DataDir is typically /path/to/project/pocketbase/pb_data
-	// We need to go up two levels to get project root
-	dataDir := p.App.DataDir()
-
-	// Convert to absolute path first (handles relative paths like "./pb_data")
-	absDataDir, err := filepath.Abs(dataDir)
-	if err != nil {
-		slog.Warn("Could not get absolute path for DataDir", "dataDir", dataDir, "error", err)
-		absDataDir = dataDir
-	}
-
-	projectRoot := filepath.Dir(filepath.Dir(absDataDir))
-	slog.Debug("Resolved project root", "projectRoot", projectRoot, "dataDir", dataDir)
-	return projectRoot
-}
-
-// getPythonPath returns the Python interpreter path based on environment
-func (p *RequestProcessor) getPythonPath(projectRoot string) string {
-	// In Docker, Python is installed system-wide (no venv)
-	if os.Getenv("IS_DOCKER") == boolTrue {
-		return "python3"
-	}
-
-	// In development, use the project's venv (uv creates .venv with dot prefix)
-	return filepath.Join(projectRoot, ".venv", "bin", "python")
 }
 
 // clearBatchSize is the maximum number of person IDs per OR condition batch.
