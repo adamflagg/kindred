@@ -528,7 +528,13 @@ func callGeoNormalizeAPI(
 	}
 
 	endpoint := apiURL + "/api/internal/geo-normalize"
-	resp, err := geoNormalizeClient.Post(endpoint, "application/json", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("building geo-normalize request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := geoNormalizeClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("calling geo-normalize API: %w", err)
 	}
