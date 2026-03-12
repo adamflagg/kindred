@@ -24,6 +24,7 @@ from enum import Enum
 from typing import Any
 
 from ..core.models import ParsedRequest, ParseRequest, ParseResult
+from ..shared.constants import VALID_PLACEHOLDERS as _VALID_PLACEHOLDERS
 from .ai_service import AIProvider, AIRequestContext, ParsedResponse
 
 logger = logging.getLogger(__name__)
@@ -95,15 +96,6 @@ _NON_NAME_PATTERNS = {
     "my brother",
     "my twin",
     "the twins",
-}
-
-# Special placeholders that should be accepted as valid
-_VALID_PLACEHOLDERS = {
-    "last_year_bunkmates",
-    "sibling",  # Family member placeholder - resolved via household_id
-    "older",
-    "younger",
-    "unclear",
 }
 
 

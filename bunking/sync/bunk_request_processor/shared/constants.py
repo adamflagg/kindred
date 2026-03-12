@@ -29,6 +29,20 @@ LAST_YEAR_BUNKMATES_PLACEHOLDER = "LAST_YEAR_BUNKMATES"
 # This placeholder is expanded to actual sibling(s) via household_id lookup.
 SIBLING_PLACEHOLDER = "SIBLING"
 
+# Cabin unit names — targets matching these are cabin units, not people.
+# Matches current camp's Tier 1 division entries. Update if units change.
+UNIT_NAMES: set[str] = {"nitzanim", "galil", "eilat", "haifa", "chalutzim", "carmel"}
+
+# Special placeholders accepted as valid target names.
+# Not real person names — expanded later in the pipeline.
+VALID_PLACEHOLDERS: set[str] = {
+    "last_year_bunkmates",
+    "sibling",
+    "older",
+    "younger",
+    "unclear",
+}
+
 
 # =============================================================================
 # Field Name Mappings
@@ -139,6 +153,36 @@ def is_no_preference(text: str) -> bool:
 
     text = text.strip()
     return any(pattern.match(text) for pattern in NO_PREFERENCE_PATTERNS)
+
+
+# Pattern to match N/A prefix with separator and trailing content
+# Captures the text after the N/A prefix for continued processing
+# Examples: "N/A; their own grade/younger" -> "their own grade/younger"
+#           "N/A- same age or older" -> "same age or older"
+NA_PREFIX_PATTERN: Pattern[str] = re.compile(r"^n/?a\s*[;:\-\u2013\u2014,]\s*(.+)$", re.IGNORECASE)
+
+
+def strip_na_prefix(text: str) -> str | None:
+    """Strip N/A prefix from text, returning the trailing content.
+
+    When a field starts with "N/A" followed by a separator (;, -, \u2014, etc.)
+    and additional text, returns just the trailing text for AI parsing.
+    This prevents the AI from hallucinating names from "N/A" inputs.
+
+    Args:
+        text: The field value to check
+
+    Returns:
+        The trailing text after N/A prefix, or None if no match
+    """
+    if not text:
+        return None
+
+    text = text.strip()
+    match = NA_PREFIX_PATTERN.match(text)
+    if match:
+        return match.group(1).strip() or None
+    return None
 
 
 # =============================================================================
