@@ -20,6 +20,8 @@ import {
   LogOut,
   Settings,
   BarChart3,
+  HelpCircle,
+  MessageSquareWarning,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import YearSelector from '../components/YearSelector'
@@ -37,7 +39,7 @@ import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
 import { MANAGE_TABS } from '../config/manageTabs'
 import { useTour } from '../hooks/useTour'
-import { TourReplayButton } from '../components/tour'
+import { FeedbackModal } from '../components/FeedbackModal'
 
 export const AppLayout = () => {
   const location = useLocation()
@@ -54,6 +56,9 @@ export const AppLayout = () => {
   const { currentProgram, setProgram, clearProgram } = useProgram()
   const programMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const [isHelpMenuOpen, setIsHelpMenuOpen] = useState(false)
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
+  const helpMenuRef = useRef<HTMLDivElement>(null)
   const { data: syncStatus } = useSyncStatusAPI()
   const { tourId, replay } = useTour()
 
@@ -88,6 +93,20 @@ export const AppLayout = () => {
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isUserMenuOpen])
+
+  // Close help menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (helpMenuRef.current && !helpMenuRef.current.contains(event.target as Node)) {
+        setIsHelpMenuOpen(false)
+      }
+    }
+
+    if (isHelpMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isHelpMenuOpen])
 
   const handleLogout = () => {
     setIsUserMenuOpen(false)
@@ -376,6 +395,45 @@ export const AppLayout = () => {
                 </div>
               )}
 
+              {/* Help Menu */}
+              <div className="relative" ref={helpMenuRef}>
+                <button
+                  onClick={() => setIsHelpMenuOpen(!isHelpMenuOpen)}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl p-0 text-white/70 transition-all hover:bg-white/10 hover:text-white"
+                  aria-label="Help menu"
+                >
+                  <HelpCircle className="h-5 w-5" />
+                </button>
+
+                {isHelpMenuOpen && (
+                  <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-56 p-2">
+                    <button
+                      onClick={() => {
+                        setIsHelpMenuOpen(false)
+                        setIsFeedbackOpen(true)
+                      }}
+                      className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                    >
+                      <MessageSquareWarning className="text-muted-foreground h-4 w-4" />
+                      Report a Problem
+                    </button>
+
+                    {tourId && (
+                      <button
+                        onClick={() => {
+                          setIsHelpMenuOpen(false)
+                          replay()
+                        }}
+                        className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                      >
+                        <HelpCircle className="text-muted-foreground h-4 w-4" />
+                        Tour This Page
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Theme toggle */}
               <button
                 onClick={toggleTheme}
@@ -557,6 +615,32 @@ export const AppLayout = () => {
 
               {/* Mobile-only utilities */}
               <div className="border-border/50 space-y-3 border-t pt-4">
+                {/* Help & Feedback - Mobile */}
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false)
+                      setIsFeedbackOpen(true)
+                    }}
+                    className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-semibold transition-colors"
+                  >
+                    <MessageSquareWarning className="h-4 w-4" />
+                    Report a Problem
+                  </button>
+                  {tourId && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false)
+                        replay()
+                      }}
+                      className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-semibold transition-colors"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Tour This Page
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground text-sm font-medium">Theme</span>
                   <button
@@ -632,7 +716,6 @@ export const AppLayout = () => {
                   Season
                 </span>
                 <YearSelector />
-                <TourReplayButton tourId={tourId} onReplay={replay} />
               </div>
               {activeProgram === 'summer' &&
                 (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
@@ -707,6 +790,9 @@ export const AppLayout = () => {
       <div className="fixed right-4 bottom-4 z-10">
         <VersionInfo className="opacity-50 transition-opacity hover:opacity-100" />
       </div>
+
+      {/* Feedback Modal */}
+      <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
     </div>
   )
 }

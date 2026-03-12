@@ -99,6 +99,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/ratelimit/
 !pocketbase/google/
 !pocketbase/rbac/
+!pocketbase/feedback/
 !pocketbase/config/
 !pocketbase/README.md
 # JS tooling for migrations/hooks linting

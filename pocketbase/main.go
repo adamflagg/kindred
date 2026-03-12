@@ -19,6 +19,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/hook"
 
 	// Import our packages
+	"github.com/camp/kindred/pocketbase/feedback"
 	"github.com/camp/kindred/pocketbase/logging"
 	"github.com/camp/kindred/pocketbase/rbac"
 	"github.com/camp/kindred/pocketbase/sync"
@@ -140,6 +141,12 @@ func main() {
 
 			return e.Next()
 		},
+	})
+
+	// Register feedback endpoint
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		feedback.RegisterRoutes(e)
+		return e.Next()
 	})
 
 	// Register RBAC hooks for permission cache recomputation
