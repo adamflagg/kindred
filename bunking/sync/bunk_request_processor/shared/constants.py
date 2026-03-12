@@ -141,6 +141,36 @@ def is_no_preference(text: str) -> bool:
     return any(pattern.match(text) for pattern in NO_PREFERENCE_PATTERNS)
 
 
+# Pattern to match N/A prefix with separator and trailing content
+# Captures the text after the N/A prefix for continued processing
+# Examples: "N/A; their own grade/younger" -> "their own grade/younger"
+#           "N/A- same age or older" -> "same age or older"
+NA_PREFIX_PATTERN: Pattern[str] = re.compile(r"^n/?a\s*[;:\-\u2013\u2014,]\s*(.+)$", re.IGNORECASE)
+
+
+def strip_na_prefix(text: str) -> str | None:
+    """Strip N/A prefix from text, returning the trailing content.
+
+    When a field starts with "N/A" followed by a separator (;, -, \u2014, etc.)
+    and additional text, returns just the trailing text for AI parsing.
+    This prevents the AI from hallucinating names from "N/A" inputs.
+
+    Args:
+        text: The field value to check
+
+    Returns:
+        The trailing text after N/A prefix, or None if no match
+    """
+    if not text:
+        return None
+
+    text = text.strip()
+    match = NA_PREFIX_PATTERN.match(text)
+    if match:
+        return match.group(1).strip() or None
+    return None
+
+
 # =============================================================================
 # Source Field Validation
 # =============================================================================

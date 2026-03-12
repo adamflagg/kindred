@@ -266,3 +266,86 @@ class TestNoPreferenceIntegration:
 
         # Should track that 3 fields were skipped
         assert orchestrator._stats.get("no_preference_skipped", 0) == 3
+
+
+class TestStripNaPrefix:
+    """Test N/A prefix stripping returns trailing text or None."""
+
+    def test_na_semicolon_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A; their own grade/younger") == "their own grade/younger"
+
+    def test_na_dash_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A- same age or older") == "same age or older"
+
+    def test_na_spaced_dash_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A - some notes here") == "some notes here"
+
+    def test_na_em_dash_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A \u2014 some text") == "some text"
+
+    def test_na_en_dash_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A \u2013 some text") == "some text"
+
+    def test_na_comma_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A, but prefer older kids") == "but prefer older kids"
+
+    def test_na_colon_trailing_text(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A: see notes") == "see notes"
+
+    def test_na_without_slash_dash(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("NA - same age or older") == "same age or older"
+
+    def test_case_insensitive(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("n/a; their own grade") == "their own grade"
+        assert strip_na_prefix("Na- older kids") == "older kids"
+
+    def test_bare_na_returns_none(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A") is None
+
+    def test_bare_na_with_whitespace_returns_none(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("  N/A  ") is None
+
+    def test_na_separator_whitespace_only_returns_none(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("N/A -   ") is None
+
+    def test_not_na_prefix_returns_none(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("Nancy Smith") is None
+        assert strip_na_prefix("Nathan Lee") is None
+        assert strip_na_prefix("John Smith") is None
+
+    def test_empty_string_returns_none(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        assert strip_na_prefix("") is None
+
+    def test_na_with_real_name_after(self):
+        from bunking.sync.bunk_request_processor.shared.constants import strip_na_prefix
+
+        result = strip_na_prefix("N/A - but if possible, put her with Sarah Chen")
+        assert result == "but if possible, put her with Sarah Chen"
