@@ -107,7 +107,7 @@ export default function NewScenarioModal({
                 onChange={(e) => setCopyFrom(e.target.value)}
                 className="text-primary focus:ring-primary h-4 w-4 focus:ring-2"
               />
-              <span className="text-sm">Start with empty assignments</span>
+              <span className="text-sm">Start with empty bunks</span>
             </label>
 
             <label className="flex cursor-pointer items-center space-x-2">
@@ -121,7 +121,7 @@ export default function NewScenarioModal({
               />
               <span className="flex items-center gap-2 text-sm">
                 <Package className="text-primary h-4 w-4" />
-                Copy from Production
+                Copy from CampMinder
               </span>
             </label>
 
