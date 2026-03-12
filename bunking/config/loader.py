@@ -487,7 +487,7 @@ class ConfigLoader:
         config: dict[str, Any] = {
             "provider": os.getenv("AI_PROVIDER", "openai"),
             "api_key": os.getenv("AI_API_KEY"),
-            "model": os.getenv("AI_MODEL", "gpt-4o-mini"),
+            "model": os.getenv("AI_MODEL", "gpt-5-nano"),
             "temperature": 0.1,
             "max_tokens": 2000,
             "batch_processing": {"enabled": True, "batch_size": 10, "max_concurrent_batches": 3},
