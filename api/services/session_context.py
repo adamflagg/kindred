@@ -110,7 +110,7 @@ async def build_session_context(
     related_session_pb_ids = [s.id for s in related_sessions]
 
     session_name = getattr(session, "name", "")
-    logger.info(
+    logger.debug(
         f"SessionContext built for session {session_cm_id} ({session_name}) "
         f"year {year}, related sessions: {related_ids}"
     )

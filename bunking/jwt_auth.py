@@ -99,7 +99,7 @@ class PocketBaseTokenValidator:
                 # Cache the result
                 self._validation_cache[cache_key] = (claims, time.time() + self._cache_ttl)
 
-                logger.info(f"PocketBase token validated for user: {claims.get('preferred_username')}")
+                logger.debug(f"PocketBase token validated for user: {claims.get('preferred_username')}")
                 return claims
 
             logger.debug(f"PocketBase auth-refresh returned status {response.status_code}")

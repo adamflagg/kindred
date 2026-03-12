@@ -44,7 +44,7 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
     if grade_target_weight <= 0:
         return
 
-    logger.info(f"Adding target grade distribution incentives (weight: {grade_target_weight})")
+    logger.debug(f"Adding target grade distribution incentives (weight: {grade_target_weight})")
 
     # Group bunks by gender AND session
     bunks_by_gender_session: dict[tuple[str, int], list[DirectBunk]] = defaultdict(list)
@@ -108,7 +108,7 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
 
         # Log target distribution
         target_str = ", ".join(f"{b.campminder_id}={bunk_targets.get(b.campminder_id, 0):.2f}" for b in session_bunks)
-        logger.info(f"Target grades for {gender}: {target_str}")
+        logger.debug(f"Target grades for {gender}: {target_str}")
 
         # Calculate grade range for normalization
         all_grades = [c.grade for c in group_campers]
@@ -155,6 +155,6 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
         # DEBUG: Log bonuses for G-6B and G-7
         for bunk_name in ["G-6B", "G-7"]:
             if bunk_name in debug_bunk_bonuses:
-                logger.info(f"DEBUG {bunk_name} bonuses by grade: {debug_bunk_bonuses[bunk_name]}")
+                logger.debug(f"{bunk_name} bonuses by grade: {debug_bunk_bonuses[bunk_name]}")
 
-    logger.info(f"Added {total_incentives_added} target grade incentives")
+    logger.debug(f"Added {total_incentives_added} target grade incentives")

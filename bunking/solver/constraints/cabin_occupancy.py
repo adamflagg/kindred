@@ -77,7 +77,7 @@ def add_cabin_minimum_occupancy_constraints(
             num_campers = campers_by_gender[gender]
             if num_bunks > 0 and num_campers >= min_occupancy * num_bunks:
                 force_genders.add(gender)
-                logger.info(
+                logger.debug(
                     f"Force all {gender} bunks used: {num_campers} campers, "
                     f"{num_bunks} bunks, min {min_occupancy}/bunk = {min_occupancy * num_bunks} needed"
                 )
@@ -162,7 +162,7 @@ def add_cabin_minimum_occupancy_soft_penalty(
     if preferred_occupancy <= min_occupancy:
         return
 
-    logger.info(
+    logger.debug(
         f"Adding cabin minimum occupancy soft penalties "
         f"(min={min_occupancy}, preferred={preferred_occupancy}, penalty={penalty_weight})"
     )
@@ -193,4 +193,4 @@ def add_cabin_minimum_occupancy_soft_penalty(
         objective_terms.append(-penalty_weight * underfill)
         penalties_added += 1
 
-    logger.info(f"Added minimum occupancy soft penalties for {penalties_added} bunks")
+    logger.debug(f"Added minimum occupancy soft penalties for {penalties_added} bunks")

@@ -108,7 +108,7 @@ def add_level_progression_constraints(ctx: SolverContext) -> None:
             if prefer_progression and curr_level_idx > prev_level_idx:
                 progressions_incentivized += 1
 
-    logger.info(
+    logger.debug(
         f"Level progression: {regression_violations} regression penalties added (weight: {regression_penalty}), "
         f"{progressions_incentivized} progression incentives. "
         f"Only checked eligible bunks per camper (session/gender filtered)."

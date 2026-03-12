@@ -105,7 +105,7 @@ def add_grade_spread_soft_constraint(ctx: SolverContext, objective_terms: list[A
     # Get penalty weight for violations
     penalty_weight = ctx.config.get_int("constraint.grade_spread.penalty", default=3000)
 
-    logger.info(f"Adding grade spread soft constraints (max {max_unique_grades} grades, penalty: {penalty_weight})")
+    logger.debug(f"Adding grade spread soft constraints (max {max_unique_grades} grades, penalty: {penalty_weight})")
 
     penalties_added = 0
 
@@ -166,4 +166,4 @@ def add_grade_spread_soft_constraint(ctx: SolverContext, objective_terms: list[A
             objective_terms.append(-penalty_weight * excess_grades)
             penalties_added += 1
 
-    logger.info(f"Added grade spread soft penalties for {penalties_added} bunks")
+    logger.debug(f"Added grade spread soft penalties for {penalties_added} bunks")

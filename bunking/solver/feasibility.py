@@ -178,10 +178,10 @@ def check_feasibility(
             logger.info(f"Group lock {group_lock_id} ({group_size} members) can fit in {len(suitable_bunks)} cabins")
 
     # 4. Individual cabin analysis
-    logger.info("\n=== Cabin Capacity Analysis ===")
+    logger.debug("\n=== Cabin Capacity Analysis ===")
     for bunk in bunks:
         occupancy_info = f"Cabin {bunk.name}: capacity {bunk.capacity}, gender {bunk.gender}"
-        logger.info(occupancy_info)
+        logger.debug(occupancy_info)
 
     # 5. Check for locked assignments exceeding capacity
     bunk_locked_counts: dict[int, int] = defaultdict(int)
