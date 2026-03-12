@@ -187,7 +187,14 @@ class DirectBunkingSolver:
         return valid_bunks
 
     def _validate_requests(self) -> None:
-        """Validate requests and categorize as possible (can be satisfied) or impossible (reference out-of-session people)."""
+        """Validate requests and categorize as possible or impossible.
+
+        Impossible cases:
+        - Requested person is not in the solver at all
+        - bunk_with targeting a person in a different session (session boundaries
+          prevent sharing a bunk). not_bunk_with across sessions is still possible
+          since separation is guaranteed by session boundaries.
+        """
         person_by_cm_id = self.input.person_by_cm_id
         total_requests = 0
         impossible_count = 0

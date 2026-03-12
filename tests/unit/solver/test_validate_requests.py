@@ -13,12 +13,22 @@ from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
 
+_FICTIONAL_NAMES = [
+    ("Emma", "Johnson"),
+    ("Liam", "Garcia"),
+    ("Olivia", "Chen"),
+    ("Noah", "Williams"),
+    ("Ava", "Martinez"),
+    ("Ethan", "Brown"),
+]
+
 
 def _make_person(cm_id: int, session: int, *, gender: str = "F") -> DirectPerson:
+    first, last = _FICTIONAL_NAMES[cm_id % len(_FICTIONAL_NAMES)]
     return DirectPerson(
         campminder_person_id=cm_id,
-        first_name="Test",
-        last_name=f"Person{cm_id}",
+        first_name=first,
+        last_name=last,
         grade=6,
         birthdate="2014-03-15",
         gender=gender,
