@@ -18,6 +18,14 @@ from zoneinfo import ZoneInfo
 CAMP_TZ = ZoneInfo("America/Los_Angeles")
 CAMP_DAY_START_HOUR = 9
 
+# Registration tier configuration: (phase_key, config_key, label)
+# Single source of truth used by velocity, forecast, and day1 services.
+REGISTRATION_TIERS: list[tuple[str, str, str]] = [
+    ("priority", "priority_reg_date", "Priority Registration"),
+    ("early", "early_reg_date", "Early Registration"),
+    ("open", "open_reg_date", "Open Registration"),
+]
+
 
 def get_camp_date(utc_dt: datetime) -> date:
     """Convert a UTC datetime to the camp date it falls in.

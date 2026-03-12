@@ -12,7 +12,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
-from api.services.camp_calendar import format_week_date_range, get_camp_today
+from api.services.camp_calendar import REGISTRATION_TIERS, format_week_date_range, get_camp_today
 from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
@@ -70,19 +70,14 @@ class ForecastService:
 
         # Build tier suffix map: week_number -> suffix label
         tier_suffixes: dict[int, str] = {}
-        tier_labels = [
-            ("priority_reg_date", "Priority Reg"),
-            ("early_reg_date", "Early Reg"),
-            ("open_reg_date", "Open Reg"),
-        ]
-        for key, label in tier_labels:
+        for _phase, key, full_label in REGISTRATION_TIERS:
             tier_str = reg_dates.get(key)
             if tier_str:
                 tier_str = tier_str.split("T")[0].split(" ")[0]
                 tier_date = date.fromisoformat(tier_str)
                 if tier_date >= anchor:
                     tier_week = (tier_date - anchor).days // 7 + 1  # 1-based
-                    tier_suffixes[tier_week] = label
+                    tier_suffixes[tier_week] = full_label.replace("Registration", "Reg")
 
         options: list[WeekOption] = []
 

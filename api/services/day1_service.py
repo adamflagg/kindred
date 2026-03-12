@@ -17,7 +17,7 @@ from api.schemas.day1 import (
     Day1TierData,
     Day1YearData,
 )
-from api.services.camp_calendar import day1_window
+from api.services.camp_calendar import REGISTRATION_TIERS, day1_window
 from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES
 
@@ -25,12 +25,6 @@ logger = logging.getLogger(__name__)
 
 AT_CAMP_TYPES = {"main", "embedded", "ag"}
 QUEST_TYPES = {"quest"}
-
-TIER_CONFIG = [
-    ("priority", "priority_reg_date", "Priority Registration"),
-    ("early", "early_reg_date", "Early Registration"),
-    ("open", "open_reg_date", "Open Registration"),
-]
 
 
 class Day1Service:
@@ -69,7 +63,7 @@ class Day1Service:
 
         # Pre-compute tier windows
         tier_windows: list[tuple[str, str, str, date, datetime, datetime]] = []
-        for tier_key, date_key, tier_label in TIER_CONFIG:
+        for tier_key, date_key, tier_label in REGISTRATION_TIERS:
             date_str = reg_dates.get(date_key)
             if not date_str:
                 continue

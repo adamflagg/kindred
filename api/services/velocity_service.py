@@ -21,7 +21,7 @@ from api.schemas.velocity import (
     VelocityResponse,
     WeeklyDataPoint,
 )
-from api.services.camp_calendar import format_week_date_range
+from api.services.camp_calendar import REGISTRATION_TIERS, format_week_date_range
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     CANCELLATION_STATUSES,
@@ -37,11 +37,9 @@ if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
 
-# Map config keys to phase names and labels
+# Derived from shared REGISTRATION_TIERS: config_key -> (phase, label)
 PHASE_KEY_MAP: dict[str, tuple[str, str]] = {
-    "priority_reg_date": ("priority", "Priority Registration"),
-    "early_reg_date": ("early", "Early Registration"),
-    "open_reg_date": ("open", "Open Registration"),
+    config_key: (phase, label) for phase, config_key, label in REGISTRATION_TIERS
 }
 
 
