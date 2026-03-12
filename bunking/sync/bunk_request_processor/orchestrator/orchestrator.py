@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -51,9 +52,11 @@ from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
     ALL_FIELD_TO_SOURCE_FIELD,
     FIELDS_TO_CHECK,
+    UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
     UNRESOLVED_ID_MAX,
     UNRESOLVED_ID_MIN,
+    VALID_PLACEHOLDERS,
     is_no_preference,
     strip_na_prefix,
 )
@@ -200,6 +203,8 @@ class RequestOrchestrator:
             "reciprocal_pairs": 0,
             "no_preference_skipped": 0,
             "na_prefix_stripped": 0,
+            "hallucination_rejected": 0,
+            "unit_name_rejected": 0,
             "status_resolved": 0,
             "status_pending": 0,
             "status_declined": 0,
@@ -455,6 +460,100 @@ class RequestOrchestrator:
 
         # Fall back to csv_position
         return max(requests, key=lambda r: r.csv_position)
+
+    def _validate_target_names_in_source(self, parse_results: list[ParseResult]) -> tuple[int, int]:
+        """Validate that AI-returned target names appear in the source text.
+
+        Catches two failure modes:
+        1. AI hallucinating names from prompt examples (not in input text)
+        2. AI returning unit/cabin names as person targets
+
+        Runs after _validate_request_types() and _filter_temporal_conflicts(),
+        before Phase 2 (local resolution).
+
+        Modifies parse_results in place — invalid requests are filtered out.
+
+        Args:
+            parse_results: List of ParseResult objects from Phase 1
+
+        Returns:
+            Tuple of (kept_count, rejected_count)
+        """
+        kept_count = 0
+        rejected_count = 0
+
+        for result in parse_results:
+            if not result.is_valid or not result.parsed_requests:
+                continue
+
+            source_text = ""
+            if result.parse_request:
+                source_text = result.parse_request.request_text.lower()
+            # Strip punctuation for matching
+            source_text_clean = re.sub(r"[^\w\s]", " ", source_text)
+
+            validated_requests = []
+            for parsed_req in result.parsed_requests:
+                # Skip age_preference request types (target_name is None)
+                if parsed_req.request_type == RequestType.AGE_PREFERENCE:
+                    validated_requests.append(parsed_req)
+                    kept_count += 1
+                    continue
+
+                # Skip if no target name
+                if not parsed_req.target_name:
+                    validated_requests.append(parsed_req)
+                    kept_count += 1
+                    continue
+
+                target = parsed_req.target_name.strip()
+                target_lower = target.lower()
+
+                # Skip valid placeholders (sibling, last_year_bunkmates, older, younger, unclear)
+                if target_lower in VALID_PLACEHOLDERS:
+                    validated_requests.append(parsed_req)
+                    kept_count += 1
+                    continue
+
+                # Reject unit/cabin names
+                if target_lower in UNIT_NAMES:
+                    logger.warning(f"Rejected unit name target '{target}' — this is a cabin unit, not a person")
+                    self._stats["unit_name_rejected"] += 1
+                    rejected_count += 1
+                    continue
+
+                # Check if any part of the name appears in the source text
+                name_parts = target_lower.split()
+                full_name_clean = re.sub(r"[^\w\s]", " ", target_lower)
+                found = False
+
+                # Check full name first
+                if full_name_clean in source_text_clean:
+                    found = True
+                else:
+                    # Check individual name parts (first name, last name)
+                    for part in name_parts:
+                        if len(part) > 1 and part in source_text_clean.split():
+                            found = True
+                            break
+
+                if found:
+                    validated_requests.append(parsed_req)
+                    kept_count += 1
+                else:
+                    logger.warning(
+                        f"Rejected hallucinated target '{target}' — "
+                        f"not found in source text: "
+                        f"'{result.parse_request.request_text if result.parse_request else ''}'"
+                    )
+                    self._stats["hallucination_rejected"] += 1
+                    rejected_count += 1
+
+            result.parsed_requests = validated_requests
+            if not validated_requests and result.is_valid:
+                result.is_valid = False
+
+        return kept_count, rejected_count
 
     def _filter_post_expansion_conflicts(
         self,
@@ -892,6 +991,16 @@ class RequestOrchestrator:
         kept_count, conflict_filtered = self._filter_temporal_conflicts(parse_results)
         if conflict_filtered > 0:
             logger.info(f"Temporal conflict filter: kept {kept_count} requests, filtered {conflict_filtered} stale")
+
+        # Validate target names appear in source text (catches AI hallucinations and unit names)
+        source_kept, source_rejected = self._validate_target_names_in_source(parse_results)
+        if source_rejected > 0:
+            logger.info(
+                f"Source text validation: kept {source_kept}, "
+                f"rejected {source_rejected} "
+                f"(hallucinated={self._stats.get('hallucination_rejected', 0)}, "
+                f"unit_names={self._stats.get('unit_name_rejected', 0)})"
+            )
 
         # Initialize temporal name cache before Phase 2
 

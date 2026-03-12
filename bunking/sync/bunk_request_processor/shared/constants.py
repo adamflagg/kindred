@@ -29,6 +29,20 @@ LAST_YEAR_BUNKMATES_PLACEHOLDER = "LAST_YEAR_BUNKMATES"
 # This placeholder is expanded to actual sibling(s) via household_id lookup.
 SIBLING_PLACEHOLDER = "SIBLING"
 
+# Cabin unit names — targets matching these are cabin units, not people.
+# Matches current camp's Tier 1 division entries. Update if units change.
+UNIT_NAMES: set[str] = {"nitzanim", "galil", "eilat", "haifa", "chalutzim", "carmel"}
+
+# Special placeholders accepted as valid target names.
+# Not real person names — expanded later in the pipeline.
+VALID_PLACEHOLDERS: set[str] = {
+    "last_year_bunkmates",
+    "sibling",
+    "older",
+    "younger",
+    "unclear",
+}
+
 
 # =============================================================================
 # Field Name Mappings
