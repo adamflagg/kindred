@@ -96,9 +96,10 @@ def check_feasibility(
 
         if session in bunk_sessions:
             bs = bunk_sessions[session]
-            logger.debug(f"  Bunks: {len(bs['bunks'])} total")
+            total_cap = sum(bs["capacity"].values())
             logger.debug(
-                f"  Capacity: M={bs['capacity']['M']}, F={bs['capacity']['F']}, Mixed={bs['capacity']['Mixed']}"
+                f"  Bunks: {len(bs['bunks'])}, total capacity={total_cap}, "
+                f"M={bs['capacity']['M']}, F={bs['capacity']['F']}, Mixed={bs['capacity']['Mixed']}"
             )
 
             # Check gender-specific capacity
@@ -115,19 +116,10 @@ def check_feasibility(
         else:
             logger.debug("  Bunks: None (No bunks for this session!)")
 
-        if session in bunk_sessions:
-            bs = bunk_sessions[session]
-            total_cap = sum(bs["capacity"].values())
-            logger.debug(f"  Bunks: {len(bs['bunks'])} bunks, Total capacity={total_cap}")
-            logger.debug(
-                f"  Capacity by gender: M={bs['capacity']['M']}, F={bs['capacity']['F']}, Mixed={bs['capacity']['Mixed']}"
-            )
-        else:
-            logger.debug("  Bunks: None")
-
     # Concise INFO summary of session distribution
-    session_parts = [f"{s}: {camper_sessions[s]['total']} campers" for s in sorted(camper_sessions.keys())]
-    logger.info(f"Sessions: {len(camper_sessions)} ({', '.join(session_parts)})")
+    all_sessions = sorted(set(camper_sessions) | set(bunk_sessions))
+    session_parts = [f"{s}: {camper_sessions.get(s, {}).get('total', 0)} campers" for s in all_sessions]
+    logger.info(f"Sessions: {len(all_sessions)} ({', '.join(session_parts)})")
 
     # Check for session mismatches
     camper_only_sessions = set(camper_sessions.keys()) - set(bunk_sessions.keys())
