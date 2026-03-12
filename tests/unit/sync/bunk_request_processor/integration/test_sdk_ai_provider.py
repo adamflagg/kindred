@@ -337,7 +337,7 @@ class TestReasoningEffort:
 
         call_kwargs = mock_openai_client.responses.parse.call_args.kwargs
         assert "reasoning" in call_kwargs
-        assert call_kwargs["reasoning"] == {"effort": "low"}
+        assert call_kwargs["reasoning"]["effort"] == "low"
 
     @pytest.mark.asyncio
     async def test_disambiguate_passes_medium_reasoning(self, mock_openai_client):
@@ -382,7 +382,7 @@ class TestReasoningEffort:
 
         call_kwargs = mock_openai_client.responses.parse.call_args.kwargs
         assert "reasoning" in call_kwargs
-        assert call_kwargs["reasoning"] == {"effort": "medium"}
+        assert call_kwargs["reasoning"]["effort"] == "medium"
 
     def test_gpt5_nano_pricing(self):
         """GPT-5-nano pricing is registered in cost calculation."""

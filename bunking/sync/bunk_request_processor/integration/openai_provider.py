@@ -1,7 +1,7 @@
 """V2 AI Provider - OpenAI SDK with Pydantic structured outputs.
 
 Uses the Responses API for schema-enforced structured outputs.
-GPT-4.1 models fully support structured outputs via this API.
+GPT-4.1 and GPT-5 models fully support structured outputs via this API.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from openai import AsyncOpenAI
+from openai.types.shared_params import Reasoning, ReasoningEffort
 
 from ..core.models import (
     AgePreference,
@@ -48,7 +49,7 @@ class OpenAIProvider(AIProvider):
 
         Args:
             api_key: OpenAI API key
-            model: Model name (e.g., 'gpt-4.1-nano')
+            model: Model name (e.g., 'gpt-5-nano')
             base_url: Optional custom API base URL
             timeout: Request timeout in seconds
             debug: Enable verbose AI parse logging
@@ -184,17 +185,23 @@ class OpenAIProvider(AIProvider):
         self,
         prompt: str,
         response_model: type[AIParseResponse] | type[AIDisambiguationResponse],
+        reasoning_effort: ReasoningEffort = "low",
     ) -> AIParseResponse | AIDisambiguationResponse:
         """Call OpenAI with Pydantic structured output.
 
         Uses the Responses API for schema-enforced output.
         The model is constrained to output valid schema-conforming JSON.
+
+        Args:
+            reasoning_effort: Reasoning level for GPT-5 models.
+                "low" for Phase 1 parsing, "medium" for Phase 3 disambiguation.
         """
         response = await self.client.responses.parse(
             model=self.model,
             input=prompt,
             text_format=response_model,
             instructions="You are an expert at parsing summer camp bunk requests.",
+            reasoning=Reasoning(effort=reasoning_effort),
         )
 
         # Update token usage
@@ -394,6 +401,9 @@ class OpenAIProvider(AIProvider):
             "gpt-4.1-nano": (0.10, 0.40),
             "gpt-4.1-mini": (0.40, 1.60),
             "gpt-4.1": (2.0, 8.0),
+            "gpt-5-nano": (0.05, 0.40),
+            "gpt-5-mini": (0.25, 2.0),
+            "gpt-5": (2.0, 8.0),
         }
 
         input_price, output_price = 0.0, 0.0
@@ -434,6 +444,7 @@ class OpenAIProvider(AIProvider):
             response = await self._call_with_structured_output(
                 prompt=prompt,
                 response_model=AIDisambiguationResponse,
+                reasoning_effort="medium",
             )
 
             # Update parsed request with disambiguation result

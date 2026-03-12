@@ -185,7 +185,7 @@ Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
 4. **Sync order matters** - sessions → attendees → persons → bunks → plans → assignments → requests
 5. **Family camps excluded** in syncs for performance
 6. **Config is database-driven** - PocketBase `config` table, not JSON files. AI settings via env vars (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`)
-7. **AI model** - GPT-4.1-nano via `AI_MODEL` env var ($0.10/$0.40 per M tokens)
+7. **AI model** - GPT-5-nano via `AI_MODEL` env var ($0.05/$0.40 per M tokens, reasoning enabled)
 8. **CSV history tracking** - `csv_history/` tracks changes, 30-day auto-cleanup, saves 70-90% AI costs
 9. **Token caching** - CampMinder JWT cached in `~/.campminder_token_cache.json`
 10. **Year-aware syncs** - Uses `season_id` from config; ready for new year with config update
