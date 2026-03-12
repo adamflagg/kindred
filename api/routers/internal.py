@@ -73,6 +73,7 @@ class ProcessRequestsRequest(BaseModel):
     source_fields: list[str] | None = None
     limit: int = 0
     clear_existing: bool = False
+    force: bool = False
     debug: bool = False
     trace: bool = False
 
@@ -94,6 +95,7 @@ async def run_process_requests(
     source_fields: list[str] | None,
     limit: int,
     clear_existing: bool,
+    force: bool,
     debug: bool,
     trace: bool,
 ) -> dict[str, Any]:
@@ -153,6 +155,7 @@ async def run_process_requests(
         session_cm_ids=session_cm_ids,
         test_limit=limit if limit > 0 else None,
         clear_existing=clear_existing,
+        force=force,
         source_fields=validated_fields,
         debug=debug,
     )
@@ -177,6 +180,7 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
             source_fields=body.source_fields,
             limit=body.limit,
             clear_existing=body.clear_existing,
+            force=body.force,
             debug=body.debug,
             trace=body.trace,
         )
