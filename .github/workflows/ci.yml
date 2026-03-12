@@ -133,7 +133,7 @@ jobs:
         persist-credentials: false
 
     - name: Check for file changes
-      uses: step-security/paths-filter@6eee183b0d2fd101d3f8ee2935c127bca14c5625 # v3.0.5
+      uses: dorny/paths-filter@ce10459c8b92cd8901166c0a222fbb033ef39365 # master (node24, post-v3.0.2)
       id: filter
       with:
         filters: |
