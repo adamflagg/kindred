@@ -14,8 +14,6 @@ from fastapi import APIRouter, Depends, Query
 
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
-from bunking.rbac.dependencies import require_permission
-from bunking.rbac.permissions import Permission
 
 from ..dependencies import metrics_cache, pb
 from ..schemas.day1 import Day1Response
@@ -544,7 +542,7 @@ async def get_velocity(
 @router.get("/forecast/week-options")
 async def get_forecast_week_options(
     year: int = Query(..., description="Year to get week options for"),
-    user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
+    user: AuthUser = Depends(get_current_user),
 ) -> list[WeekOption]:
     """Return week options from Week 0 (priority reg) through today."""
     from api.services.forecast_service import ForecastService
@@ -563,7 +561,7 @@ async def get_forecast(
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
-    user: AuthUser = Depends(require_permission(Permission.METRICS_FINANCIAL)),
+    user: AuthUser = Depends(get_current_user),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals and revenue projections."""
     check_duration_session_exclusive(duration, session_cm_id)
