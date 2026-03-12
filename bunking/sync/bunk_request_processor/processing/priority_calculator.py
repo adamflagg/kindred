@@ -9,7 +9,7 @@ from typing import Any
 
 from ..core.constants import PRIORITY_KEYWORDS
 from ..core.models import ParsedRequest, RequestType
-from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER
+from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER, SourceField
 
 # Default rule priorities (used when config not provided or incomplete)
 DEFAULT_RULES = {
@@ -164,7 +164,7 @@ class PriorityCalculator:
             return self._get_rule_priority("staff_notes")
 
         # Priority 1 cases - parent age preference
-        if parsed.source_field == "ret_parent_socialize_with_best":
+        if parsed.source_field == SourceField.SOCIALIZE_WITH:
             if parsed.request_type == RequestType.AGE_PREFERENCE:
                 return self._get_rule_priority("parent_age_preference")
 

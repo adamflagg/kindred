@@ -57,6 +57,7 @@ from ..shared.constants import (
     UNRESOLVED_ID_MAX,
     UNRESOLVED_ID_MIN,
     VALID_PLACEHOLDERS,
+    SourceField,
     is_no_preference,
     strip_na_prefix,
 )
@@ -1191,7 +1192,7 @@ class RequestOrchestrator:
             request_type=RequestType.AGE_PREFERENCE,
             target_name=None,
             age_preference=target,
-            source_field="ret_parent_socialize_with_best",
+            source_field=SourceField.SOCIALIZE_WITH,
             source=RequestSource.FAMILY,
             confidence=1.0,  # 100% confidence for exact dropdown matches
             csv_position=1,

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from ..core.models import BunkRequest, RequestSource, RequestType
 from ..data.repositories.request_repository import RequestRepository
+from ..shared.constants import SourceField
 
 # Source priority order (higher number = higher priority)
 # Used for deduplication tiebreaker only - staff validates family input
@@ -94,7 +95,7 @@ class Deduplicator:
                 #
                 # This matches the DB unique constraint which does NOT include source_field.
                 # Same requester→target from different fields = same intent = one request.
-                if request.source_field == "socialize_with":
+                if request.source_field == SourceField.SOCIALIZE_WITH:
                     # socialize_with is special - never dedupe across sources
                     # This field outputs known age preference requests from dropdown values
                     key = (
