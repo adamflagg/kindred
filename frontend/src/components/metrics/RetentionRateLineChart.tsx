@@ -112,7 +112,7 @@ export function RetentionRateLineChart({
       xAxisEdgeAligned
       xAxisRightPadding={20}
     >
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={barsHeight}>
         <LineChart
           data={chartData}
           margin={{ top: 16, right: 20, left: 0, bottom: 0 }}
