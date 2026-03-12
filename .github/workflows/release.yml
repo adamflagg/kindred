@@ -204,6 +204,22 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Verify SHA-tagged images exist in registry
+      env:
+        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+      run: |
+        # CD can succeed without building (e.g., docs-only changes skip the build).
+        # Verify the sha-tagged images actually exist before attempting promotion.
+        IMAGE="${REGISTRY}/${USERNAME}/kindred-api:${SHA_TAG}"
+        echo "Checking registry for ${IMAGE}..."
+        if ! docker buildx imagetools inspect "$IMAGE" > /dev/null 2>&1; then
+          echo "::error::Image ${IMAGE} not found in registry."
+          echo "CD may have skipped the build (no relevant file changes)."
+          echo "Ensure the latest CD run on main built and pushed images before releasing."
+          exit 1
+        fi
+        echo "Verified: ${SHA_TAG} images exist in registry"
+
     - name: Promote Docker images to release tags
       env:
         VERSION: ${{ steps.version.outputs.version }}

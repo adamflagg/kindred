@@ -348,17 +348,18 @@ cd frontend && npm run lint    # Frontend linting
 - Type checking (mypy, TypeScript)
 - Unit tests (Python, Go, TypeScript)
 
-**CD runs only on tags/releases** (full build, ~10-15 min):
+**CD runs on every merge to main** (full build, ~10-15 min):
 - Docker image builds
 - Security scanning (Trivy)
 - Integration tests
+- Pushes images tagged `latest` and `sha-<commit>`
 
 ### Version Tags
 - Semantic versioning: `v0.1.0`, `v0.2.0`, `v1.0.0`
-- Only `v*` tags trigger CD workflow
+- Tags created by the Release workflow, not manually
 
 ### Release Workflow
-Release via GitHub Actions: **Actions → Release → Run workflow**. Leave version empty for auto-bump (git-cliff), or enter a version to override. The workflow creates the tag and GitHub release, which triggers CD automatically.
+Release via GitHub Actions: **Actions → Release → Run workflow**. Leave version empty for auto-bump (git-cliff), or enter a version to override. The workflow waits for CI and CD to pass, promotes the existing `sha-<commit>` Docker images to version tags (e.g., `3.2.0`, `3.2`), then creates the git tag and GitHub release.
 
 Requires `RELEASE_TOKEN` repo secret (fine-grained PAT with `contents: write`).
 
