@@ -19,7 +19,12 @@ from pocketbase import PocketBase
 
 from ..dependencies import pb_url, solver_runs
 from ..settings import get_settings
-from .data_fetcher import fetch_historical_bunking, fetch_session_data_v2, prepare_direct_solver_input
+from .data_fetcher import (
+    fetch_historical_bunking,
+    fetch_lock_groups,
+    fetch_session_data_v2,
+    prepare_direct_solver_input,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +77,20 @@ async def run_solver_task_v2(
             historical_bunking=historical_bunking,
         )
 
+        # Fetch lock groups if running in scenario mode
+        if scenario:
+            lock_groups = await fetch_lock_groups(
+                scenario=scenario,
+                session_cm_id=session_cm_id,
+                year=year,
+                pb_client=task_pb,
+            )
+            solver_input.lock_groups_data = lock_groups
+
         # Apply manual locks if requested
         if not respect_locks:
             solver_input.existing_assignments = [a for a in solver_input.existing_assignments if not a.is_locked]
+            solver_input.lock_groups_data = {}
 
         # Run solver
         logger.info(
