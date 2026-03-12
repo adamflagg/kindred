@@ -173,6 +173,9 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 	app.OnRecordCreateRequest("config").BindFunc(guardConfigWrite)
 	app.OnRecordUpdateRequest("config").BindFunc(guardConfigWrite)
 
+	// Invalidate FastAPI metrics cache when registration config changes
+	registerConfigHooks(app)
+
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)
 

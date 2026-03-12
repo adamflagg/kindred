@@ -374,6 +374,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        # Skip auth for metrics cache invalidation (safe, idempotent operation).
+        # Called by PocketBase hook on registration config changes (no user context).
+        if request.url.path == "/api/metrics/cache/invalidate" and request.method == "POST":
+            response = await call_next(request)
+            return response
+
         user: AuthUser | None = None
 
         # Determine user based on auth mode

@@ -195,4 +195,37 @@ describe('RegistrationDatesConfig', () => {
       expect(screen.getByText(/2026/)).toBeInTheDocument()
     })
   })
+
+  it('invalidates server-side metrics cache after saving dates', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    mockGetFullList.mockResolvedValue([
+      makeConfigRecord(2026, 'priority_reg_date', '2025-11-10', 'existing_1'),
+      makeConfigRecord(2026, 'early_reg_date', '2025-11-13', 'existing_2'),
+      makeConfigRecord(2026, 'open_reg_date', '2025-11-20', 'existing_3'),
+    ])
+    mockUpdate.mockResolvedValue({ id: 'existing_1' })
+
+    const user = userEvent.setup()
+    render(<RegistrationDatesConfig />, { wrapper: createWrapper(2026) })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/priority/i)).toHaveValue('2025-11-10')
+    })
+
+    // Change a date and save
+    await user.clear(screen.getByLabelText(/priority/i))
+    await user.type(screen.getByLabelText(/priority/i), '2025-11-09')
+
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/metrics/cache/invalidate',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    mockFetch.mockRestore()
+  })
 })
