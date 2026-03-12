@@ -3,10 +3,8 @@ package sync
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 )
 
@@ -77,94 +75,6 @@ func TestIsEmbeddedSession(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestBatchStrings tests the helper function that splits slices into batches
-func TestBatchStrings(t *testing.T) {
-	tests := []struct {
-		name      string
-		items     []string
-		batchSize int
-		want      [][]string
-	}{
-		{
-			name:      "empty slice returns empty",
-			items:     []string{},
-			batchSize: 25,
-			want:      [][]string{},
-		},
-		{
-			name:      "slice smaller than batch size returns single batch",
-			items:     []string{"a", "b", "c"},
-			batchSize: 25,
-			want:      [][]string{{"a", "b", "c"}},
-		},
-		{
-			name:      "slice equal to batch size returns single batch",
-			items:     []string{"a", "b", "c"},
-			batchSize: 3,
-			want:      [][]string{{"a", "b", "c"}},
-		},
-		{
-			name:      "slice larger than batch size returns multiple batches",
-			items:     []string{"a", "b", "c", "d", "e"},
-			batchSize: 2,
-			want:      [][]string{{"a", "b"}, {"c", "d"}, {"e"}},
-		},
-		{
-			name:      "78 items into batches of 25",
-			items:     makeTestIDs(78),
-			batchSize: 25,
-			want:      [][]string{makeTestIDs(25), makeTestIDsFrom(25, 25), makeTestIDsFrom(50, 25), makeTestIDsFrom(75, 3)},
-		},
-		{
-			name:      "batch size of 1 returns individual batches",
-			items:     []string{"a", "b", "c"},
-			batchSize: 1,
-			want:      [][]string{{"a"}, {"b"}, {"c"}},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := batchStrings(tt.items, tt.batchSize)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("batchStrings() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestBatchStrings_InvalidBatchSize tests edge cases with invalid batch sizes
-func TestBatchStrings_InvalidBatchSize(t *testing.T) {
-	items := []string{"a", "b", "c"}
-
-	// Zero batch size should return empty (defensive)
-	got := batchStrings(items, 0)
-	if len(got) != 0 {
-		t.Errorf("batchStrings with batchSize=0 should return empty, got %v", got)
-	}
-
-	// Negative batch size should return empty (defensive)
-	got = batchStrings(items, -1)
-	if len(got) != 0 {
-		t.Errorf("batchStrings with batchSize=-1 should return empty, got %v", got)
-	}
-}
-
-// makeTestIDs creates a slice of test IDs like ["id_000", "id_001", ...]
-func makeTestIDs(count int) []string {
-	return makeTestIDsFrom(0, count)
-}
-
-// makeTestIDsFrom creates a slice of test IDs starting from a given index
-func makeTestIDsFrom(start, count int) []string {
-	result := make([]string, count)
-	for i := range count {
-		n := start + i
-		result[i] = "id_" + fmt.Sprintf("%03d", n)
-	}
-	return result
 }
 
 // TestCallAPIProcessor tests the HTTP-based process-requests API call
@@ -248,41 +158,39 @@ func TestCallAPIProcessor(t *testing.T) {
 	}
 }
 
-// TestBuildBatchedFilter tests building filters with batched person IDs
-func TestBuildBatchedFilter(t *testing.T) {
-	tests := []struct {
-		name       string
-		baseFilter string
-		personIDs  []string
-		wantFilter string
-	}{
-		{
-			name:       "empty person IDs returns base filter unchanged",
-			baseFilter: "year = 2025 && processed != ''",
-			personIDs:  []string{},
-			wantFilter: "year = 2025 && processed != ''",
-		},
-		{
-			name:       "single person ID adds OR condition",
-			baseFilter: "year = 2025 && processed != ''",
-			personIDs:  []string{"abc123"},
-			wantFilter: "year = 2025 && processed != '' && (requester = 'abc123')",
-		},
-		{
-			name:       "multiple person IDs joined with OR",
-			baseFilter: "year = 2025 && processed != ''",
-			personIDs:  []string{"abc123", "def456", "ghi789"},
-			wantFilter: "year = 2025 && processed != '' && " +
-				"(requester = 'abc123' || requester = 'def456' || requester = 'ghi789')",
-		},
-	}
+// TestCallAPIProcessor_ForceField verifies the force field is serialized in the request body
+func TestCallAPIProcessor_ForceField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildBatchedFilter(tt.baseFilter, tt.personIDs)
-			if got != tt.wantFilter {
-				t.Errorf("buildBatchedFilter() = %q, want %q", got, tt.wantFilter)
-			}
-		})
+		// Verify force field is present and true
+		forceVal, ok := reqBody["force"]
+		if !ok {
+			t.Error("request body missing 'force' field")
+		}
+		if forceBool, ok := forceVal.(bool); !ok || !forceBool {
+			t.Errorf("expected force=true, got %v", forceVal)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		resp := `{"success":true,"created":3,"updated":0,"skipped":0,"errors":0,"already_processed":0}`
+		_, _ = w.Write([]byte(resp))
+	}))
+	defer server.Close()
+
+	stats, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+		Year:    2025,
+		Session: "1",
+		Force:   true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stats.Created != 3 {
+		t.Errorf("expected 3 created, got %d", stats.Created)
 	}
 }

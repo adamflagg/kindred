@@ -115,6 +115,27 @@ class TestProcessRequests:
             assert call_kwargs["clear_existing"] is False
             assert call_kwargs["source_fields"] is None
             assert call_kwargs["limit"] == 0
+            assert call_kwargs["force"] is False
+
+    @pytest.mark.asyncio
+    async def test_process_requests_forwards_force(self, client):
+        """Should pass force=True from HTTP body to run_process_requests."""
+        mock_result = {
+            "success": True,
+            "statistics": {"requests_created": 3, "phase2_ambiguous": 0},
+            "already_processed": 0,
+        }
+
+        with patch(
+            "api.routers.internal.run_process_requests", new_callable=AsyncMock, return_value=mock_result
+        ) as mock_fn:
+            response = await client.post(
+                "/api/internal/process-requests",
+                json={"year": 2025, "session": "1", "force": True},
+            )
+            assert response.status_code == 200
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["force"] is True
 
     @pytest.mark.asyncio
     async def test_process_requests_failure_returns_500(self, client):
