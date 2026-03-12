@@ -140,3 +140,18 @@ class TestCongregationNormalizationBulk:
 
         canonical = result["Temple Xyzzy Shalom"]["canonical"]
         assert result["temple xyzzy shalom"]["canonical"] == canonical
+
+
+class TestStateAwareCongregationNormalization:
+    def test_congregation_normalizes_known_value(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_congregation_value
+
+        result = normalize_congregation_value("Temple Isaiah")
+        assert result
+
+    def test_normalize_congregations_batch_with_state(self) -> None:
+        from bunking.geo_normalizer.normalizer import normalize_congregations
+
+        items: list[dict[str, str]] = [{"value": "Temple Isaiah", "state": "CA"}]
+        result = normalize_congregations(items)
+        assert "Temple Isaiah" in result

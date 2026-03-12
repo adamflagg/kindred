@@ -11,7 +11,6 @@ import type { GeoDataItem } from './GeoMap'
 import type { GeoCategoryExtended } from './GeoCategoryTabs'
 import type { DrilldownFilter } from '../../../types/metrics'
 import type { SourceMapping } from '../../../hooks/useSourceMappings'
-import { US_CITY_STATES } from '../../../data/cityGeo'
 import { getLocationCoordsWithOverrides } from '../../../data/geoCoords'
 import type { LatLng } from '../../../data/californiaGeo'
 
@@ -163,14 +162,7 @@ export function GeoDetailList({
                               </button>
                             )}
                             {showSources && !hasSources && <span className="w-4" />}
-                            <span>
-                              {item.name}
-                              {category === 'city' && US_CITY_STATES[item.name] && (
-                                <span className="text-muted-foreground">
-                                  , {US_CITY_STATES[item.name]}
-                                </span>
-                              )}
-                            </span>
+                            <span>{item.name}</span>
                             {showGaps &&
                               !getLocationCoordsWithOverrides(
                                 category,
