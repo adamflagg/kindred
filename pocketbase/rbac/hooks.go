@@ -113,7 +113,7 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 	}
 
 	// Check the existing record's business_category
-	if extractBusinessCategory(e.Record.Get("metadata")) != "registration" {
+	if extractBusinessCategory(e.Record.Get("metadata")) != categoryRegistration {
 		return apis.NewForbiddenError("Admin access required for this config category", nil)
 	}
 
@@ -121,7 +121,7 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 	info, err := e.RequestInfo()
 	if err == nil && info != nil && info.Body != nil {
 		if newMeta, ok := info.Body["metadata"]; ok {
-			if newCat := extractBusinessCategory(newMeta); newCat != "" && newCat != "registration" {
+			if newCat := extractBusinessCategory(newMeta); newCat != "" && newCat != categoryRegistration {
 				return apis.NewForbiddenError("Cannot change config category", nil)
 			}
 		}

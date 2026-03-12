@@ -11,9 +11,12 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// categoryRegistration is the business category for registration-related configs.
+const categoryRegistration = "registration"
+
 // isRegistrationConfig returns true if the given category is "registration".
 func isRegistrationConfig(category string) bool {
-	return category == "registration"
+	return category == categoryRegistration
 }
 
 // notifyMetricsCacheInvalidation sends a fire-and-forget POST to the FastAPI
@@ -29,7 +32,7 @@ func notifyMetricsCacheInvalidation(apiBaseURL string) {
 			slog.Warn("Failed to notify FastAPI metrics cache invalidation", "url", url, "error", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode == http.StatusOK {
 			slog.Info("Metrics cache invalidated after registration config change")

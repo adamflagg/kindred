@@ -514,7 +514,9 @@ type geoNormalizeRequest struct {
 }
 
 // callGeoNormalizeAPI calls the FastAPI geo-normalize endpoint
-func callGeoNormalizeAPI(apiURL, category string, values []valueWithContext) (map[string]pythonNormalizedResult, error) {
+func callGeoNormalizeAPI(
+	apiURL, category string, values []valueWithContext,
+) (map[string]pythonNormalizedResult, error) {
 	reqBody := geoNormalizeRequest{
 		Category: category,
 		Values:   values,
@@ -525,7 +527,8 @@ func callGeoNormalizeAPI(apiURL, category string, values []valueWithContext) (ma
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	resp, err := geoNormalizeClient.Post(apiURL+"/api/internal/geo-normalize", "application/json", bytes.NewReader(bodyBytes))
+	endpoint := apiURL + "/api/internal/geo-normalize"
+	resp, err := geoNormalizeClient.Post(endpoint, "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("calling geo-normalize API: %w", err)
 	}
