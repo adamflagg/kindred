@@ -6,23 +6,23 @@ os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
 from unittest.mock import AsyncMock, MagicMock
-from zoneinfo import ZoneInfo
 
 import pytest
 
 from api.services.day1_service import Day1Service
 
-CAMP_TZ = ZoneInfo("America/Los_Angeles")
-
 
 def _make_attendee(
-    *, session_cm_id: int, status_id: int = 2, enrollment_date: str, session_type: str = "main"
+    *,
+    session_cm_id: int,
+    status_id: int = 2,
+    effective_date: str,
+    enrollment_date: str = "",
 ) -> MagicMock:
     att = MagicMock()
     att.status_id = status_id
+    att.effective_date = effective_date
     att.enrollment_date = enrollment_date
-    att.effective_date = enrollment_date.split("T")[0] if "T" in enrollment_date else enrollment_date
-    # Use expand-dict pattern matching PocketBase expanded session relation
     session_mock = MagicMock()
     session_mock.cm_id = session_cm_id
     att.expand = {"session": session_mock}
@@ -37,8 +37,8 @@ def _make_session(cm_id: int, session_type: str = "main") -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_day1_counts_within_window():
-    """Attendees within 9am-9am window are counted."""
+async def test_day1_counts_on_tier_date():
+    """Attendees with effective_date matching tier date are counted."""
     repo = AsyncMock()
     repo.fetch_registration_dates.return_value = {
         "priority_reg_date": "2025-11-12",
@@ -49,25 +49,21 @@ async def test_day1_counts_within_window():
         1001: _make_session(1001, "main"),
     }
     repo.fetch_attendees_with_dates.return_value = [
-        _make_attendee(
-            session_cm_id=1001, enrollment_date="2025-11-12T17:00:00.000Z"
-        ),  # 9am PST = 5pm UTC, this is within window
-        _make_attendee(
-            session_cm_id=1001, enrollment_date="2025-11-13T16:00:00.000Z"
-        ),  # Within 9am-9am window (before 9am PT next day = before 5pm UTC)
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-12T00:00:00.000Z"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-12"),
     ]
 
     service = Day1Service(repo)
     result = await service.get_day1(2026)
 
-    # Priority tier should count both attendees
     priority_tier = next(t for t in result.tiers if t.tier == "priority")
     assert priority_tier.total.count == 2
+    assert priority_tier.approximate is True
 
 
 @pytest.mark.asyncio
-async def test_day1_excludes_outside_window():
-    """Attendees outside 9am-9am window are not counted."""
+async def test_day1_excludes_different_date():
+    """Attendees with effective_date on other dates are not counted."""
     repo = AsyncMock()
     repo.fetch_registration_dates.return_value = {
         "priority_reg_date": "2025-11-12",
@@ -76,12 +72,8 @@ async def test_day1_excludes_outside_window():
         1001: _make_session(1001, "main"),
     }
     repo.fetch_attendees_with_dates.return_value = [
-        _make_attendee(
-            session_cm_id=1001, enrollment_date="2025-11-12T16:00:00.000Z"
-        ),  # Before 9am PST (8am PST = 4pm UTC)
-        _make_attendee(
-            session_cm_id=1001, enrollment_date="2025-11-13T18:00:00.000Z"
-        ),  # After 9am PST next day (10am PST = 6pm UTC)
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-11"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-13"),
     ]
 
     service = Day1Service(repo)
@@ -103,9 +95,9 @@ async def test_day1_categories():
         1002: _make_session(1002, "quest"),
     }
     repo.fetch_attendees_with_dates.return_value = [
-        _make_attendee(session_cm_id=1001, enrollment_date="2025-11-12T18:00:00.000Z"),
-        _make_attendee(session_cm_id=1001, enrollment_date="2025-11-12T19:00:00.000Z"),
-        _make_attendee(session_cm_id=1002, enrollment_date="2025-11-12T18:00:00.000Z"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-12"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-12"),
+        _make_attendee(session_cm_id=1002, effective_date="2025-11-12"),
     ]
 
     service = Day1Service(repo)
@@ -131,3 +123,58 @@ async def test_day1_missing_tier():
     result = await service.get_day1(2026)
 
     assert len(result.tiers) == 0
+
+
+@pytest.mark.asyncio
+async def test_day1_skips_missing_effective_date():
+    """Attendees without effective_date are skipped."""
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = {
+        "priority_reg_date": "2025-11-12",
+    }
+    repo.fetch_sessions.return_value = {
+        1001: _make_session(1001, "main"),
+    }
+    repo.fetch_attendees_with_dates.return_value = [
+        _make_attendee(session_cm_id=1001, effective_date=""),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-12"),
+    ]
+
+    service = Day1Service(repo)
+    result = await service.get_day1(2026)
+
+    priority_tier = next(t for t in result.tiers if t.tier == "priority")
+    assert priority_tier.total.count == 1
+
+
+@pytest.mark.asyncio
+async def test_day1_ignores_enrollment_date():
+    """enrollment_date (sync timestamp) does not affect Day 1 counting."""
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = {
+        "priority_reg_date": "2025-11-12",
+    }
+    repo.fetch_sessions.return_value = {
+        1001: _make_session(1001, "main"),
+    }
+    repo.fetch_attendees_with_dates.return_value = [
+        # effective_date matches tier, but enrollment_date is months later (sync time)
+        _make_attendee(
+            session_cm_id=1001,
+            effective_date="2025-11-12",
+            enrollment_date="2026-02-05 20:21:10.508Z",
+        ),
+        # effective_date does NOT match tier, but enrollment_date falls on tier date
+        _make_attendee(
+            session_cm_id=1001,
+            effective_date="2025-11-13",
+            enrollment_date="2025-11-12T18:00:00.000Z",
+        ),
+    ]
+
+    service = Day1Service(repo)
+    result = await service.get_day1(2026)
+
+    priority_tier = next(t for t in result.tiers if t.tier == "priority")
+    # Only first attendee should count (effective_date matches)
+    assert priority_tier.total.count == 1
