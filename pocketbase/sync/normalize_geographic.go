@@ -590,10 +590,7 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 	// Convert to normalizedEntry map (preserving confidence from Python)
 	result := make(map[string]normalizedEntry)
 	for original, normalized := range results {
-		result[original] = normalizedEntry{
-			Canonical:  normalized.Canonical,
-			Confidence: normalized.Confidence,
-		}
+		result[original] = normalizedEntry(normalized)
 	}
 
 	return result, nil
