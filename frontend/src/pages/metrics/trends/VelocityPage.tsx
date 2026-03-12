@@ -13,7 +13,7 @@
  * - Week-over-week delta table with prior-year columns
  */
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useCallback, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -93,6 +93,18 @@ export default function VelocityPage() {
   const [splitByGender, setSplitByGender] = useState(false)
   const [viewMode, setViewMode] = useState<VelocityViewMode>('net')
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null)
+
+  // Sync Brush drag with zoomRange state, deduplicating to prevent render loops
+  const handleBrushChange = useCallback(
+    (range: { startIndex?: number; endIndex?: number }) => {
+      if (range.startIndex !== undefined && range.endIndex !== undefined) {
+        const s = range.startIndex
+        const e = range.endIndex
+        setZoomRange((prev) => (prev && prev[0] === s && prev[1] === e ? prev : [s, e]))
+      }
+    },
+    []
+  )
 
   const priorYearOptions = useMemo(
     () => availableYears.filter((y) => y < currentYear).sort((a, b) => b - a),
@@ -872,7 +884,13 @@ export default function VelocityPage() {
                 dataKey="week_number"
                 height={20}
                 stroke="hsl(var(--primary))"
-                {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
+                onChange={handleBrushChange}
+                {...(zoomRange
+                  ? {
+                      startIndex: Math.min(zoomRange[0], Math.max(0, weeklyChartData.length - 1)),
+                      endIndex: Math.min(zoomRange[1], Math.max(0, weeklyChartData.length - 1)),
+                    }
+                  : {})}
                 tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
               />
 
@@ -1112,7 +1130,13 @@ export default function VelocityPage() {
                 dataKey="day_offset"
                 height={20}
                 stroke="hsl(var(--primary))"
-                {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
+                onChange={handleBrushChange}
+                {...(zoomRange
+                  ? {
+                      startIndex: Math.min(zoomRange[0], Math.max(0, dailyChartData.length - 1)),
+                      endIndex: Math.min(zoomRange[1], Math.max(0, dailyChartData.length - 1)),
+                    }
+                  : {})}
                 tickFormatter={(offset: number) => dailyTickFormatter(offset)}
               />
 
