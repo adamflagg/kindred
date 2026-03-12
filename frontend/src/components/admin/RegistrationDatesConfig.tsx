@@ -105,6 +105,10 @@ export function RegistrationDatesConfig() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.registrationDatesConfig(currentYear),
       })
+      // Invalidate server-side metrics cache so velocity graph picks up new phase dates
+      fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+      // Invalidate client-side metrics queries for immediate UI refresh
+      await queryClient.invalidateQueries({ queryKey: ['metrics'] })
       toast.success('Registration dates saved')
     } catch (error) {
       toast.error(`Failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`)

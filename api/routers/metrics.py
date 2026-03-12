@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query
 
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
-from bunking.rbac.dependencies import require_admin, require_permission
+from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import metrics_cache, pb
@@ -627,12 +627,14 @@ async def get_day1(
 
 
 @router.post("/cache/invalidate")
-async def invalidate_metrics_cache(
-    user: AuthUser = Depends(require_admin),
-) -> dict[str, int]:
+async def invalidate_metrics_cache() -> dict[str, int]:
     """Invalidate all cached metrics responses.
 
-    Called by frontend on sync completion (via invalidateSyncData) or manual cache clear.
+    Auth is handled by the middleware (skipped for this path since cache
+    clearing is safe and idempotent). Called by:
+    - PocketBase hook on registration config changes (internal, no user context)
+    - Frontend on sync completion (via invalidateSyncData)
+    - Frontend after saving registration dates
     """
     cleared = metrics_cache.invalidate_all()
     return {"cleared": cleared}
