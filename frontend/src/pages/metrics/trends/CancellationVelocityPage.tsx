@@ -54,16 +54,13 @@ export default function CancellationVelocityPage() {
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null)
 
   // Sync Brush drag with zoomRange state, deduplicating to prevent render loops
-  const handleBrushChange = useCallback(
-    (range: { startIndex?: number; endIndex?: number }) => {
-      if (range.startIndex !== undefined && range.endIndex !== undefined) {
-        const s = range.startIndex
-        const e = range.endIndex
-        setZoomRange((prev) => (prev && prev[0] === s && prev[1] === e ? prev : [s, e]))
-      }
-    },
-    []
-  )
+  const handleBrushChange = useCallback((range: { startIndex?: number; endIndex?: number }) => {
+    if (range.startIndex !== undefined && range.endIndex !== undefined) {
+      const s = range.startIndex
+      const e = range.endIndex
+      setZoomRange((prev) => (prev && prev[0] === s && prev[1] === e ? prev : [s, e]))
+    }
+  }, [])
 
   const priorYearOptions = useMemo(
     () => availableYears.filter((y) => y < currentYear).sort((a, b) => b - a),
