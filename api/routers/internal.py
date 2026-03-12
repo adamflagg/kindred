@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from bunking.geo_normalizer.normalizer import normalize_values
-from bunking.logging_config import TRACE
+from bunking.logging_config import TRACE, get_logger
 from bunking.sync.bunk_request_processor.data.repositories import SessionRepository
 from bunking.sync.bunk_request_processor.process_requests import (
     load_configuration,
@@ -24,7 +24,7 @@ from bunking.sync.bunk_request_processor.process_requests import (
 )
 from bunking.sync.bunk_request_processor.shared.constants import validate_source_fields
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -533,7 +534,8 @@ func callGeoNormalizeAPI(apiURL, category string, values []valueWithContext) (ma
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	resp, err := http.Post(apiURL+"/api/internal/geo-normalize", "application/json", bytes.NewReader(bodyBytes))
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Post(apiURL+"/api/internal/geo-normalize", "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("calling geo-normalize API: %w", err)
 	}

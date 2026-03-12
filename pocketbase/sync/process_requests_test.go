@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -226,7 +227,7 @@ func TestCallAPIProcessor(t *testing.T) {
 			}))
 			defer server.Close()
 
-			stats, err := callAPIProcessor(server.URL, apiProcessorRequest{
+			stats, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
 				Year:    2025,
 				Session: "all",
 			})

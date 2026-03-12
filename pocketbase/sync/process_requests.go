@@ -60,7 +60,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 	p.Stats = Stats{}
 	p.SyncSuccessful = false
 
-	slog.Info("Starting request processing via Python",
+	slog.Info("Starting request processing via API",
 		"session", p.Session,
 		"limit", p.Limit,
 		"force", p.Force,
@@ -86,7 +86,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 	}
 
 	apiURL := getAPIURL()
-	pythonStats, err := callAPIProcessor(apiURL, apiProcessorRequest{
+	pythonStats, err := callAPIProcessor(ctx, apiURL, apiProcessorRequest{
 		Year:          func() int { y, _ := strconv.Atoi(year); return y }(),
 		Session:       p.Session,
 		SourceFields:  p.SourceFields,
@@ -141,7 +141,7 @@ type apiProcessorResponse struct {
 }
 
 // callAPIProcessor calls the FastAPI process-requests endpoint
-func callAPIProcessor(apiURL string, req apiProcessorRequest) (Stats, error) {
+func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorRequest) (Stats, error) {
 	bodyBytes, err := json.Marshal(req)
 	if err != nil {
 		return Stats{}, fmt.Errorf("marshaling request: %w", err)
@@ -150,7 +150,13 @@ func callAPIProcessor(apiURL string, req apiProcessorRequest) (Stats, error) {
 	// Use a long timeout — processing can take up to 30 minutes
 	client := &http.Client{Timeout: 35 * time.Minute}
 
-	resp, err := client.Post(apiURL+"/api/internal/process-requests", "application/json", bytes.NewReader(bodyBytes))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/internal/process-requests", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return Stats{}, fmt.Errorf("building process-requests request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return Stats{}, fmt.Errorf("calling process-requests API: %w", err)
 	}
@@ -161,13 +167,13 @@ func callAPIProcessor(apiURL string, req apiProcessorRequest) (Stats, error) {
 		return Stats{}, fmt.Errorf("reading response: %w", err)
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return Stats{}, fmt.Errorf("process-requests API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
 	var result apiProcessorResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return Stats{}, fmt.Errorf("parsing process-requests response: %w\nRaw: %s", err, string(respBody))
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return Stats{}, fmt.Errorf("process-requests API returned %d: %s", resp.StatusCode, result.Error)
 	}
 
 	if !result.Success {
