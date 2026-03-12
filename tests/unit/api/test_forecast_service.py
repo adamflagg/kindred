@@ -1634,8 +1634,9 @@ class TestGetWeekOptions:
         # Filter out the "today" entry to check week milestones only
         milestones = [o for o in result if not o.is_today]
 
-        # Week 3 = day_offset 20 (days 14-20), Week 2 = day_offset 13, Week 1 = day_offset 6
+        # Only completed weeks appear (not the current incomplete week 4)
         week_offsets = {o.week_number: o.day_offset for o in milestones}
+        assert set(week_offsets.keys()) == {1, 2, 3}, f"Expected only weeks 1-3, got {set(week_offsets.keys())}"
         assert week_offsets[1] == 6, f"Week 1 should be day_offset=6 (end of days 0-6), got {week_offsets[1]}"
         assert week_offsets[2] == 13, f"Week 2 should be day_offset=13 (end of days 7-13), got {week_offsets[2]}"
         assert week_offsets[3] == 20, f"Week 3 should be day_offset=20 (end of days 14-20), got {week_offsets[3]}"

@@ -207,7 +207,7 @@ def reconstruct_daily(
 
     # Build daily event buckets: date_str -> {new, cancelled, new_boys, ...}
     daily_events: dict[str, dict[str, int]] = {}
-    has_gender = False
+    sessions_with_gender: set[int] = set()
 
     for att in attendees:
         # Access session via expand dict — matches _reconstruct_core pattern
@@ -237,7 +237,7 @@ def reconstruct_daily(
         person = expand.get("person") if isinstance(expand, dict) else None
         gender = getattr(person, "gender", None) if person else None
         if gender is not None:
-            has_gender = True
+            sessions_with_gender.add(sid)
 
         _empty_bucket: dict[str, int] = {
             "new": 0,
@@ -270,6 +270,8 @@ def reconstruct_daily(
                     bucket["canc_boys"] += 1
                 elif gender == "F":
                     bucket["canc_girls"] += 1
+
+    has_gender = len(sessions_with_gender) > 0
 
     # Build daily points with running cumulatives
     result: list[DailyPoint] = []

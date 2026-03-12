@@ -512,7 +512,14 @@ class VelocityService:
                 )
             else:
                 by_gender, session_gender_breakdown = await self._build_gender_curves(
-                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt, today=today
+                    year,
+                    sessions,
+                    ag_parent_map,
+                    session_cm_id,
+                    season_start_dt,
+                    season_end_dt,
+                    today=today,
+                    combined_daily=combined.daily,
                 )
 
         # Build prior year curves
@@ -610,6 +617,7 @@ class VelocityService:
                             season_start=prior_season_start,
                             season_end=prior_season_end,
                             today=today,
+                            combined_daily=prior_result.combined.daily,
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
 
@@ -1489,6 +1497,46 @@ class VelocityService:
 
         return gender_per_session, dict(session_gender_totals)
 
+    @staticmethod
+    def _daily_for_gender(combined_daily: list[DailyDataPoint], gender: str) -> list[DailyDataPoint]:
+        """Derive gender-specific daily data from the combined daily curve."""
+        if not combined_daily:
+            return []
+        # Check if combined daily has gender data
+        first_with_gender = next((d for d in combined_daily if d.enrolled_boys is not None), None)
+        if first_with_gender is None:
+            return []
+
+        result: list[DailyDataPoint] = []
+        for d in combined_daily:
+            if gender == "M":
+                result.append(
+                    DailyDataPoint(
+                        date=d.date,
+                        day_offset=d.day_offset,
+                        gross_enrolled=d.gross_enrolled_boys or 0,
+                        enrolled=d.enrolled_boys or 0,
+                        cancelled=0,
+                        daily_new=d.daily_new_boys or 0,
+                        daily_cancelled=d.daily_cancelled_boys or 0,
+                        data_source=d.data_source,
+                    )
+                )
+            else:
+                result.append(
+                    DailyDataPoint(
+                        date=d.date,
+                        day_offset=d.day_offset,
+                        gross_enrolled=d.gross_enrolled_girls or 0,
+                        enrolled=d.enrolled_girls or 0,
+                        cancelled=0,
+                        daily_new=d.daily_new_girls or 0,
+                        daily_cancelled=d.daily_cancelled_girls or 0,
+                        data_source=d.data_source,
+                    )
+                )
+        return result
+
     def _assemble_gender_curves(
         self,
         year: int,
@@ -1496,12 +1544,22 @@ class VelocityService:
         sessions: dict[int, Any],
         gender_per_session: dict[str, dict[int, list[WeeklyDataPoint]]],
         session_gender_totals: dict[int, dict[str, int]],
+        combined_daily: list[DailyDataPoint] | None = None,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Assemble final gender curves and breakdown from intermediate per-session data."""
         curves: list[VelocityCurve] = []
         for gender in ("M", "F"):
             combined = self._combine_weekly_curves(gender_per_session.get(gender, {}))
-            curves.append(VelocityCurve(year=year, session_cm_id=session_cm_id, gender=gender, weekly=combined))
+            daily = self._daily_for_gender(combined_daily or [], gender)
+            curves.append(
+                VelocityCurve(
+                    year=year,
+                    session_cm_id=session_cm_id,
+                    gender=gender,
+                    weekly=combined,
+                    daily=daily,
+                )
+            )
         breakdown = self._build_gender_breakdown(sessions, session_gender_totals)
         return curves, breakdown
 
@@ -1514,6 +1572,7 @@ class VelocityService:
         season_start: datetime,
         season_end: datetime,
         today: date | None = None,
+        combined_daily: list[DailyDataPoint] | None = None,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split velocity curves with hybrid snapshot/reconstruction support.
 
@@ -1529,7 +1588,9 @@ class VelocityService:
             gps, totals = await self._gender_data_from_reconstruction(
                 year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
             )
-            return self._assemble_gender_curves(year, session_cm_id, sessions, gps, totals)
+            return self._assemble_gender_curves(
+                year, session_cm_id, sessions, gps, totals, combined_daily=combined_daily
+            )
 
         snap_gps, snap_totals = self._gender_data_from_snapshots(
             snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end, year=year, today=today
@@ -1539,7 +1600,9 @@ class VelocityService:
         earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
         if earliest is None or _week_start(earliest, season_start) <= season_start:
             # Snapshots cover full season → pure snapshot fast path
-            return self._assemble_gender_curves(year, session_cm_id, sessions, snap_gps, snap_totals)
+            return self._assemble_gender_curves(
+                year, session_cm_id, sessions, snap_gps, snap_totals, combined_daily=combined_daily
+            )
 
         # Hybrid: reconstruction pre-snapshot + snapshots post
         recon_gps, _recon_totals = await self._gender_data_from_reconstruction(
@@ -1553,7 +1616,9 @@ class VelocityService:
             )
 
         # Use snapshot totals for breakdown (latest actual counts)
-        return self._assemble_gender_curves(year, session_cm_id, sessions, merged_gps, snap_totals)
+        return self._assemble_gender_curves(
+            year, session_cm_id, sessions, merged_gps, snap_totals, combined_daily=combined_daily
+        )
 
     async def _build_cancellation_curves(
         self,

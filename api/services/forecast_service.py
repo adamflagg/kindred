@@ -67,7 +67,6 @@ class ForecastService:
 
         total_days = (today - anchor).days
         today_week = total_days // 7 + 1  # 1-based
-        today_on_boundary = total_days % 7 == 0
 
         # Build tier suffix map: week_number -> suffix label
         tier_suffixes: dict[int, str] = {}
@@ -104,12 +103,9 @@ class ForecastService:
             )
         )
 
-        # Build set of week milestones to show below the Today entry.
-        # All passed week boundaries (1 through today_week) as selectable milestones.
-        # If today is on an exact boundary, that week is the Today entry — skip it.
-        weeks_to_show: set[int] = set(range(1, today_week + 1))
-        if today_on_boundary:
-            weeks_to_show.discard(today_week)
+        # Build set of completed week milestones below the Today entry.
+        # Only fully completed weeks (1 through today_week-1) appear.
+        weeks_to_show: set[int] = set(range(1, today_week))
 
         for week in sorted(weeks_to_show, reverse=True):
             date_range = format_week_date_range(anchor, week)

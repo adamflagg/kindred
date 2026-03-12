@@ -1,7 +1,7 @@
 """Day 1 registration counting service.
 
-Counts first-24h enrollments at each registration tier opening,
-using 9am-9am PT windows for hour-accurate counting.
+Counts first-24h enrollments at each registration tier opening
+by matching attendee effective_date against tier opening dates.
 """
 
 from __future__ import annotations
@@ -97,10 +97,7 @@ class Day1Service:
             if not eff_str:
                 continue
 
-            try:
-                eff_date_str = eff_str.split("T")[0].split(" ")[0]
-            except (ValueError, TypeError):
-                continue
+            eff_date_str = eff_str.split("T")[0].split(" ")[0]
 
             # Determine session type once per attendee
             expand = getattr(att, "expand", {}) or {}

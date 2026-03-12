@@ -70,7 +70,8 @@ def format_week_date_range(anchor: date, week_num: int) -> str:
 def day1_window(tier_date: date) -> tuple[datetime, datetime]:
     """Return the 9am-to-9am PT window for a registration tier opening day.
 
-    Used by Day 1 page to count first-24h registrations with hour accuracy.
+    Used by Day 1 page to report the registration window boundaries.
+    Actual counting uses date-level matching against effective_date.
 
     The window spans 9am Pacific on tier_date to 9am Pacific the following
     calendar day. Across a DST transition this may be 23 or 25 UTC hours.
