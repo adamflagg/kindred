@@ -674,12 +674,10 @@ class DirectBunkingSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = time_limit_seconds
 
-        # Only enable OR-Tools search progress when DEBUG logging is active
-        if logger.isEnabledFor(logging.DEBUG):
+        # Only enable OR-Tools search progress in debug mode
+        if self.debug_mode:
             solver.parameters.log_search_progress = True
             solver.log_callback = lambda msg: logger.debug(f"OR-Tools: {msg}")
-        else:
-            solver.parameters.log_search_progress = False
 
         # Add optimization parameters for better performance
         # Read worker count from env (default 8 for good parallelism)
@@ -695,7 +693,7 @@ class DirectBunkingSolver:
         # Log solver start
         self.constraint_logger.log_progress(f"Starting solver with {time_limit_seconds}s time limit...")
         logger.debug(
-            f"Model has {self.model.Proto().variables} variables and {len(self.model.Proto().constraints)} constraints"
+            f"Model has {len(self.model.Proto().variables)} variables and {len(self.model.Proto().constraints)} constraints"
         )
 
         # Export model for debugging if it fails
@@ -708,14 +706,7 @@ class DirectBunkingSolver:
 
         # Log solver summary at INFO (key metrics only)
         status_name = solver.StatusName(status)
-        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            logger.info(
-                f"Solver complete: {status_name}, objective={solver.ObjectiveValue():.0f}, "
-                f"bound={solver.BestObjectiveBound():.0f}, wall={solver.WallTime():.1f}s, "
-                f"workers={num_workers}"
-            )
-        else:
-            logger.info(f"Solver complete: {status_name}, wall={solver.WallTime():.1f}s")
+        logger.info(f"Solver complete: {status_name}, wall={solver.WallTime():.1f}s, workers={num_workers}")
 
         # If infeasible, export the model and try to find conflicts
         if status == cp_model.INFEASIBLE:
