@@ -411,6 +411,305 @@ class TestReasoningEffort:
         assert cost == pytest.approx(2.25, abs=0.01)
 
 
+class TestReasoningOutputParsing:
+    """Test that responses with reasoning output items are handled correctly.
+
+    When reasoning is enabled (GPT-5 models), response.output contains
+    reasoning items before the actual message with parsed content.
+    """
+
+    @pytest.fixture
+    def mock_openai_client(self):
+        """Create a mock OpenAI client."""
+        client = MagicMock()
+        client.responses = MagicMock()
+        client.responses.parse = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def context(self):
+        """Create a standard test context."""
+        return AIRequestContext(
+            requester_name="Test User",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "share_bunk_with",
+                "csv_source_field": "share_bunk_with",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_parse_with_reasoning_output_items(self, mock_openai_client, context):
+        """When reasoning is enabled, output[0] is a reasoning item, not the message.
+
+        The provider must iterate through output items to find parsed content.
+        """
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        # Reasoning item has no 'content' attribute
+        reasoning_item = MagicMock(spec=[])
+
+        # Parsed message item has content with parsed result
+        mock_parsed = AIParseResponse(requests=[AIBunkRequestItem(request_type="bunk_with", target_name="Alice")])
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [reasoning_item, mock_message]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+            result = await provider.parse_request("bunk with Alice", context)
+
+        assert len(result.requests) == 1
+        assert result.requests[0].target_name == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_parse_with_multiple_reasoning_items(self, mock_openai_client, context):
+        """Multiple reasoning items before the message should still work."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        # Multiple reasoning items (no 'content' attribute)
+        reasoning_1 = MagicMock(spec=[])
+        reasoning_2 = MagicMock(spec=[])
+
+        mock_parsed = AIParseResponse(requests=[AIBunkRequestItem(request_type="not_bunk_with", target_name="Bob")])
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [reasoning_1, reasoning_2, mock_message]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+            result = await provider.parse_request("not bunk with Bob", context)
+
+        assert len(result.requests) == 1
+        assert result.requests[0].target_name == "Bob"
+
+    @pytest.mark.asyncio
+    async def test_disambiguate_with_reasoning_output_items(self, mock_openai_client):
+        """Disambiguation also works when reasoning items precede the message."""
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        reasoning_item = MagicMock(spec=[])
+
+        mock_parsed = AIDisambiguationResponse(
+            selected_person_id=999,
+            confidence=0.9,
+            reasoning="Strong match",
+        )
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [reasoning_item, mock_message]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+
+            parsed_req = ParsedRequest(
+                raw_text="bunk with Emma",
+                request_type=RequestType.BUNK_WITH,
+                target_name="Emma",
+                age_preference=None,
+                source_field="share_bunk_with",
+                source=RequestSource.FAMILY,
+                confidence=0.5,
+                csv_position=1,
+                metadata={},
+            )
+            result = await provider.disambiguate(
+                parsed_req,
+                {
+                    "requester_name": "Test User",
+                    "requester_cm_id": 12345,
+                    "candidates": [
+                        {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
+                    ],
+                },
+            )
+
+        assert result.requests[0].metadata["target_person_id"] == 999
+        assert result.requests[0].confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_reasoning_summary_captured_in_parse_metadata(self, mock_openai_client, context):
+        """Structured reasoning summaries are captured in request metadata."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        # Reasoning item with summary text (like ResponseReasoningItem)
+        reasoning_item = MagicMock(spec=[])
+        reasoning_item.type = "reasoning"
+        reasoning_summary = MagicMock()
+        reasoning_summary.text = "The parent is requesting their child bunk with Alice, a direct name match."
+        reasoning_item.summary = [reasoning_summary]
+
+        mock_parsed = AIParseResponse(
+            requests=[
+                AIBunkRequestItem(
+                    request_type="bunk_with",
+                    target_name="Alice",
+                    reasoning="Direct bunk request",
+                )
+            ]
+        )
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [reasoning_item, mock_message]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+            result = await provider.parse_request("bunk with Alice", context)
+
+        # Both reasoning sources should be present
+        assert result.requests[0].metadata["reasoning"] == "Direct bunk request"
+        assert "ai_reasoning_summary" in result.metadata
+        assert "direct name match" in result.metadata["ai_reasoning_summary"].lower()
+
+    @pytest.mark.asyncio
+    async def test_reasoning_summary_empty_when_no_reasoning_items(self, mock_openai_client, context):
+        """When no reasoning items in output, ai_reasoning_summary is absent."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        mock_parsed = AIParseResponse(requests=[AIBunkRequestItem(request_type="bunk_with", target_name="Bob")])
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [mock_message]  # No reasoning items
+        mock_response.usage = MagicMock(input_tokens=50, output_tokens=20)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+            result = await provider.parse_request("bunk with Bob", context)
+
+        assert "ai_reasoning_summary" not in result.metadata
+
+    @pytest.mark.asyncio
+    async def test_reasoning_summary_captured_in_disambiguate_metadata(self, mock_openai_client):
+        """Disambiguation also captures structured reasoning summaries."""
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        reasoning_item = MagicMock(spec=[])
+        reasoning_item.type = "reasoning"
+        reasoning_summary = MagicMock()
+        reasoning_summary.text = "Emma Johnson attends same school as requester."
+        reasoning_item.summary = [reasoning_summary]
+
+        mock_parsed = AIDisambiguationResponse(
+            selected_person_id=999,
+            confidence=0.9,
+            reasoning="Same school",
+        )
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [reasoning_item, mock_message]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+
+            parsed_req = ParsedRequest(
+                raw_text="bunk with Emma",
+                request_type=RequestType.BUNK_WITH,
+                target_name="Emma",
+                age_preference=None,
+                source_field="share_bunk_with",
+                source=RequestSource.FAMILY,
+                confidence=0.5,
+                csv_position=1,
+                metadata={},
+            )
+            result = await provider.disambiguate(
+                parsed_req,
+                {
+                    "requester_name": "Test User",
+                    "requester_cm_id": 12345,
+                    "candidates": [
+                        {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
+                    ],
+                },
+            )
+
+        assert result.metadata.get("ai_reasoning_summary") == "Emma Johnson attends same school as requester."
+
+    @pytest.mark.asyncio
+    async def test_multiple_reasoning_summaries_concatenated(self, mock_openai_client, context):
+        """Multiple reasoning summary items are concatenated."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        reasoning_item = MagicMock(spec=[])
+        reasoning_item.type = "reasoning"
+        summary1 = MagicMock()
+        summary1.text = "First reasoning step."
+        summary2 = MagicMock()
+        summary2.text = "Second reasoning step."
+        reasoning_item.summary = [summary1, summary2]
+
+        mock_parsed = AIParseResponse(requests=[AIBunkRequestItem(request_type="bunk_with", target_name="Charlie")])
+        mock_text = MagicMock()
+        mock_text.parsed = mock_parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+
+        mock_response = MagicMock()
+        mock_response.output = [reasoning_item, mock_message]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_openai_client.responses.parse.return_value = mock_response
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+            result = await provider.parse_request("bunk with Charlie", context)
+
+        assert result.metadata["ai_reasoning_summary"] == "First reasoning step. Second reasoning step."
+
+
 class TestSDKProviderRequestTypeMapping:
     """Test that SDK provider correctly maps request types."""
 
