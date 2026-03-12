@@ -170,7 +170,7 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
     """
     logger.info(
         f"Processing requests: year={body.year}, session={body.session}, "
-        f"limit={body.limit}, clear_existing={body.clear_existing}"
+        f"limit={body.limit}, clear_existing={body.clear_existing}, force={body.force}"
     )
 
     try:

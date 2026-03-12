@@ -24,7 +24,7 @@ type RequestProcessor struct {
 	BaseSyncService
 	Session      string   // Session filter (e.g., "all", "1", "2a", "toc")
 	Limit        int      // Optional limit for testing (0 = no limit)
-	Force        bool     // Force reprocess by clearing processed flags first
+	Force        bool     // Force reprocess — passed to Python API to clear processed flags
 	SourceFields []string // Optional source field filter (empty = all fields)
 	Debug        bool     // Enable debug logging in Python processor
 	Trace        bool     // Enable trace logging (very verbose) in Python processor
