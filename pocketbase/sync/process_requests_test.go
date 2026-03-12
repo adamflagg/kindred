@@ -1,7 +1,10 @@
 package sync
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
@@ -161,6 +164,87 @@ func makeTestIDsFrom(start, count int) []string {
 		result[i] = "id_" + fmt.Sprintf("%03d", n)
 	}
 	return result
+}
+
+// TestCallAPIProcessor tests the HTTP-based process-requests API call
+func TestCallAPIProcessor(t *testing.T) {
+	tests := []struct {
+		name           string
+		responseStatus int
+		responseBody   string
+		wantErr        bool
+		wantCreated    int
+	}{
+		{
+			name:           "successful processing",
+			responseStatus: 200,
+			responseBody:   `{"success": true, "created": 5, "updated": 0, "skipped": 1, "errors": 0, "already_processed": 10}`,
+			wantErr:        false,
+			wantCreated:    5,
+		},
+		{
+			name:           "python reports failure but HTTP 200",
+			responseStatus: 200,
+			responseBody:   `{"success": false, "created": 0, "updated": 0, "skipped": 0, "errors": 1, "already_processed": 0}`,
+			wantErr:        false,
+			wantCreated:    0,
+		},
+		{
+			name:           "server error",
+			responseStatus: 500,
+			responseBody:   `{"success": false, "error": "PocketBase auth failed"}`,
+			wantErr:        true,
+			wantCreated:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+				if r.URL.Path != "/api/internal/process-requests" {
+					t.Errorf("expected /api/internal/process-requests, got %s", r.URL.Path)
+				}
+
+				// Verify request body has expected fields
+				var reqBody map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				if _, ok := reqBody["year"]; !ok {
+					t.Error("request body missing 'year' field")
+				}
+				if _, ok := reqBody["session"]; !ok {
+					t.Error("request body missing 'session' field")
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.responseStatus)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			stats, err := callAPIProcessor(server.URL, apiProcessorRequest{
+				Year:    2025,
+				Session: "all",
+			})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if stats.Created != tt.wantCreated {
+				t.Errorf("expected %d created, got %d", tt.wantCreated, stats.Created)
+			}
+		})
+	}
 }
 
 // TestBuildBatchedFilter tests building filters with batched person IDs
