@@ -26,7 +26,7 @@ def add_gender_constraints(ctx: SolverContext) -> None:
         logger.info("Gender constraints DISABLED via debug settings")
         return
 
-    logger.debug("Adding gender constraints")
+    logger.info("Gender constraints active")
 
     constraints_added = 0
 

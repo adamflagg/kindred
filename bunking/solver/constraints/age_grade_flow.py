@@ -108,7 +108,7 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
 
         # Log target distribution
         target_str = ", ".join(f"{b.campminder_id}={bunk_targets.get(b.campminder_id, 0):.2f}" for b in session_bunks)
-        logger.debug(f"Target grades for {gender}: {target_str}")
+        logger.debug(f"Target grades for {gender} session {session_cm_id}: {target_str}")
 
         # Calculate grade range for normalization
         all_grades = [c.grade for c in group_campers]

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from collections import defaultdict
 from typing import Any
 
@@ -675,9 +674,12 @@ class DirectBunkingSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = time_limit_seconds
 
-        # Route OR-Tools progress to DEBUG (suppress C-level stdout during solve)
-        solver.parameters.log_search_progress = True
-        solver.log_callback = lambda msg: logger.debug(f"OR-Tools: {msg}")
+        # Only enable OR-Tools search progress when DEBUG logging is active
+        if logger.isEnabledFor(logging.DEBUG):
+            solver.parameters.log_search_progress = True
+            solver.log_callback = lambda msg: logger.debug(f"OR-Tools: {msg}")
+        else:
+            solver.parameters.log_search_progress = False
 
         # Add optimization parameters for better performance
         # Read worker count from env (default 8 for good parallelism)
@@ -701,17 +703,8 @@ class DirectBunkingSolver:
             f"logs/solver/model_session_{getattr(self.input.persons[0], 'session_cm_id', 'unknown')}.txt"
         )
 
-        # Solve with callback (suppress C-level stdout to avoid duplicate OR-Tools output)
-        stdout_fd = sys.stdout.fileno()
-        saved_stdout_fd = os.dup(stdout_fd)
-        devnull_fd = os.open(os.devnull, os.O_WRONLY)
-        try:
-            os.dup2(devnull_fd, stdout_fd)
-            status = solver.Solve(self.model, callback)
-        finally:
-            os.dup2(saved_stdout_fd, stdout_fd)
-            os.close(devnull_fd)
-            os.close(saved_stdout_fd)
+        # Solve with callback
+        status = solver.Solve(self.model, callback)
 
         # Log solver summary at INFO (key metrics only)
         status_name = solver.StatusName(status)
