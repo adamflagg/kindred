@@ -15,10 +15,11 @@ Data flow:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from api.schemas.velocity import DailyDataPoint
     from api.services.metrics_repository import MetricsRepository
 
 # Statuses that count as enrollments in reconstruction
@@ -186,3 +187,145 @@ async def reconstruct_enrollment_with_gender(
     """
     attendees = await repository.fetch_attendees_with_dates(year, expand_person=True)
     return _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map)
+
+
+def reconstruct_daily(
+    *,
+    attendees: list[Any],
+    season_start: date,
+    sessions: dict[int, Any],
+    end_date: date,
+    ag_parent_map: dict[int, int] | None = None,
+    session_cm_id: int | None = None,
+) -> list[DailyDataPoint]:
+    """Reconstruct daily enrollment data from attendee records.
+
+    Produces one DailyDataPoint per day from season_start through end_date,
+    with running cumulative totals.
+    """
+    from api.schemas.velocity import DailyDataPoint as DailyPoint
+
+    # Build daily event buckets: date_str -> {new, cancelled, new_boys, ...}
+    daily_events: dict[str, dict[str, int]] = {}
+    sessions_with_gender: set[int] = set()
+
+    for att in attendees:
+        # Access session via expand dict — matches _reconstruct_core pattern
+        expand = getattr(att, "expand", {}) or {}
+        session = expand.get("session") if isinstance(expand, dict) else None
+        if not session:
+            continue
+        sid = int(session.cm_id)
+        status = getattr(att, "status_id", 0) or 0
+
+        if status not in ENROLLMENT_STATUSES:
+            continue
+
+        # AG parent mapping
+        if ag_parent_map and sid in ag_parent_map:
+            sid = ag_parent_map[sid]
+
+        # Session filter
+        if session_cm_id is not None and sid != session_cm_id:
+            continue
+
+        # Skip if session not in our set
+        if sid not in sessions:
+            continue
+
+        # Gender — access via expand dict, matching _reconstruct_core
+        person = expand.get("person") if isinstance(expand, dict) else None
+        gender = getattr(person, "gender", None) if person else None
+        if gender is not None:
+            sessions_with_gender.add(sid)
+
+        _empty_bucket: dict[str, int] = {
+            "new": 0,
+            "cancelled": 0,
+            "new_boys": 0,
+            "new_girls": 0,
+            "canc_boys": 0,
+            "canc_girls": 0,
+        }
+
+        # Enrollment event: bucket by effective_date
+        enroll_date_str = _get_enrollment_date(att)
+        if enroll_date_str:
+            enroll_day = _parse_date_only(enroll_date_str)
+            bucket = daily_events.setdefault(enroll_day, dict(_empty_bucket))
+            bucket["new"] += 1
+            if gender == "M":
+                bucket["new_boys"] += 1
+            elif gender == "F":
+                bucket["new_girls"] += 1
+
+        # Cancellation event: bucket by enrollment_date (processing date)
+        if status in CANCELLATION_STATUSES:
+            canc_date_raw = getattr(att, "enrollment_date", "") or ""
+            if canc_date_raw:
+                canc_day = _parse_date_only(canc_date_raw)
+                bucket = daily_events.setdefault(canc_day, dict(_empty_bucket))
+                bucket["cancelled"] += 1
+                if gender == "M":
+                    bucket["canc_boys"] += 1
+                elif gender == "F":
+                    bucket["canc_girls"] += 1
+
+    has_gender = len(sessions_with_gender) > 0
+
+    # Build daily points with running cumulatives
+    result: list[DailyPoint] = []
+    cum_gross = 0
+    cum_cancelled = 0
+    cum_gross_boys = 0
+    cum_gross_girls = 0
+    cum_canc_boys = 0
+    cum_canc_girls = 0
+
+    empty: dict[str, int] = {
+        "new": 0,
+        "cancelled": 0,
+        "new_boys": 0,
+        "new_girls": 0,
+        "canc_boys": 0,
+        "canc_girls": 0,
+    }
+
+    current = season_start
+    day_offset = 0
+    while current <= end_date:
+        date_str = current.isoformat()
+        events = daily_events.get(date_str, empty)
+
+        cum_gross += events["new"]
+        cum_cancelled += events["cancelled"]
+        cum_gross_boys += events["new_boys"]
+        cum_gross_girls += events["new_girls"]
+        cum_canc_boys += events["canc_boys"]
+        cum_canc_girls += events["canc_girls"]
+
+        result.append(
+            DailyPoint(
+                date=date_str,
+                day_offset=day_offset,
+                gross_enrolled=cum_gross,
+                enrolled=cum_gross - cum_cancelled,
+                cancelled=cum_cancelled,
+                daily_new=events["new"],
+                daily_cancelled=events["cancelled"],
+                daily_new_boys=events["new_boys"] if has_gender else None,
+                daily_new_girls=events["new_girls"] if has_gender else None,
+                daily_cancelled_boys=events["canc_boys"] if has_gender else None,
+                daily_cancelled_girls=events["canc_girls"] if has_gender else None,
+                gross_enrolled_boys=cum_gross_boys if has_gender else None,
+                gross_enrolled_girls=cum_gross_girls if has_gender else None,
+                enrolled_boys=(cum_gross_boys - cum_canc_boys) if has_gender else None,
+                enrolled_girls=(cum_gross_girls - cum_canc_girls) if has_gender else None,
+                data_source="reconstructed",
+            )
+        )
+
+        current += timedelta(days=1)
+        day_offset += 1
+
+    return result

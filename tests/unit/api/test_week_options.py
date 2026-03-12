@@ -1,8 +1,9 @@
 """Tests for get_week_options in ForecastService.
 
-Week options generate a list of Week 0 through today from the registration
-anchor date, independent of snapshot existence. Used for rekeying the forecast
-page from calendar-date snapshots to week-relative offsets.
+Week options generate a list of Week 1 through today from the registration
+anchor date with 1-based numbering, date ranges, and tier suffixes.
+Used for rekeying the forecast page from calendar-date snapshots to
+week-relative offsets.
 """
 
 from __future__ import annotations
@@ -79,19 +80,19 @@ class TestWeekOptionsBasic:
     """Test basic week option generation."""
 
     @pytest.mark.asyncio
-    async def test_week_0_is_priority_reg(self, service, mock_repository):
-        """Week 0 exists and has '(Priority Reg)' suffix in label."""
+    async def test_week_1_is_priority_reg(self, service, mock_repository):
+        """Week 1 exists and has '(Priority Reg)' suffix in label."""
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
 
-        # 3 days after anchor — within Week 0, so only Today + Week 0
-        result = await service.get_week_options(year=2026, today=date(2025, 10, 18))
+        # 10 days after anchor — within Week 2, so Today + Week 2 + Week 1
+        result = await service.get_week_options(year=2026, today=date(2025, 10, 25))
 
-        # Week 0 should be in the list
-        week_0 = [o for o in result if o.week_number == 0 and not o.is_today]
-        assert len(week_0) == 1
-        assert "(Priority Reg)" in week_0[0].label
+        # Week 1 should be in the list with Priority Reg suffix
+        week_1 = [o for o in result if o.week_number == 1 and not o.is_today]
+        assert len(week_1) == 1
+        assert "(Priority Reg)" in week_1[0].label
 
     @pytest.mark.asyncio
     async def test_today_is_first_entry(self, service, mock_repository):
@@ -121,30 +122,29 @@ class TestWeekOptionsBasic:
         assert today_entry.day_offset == 37  # exact days, not 35 (5*7)
 
     @pytest.mark.asyncio
-    async def test_weekly_entries_between_week0_and_today(self, service, mock_repository):
-        """Correct count and ordering of weekly entries between Week 0 and today."""
+    async def test_weekly_entries_between_week1_and_today(self, service, mock_repository):
+        """Correct count and ordering of weekly entries between Week 1 and today."""
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",  # Wednesday
         }
 
-        # 21 days after anchor = exactly Week 3 boundary
-        # But let's use 23 days (mid-Week 3) to not land on a boundary
+        # 23 days after anchor (mid-Week 4 in 1-based: 23 // 7 + 1 = 4)
         # Oct 15 + 23 days = Nov 7
         today = date(2025, 11, 7)
         result = await service.get_week_options(year=2026, today=today)
 
-        # Today (day 23, mid-week 3) + Week 3 + Week 2 + Week 1 + Week 0 = 5 entries
-        # Week 3's boundary (day 21) has already passed, so it's selectable
+        # Today (day 23, mid-week 4) + Week 4 boundary + Week 3 + Week 2 + Week 1 = 5 entries
+        # Week 4's boundary (day 21) has passed but today is mid-week, so both appear
         assert len(result) == 5
 
         # First is today (newest)
         assert result[0].is_today is True
 
-        # Then descending week numbers
-        assert result[1].week_number == 3
-        assert result[2].week_number == 2
-        assert result[3].week_number == 1
-        assert result[4].week_number == 0
+        # Then descending week numbers (1-based)
+        assert result[1].week_number == 4
+        assert result[2].week_number == 3
+        assert result[3].week_number == 2
+        assert result[4].week_number == 1
 
         # All non-today entries have is_today=False
         for entry in result[1:]:
@@ -157,22 +157,22 @@ class TestWeekOptionsBasic:
             "priority_reg_date": "2025-10-15",
         }
 
-        # Exactly 21 days after anchor = Week 3 boundary
+        # Exactly 21 days after anchor = Week 4 boundary (1-based: day 21 // 7 + 1 = 4)
         # Oct 15 + 21 = Nov 5
         today = date(2025, 11, 5)
         result = await service.get_week_options(year=2026, today=today)
 
-        # Today IS Week 3, so: Today/Week3 + Week 2 + Week 1 + Week 0 = 4 entries
+        # Today IS Week 4, so: Today/Week4 + Week 3 + Week 2 + Week 1 = 4 entries
         assert len(result) == 4
 
         # Today entry should be labeled as its week AND marked is_today
         assert result[0].is_today is True
-        assert result[0].week_number == 3
+        assert result[0].week_number == 4
         assert result[0].day_offset == 21  # exact week boundary
 
-        # No other entry should have week_number=3
-        other_week3 = [o for o in result[1:] if o.week_number == 3]
-        assert len(other_week3) == 0
+        # No other entry should have week_number=4
+        other_week4 = [o for o in result[1:] if o.week_number == 4]
+        assert len(other_week4) == 0
 
 
 class TestWeekOptionsFallback:
@@ -190,9 +190,9 @@ class TestWeekOptionsFallback:
         result = await service.get_week_options(year=2026, today=today)
 
         assert len(result) > 0
-        # Week 0 should exist
-        week_0 = [o for o in result if o.week_number == 0]
-        assert len(week_0) == 1
+        # Week 1 should exist (1-based)
+        week_1 = [o for o in result if o.week_number == 1]
+        assert len(week_1) == 1
 
         # Day offset for today = 10
         assert result[0].is_today is True
@@ -204,7 +204,7 @@ class TestWeekOptionsLabels:
 
     @pytest.mark.asyncio
     async def test_today_label_includes_today_suffix(self, service, mock_repository):
-        """Today's label ends with '(Today)'."""
+        """Today's label includes 'Today'."""
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
@@ -212,21 +212,21 @@ class TestWeekOptionsLabels:
         result = await service.get_week_options(year=2026, today=date(2025, 10, 18))
 
         today_entry = result[0]
-        assert "(Today)" in today_entry.label
+        assert "Today" in today_entry.label
 
     @pytest.mark.asyncio
-    async def test_week_0_label_includes_priority_reg(self, service, mock_repository):
-        """Week 0's label ends with '(Priority Reg)'."""
+    async def test_week_1_label_includes_priority_reg(self, service, mock_repository):
+        """Week 1's label includes '(Priority Reg)'."""
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-15",
         }
 
-        # Far enough to have Week 0 as a separate entry
+        # Far enough to have Week 1 as a separate entry
         result = await service.get_week_options(year=2026, today=date(2025, 11, 19))
 
-        week_0_entries = [o for o in result if o.week_number == 0 and not o.is_today]
-        assert len(week_0_entries) == 1
-        assert "(Priority Reg)" in week_0_entries[0].label
+        week_1_entries = [o for o in result if o.week_number == 1 and not o.is_today]
+        assert len(week_1_entries) == 1
+        assert "(Priority Reg)" in week_1_entries[0].label
 
     @pytest.mark.asyncio
     async def test_label_date_format(self, service, mock_repository):
@@ -237,6 +237,6 @@ class TestWeekOptionsLabels:
 
         result = await service.get_week_options(year=2026, today=date(2025, 11, 3))
 
-        # Week 0 label should contain "Oct 15"
-        week_0 = next(o for o in result if o.week_number == 0)
-        assert "Oct 15" in week_0.label
+        # Week 1 label should contain "Oct 15" (1-based, anchor week)
+        week_1 = next(o for o in result if o.week_number == 1)
+        assert "Oct 15" in week_1.label

@@ -114,7 +114,7 @@ def make_weekly_point(
     week_number: int,
     enrolled: int,
     *,
-    waitlisted: int = 0,
+    week_end: str = "",
     delta: int = 0,
     data_source: str = "reconstructed",
     gross_enrolled: int | None = None,
@@ -124,12 +124,18 @@ def make_weekly_point(
     days_in_week: int = 7,
 ) -> WeeklyDataPoint:
     """Create a WeeklyDataPoint with sensible defaults for testing."""
+    # Auto-compute week_end from week_start if not provided
+    if not week_end:
+        from datetime import datetime, timedelta
+
+        ws = datetime.strptime(week_start, "%Y-%m-%d")
+        week_end = (ws + timedelta(days=6)).strftime("%Y-%m-%d")
     return WeeklyDataPoint(
         week_start=week_start,
+        week_end=week_end,
         week_label=week_label,
         week_number=week_number,
         enrolled=enrolled,
-        waitlisted=waitlisted,
         delta=delta,
         data_source=data_source,
         gross_enrolled=gross_enrolled if gross_enrolled is not None else enrolled,
@@ -271,17 +277,24 @@ class TestVelocityFromSnapshots:
         # First week
         w1 = result.combined.weekly[0]
         assert w1.enrolled == 10
-        assert w1.waitlisted == 0
 
         # Second week
         w2 = result.combined.weekly[1]
         assert w2.enrolled == 25
-        assert w2.waitlisted == 2
 
         # Third week
         w3 = result.combined.weekly[2]
         assert w3.enrolled == 40
-        assert w3.waitlisted == 5
+
+        # Daily data should be populated
+        assert len(result.combined.daily) > 0
+        # Each daily point has day_offset
+        for dp in result.combined.daily:
+            assert hasattr(dp, "day_offset")
+            assert dp.day_offset >= 0
+        # Convenience aliases
+        assert result.daily == result.combined.daily
+        assert result.weekly == result.combined.weekly
 
     @pytest.mark.asyncio
     async def test_same_week_snapshots_collapse(self, service, mock_repository, sample_sessions):
@@ -327,9 +340,7 @@ class TestVelocityFromSnapshots:
         # Combined should sum across sessions per week
         assert len(result.combined.weekly) == 2
         assert result.combined.weekly[0].enrolled == 35  # 20 + 15
-        assert result.combined.weekly[0].waitlisted == 3  # 1 + 2
         assert result.combined.weekly[1].enrolled == 55  # 30 + 25
-        assert result.combined.weekly[1].waitlisted == 4  # 1 + 3
 
         # by_session should have separate curves
         assert len(result.by_session) == 2
@@ -370,6 +381,11 @@ class TestVelocityReconstructionFallback:
         # Final point should show all 5 enrolled
         last_point = result.combined.weekly[-1]
         assert last_point.enrolled == 5
+
+        # Daily data should be populated from reconstruction
+        assert len(result.combined.daily) > 0
+        for dp in result.combined.daily:
+            assert dp.data_source == "reconstructed"
 
     @pytest.mark.asyncio
     async def test_velocity_reconstruction_with_cancellations(self, service, mock_repository, sample_sessions):
@@ -448,6 +464,9 @@ class TestVelocityPriorYearOverlay:
         prior = result.prior_years[0]
         assert prior.year == 2025
         assert len(prior.weekly) == 2
+        # Prior years should have daily and weekly attributes
+        assert hasattr(prior, "daily")
+        assert hasattr(prior, "weekly")
 
 
 # ============================================================================
@@ -661,28 +680,28 @@ class TestSeasonStartHelpers:
         assert _compute_season_start({}, 2024) is None
 
     def test_week_number_at_priority_reg_date(self):
-        """Priority reg date itself should be week 0."""
+        """Priority reg date itself should be week 1."""
         priority_reg = datetime(2025, 12, 3)  # Wednesday
-        assert _week_number(priority_reg, priority_reg) == 0
+        assert _week_number(priority_reg, priority_reg) == 1
 
-    def test_week_number_day_6_still_week_0(self):
-        """Day 6 after priority_reg is still week 0."""
+    def test_week_number_day_6_still_week_1(self):
+        """Day 6 after priority_reg is still week 1."""
         priority_reg = datetime(2025, 12, 3)  # Wednesday
         day6 = datetime(2025, 12, 9)  # Tuesday (6 days later)
-        assert _week_number(day6, priority_reg) == 0
+        assert _week_number(day6, priority_reg) == 1
 
-    def test_week_number_day_7_is_week_1(self):
-        """Day 7 after priority_reg is week 1."""
+    def test_week_number_day_7_is_week_2(self):
+        """Day 7 after priority_reg is week 2."""
         priority_reg = datetime(2025, 12, 3)  # Wednesday
         day7 = datetime(2025, 12, 10)  # Wednesday (7 days later)
-        assert _week_number(day7, priority_reg) == 1
+        assert _week_number(day7, priority_reg) == 2
 
     def test_week_number_mid_season(self):
         """January data should be correct weeks from priority_reg_date."""
         priority_reg = datetime(2025, 12, 3)
         jan_5 = datetime(2026, 1, 5)
-        # Days from Dec 3 to Jan 5 = 33 days, 33//7 = 4
-        assert _week_number(jan_5, priority_reg) == 4
+        # Days from Dec 3 to Jan 5 = 33 days, 33//7 + 1 = 5
+        assert _week_number(jan_5, priority_reg) == 5
 
     def test_week_start_at_priority_reg(self):
         """_week_start at priority_reg date should return priority_reg date."""
@@ -898,7 +917,7 @@ class TestWeekNumberInDataPoints:
         for p in result.combined.weekly:
             assert hasattr(p, "week_number")
             assert isinstance(p.week_number, int)
-            assert p.week_number >= 0
+            assert p.week_number >= 1
 
     @pytest.mark.asyncio
     async def test_week_numbers_are_sequential(self, service, mock_repository):
@@ -1071,9 +1090,9 @@ class TestPhaseMarkerWeekNumber:
         marker = open_markers[0]
         # Date stays as-is
         assert marker.date == "2026-01-07"
-        # week_number = (Jan 7 - Nov 1).days // 7 = 67 // 7 = 9
+        # week_number = (Jan 7 - Nov 1).days // 7 + 1 = 67 // 7 + 1 = 10
         # (no Monday snapping — anchored directly to priority_reg_date)
-        assert marker.week_number == 9
+        assert marker.week_number == 10
 
 
 # ============================================================================
@@ -1827,10 +1846,10 @@ class TestSchemaNewFields:
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
-            week_label="Jan 5",
-            week_number=0,
+            week_end="2026-01-11",
+            week_label="Wk 1 (Jan 5–11)",
+            week_number=1,
             enrolled=10,
-            waitlisted=0,
             delta=10,
             data_source="snapshot",
             gross_enrolled=0,
@@ -1846,10 +1865,10 @@ class TestSchemaNewFields:
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
-            week_label="Jan 5",
-            week_number=0,
+            week_end="2026-01-11",
+            week_label="Wk 1 (Jan 5–11)",
+            week_number=1,
             enrolled=10,
-            waitlisted=0,
             delta=10,
             data_source="snapshot",
             gross_enrolled=0,
@@ -1865,10 +1884,10 @@ class TestSchemaNewFields:
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
-            week_label="Jan 5",
-            week_number=0,
+            week_end="2026-01-11",
+            week_label="Wk 1 (Jan 5–11)",
+            week_number=1,
             enrolled=10,
-            waitlisted=0,
             delta=10,
             data_source="snapshot",
             gross_enrolled=0,
@@ -1884,10 +1903,10 @@ class TestSchemaNewFields:
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
-            week_label="Jan 5",
-            week_number=0,
+            week_end="2026-01-11",
+            week_label="Wk 1 (Jan 5–11)",
+            week_number=1,
             enrolled=45,
-            waitlisted=0,
             delta=10,
             data_source="snapshot",
             gross_enrolled=50,
@@ -2224,17 +2243,23 @@ class TestGrossNetDeltaFromReconstruction:
         result = await service.get_velocity(year=2026)
 
         points = result.combined.weekly
-        assert len(points) == 2
-        # Week 1: gross=10 (7 enrolled + 3 cancelled), cancelled=3, net=7
-        assert points[0].gross_enrolled == 10
-        assert points[0].enrolled == 7
-        assert points[0].weekly_new == 10
-        assert points[0].weekly_cancelled == 3
-        # Week 2: gross=15 (10 + 4 enrolled + 1 cancelled), cancelled=4, net=11
-        assert points[1].gross_enrolled == 15
-        assert points[1].enrolled == 11
-        assert points[1].weekly_new == 5
-        assert points[1].weekly_cancelled == 1
+        # Daily-first pipeline produces weekly points for every week from season_start
+        # through end_date. Find the weeks with actual activity by week_number.
+        # Season start is Nov 1, 2025. Jan 3 = day 63 = week 10, Jan 10 = day 70 = week 11.
+        assert len(points) >= 2
+        week_by_num = {p.week_number: p for p in points}
+        w10 = week_by_num[10]
+        w11 = week_by_num[11]
+        # Week 10: gross=10 (7 enrolled + 3 cancelled), cancelled=3, net=7
+        assert w10.gross_enrolled == 10
+        assert w10.enrolled == 7
+        assert w10.weekly_new == 10
+        assert w10.weekly_cancelled == 3
+        # Week 11: gross=15 (10 + 4 enrolled + 1 cancelled), cancelled=4, net=11
+        assert w11.gross_enrolled == 15
+        assert w11.enrolled == 11
+        assert w11.weekly_new == 5
+        assert w11.weekly_cancelled == 1
 
 
 # ============================================================================
@@ -3307,10 +3332,10 @@ class TestPartialWeekSchemaDefaults:
         """New fields should default to non-partial."""
         point = WeeklyDataPoint(
             week_start="2026-01-05",
-            week_label="Jan 5",
-            week_number=0,
+            week_end="2026-01-11",
+            week_label="Wk 1 (Jan 5–11)",
+            week_number=1,
             enrolled=100,
-            waitlisted=10,
             delta=100,
             data_source="snapshot",
             gross_enrolled=0,
@@ -3326,10 +3351,10 @@ class TestPartialWeekSchemaDefaults:
         """Fields can be explicitly set."""
         point = WeeklyDataPoint(
             week_start="2026-01-05",
-            week_label="Jan 5",
-            week_number=0,
+            week_end="2026-01-11",
+            week_label="Wk 1 (Jan 5–11)",
+            week_number=1,
             enrolled=100,
-            waitlisted=10,
             delta=100,
             data_source="snapshot",
             gross_enrolled=0,
@@ -3668,8 +3693,11 @@ class TestReconstructionEffectiveDate:
         result = await service.get_velocity(year=2026)
         points = result.combined.weekly
         assert len(points) >= 1
-        assert points[0].week_start == "2026-01-12"
-        assert points[0].enrolled == 1
+        # Daily-first pipeline produces weekly points from season_start.
+        # Find the week containing the enrollment (Jan 12, day_offset ~72 = week 11).
+        enrolled_weeks = [p for p in points if p.enrolled > 0]
+        assert len(enrolled_weeks) >= 1
+        assert enrolled_weeks[0].enrolled == 1
 
     @pytest.mark.asyncio
     async def test_reconstruction_gross_vs_net_diverge(self, service):

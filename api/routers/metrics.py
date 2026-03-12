@@ -18,6 +18,7 @@ from bunking.rbac.dependencies import require_admin, require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import metrics_cache, pb
+from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
     CancellationMetricsResponse,
@@ -591,6 +592,32 @@ async def get_forecast(
         duration=duration,
     )
     metrics_cache.set("forecast", result, **cache_params)
+    return result
+
+
+# ============================================================================
+# Day 1 Registration Endpoint
+# ============================================================================
+
+
+@router.get("/registration/day1", response_model=Day1Response)
+async def get_day1(
+    year: int = Query(description="Camp year"),
+    user: AuthUser = Depends(get_current_user),
+) -> Day1Response:
+    """Get Day 1 first-24h registration counts by tier."""
+    from api.services.day1_service import Day1Service
+
+    cache_params = {"year": year}
+    cached: Day1Response | None = metrics_cache.get("day1", **cache_params)
+    if cached is not None:
+        return cached
+
+    repository = _create_repository()
+    service = Day1Service(repository)
+    result = await service.get_day1(year)
+
+    metrics_cache.set("day1", result, **cache_params)
     return result
 
 

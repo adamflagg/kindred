@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
-from api.services.camp_calendar import get_camp_today
+from api.services.camp_calendar import REGISTRATION_TIERS, format_week_date_range, get_camp_today
 from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
@@ -36,10 +36,11 @@ class ForecastService:
     async def get_week_options(self, year: int, today: date | None = None) -> list[WeekOption]:
         """Generate week-relative options from registration anchor through today.
 
-        Returns a descending list (newest first) of week options:
-        - First entry: Today with exact day_offset and "(Today)" suffix
-        - Then each completed week from most recent down to Week 0
-        - Week 0 gets "(Priority Reg)" suffix
+        Returns a descending list (newest first) of week options with 1-based numbering,
+        date ranges, and registration tier suffixes:
+        - First entry: Today with exact day_offset, tier suffix if applicable
+        - Then each completed week from most recent down to Week 1
+        - Weeks get tier suffixes (Priority Reg, Early Reg, Open Reg) based on reg dates
         - If today falls on an exact week boundary, no duplicate is created
 
         Args:
@@ -65,13 +66,29 @@ class ForecastService:
             return []
 
         total_days = (today - anchor).days
-        today_week = total_days // 7
-        today_on_boundary = total_days % 7 == 0
+        today_week = total_days // 7 + 1  # 1-based
+
+        # Build tier suffix map: week_number -> suffix label
+        tier_suffixes: dict[int, str] = {}
+        for _phase, key, full_label in REGISTRATION_TIERS:
+            tier_str = reg_dates.get(key)
+            if tier_str:
+                tier_str = tier_str.split("T")[0].split(" ")[0]
+                tier_date = date.fromisoformat(tier_str)
+                if tier_date >= anchor:
+                    tier_week = (tier_date - anchor).days // 7 + 1  # 1-based
+                    tier_suffixes[tier_week] = full_label.replace("Registration", "Reg")
 
         options: list[WeekOption] = []
 
         # Today entry (always first)
-        today_label = f"Week {today_week} · {today.strftime('%b %-d')} (Today)"
+        today_suffixes = ["Today"]
+        tier_suffix = tier_suffixes.get(today_week)
+        if tier_suffix:
+            today_suffixes.insert(0, tier_suffix)
+        today_suffix_str = " · ".join(today_suffixes)
+        today_date_range = format_week_date_range(anchor, today_week)
+        today_label = f"Week {today_week} · {today_date_range} ({today_suffix_str})"
         options.append(
             WeekOption(
                 week_number=today_week,
@@ -81,22 +98,20 @@ class ForecastService:
             )
         )
 
-        # Build set of week milestones to show below the Today entry.
-        # All passed week boundaries (0 through today_week) as selectable milestones.
-        # If today is on an exact boundary, that week is the Today entry — skip it.
-        weeks_to_show: set[int] = set(range(0, today_week + 1))
-        if today_on_boundary:
-            weeks_to_show.discard(today_week)
+        # Build set of completed week milestones below the Today entry.
+        # Only fully completed weeks (1 through today_week-1) appear.
+        weeks_to_show: set[int] = set(range(1, today_week))
 
         for week in sorted(weeks_to_show, reverse=True):
-            week_date = anchor + timedelta(days=week * 7)
-            label = f"Week {week} · {week_date.strftime('%b %-d')}"
-            if week == 0:
-                label += " (Priority Reg)"
+            date_range = format_week_date_range(anchor, week)
+            label = f"Week {week} · {date_range}"
+            suffix = tier_suffixes.get(week)
+            if suffix:
+                label += f" ({suffix})"
             options.append(
                 WeekOption(
                     week_number=week,
-                    day_offset=week * 7,
+                    day_offset=week * 7 - 1,
                     label=label,
                     is_today=False,
                 )
@@ -259,7 +274,7 @@ class ForecastService:
             year=year,
             sessions=session_forecasts,
             grand_total=grand_total,
-            week_number=day_offset // 7 if day_offset is not None else None,
+            week_number=(day_offset // 7) + 1 if day_offset is not None else None,
             day_offset=day_offset,
         )
 

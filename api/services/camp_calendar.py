@@ -18,6 +18,14 @@ from zoneinfo import ZoneInfo
 CAMP_TZ = ZoneInfo("America/Los_Angeles")
 CAMP_DAY_START_HOUR = 9
 
+# Registration tier configuration: (phase_key, config_key, label)
+# Single source of truth used by velocity, forecast, and day1 services.
+REGISTRATION_TIERS: list[tuple[str, str, str]] = [
+    ("priority", "priority_reg_date", "Priority Registration"),
+    ("early", "early_reg_date", "Early Registration"),
+    ("open", "open_reg_date", "Open Registration"),
+]
+
 
 def get_camp_date(utc_dt: datetime) -> date:
     """Convert a UTC datetime to the camp date it falls in.
@@ -48,3 +56,35 @@ def camp_day_offset(camp_date: date, anchor: date) -> int:
 def camp_week_offset(camp_date: date, anchor: date) -> int:
     """Weeks between anchor and camp_date (integer division of day offset)."""
     return camp_day_offset(camp_date, anchor) // 7
+
+
+def format_week_date_range(anchor: date, week_num: int) -> str:
+    """Format a date range for a 1-based week number, e.g. "Nov 12\u201318" or "Nov 26\u2013Dec 2".
+
+    Args:
+        anchor: Registration anchor date (start of Week 1).
+        week_num: 1-based week number.
+    """
+    week_start = anchor + timedelta(days=(week_num - 1) * 7)
+    week_end = anchor + timedelta(days=week_num * 7 - 1)
+    start_fmt = week_start.strftime("%b %-d")
+    if week_start.month == week_end.month:
+        end_fmt = str(week_end.day)
+    else:
+        end_fmt = week_end.strftime("%b %-d")
+    return f"{start_fmt}\u2013{end_fmt}"
+
+
+def day1_window(tier_date: date) -> tuple[datetime, datetime]:
+    """Return the 9am-to-9am PT window for a registration tier opening day.
+
+    Used by Day 1 page to report the registration window boundaries.
+    Actual counting uses date-level matching against effective_date.
+
+    The window spans 9am Pacific on tier_date to 9am Pacific the following
+    calendar day. Across a DST transition this may be 23 or 25 UTC hours.
+    """
+    next_day = tier_date + timedelta(days=1)
+    start = datetime(tier_date.year, tier_date.month, tier_date.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
+    end = datetime(next_day.year, next_day.month, next_day.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
+    return (start, end)

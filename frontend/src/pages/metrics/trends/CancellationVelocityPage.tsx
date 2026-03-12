@@ -8,9 +8,11 @@
  * - Per-session cancellation breakdown + week-over-week delta tables
  * - Summary cards: cancelled to date, prior year comparison, delta
  * - Inverted color semantics: more cancellations = red (bad), fewer = green (good)
+ * - Daily cumulative chart (from data.daily) with day_offset x-axis
+ * - Phase marker bands (ReferenceArea) on daily chart; falls back to weekly on no daily data
  */
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -21,6 +23,7 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
   Brush,
 } from 'recharts'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -35,37 +38,13 @@ import {
   buildSessionTypeLookup,
 } from '../../../utils/sessionUtils'
 import { PHASE_COLORS } from './phaseColors'
-
-const PRIOR_YEAR_COLORS = [
-  'hsl(220, 60%, 65%)',
-  'hsl(280, 50%, 60%)',
-  'hsl(35, 70%, 55%)',
-  'hsl(340, 55%, 60%)',
-  'hsl(180, 50%, 45%)',
-]
-
-const GENDER_COLORS = {
-  boys: 'hsl(210, 70%, 55%)',
-  girls: 'hsl(340, 65%, 55%)',
-}
-
-/** Custom dot renderer that shows a hollow dashed circle on partial week data points. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function PartialWeekDot(props: any) {
-  const { cx, cy, payload, stroke } = props
-  if (!payload?.is_partial) return null
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={5}
-      fill="white"
-      stroke={stroke}
-      strokeWidth={2}
-      strokeDasharray="3 3"
-    />
-  )
-}
+import {
+  PRIOR_YEAR_COLORS,
+  GENDER_COLORS,
+  formatDateShort,
+  priorYearDailyDateLabel,
+} from './chartConstants'
+import PartialWeekDot from './PartialWeekDot'
 
 export default function CancellationVelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()
@@ -211,6 +190,130 @@ export default function CancellationVelocityPage() {
         weekNumber: marker.week_number,
       }))
   }, [data?.phase_markers])
+
+  // Build daily chart data aligned by day_offset (used for cumulative chart when available)
+  const dailyChartData = useMemo(() => {
+    if (!data?.daily?.length) return []
+
+    const currentMap = new Map(data.daily.map((d) => [d.day_offset, d]))
+
+    const priorMaps = data.prior_years.map((py) => new Map(py.daily.map((d) => [d.day_offset, d])))
+
+    const mCurve = data.by_gender?.find((c) => c.gender === 'M')
+    const fCurve = data.by_gender?.find((c) => c.gender === 'F')
+    const mMap = mCurve ? new Map(mCurve.daily.map((d) => [d.day_offset, d])) : new Map()
+    const fMap = fCurve ? new Map(fCurve.daily.map((d) => [d.day_offset, d])) : new Map()
+
+    const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
+    const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
+    const priorMGenderMaps = priorMGender.map((c) => ({
+      year: c.year,
+      map: new Map(c.daily.map((d) => [d.day_offset, d])),
+    }))
+    const priorFGenderMaps = priorFGender.map((c) => ({
+      year: c.year,
+      map: new Map(c.daily.map((d) => [d.day_offset, d])),
+    }))
+
+    const allDayOffsets = new Set<number>()
+    for (const offset of currentMap.keys()) allDayOffsets.add(offset)
+    for (const pm of priorMaps) {
+      for (const offset of pm.keys()) allDayOffsets.add(offset)
+    }
+    for (const offset of mMap.keys()) allDayOffsets.add(offset)
+    for (const offset of fMap.keys()) allDayOffsets.add(offset)
+    for (const { map } of priorMGenderMaps) {
+      for (const offset of map.keys()) allDayOffsets.add(offset)
+    }
+    for (const { map } of priorFGenderMaps) {
+      for (const offset of map.keys()) allDayOffsets.add(offset)
+    }
+
+    const sorted = [...allDayOffsets].sort((a, b) => a - b)
+
+    return sorted.map((dayOffset) => {
+      const current = currentMap.get(dayOffset)
+
+      const row: Record<string, string | number | boolean | null> = {
+        day_offset: dayOffset,
+        date: current?.date ?? '',
+        cancelled: current?.enrolled ?? null,
+      }
+
+      data.prior_years.forEach((py, i) => {
+        const pyPoint = priorMaps[i]?.get(dayOffset)
+        row[`cancelled_${py.year}`] = pyPoint?.enrolled ?? null
+      })
+
+      if (splitByGender) {
+        row['cancelled_boys'] = mMap.get(dayOffset)?.enrolled_boys ?? null
+        row['cancelled_girls'] = fMap.get(dayOffset)?.enrolled_girls ?? null
+
+        for (const { year, map } of priorMGenderMaps) {
+          row[`cancelled_boys_${year}`] = map.get(dayOffset)?.enrolled_boys ?? null
+        }
+        for (const { year, map } of priorFGenderMaps) {
+          row[`cancelled_girls_${year}`] = map.get(dayOffset)?.enrolled_girls ?? null
+        }
+      }
+
+      return row
+    })
+  }, [data, splitByGender])
+
+  // Daily tick formatter: show date labels every 7 days
+  const dailyTickFormatter = useMemo(() => {
+    if (!data?.season_start) return (_offset: number) => ''
+    const seasonStart = new Date(data.season_start + 'T00:00:00')
+    return (offset: number) => {
+      const d = new Date(seasonStart)
+      d.setDate(d.getDate() + offset)
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }
+  }, [data?.season_start])
+
+  // Phase day offsets for ReferenceArea bands on daily chart
+  const phaseDayOffsets = useMemo(() => {
+    if (!data?.phase_markers || !data?.season_start) return []
+    const sp = data.season_start.split('-')
+    const seasonStartUtc = Date.UTC(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]))
+    return data.phase_markers.map((marker) => {
+      const mp = marker.date.split('-')
+      return {
+        phase: marker.phase,
+        label: marker.label,
+        dayOffset: Math.floor(
+          (Date.UTC(Number(mp[0]), Number(mp[1]) - 1, Number(mp[2])) - seasonStartUtc) / 86400000
+        ),
+      }
+    })
+  }, [data?.phase_markers, data?.season_start])
+
+  // Weekly milestone indices in dailyChartData for zoom dropdown (every 7th day)
+  const dailyZoomMilestones = useMemo(() => {
+    if (!dailyChartData.length) return []
+    const milestones: Array<{ index: number; label: string }> = []
+    dailyChartData.forEach((pt, i) => {
+      const offset = pt['day_offset'] as number
+      if (offset % 7 === 0) {
+        const weekNum = Math.floor(offset / 7) + 1
+        const dateStr = pt['date'] as string
+        const dateLabel = dateStr ? formatDateShort(dateStr) : ''
+        milestones.push({ index: i, label: `Wk ${weekNum}${dateLabel ? ` - ${dateLabel}` : ''}` })
+      }
+    })
+    const lastIdx = dailyChartData.length - 1
+    const lastMilestone = milestones[milestones.length - 1]
+    if (!lastMilestone || lastMilestone.index !== lastIdx) {
+      const lastPt = dailyChartData[lastIdx]
+      if (lastPt) {
+        const dateStr = lastPt['date'] as string
+        const dateLabel = dateStr ? formatDateShort(dateStr) : ''
+        milestones.push({ index: lastIdx, label: `Latest${dateLabel ? ` - ${dateLabel}` : ''}` })
+      }
+    }
+    return milestones
+  }, [dailyChartData])
 
   // Build prior year session summary map keyed by canonical session name
   const priorSessionMap = useMemo(() => {
@@ -464,9 +567,10 @@ export default function CancellationVelocityPage() {
             {phaseLines.map((phase) => (
               <div key={phase.phase} className="flex items-center gap-1.5">
                 <span
-                  className="inline-block w-5 border-t-2 border-dashed"
+                  className="inline-block h-3 w-5 rounded-sm"
                   style={{
-                    borderColor: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))',
+                    backgroundColor: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))',
+                    opacity: 0.25,
                   }}
                 />
                 <span className="text-muted-foreground">{phase.label}</span>
@@ -475,200 +579,425 @@ export default function CancellationVelocityPage() {
           </div>
         )}
 
-        {/* Week-range selectors */}
-        {chartData.length > 0 && (
-          <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
-            <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
-            <select
-              className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-              value={zoomRange?.[0] ?? 0}
-              onChange={(e) => {
-                const start = Number(e.target.value)
-                const end = zoomRange?.[1] ?? chartData.length - 1
-                setZoomRange([start, Math.max(start, end)])
-              }}
-            >
-              {chartData.map((pt, i) => (
-                <option key={i} value={i}>
-                  Wk {pt['week_number']} - {pt['label']}
-                </option>
-              ))}
-            </select>
-            <span className="text-muted-foreground">to</span>
-            <select
-              className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-              value={zoomRange?.[1] ?? chartData.length - 1}
-              onChange={(e) => {
-                const end = Number(e.target.value)
-                const start = zoomRange?.[0] ?? 0
-                setZoomRange([Math.min(start, end), end])
-              }}
-            >
-              {chartData.map((pt, i) => (
-                <option key={i} value={i}>
-                  Wk {pt['week_number']} - {pt['label']}
-                </option>
-              ))}
-            </select>
-            {zoomRange && (
-              <button
-                className="text-primary hover:text-primary/80 text-xs underline"
-                onClick={() => setZoomRange(null)}
-              >
-                Reset
-              </button>
-            )}
-          </div>
+        {/* X-axis date context note when comparing years */}
+        {selectedPriorYears.length > 0 && (
+          <p className="text-muted-foreground mb-3 text-xs italic">
+            X-axis dates are for {currentYear}. Hover for prior year dates.
+          </p>
         )}
 
+        {/* Zoom range selectors */}
+        {dailyChartData.length > 0
+          ? dailyZoomMilestones.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
+                <select
+                  className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
+                  value={zoomRange?.[0] ?? 0}
+                  onChange={(e) => {
+                    const start = Number(e.target.value)
+                    const end = zoomRange?.[1] ?? dailyChartData.length - 1
+                    setZoomRange([start, Math.max(start, end)])
+                  }}
+                >
+                  {dailyZoomMilestones.map((m) => (
+                    <option key={m.index} value={m.index}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground">to</span>
+                <select
+                  className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
+                  value={zoomRange?.[1] ?? dailyChartData.length - 1}
+                  onChange={(e) => {
+                    const end = Number(e.target.value)
+                    const start = zoomRange?.[0] ?? 0
+                    setZoomRange([Math.min(start, end), end])
+                  }}
+                >
+                  {dailyZoomMilestones.map((m) => (
+                    <option key={m.index} value={m.index}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                {zoomRange && (
+                  <button
+                    className="text-primary hover:text-primary/80 text-xs underline"
+                    onClick={() => setZoomRange(null)}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            )
+          : chartData.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
+                <select
+                  className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
+                  value={zoomRange?.[0] ?? 0}
+                  onChange={(e) => {
+                    const start = Number(e.target.value)
+                    const end = zoomRange?.[1] ?? chartData.length - 1
+                    setZoomRange([start, Math.max(start, end)])
+                  }}
+                >
+                  {chartData.map((pt, i) => (
+                    <option key={i} value={i}>
+                      Wk {pt['week_number']} - {pt['label']}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground">to</span>
+                <select
+                  className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
+                  value={zoomRange?.[1] ?? chartData.length - 1}
+                  onChange={(e) => {
+                    const end = Number(e.target.value)
+                    const start = zoomRange?.[0] ?? 0
+                    setZoomRange([Math.min(start, end), end])
+                  }}
+                >
+                  {chartData.map((pt, i) => (
+                    <option key={i} value={i}>
+                      Wk {pt['week_number']} - {pt['label']}
+                    </option>
+                  ))}
+                </select>
+                {zoomRange && (
+                  <button
+                    className="text-primary hover:text-primary/80 text-xs underline"
+                    onClick={() => setZoomRange(null)}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            )}
+
         <ResponsiveContainer width="100%" height={380}>
-          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis
-              dataKey="week_number"
-              type="number"
-              domain={['dataMin', 'dataMax']}
-              className="text-xs"
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              className="text-xs"
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              label={{
-                value: 'Cumulative Cancelled',
-                angle: -90,
-                position: 'insideLeft',
-                style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
-              }}
-            />
-            <Tooltip
-              content={({ active, payload, label }) => {
-                if (!active || !payload?.length) return null
-                const validPayload = payload.filter((entry) => entry.value != null)
-                if (!validPayload.length) return null
-                const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                const row = chartData.find((d) => d['week_number'] === label)
-                const isPartial = row?.['is_partial'] as boolean
-                const daysInWeek = row?.['days_in_week'] as number
-                return (
-                  <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
-                    <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
-                    {isPartial && (
-                      <p className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-                        Partial week ({daysInWeek}/7 days)
-                      </p>
-                    )}
-                    {validPayload.map((entry) => (
-                      <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                        {entry.name}: {Number(entry.value).toLocaleString()}
-                      </p>
-                    ))}
-                  </div>
-                )
-              }}
-            />
-            <Legend />
-
-            <Brush
-              dataKey="week_number"
-              height={20}
-              stroke="hsl(var(--primary))"
-              {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
-              tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
-            />
-
-            {phaseLines.map((phase) => (
-              <ReferenceLine
-                key={phase.phase}
-                x={phase.weekNumber}
-                stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
-                strokeDasharray="5 5"
-                strokeWidth={2}
+          {dailyChartData.length > 0 ? (
+            <LineChart data={dailyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis
+                dataKey="day_offset"
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                tickFormatter={(offset: number) => {
+                  if (offset % 7 !== 0) return ''
+                  return dailyTickFormatter(offset)
+                }}
+                interval={0}
+                minTickGap={40}
               />
-            ))}
+              <YAxis
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                label={{
+                  value: 'Cumulative Cancelled',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
+                }}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const validPayload = payload.filter((entry) => entry.value != null)
+                  if (!validPayload.length) return null
+                  const dayOffset = label as number
+                  const row = dailyChartData.find((d) => d['day_offset'] === dayOffset)
+                  const dateStr = row?.['date'] as string
+                  const weekNum = Math.floor(dayOffset / 7) + 1
+                  const dateLabel = dateStr
+                    ? formatDateShort(dateStr)
+                    : dailyTickFormatter(dayOffset)
+                  return (
+                    <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
+                      <p className="text-foreground mb-1 font-medium">{dateLabel}</p>
+                      <p className="text-muted-foreground mb-1 text-xs">
+                        Day {dayOffset} (Week {weekNum})
+                      </p>
+                      {validPayload.map((entry) => {
+                        const yearMatch = entry.name?.match(/\b(\d{4})\b/)
+                        const priorDate = yearMatch
+                          ? priorYearDailyDateLabel(
+                              data?.prior_year_season_starts,
+                              Number(yearMatch[1]),
+                              dayOffset
+                            )
+                          : null
+                        return (
+                          <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
+                            {entry.name}: {Number(entry.value).toLocaleString()}
+                            {priorDate && (
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                ({priorDate})
+                              </span>
+                            )}
+                          </p>
+                        )
+                      })}
+                    </div>
+                  )
+                }}
+              />
+              <Legend />
 
-            {splitByGender ? (
-              <>
-                <Line
-                  type="monotone"
-                  dataKey="cancelled_boys"
-                  name={`Boys ${currentYear}`}
-                  stroke={GENDER_COLORS.boys}
-                  strokeWidth={3}
-                  dot={<PartialWeekDot />}
-                  activeDot={{ r: 4 }}
-                  connectNulls={false}
+              <Brush
+                dataKey="day_offset"
+                height={20}
+                stroke="hsl(var(--primary))"
+                {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
+                tickFormatter={(offset: number) => dailyTickFormatter(offset)}
+              />
+
+              {/* Phase marker bands (ReferenceArea) */}
+              {phaseDayOffsets.map((phase) => (
+                <ReferenceArea
+                  key={phase.phase}
+                  x1={phase.dayOffset}
+                  x2={phase.dayOffset + 1}
+                  fill={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
+                  fillOpacity={0.15}
+                  strokeOpacity={0}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="cancelled_girls"
-                  name={`Girls ${currentYear}`}
-                  stroke={GENDER_COLORS.girls}
-                  strokeWidth={3}
-                  dot={<PartialWeekDot />}
-                  activeDot={{ r: 4 }}
-                  connectNulls={false}
-                />
-                {selectedPriorYears.slice(0, 1).map((year) => (
-                  <>
-                    <Line
-                      key={`boys_${year}`}
-                      type="monotone"
-                      dataKey={`cancelled_boys_${year}`}
-                      name={`Boys ${year}`}
-                      stroke={GENDER_COLORS.boys}
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      dot={false}
-                      opacity={0.6}
-                      connectNulls={false}
-                    />
-                    <Line
-                      key={`girls_${year}`}
-                      type="monotone"
-                      dataKey={`cancelled_girls_${year}`}
-                      name={`Girls ${year}`}
-                      stroke={GENDER_COLORS.girls}
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      dot={false}
-                      opacity={0.6}
-                      connectNulls={false}
-                    />
-                  </>
-                ))}
-              </>
-            ) : (
-              <>
-                <Line
-                  type="monotone"
-                  dataKey="cancelled"
-                  name={String(currentYear)}
-                  stroke="hsl(0, 75%, 50%)"
-                  strokeWidth={3}
-                  dot={<PartialWeekDot />}
-                  activeDot={{ r: 5 }}
-                  connectNulls={false}
-                />
-                {data.prior_years.map((py, i) => (
+              ))}
+
+              {splitByGender ? (
+                <>
                   <Line
-                    key={py.year}
                     type="monotone"
-                    dataKey={`cancelled_${py.year}`}
-                    name={String(py.year)}
-                    stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'}
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
+                    dataKey="cancelled_boys"
+                    name={`Boys ${currentYear}`}
+                    stroke={GENDER_COLORS.boys}
+                    strokeWidth={3}
                     dot={false}
-                    opacity={0.7}
+                    activeDot={{ r: 4 }}
                     connectNulls={false}
                   />
-                ))}
-              </>
-            )}
-          </LineChart>
+                  <Line
+                    type="monotone"
+                    dataKey="cancelled_girls"
+                    name={`Girls ${currentYear}`}
+                    stroke={GENDER_COLORS.girls}
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  {selectedPriorYears.slice(0, 1).map((year) => (
+                    <Fragment key={year}>
+                      <Line
+                        type="monotone"
+                        dataKey={`cancelled_boys_${year}`}
+                        name={`Boys ${year}`}
+                        stroke={GENDER_COLORS.boys}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.6}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={`cancelled_girls_${year}`}
+                        name={`Girls ${year}`}
+                        stroke={GENDER_COLORS.girls}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.6}
+                        connectNulls={false}
+                      />
+                    </Fragment>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="cancelled"
+                    name={String(currentYear)}
+                    stroke="hsl(0, 75%, 50%)"
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  {data.prior_years.map((py, i) => (
+                    <Line
+                      key={py.year}
+                      type="monotone"
+                      dataKey={`cancelled_${py.year}`}
+                      name={String(py.year)}
+                      stroke={
+                        PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'
+                      }
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      opacity={0.7}
+                      connectNulls={false}
+                    />
+                  ))}
+                </>
+              )}
+            </LineChart>
+          ) : (
+            /* Fallback to weekly chart when daily data is not yet populated */
+            <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis
+                dataKey="week_number"
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                label={{
+                  value: 'Cumulative Cancelled',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
+                }}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const validPayload = payload.filter((entry) => entry.value != null)
+                  if (!validPayload.length) return null
+                  const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
+                  const row = chartData.find((d) => d['week_number'] === label)
+                  const isPartial = row?.['is_partial'] as boolean
+                  const daysInWeek = row?.['days_in_week'] as number
+                  return (
+                    <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
+                      <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
+                      {isPartial && (
+                        <p className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                          Partial week ({daysInWeek}/7 days)
+                        </p>
+                      )}
+                      {validPayload.map((entry) => (
+                        <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
+                          {entry.name}: {Number(entry.value).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  )
+                }}
+              />
+              <Legend />
+
+              <Brush
+                dataKey="week_number"
+                height={20}
+                stroke="hsl(var(--primary))"
+                {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
+                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+              />
+
+              {phaseLines.map((phase) => (
+                <ReferenceLine
+                  key={phase.phase}
+                  x={phase.weekNumber}
+                  stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
+                  strokeDasharray="5 5"
+                  strokeWidth={2}
+                />
+              ))}
+
+              {splitByGender ? (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="cancelled_boys"
+                    name={`Boys ${currentYear}`}
+                    stroke={GENDER_COLORS.boys}
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cancelled_girls"
+                    name={`Girls ${currentYear}`}
+                    stroke={GENDER_COLORS.girls}
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  {selectedPriorYears.slice(0, 1).map((year) => (
+                    <Fragment key={year}>
+                      <Line
+                        type="monotone"
+                        dataKey={`cancelled_boys_${year}`}
+                        name={`Boys ${year}`}
+                        stroke={GENDER_COLORS.boys}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.6}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={`cancelled_girls_${year}`}
+                        name={`Girls ${year}`}
+                        stroke={GENDER_COLORS.girls}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.6}
+                        connectNulls={false}
+                      />
+                    </Fragment>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="cancelled"
+                    name={String(currentYear)}
+                    stroke="hsl(0, 75%, 50%)"
+                    strokeWidth={3}
+                    dot={<PartialWeekDot />}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  {data.prior_years.map((py, i) => (
+                    <Line
+                      key={py.year}
+                      type="monotone"
+                      dataKey={`cancelled_${py.year}`}
+                      name={String(py.year)}
+                      stroke={
+                        PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'
+                      }
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      opacity={0.7}
+                      connectNulls={false}
+                    />
+                  ))}
+                </>
+              )}
+            </LineChart>
+          )}
         </ResponsiveContainer>
       </div>
 

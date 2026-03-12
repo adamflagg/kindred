@@ -13,6 +13,7 @@ import {
   Target,
   Zap,
   XCircle,
+  CalendarCheck,
 } from 'lucide-react'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { Permission } from '../../constants/permissions'
@@ -83,6 +84,12 @@ export const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Cancellations',
     icon: XCircle,
     path: '/metrics/registration/cancellations',
+  },
+  {
+    id: 'day1',
+    label: 'Day 1',
+    icon: CalendarCheck,
+    path: '/metrics/registration/day1',
   },
 ]
 
