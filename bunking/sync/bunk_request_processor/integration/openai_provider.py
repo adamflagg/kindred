@@ -106,7 +106,7 @@ class OpenAIProvider(AIProvider):
                 )
 
             # Call OpenAI with structured output
-            parsed_response = await self._call_with_structured_output(
+            parsed_response, reasoning_summary = await self._call_with_structured_output(
                 prompt=prompt,
                 response_model=AIParseResponse,
             )
@@ -116,6 +116,8 @@ class OpenAIProvider(AIProvider):
                 target_names = [r.target_name for r in parsed_response.requests]
                 request_types = [r.request_type for r in parsed_response.requests]
                 logger.info(f"[AI-PARSE] Output: targets={target_names} request_types={request_types}")
+                if reasoning_summary:
+                    logger.info(f"[AI-PARSE] Reasoning: {reasoning_summary}")
 
             # Log response for debugging
             preview = request_text if len(request_text) <= 200 else f"{request_text[:200]}..."
@@ -123,7 +125,10 @@ class OpenAIProvider(AIProvider):
 
             # Convert to internal format (parsed_response is AIParseResponse here)
             if isinstance(parsed_response, AIParseResponse):
-                return self._convert_parse_response(parsed_response, request_text, context)
+                result = self._convert_parse_response(parsed_response, request_text, context)
+                if reasoning_summary:
+                    result.metadata["ai_reasoning_summary"] = reasoning_summary
+                return result
             # Should not happen for parse requests, but return error response for type safety
             return ParsedResponse(
                 requests=[],
@@ -186,7 +191,7 @@ class OpenAIProvider(AIProvider):
         prompt: str,
         response_model: type[AIParseResponse] | type[AIDisambiguationResponse],
         reasoning_effort: ReasoningEffort = "low",
-    ) -> AIParseResponse | AIDisambiguationResponse:
+    ) -> tuple[AIParseResponse | AIDisambiguationResponse, str | None]:
         """Call OpenAI with Pydantic structured output.
 
         Uses the Responses API for schema-enforced output.
@@ -195,6 +200,11 @@ class OpenAIProvider(AIProvider):
         Args:
             reasoning_effort: Reasoning level for GPT-5 models.
                 "low" for Phase 1 parsing, "medium" for Phase 3 disambiguation.
+
+        Returns:
+            Tuple of (parsed_result, reasoning_summary). The reasoning_summary
+            is extracted from ResponseReasoningItem objects when reasoning is
+            enabled, or None if no reasoning output is present.
         """
         response = await self.client.responses.parse(
             model=self.model,
@@ -209,16 +219,33 @@ class OpenAIProvider(AIProvider):
             self._total_prompt_tokens += getattr(response.usage, "input_tokens", 0)
             self._total_completion_tokens += getattr(response.usage, "output_tokens", 0)
 
-        # Extract parsed content from response
-        message = response.output[0]
-        content = message.content  # type: ignore[union-attr]
-        if content and len(content) > 0:
-            text = content[0]
-            parsed_result = getattr(text, "parsed", None)
-            if parsed_result is not None and isinstance(parsed_result, (AIParseResponse, AIDisambiguationResponse)):
-                result: AIParseResponse | AIDisambiguationResponse = parsed_result
-                return result
-        raise ValueError("Failed to extract parsed response from OpenAI output")
+        # Extract structured reasoning summaries and parsed content from response.
+        # With reasoning enabled, output contains reasoning items before the message.
+        reasoning_texts: list[str] = []
+        parsed_result: AIParseResponse | AIDisambiguationResponse | None = None
+
+        for output_item in response.output:
+            # Collect reasoning summaries
+            summary_list = getattr(output_item, "summary", None)
+            if summary_list:
+                for summary in summary_list:
+                    text = getattr(summary, "text", None)
+                    if text:
+                        reasoning_texts.append(text)
+
+            # Find the parsed content
+            if parsed_result is None:
+                content = getattr(output_item, "content", None)
+                if content and len(content) > 0:
+                    candidate = getattr(content[0], "parsed", None)
+                    if candidate is not None and isinstance(candidate, (AIParseResponse, AIDisambiguationResponse)):
+                        parsed_result = candidate
+
+        if parsed_result is None:
+            raise ValueError("Failed to extract parsed response from OpenAI output")
+
+        reasoning_summary = ". ".join(t.rstrip(".") for t in reasoning_texts) + "." if reasoning_texts else None
+        return parsed_result, reasoning_summary
 
     def _build_prompt(self, request_text: str, context: AIRequestContext) -> str:
         """Build the prompt for parsing using field-specific templates.
@@ -441,7 +468,7 @@ class OpenAIProvider(AIProvider):
         )
 
         try:
-            response = await self._call_with_structured_output(
+            response, reasoning_summary = await self._call_with_structured_output(
                 prompt=prompt,
                 response_model=AIDisambiguationResponse,
                 reasoning_effort="medium",
@@ -454,10 +481,14 @@ class OpenAIProvider(AIProvider):
                 parsed_request.metadata["disambiguation_method"] = "ai_phase3"
                 parsed_request.metadata["disambiguation_reasoning"] = response.reasoning
 
+            metadata: dict[str, Any] = {"phase": 3, "disambiguated": True}
+            if reasoning_summary:
+                metadata["ai_reasoning_summary"] = reasoning_summary
+
             return ParsedResponse(
                 requests=[parsed_request],
                 confidence=parsed_request.confidence,
-                metadata={"phase": 3, "disambiguated": True},
+                metadata=metadata,
             )
 
         except Exception as e:
