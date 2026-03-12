@@ -16,7 +16,6 @@ import {
   CalendarCheck,
 } from 'lucide-react'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
-import { Permission } from '../../constants/permissions'
 
 /** Sub-nav items for retention section */
 export const RETENTION_SUB_NAV: SubNavItem[] = [
@@ -77,7 +76,6 @@ export const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Forecast',
     icon: Target,
     path: '/metrics/registration/forecast',
-    permission: Permission.METRICS_FINANCIAL,
   },
   {
     id: 'cancellations',

@@ -184,7 +184,7 @@ class TestValidationPermissions:
 
 
 class TestMetricsPermissions:
-    """metrics.py read endpoints require authentication; forecast needs metrics.financial."""
+    """metrics.py read endpoints require authentication."""
 
     def test_retention_requires_authentication(self) -> None:
         from api.routers.metrics import get_retention_metrics
@@ -231,10 +231,10 @@ class TestMetricsPermissions:
 
         _assert_endpoint_has_auth_dep(get_velocity)
 
-    def test_forecast_requires_metrics_financial(self) -> None:
+    def test_forecast_requires_authentication(self) -> None:
         from api.routers.metrics import get_forecast
 
-        _assert_endpoint_has_permission_dep(get_forecast, Permission.METRICS_FINANCIAL)
+        _assert_endpoint_has_auth_dep(get_forecast)
 
     def test_cache_invalidate_has_no_endpoint_auth(self) -> None:
         """Cache invalidation has no endpoint-level auth dep (middleware bypass)."""

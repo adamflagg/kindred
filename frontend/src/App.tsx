@@ -404,13 +404,11 @@ function App() {
                               <Route
                                 path="registration/forecast"
                                 element={
-                                  <RequirePermission permission={Permission.METRICS_FINANCIAL}>
-                                    <ErrorBoundary>
-                                      <Suspense fallback={<PageSkeleton />}>
-                                        <ForecastPage />
-                                      </Suspense>
-                                    </ErrorBoundary>
-                                  </RequirePermission>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <ForecastPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               <Route
