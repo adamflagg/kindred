@@ -69,7 +69,10 @@ function fmtDate(dateStr: string): string {
 }
 
 /** Delta arrow and formatting */
-function formatDelta(current: number | null, prior: number | null): { text: string; color: string } {
+function formatDelta(
+  current: number | null,
+  prior: number | null
+): { text: string; color: string } {
   if (current === null || prior === null) return { text: '', color: '' }
   const diff = current - prior
   if (diff === 0) return { text: '0', color: 'text-white/70' }
@@ -138,9 +141,7 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
         <>
           {/* Total */}
           <div className="mb-3">
-            <p className="text-4xl font-bold tabular-nums">
-              {fmtCount(tier.total.count)}
-            </p>
+            <p className="text-4xl font-bold tabular-nums">{fmtCount(tier.total.count)}</p>
           </div>
 
           {/* Breakdown */}
@@ -172,7 +173,6 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
           )}
         </>
       )}
-
     </div>
   )
 }
@@ -288,7 +288,7 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
               key={row.key}
               className={
                 row.key === 'total'
-                  ? 'border-border border-t-2 font-semibold bg-muted/20'
+                  ? 'border-border bg-muted/20 border-t-2 font-semibold'
                   : 'border-border border-b'
               }
             >
@@ -341,18 +341,14 @@ export default function Day1Page() {
             {/* Hero cards */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {day1Data.tiers.map((tier) => (
-                <HeroCard
-                  key={tier.tier}
-                  tier={tier}
-                  priorYears={day1Data.prior_years}
-                />
+                <HeroCard key={tier.tier} tier={tier} priorYears={day1Data.prior_years} />
               ))}
             </div>
 
             {/* Comparison table */}
             {day1Data.tiers.length > 0 && (
               <div>
-                <h3 className="mb-3 text-sm font-semibold uppercase text-muted-foreground">
+                <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
                   Year-over-Year Comparison
                 </h3>
                 <ComparisonTable data={day1Data} currentYear={currentYear} />
