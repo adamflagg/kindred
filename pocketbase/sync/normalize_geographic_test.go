@@ -2,6 +2,8 @@ package sync
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strconv"
 	"strings"
@@ -1067,6 +1069,76 @@ func TestExtractCityFromAddressNotUsed(t *testing.T) {
 	// If this test compiles, it means the extractCityFromAddress method
 	// has been properly removed (otherwise it would be unused and caught by linting).
 	t.Log("City data now comes from persons.address_city discrete column")
+}
+
+// ============================================================================
+// HTTP-based Geo Normalize API Tests
+// ============================================================================
+
+func TestCallGeoNormalizeAPI(t *testing.T) {
+	tests := []struct {
+		name           string
+		responseStatus int
+		responseBody   string
+		wantErr        bool
+		wantCount      int
+	}{
+		{
+			name:           "successful normalization",
+			responseStatus: 200,
+			responseBody:   `{"SF": {"canonical": "San Francisco, CA", "confidence": 0.95}}`,
+			wantErr:        false,
+			wantCount:      1,
+		},
+		{
+			name:           "empty values returns empty map",
+			responseStatus: 200,
+			responseBody:   `{}`,
+			wantErr:        false,
+			wantCount:      0,
+		},
+		{
+			name:           "server error",
+			responseStatus: 500,
+			responseBody:   `{"error": "internal error"}`,
+			wantErr:        true,
+			wantCount:      0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+				if r.URL.Path != "/api/internal/geo-normalize" {
+					t.Errorf("expected /api/internal/geo-normalize, got %s", r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.responseStatus)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			result, err := callGeoNormalizeAPI(server.URL, "city", []valueWithContext{
+				{Value: "SF", State: "CA", Country: "US"},
+			})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if len(result) != tt.wantCount {
+				t.Errorf("expected %d results, got %d", tt.wantCount, len(result))
+			}
+		})
+	}
 }
 
 // ============================================================================
