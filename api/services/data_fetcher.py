@@ -27,7 +27,7 @@ from bunking.direct_solver import (
 from pocketbase import PocketBase
 
 from ..dependencies import pb
-from .session_context import build_session_context
+from .session_context import SessionContext, build_session_context
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +242,7 @@ async def fetch_lock_groups(
     session_cm_id: int,
     year: int,
     pb_client: PocketBase | None = None,
+    session_context: SessionContext | None = None,
 ) -> dict[str, list[int]]:
     """Fetch lock groups for a scenario from PocketBase.
 
@@ -253,6 +254,7 @@ async def fetch_lock_groups(
         session_cm_id: CampMinder session ID
         year: Year for scoping
         pb_client: Optional PocketBase client (defaults to global)
+        session_context: Optional pre-built SessionContext (avoids duplicate lookup)
 
     Returns:
         Dict mapping group PB ID to list of person CampMinder IDs
@@ -260,9 +262,8 @@ async def fetch_lock_groups(
     client = pb_client or pb
 
     try:
-        # Build session context to get PB relation filter
-        # (locked_groups.session is a PB relation, not a CM ID)
-        ctx = await build_session_context(session_cm_id, year, client)
+        # Reuse session context if provided, otherwise build one
+        ctx = session_context or await build_session_context(session_cm_id, year, client)
 
         # Fetch locked groups for this scenario/session/year
         groups = await asyncio.to_thread(

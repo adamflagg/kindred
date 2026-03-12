@@ -149,17 +149,7 @@ class DirectSolverInput(BaseModel):
     @property
     def group_locks(self) -> dict[str, list[int]]:
         """Get group locks as group_lock_id -> list of person_cm_ids."""
-        if self.lock_groups_data:
-            return self.lock_groups_data
-        # Fallback: derive from assignment group_lock_id (currently dead code,
-        # kept as safety net since group_lock_id is never set on assignments)
-        group_locks: dict[str, list[int]] = {}
-        for a in self.existing_assignments:
-            if a.group_lock_id:
-                if a.group_lock_id not in group_locks:
-                    group_locks[a.group_lock_id] = []
-                group_locks[a.group_lock_id].append(a.person_cm_id)
-        return group_locks
+        return self.lock_groups_data
 
 
 class DirectSolverOutput(BaseModel):

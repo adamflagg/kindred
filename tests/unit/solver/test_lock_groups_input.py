@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectPerson, DirectSolverInput
+from bunking.models_v2 import DirectBunk, DirectPerson, DirectSolverInput
 
 
 @pytest.fixture
@@ -66,51 +66,6 @@ class TestGroupLocksProperty:
             lock_groups_data={"group_abc": [1001, 1002, 1003]},
         )
         assert input_data.group_locks == {"group_abc": [1001, 1002, 1003]}
-
-    def test_group_locks_falls_back_to_assignment_derived(self):
-        """group_locks should fall back to assignment-derived logic when lock_groups_data is empty."""
-        input_data = DirectSolverInput(
-            persons=[],
-            requests=[],
-            bunks=[],
-            existing_assignments=[
-                DirectBunkAssignment(
-                    person_cm_id=1001,
-                    session_cm_id=100,
-                    bunk_cm_id=2001,
-                    year=2026,
-                    group_lock_id="group_xyz",
-                ),
-                DirectBunkAssignment(
-                    person_cm_id=1002,
-                    session_cm_id=100,
-                    bunk_cm_id=2001,
-                    year=2026,
-                    group_lock_id="group_xyz",
-                ),
-            ],
-        )
-        assert input_data.group_locks == {"group_xyz": [1001, 1002]}
-
-    def test_group_locks_prefers_lock_groups_data_over_assignments(self):
-        """When both lock_groups_data and assignment group_lock_ids exist, prefer lock_groups_data."""
-        input_data = DirectSolverInput(
-            persons=[],
-            requests=[],
-            bunks=[],
-            lock_groups_data={"group_abc": [1001, 1002]},
-            existing_assignments=[
-                DirectBunkAssignment(
-                    person_cm_id=1003,
-                    session_cm_id=100,
-                    bunk_cm_id=2001,
-                    year=2026,
-                    group_lock_id="group_xyz",
-                ),
-            ],
-        )
-        # lock_groups_data takes precedence
-        assert input_data.group_locks == {"group_abc": [1001, 1002]}
 
     def test_group_locks_empty_when_no_data(self, minimal_solver_input):
         """group_locks should be empty when no lock data exists."""
