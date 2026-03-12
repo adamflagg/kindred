@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -514,14 +513,6 @@ type geoNormalizeRequest struct {
 	Values   []valueWithContext `json:"values"`
 }
 
-// getAPIURL returns the FastAPI container URL from environment
-func getAPIURL() string {
-	if url := os.Getenv("API_URL"); url != "" {
-		return url
-	}
-	return "http://127.0.0.1:8000"
-}
-
 // callGeoNormalizeAPI calls the FastAPI geo-normalize endpoint
 func callGeoNormalizeAPI(apiURL, category string, values []valueWithContext) (map[string]pythonNormalizedResult, error) {
 	reqBody := geoNormalizeRequest{
@@ -534,8 +525,7 @@ func callGeoNormalizeAPI(apiURL, category string, values []valueWithContext) (ma
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := client.Post(apiURL+"/api/internal/geo-normalize", "application/json", bytes.NewReader(bodyBytes))
+	resp, err := geoNormalizeClient.Post(apiURL+"/api/internal/geo-normalize", "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("calling geo-normalize API: %w", err)
 	}

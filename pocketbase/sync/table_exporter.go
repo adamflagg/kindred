@@ -28,9 +28,10 @@ const (
 	FieldTypeCMIDLookup      // Lookup by CM ID rather than PB ID (for self-references like parent_id)
 )
 
-// Boolean string constants for export
+// Boolean string constants
 const (
-	boolTrueStr  = "true"
+	boolTrue     = "true" // used in switch cases across sync services
+	boolTrueStr  = "true" // used in string comparisons
 	boolFalseStr = "false"
 )
 

@@ -16,8 +16,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const boolTrue = "true"
-
 // RequestProcessor processes original_bunk_requests into structured bunk_requests
 // All processing is done in Python via the FastAPI process-requests endpoint.
 // This is a thin wrapper that:
