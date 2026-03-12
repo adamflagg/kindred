@@ -185,18 +185,18 @@ func buildIssueTitle(category, description string) string {
 func buildIssueBody(params *IssueParams) string {
 	var b strings.Builder
 
-	b.WriteString("**Description**\n")
+	b.WriteString("**Description:**\n")
 	b.WriteString(params.Description)
 
-	fmt.Fprintf(&b, "\n\n**Reported by**\n%s (%s)", params.UserName, params.UserEmail)
-	fmt.Fprintf(&b, "\n\n**Page**\n`%s`", params.PageURL)
-	fmt.Fprintf(&b, "\n\n**Environment**\n")
-	fmt.Fprintf(&b, "Browser: %s\n", params.Browser)
-	fmt.Fprintf(&b, "Viewport: %s\n", params.Viewport)
-	fmt.Fprintf(&b, "App Version: %s", params.AppVersion)
+	fmt.Fprintf(&b, "\n\n**Reported by:**\n%s (%s)", params.UserName, params.UserEmail)
+	fmt.Fprintf(&b, "\n\n**Page:**\n`%s`", params.PageURL)
+	fmt.Fprintf(&b, "\n\n**Environment:**\n")
+	fmt.Fprintf(&b, "- Browser: %s\n", params.Browser)
+	fmt.Fprintf(&b, "- Viewport: %s\n", params.Viewport)
+	fmt.Fprintf(&b, "- App Version: %s", params.AppVersion)
 
 	if params.ScreenshotURL != "" {
-		fmt.Fprintf(&b, "\n\n**Screenshot**\n![Screenshot](%s)", params.ScreenshotURL)
+		fmt.Fprintf(&b, "\n\n**Screenshot:**\n![Screenshot](%s)", params.ScreenshotURL)
 	}
 
 	b.WriteString("\n")
