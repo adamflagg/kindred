@@ -1,15 +1,15 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -501,28 +501,62 @@ type normalizationLookup struct {
 	congregation map[string]normalizedEntry
 }
 
-// pythonNormalizedResult represents the JSON response from Python normalizer
+// pythonNormalizedResult represents the JSON response from the geo-normalize API
 type pythonNormalizedResult struct {
 	Canonical  string  `json:"canonical"`
 	Confidence float64 `json:"confidence"`
 }
 
-// buildPythonNormalizerCommand returns the program and args for calling the Python
-// geo_normalizer. In Docker, uv is not available (only used at build time), so we
-// call python3 directly. In development, we use uv run python.
-func buildPythonNormalizerCommand(category, valuesJSON string) (program string, args []string) {
-	moduleArgs := []string{"-m", "bunking.geo_normalizer", "--category", category, "--values", valuesJSON}
-
-	if os.Getenv("IS_DOCKER") == boolTrue {
-		return "python3", moduleArgs
-	}
-
-	return "uv", append([]string{"run", "python"}, moduleArgs...)
+// geoNormalizeRequest is the JSON body for the geo-normalize API
+type geoNormalizeRequest struct {
+	Category string             `json:"category"`
+	Values   []valueWithContext `json:"values"`
 }
 
-// normalizeWithPython calls the Python geo_normalizer CLI for fuzzy matching.
-// It sends context tuples (value + state + country) so the normalizer can apply
-// country-aware matching rules.
+// getAPIURL returns the FastAPI container URL from environment
+func getAPIURL() string {
+	if url := os.Getenv("API_URL"); url != "" {
+		return url
+	}
+	return "http://127.0.0.1:8000"
+}
+
+// callGeoNormalizeAPI calls the FastAPI geo-normalize endpoint
+func callGeoNormalizeAPI(apiURL, category string, values []valueWithContext) (map[string]pythonNormalizedResult, error) {
+	reqBody := geoNormalizeRequest{
+		Category: category,
+		Values:   values,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling request: %w", err)
+	}
+
+	resp, err := http.Post(apiURL+"/api/internal/geo-normalize", "application/json", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("calling geo-normalize API: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("geo-normalize API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var results map[string]pythonNormalizedResult
+	if err := json.Unmarshal(respBody, &results); err != nil {
+		return nil, fmt.Errorf("parsing geo-normalize response: %w", err)
+	}
+
+	return results, nil
+}
+
+// normalizeWithPython calls the FastAPI geo-normalize endpoint for fuzzy matching.
 func (n *NormalizeGeographicSync) normalizeWithPython(
 	valuesWithContext map[string]geoContext, category string,
 ) (map[string]normalizedEntry, error) {
@@ -530,7 +564,7 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 		return make(map[string]normalizedEntry), nil
 	}
 
-	// Build context array for JSON
+	// Build context array for API request
 	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
 	for value, ctx := range valuesWithContext {
 		contextValues = append(contextValues, valueWithContext{
@@ -540,54 +574,13 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 		})
 	}
 
-	// Serialize values to JSON
-	valuesJSON, err := json.Marshal(contextValues)
+	apiURL := getAPIURL()
+	results, err := callGeoNormalizeAPI(apiURL, category, contextValues)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling values: %w", err)
+		return nil, err
 	}
 
-	// Find the project root
-	var projectRoot string
-	if os.Getenv("IS_DOCKER") == boolTrue {
-		projectRoot = "/app"
-	} else {
-		// Dev: find project root from DataDir (pocketbase/pb_data -> ../..)
-		dataDir := n.App.DataDir()
-		absDataDir, absErr := filepath.Abs(dataDir)
-		if absErr != nil {
-			absDataDir = dataDir
-		}
-		projectRoot = filepath.Dir(filepath.Dir(absDataDir))
-	}
-
-	// Call Python normalizer
-	program, args := buildPythonNormalizerCommand(category, string(valuesJSON))
-	// #nosec G204 -- arguments are from internal sync logic, not user input
-	cmd := exec.CommandContext(context.Background(), program, args...)
-	cmd.Dir = projectRoot
-	cmd.Env = append(os.Environ(),
-		"PYTHONPATH="+projectRoot,
-	)
-
-	output, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			slog.Warn("Python normalizer failed",
-				"category", category,
-				"stderr", string(exitErr.Stderr),
-				"error", err)
-		}
-		return nil, fmt.Errorf("running python normalizer: %w", err)
-	}
-
-	// Parse JSON response
-	var results map[string]pythonNormalizedResult
-	if err := json.Unmarshal(output, &results); err != nil {
-		return nil, fmt.Errorf("parsing python normalizer output: %w", err)
-	}
-
-	// Convert to normalizedEntry map (preserving confidence from Python)
+	// Convert to normalizedEntry map (preserving confidence from API)
 	result := make(map[string]normalizedEntry)
 	for original, normalized := range results {
 		result[original] = normalizedEntry(normalized)
