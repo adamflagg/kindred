@@ -284,6 +284,133 @@ class TestSDKProviderInterface:
         assert usage.completion_tokens >= 0
 
 
+class TestReasoningEffort:
+    """Test that reasoning effort is passed to the OpenAI API."""
+
+    @pytest.fixture
+    def mock_openai_client(self):
+        """Create a mock OpenAI client."""
+        client = MagicMock()
+        client.responses = MagicMock()
+        client.responses.parse = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def context(self):
+        """Create a standard test context."""
+        return AIRequestContext(
+            requester_name="Test User",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "share_bunk_with",
+                "csv_source_field": "share_bunk_with",
+            },
+        )
+
+    def _mock_response(self, parsed):
+        """Build a mock SDK response wrapping a parsed Pydantic object."""
+        mock_text = MagicMock()
+        mock_text.parsed = parsed
+        mock_message = MagicMock()
+        mock_message.content = [mock_text]
+        mock_response = MagicMock()
+        mock_response.output = [mock_message]
+        mock_response.usage = MagicMock(input_tokens=50, output_tokens=20)
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_parse_request_passes_low_reasoning(self, mock_openai_client, context):
+        """Phase 1 parse_request passes reasoning={'effort': 'low'} to responses.parse."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        mock_openai_client.responses.parse.return_value = self._mock_response(
+            AIParseResponse(requests=[AIBunkRequestItem(request_type="bunk_with", target_name="Alice")])
+        )
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+            await provider.parse_request("bunk with Alice", context)
+
+        call_kwargs = mock_openai_client.responses.parse.call_args.kwargs
+        assert "reasoning" in call_kwargs
+        assert call_kwargs["reasoning"] == {"effort": "low"}
+
+    @pytest.mark.asyncio
+    async def test_disambiguate_passes_medium_reasoning(self, mock_openai_client):
+        """Phase 3 disambiguate passes reasoning={'effort': 'medium'} to responses.parse."""
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        mock_openai_client.responses.parse.return_value = self._mock_response(
+            AIDisambiguationResponse(
+                selected_person_id=999,
+                confidence=0.9,
+                reasoning="Strong match",
+            )
+        )
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+            provider.client = mock_openai_client
+
+            parsed_req = ParsedRequest(
+                raw_text="bunk with Emma",
+                request_type=RequestType.BUNK_WITH,
+                target_name="Emma",
+                age_preference=None,
+                source_field="share_bunk_with",
+                source=RequestSource.FAMILY,
+                confidence=0.5,
+                csv_position=1,
+                metadata={},
+            )
+            await provider.disambiguate(
+                parsed_req,
+                {
+                    "requester_name": "Test User",
+                    "requester_cm_id": 12345,
+                    "candidates": [
+                        {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
+                        {"name": "Emma Garcia", "person_id": 888, "school": "Oak Valley Middle"},
+                    ],
+                },
+            )
+
+        call_kwargs = mock_openai_client.responses.parse.call_args.kwargs
+        assert "reasoning" in call_kwargs
+        assert call_kwargs["reasoning"] == {"effort": "medium"}
+
+    def test_gpt5_nano_pricing(self):
+        """GPT-5-nano pricing is registered in cost calculation."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        provider._total_prompt_tokens = 1_000_000
+        provider._total_completion_tokens = 1_000_000
+        cost = provider._calculate_cost()
+        # gpt-5-nano: $0.05 input + $0.40 output = $0.45
+        assert cost == pytest.approx(0.45, abs=0.01)
+
+    def test_gpt5_mini_pricing(self):
+        """GPT-5-mini pricing is registered in cost calculation."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-mini")
+
+        provider._total_prompt_tokens = 1_000_000
+        provider._total_completion_tokens = 1_000_000
+        cost = provider._calculate_cost()
+        # gpt-5-mini: $0.25 input + $2.00 output = $2.25
+        assert cost == pytest.approx(2.25, abs=0.01)
+
+
 class TestSDKProviderRequestTypeMapping:
     """Test that SDK provider correctly maps request types."""
 
