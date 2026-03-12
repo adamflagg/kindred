@@ -323,16 +323,22 @@ jobs:
     - name: Check if build needed
       id: check
       env:
+        DETECT_RESULT: ${{ needs.detect-changes.result }}
         CHANGES_API: ${{ needs.detect-changes.outputs.api }}
         CHANGES_DOCKER: ${{ needs.detect-changes.outputs.docker }}
         CHANGES_INITIAL: ${{ needs.detect-changes.outputs.initial_commit }}
         EVENT_NAME: ${{ github.event_name }}
       run: |
-        if [ "$CHANGES_API" == "true" ] || \
-           [ "$EVENT_NAME" == "workflow_dispatch" ] || \
-           [ "$EVENT_NAME" == "schedule" ] || \
-           [ "$CHANGES_DOCKER" == "true" ] || \
-           [ "$CHANGES_INITIAL" == "true" ]; then
+        # If detect-changes failed, outputs are empty — build everything as safety fallback.
+        # Worst case: an unnecessary rebuild. Previous worst case: 5 PRs with no images deployed.
+        if [ "$DETECT_RESULT" != "success" ]; then
+          echo "::warning::Change detection failed — building all images as safety fallback"
+          echo "build=true" >> $GITHUB_OUTPUT
+        elif [ "$CHANGES_API" == "true" ] || \
+             [ "$EVENT_NAME" == "workflow_dispatch" ] || \
+             [ "$EVENT_NAME" == "schedule" ] || \
+             [ "$CHANGES_DOCKER" == "true" ] || \
+             [ "$CHANGES_INITIAL" == "true" ]; then
           echo "build=true" >> $GITHUB_OUTPUT
         else
           echo "build=false" >> $GITHUB_OUTPUT
