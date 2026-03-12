@@ -183,15 +183,17 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         setIsComputingLayout(false)
         setTimeout(() => {
           try {
-            // Draw bunk bubbles after layout if enabled
-            if (showBubbles) {
+            adjustLabelPositions(cy)
+            // Redraw bubbles after layout if enabled (showBubbles is read from
+            // the closure at effect-creation time, which is correct — if bubbles
+            // were on when the graph rebuilt, they should be restored).
+            if (showBubbles && bunksData) {
+              clearBubbles(bubbleRefs)
               drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
             }
           } catch (error) {
-            console.error('Error drawing bunk bubbles:', error)
+            console.error('Error after layout complete:', error)
           }
-          // Adjust label positions to prevent overlap
-          adjustLabelPositions(cy)
         }, 500)
       }
 
@@ -261,16 +263,27 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       })
     } // End of runLayout function
 
+    // Cancellation guard: prevent stale async work from applying to a newer graph
+    // instance after this effect is cleaned up (e.g., deps change mid-build).
+    let cancelled = false
+
     // Start staged addition
     void addElementsStaged().then(() => {
+      if (cancelled || !cyRef.current || cyRef.current !== cy || cy.destroyed()) return
       // Run layout after all elements are added
       runLayout()
     })
 
     return () => {
+      cancelled = true
       cleanupCytoscape(cyRef, layoutRef, bubblesetsRef, poppersRef)
     }
-  }, [graphData, viewMode, bunksData, showBubbles, showEdges, showLabels, bubbleRefs]) // Removed isExpanded - handled by separate effect
+    // showBubbles intentionally excluded: toggling bubbles is handled by the
+    // resize/bubble effect below, avoiding a full graph rebuild + worker restart.
+    // The closure reads showBubbles at effect-creation time to restore bubbles
+    // after graph rebuilds triggered by other deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphData, viewMode, bunksData, showEdges, showLabels, bubbleRefs])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
@@ -297,6 +310,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
           // Clear existing bubblesets using the utility
           clearBubbles(bubbleRefs)
           drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
+        } else if (!showBubbles) {
+          clearBubbles(bubbleRefs)
         }
       }
     }, 200)
