@@ -606,6 +606,7 @@ jobs:
     steps:
     - name: Check status
       env:
+        DETECT_CHANGES: ${{ needs.detect-changes.result }}
         COMMIT_LINT: ${{ needs.commit-lint.result }}
         PR_TITLE_LINT: ${{ needs.pr-title-lint.result }}
         SECRET_SCAN: ${{ needs.secret-scan.result }}
@@ -617,6 +618,12 @@ jobs:
         TESTS: ${{ needs.tests.result }}
         DEP_SUBMISSION: ${{ needs.dependency-submission.result }}
       run: |
+        # detect-changes: blocking — if this fails, all conditional jobs are skipped
+        # and CI passes with zero validation (the paths-filter incident of March 2026)
+        if [ "$DETECT_CHANGES" != "success" ]; then
+          echo "::error::Change detection failed — no lint or test jobs ran. Check paths-filter action."
+          exit 1
+        fi
         # commit-lint: blocking — non-conventional commits break changelog generation
         if [ "$COMMIT_LINT" != "success" ] && [ "$COMMIT_LINT" != "skipped" ]; then
           echo "::error::Commit message format issue detected. Use: type(scope): description"
