@@ -177,7 +177,8 @@ func TestCallAPIProcessor_ForceField(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"success": true, "created": 3, "updated": 0, "skipped": 0, "errors": 0, "already_processed": 0}`))
+		resp := `{"success":true,"created":3,"updated":0,"skipped":0,"errors":0,"already_processed":0}`
+		_, _ = w.Write([]byte(resp))
 	}))
 	defer server.Close()
 
