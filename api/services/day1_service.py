@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
 from api.schemas.day1 import (
     Day1Category,
@@ -85,29 +84,23 @@ class Day1Service:
         counts: dict[str, dict[str, int]] = {tw[0]: {"at_camp": 0, "quest": 0} for tw in tier_windows}
         approximate_flags: dict[str, bool] = {tw[0]: False for tw in tier_windows}
 
-        # Pre-compute UTC windows once
-        utc_windows = [
-            (tw[0], tw[3], tw[4].astimezone(ZoneInfo("UTC")), tw[5].astimezone(ZoneInfo("UTC"))) for tw in tier_windows
-        ]
+        # Build tier date lookup for simple date comparison
+        tier_dates: list[tuple[str, date]] = [(tw[0], tw[3]) for tw in tier_windows]
 
         # Single pass over attendees
         for att in attendees:
             if att.status_id not in ENROLLMENT_STATUSES:
                 continue
 
-            enroll_str = att.enrollment_date
-            if not enroll_str:
+            # Use effective_date (actual enrollment date from CampMinder)
+            eff_str = getattr(att, "effective_date", "") or ""
+            if not eff_str:
                 continue
 
             try:
-                enroll_dt = datetime.fromisoformat(enroll_str)
+                eff_date_str = eff_str.split("T")[0].split(" ")[0]
             except (ValueError, TypeError):
                 continue
-
-            if enroll_dt.tzinfo is None:
-                enroll_dt = enroll_dt.replace(tzinfo=ZoneInfo("UTC"))
-
-            is_midnight = enroll_dt.hour == 0 and enroll_dt.minute == 0 and enroll_dt.second == 0
 
             # Determine session type once per attendee
             expand = getattr(att, "expand", {}) or {}
@@ -115,18 +108,10 @@ class Day1Service:
             sid = int(session.cm_id) if session else 0
             stype = session_type_map.get(sid, "")
 
-            for tier_key, tier_date, ws_utc, we_utc in utc_windows:
-                if is_midnight:
-                    eff_str = att.effective_date
-                    if not eff_str:
-                        continue
-                    eff_date_str = eff_str.split("T")[0].split(" ")[0]
-                    if eff_date_str != tier_date.isoformat():
-                        continue
-                    approximate_flags[tier_key] = True
-                else:
-                    if not (ws_utc <= enroll_dt < we_utc):
-                        continue
+            for tier_key, tier_date in tier_dates:
+                if eff_date_str != tier_date.isoformat():
+                    continue
+                approximate_flags[tier_key] = True
 
                 if stype in AT_CAMP_TYPES:
                     counts[tier_key]["at_camp"] += 1
