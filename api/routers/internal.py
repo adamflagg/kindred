@@ -7,13 +7,22 @@ They are only accessible on the Docker internal network. Caddy blocks external a
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from bunking.geo_normalizer.normalizer import normalize_values
+from bunking.logging_config import TRACE
+from bunking.sync.bunk_request_processor.data.repositories import SessionRepository
+from bunking.sync.bunk_request_processor.process_requests import (
+    load_configuration,
+    process_bunk_requests,
+)
+from bunking.sync.bunk_request_processor.shared.constants import validate_source_fields
 
 logger = logging.getLogger(__name__)
 
@@ -53,3 +62,149 @@ async def geo_normalize(body: GeoNormalizeRequest) -> dict[str, Any]:
 
     logger.info(f"Normalized {len(result)} values")
     return result
+
+
+# --- Process Requests ---
+
+
+class ProcessRequestsRequest(BaseModel):
+    year: int
+    session: str = "all"
+    source_fields: list[str] | None = None
+    limit: int = 0
+    clear_existing: bool = False
+    debug: bool = False
+    trace: bool = False
+
+
+class ProcessRequestsResponse(BaseModel):
+    success: bool
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: int = 0
+    already_processed: int = 0
+    error: str | None = None
+
+
+async def run_process_requests(
+    *,
+    year: int,
+    session: str,
+    source_fields: list[str] | None,
+    limit: int,
+    clear_existing: bool,
+    debug: bool,
+    trace: bool,
+) -> dict[str, Any]:
+    """Run the bunk request processor. Extracted for testability."""
+    # Configure logging level (same as process_requests.py CLI)
+    if trace:
+        log_level = TRACE
+    elif debug:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+    logging.getLogger("bunking").setLevel(log_level)
+    if not trace:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("openai").setLevel(logging.WARNING)
+
+    # Validate source fields
+    validated_fields = None
+    if source_fields:
+        validated_fields = validate_source_fields(source_fields)
+
+    # Authenticate with PocketBase
+    from pocketbase import PocketBase
+
+    config = load_configuration()
+    pb_client = PocketBase(config["pb_url"])
+    pb_client.collection("_superusers").auth_with_password(config["pb_email"], config["pb_password"])
+
+    # Resolve sessions (same logic as process_requests.py:main())
+    session_repo = SessionRepository(pb_client)
+    main_session_id, include_ag = session_repo.resolve_session_name(session, year)
+
+    if main_session_id is None:
+        # All sessions
+        all_session_ids: list[int] = []
+        valid_sessions = session_repo.get_valid_session_names(year)
+        seen_cm_ids: set[int] = set()
+        for cm_id, is_main in valid_sessions.values():
+            if cm_id not in seen_cm_ids:
+                seen_cm_ids.add(cm_id)
+                if is_main:
+                    related = await asyncio.to_thread(session_repo.get_related_session_ids, cm_id)
+                    all_session_ids.extend(related)
+                else:
+                    all_session_ids.append(cm_id)
+        session_cm_ids = list(set(all_session_ids))
+    else:
+        if include_ag:
+            session_cm_ids = await asyncio.to_thread(session_repo.get_related_session_ids, main_session_id)
+        else:
+            session_cm_ids = [main_session_id]
+
+    return await process_bunk_requests(
+        data_source="database",
+        year=year,
+        session_cm_ids=session_cm_ids,
+        test_limit=limit if limit > 0 else None,
+        clear_existing=clear_existing,
+        source_fields=validated_fields,
+        debug=debug,
+    )
+
+
+@router.post("/process-requests", response_model=ProcessRequestsResponse)
+async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
+    """Process bunk requests from original_bunk_requests → bunk_requests.
+
+    Called by PocketBase's process_requests sync service.
+    Replaces the former Python subprocess call. Long-running (up to 30 min).
+    """
+    logger.info(
+        f"Processing requests: year={body.year}, session={body.session}, "
+        f"limit={body.limit}, clear_existing={body.clear_existing}"
+    )
+
+    try:
+        result = await run_process_requests(
+            year=body.year,
+            session=body.session,
+            source_fields=body.source_fields,
+            limit=body.limit,
+            clear_existing=body.clear_existing,
+            debug=body.debug,
+            trace=body.trace,
+        )
+
+        stats = result.get("statistics", {})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": result.get("success", False),
+                "created": stats.get("requests_created", 0),
+                "updated": 0,
+                "skipped": stats.get("phase2_ambiguous", 0),
+                "errors": 0 if result.get("success") else 1,
+                "already_processed": result.get("already_processed", 0),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Process requests failed: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e),
+                "created": 0,
+                "updated": 0,
+                "skipped": 0,
+                "errors": 1,
+                "already_processed": 0,
+            },
+        )
