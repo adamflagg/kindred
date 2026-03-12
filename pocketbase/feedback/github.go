@@ -94,7 +94,7 @@ func (c *GitHubClient) CreateIssue(params *IssueParams) error {
 	url := c.apiURL(fmt.Sprintf("/repos/%s/issues", c.Repo))
 
 	body := map[string]interface{}{
-		"title":  buildIssueTitle(params.Description),
+		"title":  buildIssueTitle(params.Category, params.Description),
 		"body":   buildIssueBody(params),
 		"labels": []string{params.Category},
 	}
@@ -157,39 +157,48 @@ func (c *GitHubClient) UploadScreenshot(data []byte, filename, timestamp string)
 	return result.Content.DownloadURL, nil
 }
 
-func buildIssueTitle(description string) string {
-	if len(description) <= 80 {
-		return description
+// categoryDisplayNames maps slug values to human-readable labels.
+var categoryDisplayNames = map[string]string{
+	"bug":             "Bug",
+	"text-change":     "Text Change",
+	"feature-request": "Feature Request",
+	"question":        "Question",
+}
+
+func buildIssueTitle(category, description string) string {
+	prefix := "[" + categoryDisplayNames[category] + "] "
+	maxDesc := 80 - len(prefix)
+
+	if len(description) <= maxDesc {
+		return prefix + description
 	}
 
 	// Truncate at word boundary
-	truncated := description[:80]
+	truncated := description[:maxDesc]
 	lastSpace := strings.LastIndex(truncated, " ")
 	if lastSpace > 0 {
-		return truncated[:lastSpace]
+		return prefix + truncated[:lastSpace]
 	}
-	// No space found — just hard truncate
-	return truncated
+	return prefix + truncated
 }
 
 func buildIssueBody(params *IssueParams) string {
 	var b strings.Builder
 
+	b.WriteString("**Description**\n")
 	b.WriteString(params.Description)
-	b.WriteString("\n\n---\n\n")
-	b.WriteString("| Detail | Value |\n")
-	b.WriteString("|--------|-------|\n")
-	fmt.Fprintf(&b, "| **Category** | %s |\n", params.Category)
-	fmt.Fprintf(&b, "| **Reported by** | %s (%s) |\n", params.UserName, params.UserEmail)
-	fmt.Fprintf(&b, "| **Page** | `%s` |\n", params.PageURL)
-	fmt.Fprintf(&b, "| **Browser** | %s |\n", params.Browser)
-	fmt.Fprintf(&b, "| **Viewport** | %s |\n", params.Viewport)
-	fmt.Fprintf(&b, "| **App Version** | %s |\n", params.AppVersion)
-	fmt.Fprintf(&b, "| **Submitted** | %s |\n", params.Timestamp)
+
+	fmt.Fprintf(&b, "\n\n**Reported by**\n%s (%s)", params.UserName, params.UserEmail)
+	fmt.Fprintf(&b, "\n\n**Page**\n`%s`", params.PageURL)
+	fmt.Fprintf(&b, "\n\n**Environment**\n")
+	fmt.Fprintf(&b, "Browser: %s\n", params.Browser)
+	fmt.Fprintf(&b, "Viewport: %s\n", params.Viewport)
+	fmt.Fprintf(&b, "App Version: %s", params.AppVersion)
 
 	if params.ScreenshotURL != "" {
-		fmt.Fprintf(&b, "\n![Screenshot](%s)\n", params.ScreenshotURL)
+		fmt.Fprintf(&b, "\n\n**Screenshot**\n![Screenshot](%s)", params.ScreenshotURL)
 	}
 
+	b.WriteString("\n")
 	return b.String()
 }

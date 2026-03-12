@@ -12,34 +12,51 @@ import (
 func TestBuildIssueTitle(t *testing.T) {
 	tests := []struct {
 		name        string
+		category    string
 		description string
 		want        string
 	}{
 		{
-			name:        "short description stays as-is",
+			name:        "bug with short description",
+			category:    "bug",
 			description: "The save button is broken",
-			want:        "The save button is broken",
+			want:        "[Bug] The save button is broken",
+		},
+		{
+			name:        "feature-request uses display name",
+			category:    "feature-request",
+			description: "Add dark mode",
+			want:        "[Feature Request] Add dark mode",
+		},
+		{
+			name:        "text-change uses display name",
+			category:    "text-change",
+			description: "Typo on login page",
+			want:        "[Text Change] Typo on login page",
+		},
+		{
+			name:        "question uses display name",
+			category:    "question",
+			description: "How do I export data",
+			want:        "[Question] How do I export data",
 		},
 		{
 			name:        "long description truncated at word boundary",
+			category:    "bug",
 			description: "When I click on the assignments page and try to drag a camper to a different cabin the page freezes",
-			want:        "When I click on the assignments page and try to drag a camper to a different",
+			want:        "[Bug] When I click on the assignments page and try to drag a camper to a",
 		},
 		{
-			name:        "exactly 80 chars not truncated",
-			description: "This is exactly eighty characters and should not be truncated at all right now!",
-			want:        "This is exactly eighty characters and should not be truncated at all right now!",
-		},
-		{
-			name:        "single long word truncated at 80",
-			description: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_extra",
-			want:        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			name:        "single long word hard truncated",
+			category:    "bug",
+			description: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_extra",
+			want:        "[Bug] aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildIssueTitle(tt.description)
+			got := buildIssueTitle(tt.category, tt.description)
 			if got != tt.want {
 				t.Errorf("buildIssueTitle() = %q, want %q", got, tt.want)
 			}
@@ -65,16 +82,26 @@ func TestBuildIssueBody(t *testing.T) {
 
 	body := buildIssueBody(&params)
 
-	// Check key content is present
+	// Bold section headers like a GitHub issue template
 	if !containsAll(body,
+		"**Description**",
 		"The save button does not work",
-		"bug",
-		"Jane Smith",
-		"jane@example.com",
-		"/summer/sessions",
+		"**Reported by**",
+		"Jane Smith (jane@example.com)",
+		"**Page**",
+		"`/summer/sessions`",
+		"**Environment**",
 		"v0.8.0",
 	) {
 		t.Errorf("issue body missing expected content:\n%s", body)
+	}
+
+	// Should NOT contain a table separator or submitted date
+	if strings.Contains(body, "---") {
+		t.Errorf("body should not contain separator:\n%s", body)
+	}
+	if strings.Contains(body, "Submitted") {
+		t.Errorf("body should not contain submitted date:\n%s", body)
 	}
 }
 
@@ -94,8 +121,8 @@ func TestBuildIssueBodyWithScreenshot(t *testing.T) {
 
 	body := buildIssueBody(&params)
 
-	if !containsAll(body, "![Screenshot]", "screenshot.png") {
-		t.Errorf("issue body missing screenshot markdown:\n%s", body)
+	if !containsAll(body, "**Screenshot**", "![Screenshot]", "screenshot.png") {
+		t.Errorf("issue body missing screenshot section:\n%s", body)
 	}
 }
 
@@ -145,10 +172,10 @@ func TestCreateIssue(t *testing.T) {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
 
-	// Verify the request body
+	// Verify the request body — title should have category prefix
 	title, _ := receivedBody["title"].(string)
-	if title != "Test issue" {
-		t.Errorf("title = %q, want %q", title, "Test issue")
+	if title != "[Bug] Test issue" {
+		t.Errorf("title = %q, want %q", title, "[Bug] Test issue")
 	}
 
 	labels, _ := receivedBody["labels"].([]interface{})
