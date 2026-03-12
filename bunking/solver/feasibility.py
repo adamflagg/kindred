@@ -85,20 +85,21 @@ def check_feasibility(
         else:
             bunk_sessions[session]["capacity"]["Mixed"] += b.capacity
 
-    logger.info("=== Session Distribution ===")
+    logger.debug("=== Session Distribution ===")
     for session in sorted(set(camper_sessions.keys()) | set(bunk_sessions.keys())):
-        logger.info(f"Session {session}:")
+        logger.debug(f"Session {session}:")
         if session in camper_sessions:
             cs = camper_sessions[session]
-            logger.info(f"  Campers: Total={cs['total']}, M={cs['M']}, F={cs['F']}, Other={cs['Other']}")
+            logger.debug(f"  Campers: Total={cs['total']}, M={cs['M']}, F={cs['F']}, Other={cs['Other']}")
         else:
-            logger.info("  Campers: None")
+            logger.debug("  Campers: None")
 
         if session in bunk_sessions:
             bs = bunk_sessions[session]
-            logger.info(f"  Bunks: {len(bs['bunks'])} total")
-            logger.info(
-                f"  Capacity: M={bs['capacity']['M']}, F={bs['capacity']['F']}, Mixed={bs['capacity']['Mixed']}"
+            total_cap = sum(bs["capacity"].values())
+            logger.debug(
+                f"  Bunks: {len(bs['bunks'])}, total capacity={total_cap}, "
+                f"M={bs['capacity']['M']}, F={bs['capacity']['F']}, Mixed={bs['capacity']['Mixed']}"
             )
 
             # Check gender-specific capacity
@@ -113,17 +114,12 @@ def check_feasibility(
                             f"Session {session} {gender}: {camper_count} campers but only {capacity} spots (including AG)!"
                         )
         else:
-            logger.info("  Bunks: None (No bunks for this session!)")
+            logger.debug("  Bunks: None (No bunks for this session!)")
 
-        if session in bunk_sessions:
-            bs = bunk_sessions[session]
-            total_cap = sum(bs["capacity"].values())
-            logger.info(f"  Bunks: {len(bs['bunks'])} bunks, Total capacity={total_cap}")
-            logger.info(
-                f"  Capacity by gender: M={bs['capacity']['M']}, F={bs['capacity']['F']}, Mixed={bs['capacity']['Mixed']}"
-            )
-        else:
-            logger.info("  Bunks: None")
+    # Concise INFO summary of session distribution
+    all_sessions = sorted(set(camper_sessions) | set(bunk_sessions))
+    session_parts = [f"{s}: {camper_sessions.get(s, {}).get('total', 0)} campers" for s in all_sessions]
+    logger.info(f"Sessions: {len(all_sessions)} ({', '.join(session_parts)})")
 
     # Check for session mismatches
     camper_only_sessions = set(camper_sessions.keys()) - set(bunk_sessions.keys())
@@ -144,9 +140,9 @@ def check_feasibility(
     female_capacity = sum(b.capacity for b in bunks if b.gender == "F")
     mixed_capacity = sum(b.capacity for b in bunks if b.gender == "Mixed")
 
-    logger.info("\n=== Overall Gender Analysis ===")
-    logger.info(f"Gender distribution: M={male_campers}, F={female_campers}, Other={other_campers}")
-    logger.info(f"Gender capacity: M={male_capacity}, F={female_capacity}, Mixed={mixed_capacity}")
+    logger.debug("=== Overall Gender Analysis ===")
+    logger.debug(f"Gender distribution: M={male_campers}, F={female_campers}, Other={other_campers}")
+    logger.debug(f"Gender capacity: M={male_capacity}, F={female_capacity}, Mixed={mixed_capacity}")
 
     # Check male capacity
     if male_campers > male_capacity + mixed_capacity:
@@ -178,7 +174,7 @@ def check_feasibility(
             logger.info(f"Group lock {group_lock_id} ({group_size} members) can fit in {len(suitable_bunks)} cabins")
 
     # 4. Individual cabin analysis
-    logger.debug("\n=== Cabin Capacity Analysis ===")
+    logger.debug("=== Cabin Capacity Analysis ===")
     for bunk in bunks:
         occupancy_info = f"Cabin {bunk.name}: capacity {bunk.capacity}, gender {bunk.gender}"
         logger.debug(occupancy_info)
@@ -199,7 +195,7 @@ def check_feasibility(
 
     # 6. Request validation summary
     if request_validation_summary["impossible_requests"] > 0:
-        logger.info("\n=== Request Validation Summary ===")
+        logger.info("=== Request Validation Summary ===")
         logger.info(f"Total requests: {request_validation_summary['total_requests']}")
         logger.info(f"Possible requests: {request_validation_summary['possible_requests']}")
         logger.info(
@@ -248,7 +244,7 @@ def check_feasibility(
         for reason, count in stranded_by_reason.items():
             logger.warning(f"  {reason}: {count} campers")
 
-    logger.info("=== End Feasibility Check ===\n")
+    logger.info("=== End Feasibility Check ===")
 
 
 def find_infeasibility_cause(
@@ -305,7 +301,7 @@ def find_infeasibility_cause(
 
     # Test disabling each constraint type
     for constraint in constraint_types:
-        logger.info(f"\nTesting with {constraint} DISABLED...")
+        logger.info(f"Testing with {constraint} DISABLED...")
 
         debug_constraints = {constraint: True}  # True means disabled
         solver = DirectBunkingSolver(input_data, config, debug_constraints)
@@ -325,5 +321,5 @@ def find_infeasibility_cause(
             return f"The {constraint} constraint is causing infeasibility"
 
     # If still infeasible with each individual constraint disabled, try combinations
-    logger.info("\nNo single constraint removal fixed it. The issue may be a combination.")
+    logger.info("No single constraint removal fixed it. The issue may be a combination.")
     return "Infeasibility caused by multiple interacting constraints"

@@ -712,6 +712,7 @@ class DirectBunkingSolver:
         if status == cp_model.INFEASIBLE:
             logger.error("Model is INFEASIBLE - exporting model for analysis")
             try:
+                os.makedirs(os.path.dirname(model_export_path), exist_ok=True)
                 with open(model_export_path, "w") as f:
                     f.write(str(self.model.Proto()))
                 logger.info(f"Model exported to {model_export_path}")
@@ -790,7 +791,7 @@ class DirectBunkingSolver:
 
         # Log field-level statistics
         if "field_level_stats" in analysis:
-            logger.info("\n=== Request Satisfaction by CSV Field ===")
+            logger.info("=== Request Satisfaction by CSV Field ===")
             for field, stats in analysis["field_level_stats"]["by_field"].items():
                 if stats["total"] > 0:
                     logger.info(
@@ -798,7 +799,7 @@ class DirectBunkingSolver:
                     )
 
             explicit_stats = analysis["field_level_stats"]["explicit_csv_requests"]
-            logger.info("\nExplicit CSV fields (share_bunk_with, do_not_share_with, bunking_notes, internal_notes):")
+            logger.info("Explicit CSV fields (share_bunk_with, do_not_share_with, bunking_notes, internal_notes):")
             logger.info(f"  Total: {explicit_stats['total']} requests")
             logger.info(f"  Satisfied: {explicit_stats['satisfied']} ({explicit_stats['satisfaction_rate']:.1%})")
             logger.info(
@@ -841,7 +842,7 @@ class DirectBunkingSolver:
 
         Shows how much each soft constraint category contributed to the objective.
         """
-        logger.info("\n=== Post-Solve Objective Breakdown ===")
+        logger.info("=== Post-Solve Objective Breakdown ===")
         logger.info(f"Total objective value: {solver.ObjectiveValue():.0f}")
 
         # Group soft constraint violations by category
@@ -867,7 +868,7 @@ class DirectBunkingSolver:
                 pass
 
         if category_totals:
-            logger.info("\nSoft constraint penalties by category:")
+            logger.info("Soft constraint penalties by category:")
             for category, total in sorted(category_totals.items(), key=lambda x: -x[1]):
                 count = category_counts[category]
                 logger.info(f"  {category}: {total:.0f} ({count} violations)")
@@ -876,7 +877,7 @@ class DirectBunkingSolver:
 
     def _check_constraint_violations(self, assignments: list[DirectBunkAssignment], solver: cp_model.CpSolver) -> None:
         """Check for constraint violations in the final solution."""
-        logger.info("\n=== Post-Solve Constraint Violation Check ===")
+        logger.info("=== Post-Solve Constraint Violation Check ===")
 
         # Build assignment structures for analysis
         person_to_bunk = {a.person_cm_id: a.bunk_cm_id for a in assignments}
@@ -937,7 +938,7 @@ class DirectBunkingSolver:
                     soft_violations.append({"name": name, "value": 1, "penalty": penalty})
 
         if soft_violations:
-            logger.info(f"\n{len(soft_violations)} soft constraint violations:")
+            logger.info(f"{len(soft_violations)} soft constraint violations:")
             total_penalty: float = 0
             for violation in soft_violations:
                 total_penalty += float(violation["penalty"])
@@ -966,7 +967,7 @@ class DirectBunkingSolver:
                 unsatisfied_campers.append(person_cm_id)
 
         if unsatisfied_campers:
-            logger.info(f"\n{len(unsatisfied_campers)} campers with NO satisfied requests:")
+            logger.info(f"{len(unsatisfied_campers)} campers with NO satisfied requests:")
             for person_cm_id in unsatisfied_campers[:10]:  # Show first 10
                 person = self.input.person_by_cm_id[person_cm_id]
                 self.constraint_logger.log_violation(
@@ -977,4 +978,4 @@ class DirectBunkingSolver:
             if len(unsatisfied_campers) > 10:
                 logger.info(f"... and {len(unsatisfied_campers) - 10} more")
 
-        logger.info("=== End Constraint Violation Check ===\n")
+        logger.info("=== End Constraint Violation Check ===")
