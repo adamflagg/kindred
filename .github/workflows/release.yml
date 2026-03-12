@@ -8,10 +8,15 @@ on:
         required: false
         type: string
 
+env:
+  REGISTRY: ghcr.io
+  USERNAME: adamflagg
+
 permissions:
   contents: write
   checks: read
   actions: write
+  packages: write
 
 jobs:
   release:
@@ -90,7 +95,7 @@ jobs:
           --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
 
         if [ -n "$EXISTING" ]; then
-          echo "✅ CI Summary already passed"
+          echo "CI Summary already passed"
           exit 0
         fi
 
@@ -102,10 +107,10 @@ jobs:
 
         if [ "$CI_IN_PROGRESS" = "0" ] && [ "$CI_QUEUED" = "0" ]; then
           # No CI running — dispatch one
-          echo "⚠️ No CI running on main, dispatching CI..."
+          echo "No CI running on main, dispatching CI..."
           gh workflow run ci.yml --ref main
         else
-          echo "⏳ CI already running on main (in_progress: $CI_IN_PROGRESS, queued: $CI_QUEUED), waiting..."
+          echo "CI already running on main (in_progress: $CI_IN_PROGRESS, queued: $CI_QUEUED), waiting..."
         fi
 
         # Poll for a successful CI Summary (up to ~5 min)
@@ -120,7 +125,7 @@ jobs:
             --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | length' 2>/dev/null || echo "0")
 
           if [ "$SUCCESS" != "0" ]; then
-            echo "✅ CI Summary passed"
+            echo "CI Summary passed"
             exit 0
           fi
 
@@ -133,22 +138,123 @@ jobs:
 
           if [ "$TOTAL" != "0" ] && [ "$PENDING" = "0" ]; then
             # All CI Summary checks completed, none succeeded
-            echo "❌ All CI Summary checks failed (total: $TOTAL, none succeeded)"
+            echo "::error::All CI Summary checks failed (total: $TOTAL, none succeeded)"
             exit 1
           fi
 
           echo "  Attempt $i/20: waiting for CI... (total: $TOTAL, pending: $PENDING)"
         done
 
-        echo "❌ CI did not complete within 5 minutes"
+        echo "::error::CI did not complete within 5 minutes"
         exit 1
+
+    - name: Ensure CD passed on HEAD
+      id: cd-check
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        HEAD_SHA=$(git rev-parse HEAD)
+        SHA_TAG="sha-$(echo "$HEAD_SHA" | cut -c1-7)"
+        echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+        echo "Waiting for CD to complete for $HEAD_SHA (need :${SHA_TAG} images)..."
+
+        # Poll for up to 15 minutes (45 attempts x 20s)
+        for i in {1..45}; do
+          # Find CD runs for this exact commit on main
+          RUN_INFO=$(gh run list \
+            --workflow cd.yml \
+            --branch main \
+            --limit 5 \
+            --json headSha,status,conclusion,databaseId \
+            --jq ".[] | select(.headSha == \"$HEAD_SHA\")" | head -1 2>/dev/null || echo "")
+
+          if [ -z "$RUN_INFO" ]; then
+            echo "  Attempt $i/45: No CD run found for this commit yet, waiting..."
+            sleep 20
+            continue
+          fi
+
+          STATUS=$(echo "$RUN_INFO" | jq -r '.status')
+          CONCLUSION=$(echo "$RUN_INFO" | jq -r '.conclusion')
+          RUN_ID=$(echo "$RUN_INFO" | jq -r '.databaseId')
+
+          if [ "$STATUS" = "completed" ]; then
+            if [ "$CONCLUSION" = "success" ]; then
+              echo "CD run $RUN_ID completed successfully"
+              exit 0
+            else
+              echo "::error::CD run $RUN_ID completed with conclusion: $CONCLUSION"
+              echo "Fix the CD failure and re-run this release workflow."
+              exit 1
+            fi
+          fi
+
+          echo "  Attempt $i/45: CD run $RUN_ID is $STATUS, waiting..."
+          sleep 20
+        done
+
+        echo "::error::CD did not complete within 15 minutes"
+        echo "The CD workflow may still be running. Wait for it to finish, then re-run this release."
+        exit 1
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Verify SHA-tagged images exist in registry
+      env:
+        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+      run: |
+        # CD can succeed without building (e.g., docs-only changes skip the build).
+        # Verify the sha-tagged images actually exist before attempting promotion.
+        IMAGE="${REGISTRY}/${USERNAME}/kindred-api:${SHA_TAG}"
+        echo "Checking registry for ${IMAGE}..."
+        if ! docker buildx imagetools inspect "$IMAGE" > /dev/null 2>&1; then
+          echo "::error::Image ${IMAGE} not found in registry."
+          echo "CD may have skipped the build (no relevant file changes)."
+          echo "Ensure the latest CD run on main built and pushed images before releasing."
+          exit 1
+        fi
+        echo "Verified: ${SHA_TAG} images exist in registry"
+
+    - name: Promote Docker images to release tags
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+      run: |
+        # Strip v prefix for Docker tags (git tag v3.2.0 -> Docker tag 3.2.0)
+        DOCKER_TAG=${VERSION#v}
+        MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+
+        echo "Promoting images: ${SHA_TAG} -> ${DOCKER_TAG}, ${MINOR_TAG}"
+
+        for IMAGE in "${IMAGES[@]}"; do
+          SRC="${REGISTRY}/${USERNAME}/${IMAGE}:${SHA_TAG}"
+          echo "Promoting ${IMAGE}..."
+          docker buildx imagetools create "$SRC" \
+            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${DOCKER_TAG}" \
+            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${MINOR_TAG}"
+        done
+
+        echo "All images promoted successfully"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "### Docker Images Promoted" >> "$GITHUB_STEP_SUMMARY"
+        echo "Source: \`:${SHA_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "Tags: \`:${DOCKER_TAG}\`, \`:${MINOR_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        for IMAGE in "${IMAGES[@]}"; do
+          echo "- \`${REGISTRY}/${USERNAME}/${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
+        done
 
     - name: Create tag and release
       env:
         GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         VERSION: ${{ steps.version.outputs.version }}
       run: |
-
         # Create annotated tag
         git tag -a "$VERSION" -m "$(cat RELEASE_NOTES.md)"
         git push origin "$VERSION"

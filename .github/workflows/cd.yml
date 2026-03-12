@@ -32,11 +32,10 @@ on:
       - '.github/workflows/cd.yml'
 
   # Continuous delivery: build and push on every merge to main
+  # Version tags are NOT triggered here — the Release workflow handles promotion
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 env:
   REGISTRY: ghcr.io
@@ -135,8 +134,7 @@ jobs:
             - '.dockerignore'
 
   # Verify CI passed before building/pushing images
-  # For branch pushes: CI runs concurrently, this polls until it completes
-  # For tag pushes: reuses CI results from the branch push
+  # CI runs concurrently with CD on main pushes; this polls until it completes
   verify-ci:
     name: Verify CI Passed
     needs: detect-changes
@@ -152,7 +150,6 @@ jobs:
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GH_SHA: ${{ github.sha }}
         GH_REPO: ${{ github.repository }}
-        GH_REF: ${{ github.ref }}
       run: |
         # For PRs, github.sha is the merge commit (virtual), not the PR head commit
         # CI runs on the PR head commit, so we need to check that instead
@@ -179,17 +176,6 @@ jobs:
               }
             "
         }
-
-        # For tag pushes, check if CI already passed (commit was tested on branch)
-        # This saves ~1-5 minutes when tagging a commit that already passed CI
-        if [[ "$GH_REF" == refs/tags/* ]]; then
-          EXISTING_SUCCESS=$(gh api "repos/${GH_REPO}/commits/${CHECK_SHA}/check-runs" \
-            --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
-          if [ -n "$EXISTING_SUCCESS" ]; then
-            echo "CI Summary already passed for this commit - skipping wait"
-            exit 0
-          fi
-        fi
 
         # Wait for CI Summary (required)
         echo "=== Verifying CI Summary ==="
@@ -328,8 +314,6 @@ jobs:
       (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
       !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
     runs-on: ubuntu-latest
-    outputs:
-      promoted: ${{ steps.check.outputs.promote }}
     permissions:
       contents: read
       packages: write
@@ -339,51 +323,14 @@ jobs:
     - name: Check if build needed
       id: check
       env:
-        GH_TOKEN: ${{ github.token }}
-        GH_REF: ${{ github.ref }}
-        GH_SHA: ${{ github.sha }}
-        GH_USERNAME: ${{ env.USERNAME }}
         CHANGES_API: ${{ needs.detect-changes.outputs.api }}
         CHANGES_DOCKER: ${{ needs.detect-changes.outputs.docker }}
         CHANGES_INITIAL: ${{ needs.detect-changes.outputs.initial_commit }}
         EVENT_NAME: ${{ github.event_name }}
       run: |
-        # For tag pushes, check if we can promote existing images instead of rebuilding.
-        # Main pushes create a sha-<commit> tag; releases promote from that immutable ref.
-        if [[ "$GH_REF" == refs/tags/v* ]]; then
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          DOCKER_TAG=${TAG_NAME#v}
-          MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-          SHA_TAG="sha-$(echo "$GH_SHA" | cut -c1-7)"
-
-          # Check if the SHA-tagged images exist (pushed by the main CD run)
-          LAST_CD_SHA=$(gh run list \
-            --workflow cd.yml \
-            --branch main \
-            --status success \
-            --limit 1 \
-            --json headSha \
-            --jq '.[0].headSha' 2>/dev/null || echo "")
-
-          if [ -n "$LAST_CD_SHA" ] && [ "$LAST_CD_SHA" == "$GH_SHA" ]; then
-            echo "build=false" >> $GITHUB_OUTPUT
-            echo "promote=true" >> $GITHUB_OUTPUT
-            echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
-            echo "minor_tag=$MINOR_TAG" >> $GITHUB_OUTPUT
-            echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
-            echo "Images from SHA $GH_SHA exist as :${SHA_TAG} - promoting instead of rebuilding"
-            exit 0
-          fi
-
-          echo "Last main CD was ${LAST_CD_SHA:-unknown}, not $GH_SHA - full build required"
-        fi
-
-        # Standard change detection
-        echo "promote=false" >> $GITHUB_OUTPUT
         if [ "$CHANGES_API" == "true" ] || \
            [ "$EVENT_NAME" == "workflow_dispatch" ] || \
            [ "$EVENT_NAME" == "schedule" ] || \
-           [[ "$GH_REF" == refs/tags/* ]] || \
            [ "$CHANGES_DOCKER" == "true" ] || \
            [ "$CHANGES_INITIAL" == "true" ]; then
           echo "build=true" >> $GITHUB_OUTPUT
@@ -419,7 +366,7 @@ jobs:
         fi
 
     - name: Log in to GitHub Container Registry
-      if: steps.check.outputs.build == 'true' || steps.check.outputs.promote == 'true'
+      if: steps.check.outputs.build == 'true'
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         registry: ${{ env.REGISTRY }}
@@ -437,14 +384,8 @@ jobs:
     - name: Get version and build date
       if: steps.check.outputs.build == 'true'
       id: version
-      env:
-        GH_REF: ${{ github.ref }}
       run: |
-        if [[ "$GH_REF" == refs/tags/* ]]; then
-          VERSION=${GITHUB_REF#refs/tags/}
-        else
-          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-        fi
+        VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
         BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
@@ -485,28 +426,14 @@ jobs:
       id: tags
       env:
         INPUT_TAG: ${{ github.event.inputs.tag }}
-        GH_REF: ${{ github.ref }}
         GH_SHA: ${{ github.sha }}
       run: |
         TAG_SUFFIXES="latest"
-        # Add immutable SHA tag so releases can promote from it
+        # Add immutable SHA tag so the Release workflow can promote from it
         SHA_TAG="sha-$(echo "$GH_SHA" | cut -c1-7)"
         TAG_SUFFIXES="${TAG_SUFFIXES},${SHA_TAG}"
         if [ -n "$INPUT_TAG" ]; then
           TAG_SUFFIXES="${TAG_SUFFIXES},${INPUT_TAG}"
-        fi
-        if [[ "$GH_REF" == refs/tags/* ]]; then
-          # Strip 'refs/tags/' prefix, then strip 'v' prefix for Docker tag
-          # Git tags remain v0.7.0, Docker tags become 0.7.0, 0.7, latest
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          DOCKER_TAG=${TAG_NAME#v}
-          TAG_SUFFIXES="${TAG_SUFFIXES},${DOCKER_TAG}"
-
-          # Add minor version tag (e.g., 1.0 from 1.0.0)
-          MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-          if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
-            TAG_SUFFIXES="${TAG_SUFFIXES},${MINOR_TAG}"
-          fi
         fi
         echo "tag_suffixes=$TAG_SUFFIXES" >> $GITHUB_OUTPUT
         echo "Using tag suffixes: $TAG_SUFFIXES"
@@ -682,7 +609,7 @@ jobs:
       with:
         sarif_file: 'trivy-results-kindred-caddy.sarif'
         category: 'trivy-kindred-caddy'
-        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        ref: ${{ github.ref }}
         sha: ${{ github.sha }}
 
     - name: Upload Trivy results - API
@@ -692,7 +619,7 @@ jobs:
       with:
         sarif_file: 'trivy-results-kindred-api.sarif'
         category: 'trivy-kindred-api'
-        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        ref: ${{ github.ref }}
         sha: ${{ github.sha }}
 
     - name: Upload Trivy results - PocketBase
@@ -702,7 +629,7 @@ jobs:
       with:
         sarif_file: 'trivy-results-kindred-pocketbase.sarif'
         category: 'trivy-kindred-pocketbase'
-        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        ref: ${{ github.ref }}
         sha: ${{ github.sha }}
 
     - name: Upload Trivy results - Init
@@ -712,7 +639,7 @@ jobs:
       with:
         sarif_file: 'trivy-results-kindred-init.sarif'
         category: 'trivy-kindred-init'
-        ref: ${{ startsWith(github.ref, 'refs/tags/') && 'refs/heads/main' || github.ref }}
+        ref: ${{ github.ref }}
         sha: ${{ github.sha }}
 
     # === Push to Registry (only if tests pass and not dry-run/PR) ===
@@ -754,29 +681,6 @@ jobs:
         fi
         echo "   To push, trigger manually without dry_run or merge to main"
 
-    # === Promote Path (tag push, same SHA already built on main) ===
-    # Re-tag existing sha-<commit> images with version tags at the registry level.
-    # Uses the immutable SHA tag (not :latest) to guarantee we promote the exact
-    # image that was built and tested, even if another main push lands concurrently.
-    - name: Promote to release tags
-      if: steps.check.outputs.promote == 'true'
-      env:
-        DOCKER_TAG: ${{ steps.check.outputs.docker_tag }}
-        MINOR_TAG: ${{ steps.check.outputs.minor_tag }}
-        SHA_TAG: ${{ steps.check.outputs.sha_tag }}
-      run: |
-        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
-
-        for IMAGE in "${IMAGES[@]}"; do
-          SRC="${REGISTRY}/${USERNAME}/${IMAGE}:${SHA_TAG}"
-          echo "Promoting ${IMAGE}: ${SHA_TAG} → ${DOCKER_TAG}, ${MINOR_TAG}"
-          docker buildx imagetools create "$SRC" \
-            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${DOCKER_TAG}" \
-            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${MINOR_TAG}"
-        done
-
-        echo "All images promoted successfully (no rebuild needed)"
-
   # Summary job
   summary:
     name: Build Summary
@@ -787,7 +691,6 @@ jobs:
     - name: Check build status
       env:
         BUILD_RESULT: ${{ needs.build-test-push.result }}
-        PROMOTED: ${{ needs.build-test-push.outputs.promoted }}
         EVENT_NAME: ${{ github.event_name }}
         DRY_RUN: ${{ github.event.inputs.dry_run }}
         GH_USERNAME: ${{ env.USERNAME }}
@@ -799,14 +702,6 @@ jobs:
 
         if [ "$BUILD_RESULT" == "skipped" ]; then
           echo "Docker build skipped (no relevant file changes)"
-        elif [ "$PROMOTED" == "true" ]; then
-          echo "Release images promoted from latest (same SHA, no rebuild)"
-          echo ""
-          echo "Images promoted:"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-caddy"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-pocketbase"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-api"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-init"
         elif [ "$EVENT_NAME" == "pull_request" ]; then
           echo "CD validation passed (PR mode - no push)"
           echo ""
@@ -834,50 +729,3 @@ jobs:
           echo "- ghcr.io/${GH_USERNAME}/kindred-api (FastAPI solver/metrics)"
           echo "- ghcr.io/${GH_USERNAME}/kindred-init (One-shot admin + OIDC setup)"
         fi
-
-  # Auto-generate release notes from conventional commits
-  create-release:
-    name: Create GitHub Release
-    needs: [build-test-push]
-    runs-on: ubuntu-latest
-    # Only run on tag pushes, not release events (release already exists) or manual triggers
-    if: success() && startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
-    permissions:
-      contents: write
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      with:
-        fetch-depth: 0  # Need full history for git-cliff
-        persist-credentials: false
-
-    - name: Install git-cliff
-      uses: kenji-miyake/setup-git-cliff@2778609c643a39a2576c4bae2e493b855eb4aee8 # v2
-
-    - name: Generate changelog
-      id: changelog
-      run: |
-        # Get the current tag
-        CURRENT_TAG=${GITHUB_REF#refs/tags/}
-        echo "Current tag: $CURRENT_TAG"
-
-        # Get the previous tag
-        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-        echo "Previous tag: $PREV_TAG"
-
-        if [ -n "$PREV_TAG" ]; then
-          echo "Generating changelog from $PREV_TAG to $CURRENT_TAG"
-          git cliff $PREV_TAG..$CURRENT_TAG --strip header > RELEASE_NOTES.md
-        else
-          echo "No previous tag found, generating changelog for all commits"
-          git cliff --latest --strip header > RELEASE_NOTES.md
-        fi
-
-        echo "=== Generated Release Notes ==="
-        cat RELEASE_NOTES.md
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-      with:
-        body_path: RELEASE_NOTES.md
-        generate_release_notes: false
