@@ -119,6 +119,7 @@ class DirectSolverInput(BaseModel):
     bunks: list[DirectBunk]
     existing_assignments: list[DirectBunkAssignment] = Field(default_factory=list)
     historical_bunking: list[HistoricalBunkingRecord] = Field(default_factory=list)
+    lock_groups_data: dict[str, list[int]] = Field(default_factory=dict)
 
     @property
     def person_by_cm_id(self) -> dict[int, DirectPerson]:
@@ -148,13 +149,7 @@ class DirectSolverInput(BaseModel):
     @property
     def group_locks(self) -> dict[str, list[int]]:
         """Get group locks as group_lock_id -> list of person_cm_ids."""
-        group_locks: dict[str, list[int]] = {}
-        for a in self.existing_assignments:
-            if a.group_lock_id:
-                if a.group_lock_id not in group_locks:
-                    group_locks[a.group_lock_id] = []
-                group_locks[a.group_lock_id].append(a.person_cm_id)
-        return group_locks
+        return self.lock_groups_data
 
 
 class DirectSolverOutput(BaseModel):

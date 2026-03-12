@@ -27,7 +27,7 @@ from bunking.direct_solver import (
 from pocketbase import PocketBase
 
 from ..dependencies import pb
-from .session_context import build_session_context
+from .session_context import SessionContext, build_session_context
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +235,91 @@ async def fetch_historical_bunking(
         logger.warning(f"Failed to fetch historical bunking for session {session_cm_id}: {e}")
         # Return empty list on error - historical data is optional
         return []
+
+
+async def fetch_lock_groups(
+    scenario: str,
+    session_cm_id: int,
+    year: int,
+    pb_client: PocketBase | None = None,
+    session_context: SessionContext | None = None,
+) -> dict[str, list[int]]:
+    """Fetch lock groups for a scenario from PocketBase.
+
+    Lock groups are staff-created groups of campers that must be kept together.
+    They are scenario-scoped (only exist in draft/scenario context).
+
+    Args:
+        scenario: PocketBase ID of the saved_scenario
+        session_cm_id: CampMinder session ID
+        year: Year for scoping
+        pb_client: Optional PocketBase client (defaults to global)
+        session_context: Optional pre-built SessionContext (avoids duplicate lookup)
+
+    Returns:
+        Dict mapping group PB ID to list of person CampMinder IDs
+    """
+    client = pb_client or pb
+
+    try:
+        # Reuse session context if provided, otherwise build one
+        ctx = session_context or await build_session_context(session_cm_id, year, client)
+
+        # Fetch locked groups for this scenario/session/year
+        groups = await asyncio.to_thread(
+            client.collection("locked_groups").get_full_list,
+            query_params={
+                "filter": f'scenario = "{scenario}" && ({ctx.session_pb_id_filter}) && year = {year}',
+            },
+        )
+
+        if not groups:
+            logger.info(f"No lock groups found for scenario {scenario}")
+            return {}
+
+        group_ids = [g.id for g in groups]
+        logger.info(f"Found {len(group_ids)} lock groups for scenario {scenario}")
+
+        # Fetch all members for these groups, expanding attendee to get person_id
+        group_filter = " || ".join([f'group = "{gid}"' for gid in group_ids])
+        members = await asyncio.to_thread(
+            client.collection("locked_group_members").get_full_list,
+            query_params={
+                "filter": group_filter,
+                "expand": "attendee",
+            },
+        )
+
+    except ClientResponseError as e:
+        logger.warning(f"Failed to fetch lock groups for scenario {scenario}: {e}")
+        return {}
+
+    # Build group_id -> list of person CM IDs
+    result: dict[str, list[int]] = {}
+    for member in members:
+        expand = getattr(member, "expand", {}) or {}
+        attendee = expand.get("attendee") if isinstance(expand, dict) else getattr(expand, "attendee", None)
+        if not attendee:
+            logger.warning(f"Lock group member {member.id} has orphaned attendee reference, skipping")
+            continue
+
+        person_cm_id = getattr(attendee, "person_id", None)
+        if not person_cm_id:
+            logger.warning(f"Lock group member {member.id} attendee missing person_id, skipping")
+            continue
+
+        group_id = getattr(member, "group", None)
+        if not group_id:
+            logger.warning(f"Lock group member {member.id} missing group reference, skipping")
+            continue
+        if group_id not in result:
+            result[group_id] = []
+        result[group_id].append(person_cm_id)
+
+    for group_id, person_ids in result.items():
+        logger.info(f"Lock group {group_id}: {len(person_ids)} members")
+
+    return result
 
 
 def prepare_direct_solver_input(
