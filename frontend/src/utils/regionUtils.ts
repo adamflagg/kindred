@@ -7,7 +7,7 @@
  */
 
 import { getCityRegion, CA_CITY_COORDS } from '../data/californiaGeo'
-import { US_CITY_STATES } from '../data/cityGeo'
+import { US_CITY_STATES, getLowerStatesMap } from '../data/cityGeo'
 import type { CityBreakdown, RetentionByCity } from '../types/metrics'
 
 /** Maps region keys to human-readable display names. */
@@ -23,34 +23,112 @@ export const REGION_DISPLAY_NAMES: Record<string, string> = {
   International: 'International',
 }
 
+/** Valid US state/territory codes for distinguishing from country codes. */
+const US_STATE_CODES = new Set([
+  'AL',
+  'AK',
+  'AZ',
+  'AR',
+  'CA',
+  'CO',
+  'CT',
+  'DE',
+  'FL',
+  'GA',
+  'HI',
+  'ID',
+  'IL',
+  'IN',
+  'IA',
+  'KS',
+  'KY',
+  'LA',
+  'ME',
+  'MD',
+  'MA',
+  'MI',
+  'MN',
+  'MS',
+  'MO',
+  'MT',
+  'NE',
+  'NV',
+  'NH',
+  'NJ',
+  'NM',
+  'NY',
+  'NC',
+  'ND',
+  'OH',
+  'OK',
+  'OR',
+  'PA',
+  'RI',
+  'SC',
+  'SD',
+  'TN',
+  'TX',
+  'UT',
+  'VT',
+  'VA',
+  'WA',
+  'WV',
+  'WI',
+  'WY',
+  'DC',
+  'PR',
+  'VI',
+  'GU',
+  'AS',
+  'MP',
+])
+
+/**
+ * Parse "City, ST" format into bare city name and state abbreviation.
+ * Returns [bareName, state] where state may be empty if no suffix present.
+ * Only recognizes valid US state codes to avoid misclassifying Canadian
+ * provinces (ON, BC, QC) or country codes (DE, UK) as US states.
+ */
+function parseCityState(city: string): [string, string] {
+  const commaIdx = city.lastIndexOf(', ')
+  if (commaIdx === -1) return [city, '']
+  const suffix = city.slice(commaIdx + 2)
+  if (suffix.length === 2 && US_STATE_CODES.has(suffix)) {
+    return [city.slice(0, commaIdx), suffix]
+  }
+  return [city, '']
+}
+
 /**
  * Classify a city into a region.
  *
+ * Handles both bare names ("Oakland") and "City, ST" format ("Oakland, CA").
  * Priority: Bay Area sub-region > Other CA > Rest of US > International
  */
 export function classifyCity(city: string): string {
   if (!city) return 'International'
 
-  // Check Bay Area regions first
-  const bayAreaRegion = getCityRegion(city)
+  const [bareName, stateFromName] = parseCityState(city)
+
+  // Check Bay Area regions first (using bare name)
+  const bayAreaRegion = getCityRegion(bareName)
   if (bayAreaRegion) return bayAreaRegion
 
   // Check if it's a California city (in CA_CITY_COORDS but not Bay Area)
-  const lowerCity = city.toLowerCase()
+  const lowerBare = bareName.toLowerCase()
   for (const caCity of Object.keys(CA_CITY_COORDS)) {
-    if (caCity.toLowerCase() === lowerCity) return 'Other CA'
+    if (caCity.toLowerCase() === lowerBare) return 'Other CA'
   }
 
-  // Check if it's a US city
-  // Exact match first
-  if (US_CITY_STATES[city]) {
-    return US_CITY_STATES[city] === 'CA' ? 'Other CA' : 'Rest of US'
+  // If state was embedded in the name, use it directly
+  if (stateFromName) {
+    return stateFromName === 'CA' ? 'Other CA' : 'Rest of US'
   }
-  // Case-insensitive fallback
-  for (const [usCity, state] of Object.entries(US_CITY_STATES)) {
-    if (usCity.toLowerCase() === lowerCity) {
-      return state === 'CA' ? 'Other CA' : 'Rest of US'
-    }
+
+  // Check if it's a US city via lookup (handles bare names)
+  const state = US_CITY_STATES[city] ?? getLowerStatesMap().get(city.toLowerCase())
+  if (state) {
+    return state === 'CA' ? 'Other CA' : 'Rest of US'
   }
 
   return 'International'

@@ -2,7 +2,7 @@ import type { TourDefinition } from '../types'
 
 const debugTour: TourDefinition = {
   id: 'debug',
-  version: 1,
+  version: 2,
   steps: [
     {
       element: '[data-tour="debug-header"]',
@@ -38,7 +38,7 @@ const debugTour: TourDefinition = {
       popover: {
         title: 'Pro Tip: Page Tours',
         description:
-          'Every page with a guided tour has a "Tour" button in the header. Click it anytime to replay the tour. Tours auto-run once on your first visit and re-trigger when the tour is updated.',
+          'Every page with a guided tour can be replayed from the Help menu (? icon) in the header. Tours auto-run once on your first visit and re-trigger when the tour is updated.',
       },
     },
   ],

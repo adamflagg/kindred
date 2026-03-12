@@ -488,11 +488,17 @@ type valueWithContext struct {
 	Country string `json:"country"`
 }
 
-// normalizationLookup maps original values to normalized values per category
+// normalizedEntry holds a canonical value and its confidence from Python normalizer
+type normalizedEntry struct {
+	Canonical  string
+	Confidence float64
+}
+
+// normalizationLookup maps original values to normalized entries per category
 type normalizationLookup struct {
-	city         map[string]string // original → normalized
-	school       map[string]string
-	congregation map[string]string
+	city         map[string]normalizedEntry // original → {canonical, confidence}
+	school       map[string]normalizedEntry
+	congregation map[string]normalizedEntry
 }
 
 // pythonNormalizedResult represents the JSON response from Python normalizer
@@ -519,9 +525,9 @@ func buildPythonNormalizerCommand(category, valuesJSON string) (program string, 
 // country-aware matching rules.
 func (n *NormalizeGeographicSync) normalizeWithPython(
 	valuesWithContext map[string]geoContext, category string,
-) (map[string]string, error) {
+) (map[string]normalizedEntry, error) {
 	if len(valuesWithContext) == 0 {
-		return make(map[string]string), nil
+		return make(map[string]normalizedEntry), nil
 	}
 
 	// Build context array for JSON
@@ -581,10 +587,10 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 		return nil, fmt.Errorf("parsing python normalizer output: %w", err)
 	}
 
-	// Convert to simple map
-	result := make(map[string]string)
+	// Convert to normalizedEntry map (preserving confidence from Python)
+	result := make(map[string]normalizedEntry)
 	for original, normalized := range results {
-		result[original] = normalized.Canonical
+		result[original] = normalizedEntry(normalized)
 	}
 
 	return result, nil
@@ -625,9 +631,9 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	)
 
 	lookup := &normalizationLookup{
-		city:         make(map[string]string),
-		school:       make(map[string]string),
-		congregation: make(map[string]string),
+		city:         make(map[string]normalizedEntry),
+		school:       make(map[string]normalizedEntry),
+		congregation: make(map[string]normalizedEntry),
 	}
 
 	if len(uniqueCities) > 0 {
@@ -925,9 +931,9 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 
 			// City
 			if city := record.GetString("city"); city != "" {
-				if normalized, ok := lookup.city[city]; ok {
-					if record.GetString("city_normalized") != normalized {
-						record.Set("city_normalized", normalized)
+				if entry, ok := lookup.city[city]; ok {
+					if record.GetString("city_normalized") != entry.Canonical {
+						record.Set("city_normalized", entry.Canonical)
 						needsUpdate = true
 					}
 				}
@@ -935,9 +941,9 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 
 			// School
 			if school := record.GetString("school"); school != "" {
-				if normalized, ok := lookup.school[school]; ok {
-					if record.GetString("school_normalized") != normalized {
-						record.Set("school_normalized", normalized)
+				if entry, ok := lookup.school[school]; ok {
+					if record.GetString("school_normalized") != entry.Canonical {
+						record.Set("school_normalized", entry.Canonical)
 						needsUpdate = true
 					}
 				}
@@ -945,9 +951,9 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 
 			// Congregation (synagogue field in camper_history)
 			if synagogue := record.GetString("synagogue"); synagogue != "" {
-				if normalized, ok := lookup.congregation[synagogue]; ok {
-					if record.GetString("congregation_normalized") != normalized {
-						record.Set("congregation_normalized", normalized)
+				if entry, ok := lookup.congregation[synagogue]; ok {
+					if record.GetString("congregation_normalized") != entry.Canonical {
+						record.Set("congregation_normalized", entry.Canonical)
 						needsUpdate = true
 					}
 				}
@@ -1020,9 +1026,9 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 
 			// City
 			if city := record.GetString("address_city"); city != "" {
-				if normalized, ok := lookup.city[city]; ok {
-					if record.GetString("normalized_city") != normalized {
-						record.Set("normalized_city", normalized)
+				if entry, ok := lookup.city[city]; ok {
+					if record.GetString("normalized_city") != entry.Canonical {
+						record.Set("normalized_city", entry.Canonical)
 						needsUpdate = true
 					}
 				}
@@ -1030,9 +1036,9 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 
 			// School
 			if school := record.GetString("school"); school != "" {
-				if normalized, ok := lookup.school[school]; ok {
-					if record.GetString("normalized_school") != normalized {
-						record.Set("normalized_school", normalized)
+				if entry, ok := lookup.school[school]; ok {
+					if record.GetString("normalized_school") != entry.Canonical {
+						record.Set("normalized_school", entry.Canonical)
 						needsUpdate = true
 					}
 				}
@@ -1040,9 +1046,9 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 
 			// Congregation (from person_custom_values via attendee data)
 			if rawCongregation, ok := congregationByPerson[record.Id]; ok {
-				if normalized, ok := lookup.congregation[rawCongregation]; ok {
-					if record.GetString("normalized_congregation") != normalized {
-						record.Set("normalized_congregation", normalized)
+				if entry, ok := lookup.congregation[rawCongregation]; ok {
+					if record.GetString("normalized_congregation") != entry.Canonical {
+						record.Set("normalized_congregation", entry.Canonical)
 						needsUpdate = true
 					}
 				}
@@ -1107,19 +1113,10 @@ func (n *NormalizeGeographicSync) deleteOrphans(existingMappings map[string]*cor
 	return orphanCount
 }
 
-// computeConfidenceStatic returns confidence score based on how much the value changed.
-// Static version (no receiver) for use in resolveValue.
-func computeConfidenceStatic(original, normalized string) float64 {
-	if strings.EqualFold(original, normalized) {
-		return 1.0
-	}
-	return 0.9
-}
-
 // resolveValue checks alias overrides first, then fuzzy match, then merge redirects.
 // Returns the normalized value and confidence score.
 func resolveValue(
-	rawValue string, category string, lookupMap map[string]string,
+	rawValue string, category string, lookupMap map[string]normalizedEntry,
 	aliasOverrides, mergeOverrides map[string]map[string]string,
 ) (normalized string, confidence float64) {
 	lowerRaw := strings.ToLower(rawValue)
@@ -1139,15 +1136,15 @@ func resolveValue(
 		}
 	}
 
-	// 2. Fall back to fuzzy match
-	if result, ok := lookupMap[rawValue]; ok && result != "" {
-		normalized = result
-		confidence = computeConfidenceStatic(rawValue, result)
+	// 2. Fall back to Python normalizer result (preserving Python confidence)
+	if entry, ok := lookupMap[rawValue]; ok && entry.Canonical != "" {
+		normalized = entry.Canonical
+		confidence = entry.Confidence
 	} else {
 		return "", 0 // no match
 	}
 
-	// 3. Check merge redirect on fuzzy match result
+	// 3. Check merge redirect on normalized result
 	if merges, ok := mergeOverrides[category]; ok {
 		if mergedInto, found := merges[normalized]; found {
 			normalized = mergedInto

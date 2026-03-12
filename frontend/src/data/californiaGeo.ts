@@ -11,7 +11,7 @@
  * Also includes major California cities for out-of-area campers.
  */
 
-import { US_CITY_COORDS } from './cityGeo'
+import { US_CITY_COORDS, getLowerCoordsMap, getBareCityCoordsMap } from './cityGeo'
 
 /** Coordinates as [latitude, longitude] */
 export type LatLng = [number, number]
@@ -877,18 +877,21 @@ export function getCityCoords(cityName: string): LatLng | undefined {
   const usCoord = US_CITY_COORDS[cityName]
   if (usCoord) return usCoord
 
-  // 3. Case-insensitive fallback (both lookups)
+  // 3. Case-insensitive fallback (CA is small, US uses pre-computed Map)
   const lowerName = cityName.toLowerCase()
   for (const [city, coords] of Object.entries(CA_CITY_COORDS)) {
     if (city.toLowerCase() === lowerName) return coords
   }
-  for (const [city, coords] of Object.entries(US_CITY_COORDS)) {
-    if (city.toLowerCase() === lowerName) return coords
-  }
+  const lowerMatch = getLowerCoordsMap().get(lowerName)
+  if (lowerMatch) return lowerMatch
 
   // 4. Strip state suffix ("Oakland, CA" → "Oakland")
   const cityOnly = cityName.split(',')[0]?.trim() ?? cityName
   if (cityOnly !== cityName) return getCityCoords(cityOnly)
+
+  // 5. Bare name → first "Name, XX" match via pre-computed Map
+  const bareMatch = getBareCityCoordsMap().get(lowerName)
+  if (bareMatch) return bareMatch
 
   return undefined
 }

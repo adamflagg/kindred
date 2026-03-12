@@ -28,6 +28,8 @@ services:
       - ADMIN_GROUP_NAME=${ADMIN_GROUP_NAME:-}
       - IS_DOCKER=true
       - TZ=${TZ:-America/Los_Angeles}
+      - GITHUB_FEEDBACK_TOKEN=${GITHUB_FEEDBACK_TOKEN:-}
+      - GITHUB_FEEDBACK_REPO=${GITHUB_FEEDBACK_REPO:-}
     healthcheck:
       test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8090/api/health"]
       interval: 10s

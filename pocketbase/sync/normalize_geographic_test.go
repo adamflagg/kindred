@@ -1157,9 +1157,9 @@ const testCityOakland = "Oakland"
 // take priority over fuzzy match results. When a raw value has an alias
 // override, it should return the alias canonical with confidence 1.0.
 func TestResolveValueAliasOverrideTakesPriority(t *testing.T) {
-	// Fuzzy match lookup maps a raw value to a normalized result
-	fuzzyLookup := map[string]string{
-		"Oaklnd": testCityOakland, // fuzzy match would normalize to "Oakland"
+	// Fuzzy match lookup maps a raw value to a normalized entry
+	fuzzyLookup := map[string]normalizedEntry{
+		"Oaklnd": {Canonical: testCityOakland, Confidence: 0.9}, // fuzzy match would normalize to "Oakland"
 	}
 
 	// Alias override maps the same raw value to a different canonical
@@ -1191,7 +1191,7 @@ func TestResolveValueAliasOverrideTakesPriority(t *testing.T) {
 // TestResolveValueAliasIsCaseInsensitive verifies that alias lookup is
 // case-insensitive (raw values are lowercased before lookup).
 func TestResolveValueAliasIsCaseInsensitive(t *testing.T) {
-	fuzzyLookup := map[string]string{}
+	fuzzyLookup := map[string]normalizedEntry{}
 
 	aliasOverrides := map[string]map[string]string{
 		categorySchool: {
@@ -1223,8 +1223,8 @@ func TestResolveValueAliasIsCaseInsensitive(t *testing.T) {
 // says A -> B, the final result should be B.
 func TestResolveValueMergeRedirectAfterFuzzyMatch(t *testing.T) {
 	// Fuzzy match normalizes "Temple Beth-El" -> "Temple Beth El"
-	fuzzyLookup := map[string]string{
-		"Temple Beth-El": "Temple Beth El",
+	fuzzyLookup := map[string]normalizedEntry{
+		"Temple Beth-El": {Canonical: "Temple Beth El", Confidence: 0.9},
 	}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1249,7 +1249,7 @@ func TestResolveValueMergeRedirectAfterFuzzyMatch(t *testing.T) {
 	if normalized != "Congregation Beth El" {
 		t.Errorf("resolveValue() normalized = %q, want %q", normalized, "Congregation Beth El")
 	}
-	// Confidence comes from fuzzy match (not 1.0 because original != normalized before merge)
+	// Confidence comes from Python normalizer entry (0.9 for fuzzy match)
 	if confidence != 0.9 {
 		t.Errorf("resolveValue() confidence = %f, want 0.9", confidence)
 	}
@@ -1259,7 +1259,7 @@ func TestResolveValueMergeRedirectAfterFuzzyMatch(t *testing.T) {
 // raw -> A, then merge redirects A -> B. Final result should be B with
 // confidence 1.0 (because the alias itself is a manual override).
 func TestResolveValueAliasPlusMerge(t *testing.T) {
-	fuzzyLookup := map[string]string{} // empty, alias should handle it
+	fuzzyLookup := map[string]normalizedEntry{} // empty, alias should handle it
 
 	aliasOverrides := map[string]map[string]string{
 		categorySchool: {
@@ -1290,8 +1290,8 @@ func TestResolveValueAliasPlusMerge(t *testing.T) {
 // TestResolveValueEmptyOverridesFallBackToFuzzy verifies that when alias/merge
 // overrides are empty, the function falls back to fuzzy match as before.
 func TestResolveValueEmptyOverridesFallBackToFuzzy(t *testing.T) {
-	fuzzyLookup := map[string]string{
-		"San Fran": "San Francisco",
+	fuzzyLookup := map[string]normalizedEntry{
+		"San Fran": {Canonical: "San Francisco", Confidence: 0.9},
 	}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1320,8 +1320,8 @@ func TestResolveValueEmptyOverridesFallBackToFuzzy(t *testing.T) {
 // TestResolveValueFuzzyMatchExactCaseConfidence verifies that when fuzzy match
 // returns a case-equal result, confidence is 1.0.
 func TestResolveValueFuzzyMatchExactCaseConfidence(t *testing.T) {
-	fuzzyLookup := map[string]string{
-		testCityOakland: testCityOakland, // exact match (same string)
+	fuzzyLookup := map[string]normalizedEntry{
+		testCityOakland: {Canonical: testCityOakland, Confidence: 1.0}, // exact match
 	}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1349,7 +1349,7 @@ func TestResolveValueFuzzyMatchExactCaseConfidence(t *testing.T) {
 // TestResolveValueNoMatchReturnsEmpty verifies that when no alias override
 // and no fuzzy match exist, resolveValue returns empty string and 0 confidence.
 func TestResolveValueNoMatchReturnsEmpty(t *testing.T) {
-	fuzzyLookup := map[string]string{} // no matches
+	fuzzyLookup := map[string]normalizedEntry{} // no matches
 
 	aliasOverrides := map[string]map[string]string{
 		categoryCity:         {},
@@ -1376,8 +1376,8 @@ func TestResolveValueNoMatchReturnsEmpty(t *testing.T) {
 // TestResolveValueNilOverrideMapsDoNotPanic verifies that nil maps in the
 // overrides don't cause panics (defensive coding).
 func TestResolveValueNilOverrideMapsDoNotPanic(t *testing.T) {
-	fuzzyLookup := map[string]string{
-		testCityOakland: testCityOakland,
+	fuzzyLookup := map[string]normalizedEntry{
+		testCityOakland: {Canonical: testCityOakland, Confidence: 1.0},
 	}
 
 	// Missing category keys in override maps
@@ -1399,8 +1399,8 @@ func TestResolveValueNilOverrideMapsDoNotPanic(t *testing.T) {
 // even when there are no alias overrides for a category. The fuzzy match
 // result is redirected by the merge.
 func TestResolveValueMergeOnlyNoAlias(t *testing.T) {
-	fuzzyLookup := map[string]string{
-		"Oak Valley Middle School": "Oak Valley Middle School",
+	fuzzyLookup := map[string]normalizedEntry{
+		"Oak Valley Middle School": {Canonical: "Oak Valley Middle School", Confidence: 1.0},
 	}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1433,8 +1433,8 @@ func TestResolveValueMergeOnlyNoAlias(t *testing.T) {
 // TestResolveValueCategoryIsolation verifies that overrides for one category
 // do not affect resolution in another category.
 func TestResolveValueCategoryIsolation(t *testing.T) {
-	fuzzyLookup := map[string]string{
-		testCityOakland: testCityOakland,
+	fuzzyLookup := map[string]normalizedEntry{
+		testCityOakland: {Canonical: testCityOakland, Confidence: 1.0},
 	}
 
 	aliasOverrides := map[string]map[string]string{
