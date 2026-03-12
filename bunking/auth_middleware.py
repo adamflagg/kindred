@@ -252,7 +252,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         )
                         return None
 
-                    logger.info("Token validated via PocketBase")
+                    logger.debug("Token validated via PocketBase")
             except Exception as e:
                 logger.error(f"PocketBase token validation error: {type(e).__name__}: {e}")
 
@@ -301,7 +301,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 groups.extend([r.strip() for r in pocket_roles.split(",") if r.strip()])
 
         # Log groups found
-        logger.info(f"User {username} groups: {groups}")
+        logger.debug(f"User {username} groups: {groups}")
 
         is_admin = self.admin_group in groups
 

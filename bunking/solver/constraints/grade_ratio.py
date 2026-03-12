@@ -39,7 +39,7 @@ def add_grade_ratio_constraints(ctx: SolverContext) -> None:
     # Get standard capacity for edge exemption threshold calculation
     standard_capacity = ctx.config.get_int("constraint.cabin_capacity.standard", default=12)
 
-    logger.info(
+    logger.debug(
         f"Adding grade ratio soft constraints with max percentage: {max_percentage:.0%}, penalty: {penalty_weight}"
     )
 
@@ -138,7 +138,7 @@ def add_grade_ratio_constraints(ctx: SolverContext) -> None:
             # Store violation with penalty
             ctx.soft_constraint_violations[f"grade_ratio_{bunk_idx}_grade_{grade}"] = (violation_var, penalty_weight)
 
-    logger.info(
+    logger.debug(
         f"Grade ratio: Checked {total_bunks_checked} bunks, skipped {total_bunks_skipped} "
         f"(small capacity or single-grade), edge-exempted {edge_exempted_bunks}. "
         f"Only considered eligible campers per bunk."

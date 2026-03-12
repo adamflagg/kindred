@@ -116,7 +116,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
         # Batch add all nodes at once
         self.graph.add_nodes_from(node_data)
-        logger.info(f"Added {len(node_data)} nodes to graph")
+        logger.debug(f"Added {len(node_data)} nodes to graph")
 
         # Prepare batch edge data
         edge_data = []
@@ -168,14 +168,14 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
         # Batch add all edges at once
         self.graph.add_edges_from(edge_data)
-        logger.info(f"Added {len(edge_data)} edges to graph")
+        logger.debug(f"Added {len(edge_data)} edges to graph")
 
         # Calculate metrics
         self._calculate_node_metrics()
 
         # Log performance
         build_time = time.perf_counter() - start_time
-        logger.info(
+        logger.debug(
             f"Optimized graph built in {build_time:.2f}s with {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges"
         )
 

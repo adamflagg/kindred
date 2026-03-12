@@ -26,7 +26,7 @@ def add_gender_constraints(ctx: SolverContext) -> None:
         logger.info("Gender constraints DISABLED via debug settings")
         return
 
-    logger.info("Adding gender constraints - CRITICAL for camper safety")
+    logger.info("Gender constraints active")
 
     constraints_added = 0
 
@@ -58,7 +58,7 @@ def add_gender_constraints(ctx: SolverContext) -> None:
                 # If person has no gender data, log warning but don't constrain
                 logger.warning(f"Person {person_cm_id} ({person.name}) has no gender data")
 
-    logger.info(f"Added {constraints_added} gender constraint restrictions")
+    logger.debug(f"Added {constraints_added} gender constraint restrictions")
 
     # Log cabin statistics
     _log_gender_statistics(ctx)
@@ -71,14 +71,14 @@ def _log_gender_statistics(ctx: SolverContext) -> None:
     female_cabins = sum(1 for b in ctx.bunks if b.gender == "F")
     mixed_cabins = sum(1 for b in ctx.bunks if b.gender == "Mixed")
 
-    logger.info(f"Available cabins - Male: {male_cabins}, Female: {female_cabins}, Mixed: {mixed_cabins}")
+    logger.debug(f"Available cabins - Male: {male_cabins}, Female: {female_cabins}, Mixed: {mixed_cabins}")
 
     # Count persons by gender
     male_count = sum(1 for p in ctx.input.persons if p.gender == "M")
     female_count = sum(1 for p in ctx.input.persons if p.gender == "F")
     other_count = sum(1 for p in ctx.input.persons if p.gender not in ["M", "F"])
 
-    logger.info(f"Campers by gender - Male: {male_count}, Female: {female_count}, Other/Unknown: {other_count}")
+    logger.debug(f"Campers by gender - Male: {male_count}, Female: {female_count}, Other/Unknown: {other_count}")
 
     # Check capacity
     male_capacity = sum(b.capacity for b in ctx.bunks if b.gender == "M")

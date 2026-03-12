@@ -44,7 +44,7 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
     if grade_target_weight <= 0:
         return
 
-    logger.info(f"Adding target grade distribution incentives (weight: {grade_target_weight})")
+    logger.debug(f"Adding target grade distribution incentives (weight: {grade_target_weight})")
 
     # Group bunks by gender AND session
     bunks_by_gender_session: dict[tuple[str, int], list[DirectBunk]] = defaultdict(list)
@@ -108,7 +108,7 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
 
         # Log target distribution
         target_str = ", ".join(f"{b.campminder_id}={bunk_targets.get(b.campminder_id, 0):.2f}" for b in session_bunks)
-        logger.info(f"Target grades for {gender}: {target_str}")
+        logger.debug(f"Target grades for {gender} session {session_cm_id}: {target_str}")
 
         # Calculate grade range for normalization
         all_grades = [c.grade for c in group_campers]
@@ -117,8 +117,8 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
         grade_range = max(1, max_grade - min_grade)
 
         # Add incentives for each camper-bunk pair
-        # DEBUG: Track bonuses for specific bunks
-        debug_bunk_bonuses: dict[str, dict[int, int]] = {}  # bunk_name -> {grade: total_bonus}
+        track_debug = logger.isEnabledFor(logging.DEBUG)
+        debug_bunk_bonuses: dict[str, dict[int, int]] = {}
 
         for camper in group_campers:
             person_idx = ctx.person_idx_map.get(camper.campminder_person_id)
@@ -143,18 +143,13 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
                     objective_terms.append(bonus * ctx.assignments[(person_idx, bunk_idx)])
                     total_incentives_added += 1
 
-                    # DEBUG: Track for G-6B and G-7
-                    if bunk.name in ("G-6B", "G-7"):
-                        if bunk.name not in debug_bunk_bonuses:
-                            debug_bunk_bonuses[bunk.name] = {}
-                        grade = camper.grade
-                        if grade not in debug_bunk_bonuses[bunk.name]:
-                            debug_bunk_bonuses[bunk.name][grade] = 0
-                        debug_bunk_bonuses[bunk.name][grade] += bonus
+                    if track_debug and bunk.name in ("G-6B", "G-7"):
+                        debug_bunk_bonuses.setdefault(bunk.name, {})
+                        debug_bunk_bonuses[bunk.name][camper.grade] = (
+                            debug_bunk_bonuses[bunk.name].get(camper.grade, 0) + bonus
+                        )
 
-        # DEBUG: Log bonuses for G-6B and G-7
-        for bunk_name in ["G-6B", "G-7"]:
-            if bunk_name in debug_bunk_bonuses:
-                logger.info(f"DEBUG {bunk_name} bonuses by grade: {debug_bunk_bonuses[bunk_name]}")
+        for bunk_name, bonuses in debug_bunk_bonuses.items():
+            logger.debug(f"{bunk_name} bonuses by grade: {bonuses}")
 
-    logger.info(f"Added {total_incentives_added} target grade incentives")
+    logger.debug(f"Added {total_incentives_added} target grade incentives")

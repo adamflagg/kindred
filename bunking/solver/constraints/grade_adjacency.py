@@ -139,7 +139,7 @@ def add_grade_adjacency_constraints(ctx: SolverContext) -> None:
         logger.info("Grade adjacency constraints DISABLED via debug settings")
         return
 
-    logger.info("Adding grade adjacency HARD constraints")
+    logger.debug("Adding grade adjacency HARD constraints")
 
     total_bunks_checked = 0
     total_bunks_skipped = 0
@@ -223,7 +223,7 @@ def add_grade_adjacency_constraints(ctx: SolverContext) -> None:
         f"Added {constraints_added} hard constraints.",
     )
 
-    logger.info(
+    logger.debug(
         f"Grade adjacency: Checked {total_bunks_checked} bunks, "
         f"skipped {total_bunks_skipped}, added {constraints_added} HARD constraints"
     )

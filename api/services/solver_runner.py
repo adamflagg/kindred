@@ -198,7 +198,7 @@ async def run_solver_task_v2(
             }
             if scenario:
                 pb_data["scenario"] = scenario
-            logger.info(f"Attempting to save to PocketBase with data: {pb_data}")
+            logger.debug(f"Attempting to save to PocketBase with data: {pb_data}")
 
             pb_record = await asyncio.to_thread(task_pb.collection("solver_runs").create, pb_data)
             logger.info(f"Created PocketBase record: {pb_record.id}")

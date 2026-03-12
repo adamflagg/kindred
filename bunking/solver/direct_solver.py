@@ -347,12 +347,12 @@ class DirectBunkingSolver:
         # 6. Grade/age spread constraints - NOW ENABLED with aggregation
         # Check if grade spread should be hard or soft constraint
         grade_spread_mode = self.config.get_str("constraint.grade_spread.mode", default="hard")
-        logger.info(f"Grade spread mode from config: '{grade_spread_mode}'")
+        logger.debug(f"Grade spread mode from config: '{grade_spread_mode}'")
         if grade_spread_mode == "hard":
             # Uses extracted constraint module - debug check is internal
             add_grade_spread_constraints(self._build_solver_context())
         else:
-            logger.info("Grade spread will be handled as SOFT constraint in objective function")
+            logger.debug("Grade spread will be handled as SOFT constraint in objective function")
         # If soft, it will be handled in the objective function
 
         # 7. Grade ratio percentage constraints
@@ -674,9 +674,10 @@ class DirectBunkingSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = time_limit_seconds
 
-        # Enable detailed logging for debugging
-        solver.parameters.log_search_progress = True
-        solver.log_callback = lambda msg: logger.info(f"OR-Tools: {msg}")
+        # Only enable OR-Tools search progress in debug mode
+        if self.debug_mode:
+            solver.parameters.log_search_progress = True
+            solver.log_callback = lambda msg: logger.debug(f"OR-Tools: {msg}")
 
         # Add optimization parameters for better performance
         # Read worker count from env (default 8 for good parallelism)
@@ -691,8 +692,8 @@ class DirectBunkingSolver:
 
         # Log solver start
         self.constraint_logger.log_progress(f"Starting solver with {time_limit_seconds}s time limit...")
-        logger.info(
-            f"Model has {self.model.Proto().variables} variables and {len(self.model.Proto().constraints)} constraints"
+        logger.debug(
+            f"Model has {len(self.model.Proto().variables)} variables and {len(self.model.Proto().constraints)} constraints"
         )
 
         # Export model for debugging if it fails
@@ -702,6 +703,10 @@ class DirectBunkingSolver:
 
         # Solve with callback
         status = solver.Solve(self.model, callback)
+
+        # Log solver summary at INFO (key metrics only)
+        status_name = solver.StatusName(status)
+        logger.info(f"Solver complete: {status_name}, wall={solver.WallTime():.1f}s, workers={num_workers}")
 
         # If infeasible, export the model and try to find conflicts
         if status == cp_model.INFEASIBLE:

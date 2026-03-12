@@ -137,8 +137,8 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
 
         constraints_added += 1
 
-    logger.info(f"Must-satisfy-one soft constraints added for {constraints_added} campers")
-    logger.info(f"Campers without requests: {len(campers_without_requests)}")
+    logger.debug(f"Must-satisfy-one soft constraints added for {constraints_added} campers")
+    logger.debug(f"Campers without requests: {len(campers_without_requests)}")
 
     if ignore_impossible:
         skipped_count = sum(
@@ -149,7 +149,7 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             and len(ctx.impossible_requests.get(person_cm_id, [])) > 0
         )
         if skipped_count > 0:
-            logger.info(f"Campers with only impossible requests: {skipped_count}")
+            logger.debug(f"Campers with only impossible requests: {skipped_count}")
 
 
 def _filter_and_categorize_requests(

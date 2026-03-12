@@ -39,7 +39,7 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
     # Get weight for age spread violations - high weight to prioritize
     age_spread_weight = ctx.config.get_soft_constraint_weight("age_spread", default=4000)
 
-    logger.info(
+    logger.debug(
         f"Adding TRUE min/max age spread constraints (max {max_age_spread_months} months, weight {age_spread_weight})"
     )
 
@@ -111,4 +111,4 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
 
             constraints_added += 1
 
-    logger.info(f"Age spread: Using TRUE min/max aggregation for {constraints_added} bunks")
+    logger.debug(f"Age spread: Using TRUE min/max aggregation for {constraints_added} bunks")
