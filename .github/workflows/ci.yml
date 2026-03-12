@@ -133,7 +133,7 @@ jobs:
         persist-credentials: false
 
     - name: Check for file changes
-      uses: dorny/paths-filter@ce10459c8b92cd8901166c0a222fbb033ef39365 # master (node24, post-v3.0.2)
+      uses: dorny/paths-filter@9d7afb8d214ad99e78fbd4247752c4caed2b6e4c # v4
       id: filter
       with:
         filters: |
@@ -209,7 +209,7 @@ jobs:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
+      uses: astral-sh/setup-uv@e06108dd0aef18192324c70427afc47652e63a82 # v7
       with:
         enable-cache: true
 
@@ -436,7 +436,7 @@ jobs:
         python-version: '3.14'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
+      uses: astral-sh/setup-uv@e06108dd0aef18192324c70427afc47652e63a82 # v7
       with:
         enable-cache: true
 
@@ -578,29 +578,10 @@ jobs:
       working-directory: ./frontend
       run: npm run test -- --run
 
-  # Submit dependencies to GitHub's dependency graph
-  # Non-blocking: informational only, GitHub API errors shouldn't fail CI
-  dependency-submission:
-    name: Dependency Submission
-    runs-on: ubuntu-latest
-    # Only submit on main branch pushes (not PRs, not other branches)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    continue-on-error: true
-    permissions:
-      contents: write  # Required for dependency submission API
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      with:
-        persist-credentials: false
-
-    - name: Submit dependencies
-      uses: advanced-security/component-detection-dependency-submission-action@9c110eb34dee187cd9eca76a652b9f6a0ed22927 # v0.1.1
-
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests, dependency-submission]
+    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -616,7 +597,6 @@ jobs:
         DOCKER_LINT: ${{ needs.docker-lint.result }}
         SECURITY_LINT: ${{ needs.security-lint.result }}
         TESTS: ${{ needs.tests.result }}
-        DEP_SUBMISSION: ${{ needs.dependency-submission.result }}
       run: |
         # detect-changes: blocking — if this fails, all conditional jobs are skipped
         # and CI passes with zero validation (the paths-filter incident of March 2026)
@@ -663,9 +643,5 @@ jobs:
         if [ "$TESTS" != "success" ] && [ "$TESTS" != "skipped" ]; then
           echo "Tests failed!"
           exit 1
-        fi
-        # dependency-submission is non-blocking (informational only)
-        if [ "$DEP_SUBMISSION" == "failure" ]; then
-          echo "Dependency submission failed (non-blocking)"
         fi
         echo "All CI checks passed!"
