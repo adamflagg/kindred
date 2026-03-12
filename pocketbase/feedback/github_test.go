@@ -82,18 +82,26 @@ func TestBuildIssueBody(t *testing.T) {
 
 	body := buildIssueBody(&params)
 
-	// Bold section headers like a GitHub issue template
+	// Section headers should have colons
 	if !containsAll(body,
-		"**Description**",
+		"**Description:**",
 		"The save button does not work",
-		"**Reported by**",
+		"**Reported by:**",
 		"Jane Smith (jane@example.com)",
-		"**Page**",
+		"**Page:**",
 		"`/summer/sessions`",
-		"**Environment**",
-		"v0.8.0",
+		"**Environment:**",
 	) {
-		t.Errorf("issue body missing expected content:\n%s", body)
+		t.Errorf("issue body missing expected section headers with colons:\n%s", body)
+	}
+
+	// Environment details should be a bulleted list
+	if !containsAll(body,
+		"- Browser: Mozilla/5.0",
+		"- Viewport: 1920x1080",
+		"- App Version: v0.8.0",
+	) {
+		t.Errorf("issue body missing bulleted environment details:\n%s", body)
 	}
 
 	// Should NOT contain a table separator or submitted date
@@ -121,7 +129,7 @@ func TestBuildIssueBodyWithScreenshot(t *testing.T) {
 
 	body := buildIssueBody(&params)
 
-	if !containsAll(body, "**Screenshot**", "![Screenshot]", "screenshot.png") {
+	if !containsAll(body, "**Screenshot:**", "![Screenshot]", "screenshot.png") {
 		t.Errorf("issue body missing screenshot section:\n%s", body)
 	}
 }
