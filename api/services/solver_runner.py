@@ -186,15 +186,18 @@ async def run_solver_task_v2(
 
         # Record in PocketBase
         try:
-            pb_data = {
-                "session_cm_id": session_cm_id,
-                "status": "completed",
+            pb_data: dict[str, Any] = {
+                "run_id": run_id,
+                "session": str(session_cm_id),
+                "session_id": session_cm_id,
+                "status": "success",
                 "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
-                "results": json.dumps(solver_runs[run_id]["results"]),
-                "config": json.dumps({"respect_locks": respect_locks, "time_limit": time_limit}),
-                "scenario": scenario,  # Relation field (PocketBase ID or None)
+                "result": json.dumps(solver_runs[run_id]["results"]),
+                "details": json.dumps({"respect_locks": respect_locks, "time_limit": time_limit}),
             }
+            if scenario:
+                pb_data["scenario"] = scenario
             logger.info(f"Attempting to save to PocketBase with data: {pb_data}")
 
             pb_record = await asyncio.to_thread(task_pb.collection("solver_runs").create, pb_data)
@@ -218,11 +221,13 @@ async def run_solver_task_v2(
             await asyncio.to_thread(
                 task_pb.collection("solver_runs").create,
                 {
-                    "session_cm_id": session_cm_id,
+                    "run_id": run_id,
+                    "session": str(session_cm_id),
+                    "session_id": session_cm_id,
                     "status": "failed",
                     "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                     "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
-                    "error_message": str(e),
+                    "error": json.dumps({"message": str(e)}),
                 },
             )
         except Exception:  # noqa: S110 — intentional silent handling

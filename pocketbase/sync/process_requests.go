@@ -148,7 +148,8 @@ func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorReques
 	// Use a long timeout — processing can take up to 30 minutes
 	client := &http.Client{Timeout: 35 * time.Minute}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/internal/process-requests", bytes.NewReader(bodyBytes))
+	endpoint := apiURL + "/api/internal/process-requests"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return Stats{}, fmt.Errorf("building process-requests request: %w", err)
 	}
