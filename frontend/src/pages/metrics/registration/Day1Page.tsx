@@ -51,11 +51,10 @@ function getCategoryCount(tier: Day1TierData | undefined, category: string): num
   return cat ? cat.count : null
 }
 
-/** Format a count value, optionally with approximate prefix */
-function fmtCount(value: number | null, approximate?: boolean): string {
+/** Format a count value */
+function fmtCount(value: number | null): string {
   if (value === null) return 'n/a'
-  const prefix = approximate ? '~' : ''
-  return `${prefix}${value.toLocaleString()}`
+  return value.toLocaleString()
 }
 
 /** Check if a tier's registration window hasn't started yet */
@@ -111,8 +110,7 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
     .map((py) => {
       const pt = findTier(py.tiers, tier.tier)
       if (!pt) return null
-      const approx = pt.approximate ? '~' : ''
-      return `${py.year}: ${approx}${pt.total.count.toLocaleString()}`
+      return `${py.year}: ${pt.total.count.toLocaleString()}`
     })
     .filter(Boolean)
 
@@ -141,7 +139,7 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
           {/* Total */}
           <div className="mb-3">
             <p className="text-4xl font-bold tabular-nums">
-              {fmtCount(tier.total.count, tier.approximate)}
+              {fmtCount(tier.total.count)}
             </p>
           </div>
 
@@ -150,13 +148,13 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
             {atCamp !== null && (
               <div>
                 <span className={config.accent}>At Camp</span>{' '}
-                <span className="font-semibold">{fmtCount(atCamp, tier.approximate)}</span>
+                <span className="font-semibold">{fmtCount(atCamp)}</span>
               </div>
             )}
             {quest !== null && (
               <div>
                 <span className={config.accent}>Quest</span>{' '}
-                <span className="font-semibold">{fmtCount(quest, tier.approximate)}</span>
+                <span className="font-semibold">{fmtCount(quest)}</span>
               </div>
             )}
           </div>
@@ -175,12 +173,6 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
         </>
       )}
 
-      {/* Approximate indicator */}
-      {tier.approximate && !upcoming && (
-        <div className="mt-2 flex items-center gap-1 text-xs text-white/60">
-          <span>~ approximate (reconstructed)</span>
-        </div>
-      )}
     </div>
   )
 }
@@ -248,14 +240,12 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
       return { display: 'Upcoming', isCurrentYear }
     }
 
-    const approximate = tier.approximate
-
     if (rowKey === 'total') {
-      return { display: fmtCount(tier.total.count, approximate), isCurrentYear }
+      return { display: fmtCount(tier.total.count), isCurrentYear }
     }
 
     const count = getCategoryCount(tier, rowKey)
-    return { display: fmtCount(count, approximate), isCurrentYear }
+    return { display: fmtCount(count), isCurrentYear }
   }
 
   return (
