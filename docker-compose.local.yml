@@ -38,6 +38,7 @@ services:
       - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID:-}
       - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID:-2025}
       - SKIP_CAMPMINDER=${SKIP_CAMPMINDER:-false}
+      - API_URL=http://api:8000
       - TZ=${TZ:-America/Los_Angeles}
     healthcheck:
       test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8090/api/health"]

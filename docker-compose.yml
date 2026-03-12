@@ -27,6 +27,7 @@ services:
       - GOOGLE_SERVICE_ACCOUNT_KEY_FILE=${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-/config/google_sheets.json}
       - ADMIN_GROUP_NAME=${ADMIN_GROUP_NAME:-}
       - IS_DOCKER=true
+      - API_URL=http://api:8000
       - TZ=${TZ:-America/Los_Angeles}
       - GITHUB_FEEDBACK_TOKEN=${GITHUB_FEEDBACK_TOKEN:-}
       - GITHUB_FEEDBACK_REPO=${GITHUB_FEEDBACK_REPO:-}
