@@ -44,6 +44,11 @@
 		reverse_proxy {$API_HOST:api}:8000
 	}
 
+	# Block external access to internal service-to-service endpoints
+	handle /api/internal/* {
+		respond 403
+	}
+
 	# FastAPI catch-all for /api/* (solver, scenarios, validation, social-graph, config, etc.)
 	handle /api/* {
 		reverse_proxy {$API_HOST:api}:8000 {
