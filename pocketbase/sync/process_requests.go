@@ -19,9 +19,10 @@ import (
 const boolTrue = "true"
 
 // RequestProcessor processes original_bunk_requests into structured bunk_requests
-// All processing is now done in Python - this is just a thin wrapper that:
-// 1. Handles PocketBase auth
-// 2. Calls Python subprocess
+// All processing is done in Python via the FastAPI process-requests endpoint.
+// This is a thin wrapper that:
+// 1. Optionally clears processed flags (force mode)
+// 2. Calls the FastAPI HTTP endpoint
 // 3. Collects stats for the sync status UI
 type RequestProcessor struct {
 	BaseSyncService
@@ -51,7 +52,7 @@ func (p *RequestProcessor) Name() string {
 	return "process_requests"
 }
 
-// Sync executes the processing by calling Python
+// Sync executes the processing by calling the FastAPI process-requests endpoint.
 // Python handles all 5 field types:
 // - bunk_with, not_bunk_with, bunking_notes, internal_notes -> AI parsing
 // - socialize_with -> direct parsing (dropdown values)
