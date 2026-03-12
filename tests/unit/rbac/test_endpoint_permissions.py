@@ -236,10 +236,11 @@ class TestMetricsPermissions:
 
         _assert_endpoint_has_permission_dep(get_forecast, Permission.METRICS_FINANCIAL)
 
-    def test_cache_invalidate_requires_admin(self) -> None:
+    def test_cache_invalidate_has_no_endpoint_auth(self) -> None:
+        """Cache invalidation has no endpoint-level auth dep (middleware bypass)."""
         from api.routers.metrics import invalidate_metrics_cache
 
-        _assert_endpoint_has_admin_dep(invalidate_metrics_cache)
+        assert _get_dependency(invalidate_metrics_cache) is None
 
     def test_cache_stats_requires_authentication(self) -> None:
         from api.routers.metrics import get_cache_stats
