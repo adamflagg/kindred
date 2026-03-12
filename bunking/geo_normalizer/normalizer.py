@@ -35,6 +35,18 @@ SCHOOL_FUZZY_THRESHOLD = 85
 # Threshold for congregation fuzzy match
 CONGREGATION_FUZZY_THRESHOLD = 80
 
+
+def _extract_items(values: list[str] | list[dict[str, str]]) -> list[tuple[str, str]]:
+    """Extract (value, state) tuples from mixed string/dict input."""
+    items: list[tuple[str, str]] = []
+    for v in values:
+        if isinstance(v, str):
+            items.append((v, ""))
+        else:
+            items.append((v["value"], v.get("state", "")))
+    return items
+
+
 # Module-level caches for city lookup (loaded once on first use)
 _CITY_LOOKUP_MULTI: dict[str, list[str]] | None = None
 _CITY_LOCATION: dict[str, dict[str, str]] | None = None
@@ -451,12 +463,7 @@ def normalize_cities(
     if not values:
         return {}
 
-    items: list[tuple[str, str]] = []
-    for v in values:
-        if isinstance(v, str):
-            items.append((v, ""))
-        else:
-            items.append((v["value"], v.get("state", "")))
+    items = _extract_items(values)
 
     multi_lookup = _load_city_lookup_multi()
     normalized_map: dict[str, tuple[str, float]] = {}  # original -> (canonical, confidence)
@@ -528,12 +535,7 @@ def normalize_schools(
     if not values:
         return {}
 
-    items: list[tuple[str, str]] = []
-    for v in values:
-        if isinstance(v, str):
-            items.append((v, ""))
-        else:
-            items.append((v["value"], v.get("state", "")))
+    items = _extract_items(values)
 
     lookup, _ = _load_school_lookup()
 
@@ -672,12 +674,7 @@ def normalize_congregations(
     if not values:
         return {}
 
-    items: list[tuple[str, str]] = []
-    for v in values:
-        if isinstance(v, str):
-            items.append((v, ""))
-        else:
-            items.append((v["value"], v.get("state", "")))
+    items = _extract_items(values)
 
     # Step 1: Normalize each value (minimal preprocessing)
     normalized_map: dict[str, str] = {}

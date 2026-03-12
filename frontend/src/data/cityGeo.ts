@@ -62126,3 +62126,39 @@ export const US_CITY_STATES: Record<string, string> = {
   'Zwingle, IA': 'IA',
   'Zwolle, LA': 'LA',
 }
+
+/** Lazy-initialized lowercase lookup Maps for O(1) case-insensitive access. */
+let _lowerCoordsMap: Map<string, LatLng> | null = null
+let _lowerStatesMap: Map<string, string> | null = null
+let _bareCityCoordsMap: Map<string, LatLng> | null = null
+
+export function getLowerCoordsMap(): Map<string, LatLng> {
+  if (!_lowerCoordsMap) {
+    _lowerCoordsMap = new Map(
+      Object.entries(US_CITY_COORDS).map(([k, v]) => [k.toLowerCase(), v])
+    )
+  }
+  return _lowerCoordsMap
+}
+
+export function getLowerStatesMap(): Map<string, string> {
+  if (!_lowerStatesMap) {
+    _lowerStatesMap = new Map(
+      Object.entries(US_CITY_STATES).map(([k, v]) => [k.toLowerCase(), v])
+    )
+  }
+  return _lowerStatesMap
+}
+
+export function getBareCityCoordsMap(): Map<string, LatLng> {
+  if (!_bareCityCoordsMap) {
+    _bareCityCoordsMap = new Map<string, LatLng>()
+    for (const [key, coords] of Object.entries(US_CITY_COORDS)) {
+      const bare = (key.split(',')[0] ?? key).toLowerCase()
+      if (!_bareCityCoordsMap.has(bare)) {
+        _bareCityCoordsMap.set(bare, coords)
+      }
+    }
+  }
+  return _bareCityCoordsMap
+}

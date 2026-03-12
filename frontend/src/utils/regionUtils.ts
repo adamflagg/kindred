@@ -7,7 +7,7 @@
  */
 
 import { getCityRegion, CA_CITY_COORDS } from '../data/californiaGeo'
-import { US_CITY_STATES } from '../data/cityGeo'
+import { US_CITY_STATES, getLowerStatesMap } from '../data/cityGeo'
 import type { CityBreakdown, RetentionByCity } from '../types/metrics'
 
 /** Maps region keys to human-readable display names. */
@@ -76,15 +76,9 @@ export function classifyCity(city: string): string {
   }
 
   // Check if it's a US city via lookup (handles bare names)
-  if (US_CITY_STATES[city]) {
-    return US_CITY_STATES[city] === 'CA' ? 'Other CA' : 'Rest of US'
-  }
-  // Case-insensitive fallback
-  const lowerCity = city.toLowerCase()
-  for (const [usCity, state] of Object.entries(US_CITY_STATES)) {
-    if (usCity.toLowerCase() === lowerCity) {
-      return state === 'CA' ? 'Other CA' : 'Rest of US'
-    }
+  const state = US_CITY_STATES[city] ?? getLowerStatesMap().get(city.toLowerCase())
+  if (state) {
+    return state === 'CA' ? 'Other CA' : 'Rest of US'
   }
 
   return 'International'
