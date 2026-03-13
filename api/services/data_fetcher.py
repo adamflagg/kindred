@@ -481,7 +481,6 @@ def prepare_direct_solver_input(
                     session_cm_id=session_cm_id_val,
                     bunk_cm_id=bunk_cm_id,
                     year=assignment.year,
-                    is_locked=getattr(assignment, "is_locked", False),
                 )
             )
 

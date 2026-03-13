@@ -33,7 +33,6 @@ async def run_solver_task_v2(
     run_id: str,
     session_cm_id: int,
     year: int,
-    respect_locks: bool,
     time_limit: int,
     include_analysis: bool = False,
     scenario: str | None = None,
@@ -86,11 +85,6 @@ async def run_solver_task_v2(
                 pb_client=task_pb,
             )
             solver_input.lock_groups_data = lock_groups
-
-        # Apply manual locks if requested
-        if not respect_locks:
-            solver_input.existing_assignments = [a for a in solver_input.existing_assignments if not a.is_locked]
-            solver_input.lock_groups_data = {}
 
         # Run solver
         logger.info(
@@ -194,7 +188,7 @@ async def run_solver_task_v2(
                 "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "result": json.dumps(solver_runs[run_id]["results"]),
-                "details": json.dumps({"respect_locks": respect_locks, "time_limit": time_limit}),
+                "details": json.dumps({"time_limit": time_limit}),
             }
             if scenario:
                 pb_data["scenario"] = scenario

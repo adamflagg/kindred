@@ -699,10 +699,9 @@ async def solve_scenario(
             run_id=run_id,
             session_cm_id=session_cm_id,
             year=scenario_year,
-            respect_locks=True,
             time_limit=30,
             include_analysis=False,
-            scenario=scenario_id,  # Pass PocketBase ID of the scenario
+            scenario=scenario_id,
         )
 
         return {"run_id": run_id, "status": "started", "message": "Solver run started for scenario"}

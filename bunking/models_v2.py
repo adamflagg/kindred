@@ -95,8 +95,6 @@ class DirectBunkAssignment(BaseModel):
     session_cm_id: int
     bunk_cm_id: int
     year: int
-    is_locked: bool = False
-    group_lock_id: str | None = None  # For group locking
 
 
 class HistoricalBunkingRecord(BaseModel):
@@ -136,15 +134,6 @@ class DirectSolverInput(BaseModel):
                 result[person_id] = []
             result[person_id].append(request)
         return result
-
-    @property
-    def locked_assignments(self) -> dict[int, int]:
-        """Get locked assignments as person_cm_id -> bunk_cm_id mapping."""
-        return {
-            a.person_cm_id: a.bunk_cm_id
-            for a in self.existing_assignments
-            if a.is_locked and not a.group_lock_id  # Exclude group locks
-        }
 
     @property
     def group_locks(self) -> dict[str, list[int]]:

@@ -105,7 +105,6 @@ export const solverService = {
         body: JSON.stringify({
           session_cm_id: parseInt(sessionId),
           year: year,
-          respect_locks: true,
           apply_results: false,
           time_limit: timeLimit,
           scenario: scenarioId || null,
@@ -296,7 +295,6 @@ export const solverService = {
         body: JSON.stringify({
           session_cm_id: sessionCmId,
           year: year,
-          respect_locks: true,
           apply_results: false,
           time_limit: 60,
         }),

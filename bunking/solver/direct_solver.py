@@ -97,6 +97,9 @@ class DirectBunkingSolver:
         # Track soft constraint violations for penalty-based optimization
         self.soft_constraint_violations: dict[str, tuple[cp_model.IntVar, int]] = {}
 
+        # Limit debug logging for pair reduction (only first 5 pairs)
+        self._pair_reduction_logged = 0
+
         # Validate requests and categorize as possible/impossible
         self.possible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of possible requests
         self.impossible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of impossible requests
@@ -174,8 +177,6 @@ class DirectBunkingSolver:
             # If bunk has no gender specified, skip it (shouldn't happen)
 
         # Log reduction for debugging (only first few times)
-        if not hasattr(self, "_pair_reduction_logged"):
-            self._pair_reduction_logged = 0
         if self._pair_reduction_logged < 5:
             logger.debug(
                 f"Valid bunks for pair {person1_cm_id}-{person2_cm_id} "
@@ -279,7 +280,6 @@ class DirectBunkingSolver:
             input_data=self.input,
             constraint_logger=self.constraint_logger,
             person_idx_map=self.person_idx_map,
-            bunk_idx_map=self.bunk_idx_map,
             possible_requests=self.possible_requests,
             impossible_requests=self.impossible_requests,
             request_validation_summary=self.request_validation_summary,
@@ -352,18 +352,7 @@ class DirectBunkingSolver:
         ctx = self._build_solver_context()
         self.bunk_is_used = add_cabin_minimum_occupancy_constraints(ctx)
 
-        # 4. Manual locks (individual)
-        if self.input.locked_assignments:
-            self.constraint_logger.log_constraint(
-                "hard", "manual_locks", f"{len(self.input.locked_assignments)} individual camper locks"
-            )
-        for person_cm_id, bunk_cm_id in self.input.locked_assignments.items():
-            if person_cm_id in self.person_idx_map and bunk_cm_id in self.bunk_idx_map:
-                person_idx = self.person_idx_map[person_cm_id]
-                bunk_idx = self.bunk_idx_map[bunk_cm_id]
-                self.model.Add(self.assignments[(person_idx, bunk_idx)] == 1)
-
-        # 5. Group locks
+        # 4. Group locks
         # Uses extracted constraint module - debug check is internal
         add_group_lock_constraints(self._build_solver_context())
 
@@ -744,9 +733,9 @@ class DirectBunkingSolver:
                 logger.info("Attempting to identify conflicting constraints...")
                 # Log some basic stats about constraints
                 proto = self.model.Proto()
-                bool_and_count = sum(1 for c in proto.constraints if c.HasField("bool_and"))
-                bool_or_count = sum(1 for c in proto.constraints if c.HasField("bool_or"))
-                linear_count = sum(1 for c in proto.constraints if c.HasField("linear"))
+                bool_and_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_and")
+                bool_or_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_or")
+                linear_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "linear")
                 logger.info(
                     f"Constraint types: bool_and={bool_and_count}, bool_or={bool_or_count}, linear={linear_count}"
                 )
