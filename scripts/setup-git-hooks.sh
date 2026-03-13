@@ -46,7 +46,7 @@ lefthook install
 echo -e "${GREEN}✓ Lefthook installed and configured${NC}"
 echo ""
 echo "Hook stages (configured in .lefthook.yml):"
-echo "  • pre-commit:  formatters on staged files (<1s)"
+echo "  • pre-commit:  formatters + validators on staged files (<1s)"
 echo "  • commit-msg:  conventional commit validation"
 echo "  • pre-push:    linters + tests, parallel (~1 min)"
 echo "  • post-merge:  worktree cleanup notifications"

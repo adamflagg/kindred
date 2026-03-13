@@ -3,7 +3,7 @@
 # Docs: https://github.com/evilmartians/lefthook
 #
 # Stages:
-#   pre-commit  — formatters on staged files only (<1s)
+#   pre-commit  — formatters + validators on staged files (<1s)
 #   commit-msg  — conventional commit validation
 #   pre-push    — full-suite linters + tests (~1 min, parallel)
 #   post-merge  — worktree cleanup notifications
@@ -12,7 +12,7 @@
 #   LEFTHOOK=0 git commit    — bypass all hooks
 #   git commit --no-verify   — bypass all hooks (git-native)
 
-# ─── Pre-commit: formatters on staged files only ─────────────────────
+# ─── Pre-commit: formatters + validators on staged files ─────────────
 pre-commit:
   parallel: true
   commands:
@@ -34,7 +34,7 @@ pre-commit:
       stage_fixed: true
 
     large-files:
-      glob: "*"
+      glob: "**/*"
       run: |
         for f in {staged_files}; do
           if [ -f "$f" ]; then
