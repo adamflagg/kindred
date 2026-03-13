@@ -482,11 +482,9 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	}
 
 	// Get current year from environment
-	currentYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if cy, err := strconv.Atoi(yearStr); err == nil {
-			currentYear = cy
-		}
+	currentYear, err := ParseSeasonYear()
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
 	}
 
 	// Get user info for queue tracking
@@ -674,19 +672,17 @@ func findMissingColumns(headers, required []string) []string {
 }
 
 // determineUploadYear determines the year for CSV storage from env and query param
-func determineUploadYear(yearParam string) int {
-	uploadYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if y, err := strconv.Atoi(yearStr); err == nil {
-			uploadYear = y
-		}
+func determineUploadYear(yearParam string) (int, error) {
+	uploadYear, err := ParseSeasonYear()
+	if err != nil {
+		return 0, fmt.Errorf("year resolution failed: %w", err)
 	}
 	if yearParam != "" {
 		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= 2050 {
 			uploadYear = y
 		}
 	}
-	return uploadYear
+	return uploadYear, nil
 }
 
 // saveCSVWithBackup saves CSV data with automatic backup of existing file
@@ -751,7 +747,10 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	}
 
 	// Determine upload year and save file
-	uploadYear := determineUploadYear(e.Request.URL.Query().Get("year"))
+	uploadYear, err := determineUploadYear(e.Request.URL.Query().Get("year"))
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+	}
 	csvDir := filepath.Join(scheduler.app.DataDir(), "bunk_requests")
 
 	latestPath, err := saveCSVWithBackup(csvDir, uploadYear, uploadResult.data)
@@ -895,11 +894,9 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Add configured year from environment (CAMPMINDER_SEASON_ID)
-	configuredYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if y, err := strconv.Atoi(yearStr); err == nil {
-			configuredYear = y
-		}
+	configuredYear, err := ParseSeasonYear()
+	if err != nil {
+		configuredYear = time.Now().Year()
 	}
 	statuses["_configured_year"] = configuredYear
 
@@ -961,11 +958,9 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Get current year from environment
-	currentYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if cy, err := strconv.Atoi(yearStr); err == nil {
-			currentYear = cy
-		}
+	currentYear, yerr := ParseSeasonYear()
+	if yerr != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": yerr.Error()})
 	}
 
 	// Parse optional query parameters
@@ -1100,11 +1095,10 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 	)
 
 	// Get current year from environment for year mode determination
-	currentYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if cy, err := strconv.Atoi(yearStr); err == nil {
-			currentYear = cy
-		}
+	currentYear, err := ParseSeasonYear()
+	if err != nil {
+		slog.Error("Year resolution failed for queued sync", "error", err)
+		return
 	}
 
 	// Run the queued sync with cancel support
@@ -1368,11 +1362,9 @@ func handleGetAvailableYears(e *core.RequestEvent, app *pocketbase.PocketBase) e
 	}
 
 	// Get current year from environment
-	currentYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if cy, err := strconv.Atoi(yearStr); err == nil {
-			currentYear = cy
-		}
+	currentYear, err := ParseSeasonYear()
+	if err != nil {
+		currentYear = time.Now().Year()
 	}
 
 	return e.JSON(http.StatusOK, map[string]interface{}{

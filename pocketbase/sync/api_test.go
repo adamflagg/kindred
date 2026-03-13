@@ -1734,7 +1734,7 @@ func TestRunPhaseYearNotSetBugExplanation(t *testing.T) {
 	// Line ~2074: year, err := strconv.Atoi(yearParam)  // Parses year correctly
 	// Line ~2192: orchestrator.runSyncAndWait(ctx, jobID)  // Runs job
 	// BUT: currentSyncYear was never set, so RunSingleSync line 391 uses 0
-	// Then services fall back to os.Getenv("CAMPMINDER_SEASON_ID") = 2026
+	// Then services call ParseSeasonYear() which reads CAMPMINDER_SEASON_ID
 	//
 	// AFTER FIX:
 	// Inside the goroutine, BEFORE the job loop:
@@ -1764,7 +1764,7 @@ func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
 	// Example service pattern (from staff_applications.go):
 	//   year := s.Year
 	//   if year == 0 {
-	//       yearStr := os.Getenv("CAMPMINDER_SEASON_ID")  // Falls back to env var!
+	//       year, err = ParseSeasonYear()  // Returns explicit error if not set
 	//       ...
 	//   }
 
