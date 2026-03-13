@@ -57,4 +57,5 @@ export interface SiblingWithEnrollment extends PersonsResponse {
     end_date?: string
   }
   bunkName?: string | null
+  attendeeStatus?: string
 }

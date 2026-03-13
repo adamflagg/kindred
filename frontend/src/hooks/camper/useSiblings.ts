@@ -60,7 +60,7 @@ export function useSiblings(
           const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
             (t) => `session.session_type = "${t}"`
           ).join(' || ')
-          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`
+          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
 
           try {
             const attendees = await pb
@@ -72,7 +72,7 @@ export function useSiblings(
               })
 
             if (attendees.length === 0) {
-              return null // Not enrolled
+              return null // No attendee records this year
             }
 
             // Get the first valid enrollment (prefer main session)
@@ -127,6 +127,7 @@ export function useSiblings(
                   }
                 : undefined,
               bunkName,
+              attendeeStatus: primaryAttendee.status,
             } as SiblingWithEnrollment
           } catch (err) {
             console.error(`Error checking enrollment for sibling ${siblingPerson.cm_id}:`, err)
