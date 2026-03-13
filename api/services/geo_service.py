@@ -28,6 +28,7 @@ from api.schemas.geo import (
     SourceItem,
     SourcesResponse,
 )
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import resolve_duration_sessions
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -165,6 +166,7 @@ def _override_to_response(record: Any) -> OverrideResponse:
         canonical_name=record.canonical_name,
         city=record.city or None,
         state=record.state or None,
+        address_country=getattr(record, "address_country", "") or None,
         lat=record.lat if record.lat is not None else None,
         lng=record.lng if record.lng is not None else None,
         merged_into=record.merged_into or None,
@@ -210,7 +212,7 @@ class GeoService:
         if session_cm_id is not None:
             att_filter += f" && session.cm_id = {session_cm_id}"
         elif session_types:
-            clauses = [f'session.session_type = "{t}"' for t in session_types]
+            clauses = [f'session.session_type = "{pb_escape(t)}"' for t in session_types]
             att_filter += f" && ({' || '.join(clauses)})"
 
         # Apply duration filter by resolving to matching session cm_ids
@@ -295,19 +297,25 @@ class GeoService:
     @staticmethod
     def _infer_location_from_mappings(mappings: list[Any], normalized_value: str) -> dict[str, str]:
         """Infer city/state/country from majority of mappings for a normalized value."""
+        city_counts: dict[str, int] = {}
         state_counts: dict[str, int] = {}
         country_counts: dict[str, int] = {}
         for m in mappings:
             if m.normalized_value != normalized_value:
                 continue
+            city = getattr(m, "address_city", "") or ""
             state = getattr(m, "address_state", "") or ""
             country = getattr(m, "address_country", "") or ""
+            if city:
+                city_counts[city] = city_counts.get(city, 0) + 1
             if state:
                 state_counts[state] = state_counts.get(state, 0) + 1
             if country:
                 country_counts[country] = country_counts.get(country, 0) + 1
 
         result: dict[str, str] = {}
+        if city_counts:
+            result["city"] = max(city_counts, key=city_counts.get)  # type: ignore[arg-type]
         if state_counts:
             result["state"] = max(state_counts, key=state_counts.get)  # type: ignore[arg-type]
         if country_counts:
@@ -605,7 +613,9 @@ class GeoService:
         mappings: list[Any] = await asyncio.to_thread(
             self.pb.collection("normalized_mappings").get_full_list,
             query_params={
-                "filter": (f'category = "{category}" && year = {year} && normalized_value = "{canonical_name}"')
+                "filter": (
+                    f'category = "{category}" && year = {year} && normalized_value = "{pb_escape(canonical_name)}"'
+                )
             },
         )
 
@@ -736,7 +746,9 @@ class GeoService:
         # Update all mappings
         mappings: list[Any] = await asyncio.to_thread(
             self.pb.collection("normalized_mappings").get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year} && normalized_value = "{source_name}"'},
+            query_params={
+                "filter": f'category = "{category}" && year = {year} && normalized_value = "{pb_escape(source_name)}"'
+            },
         )
 
         count = 0
@@ -768,6 +780,7 @@ class GeoService:
                 "canonical_name": canonical_name,
                 "city": city,
                 "state": state,
+                "address_country": country,
                 "year": year,
             },
         )
@@ -778,16 +791,29 @@ class GeoService:
         category: str,
         year: int,
     ) -> int:
-        """Reject a suggested canonical by dissolving its cluster.
+        """Reject a suggested canonical by writing a durable rejection override.
 
-        Deletes all normalized_mappings pointing at this canonical,
-        so source variants reappear as unresolved gaps.
+        1. Creates an override_type='rejected' record in geo_overrides
+           so the normalizer won't re-create this suggestion on next sync.
+        2. Deletes all normalized_mappings pointing at this canonical
+           for immediate effect.
         """
+        # Write durable rejection record
+        await asyncio.to_thread(
+            self.pb.collection("geo_overrides").create,
+            {
+                "category": category,
+                "override_type": "rejected",
+                "canonical_name": canonical_name,
+                "year": year,
+            },
+        )
+
+        # Also delete existing mappings so suggestion disappears immediately
+        escaped_name = pb_escape(canonical_name)
         mappings: list[Any] = await asyncio.to_thread(
             self.pb.collection("normalized_mappings").get_full_list,
-            query_params={
-                "filter": f'category = "{category}" && year = {year} && normalized_value = "{canonical_name}"'
-            },
+            query_params={"filter": f'category = "{category}" && year = {year} && normalized_value = "{escaped_name}"'},
         )
 
         count = 0

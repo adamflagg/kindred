@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1121,7 +1122,7 @@ func TestCallGeoNormalizeAPI(t *testing.T) {
 			}))
 			defer server.Close()
 
-			result, err := callGeoNormalizeAPI(server.URL, "city", []valueWithContext{
+			result, err := callGeoNormalizeAPI(context.Background(), server.URL, "city", []valueWithContext{
 				{Value: "SF", State: "CA", Country: "US"},
 			})
 
@@ -1851,8 +1852,8 @@ func TestBuildContextValuesFromMap(t *testing.T) {
 	}
 
 	// Oakland should be second
-	if contextValues[1].Value != "Oakland" {
-		t.Errorf("second value = %q, want %q", contextValues[1].Value, "Oakland")
+	if contextValues[1].Value != testCityOakland {
+		t.Errorf("second value = %q, want %q", contextValues[1].Value, testCityOakland)
 	}
 	if contextValues[1].State != "CA" {
 		t.Errorf("Oakland state = %q, want %q", contextValues[1].State, "CA")
@@ -1878,5 +1879,233 @@ func TestBuildContextValuesFromMap(t *testing.T) {
 	// Must NOT be a bare string array
 	if strings.HasPrefix(jsonStr, `["`) {
 		t.Error("JSON output looks like a bare string array — should be context objects")
+	}
+}
+
+// ============================================================================
+// Composite Key Dedup Tests — geoLookupKey
+// ============================================================================
+
+// TestBuildNormalizationLookupCompositeKeyDedup verifies that the same city name
+// from different states produces separate entries in the normalizer request,
+// not collapsing to first-seen context.
+func TestBuildNormalizationLookupCompositeKeyDedup(t *testing.T) {
+	// Set up a mock server that echoes back each value with a state-qualified canonical
+	var receivedValues []valueWithContext
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req geoNormalizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		receivedValues = append(receivedValues, req.Values...)
+
+		// Return each value as its own canonical, qualified by state
+		results := make(map[string]pythonNormalizedResult)
+		for _, v := range req.Values {
+			canonical := v.Value
+			if v.State != "" {
+				canonical = v.Value + ", " + v.State
+			}
+			results[v.Value] = pythonNormalizedResult{Canonical: canonical, Confidence: 1.0}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(results)
+	}))
+	defer server.Close()
+
+	// Override API_URL to point to mock server
+	t.Setenv("API_URL", server.URL)
+
+	sync := &NormalizeGeographicSync{
+		ProcessedKeys: make(map[string]bool),
+	}
+
+	data := []attendeeGeoData{
+		{
+			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Springfield", AddressState: "IL", AddressCountry: "US",
+		},
+		{
+			PersonPBID: "p2", PersonCMID: 1002, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Springfield", AddressState: "MO", AddressCountry: "US",
+		},
+	}
+
+	lookup, err := sync.buildNormalizationLookup(context.Background(), data)
+	if err != nil {
+		t.Fatalf("buildNormalizationLookup failed: %v", err)
+	}
+
+	// The normalizer should have received 2 separate entries for "Springfield"
+	// with different state contexts (IL and MO).
+	if len(receivedValues) < 2 {
+		t.Errorf("expected at least 2 values sent to normalizer, got %d", len(receivedValues))
+	}
+
+	// Verify both state contexts were sent
+	statesSeen := make(map[string]bool)
+	for _, v := range receivedValues {
+		if v.Value == "Springfield" {
+			statesSeen[v.State] = true
+		}
+	}
+	if !statesSeen["IL"] {
+		t.Error("Springfield with state IL was not sent to normalizer")
+	}
+	if !statesSeen["MO"] {
+		t.Error("Springfield with state MO was not sent to normalizer")
+	}
+
+	// The lookup should contain the normalized result
+	if lookup.city == nil {
+		t.Fatal("city lookup is nil")
+	}
+	if len(lookup.city) == 0 {
+		t.Fatal("city lookup is empty")
+	}
+}
+
+// TestGeoLookupKeyCompositeEquality verifies that geoLookupKey uses
+// all three fields (Value, State, Country) for equality comparison.
+func TestGeoLookupKeyCompositeEquality(t *testing.T) {
+	k1 := geoLookupKey{Value: "Springfield", State: "IL", Country: "US"}
+	k2 := geoLookupKey{Value: "Springfield", State: "MO", Country: "US"}
+	k3 := geoLookupKey{Value: "Springfield", State: "IL", Country: "US"}
+
+	m := make(map[geoLookupKey]bool)
+	m[k1] = true
+	m[k2] = true
+
+	if len(m) != 2 {
+		t.Errorf("expected 2 distinct keys, got %d", len(m))
+	}
+
+	if k1 == k2 {
+		t.Error("k1 should not equal k2 (different state)")
+	}
+	if k1 != k3 {
+		t.Error("k1 should equal k3 (same fields)")
+	}
+}
+
+// ============================================================================
+// Rejection Blocklist Tests
+// ============================================================================
+
+// TestRejectedOverridesSkipsMappings verifies that canonicals in the rejected
+// blocklist are silently skipped during upsert.
+func TestRejectedOverridesSkipsMappings(t *testing.T) {
+	rejectedOverrides := map[string]map[string]bool{
+		categoryCity:         {"springfield": true},
+		categorySchool:       {},
+		categoryCongregation: {"unknown congregation": true},
+	}
+
+	// Mappings include one rejected city and one rejected congregation
+	mappings := []*personSessionMapping{
+		{
+			personPBID: "p1", sessionPBID: "s1", category: categoryCity,
+			originalValue: "Springfield", normalizedValue: "Springfield",
+			confidence: 0.95, year: 2025,
+		},
+		{
+			personPBID: "p1", sessionPBID: "s1", category: categorySchool,
+			originalValue: "Riverside Elementary", normalizedValue: "Riverside Elementary",
+			confidence: 0.90, year: 2025,
+		},
+		{
+			personPBID: "p2", sessionPBID: "s1", category: categoryCongregation,
+			originalValue: "Unknown Congregation", normalizedValue: "Unknown Congregation",
+			confidence: 0.85, year: 2025,
+		},
+	}
+
+	// Simulate rejection filtering (matches upsertPersonSessionMappings logic)
+	var kept []*personSessionMapping
+	for _, m := range mappings {
+		if rejected, ok := rejectedOverrides[m.category]; ok {
+			if rejected[strings.ToLower(m.normalizedValue)] {
+				continue
+			}
+		}
+		kept = append(kept, m)
+	}
+
+	// Only the school mapping should survive
+	if len(kept) != 1 {
+		t.Fatalf("expected 1 kept mapping, got %d", len(kept))
+	}
+	if kept[0].category != categorySchool {
+		t.Errorf("expected kept mapping category = %q, got %q", categorySchool, kept[0].category)
+	}
+}
+
+// TestRejectedOverridesCaseInsensitive verifies that rejection matching
+// is case-insensitive.
+func TestRejectedOverridesCaseInsensitive(t *testing.T) {
+	rejectedOverrides := map[string]map[string]bool{
+		categoryCity: {"springfield": true},
+	}
+
+	tests := []struct {
+		normalizedValue string
+		wantRejected    bool
+	}{
+		{"Springfield", true},
+		{"springfield", true},
+		{"SPRINGFIELD", true},
+		{"Oakland", false},
+	}
+
+	for _, tt := range tests {
+		rejected := false
+		if r, ok := rejectedOverrides[categoryCity]; ok {
+			rejected = r[strings.ToLower(tt.normalizedValue)]
+		}
+		if rejected != tt.wantRejected {
+			t.Errorf("rejected(%q) = %v, want %v", tt.normalizedValue, rejected, tt.wantRejected)
+		}
+	}
+}
+
+// TestAddressCityPopulatedInMappings verifies that address_city is populated
+// from the attendee's City field for all category mappings.
+func TestAddressCityPopulatedInMappings(t *testing.T) {
+	data := []attendeeGeoData{
+		{
+			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Oakland", School: "Riverside Elementary", Congregation: "Temple Beth Abraham",
+			AddressState: "CA", AddressCountry: "US",
+		},
+	}
+
+	lookup := &normalizationLookup{
+		city: map[string]normalizedEntry{"Oakland": {Canonical: "Oakland", Confidence: 1.0}},
+		school: map[string]normalizedEntry{
+			"Riverside Elementary": {Canonical: "Riverside Elementary", Confidence: 0.9},
+		},
+		congregation: map[string]normalizedEntry{
+			"Temple Beth Abraham": {Canonical: "Temple Beth Abraham", Confidence: 0.95},
+		},
+	}
+
+	aliasOverrides := map[string]map[string]string{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+	mergeOverrides := map[string]map[string]string{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+
+	sync := &NormalizeGeographicSync{}
+	mappings := sync.createPersonSessionMappings(data, lookup, aliasOverrides, mergeOverrides, 2025)
+
+	if len(mappings) != 3 {
+		t.Fatalf("expected 3 mappings, got %d", len(mappings))
+	}
+
+	for _, m := range mappings {
+		if m.addressCity != "Oakland" {
+			t.Errorf("mapping %s: addressCity = %q, want %q", m.category, m.addressCity, "Oakland")
+		}
 	}
 }

@@ -341,7 +341,7 @@ func TestTransformHouseholdToPB_BillingAddressFields_MissingAddress(t *testing.T
 	}
 }
 
-// TestTransformHouseholdToPB_BillingAddressFields_CountryDefault tests country defaults to "US" when not specified
+// TestTransformHouseholdToPB_BillingAddressFields_CountryDefault tests country is empty when not specified
 func TestTransformHouseholdToPB_BillingAddressFields_CountryDefault(t *testing.T) {
 	s := &HouseholdsSync{}
 
@@ -362,8 +362,8 @@ func TestTransformHouseholdToPB_BillingAddressFields_CountryDefault(t *testing.T
 		t.Fatalf("transformHouseholdToPB returned error: %v", err)
 	}
 
-	// billing_country should default to "US" when not specified but other address fields exist
-	if got, ok := pbData["billing_country"].(string); !ok || got != "US" {
-		t.Errorf("billing_country = %v, want 'US' (default)", pbData["billing_country"])
+	// billing_country should be empty when not specified, not default to "US"
+	if got, ok := pbData["billing_country"].(string); !ok || got != "" {
+		t.Errorf("billing_country = %v, want '' (empty)", pbData["billing_country"])
 	}
 }

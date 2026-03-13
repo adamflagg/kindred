@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from api.constants.geo import GeoCategory
+
 
 class GapItem(BaseModel):
     """A single gap entry (normalized value missing coordinates)."""
@@ -81,7 +83,7 @@ class SourcesResponse(BaseModel):
 class OverrideCreate(BaseModel):
     """Request body for creating a geo override."""
 
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     override_type: Literal["alias", "canonical", "merge"] = Field(
         description="Override type: alias, canonical, or merge"
     )
@@ -101,13 +103,14 @@ class OverrideResponse(BaseModel):
 
     id: str = Field(description="PocketBase record ID")
     category: str = Field(description="Category: city, school, or congregation")
-    override_type: Literal["alias", "canonical", "merge"] = Field(
-        description="Override type: alias, canonical, or merge"
+    override_type: Literal["alias", "canonical", "merge", "rejected"] = Field(
+        description="Override type: alias, canonical, merge, or rejected"
     )
     raw_value: str | None = Field(default=None, description="Original raw value (for alias type)")
     canonical_name: str = Field(description="The canonical/normalized name")
     city: str | None = Field(default=None, description="City for location context")
     state: str | None = Field(default=None, description="State for location context")
+    address_country: str | None = Field(default=None, description="Country code for location context")
     lat: float | None = Field(default=None, description="Latitude coordinate")
     lng: float | None = Field(default=None, description="Longitude coordinate")
     merged_into: str | None = Field(default=None, description="Target canonical name (for merge type)")
@@ -122,7 +125,7 @@ class MergeRequest(BaseModel):
     """Request body for merging one canonical into another."""
 
     target: str = Field(description="Target canonical name to merge into")
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     year: int = Field(description="Year scope")
 
 
@@ -135,7 +138,7 @@ class MergeResponse(BaseModel):
 class ApproveRequest(BaseModel):
     """Request body for approving a suggested canonical."""
 
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     year: int = Field(description="Year scope")
     city: str = Field(default="", description="Confirmed city")
     state: str = Field(default="", description="Confirmed state")
@@ -145,7 +148,7 @@ class ApproveRequest(BaseModel):
 class RejectRequest(BaseModel):
     """Request body for rejecting a suggested canonical."""
 
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     year: int = Field(description="Year scope")
 
 

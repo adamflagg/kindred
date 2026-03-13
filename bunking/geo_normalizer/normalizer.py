@@ -14,6 +14,8 @@ from typing import TypedDict
 
 from rapidfuzz import fuzz, process
 
+from api.constants.geo import GeoCategory
+
 
 class NormalizedResult(TypedDict):
     """Result of normalizing a value."""
@@ -703,7 +705,7 @@ def normalize_congregations(
 
 
 def normalize_values(
-    category: str,
+    category: str | GeoCategory,
     values: Sequence[str | dict[str, str]],
 ) -> dict[str, NormalizedResult]:
     """Normalize values based on category.

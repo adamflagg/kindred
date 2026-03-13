@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -26,16 +27,26 @@ const (
 	categoryCongregation = "congregation"
 )
 
+// Common filter fragment
+const filterYearParam = "year = {:year}"
+
 // NormalizeGeographicSync normalizes geographic data from enrolled attendees
 // and stores mappings in normalized_mappings table with person+session keys.
 //
 // Orchestrates normalization by:
-// 1. Loading attendees with person+session data
-// 2. Getting school/city from persons table, congregation from person_custom_values
-// 3. Calling Python geo_normalizer for fuzzy matching (RapidFuzz, static lookups)
-// 4. Upserting to normalized_mappings with (person, session, category) keys
-// 5. Updating camper_history.*_normalized columns for backwards compatibility
-// 6. Deleting orphaned mappings
+//  1. Loading attendees with person+session data (school/city from persons,
+//     congregation from person_custom_values, state/country from household)
+//  2. Loading geo_overrides (alias, merge, rejected) for the year
+//  3. Building normalization lookup via Python geo_normalizer (RapidFuzz, static lookups)
+//  4. Creating person+session mappings (applying alias/merge overrides)
+//  5. Preloading existing normalized_mappings for upsert comparison
+//  6. Upserting to normalized_mappings with (person, session, category) keys,
+//     skipping rejected overrides
+//  7. Updating camper_history.*_normalized columns for backwards compatibility
+//  8. Updating persons.normalized_* columns for drilldown consistency
+//  9. Deleting orphaned mappings no longer in source data
+//
+// 10. Running WAL checkpoint if any records were modified
 type NormalizeGeographicSync struct {
 	App            core.App
 	Year           int
@@ -70,6 +81,7 @@ type personSessionMapping struct {
 	year            int
 	addressState    string // from household billing_state
 	addressCountry  string // from household billing_country
+	addressCity     string // from persons.address_city
 }
 
 // NewNormalizeGeographicSync creates a new normalize geographic sync service
@@ -150,16 +162,17 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		"attendees", len(attendeeData),
 	)
 
-	// Step 1b: Load geo_overrides (alias + merge) for this year
-	aliasOverrides, mergeOverrides, err := n.loadGeoOverrides(year)
+	// Step 1b: Load geo_overrides (alias + merge + rejected) for this year
+	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides(year)
 	if err != nil {
 		slog.Warn("Could not load geo_overrides, continuing without overrides", "error", err)
 		aliasOverrides = make(map[string]map[string]string)
 		mergeOverrides = make(map[string]map[string]string)
+		rejectedOverrides = make(map[string]map[string]bool)
 	}
 
 	// Step 2: Build normalization lookup maps from all unique values
-	normalizedLookup, err := n.buildNormalizationLookup(attendeeData)
+	normalizedLookup, err := n.buildNormalizationLookup(ctx, attendeeData)
 	if err != nil {
 		return fmt.Errorf("building normalization lookup: %w", err)
 	}
@@ -192,7 +205,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	}
 
 	// Step 5: Upsert normalized_mappings
-	if err := n.upsertPersonSessionMappings(ctx, mappings, existingMappings, year); err != nil {
+	if err := n.upsertPersonSessionMappings(ctx, mappings, existingMappings, year, rejectedOverrides); err != nil {
 		return fmt.Errorf("upserting normalized mappings: %w", err)
 	}
 
@@ -255,7 +268,8 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 	// Load all attendees for the year regardless of enrollment status.
 	// Normalization is cheap (local fuzzy matching) and benefits all attendees:
 	// waitlisted campers get clean data, and more data points improve clustering.
-	filter := fmt.Sprintf("year = %d", year)
+	filter := filterYearParam
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 
@@ -272,6 +286,7 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying attendees page %d: %w", page, err)
@@ -381,7 +396,8 @@ func (n *NormalizeGeographicSync) getCongregationFieldID() (string, error) {
 func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID string) (map[string]string, error) {
 	result := make(map[string]string)
 
-	filter := fmt.Sprintf(`field_definition = %q && year = %d && value != ""`, fieldID, year)
+	filter := `field_definition = {:fieldID} && year = {:year} && value != ""`
+	filterParams := dbx.Params{"fieldID": fieldID, "year": year}
 	page := 1
 	perPage := 500
 
@@ -392,6 +408,7 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying person_custom_values page %d: %w", page, err)
@@ -415,13 +432,15 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 	return result, nil
 }
 
-// loadGeoOverrides loads alias and merge overrides from the geo_overrides table.
+// loadGeoOverrides loads alias, merge, and rejected overrides from the geo_overrides table.
 // Returns:
 //   - aliasOverrides: category -> (lowercase raw_value -> canonical_name)
 //   - mergeOverrides: category -> (canonical_name -> merged_into)
+//   - rejectedOverrides: category -> (lowercase canonical_name -> true)
 func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	aliasOverrides map[string]map[string]string,
 	mergeOverrides map[string]map[string]string,
+	rejectedOverrides map[string]map[string]bool,
 	err error,
 ) {
 	aliasOverrides = map[string]map[string]string{
@@ -430,11 +449,15 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	mergeOverrides = map[string]map[string]string{
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
+	rejectedOverrides = map[string]map[string]bool{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
 
-	filter := fmt.Sprintf("year = %d", year)
-	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0)
+	filter := filterYearParam
+	filterParams := dbx.Params{"year": year}
+	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0, filterParams)
 	if findErr != nil {
-		return aliasOverrides, mergeOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
+		return aliasOverrides, mergeOverrides, rejectedOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
 
 	for _, record := range records {
@@ -458,6 +481,14 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 					mergeOverrides[cat][canonical] = mergedInto
 				}
 			}
+		case "rejected":
+			name := record.GetString("canonical_name")
+			if name != "" {
+				if rejectedOverrides[cat] == nil {
+					rejectedOverrides[cat] = make(map[string]bool)
+				}
+				rejectedOverrides[cat][strings.ToLower(name)] = true
+			}
 		}
 	}
 
@@ -465,11 +496,13 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		len(aliasOverrides[categorySchool]) + len(aliasOverrides[categoryCongregation])
 	mergeCount := len(mergeOverrides[categoryCity]) +
 		len(mergeOverrides[categorySchool]) + len(mergeOverrides[categoryCongregation])
-	if aliasCount > 0 || mergeCount > 0 {
-		slog.Info("Loaded geo_overrides", "aliases", aliasCount, "merges", mergeCount)
+	rejectedCount := len(rejectedOverrides[categoryCity]) +
+		len(rejectedOverrides[categorySchool]) + len(rejectedOverrides[categoryCongregation])
+	if aliasCount > 0 || mergeCount > 0 || rejectedCount > 0 {
+		slog.Info("Loaded geo_overrides", "aliases", aliasCount, "merges", mergeCount, "rejected", rejectedCount)
 	}
 
-	return aliasOverrides, mergeOverrides, nil
+	return aliasOverrides, mergeOverrides, rejectedOverrides, nil
 }
 
 // geoContext holds the first-seen address state and country for a geographic value.
@@ -477,6 +510,16 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 type geoContext struct {
 	State   string `json:"state"`
 	Country string `json:"country"`
+}
+
+// geoLookupKey is a composite key for deduplicating geographic values.
+// Using (Value, State, Country) ensures that "Springfield, IL" and
+// "Springfield, MO" are treated as separate entries rather than collapsing
+// to first-seen context.
+type geoLookupKey struct {
+	Value   string
+	State   string
+	Country string
 }
 
 // valueWithContext is the JSON structure sent to the Python normalizer.
@@ -515,7 +558,7 @@ type geoNormalizeRequest struct {
 
 // callGeoNormalizeAPI calls the FastAPI geo-normalize endpoint
 func callGeoNormalizeAPI(
-	apiURL, category string, values []valueWithContext,
+	ctx context.Context, apiURL, category string, values []valueWithContext,
 ) (map[string]pythonNormalizedResult, error) {
 	reqBody := geoNormalizeRequest{
 		Category: category,
@@ -528,7 +571,7 @@ func callGeoNormalizeAPI(
 	}
 
 	endpoint := apiURL + "/api/internal/geo-normalize"
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("building geo-normalize request: %w", err)
 	}
@@ -559,7 +602,7 @@ func callGeoNormalizeAPI(
 
 // normalizeWithPython calls the FastAPI geo-normalize endpoint for fuzzy matching.
 func (n *NormalizeGeographicSync) normalizeWithPython(
-	valuesWithContext map[string]geoContext, category string,
+	ctx context.Context, valuesWithContext map[geoLookupKey]geoContext, category string,
 ) (map[string]normalizedEntry, error) {
 	if len(valuesWithContext) == 0 {
 		return make(map[string]normalizedEntry), nil
@@ -567,16 +610,16 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 
 	// Build context array for API request
 	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
-	for value, ctx := range valuesWithContext {
+	for key, geoCtx := range valuesWithContext {
 		contextValues = append(contextValues, valueWithContext{
-			Value:   value,
-			State:   ctx.State,
-			Country: ctx.Country,
+			Value:   key.Value,
+			State:   geoCtx.State,
+			Country: geoCtx.Country,
 		})
 	}
 
 	apiURL := getAPIURL()
-	results, err := callGeoNormalizeAPI(apiURL, category, contextValues)
+	results, err := callGeoNormalizeAPI(ctx, apiURL, category, contextValues)
 	if err != nil {
 		return nil, err
 	}
@@ -592,27 +635,33 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 
 // buildNormalizationLookup builds lookup maps from unique values
 // Uses Python RapidFuzz for advanced fuzzy matching
-func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) (*normalizationLookup, error) {
-	// Collect unique values per category WITH first-seen context
-	uniqueCities := make(map[string]geoContext)
-	uniqueSchools := make(map[string]geoContext)
-	uniqueCongregations := make(map[string]geoContext)
+func (n *NormalizeGeographicSync) buildNormalizationLookup(
+	ctx context.Context, data []attendeeGeoData,
+) (*normalizationLookup, error) {
+	// Collect unique values per category keyed by (value, state, country)
+	// so that "Springfield, IL" and "Springfield, MO" are separate entries.
+	uniqueCities := make(map[geoLookupKey]geoContext)
+	uniqueSchools := make(map[geoLookupKey]geoContext)
+	uniqueCongregations := make(map[geoLookupKey]geoContext)
 
 	for i := range data {
 		d := &data[i]
 		if d.City != "" {
-			if _, exists := uniqueCities[d.City]; !exists {
-				uniqueCities[d.City] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			cityKey := geoLookupKey{Value: d.City, State: d.AddressState, Country: d.AddressCountry}
+			if _, exists := uniqueCities[cityKey]; !exists {
+				uniqueCities[cityKey] = geoContext{State: d.AddressState, Country: d.AddressCountry}
 			}
 		}
 		if d.School != "" {
-			if _, exists := uniqueSchools[d.School]; !exists {
-				uniqueSchools[d.School] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			schoolKey := geoLookupKey{Value: d.School, State: d.AddressState, Country: d.AddressCountry}
+			if _, exists := uniqueSchools[schoolKey]; !exists {
+				uniqueSchools[schoolKey] = geoContext{State: d.AddressState, Country: d.AddressCountry}
 			}
 		}
 		if d.Congregation != "" {
-			if _, exists := uniqueCongregations[d.Congregation]; !exists {
-				uniqueCongregations[d.Congregation] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			congKey := geoLookupKey{Value: d.Congregation, State: d.AddressState, Country: d.AddressCountry}
+			if _, exists := uniqueCongregations[congKey]; !exists {
+				uniqueCongregations[congKey] = geoContext{State: d.AddressState, Country: d.AddressCountry}
 			}
 		}
 	}
@@ -631,7 +680,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	if len(uniqueCities) > 0 {
-		result, err := n.normalizeWithPython(uniqueCities, categoryCity)
+		result, err := n.normalizeWithPython(ctx, uniqueCities, categoryCity)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
@@ -639,7 +688,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	if len(uniqueSchools) > 0 {
-		result, err := n.normalizeWithPython(uniqueSchools, categorySchool)
+		result, err := n.normalizeWithPython(ctx, uniqueSchools, categorySchool)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing schools: %w", err)
 		}
@@ -647,7 +696,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	if len(uniqueCongregations) > 0 {
-		result, err := n.normalizeWithPython(uniqueCongregations, categoryCongregation)
+		result, err := n.normalizeWithPython(ctx, uniqueCongregations, categoryCongregation)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing congregations: %w", err)
 		}
@@ -685,6 +734,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					year:            year,
 					addressState:    d.AddressState,
 					addressCountry:  d.AddressCountry,
+					addressCity:     d.City,
 				})
 			}
 		}
@@ -704,6 +754,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					year:            year,
 					addressState:    d.AddressState,
 					addressCountry:  d.AddressCountry,
+					addressCity:     d.City,
 				})
 			}
 		}
@@ -724,6 +775,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					year:            year,
 					addressState:    d.AddressState,
 					addressCountry:  d.AddressCountry,
+					addressCity:     d.City,
 				})
 			}
 		}
@@ -736,7 +788,8 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]*core.Record, error) {
 	existingRecords := make(map[string]*core.Record)
 
-	filter := fmt.Sprintf("year = %d", year)
+	filter := filterYearParam
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 
@@ -747,6 +800,7 @@ func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying existing mappings page %d: %w", page, err)
@@ -780,12 +834,14 @@ func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]
 	return existingRecords, nil
 }
 
-// upsertPersonSessionMappings upserts mappings with person+session keys
+// upsertPersonSessionMappings upserts mappings with person+session keys.
+// Rejected canonicals (from rejectedOverrides) are silently skipped.
 func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 	ctx context.Context,
 	mappings []*personSessionMapping,
 	existingMappings map[string]*core.Record,
 	year int,
+	rejectedOverrides map[string]map[string]bool,
 ) error {
 	col, err := n.App.FindCollectionByNameOrId("normalized_mappings")
 	if err != nil {
@@ -797,6 +853,16 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Skip rejected canonicals
+		if rejected, ok := rejectedOverrides[m.category]; ok {
+			if rejected[strings.ToLower(m.normalizedValue)] {
+				slog.Debug("skipping rejected canonical",
+					"category", m.category,
+					"normalized_value", m.normalizedValue)
+				continue
+			}
 		}
 
 		key := fmt.Sprintf("%s:%s:%s", m.personPBID, m.sessionPBID, m.category)
@@ -813,6 +879,7 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 			"year":             year,
 			"address_state":    m.addressState,
 			"address_country":  m.addressCountry,
+			"address_city":     m.addressCity,
 		}
 
 		existing := existingMappings[key]
@@ -880,6 +947,10 @@ func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	if existing.GetString("address_country") != fmt.Sprint(newData["address_country"]) {
 		return true
 	}
+	// Compare address_city
+	if existing.GetString("address_city") != fmt.Sprint(newData["address_city"]) {
+		return true
+	}
 	// Compare confidence with epsilon for float precision
 	const epsilon = 0.0001
 	existingConf := 0.0
@@ -897,7 +968,8 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 	year int,
 ) error {
 	// Update camper_history records
-	filter := fmt.Sprintf("year = %d", year)
+	filter := filterYearParam
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 	updatedCount := 0
@@ -915,6 +987,7 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return fmt.Errorf("querying camper_history page %d: %w", page, err)
@@ -992,7 +1065,8 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 		}
 	}
 
-	filter := fmt.Sprintf("year = %d", year)
+	filter := filterYearParam
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 	updatedCount := 0
@@ -1010,6 +1084,7 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return fmt.Errorf("querying persons page %d: %w", page, err)
