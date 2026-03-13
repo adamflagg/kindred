@@ -32,7 +32,7 @@ OR-Tools Solver ─────────┘
 
 ## 📚 Full Documentation
 
-See `/docs`: architecture/, guides/, api/, reference/cli-commands.md
+See `/docs`: architecture/, guides/, api/, reference/cli-commands.md, reference/issue-triage.md
 
 ## Commit Scopes
 
