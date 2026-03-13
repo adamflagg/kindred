@@ -1,25 +1,22 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (35 open issues).
+Last updated: 2026-03-13 (25 open issues).
 
 ---
 
-## Group 2: Metrics / Velocity — Backend (Python API)
+## Group 2: Metrics / Velocity — Backend (Python API) *(PR2 pending)*
 
-**Priority: High** — Correctness bug + perf wins in same service
+**Priority: Medium** — Perf + feature, no correctness bugs remaining
 
 | # | Title | Type |
 |---|-------|------|
-| 456 | Snapshot "latest of the day" dedup relies on list order | bug |
-| 447 | Velocity hybrid gate should be per-session, not global | refactor |
-| 467 | Reduce parameter sprawl in VelocityService snapshot methods | refactor |
-| 460 | Extract shared week-label formatting utility | refactor |
+| 550 | `_daily_for_gender` hardcodes `cancelled=0`, breaking gross-enrolled invariant | bug |
 | 459 | Add daily data series to cancellation velocity path | feature |
-| 475 | Reuse attendees from cancellation curves for session swap detection | perf |
+| 475 | Reuse status transitions for cancellation gender curves | perf |
 | 474 | Eliminate duplicate snapshot fetches when gender split is enabled | perf |
 
-**Interplay:** #467 and #447 touch same VelocityService code. #474/#475 are in the forecast/cancellation pipeline. #459 benefits from #460 (shared week formatting). Sequence: #456 (bug) first, then #467/#447 refactors, then #474/#475 perf, then #459/#460 feature.
+**Interplay:** #474/#475 are independent fetch dedup fixes. #459 adds daily data for cancellation path. #550 is a standalone bug in gender daily data. PR1 completed #456 (dedup bug), #467 (SeasonContext), #460 (week-label). #447 dropped — sessions are never added mid-season, so per-session hybrid gate is unnecessary.
 
 ---
 
@@ -50,19 +47,6 @@ Last updated: 2026-03-13 (35 open issues).
 
 ---
 
-## Group 5: Sync / Go Backend *(in progress)*
-
-**Priority: High** — Data integrity bugs
-
-| # | Title | Type |
-|---|-------|------|
-| 484 | Validate CAMPMINDER_SEASON_ID instead of defaulting to 2025 | bug |
-| 504 | Standardize source_field comparisons to use SourceField constants | tech-debt |
-
-**Interplay:** Independent. #484 is a data integrity risk, #504 prevents future normalization bugs.
-
----
-
 ## Group 8: Frontend — General Refactors & Quality
 
 **Priority: Low** — Independent quick wins
@@ -82,20 +66,15 @@ Last updated: 2026-03-13 (35 open issues).
 
 ---
 
-## Group 9: API / Backend Refactors (Python)
+## Group 11: Solver Scoring Bug
 
-**Priority: Low** — DRY improvements, no behavior change
+**Priority: Medium** — Silent correctness issue in solver weighting
 
 | # | Title | Type |
 |---|-------|------|
-| 535 | Guard against `started_at` KeyError in solver_runner failure path | bug |
-| 487 | Extract shared session resolution function | refactor |
-| 486 | Extract PocketBase collection names into constants | tech-debt |
-| 473 | Replace inline date parsing with `_parse_date_only` utility | refactor |
-| 441 | Use existing `build_ag_parent_map` utility in registration service | refactor |
-| 423 | Hoist inline ForecastService imports in metrics.py | refactor |
+| 546 | Solver stat/multiplier lookups use snake_case keys against canonical source_field values | bug |
 
-**Interplay:** #535 is a quick bug fix in `solver_runner.py`. #486 is foundational — makes other refactors safer. Good for parallel agents.
+**Context:** Pre-existing bug surfaced during #504 review. `solution.py`, `score_evaluator.py`, `direct_solver.py` use snake_case keys that never match canonical `SourceField` values — field stats are always zero and multipliers always default to 1.0.
 
 ---
 
@@ -119,12 +98,13 @@ Last updated: 2026-03-13 (35 open issues).
 
 1. ~~**Group 1**~~ — ✅ Complete (PR #530)
 2. ~~**Group 7**~~ — ✅ Complete (PR #539)
-3. **Group 5** — Sync bugs *(in progress)* — #484 is data integrity
+3. ~~**Group 5**~~ — ✅ Complete (PRs #540, #544)
 4. ~~**Group 6**~~ — ✅ Complete (PR #534)
-5. **Group 2** — Velocity backend (bigger scope, #456 correctness bug first)
-6. **Group 9** — API refactors (#535 bug first, rest are low-risk DRY)
-7. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
-8. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
+5. **Group 2 PR1** — ✅ Complete (PR #548) — #456 bug, #467 SeasonContext, #460 week-label; #447 dropped
+6. ~~**Group 9**~~ — ✅ Complete (PR #549)
+7. **Group 11** — Solver scoring bug (#546) — silent correctness issue
+8. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
+9. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
 ## Completed Groups
 
@@ -136,3 +116,6 @@ Last updated: 2026-03-13 (35 open issues).
 | Stale sync issues (#471, #497, #517) | — | 2026-03-13 | Closed as already fixed |
 | Group 6: Solver (#500, #493, #494, #483) | #534 | 2026-03-13 | Spawned #535, #536, #537 during review |
 | Group 7: Geo frontend (#518, #519, #520, #521) | #539 | 2026-03-13 | Bug + a11y + test + QueryGuard migration |
+| Group 5: Sync / Go backend (#484, #504) | #540, #544 | 2026-03-13 | Spawned #546 (solver snake_case lookup bug) |
+| Group 9: API backend refactors (#535, #486, #441, #473, #423, #487) | #549 | 2026-03-13 | #546 moved to Group 11 |
+| Group 2 PR1: Velocity backend (#456, #467, #460) | #548 | 2026-03-13 | #447 dropped (not needed); spawned #550; PR2 pending (#459, #474, #475) |
