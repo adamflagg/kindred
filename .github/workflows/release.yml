@@ -216,7 +216,7 @@ jobs:
         fi
         echo "Verified: ${SHA_TAG} images exist in registry"
 
-    - name: Promote Docker images to release tags
+    - name: Promote non-frontend images via crane
       env:
         VERSION: ${{ steps.version.outputs.version }}
         SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
@@ -224,7 +224,8 @@ jobs:
         # Strip v prefix for Docker tags (git tag v3.2.0 -> Docker tag 3.2.0)
         DOCKER_TAG=${VERSION#v}
         MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+        # Caddy is excluded — it gets rebuilt below with the clean release version
+        IMAGES=("kindred-pocketbase" "kindred-api" "kindred-init")
 
         echo "Promoting images: ${SHA_TAG} -> ${DOCKER_TAG}, ${MINOR_TAG}, latest"
 
@@ -236,15 +237,80 @@ jobs:
           crane tag "$SRC" "latest"
         done
 
-        echo "All images promoted successfully"
+        echo "Non-frontend images promoted successfully"
+
+    - name: Log in to GitHub Container Registry (for docker push)
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Log in to Docker Hardened Images registry
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
+      with:
+        registry: dhi.io
+        username: ${{ secrets.DHI_USERNAME }}
+        password: ${{ secrets.DHI_TOKEN }}
+
+    - name: Clone private config for branding assets
+      uses: ./.github/actions/clone-kindred-local
+      with:
+        deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
+
+    - name: Prepare local assets for Docker build
+      run: |
+        mkdir -p local/assets
+        if [ -f local/assets/camp-logo.png ]; then
+          echo "Local assets found (from kindred-local)"
+        else
+          echo "No local assets — using default branding"
+        fi
+
+    - name: Rebuild caddy with release version
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        DOCKER_TAG=${VERSION#v}
+        MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+        IMAGE="${REGISTRY}/${USERNAME}/kindred-caddy"
+
+        echo "Building kindred-caddy with VERSION=${VERSION}..."
+        docker build \
+          -f docker/Dockerfile.caddy \
+          -t "${IMAGE}:${DOCKER_TAG}" \
+          --build-arg VERSION="${VERSION}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          .
+
+        docker tag "${IMAGE}:${DOCKER_TAG}" "${IMAGE}:${MINOR_TAG}"
+        docker tag "${IMAGE}:${DOCKER_TAG}" "${IMAGE}:latest"
+        docker push "${IMAGE}:${DOCKER_TAG}"
+        docker push "${IMAGE}:${MINOR_TAG}"
+        docker push "${IMAGE}:latest"
+
+        echo "kindred-caddy rebuilt and pushed with release version"
+
+    - name: Summarize Docker image promotion
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+      run: |
+        DOCKER_TAG=${VERSION#v}
+        MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
+
         echo "" >> "$GITHUB_STEP_SUMMARY"
-        echo "### Docker Images Promoted" >> "$GITHUB_STEP_SUMMARY"
-        echo "Source: \`:${SHA_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "### Docker Images" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Image | Method | Source |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|-------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+        echo "| kindred-caddy | Rebuilt | VERSION=${VERSION} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| kindred-pocketbase | Promoted | :${SHA_TAG} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| kindred-api | Promoted | :${SHA_TAG} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| kindred-init | Promoted | :${SHA_TAG} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
         echo "Tags: \`:${DOCKER_TAG}\`, \`:${MINOR_TAG}\`, \`:latest\`" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        for IMAGE in "${IMAGES[@]}"; do
-          echo "- \`${REGISTRY}/${USERNAME}/${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
-        done
 
     - name: Create tag and release
       env:
