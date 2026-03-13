@@ -401,12 +401,13 @@ The `main` branch is protected by a GitHub **Ruleset** (not legacy branch protec
 **You MUST follow TDD methodology for all new feature development:**
 
 1. **Write Tests FIRST**: Create failing tests that define the expected behavior
-2. **Commit Tests Separately**: Tests must be committed BEFORE implementation
+2. **Verify Tests Fail**: Run tests to confirm they fail before writing implementation (red phase)
 3. **Implement to Pass Tests**: Write minimal code to make tests pass
 4. **Never Modify Tests to Match Implementation**: Tests define the spec, not the other way around
 
+Tests and implementation may be in the same commit — PRs are squash-merged so commit granularity doesn't matter. What matters is the **workflow discipline**: tests are written first and verified failing before implementation begins.
+
 ### Anti-Patterns to AVOID
-- ❌ Creating tests and implementation in the same commit
 - ❌ Writing tests after implementation
 - ❌ Modifying tests to match implementation behavior
 - ❌ Skipping the "red" phase (tests must fail first)
