@@ -110,4 +110,42 @@ describe('GeoDetailList', () => {
       label: 'San Francisco, CA',
     })
   })
+
+  it('triggers drilldown on Enter key press', () => {
+    const onDrilldown = vi.fn()
+    render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)
+
+    fireEvent.click(screen.getByText('Cities'))
+    fireEvent.keyDown(screen.getByText(/San Francisco/).closest('tr')!, { key: 'Enter' })
+
+    expect(onDrilldown).toHaveBeenCalledWith({
+      type: 'city',
+      value: 'San Francisco, CA',
+      label: 'San Francisco, CA',
+    })
+  })
+
+  it('triggers drilldown on Space key press', () => {
+    const onDrilldown = vi.fn()
+    render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)
+
+    fireEvent.click(screen.getByText('Cities'))
+    fireEvent.keyDown(screen.getByText(/San Francisco/).closest('tr')!, { key: ' ' })
+
+    expect(onDrilldown).toHaveBeenCalledWith({
+      type: 'city',
+      value: 'San Francisco, CA',
+      label: 'San Francisco, CA',
+    })
+  })
+
+  it('does not add keyboard interactivity to region rows', () => {
+    const regionItems: GeoDataItem[] = [{ name: 'West', count: 50, percentage: 60 }]
+    render(<GeoDetailList data={regionItems} category="region" />)
+
+    fireEvent.click(screen.getByText('Regions'))
+    const row = screen.getByText('West').closest('tr')!
+    expect(row).not.toHaveAttribute('tabindex')
+    expect(row).not.toHaveAttribute('role')
+  })
 })
