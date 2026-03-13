@@ -24,7 +24,8 @@ docs/
 │   └── external/campminder/    # CampMinder API docs
 ├── reference/
 │   ├── cli-commands.md         # Command reference
-│   └── configuration.md        # Env vars and config
+│   ├── configuration.md        # Env vars and config
+│   └── issue-triage.md         # Open issue groups & attack order
 ├── features/
     ├── request-types-specification.md  # Business rules
     └── bunk_request_business_rules.md  # (needs update)
