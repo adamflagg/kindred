@@ -34,14 +34,10 @@ describe('GeoDetailList', () => {
     // Click header to expand
     fireEvent.click(screen.getByText('Cities'))
 
-    // City names already include state suffix in "City, ST" format
-    const rows = screen.getAllByRole('row')
-    const sfRow = rows.find((row) => row.textContent?.includes('San Francisco'))
-    expect(sfRow?.textContent).toContain('San Francisco, CA')
-    const portlandRow = rows.find((row) => row.textContent?.includes('Portland'))
-    expect(portlandRow?.textContent).toContain('Portland, OR')
-    const denverRow = rows.find((row) => row.textContent?.includes('Denver'))
-    expect(denverRow?.textContent).toContain('Denver, CO')
+    // Exact match — catches state-suffix duplication regressions like "CA, CA"
+    expect(screen.getByText('San Francisco, CA')).toBeInTheDocument()
+    expect(screen.getByText('Portland, OR')).toBeInTheDocument()
+    expect(screen.getByText('Denver, CO')).toBeInTheDocument()
   })
 
   it('does not display state abbreviation for school category', () => {
