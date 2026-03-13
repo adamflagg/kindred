@@ -103,13 +103,14 @@ class OverrideResponse(BaseModel):
 
     id: str = Field(description="PocketBase record ID")
     category: str = Field(description="Category: city, school, or congregation")
-    override_type: Literal["alias", "canonical", "merge"] = Field(
-        description="Override type: alias, canonical, or merge"
+    override_type: Literal["alias", "canonical", "merge", "rejected"] = Field(
+        description="Override type: alias, canonical, merge, or rejected"
     )
     raw_value: str | None = Field(default=None, description="Original raw value (for alias type)")
     canonical_name: str = Field(description="The canonical/normalized name")
     city: str | None = Field(default=None, description="City for location context")
     state: str | None = Field(default=None, description="State for location context")
+    address_country: str | None = Field(default=None, description="Country code for location context")
     lat: float | None = Field(default=None, description="Latitude coordinate")
     lng: float | None = Field(default=None, description="Longitude coordinate")
     merged_into: str | None = Field(default=None, description="Target canonical name (for merge type)")

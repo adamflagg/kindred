@@ -40,6 +40,7 @@ def _make_mapping_record(
     confidence: float = 1.0,
     year: int = 2025,
     person: str = "",
+    address_city: str = "",
     address_state: str = "",
     address_country: str = "",
 ) -> Mock:
@@ -51,6 +52,7 @@ def _make_mapping_record(
     record.confidence = confidence
     record.year = year
     record.person = person
+    record.address_city = address_city
     record.address_state = address_state
     record.address_country = address_country
     return record
@@ -79,6 +81,7 @@ def _make_override_record(
     canonical_name: str = "Riverside Elementary",
     city: str = "Springfield",
     state: str = "IL",
+    address_country: str = "",
     lat: float | None = None,
     lng: float | None = None,
     merged_into: str = "",
@@ -95,6 +98,7 @@ def _make_override_record(
     record.canonical_name = canonical_name
     record.city = city
     record.state = state
+    record.address_country = address_country
     record.lat = lat
     record.lng = lng
     record.merged_into = merged_into
@@ -2095,6 +2099,7 @@ class TestApproveSuggested:
                 "canonical_name": "Hillcrest Academy",
                 "city": "Springfield",
                 "state": "IL",
+                "address_country": "",
                 "year": 2025,
             },
         )
@@ -2111,6 +2116,7 @@ class TestApproveSuggested:
                 "canonical_name": "Unknown Place",
                 "city": "",
                 "state": "",
+                "address_country": "",
                 "year": 2025,
             },
         )
