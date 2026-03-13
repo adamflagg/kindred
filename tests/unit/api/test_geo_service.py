@@ -2117,6 +2117,48 @@ class TestApproveSuggested:
 
 
 # ============================================================================
+# Approve Suggested Country Tests (#426)
+# ============================================================================
+
+
+class TestApproveSuggestedCountry:
+    """Test approve_suggested includes address_country in payload."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_approve_includes_address_country(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """approve_suggested should persist the country parameter to geo_overrides."""
+        from api.constants.geo import GeoCategory
+
+        await service.approve_suggested(
+            "London School", GeoCategory.SCHOOL, 2025, city="London", state="", country="GB"
+        )
+
+        mock_pb.collection.return_value.create.assert_called_once()
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["address_country"] == "GB"
+
+    @pytest.mark.asyncio
+    async def test_approve_country_defaults_empty(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """approve_suggested without country should store empty string."""
+        from api.constants.geo import GeoCategory
+
+        await service.approve_suggested("Hillcrest Academy", GeoCategory.SCHOOL, 2025, city="Springfield", state="IL")
+
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["address_country"] == ""
+
+
+# ============================================================================
 # Reject Suggested Tests
 # ============================================================================
 
@@ -2160,6 +2202,106 @@ class TestRejectSuggested:
         count = await service.reject_suggested("Nonexistent", "school", 2025)
 
         assert count == 0
+
+
+# ============================================================================
+# Reject Suggested Durability Tests (#427)
+# ============================================================================
+
+
+class TestRejectSuggestedDurable:
+    """Test reject_suggested writes a durable rejection override."""
+
+    @pytest.fixture
+    def mock_pb(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def service(self, mock_pb: MagicMock) -> GeoService:
+        from api.services.geo_service import GeoService
+
+        return GeoService(mock_pb)
+
+    @pytest.mark.asyncio
+    async def test_reject_writes_rejection_override(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """reject_suggested should create an override_type='rejected' record."""
+        from api.constants.geo import GeoCategory
+
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        await service.reject_suggested("Bad Canonical", GeoCategory.CITY, 2025)
+
+        create_calls = mock_pb.collection.return_value.create.call_args_list
+        assert len(create_calls) >= 1
+        rejection_payload = create_calls[0][0][0]
+        assert rejection_payload["override_type"] == "rejected"
+        assert rejection_payload["canonical_name"] == "Bad Canonical"
+        assert rejection_payload["category"] == "city"
+        assert rejection_payload["year"] == 2025
+
+    @pytest.mark.asyncio
+    async def test_reject_still_deletes_mappings(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """reject_suggested should also delete existing mappings for immediate effect."""
+        from api.constants.geo import GeoCategory
+
+        mapping1 = _make_mapping_record("bad val", "Bad Canonical")
+        mapping1.id = "m1"
+        mock_pb.collection.return_value.get_full_list.return_value = [mapping1]
+
+        count = await service.reject_suggested("Bad Canonical", GeoCategory.SCHOOL, 2025)
+
+        assert count == 1
+        mock_pb.collection.return_value.delete.assert_called_with("m1")
+
+
+# ============================================================================
+# Infer Location City Tests (#428)
+# ============================================================================
+
+
+class TestInferLocationCity:
+    """Test _infer_location_from_mappings includes city tallying."""
+
+    def test_infers_city_from_mappings(self) -> None:
+        """City should be inferred via majority vote from address_city."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            MagicMock(
+                normalized_value="Riverside Elementary",
+                address_city="Portland",
+                address_state="OR",
+                address_country="US",
+            ),
+            MagicMock(
+                normalized_value="Riverside Elementary",
+                address_city="Portland",
+                address_state="OR",
+                address_country="US",
+            ),
+            MagicMock(
+                normalized_value="Riverside Elementary",
+                address_city="Seattle",
+                address_state="WA",
+                address_country="US",
+            ),
+        ]
+
+        result = GeoService._infer_location_from_mappings(mappings, "Riverside Elementary")
+        assert result["city"] == "Portland"
+        assert result["state"] == "OR"
+        assert result["country"] == "US"
+
+    def test_no_city_when_all_empty(self) -> None:
+        """City should not appear in result if all address_city values are empty."""
+        from api.services.geo_service import GeoService
+
+        mappings = [
+            MagicMock(normalized_value="Oak Valley Middle", address_city="", address_state="CA", address_country="US"),
+        ]
+        result = GeoService._infer_location_from_mappings(mappings, "Oak Valley Middle")
+        assert "city" not in result
+        assert result["state"] == "CA"
 
 
 # ============================================================================
