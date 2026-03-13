@@ -1036,7 +1036,9 @@ export default function CamperDetailsPanel({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 flex items-center gap-1.5 truncate text-sm font-medium">
-                        <span>{sibling.preferred_name || sibling.first_name} {sibling.last_name}</span>
+                        <span>
+                          {sibling.preferred_name || sibling.first_name} {sibling.last_name}
+                        </span>
                         <StatusBadge status={sibling.attendeeStatus} />
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">

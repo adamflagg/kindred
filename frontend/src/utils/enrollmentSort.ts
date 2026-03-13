@@ -19,5 +19,8 @@ export function sortEnrolledFirst(
   const aEnrolled = aStatus === 'enrolled' ? 0 : 1
   const bEnrolled = bStatus === 'enrolled' ? 0 : 1
   if (aEnrolled !== bEnrolled) return aEnrolled - bEnrolled
-  return (SESSION_TYPE_ORDER[aSessionType || ''] || 999) - (SESSION_TYPE_ORDER[bSessionType || ''] || 999)
+  return (
+    (SESSION_TYPE_ORDER[aSessionType || ''] || 999) -
+    (SESSION_TYPE_ORDER[bSessionType || ''] || 999)
+  )
 }
