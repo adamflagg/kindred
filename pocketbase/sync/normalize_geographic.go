@@ -9,8 +9,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -130,14 +128,10 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	// Determine year
 	year := n.Year
 	if year == 0 {
-		yearStr := os.Getenv("CAMPMINDER_SEASON_ID")
-		if yearStr != "" {
-			if y, err := strconv.Atoi(yearStr); err == nil {
-				year = y
-			}
-		}
-		if year == 0 {
-			year = 2025 // Default fallback
+		var err error
+		year, err = ParseSeasonYear()
+		if err != nil {
+			return fmt.Errorf("year resolution failed: %w", err)
 		}
 	}
 

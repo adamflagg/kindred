@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"strconv"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -140,14 +138,10 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	// Determine year
 	year := c.Year
 	if year == 0 {
-		yearStr := os.Getenv("CAMPMINDER_SEASON_ID")
-		if yearStr != "" {
-			if y, err := strconv.Atoi(yearStr); err == nil {
-				year = y
-			}
-		}
-		if year == 0 {
-			year = 2025 // Default fallback
+		var err error
+		year, err = ParseSeasonYear()
+		if err != nil {
+			return fmt.Errorf("year resolution failed: %w", err)
 		}
 	}
 
