@@ -24,6 +24,7 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestType,
 )
 from bunking.sync.bunk_request_processor.data.repositories.request_repository import RequestRepository
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 class TestRequestRepository:
@@ -91,7 +92,7 @@ class TestRequestRepository:
             priority=4,
             confidence_score=0.95,
             source=RequestSource.FAMILY,
-            source_field="share_bunk_with",
+            source_field=SourceField.BUNK_WITH,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -118,7 +119,7 @@ class TestRequestRepository:
         assert create_args["priority"] == 4
         assert create_args["confidence_score"] == 0.95
         assert create_args["source"] == "family"
-        assert create_args["source_field"] == "share_bunk_with"
+        assert create_args["source_field"] == SourceField.BUNK_WITH
         assert create_args["csv_position"] == 0
         assert create_args["year"] == 2025
         assert create_args["status"] == "resolved"

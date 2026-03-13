@@ -26,6 +26,7 @@ from bunking.sync.bunk_request_processor.processing.request_builder import (
     RequestBuilder,
     RequestBuilderOptions,
 )
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 class TestRequestBuilder:
@@ -58,7 +59,7 @@ class TestRequestBuilder:
             age_preference=None,
             confidence=0.95,
             source=RequestSource.FAMILY,
-            source_field="share_bunk_with",
+            source_field=SourceField.BUNK_WITH,
             csv_position=1,
             metadata={"requester_cm_id": 12345, "full_name": "John Doe", "age": 10, "grade": 5},
             notes=None,
@@ -94,7 +95,7 @@ class TestRequestBuilder:
         assert request.priority == 3
         assert request.confidence_score == 0.92  # Uses resolved confidence
         assert request.source == RequestSource.FAMILY
-        assert request.source_field == "share_bunk_with"
+        assert request.source_field == SourceField.BUNK_WITH
         assert request.csv_position == 1
         assert request.year == 2025
         assert request.status == RequestStatus.RESOLVED

@@ -14,14 +14,14 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestSource,
     RequestType,
 )
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 class TestRequestTypeValidationForSourceField:
     """Tests that request types are validated and corrected based on source field.
 
-    - do_not_share_with field → always NOT_BUNK_WITH
-    - socialize_preference field → always AGE_PREFERENCE
-    - Flexible fields (share_bunk_with, bunking_notes, internal_notes) → any type allowed
+    - Do Not Share Bunk With field → always NOT_BUNK_WITH
+    - Flexible fields (Share Bunk With, BunkingNotes Notes, Internal Bunk Notes) → any type allowed
     """
 
     def test_do_not_share_with_field_with_wrong_type_is_corrected(self):
@@ -37,7 +37,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.BUNK_WITH,  # WRONG - should be NOT_BUNK_WITH
             target_name="Jake Smith",
             age_preference=None,
-            source_field="do_not_share_with",  # This field should ONLY produce NOT_BUNK_WITH
+            source_field=SourceField.NOT_BUNK_WITH,  # This field should ONLY produce NOT_BUNK_WITH
             source=RequestSource.FAMILY,
             confidence=0.85,
             csv_position=0,
@@ -67,7 +67,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.NOT_BUNK_WITH,  # CORRECT
             target_name="Jake Smith",
             age_preference=None,
-            source_field="do_not_share_with",
+            source_field=SourceField.NOT_BUNK_WITH,
             source=RequestSource.FAMILY,
             confidence=0.90,
             csv_position=0,
@@ -96,7 +96,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.BUNK_WITH,
             target_name=None,  # No target - invalid for not_bunk_with
             age_preference=None,
-            source_field="do_not_share_with",
+            source_field=SourceField.NOT_BUNK_WITH,
             source=RequestSource.FAMILY,
             confidence=0.50,
             csv_position=0,
@@ -123,7 +123,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.NOT_BUNK_WITH,
             target_name="Jake Smith",
             age_preference=None,
-            source_field="share_bunk_with",  # Flexible field
+            source_field=SourceField.BUNK_WITH,  # Flexible field
             source=RequestSource.FAMILY,
             confidence=0.85,
             csv_position=0,
@@ -140,7 +140,7 @@ class TestRequestTypeValidationForSourceField:
         # Assert: Should pass through unchanged
         assert validated is not None
         assert validated.request_type == RequestType.NOT_BUNK_WITH
-        assert validated.source_field == "share_bunk_with"
+        assert validated.source_field == SourceField.BUNK_WITH
 
     def test_flexible_field_without_target_for_bunk_type_returns_none(self):
         """Even for flexible fields, BUNK_WITH and NOT_BUNK_WITH require a target name.
@@ -152,7 +152,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.BUNK_WITH,
             target_name=None,  # No target - invalid for bunk_with
             age_preference=None,
-            source_field="bunking_notes",
+            source_field=SourceField.BUNKING_NOTES,
             source=RequestSource.STAFF,
             confidence=0.60,
             csv_position=0,
@@ -170,25 +170,28 @@ class TestRequestTypeValidationForSourceField:
         assert validated is None, "bunk_with without target_name should be None"
 
 
-class TestSocializePreferenceFieldValidation:
-    """Tests for socialize_preference (ret_parent_socialize_with_best) field validation.
+class TestSocializeWithFieldValidation:
+    """Tests for socialize_with (RetParent-Socializewithbest) field validation.
 
-    This field should ONLY produce AGE_PREFERENCE requests.
-    Note: This is currently handled by direct parsing in _parse_socialize_preference,
-    not by AI, so this is more of a safety check.
+    This field is handled by direct parsing in _parse_socialize_preference,
+    not by AI. It is NOT in STRICT_FIELD_TYPES or FLEXIBLE_FIELDS because
+    the orchestrator bypasses the validator for this field. If a request
+    with this source_field reaches the validator, it passes through unchanged.
     """
 
-    def test_socialize_preference_always_age_preference(self):
-        """Socialize preference field should always produce AGE_PREFERENCE type.
-        If somehow a different type is returned, it should be corrected.
+    def test_socialize_with_passes_through_validator(self):
+        """Socialize-with requests pass through the validator unchanged.
+
+        The socialize_with field is handled by direct parsing, not the validator.
+        If it reaches the validator, it should pass through without correction.
         """
-        # Arrange: Wrong type from socialize_preference
+        # Arrange: Request from socialize_with field
         parsed = ParsedRequest(
             raw_text="Kids their own grade and one grade above",
-            request_type=RequestType.BUNK_WITH,  # WRONG
+            request_type=RequestType.AGE_PREFERENCE,
             target_name=None,
             age_preference=AgePreference.OLDER,
-            source_field="socialize_preference",
+            source_field=SourceField.SOCIALIZE_WITH,
             source=RequestSource.FAMILY,
             confidence=1.0,
             csv_position=0,
@@ -202,6 +205,6 @@ class TestSocializePreferenceFieldValidation:
 
         validated = validate_request_type_for_field(parsed)
 
-        # Assert
+        # Assert: Passes through unchanged
         assert validated is not None
         assert validated.request_type == RequestType.AGE_PREFERENCE

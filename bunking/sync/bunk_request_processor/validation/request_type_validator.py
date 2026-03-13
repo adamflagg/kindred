@@ -1,9 +1,8 @@
 """Request Type Validator Based on Source Field
 
 Ensures that certain source fields enforce specific request types:
-- do_not_share_with → MUST produce NOT_BUNK_WITH
-- socialize_preference → MUST produce AGE_PREFERENCE
-- Flexible fields can produce any valid type
+- Do Not Share Bunk With → MUST produce NOT_BUNK_WITH
+- Flexible fields (Share Bunk With, BunkingNotes, Internal Bunk Notes) can produce any valid type
 
 If AI returns the wrong type for a strict field, this validator corrects it."""
 
@@ -12,18 +11,18 @@ from __future__ import annotations
 import logging
 
 from ..core.models import ParsedRequest, RequestType
+from ..shared.constants import SourceField
 
 logger = logging.getLogger(__name__)
 
 
 # Fields with strict type requirements
 STRICT_FIELD_TYPES = {
-    "do_not_share_with": RequestType.NOT_BUNK_WITH,
-    "socialize_preference": RequestType.AGE_PREFERENCE,
+    SourceField.NOT_BUNK_WITH: RequestType.NOT_BUNK_WITH,
 }
 
 # Fields that can produce any request type
-FLEXIBLE_FIELDS = {"share_bunk_with", "bunking_notes", "internal_notes"}
+FLEXIBLE_FIELDS = {SourceField.BUNK_WITH, SourceField.BUNKING_NOTES, SourceField.INTERNAL_NOTES}
 
 # Request types that require a target_name
 TYPES_REQUIRING_TARGET = {RequestType.BUNK_WITH, RequestType.NOT_BUNK_WITH}
@@ -81,7 +80,7 @@ def validate_request_type_for_field(parsed: ParsedRequest) -> ParsedRequest | No
             return None
 
         # Log unusual but valid combinations for observability
-        if source_field == "share_bunk_with" and parsed.request_type != RequestType.BUNK_WITH:
-            logger.info(f"AI parsed {parsed.request_type} from share_bunk_with field - respecting AI decision")
+        if source_field == SourceField.BUNK_WITH and parsed.request_type != RequestType.BUNK_WITH:
+            logger.info(f"AI parsed {parsed.request_type} from {source_field} field - respecting AI decision")
 
     return parsed
