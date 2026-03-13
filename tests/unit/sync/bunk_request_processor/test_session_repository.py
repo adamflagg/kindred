@@ -309,3 +309,56 @@ class TestIsValidBunkingSession:
         result = repo.is_valid_bunking_session(9999999, 2025)
 
         assert result is False
+
+
+class TestResolveSessionCmIds:
+    """Tests for SessionRepository.resolve_session_cm_ids()."""
+
+    def test_specific_session_without_ag(self):
+        """Embedded session returns just its own ID."""
+        repo = SessionRepository(MagicMock())
+        repo.resolve_session_name = MagicMock(return_value=(1000021, False))
+
+        result = repo.resolve_session_cm_ids("2a", 2026)
+        assert result == [1000021]
+
+    def test_specific_session_with_ag(self):
+        """Main session with include_ag returns self + AG children."""
+        repo = SessionRepository(MagicMock())
+        repo.resolve_session_name = MagicMock(return_value=(1000001, True))
+        repo.get_related_session_ids = MagicMock(return_value=[1000001, 1000011])
+
+        result = repo.resolve_session_cm_ids("1", 2026)
+        assert set(result) == {1000001, 1000011}
+
+    def test_all_sessions_expands_main_keeps_embedded(self):
+        """'all' expands main sessions, keeps embedded as-is, deduplicates."""
+        repo = SessionRepository(MagicMock())
+        repo.resolve_session_name = MagicMock(return_value=(None, False))
+        repo.get_valid_session_names = MagicMock(
+            return_value={
+                "1": (1000001, True),
+                "2a": (1000021, False),
+            }
+        )
+        repo.get_related_session_ids = MagicMock(return_value=[1000001, 1000011])
+
+        result = repo.resolve_session_cm_ids("all", 2026)
+        assert 1000001 in result
+        assert 1000011 in result
+        assert 1000021 in result
+
+    def test_all_sessions_deduplicates(self):
+        """Duplicate cm_ids across aliases are deduplicated."""
+        repo = SessionRepository(MagicMock())
+        repo.resolve_session_name = MagicMock(return_value=(None, False))
+        repo.get_valid_session_names = MagicMock(
+            return_value={
+                "1": (1000001, True),
+                "toc": (1000001, True),
+            }
+        )
+        repo.get_related_session_ids = MagicMock(return_value=[1000001, 1000011])
+
+        result = repo.resolve_session_cm_ids("all", 2026)
+        assert sorted(result) == [1000001, 1000011]

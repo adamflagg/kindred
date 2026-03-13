@@ -12,6 +12,17 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.services.cancellation_service import CancellationService
+from api.services.comparison_service import ComparisonService
+from api.services.day1_service import Day1Service
+from api.services.drilldown_service import DrilldownService
+from api.services.forecast_service import ForecastService
+from api.services.historical_service import HistoricalService
+from api.services.registration_service import RegistrationService
+from api.services.retention_service import RetentionService
+from api.services.retention_trends_service import RetentionTrendsService
+from api.services.velocity_service import VelocityService
+from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 
@@ -29,17 +40,6 @@ from ..schemas.metrics import (
     WaitlistMetricsResponse,
 )
 from ..schemas.velocity import VelocityResponse
-from api.services.cancellation_service import CancellationService
-from api.services.comparison_service import ComparisonService
-from api.services.day1_service import Day1Service
-from api.services.drilldown_service import DrilldownService
-from api.services.forecast_service import ForecastService
-from api.services.historical_service import HistoricalService
-from api.services.registration_service import RegistrationService
-from api.services.retention_service import RetentionService
-from api.services.retention_trends_service import RetentionTrendsService
-from api.services.velocity_service import VelocityService
-from api.services.waitlist_service import WaitlistService
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 

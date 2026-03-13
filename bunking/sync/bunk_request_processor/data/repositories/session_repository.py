@@ -351,6 +351,42 @@ class SessionRepository:
 
         return valid_sessions[normalized]
 
+    def resolve_session_cm_ids(self, session_name: str, year: int) -> list[int]:
+        """Resolve a session name to a deduplicated list of CampMinder session IDs.
+
+        Handles three cases:
+        - Specific session without AG: returns [cm_id]
+        - Specific session with AG: returns cm_id + related AG session IDs
+        - All sessions (name resolves to None): expands main sessions
+          with their AG children, includes embedded sessions as-is
+
+        Args:
+            session_name: User-friendly session identifier (e.g., "1", "2a", "all")
+            year: The year to resolve sessions for
+
+        Returns:
+            Deduplicated list of CampMinder session IDs
+        """
+        main_session_id, include_ag = self.resolve_session_name(session_name, year)
+
+        if main_session_id is not None:
+            if include_ag:
+                return self.get_related_session_ids(main_session_id)
+            return [main_session_id]
+
+        # All sessions path
+        all_session_ids: list[int] = []
+        valid_sessions = self.get_valid_session_names(year)
+        seen_cm_ids: set[int] = set()
+        for cm_id, is_main in valid_sessions.values():
+            if cm_id not in seen_cm_ids:
+                seen_cm_ids.add(cm_id)
+                if is_main:
+                    all_session_ids.extend(self.get_related_session_ids(cm_id))
+                else:
+                    all_session_ids.append(cm_id)
+        return list(set(all_session_ids))
+
 
 # Module-level async function for backward compatibility with solver_service_v2
 async def get_related_session_ids_async(session_cm_id: int, pb_client: PocketBase | None = None) -> list[int]:

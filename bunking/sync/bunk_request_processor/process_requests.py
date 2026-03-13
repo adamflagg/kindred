@@ -346,40 +346,11 @@ def main() -> None:
             # Resolve session using dynamic lookup (supports 1, 2, 2a, 3a, toc, all, etc.)
             session_repo = SessionRepository(pb)
             try:
-                main_session_id, include_ag = session_repo.resolve_session_name(args.session, args.year)
+                session_cm_ids = session_repo.resolve_session_cm_ids(args.session, args.year)
             except ValueError as e:
                 logger.error(str(e))
                 raise
-
-            # Handle "all" sessions vs specific session
-            if main_session_id is None:
-                # All sessions - get all main sessions and their related sessions
-                all_session_ids: list[int] = []
-                valid_sessions = session_repo.get_valid_session_names(args.year)
-                # Get unique main session IDs (filter out aliases like 'toc')
-                seen_cm_ids: set[int] = set()
-                for cm_id, is_main in valid_sessions.values():
-                    if cm_id not in seen_cm_ids:
-                        seen_cm_ids.add(cm_id)
-                        if is_main:
-                            # Main session - get it and its AG children
-                            related = await asyncio.to_thread(session_repo.get_related_session_ids, cm_id)
-                            all_session_ids.extend(related)
-                        else:
-                            # Embedded session - just add it
-                            all_session_ids.append(cm_id)
-                session_cm_ids = list(set(all_session_ids))  # Deduplicate
-                logger.info(f"Processing all sessions: {session_cm_ids}")
-            else:
-                # Specific session
-                if include_ag:
-                    # Main session - get related AG sessions
-                    session_cm_ids = await asyncio.to_thread(session_repo.get_related_session_ids, main_session_id)
-                    logger.info(f"Session '{args.session}' (main) maps to sessions: {session_cm_ids}")
-                else:
-                    # Embedded session - just this session (no AG)
-                    session_cm_ids = [main_session_id]
-                    logger.info(f"Session '{args.session}' (embedded) maps to session: {session_cm_ids}")
+            logger.info(f"Session '{args.session}' resolved to: {session_cm_ids}")
 
             return await process_bunk_requests(
                 data_source=args.source,
