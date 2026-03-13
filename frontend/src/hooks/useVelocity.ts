@@ -18,7 +18,7 @@ export function useVelocity(
     duration?: string | null | undefined
   } = {}
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   const searchParams = new URLSearchParams({ year: String(year) })
   if (params.sessionCmId) searchParams.set('session_cm_id', String(params.sessionCmId))
@@ -46,7 +46,7 @@ export function useVelocity(
       }
       return response.json()
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isAuthLoading,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })

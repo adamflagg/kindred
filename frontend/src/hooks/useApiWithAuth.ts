@@ -7,7 +7,7 @@ export interface FetchOptions extends RequestInit {
 }
 
 export function useApiWithAuth() {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
 
   const fetchWithAuth = useCallback(async (url: string, options: FetchOptions = {}) => {
     const { skipAuth = false, ...fetchOptions } = options
@@ -42,5 +42,5 @@ export function useApiWithAuth() {
     return response
   }, []) // pb.authStore.token is an outer scope value that doesn't trigger re-renders
 
-  return { fetchWithAuth, isAuthenticated: !!user }
+  return { fetchWithAuth, isAuthenticated: !!user, isAuthLoading: isLoading }
 }
