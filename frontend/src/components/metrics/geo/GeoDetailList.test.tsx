@@ -34,14 +34,10 @@ describe('GeoDetailList', () => {
     // Click header to expand
     fireEvent.click(screen.getByText('Cities'))
 
-    // City names already include state suffix in "City, ST" format
-    const rows = screen.getAllByRole('row')
-    const sfRow = rows.find((row) => row.textContent?.includes('San Francisco'))
-    expect(sfRow?.textContent).toContain('San Francisco, CA')
-    const portlandRow = rows.find((row) => row.textContent?.includes('Portland'))
-    expect(portlandRow?.textContent).toContain('Portland, OR')
-    const denverRow = rows.find((row) => row.textContent?.includes('Denver'))
-    expect(denverRow?.textContent).toContain('Denver, CO')
+    // Exact match — catches state-suffix duplication regressions like "CA, CA"
+    expect(screen.getByText('San Francisco, CA')).toBeInTheDocument()
+    expect(screen.getByText('Portland, OR')).toBeInTheDocument()
+    expect(screen.getByText('Denver, CO')).toBeInTheDocument()
   })
 
   it('does not display state abbreviation for school category', () => {
@@ -113,5 +109,43 @@ describe('GeoDetailList', () => {
       value: 'San Francisco, CA',
       label: 'San Francisco, CA',
     })
+  })
+
+  it('triggers drilldown on Enter key press', () => {
+    const onDrilldown = vi.fn()
+    render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)
+
+    fireEvent.click(screen.getByText('Cities'))
+    fireEvent.keyDown(screen.getByText(/San Francisco/).closest('tr')!, { key: 'Enter' })
+
+    expect(onDrilldown).toHaveBeenCalledWith({
+      type: 'city',
+      value: 'San Francisco, CA',
+      label: 'San Francisco, CA',
+    })
+  })
+
+  it('triggers drilldown on Space key press', () => {
+    const onDrilldown = vi.fn()
+    render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)
+
+    fireEvent.click(screen.getByText('Cities'))
+    fireEvent.keyDown(screen.getByText(/San Francisco/).closest('tr')!, { key: ' ' })
+
+    expect(onDrilldown).toHaveBeenCalledWith({
+      type: 'city',
+      value: 'San Francisco, CA',
+      label: 'San Francisco, CA',
+    })
+  })
+
+  it('does not add keyboard interactivity to region rows', () => {
+    const regionItems: GeoDataItem[] = [{ name: 'West', count: 50, percentage: 60 }]
+    render(<GeoDetailList data={regionItems} category="region" />)
+
+    fireEvent.click(screen.getByText('Regions'))
+    const row = screen.getByText('West').closest('tr')!
+    expect(row).not.toHaveAttribute('tabindex')
+    expect(row).not.toHaveAttribute('role')
   })
 })
