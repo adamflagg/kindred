@@ -1,25 +1,22 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (28 open issues).
+Last updated: 2026-03-13 (25 open issues).
 
 ---
 
-## Group 2: Metrics / Velocity — Backend (Python API) *(in progress)*
+## Group 2: Metrics / Velocity — Backend (Python API) *(PR2 pending)*
 
-**Priority: High** — Correctness bug + perf wins in same service
+**Priority: Medium** — Perf + feature, no correctness bugs remaining
 
 | # | Title | Type |
 |---|-------|------|
-| 456 | Snapshot "latest of the day" dedup relies on list order | bug |
-| 447 | Velocity hybrid gate should be per-session, not global | refactor |
-| 467 | Reduce parameter sprawl in VelocityService snapshot methods | refactor |
-| 460 | Extract shared week-label formatting utility | refactor |
+| 550 | `_daily_for_gender` hardcodes `cancelled=0`, breaking gross-enrolled invariant | bug |
 | 459 | Add daily data series to cancellation velocity path | feature |
-| 475 | Reuse attendees from cancellation curves for session swap detection | perf |
+| 475 | Reuse status transitions for cancellation gender curves | perf |
 | 474 | Eliminate duplicate snapshot fetches when gender split is enabled | perf |
 
-**Interplay:** #467 and #447 touch same VelocityService code. #474/#475 are in the forecast/cancellation pipeline. #459 benefits from #460 (shared week formatting). Sequence: #456 (bug) first, then #467/#447 refactors, then #474/#475 perf, then #459/#460 feature.
+**Interplay:** #474/#475 are independent fetch dedup fixes. #459 adds daily data for cancellation path. #550 is a standalone bug in gender daily data. PR1 completed #456 (dedup bug), #467 (SeasonContext), #460 (week-label). #447 dropped — sessions are never added mid-season, so per-session hybrid gate is unnecessary.
 
 ---
 
@@ -103,7 +100,7 @@ Last updated: 2026-03-13 (28 open issues).
 2. ~~**Group 7**~~ — ✅ Complete (PR #539)
 3. ~~**Group 5**~~ — ✅ Complete (PRs #540, #544)
 4. ~~**Group 6**~~ — ✅ Complete (PR #534)
-5. **Group 2** — Velocity backend *(in progress)* — #456 correctness bug first
+5. **Group 2 PR1** — ✅ Complete (PR #548) — #456 bug, #467 SeasonContext, #460 week-label; #447 dropped
 6. ~~**Group 9**~~ — ✅ Complete (PR #549)
 7. **Group 11** — Solver scoring bug (#546) — silent correctness issue
 8. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
@@ -121,3 +118,4 @@ Last updated: 2026-03-13 (28 open issues).
 | Group 7: Geo frontend (#518, #519, #520, #521) | #539 | 2026-03-13 | Bug + a11y + test + QueryGuard migration |
 | Group 5: Sync / Go backend (#484, #504) | #540, #544 | 2026-03-13 | Spawned #546 (solver snake_case lookup bug) |
 | Group 9: API backend refactors (#535, #486, #441, #473, #423, #487) | #549 | 2026-03-13 | #546 moved to Group 11 |
+| Group 2 PR1: Velocity backend (#456, #467, #460) | #548 | 2026-03-13 | #447 dropped (not needed); spawned #550; PR2 pending (#459, #474, #475) |
