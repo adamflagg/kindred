@@ -37,7 +37,7 @@ describe('parseVersion', () => {
       const result = parseVersion('v0.7.0-5-gabc1234')
       expect(result).toEqual({
         display: 'v0.7.0+5',
-        url: 'https://github.com/adamflagg/kindred/commit/abc1234',
+        url: 'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234',
       })
     })
 
@@ -45,7 +45,7 @@ describe('parseVersion', () => {
       const result = parseVersion('v1.2.3-42-gdeadbeef')
       expect(result).toEqual({
         display: 'v1.2.3+42',
-        url: 'https://github.com/adamflagg/kindred/commit/deadbeef',
+        url: 'https://github.com/adamflagg/kindred/compare/v1.2.3...deadbeef',
       })
     })
 
@@ -53,7 +53,7 @@ describe('parseVersion', () => {
       const result = parseVersion('v1.0-3-g1234567')
       expect(result).toEqual({
         display: 'v1.0+3',
-        url: 'https://github.com/adamflagg/kindred/commit/1234567',
+        url: 'https://github.com/adamflagg/kindred/compare/v1.0...1234567',
       })
     })
   })
@@ -110,7 +110,10 @@ describe('VersionInfo', () => {
     render(<VersionInfo />)
     const link = screen.getByRole('link')
     expect(link).toHaveTextContent('Kindred v0.7.0+5')
-    expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/commit/abc1234')
+    expect(link).toHaveAttribute(
+      'href',
+      'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234'
+    )
   })
 
   it('should render nothing for "dev"', () => {
