@@ -61,6 +61,16 @@ class SourceField:
     SOCIALIZE_WITH = "RetParent-Socializewithbest"
 
 
+# Reverse mapping from canonical SourceField values to config schema keys
+# Used by solver files to look up objective.source_multipliers.* config values
+SOURCE_FIELD_TO_CONFIG_KEY: dict[str, str] = {
+    SourceField.BUNK_WITH: "share_bunk_with",
+    SourceField.NOT_BUNK_WITH: "do_not_share_with",
+    SourceField.BUNKING_NOTES: "bunking_notes",
+    SourceField.INTERNAL_NOTES: "internal_notes",
+    SourceField.SOCIALIZE_WITH: "socialize_preference",
+}
+
 # Map from original_bunk_requests.field values to bunk_requests.source_field
 # Used when loading from the original_bunk_requests table
 FIELD_TO_SOURCE_FIELD: dict[str, str] = {
