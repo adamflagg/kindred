@@ -97,6 +97,9 @@ class DirectBunkingSolver:
         # Track soft constraint violations for penalty-based optimization
         self.soft_constraint_violations: dict[str, tuple[cp_model.IntVar, int]] = {}
 
+        # Limit debug logging for pair reduction (only first 5 pairs)
+        self._pair_reduction_logged = 0
+
         # Validate requests and categorize as possible/impossible
         self.possible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of possible requests
         self.impossible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of impossible requests
@@ -174,8 +177,6 @@ class DirectBunkingSolver:
             # If bunk has no gender specified, skip it (shouldn't happen)
 
         # Log reduction for debugging (only first few times)
-        if not hasattr(self, "_pair_reduction_logged"):
-            self._pair_reduction_logged = 0
         if self._pair_reduction_logged < 5:
             logger.debug(
                 f"Valid bunks for pair {person1_cm_id}-{person2_cm_id} "
