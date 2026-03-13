@@ -140,8 +140,8 @@ class TestSolutionCanonicalKeys:
 
     def test_field_stats_keyed_by_canonical_values(self):
         """calculate_field_level_stats must return canonical SourceField keys."""
-        from bunking.solver.solution import calculate_field_level_stats
         from bunking.models_v2 import DirectBunkRequest
+        from bunking.solver.solution import calculate_field_level_stats
 
         request = DirectBunkRequest(
             id="req1",
@@ -166,8 +166,8 @@ class TestSolutionCanonicalKeys:
 
     def test_explicit_csv_fields_match_canonical_values(self):
         """Explicit CSV field detection must use canonical SourceField values."""
-        from bunking.solver.solution import calculate_field_level_stats
         from bunking.models_v2 import DirectBunkRequest
+        from bunking.solver.solution import calculate_field_level_stats
 
         request = DirectBunkRequest(
             id="req1",
@@ -194,8 +194,8 @@ class TestDirectSolverCanonicalKeys:
 
     def test_multiplier_uses_config_key_not_canonical_value(self):
         """_get_csv_field_multiplier must look up the config key, not the canonical value."""
-        from bunking.solver.direct_solver import DirectBunkingSolver
         from bunking.models_v2 import DirectBunkRequest
+        from bunking.solver.direct_solver import DirectBunkingSolver
 
         config = MagicMock()
         config.get_float.side_effect = lambda key, default=1.0: {
