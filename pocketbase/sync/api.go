@@ -1094,13 +1094,6 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		"service", qs.Service,
 	)
 
-	// Get current year from environment for year mode determination
-	currentYear, err := ParseSeasonYear()
-	if err != nil {
-		slog.Error("Year resolution failed for queued sync", "error", err)
-		return
-	}
-
 	// Run the queued sync with cancel support
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
@@ -1212,7 +1205,12 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 
 	case "unified", "":
 		// Empty type for backward compatibility with existing queued items
-		// Determine year mode
+		// Determine year mode — currentYear only needed here
+		currentYear, err := ParseSeasonYear()
+		if err != nil {
+			slog.Error("Year resolution failed for unified sync", "error", err)
+			break
+		}
 		optsYear := qs.Year
 		if qs.Year == currentYear {
 			optsYear = 0 // Current year mode
