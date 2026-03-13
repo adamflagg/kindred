@@ -1782,6 +1782,44 @@ class TestDurationFilteringRespectsSessionTypes:
         assert "1001" in call_filters[0]
         assert "1002" in call_filters[0]
 
+    @pytest.mark.asyncio
+    async def test_duration_helper_filters_by_session_cm_id(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """_fetch_duration_person_pb_ids with session_cm_id should filter to that session only."""
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21", session_type="main"),
+            _make_session_record(cm_id=1002, start_date="2025-06-15", end_date="2025-06-21", session_type="main"),
+        ]
+        attendees = [_make_attendee_record("p1")]
+
+        call_filters: list[str] = []
+
+        def collection_router(name: str) -> MagicMock:
+            mock_coll = MagicMock()
+            if name == "sessions":
+                mock_coll.get_full_list.return_value = sessions
+            elif name == "attendees":
+
+                def capture_attendees(**kwargs: Any) -> list[Mock]:
+                    call_filters.append(kwargs.get("query_params", {}).get("filter", ""))
+                    return attendees
+
+                mock_coll.get_full_list.side_effect = capture_attendees
+            else:
+                mock_coll.get_full_list.return_value = []
+            return mock_coll
+
+        mock_pb.collection.side_effect = collection_router
+
+        # Clear cache to avoid stale hits
+        service._person_id_cache.clear()
+
+        await service._fetch_duration_person_pb_ids(2025, "1-week", session_cm_id=1001)
+
+        # Should only include session 1001, not 1002
+        assert len(call_filters) == 1
+        assert "1001" in call_filters[0]
+        assert "1002" not in call_filters[0]
+
 
 class TestInferLocationFromMappingsExtended:
     """Additional tests for _infer_location_from_mappings (continued)."""
