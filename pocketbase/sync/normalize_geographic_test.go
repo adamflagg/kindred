@@ -1880,3 +1880,109 @@ func TestBuildContextValuesFromMap(t *testing.T) {
 		t.Error("JSON output looks like a bare string array — should be context objects")
 	}
 }
+
+// ============================================================================
+// Composite Key Dedup Tests — geoLookupKey
+// ============================================================================
+
+// TestBuildNormalizationLookupCompositeKeyDedup verifies that the same city name
+// from different states produces separate entries in the normalizer request,
+// not collapsing to first-seen context.
+func TestBuildNormalizationLookupCompositeKeyDedup(t *testing.T) {
+	// Set up a mock server that echoes back each value with a state-qualified canonical
+	var receivedValues []valueWithContext
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req geoNormalizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		receivedValues = append(receivedValues, req.Values...)
+
+		// Return each value as its own canonical, qualified by state
+		results := make(map[string]pythonNormalizedResult)
+		for _, v := range req.Values {
+			canonical := v.Value
+			if v.State != "" {
+				canonical = v.Value + ", " + v.State
+			}
+			results[v.Value] = pythonNormalizedResult{Canonical: canonical, Confidence: 1.0}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(results)
+	}))
+	defer server.Close()
+
+	// Override API_URL to point to mock server
+	t.Setenv("API_URL", server.URL)
+
+	sync := &NormalizeGeographicSync{
+		ProcessedKeys: make(map[string]bool),
+	}
+
+	data := []attendeeGeoData{
+		{
+			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Springfield", AddressState: "IL", AddressCountry: "US",
+		},
+		{
+			PersonPBID: "p2", PersonCMID: 1002, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Springfield", AddressState: "MO", AddressCountry: "US",
+		},
+	}
+
+	lookup, err := sync.buildNormalizationLookup(data)
+	if err != nil {
+		t.Fatalf("buildNormalizationLookup failed: %v", err)
+	}
+
+	// The normalizer should have received 2 separate entries for "Springfield"
+	// with different state contexts (IL and MO).
+	if len(receivedValues) < 2 {
+		t.Errorf("expected at least 2 values sent to normalizer, got %d", len(receivedValues))
+	}
+
+	// Verify both state contexts were sent
+	statesSeen := make(map[string]bool)
+	for _, v := range receivedValues {
+		if v.Value == "Springfield" {
+			statesSeen[v.State] = true
+		}
+	}
+	if !statesSeen["IL"] {
+		t.Error("Springfield with state IL was not sent to normalizer")
+	}
+	if !statesSeen["MO"] {
+		t.Error("Springfield with state MO was not sent to normalizer")
+	}
+
+	// The lookup should contain the normalized result
+	if lookup.city == nil {
+		t.Fatal("city lookup is nil")
+	}
+	if len(lookup.city) == 0 {
+		t.Fatal("city lookup is empty")
+	}
+}
+
+// TestGeoLookupKeyCompositeEquality verifies that geoLookupKey uses
+// all three fields (Value, State, Country) for equality comparison.
+func TestGeoLookupKeyCompositeEquality(t *testing.T) {
+	k1 := geoLookupKey{Value: "Springfield", State: "IL", Country: "US"}
+	k2 := geoLookupKey{Value: "Springfield", State: "MO", Country: "US"}
+	k3 := geoLookupKey{Value: "Springfield", State: "IL", Country: "US"}
+
+	m := make(map[geoLookupKey]bool)
+	m[k1] = true
+	m[k2] = true
+
+	if len(m) != 2 {
+		t.Errorf("expected 2 distinct keys, got %d", len(m))
+	}
+
+	if k1 == k2 {
+		t.Error("k1 should not equal k2 (different state)")
+	}
+	if k1 != k3 {
+		t.Error("k1 should equal k3 (same fields)")
+	}
+}
