@@ -191,7 +191,8 @@ def _filter_and_categorize_requests(
         else:
             # Fallback to old source_field check
             if hasattr(request, "source_field") and request.source_field not in EXPLICIT_SOURCE_FIELDS:
-                logger.debug(f"Skipping request from {request.source_field} field for must-satisfy-one")
+                if track_debug:
+                    logger.debug(f"Skipping request from {request.source_field} field for must-satisfy-one")
                 continue
 
         # Categorize by request type

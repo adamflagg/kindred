@@ -588,7 +588,7 @@ class TestSimplifiedSourcePriority:
             priority=4,
             confidence_score=0.90,  # Lower confidence
             source=RequestSource.STAFF,
-            source_field="do_not_share_with",  # Staff explicit validation
+            source_field=SourceField.NOT_BUNK_WITH,  # Staff explicit validation
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -602,7 +602,7 @@ class TestSimplifiedSourcePriority:
         # Staff should win even with lower confidence (source > confidence)
         assert len(result.kept_requests) == 1
         assert result.kept_requests[0].source == RequestSource.STAFF
-        assert result.kept_requests[0].source_field == "do_not_share_with"
+        assert result.kept_requests[0].source_field == SourceField.NOT_BUNK_WITH
         assert result.statistics["duplicates_removed"] == 1
 
     def test_confidence_tiebreaker_same_source(self):
