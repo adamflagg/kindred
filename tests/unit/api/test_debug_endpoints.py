@@ -566,10 +566,12 @@ class TestGetPromptEndpoint:
 
         with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
             mock_file = Mock()
+            mock_file.stem = "parse_bunk_with"
             mock_file.exists.return_value = True
             mock_file.read_text.return_value = prompt_content
             mock_file.stat.return_value.st_mtime = 1705312800.0
-            mock_dir.__truediv__ = Mock(return_value=mock_file)
+            mock_dir.exists.return_value = True
+            mock_dir.glob.return_value = [mock_file]
 
             response = client.get("/api/debug/prompts/parse_bunk_with")
 
@@ -631,9 +633,11 @@ class TestUpdatePromptEndpoint:
 
         with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
             mock_file = Mock()
+            mock_file.stem = "parse_bunk_with"
             mock_file.exists.return_value = True
             mock_file.stat.return_value.st_mtime = 1705312800.0
-            mock_dir.__truediv__ = Mock(return_value=mock_file)
+            mock_dir.exists.return_value = True
+            mock_dir.glob.return_value = [mock_file]
 
             response = client.put(
                 "/api/debug/prompts/parse_bunk_with",
@@ -669,9 +673,11 @@ class TestUpdatePromptEndpoint:
 
         with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
             mock_file = Mock()
+            mock_file.stem = "parse_bunk_with"
             mock_file.exists.return_value = True
             mock_file.stat.return_value.st_mtime = 1705312800.0
-            mock_dir.__truediv__ = Mock(return_value=mock_file)
+            mock_dir.exists.return_value = True
+            mock_dir.glob.return_value = [mock_file]
 
             with patch("api.routers.debug.clear_prompt_cache") as mock_clear_cache:
                 response = client.put(

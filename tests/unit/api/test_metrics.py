@@ -2058,12 +2058,12 @@ class TestRetentionByFirstYear:
         assert first_year_stats[2025]["base_count"] == 2
         assert first_year_stats[2025]["returned_count"] == 1
 
-    def test_retention_endpoint_includes_by_first_year(self) -> None:
-        """Test that retention endpoint response includes by_first_year field."""
+    def test_retention_endpoint_includes_by_first_summer_year(self) -> None:
+        """Test that retention endpoint response includes by_first_summer_year field."""
         from api.schemas.metrics import RetentionMetricsResponse
 
         fields = RetentionMetricsResponse.model_fields
-        assert "by_first_year" in fields, "RetentionMetricsResponse should include by_first_year field"
+        assert "by_first_summer_year" in fields, "RetentionMetricsResponse should include by_first_summer_year field"
 
 
 class TestRetentionBySessionBunk:
