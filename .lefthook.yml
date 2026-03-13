@@ -1,0 +1,190 @@
+# lefthook.yml
+# Git hooks manager — replaces .githooks/ and scripts/ci/quick_check.sh
+# Docs: https://github.com/evilmartians/lefthook
+#
+# Stages:
+#   pre-commit  — formatters + validators on staged files (<1s)
+#   commit-msg  — conventional commit validation
+#   pre-push    — full-suite linters + tests (~1 min, parallel)
+#   post-merge  — worktree cleanup notifications
+#
+# Escape hatches:
+#   LEFTHOOK=0 git commit    — bypass all hooks
+#   git commit --no-verify   — bypass all hooks (git-native)
+
+# ─── Pre-commit: formatters + validators on staged files ─────────────
+pre-commit:
+  parallel: true
+  commands:
+    prettier:
+      glob: "frontend/src/**/*.{ts,tsx,js,jsx,json,css}"
+      root: "frontend/"
+      run: npx prettier --write {staged_files}
+      stage_fixed: true
+
+    ruff-format:
+      glob: "**/*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    gofmt:
+      glob: "pocketbase/**/*.go"
+      root: "pocketbase/"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+
+    large-files:
+      glob: "**/*"
+      run: |
+        for f in {staged_files}; do
+          if [ -f "$f" ]; then
+            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null)
+            if [ "$size" -gt 5242880 ]; then
+              echo "File too large (>5MB): $f ($size bytes)"
+              exit 1
+            fi
+          fi
+        done
+
+    json-validate:
+      glob:
+        - "config/*.json"
+        - "bunking/**/*.json"
+      run: |
+        for f in {staged_files}; do
+          if ! python3 -m json.tool "$f" > /dev/null 2>&1; then
+            echo "Invalid JSON: $f"
+            exit 1
+          fi
+        done
+
+# ─── Commit-msg: conventional commit validation ──────────────────────
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no-install commitlint --edit {1}
+      skip:
+        - run: "! command -v npx >/dev/null 2>&1 || [ ! -d node_modules ]"
+
+# ─── Pre-push: full-suite linters + tests (parallel) ─────────────────
+pre-push:
+  parallel: true
+  commands:
+    ruff-check:
+      run: uv run ruff check .
+
+    mypy:
+      run: uv run mypy . --explicit-package-bases
+
+    eslint:
+      root: "frontend/"
+      run: npm run lint
+
+    type-check:
+      root: "frontend/"
+      run: npm run type-check
+
+    golangci-lint:
+      root: "pocketbase/"
+      run: golangci-lint run --config ../.golangci.yml
+      skip:
+        - run: "! command -v golangci-lint >/dev/null 2>&1"
+
+    go-build:
+      root: "pocketbase/"
+      run: go build .
+
+    shellcheck:
+      run: find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' 2>/dev/null | xargs shellcheck --severity=warning
+      skip:
+        - run: "! command -v shellcheck >/dev/null 2>&1"
+
+    hadolint:
+      run: |
+        for df in docker/Dockerfile.*; do
+          [ -f "$df" ] || continue
+          if ! docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < "$df"; then
+            exit 1
+          fi
+        done
+      skip:
+        - run: "! command -v docker >/dev/null 2>&1"
+
+    caddy-validate:
+      run: |
+        caddy validate --config docker/Caddyfile 2>&1 && \
+        caddy validate --config frontend/Caddyfile 2>&1
+      skip:
+        - run: "! command -v caddy >/dev/null 2>&1"
+
+    pb-js-lint:
+      root: "pocketbase/"
+      run: npm run lint
+
+    pytest:
+      run: uv run pytest tests/unit/ -v --tb=short
+
+    go-test:
+      root: "pocketbase/"
+      run: go test -race ./... -v
+
+    vitest:
+      root: "frontend/"
+      run: npx vitest run
+
+    behind-origin:
+      only:
+        - ref: main
+      run: |
+        git fetch origin main --quiet 2>/dev/null || exit 0
+        LOCAL=$(git rev-parse HEAD)
+        REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "")
+        BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "")
+        [ -z "$REMOTE" ] || [ -z "$BASE" ] && exit 0
+        if [ "$LOCAL" != "$REMOTE" ] && [ "$LOCAL" = "$BASE" ]; then
+          BEHIND_COUNT=$(git rev-list --count HEAD..origin/main)
+          echo "PUSH BLOCKED: Local main is ${BEHIND_COUNT} commit(s) behind origin"
+          echo "Run: git pull --rebase origin main"
+          exit 1
+        elif [ "$LOCAL" != "$REMOTE" ] && [ "$REMOTE" != "$BASE" ] && [ "$LOCAL" != "$BASE" ]; then
+          BEHIND_COUNT=$(git rev-list --count HEAD..origin/main)
+          AHEAD_COUNT=$(git rev-list --count origin/main..HEAD)
+          echo "PUSH BLOCKED: Local and origin/main have diverged (${AHEAD_COUNT} ahead, ${BEHIND_COUNT} behind)"
+          echo "Run: git pull --rebase origin main"
+          exit 1
+        fi
+
+# ─── Post-merge: worktree cleanup notifications ──────────────────────
+post-merge:
+  commands:
+    worktree-cleanup:
+      run: |
+        MAIN_REPO="$(git rev-parse --show-toplevel)"
+        REPO_NAME="$(basename "$MAIN_REPO")"
+        REPO_PARENT="$(dirname "$MAIN_REPO")"
+        WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
+        [ -d "$WORKTREES_DIR" ] || exit 0
+        MERGED=()
+        for dir in "$WORKTREES_DIR"/*/; do
+          [ -d "$dir" ] || continue
+          name=$(basename "$dir")
+          branch="feature/$name"
+          state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
+          if [ "$state" = "MERGED" ]; then
+            MERGED+=("$name")
+          fi
+        done
+        if [ ${#MERGED[@]} -gt 0 ]; then
+          echo ""
+          echo "Worktrees ready for cleanup (PR merged):"
+          for name in "${MERGED[@]}"; do
+            echo "  $name"
+          done
+          echo ""
+          if [ ${#MERGED[@]} -eq 1 ]; then
+            echo "Run: ./scripts/worktree/cleanup.sh ${MERGED[0]}"
+          else
+            echo "Run: ./scripts/worktree/cleanup.sh --all-merged"
+          fi
+          echo ""
+        fi

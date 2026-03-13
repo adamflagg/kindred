@@ -45,7 +45,7 @@ jobs:
         node-version: '22'
 
     - name: Install commitlint
-      run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
+      run: npm ci
 
     - name: Validate commits
       run: |
@@ -161,7 +161,6 @@ jobs:
             - 'pocketbase/**/*_test.go'
           scripts:
             - 'scripts/**/*.sh'
-            - '.githooks/**'
             - '.shellcheckrc'
           docker:
             - 'docker/**'
@@ -323,7 +322,7 @@ jobs:
       if: needs.detect-changes.outputs.scripts == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.docker == 'true'
       run: |
         echo "Checking shell scripts..."
-        find scripts/ .githooks/ docker/ frontend/ tests/shell/ -maxdepth 3 \( -name '*.sh' -o -name 'pre-*' -o -name 'post-*' \) -print0 | \
+        find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 \( -name '*.sh' -o -name 'pre-*' -o -name 'post-*' \) -print0 | \
           xargs -0 shellcheck --severity=warning
 
   # Frontend linting (parallel with other lint jobs)
