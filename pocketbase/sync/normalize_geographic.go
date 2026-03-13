@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -255,7 +256,8 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 	// Load all attendees for the year regardless of enrollment status.
 	// Normalization is cheap (local fuzzy matching) and benefits all attendees:
 	// waitlisted campers get clean data, and more data points improve clustering.
-	filter := fmt.Sprintf("year = %d", year)
+	filter := "year = {:year}"
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 
@@ -272,6 +274,7 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying attendees page %d: %w", page, err)
@@ -381,7 +384,8 @@ func (n *NormalizeGeographicSync) getCongregationFieldID() (string, error) {
 func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID string) (map[string]string, error) {
 	result := make(map[string]string)
 
-	filter := fmt.Sprintf(`field_definition = %q && year = %d && value != ""`, fieldID, year)
+	filter := `field_definition = {:fieldID} && year = {:year} && value != ""`
+	filterParams := dbx.Params{"fieldID": fieldID, "year": year}
 	page := 1
 	perPage := 500
 
@@ -392,6 +396,7 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying person_custom_values page %d: %w", page, err)
@@ -431,8 +436,9 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
 
-	filter := fmt.Sprintf("year = %d", year)
-	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0)
+	filter := "year = {:year}"
+	filterParams := dbx.Params{"year": year}
+	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0, filterParams)
 	if findErr != nil {
 		return aliasOverrides, mergeOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
@@ -736,7 +742,8 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]*core.Record, error) {
 	existingRecords := make(map[string]*core.Record)
 
-	filter := fmt.Sprintf("year = %d", year)
+	filter := "year = {:year}"
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 
@@ -747,6 +754,7 @@ func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying existing mappings page %d: %w", page, err)
@@ -897,7 +905,8 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 	year int,
 ) error {
 	// Update camper_history records
-	filter := fmt.Sprintf("year = %d", year)
+	filter := "year = {:year}"
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 	updatedCount := 0
@@ -915,6 +924,7 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return fmt.Errorf("querying camper_history page %d: %w", page, err)
@@ -992,7 +1002,8 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 		}
 	}
 
-	filter := fmt.Sprintf("year = %d", year)
+	filter := "year = {:year}"
+	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
 	updatedCount := 0
@@ -1010,6 +1021,7 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			filterParams,
 		)
 		if err != nil {
 			return fmt.Errorf("querying persons page %d: %w", page, err)
