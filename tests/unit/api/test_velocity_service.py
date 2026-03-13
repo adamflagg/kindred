@@ -3904,3 +3904,170 @@ class TestSnapshotDedupOrder:
         # After dedup: parent latest (14:00) = 8, AG child latest (14:00) = 3
         # After AG sum: effective 1001 = 8 + 3 = 11
         assert result.combined.weekly[0].enrolled == 11
+
+
+# ============================================================================
+# Task 1: _daily_for_gender cancelled bug (#550)
+# ============================================================================
+
+
+class TestDailyForGenderCancelled:
+    """Test that _daily_for_gender computes cancelled from gross_enrolled - enrolled."""
+
+    def test_boys_cancelled_derived_from_gross_minus_enrolled(self):
+        from api.schemas.velocity import DailyDataPoint
+        from api.services.velocity_service import VelocityService
+
+        daily = [
+            DailyDataPoint(
+                date="2025-11-03",
+                day_offset=0,
+                gross_enrolled=100,
+                enrolled=90,
+                cancelled=10,
+                daily_new=5,
+                daily_cancelled=2,
+                data_source="snapshot",
+                gross_enrolled_boys=60,
+                enrolled_boys=55,
+                daily_new_boys=3,
+                daily_cancelled_boys=1,
+                gross_enrolled_girls=40,
+                enrolled_girls=35,
+                daily_new_girls=2,
+                daily_cancelled_girls=1,
+            ),
+        ]
+        result = VelocityService._daily_for_gender(daily, "M")
+        assert len(result) == 1
+        assert result[0].cancelled == 5
+
+    def test_girls_cancelled_derived_from_gross_minus_enrolled(self):
+        from api.schemas.velocity import DailyDataPoint
+        from api.services.velocity_service import VelocityService
+
+        daily = [
+            DailyDataPoint(
+                date="2025-11-03",
+                day_offset=0,
+                gross_enrolled=100,
+                enrolled=90,
+                cancelled=10,
+                daily_new=5,
+                daily_cancelled=2,
+                data_source="snapshot",
+                gross_enrolled_boys=60,
+                enrolled_boys=55,
+                daily_new_boys=3,
+                daily_cancelled_boys=1,
+                gross_enrolled_girls=40,
+                enrolled_girls=35,
+                daily_new_girls=2,
+                daily_cancelled_girls=1,
+            ),
+        ]
+        result = VelocityService._daily_for_gender(daily, "F")
+        assert len(result) == 1
+        assert result[0].cancelled == 5
+
+
+# ============================================================================
+# Task 2: Eliminate duplicate snapshot fetch (#474)
+# ============================================================================
+
+
+class TestSnapshotFetchDedup:
+    """Test that snapshots are fetched once and passed through, not fetched twice."""
+
+    @pytest.mark.asyncio
+    async def test_enrollment_gender_split_fetches_snapshots_once(self, service, mock_repository, sample_sessions):
+        """With split_by_gender=True, fetch_enrollment_snapshots should be called once, not twice."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2025-11-03T14:00:00Z",
+                1001,
+                2026,
+                enrolled=100,
+                cancelled=5,
+                enrolled_male=60,
+                enrolled_female=40,
+                cancelled_male=3,
+                cancelled_female=2,
+            ),
+        ]
+
+        await service.get_velocity(year=2026, split_by_gender=True)
+
+        primary_calls = [
+            c
+            for c in mock_repository.fetch_enrollment_snapshots.call_args_list
+            if c.args[0] == 2026 or c.kwargs.get("year") == 2026
+        ]
+        assert len(primary_calls) == 1
+
+
+# ============================================================================
+# Task 3: Reuse status transitions for cancellation gender curves (#475)
+# ============================================================================
+
+
+class TestTransitionsFetchDedup:
+    """Test that status transitions are fetched once for cancellation gender curves."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_gender_split_fetches_transitions_once(self, service, mock_repository, sample_sessions):
+        """With metric=cancellation and split_by_gender=True, fetch_status_transitions should be called once."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []  # Force reconstruction path
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(1, 1001, "2025-11-03T14:00:00Z", gender="M"),
+            create_mock_status_transition(2, 1001, "2025-11-10T14:00:00Z", gender="F"),
+        ]
+
+        await service.get_velocity(year=2026, metric="cancellation", split_by_gender=True)
+
+        primary_calls = [c for c in mock_repository.fetch_status_transitions.call_args_list if c.args[0] == 2026]
+        assert len(primary_calls) == 1
+
+
+# ============================================================================
+# Task 4: Add daily data series to cancellation velocity (#459)
+# ============================================================================
+
+
+class TestCancellationDailyData:
+    """Test that cancellation curves produce daily data like enrollment does."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_snapshots_produce_daily_data(self, service, mock_repository, sample_sessions):
+        """Cancellation curves from snapshots should populate VelocityCurve.daily."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03T14:00:00Z", 1001, 2026, enrolled=100, cancelled=5),
+            create_mock_snapshot("2025-11-04T14:00:00Z", 1001, 2026, enrolled=102, cancelled=7),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert len(result.combined.daily) > 0
+        for dp in result.combined.daily:
+            assert dp.data_source == "snapshot"
+            assert dp.cancelled >= 0
+
+    @pytest.mark.asyncio
+    async def test_cancellation_reconstruction_produces_daily_data(self, service, mock_repository, sample_sessions):
+        """Cancellation curves from reconstruction should populate VelocityCurve.daily."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(1, 1001, "2025-11-03T14:00:00Z"),
+            create_mock_status_transition(2, 1001, "2025-11-10T14:00:00Z"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert len(result.combined.daily) > 0
+        for dp in result.combined.daily:
+            assert dp.data_source == "reconstructed"
+            assert dp.cancelled >= 0
