@@ -12,7 +12,7 @@
  * - Phase marker bands (ReferenceArea) on daily chart; falls back to weekly on no daily data
  */
 
-import { Fragment, useCallback, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -28,6 +28,7 @@ import {
 } from 'recharts'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useVelocity } from '../../../hooks/useVelocity'
+import { useChartZoom } from '../../../hooks/useChartZoom'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import type { WeeklyDataPoint } from '../../../types/velocity'
@@ -51,16 +52,6 @@ export default function CancellationVelocityPage() {
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
   const [splitByGender, setSplitByGender] = useState(false)
-  const [zoomRange, setZoomRange] = useState<[number, number] | null>(null)
-
-  // Sync Brush drag with zoomRange state, deduplicating to prevent render loops
-  const handleBrushChange = useCallback((range: { startIndex?: number; endIndex?: number }) => {
-    if (range.startIndex !== undefined && range.endIndex !== undefined) {
-      const s = range.startIndex
-      const e = range.endIndex
-      setZoomRange((prev) => (prev && prev[0] === s && prev[1] === e ? prev : [s, e]))
-    }
-  }, [])
 
   const priorYearOptions = useMemo(
     () => availableYears.filter((y) => y < currentYear).sort((a, b) => b - a),
@@ -269,6 +260,10 @@ export default function CancellationVelocityPage() {
       return row
     })
   }, [data, splitByGender])
+
+  // Separate zoom state per chart to avoid cross-contamination (#510)
+  const weeklyZoom = useChartZoom(chartData.length)
+  const dailyZoom = useChartZoom(dailyChartData.length)
 
   // Daily tick formatter: show date labels every 7 days
   const dailyTickFormatter = useMemo(() => {
@@ -602,11 +597,11 @@ export default function CancellationVelocityPage() {
                 <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
                 <select
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-                  value={zoomRange?.[0] ?? 0}
+                  value={dailyZoom.zoomRange?.[0] ?? 0}
                   onChange={(e) => {
                     const start = Number(e.target.value)
-                    const end = zoomRange?.[1] ?? dailyChartData.length - 1
-                    setZoomRange([start, Math.max(start, end)])
+                    const end = dailyZoom.zoomRange?.[1] ?? dailyChartData.length - 1
+                    dailyZoom.setZoomRange([start, Math.max(start, end)])
                   }}
                 >
                   {dailyZoomMilestones.map((m) => (
@@ -618,11 +613,11 @@ export default function CancellationVelocityPage() {
                 <span className="text-muted-foreground">to</span>
                 <select
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-                  value={zoomRange?.[1] ?? dailyChartData.length - 1}
+                  value={dailyZoom.zoomRange?.[1] ?? dailyChartData.length - 1}
                   onChange={(e) => {
                     const end = Number(e.target.value)
-                    const start = zoomRange?.[0] ?? 0
-                    setZoomRange([Math.min(start, end), end])
+                    const start = dailyZoom.zoomRange?.[0] ?? 0
+                    dailyZoom.setZoomRange([Math.min(start, end), end])
                   }}
                 >
                   {dailyZoomMilestones.map((m) => (
@@ -631,10 +626,10 @@ export default function CancellationVelocityPage() {
                     </option>
                   ))}
                 </select>
-                {zoomRange && (
+                {dailyZoom.isZoomedIn && (
                   <button
                     className="text-primary hover:text-primary/80 text-xs underline"
-                    onClick={() => setZoomRange(null)}
+                    onClick={dailyZoom.resetZoom}
                   >
                     Reset
                   </button>
@@ -646,11 +641,11 @@ export default function CancellationVelocityPage() {
                 <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
                 <select
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-                  value={zoomRange?.[0] ?? 0}
+                  value={weeklyZoom.zoomRange?.[0] ?? 0}
                   onChange={(e) => {
                     const start = Number(e.target.value)
-                    const end = zoomRange?.[1] ?? chartData.length - 1
-                    setZoomRange([start, Math.max(start, end)])
+                    const end = weeklyZoom.zoomRange?.[1] ?? chartData.length - 1
+                    weeklyZoom.setZoomRange([start, Math.max(start, end)])
                   }}
                 >
                   {chartData.map((pt, i) => (
@@ -662,11 +657,11 @@ export default function CancellationVelocityPage() {
                 <span className="text-muted-foreground">to</span>
                 <select
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-                  value={zoomRange?.[1] ?? chartData.length - 1}
+                  value={weeklyZoom.zoomRange?.[1] ?? chartData.length - 1}
                   onChange={(e) => {
                     const end = Number(e.target.value)
-                    const start = zoomRange?.[0] ?? 0
-                    setZoomRange([Math.min(start, end), end])
+                    const start = weeklyZoom.zoomRange?.[0] ?? 0
+                    weeklyZoom.setZoomRange([Math.min(start, end), end])
                   }}
                 >
                   {chartData.map((pt, i) => (
@@ -675,10 +670,10 @@ export default function CancellationVelocityPage() {
                     </option>
                   ))}
                 </select>
-                {zoomRange && (
+                {weeklyZoom.isZoomedIn && (
                   <button
                     className="text-primary hover:text-primary/80 text-xs underline"
-                    onClick={() => setZoomRange(null)}
+                    onClick={weeklyZoom.resetZoom}
                   >
                     Reset
                   </button>
@@ -761,11 +756,17 @@ export default function CancellationVelocityPage() {
                 dataKey="day_offset"
                 height={20}
                 stroke="hsl(var(--primary))"
-                onChange={handleBrushChange}
-                {...(zoomRange
+                onChange={dailyZoom.handleBrushChange}
+                {...(dailyZoom.zoomRange
                   ? {
-                      startIndex: Math.min(zoomRange[0], Math.max(0, dailyChartData.length - 1)),
-                      endIndex: Math.min(zoomRange[1], Math.max(0, dailyChartData.length - 1)),
+                      startIndex: Math.min(
+                        dailyZoom.zoomRange[0],
+                        Math.max(0, dailyChartData.length - 1)
+                      ),
+                      endIndex: Math.min(
+                        dailyZoom.zoomRange[1],
+                        Math.max(0, dailyChartData.length - 1)
+                      ),
                     }
                   : {})}
                 tickFormatter={(offset: number) => dailyTickFormatter(offset)}
@@ -918,11 +919,17 @@ export default function CancellationVelocityPage() {
                 dataKey="week_number"
                 height={20}
                 stroke="hsl(var(--primary))"
-                onChange={handleBrushChange}
-                {...(zoomRange
+                onChange={weeklyZoom.handleBrushChange}
+                {...(weeklyZoom.zoomRange
                   ? {
-                      startIndex: Math.min(zoomRange[0], Math.max(0, chartData.length - 1)),
-                      endIndex: Math.min(zoomRange[1], Math.max(0, chartData.length - 1)),
+                      startIndex: Math.min(
+                        weeklyZoom.zoomRange[0],
+                        Math.max(0, chartData.length - 1)
+                      ),
+                      endIndex: Math.min(
+                        weeklyZoom.zoomRange[1],
+                        Math.max(0, chartData.length - 1)
+                      ),
                     }
                   : {})}
                 tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}

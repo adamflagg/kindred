@@ -1,7 +1,8 @@
 /**
  * Tests for useApiWithAuth - specifically the 401 redirect behavior in fetchWithAuth
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
+import { renderHook } from '@testing-library/react'
 
 // Mock pocketbase module
 const mockClear = vi.fn()
@@ -14,9 +15,13 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 
-// Mock AuthContext
+// Mock AuthContext — track isLoading for auth guard tests
+let mockAuthIsLoading = false
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: '1', email: 'test@example.com' } }),
+  useAuth: () => ({
+    user: mockAuthIsLoading ? null : { id: '1', email: 'test@example.com' },
+    isLoading: mockAuthIsLoading,
+  }),
 }))
 
 // Save original fetch and location
@@ -71,5 +76,25 @@ describe('fetchWithAuth 401 handling', () => {
     const response = await global.fetch('/api/test')
     expect(response.status).toBe(200)
     expect(mockClear).not.toHaveBeenCalled()
+  })
+})
+
+describe('isAuthLoading', () => {
+  afterAll(() => {
+    mockAuthIsLoading = false
+  })
+
+  it('exposes isAuthLoading as false when auth is loaded', async () => {
+    mockAuthIsLoading = false
+    const { useApiWithAuth } = await import('./useApiWithAuth')
+    const { result } = renderHook(() => useApiWithAuth())
+    expect(result.current.isAuthLoading).toBe(false)
+  })
+
+  it('exposes isAuthLoading as true when auth is loading', async () => {
+    mockAuthIsLoading = true
+    const { useApiWithAuth } = await import('./useApiWithAuth')
+    const { result } = renderHook(() => useApiWithAuth())
+    expect(result.current.isAuthLoading).toBe(true)
   })
 })
