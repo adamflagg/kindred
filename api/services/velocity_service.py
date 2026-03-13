@@ -933,7 +933,7 @@ class VelocityService:
         session_date_data: dict[int, dict[str, dict[str, int]]] = defaultdict(
             lambda: defaultdict(lambda: {"enrolled": 0})
         )
-        # Track cancelled counts per session (latest snapshot per session per date)
+        # Track cancelled counts per effective session per date (AG children summed into parent after dedup)
         session_date_cancelled: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
         # First pass: deduplicate — keep latest snapshot per raw session per date.
