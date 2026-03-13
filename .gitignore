@@ -169,6 +169,7 @@ coverage.xml
 .playwright-mcp/
 .claude/
 .superpowers
+docs/superpowers/
 
 # =============================================================================
 # Jupyter Notebooks
