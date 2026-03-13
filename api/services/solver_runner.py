@@ -219,7 +219,9 @@ async def run_solver_task_v2(
                     "session": str(session_cm_id),
                     "session_id": session_cm_id,
                     "status": "failed",
-                    "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
+                    "started_at": solver_runs[run_id]
+                    .get("started_at", datetime.now(UTC))
+                    .strftime("%Y-%m-%d %H:%M:%S.000Z"),
                     "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                     "error": json.dumps({"message": str(e)}),
                 },
