@@ -94,23 +94,36 @@ export function GeoDetailList({
               <tbody>
                 {displayData.map((item) => {
                   const isSelected = selectedItem === item.name
+                  const isClickable = category !== 'region'
+
+                  const handleActivate = isClickable
+                    ? () => {
+                        onItemClick?.(item.name)
+                        onDrilldown?.({
+                          type: category,
+                          value: item.name,
+                          label: item.name,
+                        })
+                      }
+                    : undefined
 
                   return (
                     <tr
                       key={item.name}
-                      onClick={
-                        category !== 'region'
-                          ? () => {
-                              onItemClick?.(item.name)
-                              onDrilldown?.({
-                                type: category,
-                                value: item.name,
-                                label: item.name,
-                              })
+                      onClick={handleActivate}
+                      onKeyDown={
+                        isClickable
+                          ? (e: React.KeyboardEvent) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                handleActivate?.()
+                              }
                             }
                           : undefined
                       }
-                      className={`border-border border-t transition-colors ${category !== 'region' ? 'cursor-pointer' : ''} ${isSelected ? 'bg-primary/10' : category !== 'region' ? 'hover:bg-muted/30' : ''} `}
+                      tabIndex={isClickable ? 0 : undefined}
+                      role={isClickable ? 'button' : undefined}
+                      className={`border-border border-t transition-colors ${isClickable ? 'cursor-pointer' : ''} ${isSelected ? 'bg-primary/10' : isClickable ? 'hover:bg-muted/30' : ''} `}
                     >
                       <td className="text-foreground px-4 py-2">{item.name}</td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
