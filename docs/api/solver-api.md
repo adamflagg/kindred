@@ -54,7 +54,6 @@ Start a new solver run for a session.
 ```json
 {
   "session_id": "string",
-  "respect_locks": true,
   "apply_results": false,
   "time_limit": 30
 }
@@ -62,7 +61,6 @@ Start a new solver run for a session.
 
 **Parameters:**
 - `session_id` (required): CampMinder session ID to solve
-- `respect_locks` (optional, default=true): Honor locked assignments
 - `apply_results` (optional, default=false): Auto-apply results to production
 - `time_limit` (optional, default=30): Max seconds to run (1-600)
 
