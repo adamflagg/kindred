@@ -19,6 +19,7 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
+from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
 
 from .callbacks import SolverProgressCallback
@@ -392,37 +393,14 @@ class DirectBunkingSolver:
         add_gender_constraints(self._build_solver_context())
 
     def _get_csv_field_multiplier(self, request: DirectBunkRequest) -> float:
-        """Get the appropriate multiplier based on CSV source fields.
+        """Get the appropriate multiplier based on source field.
 
-        Priority order (highest to lowest):
-        1. share_bunk_with (1.5x)
-        2. do_not_share_with (1.5x)
-        3. bunking_notes (1.0x)
-        4. internal_notes (0.8x)
-        5. socialize_preference (0.05x)
+        Maps canonical SourceField values to config keys for lookup.
         """
-        # Try to get csv_source_fields from request or ai_reasoning
-        csv_fields = None
-        if hasattr(request, "csv_source_fields") and request.csv_source_fields:
-            csv_fields = request.csv_source_fields
-        elif hasattr(request, "ai_reasoning") and isinstance(request.ai_reasoning, dict):
-            csv_fields = request.ai_reasoning.get("csv_source_fields", None)
-
-        if csv_fields:
-            # Apply the highest priority multiplier from all source fields
-            max_multiplier = 0.0
-
-            for field in csv_fields:
-                multiplier_key = f"objective.source_multipliers.{field}"
-                field_multiplier = self.config.get_float(multiplier_key, default=1.0)
-                max_multiplier = max(max_multiplier, field_multiplier)
-
-            return max_multiplier
-
-        # Fallback to source_field for backwards compatibility
-        elif hasattr(request, "source_field") and request.source_field:
-            multiplier_key = f"objective.source_multipliers.{request.source_field}"
-            return self.config.get_float(multiplier_key, default=1.0)
+        if hasattr(request, "source_field") and request.source_field:
+            config_key = SOURCE_FIELD_TO_CONFIG_KEY.get(request.source_field)
+            if config_key:
+                return self.config.get_float(f"objective.source_multipliers.{config_key}", default=1.0)
 
         # Default multiplier
         return 1.0

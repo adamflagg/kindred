@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from bunking.config import ConfigLoader
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 
 logger = logging.getLogger(__name__)
@@ -96,11 +97,11 @@ def evaluate_scenario_score(
 
     # Source field multipliers
     source_multipliers = {
-        "share_bunk_with": config.get_float("objective.source_multipliers.share_bunk_with", default=1.5),
-        "do_not_share_with": config.get_float("objective.source_multipliers.do_not_share_with", default=1.5),
-        "bunking_notes": config.get_float("objective.source_multipliers.bunking_notes", default=1.2),
-        "internal_notes": config.get_float("objective.source_multipliers.internal_notes", default=1.0),
-        "socialize_with": config.get_float("objective.source_multipliers.socialize_with", default=0.8),
+        SourceField.BUNK_WITH: config.get_float("objective.source_multipliers.share_bunk_with", default=1.5),
+        SourceField.NOT_BUNK_WITH: config.get_float("objective.source_multipliers.do_not_share_with", default=1.5),
+        SourceField.BUNKING_NOTES: config.get_float("objective.source_multipliers.bunking_notes", default=1.2),
+        SourceField.INTERNAL_NOTES: config.get_float("objective.source_multipliers.internal_notes", default=1.0),
+        SourceField.SOCIALIZE_WITH: config.get_float("objective.source_multipliers.socialize_preference", default=0.8),
     }
 
     # Track request satisfaction per person
@@ -214,27 +215,17 @@ def evaluate_scenario_score(
 
 
 def _get_source_fields(request: dict[str, Any]) -> list[str]:
-    """Extract source fields from a request."""
-    # Try csv_source_fields first
-    csv_fields = request.get("csv_source_fields")
-    if csv_fields:
-        return list(csv_fields)
+    """Extract source field from a request.
 
-    # Try ai_reasoning
-    ai_reasoning = request.get("ai_reasoning")
-    if isinstance(ai_reasoning, dict):
-        fields = ai_reasoning.get("csv_source_fields", [])
-        if fields:
-            return list(fields)
-
-    # Fallback to source_field
+    Returns the canonical SourceField value from the source_field key.
+    Falls back to SourceField.SOCIALIZE_WITH for age_preference requests.
+    """
     source_field = request.get("source_field")
     if source_field:
-        return [str(source_field)]
+        return [source_field]
 
-    # Map age_preference to socialize_with
     if request.get("request_type") == "age_preference":
-        return ["socialize_with"]
+        return [SourceField.SOCIALIZE_WITH]
 
     return []
 
