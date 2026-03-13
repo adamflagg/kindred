@@ -244,6 +244,7 @@ class GeoService:
         year: int,
         duration: str,
         session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
     ) -> set[str]:
         """Fetch PB IDs of ALL persons attending sessions matching the given duration.
 
@@ -254,10 +255,11 @@ class GeoService:
             year: The year to filter by.
             duration: Duration category (e.g., "1-week", "2-week").
             session_types: Optional session types to restrict to (e.g., ["main"]).
+            session_cm_id: Optional specific session CampMinder ID to restrict to.
 
-        Results are cached for 60 seconds keyed by (year, session_types, None, duration).
+        Results are cached for 60 seconds keyed by (year, session_types, session_cm_id, duration).
         """
-        cache_key = (year, tuple(session_types or ["__duration_only__"]), None, duration)
+        cache_key = (year, tuple(session_types or ["__duration_only__"]), session_cm_id, duration)
         now = time.monotonic()
 
         cached = self._person_id_cache.get(cache_key)
@@ -278,6 +280,10 @@ class GeoService:
             duration_ids = {
                 sid for sid in duration_ids if getattr(sessions_dict.get(sid), "session_type", None) in session_types
             }
+
+        # Filter to specific session if requested
+        if session_cm_id is not None:
+            duration_ids = {sid for sid in duration_ids if sid == session_cm_id}
 
         if not duration_ids:
             self._person_id_cache[cache_key] = (set(), now)
@@ -381,7 +387,9 @@ class GeoService:
             overrides: list[Any] = overrides_raw
             mappings = self._filter_and_dedup_mappings(mappings, active_ids)
         elif duration:
-            duration_ids_task = self._fetch_duration_person_pb_ids(year, duration, session_types=session_types)
+            duration_ids_task = self._fetch_duration_person_pb_ids(
+                year, duration, session_types=session_types, session_cm_id=session_cm_id
+            )
             mappings_raw, overrides_raw, duration_person_ids = await asyncio.gather(
                 mappings_task, overrides_task, duration_ids_task
             )
@@ -510,7 +518,9 @@ class GeoService:
             overrides: list[Any] = overrides_raw
             mappings = self._filter_and_dedup_mappings(mappings, active_ids)
         elif duration:
-            duration_ids_task = self._fetch_duration_person_pb_ids(year, duration, session_types=session_types)
+            duration_ids_task = self._fetch_duration_person_pb_ids(
+                year, duration, session_types=session_types, session_cm_id=session_cm_id
+            )
             mappings_raw, overrides_raw, duration_person_ids = await asyncio.gather(
                 mappings_task, overrides_task, duration_ids_task
             )
@@ -624,7 +634,9 @@ class GeoService:
             active_ids = await self._fetch_active_person_pb_ids(year, session_types, session_cm_id, duration)
             mappings = self._filter_and_dedup_mappings(mappings, active_ids)
         elif duration:
-            duration_person_ids = await self._fetch_duration_person_pb_ids(year, duration, session_types=session_types)
+            duration_person_ids = await self._fetch_duration_person_pb_ids(
+                year, duration, session_types=session_types, session_cm_id=session_cm_id
+            )
             mappings = self._filter_and_dedup_mappings(mappings, duration_person_ids)
 
         # Group by original_value, counting rows and tracking min confidence
