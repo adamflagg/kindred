@@ -44,7 +44,7 @@ export function useSessionAvailability(
   sessionCmId?: number,
   duration?: string
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.sessionAvailability(year, sessionTypes, sessionCmId, duration),
@@ -61,7 +61,7 @@ export function useSessionAvailability(
       }
       return response.json()
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isAuthLoading,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })

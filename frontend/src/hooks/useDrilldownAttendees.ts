@@ -27,7 +27,7 @@ export function useDrilldownAttendees({
   statusFilter,
   duration,
 }: UseDrilldownAttendeesOptions) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
   const sessionTypesParam = sessionTypes?.join(',')
   // Use statusOverride from filter if present, otherwise use default statusFilter
   const effectiveStatusFilter = filter?.statusOverride ?? statusFilter
@@ -79,7 +79,7 @@ export function useDrilldownAttendees({
       }
       return res.json()
     },
-    enabled: !!filter,
+    enabled: !!filter && !isAuthLoading,
     ...syncDataOptions,
   })
 }

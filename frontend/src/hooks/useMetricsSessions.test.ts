@@ -169,4 +169,11 @@ describe('queryKeys updates', () => {
     expect(key).toContain('sessions')
     expect(key).toContain(2025)
   })
+
+  it('should guard query with auth loading state', async () => {
+    const sourceContent = await import('./useMetricsSessions?raw')
+    const source = sourceContent.default
+    expect(source).toMatch(/isLoading|isAuthLoading/)
+    expect(source).toMatch(/enabled:.*!(isLoading|isAuthLoading)/)
+  })
 })

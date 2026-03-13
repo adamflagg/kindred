@@ -8,6 +8,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import { pb } from '../lib/pocketbase'
 import { sortSessionsByDate } from '../utils/sessionUtils'
+import { useAuth } from '../contexts/AuthContext'
 
 export interface MetricsSession {
   cm_id: number
@@ -24,6 +25,8 @@ export interface MetricsSession {
  * since those are the summer camp sessions for metrics analysis.
  */
 export function useMetricsSessions(year: number) {
+  const { isLoading } = useAuth()
+
   return useQuery({
     queryKey: queryKeys.metricsSessions(year),
     queryFn: async (): Promise<MetricsSession[]> => {
@@ -41,7 +44,7 @@ export function useMetricsSessions(year: number) {
       }))
       return sortSessionsByDate(mapped)
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isLoading,
     placeholderData: keepPreviousData,
     // Sessions rarely change - use sync data options for long cache
     ...syncDataOptions,

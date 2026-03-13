@@ -2,10 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { sortSessionsByDate } from '../utils/sessionUtils'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { useAuth } from '../contexts/AuthContext'
 
 const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
 
 export function useAdminSessions(year: number) {
+  const { isLoading } = useAuth()
+
   return useQuery({
     queryKey: queryKeys.adminSessions(year),
     queryFn: async () => {
@@ -16,7 +19,7 @@ export function useAdminSessions(year: number) {
       })
       return sortSessionsByDate(sessions)
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isLoading,
     ...userDataOptions,
   })
 }

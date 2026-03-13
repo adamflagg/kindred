@@ -16,6 +16,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
+import { useAuth } from '../contexts/AuthContext'
 import type {
   StaffResponse,
   PersonsResponse,
@@ -32,6 +33,8 @@ export interface BunkStaffInfo {
 }
 
 export function useBunkStaff(year: number) {
+  const { isLoading } = useAuth()
+
   return useQuery({
     queryKey: queryKeys.bunkStaff(year),
     queryFn: async () => {
@@ -137,7 +140,7 @@ export function useBunkStaff(year: number) {
 
       return bunkStaffMap
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isLoading,
     ...syncDataOptions,
   })
 }

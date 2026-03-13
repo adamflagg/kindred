@@ -4,7 +4,7 @@ import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import type { WeekOption } from '../types/forecast'
 
 export function useWeekOptions(year: number) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.forecastWeekOptions(year),
@@ -15,6 +15,7 @@ export function useWeekOptions(year: number) {
       }
       return response.json()
     },
+    enabled: year > 0 && !isAuthLoading,
     ...syncDataOptions,
   })
 }

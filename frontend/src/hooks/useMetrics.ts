@@ -24,7 +24,7 @@ export function useRetentionMetrics(
   sessionCmId?: number,
   duration?: string
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId, duration),
@@ -50,7 +50,7 @@ export function useRetentionMetrics(
       }
       return response.json()
     },
-    enabled: baseYear > 0 && compareYear > 0,
+    enabled: baseYear > 0 && compareYear > 0 && !isAuthLoading,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   })
@@ -66,7 +66,7 @@ export function useRegistrationMetrics(
   sessionCmId?: number,
   duration?: string
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.registration(year, sessionTypes, statuses, sessionCmId, duration),
@@ -94,7 +94,7 @@ export function useRegistrationMetrics(
       }
       return response.json()
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isAuthLoading,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   })
@@ -104,7 +104,7 @@ export function useRegistrationMetrics(
  * Fetch comparison metrics between two years.
  */
 export function useComparisonMetrics(yearA: number, yearB: number) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.comparison(yearA, yearB),
@@ -121,7 +121,7 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
       }
       return response.json()
     },
-    enabled: yearA > 0 && yearB > 0,
+    enabled: yearA > 0 && yearB > 0 && !isAuthLoading,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   })
@@ -143,7 +143,7 @@ export function useHistoricalTrends(
   sessionCmId?: number,
   duration?: string
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.historical(years, sessionTypes, sessionCmId, duration),
@@ -173,6 +173,7 @@ export function useHistoricalTrends(
       }
       return response.json()
     },
+    enabled: !isAuthLoading,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   })
@@ -187,7 +188,7 @@ export function useWaitlistMetrics(
   sessionCmId?: number,
   duration?: string
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.waitlist(year, sessionTypes, sessionCmId, duration),
@@ -212,7 +213,7 @@ export function useWaitlistMetrics(
       }
       return response.json()
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isAuthLoading,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })
@@ -227,7 +228,7 @@ export function useCancellationMetrics(
   sessionCmId?: number,
   duration?: string
 ) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.cancellations(year, sessionTypes, sessionCmId, duration),
@@ -252,7 +253,7 @@ export function useCancellationMetrics(
       }
       return response.json()
     },
-    enabled: year > 0,
+    enabled: year > 0 && !isAuthLoading,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })
