@@ -5,6 +5,7 @@
 import { Link } from 'react-router'
 import { ArrowLeft, ExternalLink, MapPin, Calendar, Home, TreePine } from 'lucide-react'
 import { CampMinderIcon } from '../icons'
+import { StatusBadge } from '../StatusBadge'
 import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
@@ -59,9 +60,12 @@ export function HeroHeader({
 
           {/* Name and details */}
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
-              {camper.first_name} {camper.last_name}
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
+                {camper.first_name} {camper.last_name}
+              </h1>
+              <StatusBadge status={camper.attendee_status} />
+            </div>
             {camper.preferred_name &&
               camper.preferred_name.replace(/^["']|["']$/g, '') !== camper.first_name && (
                 <p className="text-forest-200 mt-0.5 text-lg">
