@@ -166,6 +166,8 @@ def _filter_and_categorize_requests(
     bunk_requests: list[DirectBunkRequest] = []
     age_requests: list[DirectBunkRequest] = []
 
+    track_debug = logger.isEnabledFor(logging.DEBUG)
+
     for request in requests:
         # Check if request comes from explicit CSV fields
         request_csv_fields = getattr(request, "csv_source_fields", None)
@@ -176,7 +178,8 @@ def _filter_and_categorize_requests(
             # Check if ANY of the csv_source_fields are explicit fields
             is_explicit = any(field in EXPLICIT_CSV_FIELDS for field in request_csv_fields)
             if not is_explicit:
-                logger.debug(f"Skipping request from {request_csv_fields} for must-satisfy-one (non-explicit)")
+                if track_debug:
+                    logger.debug(f"Skipping request from {request_csv_fields} for must-satisfy-one (non-explicit)")
                 continue
         else:
             # Fallback to old source_field check
@@ -185,7 +188,8 @@ def _filter_and_categorize_requests(
                 if request.source_field in ["Request", "multiple_fields"]:
                     pass  # These are likely explicit requests from CSV
                 else:
-                    logger.debug(f"Skipping request from {request.source_field} field for must-satisfy-one")
+                    if track_debug:
+                        logger.debug(f"Skipping request from {request.source_field} field for must-satisfy-one")
                     continue
 
         # Categorize by request type

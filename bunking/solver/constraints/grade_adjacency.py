@@ -145,6 +145,8 @@ def add_grade_adjacency_constraints(ctx: SolverContext) -> None:
     total_bunks_skipped = 0
     constraints_added = 0
 
+    track_debug = logger.isEnabledFor(logging.DEBUG)
+
     # For each bunk, check grade adjacency
     for bunk_idx, bunk in enumerate(ctx.bunks):
         # Skip AG bunks - they have no constraints
@@ -211,9 +213,10 @@ def add_grade_adjacency_constraints(ctx: SolverContext) -> None:
                 ctx.model.AddBoolOr([grade1_present.Not(), grade2_present.Not()])
 
                 constraints_added += 1
-                logger.debug(
-                    f"Bunk {bunk.name}: HARD constraint - cannot have both grade {grade1} and {grade2} (gap={gap})"
-                )
+                if track_debug:
+                    logger.debug(
+                        f"Bunk {bunk.name}: HARD constraint - cannot have both grade {grade1} and {grade2} (gap={gap})"
+                    )
 
     ctx.constraint_logger.log_constraint(
         "hard",
