@@ -55,6 +55,20 @@ describe('StatusBadge', () => {
     expect(badge.className).toContain('bg-stone-100')
   })
 
+  it('renders incomplete badge with stone colors', () => {
+    render(<StatusBadge status="incomplete" />)
+    const badge = screen.getByText('Incomplete')
+    expect(badge).toBeDefined()
+    expect(badge.className).toContain('bg-stone-100')
+  })
+
+  it('renders none badge with stone colors and "No Status" label', () => {
+    render(<StatusBadge status="none" />)
+    const badge = screen.getByText('No Status')
+    expect(badge).toBeDefined()
+    expect(badge.className).toContain('bg-stone-100')
+  })
+
   it('renders unknown status with stone colors', () => {
     render(<StatusBadge status="unknown" />)
     const badge = screen.getByText('Unknown')
