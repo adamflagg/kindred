@@ -29,6 +29,7 @@ from api.schemas.metrics import (
 from api.utils.session_metrics import (
     DISPLAY_SESSION_TYPES,
     SESSION_LENGTH_ORDER,
+    build_ag_parent_map,
     compute_summer_metrics,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
@@ -300,12 +301,7 @@ class RegistrationService:
                 pb_to_cm[pb_id] = cm_id
 
         # Build AG -> parent mapping for capacity merging
-        ag_parent_map: dict[int, int] = {}
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id:
-                    ag_parent_map[int(sid)] = int(parent_id)
+        ag_parent_map = build_ag_parent_map(sessions)
 
         # Count bunk_plans per session (respecting AG bunk filtering for main sessions)
         bunk_counts: dict[int, int] = {}
@@ -398,12 +394,7 @@ class RegistrationService:
     ) -> dict[int, int]:
         """Merge AG session counts into their parent main sessions."""
         # Build AG -> parent mapping
-        ag_parent_map: dict[int, int] = {}
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id:
-                    ag_parent_map[int(sid)] = int(parent_id)
+        ag_parent_map = build_ag_parent_map(sessions)
 
         # Merge AG counts into parent sessions
         merged_counts: dict[int, int] = {}
@@ -665,12 +656,7 @@ class RegistrationService:
         Persons are deduplicated within each length category.
         """
         # Build AG -> parent mapping
-        ag_parent_map: dict[int, int] = {}
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id:
-                    ag_parent_map[int(sid)] = int(parent_id)
+        ag_parent_map = build_ag_parent_map(sessions)
 
         # Collect unique person IDs per length category
         length_persons: dict[str, set[int]] = {}
