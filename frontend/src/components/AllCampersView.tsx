@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { Search, Home, X, ChevronDown, Settings } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { CampMinderIcon } from './icons'
+import { StatusBadge } from './StatusBadge'
 import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -563,6 +564,7 @@ export default function AllCampersView() {
                               {genderIdentity}
                             </span>
                           )}
+                          <StatusBadge status={camper.attendee_status} />
                         </div>
                       </div>
 
