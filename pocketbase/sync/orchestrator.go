@@ -1681,10 +1681,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			workbookManager := NewWorkbookManagerWithSearcher(o.app, sheetsWriter, driveSearcher)
 			exporter, err := NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0)
 			if err != nil {
-				return fmt.Errorf("failed to create multi-workbook exporter: %w", err)
+				slog.Warn("Multi-workbook export disabled: year resolution failed", "error", err)
+			} else {
+				o.RegisterService("multi_workbook_export", exporter)
+				slog.Info("Multi-workbook export service registered")
 			}
-			o.RegisterService("multi_workbook_export", exporter)
-			slog.Info("Multi-workbook export service registered")
 		}
 	}
 
