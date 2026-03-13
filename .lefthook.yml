@@ -164,25 +164,27 @@ post-merge:
         REPO_PARENT="$(dirname "$MAIN_REPO")"
         WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
         [ -d "$WORKTREES_DIR" ] || exit 0
-        MERGED=()
+        MERGED=""
+        COUNT=0
         for dir in "$WORKTREES_DIR"/*/; do
           [ -d "$dir" ] || continue
           name=$(basename "$dir")
           branch="feature/$name"
           state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
           if [ "$state" = "MERGED" ]; then
-            MERGED+=("$name")
+            MERGED="$MERGED $name"
+            COUNT=$((COUNT + 1))
           fi
         done
-        if [ ${#MERGED[@]} -gt 0 ]; then
+        if [ "$COUNT" -gt 0 ]; then
           echo ""
           echo "Worktrees ready for cleanup (PR merged):"
-          for name in "${MERGED[@]}"; do
+          for name in $MERGED; do
             echo "  $name"
           done
           echo ""
-          if [ ${#MERGED[@]} -eq 1 ]; then
-            echo "Run: ./scripts/worktree/cleanup.sh ${MERGED[0]}"
+          if [ "$COUNT" -eq 1 ]; then
+            echo "Run: ./scripts/worktree/cleanup.sh${MERGED}"
           else
             echo "Run: ./scripts/worktree/cleanup.sh --all-merged"
           fi
