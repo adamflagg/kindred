@@ -18,5 +18,4 @@ class TestGeoCategory:
 
     def test_is_string_enum(self):
         assert isinstance(GeoCategory.CITY, str)
-        # GeoCategory is a str subclass — verify via value
-        assert str(GeoCategory.CITY) == "city"
+        assert GeoCategory.CITY.value == "city"

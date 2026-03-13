@@ -319,12 +319,14 @@ func (s *HouseholdsSync) transformHouseholdToPB(
 			hasAddressData = true
 		}
 
-		// Country field - default to "US" if address has data but no country specified
+		// Country field — store empty instead of assuming US when missing
 		country := s.getString(billing, "Country", "")
 		if country != "" {
 			pbData["billing_country"] = country
 		} else if hasAddressData {
-			pbData["billing_country"] = "US"
+			pbData["billing_country"] = ""
+			slog.Warn("household missing country despite having address data",
+				"cm_id", pbData["cm_id"])
 		}
 	}
 

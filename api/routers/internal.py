@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.constants.geo import GeoCategory
 from bunking.geo_normalizer.normalizer import normalize_values
 from bunking.logging_config import TRACE, get_logger
 from bunking.sync.bunk_request_processor.data.repositories import SessionRepository
@@ -39,7 +40,7 @@ class GeoValue(BaseModel):
 
 
 class GeoNormalizeRequest(BaseModel):
-    category: Literal["city", "school", "congregation"]
+    category: GeoCategory
     values: list[GeoValue]
 
 

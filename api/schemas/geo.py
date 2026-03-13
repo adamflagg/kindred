@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from api.constants.geo import GeoCategory
+
 
 class GapItem(BaseModel):
     """A single gap entry (normalized value missing coordinates)."""
@@ -95,7 +97,7 @@ class SourceMappingsResponse(BaseModel):
 class OverrideCreate(BaseModel):
     """Request body for creating a geo override."""
 
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     override_type: Literal["alias", "canonical", "merge"] = Field(
         description="Override type: alias, canonical, or merge"
     )
@@ -136,7 +138,7 @@ class MergeRequest(BaseModel):
     """Request body for merging one canonical into another."""
 
     target: str = Field(description="Target canonical name to merge into")
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     year: int = Field(description="Year scope")
 
 
@@ -149,7 +151,7 @@ class MergeResponse(BaseModel):
 class ApproveRequest(BaseModel):
     """Request body for approving a suggested canonical."""
 
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     year: int = Field(description="Year scope")
     city: str = Field(default="", description="Confirmed city")
     state: str = Field(default="", description="Confirmed state")
@@ -159,7 +161,7 @@ class ApproveRequest(BaseModel):
 class RejectRequest(BaseModel):
     """Request body for rejecting a suggested canonical."""
 
-    category: str = Field(description="Category: city, school, or congregation")
+    category: GeoCategory = Field(description="Category: city, school, or congregation")
     year: int = Field(description="Year scope")
 
 
