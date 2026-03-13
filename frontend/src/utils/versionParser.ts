@@ -14,7 +14,7 @@ const SHA_RE = /^[0-9a-f]{7,40}$/
  *
  * Formats:
  * - Clean tag "v0.8.0" → links to release page
- * - Git describe "v0.7.0-5-gabc1234" → shows "v0.7.0+5", links to commit
+ * - Git describe "v0.7.0-5-gabc1234" → shows "v0.7.0+5", links to compare view
  * - Bare SHA "abc1234" → links to commit
  * - "dev" / empty / undefined → null (hidden)
  */
@@ -29,7 +29,7 @@ export function parseVersion(version: string): { display: string; url: string } 
     const [, tag, ahead, sha] = describeMatch
     return {
       display: `${tag}+${ahead}`,
-      url: `${GITHUB_REPO_URL}/commit/${sha}`,
+      url: `${GITHUB_REPO_URL}/compare/${tag}...${sha}`,
     }
   }
 
