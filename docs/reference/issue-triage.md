@@ -1,22 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (25 open issues).
-
----
-
-## Group 2: Metrics / Velocity — Backend (Python API) *(PR2 pending)*
-
-**Priority: Medium** — Perf + feature, no correctness bugs remaining
-
-| # | Title | Type |
-|---|-------|------|
-| 550 | `_daily_for_gender` hardcodes `cancelled=0`, breaking gross-enrolled invariant | bug |
-| 459 | Add daily data series to cancellation velocity path | feature |
-| 475 | Reuse status transitions for cancellation gender curves | perf |
-| 474 | Eliminate duplicate snapshot fetches when gender split is enabled | perf |
-
-**Interplay:** #474/#475 are independent fetch dedup fixes. #459 adds daily data for cancellation path. #550 is a standalone bug in gender daily data. PR1 completed #456 (dedup bug), #467 (SeasonContext), #460 (week-label). #447 dropped — sessions are never added mid-season, so per-session hybrid gate is unnecessary.
+Last updated: 2026-03-13 (20 open issues).
 
 ---
 
@@ -66,18 +51,6 @@ Last updated: 2026-03-13 (25 open issues).
 
 ---
 
-## Group 11: Solver Scoring Bug
-
-**Priority: Medium** — Silent correctness issue in solver weighting
-
-| # | Title | Type |
-|---|-------|------|
-| 546 | Solver stat/multiplier lookups use snake_case keys against canonical source_field values | bug |
-
-**Context:** Pre-existing bug surfaced during #504 review. `solution.py`, `score_evaluator.py`, `direct_solver.py` use snake_case keys that never match canonical `SourceField` values — field stats are always zero and multipliers always default to 1.0.
-
----
-
 ## Group 10: Tests & Docs
 
 **Priority: Low** — No behavior change, can be sprinkled in anytime
@@ -100,9 +73,9 @@ Last updated: 2026-03-13 (25 open issues).
 2. ~~**Group 7**~~ — ✅ Complete (PR #539)
 3. ~~**Group 5**~~ — ✅ Complete (PRs #540, #544)
 4. ~~**Group 6**~~ — ✅ Complete (PR #534)
-5. **Group 2 PR1** — ✅ Complete (PR #548) — #456 bug, #467 SeasonContext, #460 week-label; #447 dropped
+5. ~~**Group 2**~~ — ✅ Complete (PRs #548, #554) — PR1: #456, #467, #460; PR2: #474, #475, #459, #550; #447 dropped
 6. ~~**Group 9**~~ — ✅ Complete (PR #549)
-7. **Group 11** — Solver scoring bug (#546) — silent correctness issue
+7. ~~**Group 11**~~ — ✅ Complete (PR #551)
 8. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
 9. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
@@ -118,4 +91,6 @@ Last updated: 2026-03-13 (25 open issues).
 | Group 7: Geo frontend (#518, #519, #520, #521) | #539 | 2026-03-13 | Bug + a11y + test + QueryGuard migration |
 | Group 5: Sync / Go backend (#484, #504) | #540, #544 | 2026-03-13 | Spawned #546 (solver snake_case lookup bug) |
 | Group 9: API backend refactors (#535, #486, #441, #473, #423, #487) | #549 | 2026-03-13 | #546 moved to Group 11 |
-| Group 2 PR1: Velocity backend (#456, #467, #460) | #548 | 2026-03-13 | #447 dropped (not needed); spawned #550; PR2 pending (#459, #474, #475) |
+| Group 2 PR1: Velocity backend (#456, #467, #460) | #548 | 2026-03-13 | #447 dropped (not needed); spawned #550 |
+| Group 11: Solver scoring bug (#546) | #551 | 2026-03-13 | Added SOURCE_FIELD_TO_CONFIG_KEY reverse mapping |
+| Group 2 PR2: Velocity perf + feature (#474, #475, #459, #550) | #554 | 2026-03-13 | Completes Group 2 |
