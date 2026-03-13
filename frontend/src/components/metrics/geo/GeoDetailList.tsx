@@ -112,9 +112,7 @@ export function GeoDetailList({
                       }
                       className={`border-border border-t transition-colors ${category !== 'region' ? 'cursor-pointer' : ''} ${isSelected ? 'bg-primary/10' : category !== 'region' ? 'hover:bg-muted/30' : ''} `}
                     >
-                      <td className="text-foreground px-4 py-2">
-                        {item.name}
-                      </td>
+                      <td className="text-foreground px-4 py-2">{item.name}</td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
                         {item.count}
                       </td>

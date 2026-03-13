@@ -72,12 +72,7 @@ describe('GeoLayerToggles', () => {
   })
 
   it('reflects showRegions state', () => {
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        showRegions={false}
-      />
-    )
+    render(<GeoLayerToggles {...defaultProps} showRegions={false} />)
 
     const boxes = getCheckboxes()
     expect(boxes[4]?.checked).toBe(false) // region zones
