@@ -155,7 +155,7 @@ export default function CamperDetailsPanel({
         (t) => `session.session_type = "${t}"`
       ).join(' || ')
       const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({
-        filter: `person_id = ${personId} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`,
+        filter: `person_id = ${personId} && year = ${currentYear} && (${sessionTypeFilter})`,
         expand: 'session',
       })
 
@@ -165,8 +165,8 @@ export default function CamperDetailsPanel({
         person_id: personId,
         session: '',
         enrollment_date: new Date().toISOString(),
-        is_active: true,
-        status: 'enrolled' as const,
+        is_active: false,
+        status: 'none' as const,
         status_id: 1,
         year: currentYear,
         collectionId: '',
@@ -355,7 +355,7 @@ export default function CamperDetailsPanel({
           const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
             (t) => `session.session_type = "${t}"`
           ).join(' || ')
-          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`
+          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
 
           try {
             const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
