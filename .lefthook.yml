@@ -71,35 +71,62 @@ pre-push:
   parallel: true
   commands:
     ruff-check:
+      glob:
+        - "**/*.py"
+        - "ruff.toml"
+        - "pyproject.toml"
       run: uv run ruff check .
 
     mypy:
+      glob:
+        - "**/*.py"
+        - "pyproject.toml"
       run: uv run mypy . --explicit-package-bases
 
     eslint:
       root: "frontend/"
+      glob:
+        - "frontend/**/*.{ts,tsx,js,jsx}"
+        - "frontend/eslint.config.js"
       run: npm run lint
 
     type-check:
       root: "frontend/"
+      glob:
+        - "frontend/**/*.{ts,tsx}"
+        - "frontend/tsconfig.json"
+        - "frontend/tsconfig.node.json"
       run: npm run type-check
 
     golangci-lint:
       root: "pocketbase/"
+      glob:
+        - "pocketbase/*.go"
+        - "pocketbase/**/*.go"
+        - ".golangci.yml"
       run: golangci-lint run --config ../.golangci.yml
       skip:
         - run: "! command -v golangci-lint >/dev/null 2>&1"
 
     go-build:
       root: "pocketbase/"
+      glob:
+        - "pocketbase/*.go"
+        - "pocketbase/**/*.go"
+        - "pocketbase/go.mod"
+        - "pocketbase/go.sum"
       run: go build .
 
     shellcheck:
+      glob: "**/*.sh"
       run: find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' 2>/dev/null | xargs shellcheck --severity=warning
       skip:
         - run: "! command -v shellcheck >/dev/null 2>&1"
 
     hadolint:
+      glob:
+        - "docker/Dockerfile.*"
+        - ".hadolint.yaml"
       run: |
         for df in docker/Dockerfile.*; do
           [ -f "$df" ] || continue
@@ -111,6 +138,9 @@ pre-push:
         - run: "! command -v docker >/dev/null 2>&1"
 
     caddy-validate:
+      glob:
+        - "docker/Caddyfile"
+        - "frontend/Caddyfile"
       run: |
         caddy validate --config docker/Caddyfile 2>&1 && \
         caddy validate --config frontend/Caddyfile 2>&1
@@ -119,17 +149,30 @@ pre-push:
 
     pb-js-lint:
       root: "pocketbase/"
+      glob:
+        - "pocketbase/pb_migrations/*.js"
+        - "pocketbase/pb_hooks/*.js"
+        - "pocketbase/package.json"
       run: npm run lint
 
     pytest:
+      glob:
+        - "**/*.py"
+        - "pyproject.toml"
       run: uv run pytest tests/unit/ -v --tb=short
 
     go-test:
       root: "pocketbase/"
+      glob:
+        - "pocketbase/*.go"
+        - "pocketbase/**/*.go"
       run: go test -race ./... -v
 
     vitest:
       root: "frontend/"
+      glob:
+        - "frontend/**/*.{ts,tsx,js,jsx}"
+        - "frontend/vitest.config.ts"
       run: npx vitest run
 
     behind-origin:
@@ -164,25 +207,27 @@ post-merge:
         REPO_PARENT="$(dirname "$MAIN_REPO")"
         WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
         [ -d "$WORKTREES_DIR" ] || exit 0
-        MERGED=()
+        MERGED=""
+        COUNT=0
         for dir in "$WORKTREES_DIR"/*/; do
           [ -d "$dir" ] || continue
           name=$(basename "$dir")
           branch="feature/$name"
           state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
           if [ "$state" = "MERGED" ]; then
-            MERGED+=("$name")
+            MERGED="$MERGED $name"
+            COUNT=$((COUNT + 1))
           fi
         done
-        if [ ${#MERGED[@]} -gt 0 ]; then
+        if [ "$COUNT" -gt 0 ]; then
           echo ""
           echo "Worktrees ready for cleanup (PR merged):"
-          for name in "${MERGED[@]}"; do
+          for name in $MERGED; do
             echo "  $name"
           done
           echo ""
-          if [ ${#MERGED[@]} -eq 1 ]; then
-            echo "Run: ./scripts/worktree/cleanup.sh ${MERGED[0]}"
+          if [ "$COUNT" -eq 1 ]; then
+            echo "Run: ./scripts/worktree/cleanup.sh${MERGED}"
           else
             echo "Run: ./scripts/worktree/cleanup.sh --all-merged"
           fi
