@@ -147,8 +147,12 @@ WORKTREE_NAME=$FEATURE_NAME
 EOF
 fi
 
-# Point git hooks to the checked-in .githooks directory
-git config core.hooksPath .githooks
+# Install lefthook hooks in the worktree
+if command -v lefthook &> /dev/null; then
+    lefthook install
+else
+    echo -e "${YELLOW}Warning: lefthook not installed — run 'go install github.com/evilmartians/lefthook@latest'${NC}"
+fi
 
 # Install dependencies (fast with caching)
 echo -e "${BLUE}Installing dependencies...${NC}"
