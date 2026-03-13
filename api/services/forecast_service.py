@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
 from api.services.camp_calendar import REGISTRATION_TIERS, format_week_date_range, get_camp_today
-from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
+from api.services.reconstruction import (
+    parse_date_only,
+    reconstruct_enrollment_at_offset,
+    reconstruct_enrollment_with_gender,
+)
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
@@ -59,7 +63,7 @@ class ForecastService:
         anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date")
         if not anchor_str:
             return []
-        anchor_str = anchor_str.split("T")[0].split(" ")[0]
+        anchor_str = parse_date_only(anchor_str)
         anchor = date.fromisoformat(anchor_str)
 
         if today < anchor:
@@ -73,7 +77,7 @@ class ForecastService:
         for _phase, key, full_label in REGISTRATION_TIERS:
             tier_str = reg_dates.get(key)
             if tier_str:
-                tier_str = tier_str.split("T")[0].split(" ")[0]
+                tier_str = parse_date_only(tier_str)
                 tier_date = date.fromisoformat(tier_str)
                 if tier_date >= anchor:
                     tier_week = (tier_date - anchor).days // 7 + 1  # 1-based
@@ -159,7 +163,7 @@ class ForecastService:
             anchor_str = reg_dates.get("priority_reg_date") or reg_dates.get("early_reg_date") or ""
             if not anchor_str:
                 raise ValueError(f"No registration anchor configured for {year}")
-            anchor_date = date.fromisoformat(anchor_str.split("T")[0].split(" ")[0])
+            anchor_date = date.fromisoformat(parse_date_only(anchor_str))
             season_start = datetime(anchor_date.year, anchor_date.month, anchor_date.day)  # noqa: DTZ001
 
             # Reconstruct from attendee records — precise to actual enrollment timestamps
@@ -411,7 +415,7 @@ class ForecastService:
                 if not prior_anchor_str:
                     continue
 
-                prior_season_start = datetime.strptime(prior_anchor_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                prior_season_start = datetime.strptime(parse_date_only(prior_anchor_str), "%Y-%m-%d")
 
                 reconstructed = await reconstruct_enrollment_at_offset(
                     self.repository,

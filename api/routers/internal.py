@@ -126,29 +126,8 @@ async def run_process_requests(
     pb_client = PocketBase(config["pb_url"])
     pb_client.collection("_superusers").auth_with_password(config["pb_email"], config["pb_password"])
 
-    # Resolve sessions (same logic as process_requests.py:main())
     session_repo = SessionRepository(pb_client)
-    main_session_id, include_ag = session_repo.resolve_session_name(session, year)
-
-    if main_session_id is None:
-        # All sessions
-        all_session_ids: list[int] = []
-        valid_sessions = session_repo.get_valid_session_names(year)
-        seen_cm_ids: set[int] = set()
-        for cm_id, is_main in valid_sessions.values():
-            if cm_id not in seen_cm_ids:
-                seen_cm_ids.add(cm_id)
-                if is_main:
-                    related = await asyncio.to_thread(session_repo.get_related_session_ids, cm_id)
-                    all_session_ids.extend(related)
-                else:
-                    all_session_ids.append(cm_id)
-        session_cm_ids = list(set(all_session_ids))
-    else:
-        if include_ag:
-            session_cm_ids = await asyncio.to_thread(session_repo.get_related_session_ids, main_session_id)
-        else:
-            session_cm_ids = [main_session_id]
+    session_cm_ids = await asyncio.to_thread(session_repo.resolve_session_cm_ids, session, year)
 
     return await process_bunk_requests(
         data_source="database",

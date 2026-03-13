@@ -63,7 +63,7 @@ class TestRetentionEndpointCaching:
         mock_service.calculate_retention = AsyncMock(return_value=_make_retention_response())
 
         with (
-            patch("api.services.retention_service.RetentionService", return_value=mock_service),
+            patch("api.routers.metrics.RetentionService", return_value=mock_service),
             patch("api.services.metrics_repository.MetricsRepository"),
         ):
             resp1 = test_client.get(
@@ -93,7 +93,7 @@ class TestRetentionEndpointCaching:
         )
 
         with (
-            patch("api.services.retention_service.RetentionService", return_value=mock_service),
+            patch("api.routers.metrics.RetentionService", return_value=mock_service),
             patch("api.services.metrics_repository.MetricsRepository"),
         ):
             test_client.get(
@@ -113,7 +113,7 @@ class TestRetentionEndpointCaching:
         mock_service.calculate_retention = AsyncMock(return_value=_make_retention_response())
 
         with (
-            patch("api.services.retention_service.RetentionService", return_value=mock_service),
+            patch("api.routers.metrics.RetentionService", return_value=mock_service),
             patch("api.services.metrics_repository.MetricsRepository"),
         ):
             test_client.get(
@@ -141,7 +141,7 @@ class TestRegistrationEndpointCaching:
         mock_service.calculate_registration = AsyncMock(return_value=_make_registration_response())
 
         with (
-            patch("api.services.registration_service.RegistrationService", return_value=mock_service),
+            patch("api.routers.metrics.RegistrationService", return_value=mock_service),
             patch("api.services.metrics_repository.MetricsRepository"),
         ):
             resp1 = test_client.get(

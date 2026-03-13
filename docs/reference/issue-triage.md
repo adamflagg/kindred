@@ -1,11 +1,11 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (34 open issues).
+Last updated: 2026-03-13 (28 open issues).
 
 ---
 
-## Group 2: Metrics / Velocity — Backend (Python API)
+## Group 2: Metrics / Velocity — Backend (Python API) *(in progress)*
 
 **Priority: High** — Correctness bug + perf wins in same service
 
@@ -69,21 +69,15 @@ Last updated: 2026-03-13 (34 open issues).
 
 ---
 
-## Group 9: API / Backend Refactors (Python)
+## Group 11: Solver Scoring Bug
 
-**Priority: Low** — DRY improvements, no behavior change
+**Priority: Medium** — Silent correctness issue in solver weighting
 
 | # | Title | Type |
 |---|-------|------|
 | 546 | Solver stat/multiplier lookups use snake_case keys against canonical source_field values | bug |
-| 535 | Guard against `started_at` KeyError in solver_runner failure path | bug |
-| 487 | Extract shared session resolution function | refactor |
-| 486 | Extract PocketBase collection names into constants | tech-debt |
-| 473 | Replace inline date parsing with `_parse_date_only` utility | refactor |
-| 441 | Use existing `build_ag_parent_map` utility in registration service | refactor |
-| 423 | Hoist inline ForecastService imports in metrics.py | refactor |
 
-**Interplay:** #546 is a pre-existing solver scoring bug surfaced during #504 review — `solution.py`, `score_evaluator.py`, `direct_solver.py` use snake_case keys that never match canonical `source_field` values. #535 is a quick bug fix in `solver_runner.py`. #486 is foundational — makes other refactors safer. Good for parallel agents.
+**Context:** Pre-existing bug surfaced during #504 review. `solution.py`, `score_evaluator.py`, `direct_solver.py` use snake_case keys that never match canonical `SourceField` values — field stats are always zero and multipliers always default to 1.0.
 
 ---
 
@@ -109,10 +103,11 @@ Last updated: 2026-03-13 (34 open issues).
 2. ~~**Group 7**~~ — ✅ Complete (PR #539)
 3. ~~**Group 5**~~ — ✅ Complete (PRs #540, #544)
 4. ~~**Group 6**~~ — ✅ Complete (PR #534)
-5. **Group 2** — Velocity backend (bigger scope, #456 correctness bug first)
-6. **Group 9** — API refactors (#535 bug first, rest are low-risk DRY)
-7. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
-8. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
+5. **Group 2** — Velocity backend *(in progress)* — #456 correctness bug first
+6. ~~**Group 9**~~ — ✅ Complete (PR #549)
+7. **Group 11** — Solver scoring bug (#546) — silent correctness issue
+8. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
+9. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
 ## Completed Groups
 
@@ -125,3 +120,4 @@ Last updated: 2026-03-13 (34 open issues).
 | Group 6: Solver (#500, #493, #494, #483) | #534 | 2026-03-13 | Spawned #535, #536, #537 during review |
 | Group 7: Geo frontend (#518, #519, #520, #521) | #539 | 2026-03-13 | Bug + a11y + test + QueryGuard migration |
 | Group 5: Sync / Go backend (#484, #504) | #540, #544 | 2026-03-13 | Spawned #546 (solver snake_case lookup bug) |
+| Group 9: API backend refactors (#535, #486, #441, #473, #423, #487) | #549 | 2026-03-13 | #546 moved to Group 11 |

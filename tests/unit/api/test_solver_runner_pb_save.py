@@ -399,3 +399,56 @@ class TestSolverRunnerPocketBaseSave:
             pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
             assert "error" in pb_data
             assert "error_message" not in pb_data
+
+    @pytest.mark.asyncio
+    async def test_failure_before_started_at_does_not_crash(self, mock_solver_input):
+        """When auth fails before started_at is set, failure path must not KeyError.
+
+        The KeyError on started_at is currently swallowed by the inner except clause,
+        which means the PocketBase failure record is never saved. The fix must ensure
+        started_at has a fallback so the PB save succeeds.
+        """
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            mock_pb = self._configure_mocks(mocks, mock_solver_input)
+            # Make auth raise BEFORE started_at is set
+            mock_pb.collection.return_value.auth_with_password.side_effect = ConnectionError("Auth failed")
+            mock_runs["test_run"] = {"status": "pending"}
+
+            # Should NOT raise KeyError
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+        assert mock_runs["test_run"]["status"] == "failed"
+        assert "Auth failed" in str(mock_runs["test_run"]["error_message"])
+        # The PocketBase failure record must be saved (KeyError on started_at must not prevent this)
+        create_calls = mock_pb.collection.return_value.create.call_args_list
+        assert len(create_calls) == 1, "PocketBase failure record must be saved even when auth fails"
+        pb_data = create_calls[0][0][0]
+        assert pb_data["status"] == "failed"
+        assert "started_at" in pb_data

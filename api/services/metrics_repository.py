@@ -10,6 +10,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from api.services.reconstruction import parse_date_only
+
 if TYPE_CHECKING:
     from pocketbase import PocketBase
 
@@ -382,7 +384,7 @@ class MetricsRepository:
         seen: set[str] = set()
         dates: list[str] = []
         for s in snapshots:
-            date_str = getattr(s, "snapshot_datetime", "").split("T")[0].split(" ")[0]
+            date_str = parse_date_only(getattr(s, "snapshot_datetime", ""))
             if date_str and date_str not in seen:
                 seen.add(date_str)
                 dates.append(date_str)

@@ -12,6 +12,17 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.services.cancellation_service import CancellationService
+from api.services.comparison_service import ComparisonService
+from api.services.day1_service import Day1Service
+from api.services.drilldown_service import DrilldownService
+from api.services.forecast_service import ForecastService
+from api.services.historical_service import HistoricalService
+from api.services.registration_service import RegistrationService
+from api.services.retention_service import RetentionService
+from api.services.retention_trends_service import RetentionTrendsService
+from api.services.velocity_service import VelocityService
+from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 
@@ -72,8 +83,6 @@ async def get_retention_metrics(
     broken down by gender, grade, session, and years at camp.
     """
     check_duration_session_exclusive(duration, session_cm_id)
-
-    from api.services.retention_service import RetentionService
 
     cache_params = {
         "base_year": base_year,
@@ -136,8 +145,6 @@ async def get_registration_metrics(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    from api.services.registration_service import RegistrationService
-
     cache_params = {
         "year": year,
         "session_types": session_types,
@@ -178,8 +185,6 @@ async def get_comparison_metrics(
     Compares total enrollment, gender distribution, and grade distribution
     between two years. Filters to summer camp sessions by default.
     """
-    from api.services.comparison_service import ComparisonService
-
     cache_params = {"year_a": year_a, "year_b": year_b, "session_types": session_types}
     cached: ComparisonMetricsResponse | None = metrics_cache.get("comparison", **cache_params)
     if cached is not None:
@@ -225,8 +230,6 @@ async def get_historical_trends(
     (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
     """
     check_duration_session_exclusive(duration, session_cm_id)
-
-    from api.services.historical_service import HistoricalService
 
     cache_params = {
         "years": years,
@@ -287,8 +290,6 @@ async def get_retention_trends(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    from api.services.retention_trends_service import RetentionTrendsService
-
     cache_params = {
         "current_year": current_year,
         "num_years": num_years,
@@ -345,8 +346,6 @@ async def get_waitlist_metrics(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    from api.services.waitlist_service import WaitlistService
-
     cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
     cached: WaitlistMetricsResponse | None = metrics_cache.get("waitlist", **cache_params)
     if cached is not None:
@@ -394,8 +393,6 @@ async def get_cancellation_metrics(
     - Re-enrolled (cancelled then returned)
     """
     check_duration_session_exclusive(duration, session_cm_id)
-
-    from api.services.cancellation_service import CancellationService
 
     cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
     cached: CancellationMetricsResponse | None = metrics_cache.get("cancellations", **cache_params)
@@ -461,8 +458,6 @@ async def get_drilldown_attendees(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    from api.services.drilldown_service import DrilldownService
-
     session_types_list = session_types.split(",") if session_types else None
     status_list = status_filter.split(",") if status_filter else None
 
@@ -501,8 +496,6 @@ async def get_velocity(
 ) -> VelocityResponse:
     """Get registration velocity curves with week-over-week data."""
     check_duration_session_exclusive(duration, session_cm_id)
-
-    from api.services.velocity_service import VelocityService
 
     cache_params = {
         "year": year,
@@ -545,8 +538,6 @@ async def get_forecast_week_options(
     user: AuthUser = Depends(get_current_user),
 ) -> list[WeekOption]:
     """Return week options from Week 0 (priority reg) through today."""
-    from api.services.forecast_service import ForecastService
-
     repository = _create_repository()
     service = ForecastService(repository)
     return await service.get_week_options(year)
@@ -565,8 +556,6 @@ async def get_forecast(
 ) -> ForecastResponse:
     """Get registration forecast with budget goals and revenue projections."""
     check_duration_session_exclusive(duration, session_cm_id)
-
-    from api.services.forecast_service import ForecastService
 
     cache_params = {
         "year": year,
@@ -604,8 +593,6 @@ async def get_day1(
     user: AuthUser = Depends(get_current_user),
 ) -> Day1Response:
     """Get Day 1 first-24h registration counts by tier."""
-    from api.services.day1_service import Day1Service
-
     cache_params = {"year": year}
     cached: Day1Response | None = metrics_cache.get("day1", **cache_params)
     if cached is not None:
