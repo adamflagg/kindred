@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (42 open issues).
+Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 
 ---
 
@@ -70,13 +70,12 @@ Last updated: 2026-03-13 (42 open issues).
 
 | # | Title | Type |
 |---|-------|------|
-| 517 | Composite-key normalization collapses back to plain-value keys | bug |
-| 497 | Populate parent_names from household mailing_title | bug |
 | 484 | Validate CAMPMINDER_SEASON_ID instead of defaulting to 2025 | bug |
-| 471 | Phase-level historical sync ignores year parameter | bug |
 | 504 | Standardize source_field comparisons to use SourceField constants | tech-debt |
 
-**Interplay:** #484 and #471 are both year/season handling — fix together. #504 prevents future bugs like #517.
+**Interplay:** Independent. #484 is a data integrity risk, #504 prevents future normalization bugs.
+
+> **Stale (close candidates):** #517 (composite-key normalization — fixed via `geoLookupKey` struct), #497 (parent_names — now uses both Relatives and mailing_title), #471 (phase sync year — fixed via `SetYear(qs.Year)`).
 
 ---
 
@@ -149,6 +148,7 @@ Last updated: 2026-03-13 (42 open issues).
 
 | # | Title | Type |
 |---|-------|------|
+| 528 | Align hadolint CI with local `.hadolint.yaml` config | ci |
 | 495 | Migrate `logging.getLogger` to `get_logger` | chore |
 | 485 | Scope module-level env var overrides to fixtures | test |
 | 442 | Extract shared mock factory functions to conftest | test |
@@ -161,7 +161,7 @@ Last updated: 2026-03-13 (42 open issues).
 
 1. **Group 1** — Velocity frontend bugs (3 user-facing bugs, quick wins)
 2. **Group 7** — Geo frontend leftovers (#520 is a real bug, rest are small)
-3. **Group 5** — Sync bugs (#484/#471 are data integrity risks)
+3. **Group 5** — Sync bugs (2 remaining after closing stale; #484 is data integrity)
 4. **Group 6** — Solver (isolated, #500 is forward-compat risk)
 5. **Group 2** — Velocity backend (bigger scope, do after Group 1)
 6. **Group 9** — API refactors (low-risk DRY, good for parallel agents)
