@@ -3798,3 +3798,109 @@ class TestWeekLabelConsolidation:
         assert len(result) == 1
         expected_label = _week_label(date(2025, 11, 3), season_start)
         assert result[0].week_label == expected_label
+
+
+# ============================================================================
+# Snapshot dedup order tests (#456)
+# ============================================================================
+
+
+class TestSnapshotDedupOrder:
+    """Test that snapshot dedup uses explicit timestamp, not iteration order."""
+
+    @pytest.mark.asyncio
+    async def test_later_snapshot_wins_over_earlier_same_day(self, service, mock_repository, sample_sessions):
+        """When two snapshots exist for the same session on the same day,
+        the one with the later snapshot_datetime should win, regardless of list order."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+
+        # Snapshots in REVERSE chronological order — later timestamp first
+        # If dedup relies on iteration order, the earlier snapshot (enrolled=50) would win
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03T14:00:00Z", 1001, 2026, enrolled=100, cancelled=5),
+            create_mock_snapshot("2025-11-03T08:00:00Z", 1001, 2026, enrolled=50, cancelled=2),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # The later snapshot (14:00, enrolled=100) should win
+        assert result.combined.weekly[0].enrolled == 100
+
+    @pytest.mark.asyncio
+    async def test_gender_snapshot_dedup_uses_timestamp(self, service, mock_repository, sample_sessions):
+        """Gender snapshot dedup should use explicit timestamp comparison."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+
+        # Later timestamp first, then earlier
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2025-11-03T14:00:00Z",
+                1001,
+                2026,
+                enrolled=100,
+                cancelled=5,
+                enrolled_male=60,
+                enrolled_female=40,
+                cancelled_male=3,
+                cancelled_female=2,
+            ),
+            create_mock_snapshot(
+                "2025-11-03T08:00:00Z",
+                1001,
+                2026,
+                enrolled=50,
+                cancelled=2,
+                enrolled_male=30,
+                enrolled_female=20,
+                cancelled_male=1,
+                cancelled_female=1,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        boys_curve = next(c for c in result.by_gender if c.gender == "M")
+        girls_curve = next(c for c in result.by_gender if c.gender == "F")
+        assert boys_curve.weekly[0].enrolled == 60
+        assert girls_curve.weekly[0].enrolled == 40
+
+    @pytest.mark.asyncio
+    async def test_cancellation_snapshot_dedup_uses_timestamp(self, service, mock_repository, sample_sessions):
+        """Cancellation snapshot dedup should use explicit timestamp, not cancelled >= current."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+
+        # Later timestamp has LOWER cancelled count (correction scenario)
+        # Old `cancelled >= current` heuristic would keep the higher value (earlier)
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03T08:00:00Z", 1001, 2026, enrolled=100, cancelled=10),
+            create_mock_snapshot("2025-11-03T14:00:00Z", 1001, 2026, enrolled=100, cancelled=7),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        # The later snapshot (14:00, cancelled=7) should win
+        # Note: cancellation curves store cumulative cancelled count in the `enrolled` field
+        assert result.combined.weekly[0].enrolled == 7
+
+    @pytest.mark.asyncio
+    async def test_cancellation_ag_children_summed_after_dedup(self, service, mock_repository):
+        """AG child sessions should sum their cancelled counts into the parent after dedup."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+            1003: create_mock_session(1003, "Session 1 AG", parent_id=1001),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+
+        # Parent and AG child each have snapshots on same day, different times
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03T08:00:00Z", 1001, 2026, enrolled=90, cancelled=5),
+            create_mock_snapshot("2025-11-03T14:00:00Z", 1001, 2026, enrolled=95, cancelled=8),
+            create_mock_snapshot("2025-11-03T08:00:00Z", 1003, 2026, enrolled=10, cancelled=2),
+            create_mock_snapshot("2025-11-03T14:00:00Z", 1003, 2026, enrolled=12, cancelled=3),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        # After dedup: parent latest (14:00) = 8, AG child latest (14:00) = 3
+        # After AG sum: effective 1001 = 8 + 3 = 11
+        assert result.combined.weekly[0].enrolled == 11

@@ -356,15 +356,20 @@ class VelocityService:
 
         # First pass: deduplicate — keep latest snapshot per raw session per date.
         raw_gender: dict[tuple[int, str], tuple[int, int, int, int]] = {}
+        raw_gender_dt: dict[tuple[int, str], str] = {}
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
-            date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
-            raw_gender[(raw_sid, date_str)] = (
-                int(getattr(snap, "enrolled_male_count", 0) or 0),
-                int(getattr(snap, "enrolled_female_count", 0) or 0),
-                int(getattr(snap, "cancelled_male_count", 0) or 0),
-                int(getattr(snap, "cancelled_female_count", 0) or 0),
-            )
+            snap_dt = snap.snapshot_datetime
+            date_str = snap_dt.split("T")[0].split(" ")[0]
+            key = (raw_sid, date_str)
+            if key not in raw_gender_dt or snap_dt > raw_gender_dt[key]:
+                raw_gender[key] = (
+                    int(getattr(snap, "enrolled_male_count", 0) or 0),
+                    int(getattr(snap, "enrolled_female_count", 0) or 0),
+                    int(getattr(snap, "cancelled_male_count", 0) or 0),
+                    int(getattr(snap, "cancelled_female_count", 0) or 0),
+                )
+                raw_gender_dt[key] = snap_dt
 
         # Second pass: merge AG children into parent sessions
         for (raw_sid, date_str), (male, female, canc_m, canc_f) in raw_gender.items():
@@ -934,13 +939,18 @@ class VelocityService:
         # First pass: deduplicate — keep latest snapshot per raw session per date.
         # With always-create snapshots, multiple records may exist per session per day.
         raw_latest: dict[tuple[int, str], tuple[int, int]] = {}
+        raw_latest_dt: dict[tuple[int, str], str] = {}
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
-            date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
-            raw_latest[(raw_sid, date_str)] = (
-                int(snap.enrolled_count),
-                int(getattr(snap, "cancelled_count", 0) or 0),
-            )
+            snap_dt = snap.snapshot_datetime
+            date_str = snap_dt.split("T")[0].split(" ")[0]
+            key = (raw_sid, date_str)
+            if key not in raw_latest_dt or snap_dt > raw_latest_dt[key]:
+                raw_latest[key] = (
+                    int(snap.enrolled_count),
+                    int(getattr(snap, "cancelled_count", 0) or 0),
+                )
+                raw_latest_dt[key] = snap_dt
 
         # Second pass: merge AG children into parent sessions
         for (raw_sid, date_str), (enrolled, cancelled) in raw_latest.items():
@@ -1649,15 +1659,24 @@ class VelocityService:
         # Group by session, merging AG — accumulate cancelled per date
         session_date_cancelled: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
+        # First: dedup per raw session per date (keep latest by timestamp)
+        raw_cancelled: dict[tuple[int, str], int] = {}
+        raw_cancelled_dt: dict[tuple[int, str], str] = {}
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
-            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-            date_str = snap.snapshot_datetime.split("T")[0].split(" ")[0]
+            snap_dt = snap.snapshot_datetime
+            date_str = snap_dt.split("T")[0].split(" ")[0]
             cancelled = int(getattr(snap, "cancelled_count", 0) or 0)
-            # Accumulate (multiple sessions on same date get summed per effective session)
+            key = (raw_sid, date_str)
+            if key not in raw_cancelled_dt or snap_dt > raw_cancelled_dt[key]:
+                raw_cancelled[key] = cancelled
+                raw_cancelled_dt[key] = snap_dt
+
+        # Second: merge AG children into parent sessions (sum, not max)
+        for (raw_sid, date_str), cancelled in raw_cancelled.items():
+            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
             current = session_date_cancelled[effective_sid].get(date_str, 0)
-            if cancelled >= current:
-                session_date_cancelled[effective_sid][date_str] = cancelled
+            session_date_cancelled[effective_sid][date_str] = current + cancelled
 
         if session_cm_id is not None:
             session_date_cancelled = {sid: d for sid, d in session_date_cancelled.items() if sid == session_cm_id}
