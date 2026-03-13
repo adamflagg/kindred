@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (40 open issues).
+Last updated: 2026-03-13 (40 open issues, 3 new from PR #534 review).
 
 ---
 
@@ -63,19 +63,6 @@ Last updated: 2026-03-13 (40 open issues).
 
 ---
 
-## Group 6: Solver (Python) *(in progress)*
-
-**Priority: Medium** — Isolated cluster, forward-compat risk
-
-| # | Title | Type |
-|---|-------|------|
-| 500 | `ConstraintProto.HasField()` fails on OR-Tools 9.15 | bug |
-| 493 | Guard f-string debug logs in constraint hot loops | perf |
-| 494 | Initialize `_pair_reduction_logged` in `__init__` instead of hasattr | refactor |
-| 483 | Clean up dead pin lock / `respect_locks` code | tech-debt |
-
-**Interplay:** #483 pairs with #479 (Group 8) — clean up dead lock code, then expose the UI toggle. #493/#494 are quick independent wins.
-
 ---
 
 ## Group 7: Geo / Frontend
@@ -100,6 +87,7 @@ Last updated: 2026-03-13 (40 open issues).
 | # | Title | Type |
 |---|-------|------|
 | 531 | Add auth loading guard to remaining year-gated hooks | bug |
+| 537 | Add `ag` key to `ValidationResult.capacity_breakdown` type | bug |
 | 479 | Expose `respect_locks` toggle in solver run UI | feature |
 | 468 | Extract `useClickOutside` hook from duplicated pattern | refactor |
 | 461 | Remove redundant double `cy.resize()` in expanded mode | refactor |
@@ -107,7 +95,7 @@ Last updated: 2026-03-13 (40 open issues).
 | 436 | Add accessible group labels to MetricsSessionSelector | a11y |
 | 377 | Enable `erasableSyntaxOnly` in tsconfig after migrating enums | tech-debt |
 
-**Interplay:** #479 pairs with solver #483 (Group 6). #531 is a follow-on from Group 1's #512 fix — same auth guard pattern applied to remaining hooks.
+**Interplay:** #479 now requires re-adding `respect_locks` parameter (removed in PR #534) with proper UI wiring. #531 is a follow-on from Group 1's #512 fix. #537 is a type gap between backend and frontend.
 
 ---
 
@@ -117,13 +105,14 @@ Last updated: 2026-03-13 (40 open issues).
 
 | # | Title | Type |
 |---|-------|------|
+| 535 | Guard against `started_at` KeyError in solver_runner failure path | bug |
 | 487 | Extract shared session resolution function | refactor |
 | 486 | Extract PocketBase collection names into constants | tech-debt |
 | 473 | Replace inline date parsing with `_parse_date_only` utility | refactor |
 | 441 | Use existing `build_ag_parent_map` utility in registration service | refactor |
 | 423 | Hoist inline ForecastService imports in metrics.py | refactor |
 
-**Interplay:** #486 is foundational — makes other refactors safer. Good for parallel agents.
+**Interplay:** #535 is a quick bug fix in `solver_runner.py`. #486 is foundational — makes other refactors safer. Good for parallel agents.
 
 ---
 
@@ -133,6 +122,7 @@ Last updated: 2026-03-13 (40 open issues).
 
 | # | Title | Type |
 |---|-------|------|
+| 536 | Replace John Doe/Jane Smith with fictional name list in solver conftest | test |
 | 528 | Align hadolint CI with local `.hadolint.yaml` config | ci |
 | 495 | Migrate `logging.getLogger` to `get_logger` | chore |
 | 485 | Scope module-level env var overrides to fixtures | test |
@@ -147,7 +137,7 @@ Last updated: 2026-03-13 (40 open issues).
 1. ~~**Group 1**~~ — ✅ Complete (PR #530)
 2. **Group 7** — Geo frontend leftovers (#520 is a real bug, rest are small)
 3. **Group 5** — Sync bugs *(in progress)* — #484 is data integrity
-4. **Group 6** — Solver *(in progress)* — #500 is forward-compat risk
+4. ~~**Group 6**~~ — ✅ Complete (PR #534)
 5. **Group 2** — Velocity backend (bigger scope, #456 correctness bug first)
 6. **Group 9** — API refactors (low-risk DRY, good for parallel agents)
 7. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
@@ -161,3 +151,4 @@ Last updated: 2026-03-13 (40 open issues).
 | Git hooks consolidation | #524 | 2026-03-13 | — |
 | Group 1: Velocity frontend bugs (#510, #511, #512) | #530 | 2026-03-13 | Spawned #531 (auth guard for remaining hooks) |
 | Stale sync issues (#471, #497, #517) | — | 2026-03-13 | Closed as already fixed |
+| Group 6: Solver (#500, #493, #494, #483) | #534 | 2026-03-13 | Spawned #535, #536, #537 during review |
