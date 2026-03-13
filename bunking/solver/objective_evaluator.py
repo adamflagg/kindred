@@ -24,6 +24,7 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.solver.bunk_ordering import get_bunk_rank
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +140,17 @@ class ObjectiveEvaluator:
 
         # Source field multipliers (same as solver)
         source_multipliers = {
-            "share_bunk_with": self.config.get_float("objective.source_multipliers.share_bunk_with", default=1.5),
-            "do_not_share_with": self.config.get_float("objective.source_multipliers.do_not_share_with", default=1.5),
-            "bunking_notes": self.config.get_float("objective.source_multipliers.bunking_notes", default=1.2),
-            "internal_notes": self.config.get_float("objective.source_multipliers.internal_notes", default=1.0),
-            "socialize_with": self.config.get_float("objective.source_multipliers.socialize_with", default=0.8),
+            SourceField.BUNK_WITH: self.config.get_float("objective.source_multipliers.share_bunk_with", default=1.5),
+            SourceField.NOT_BUNK_WITH: self.config.get_float(
+                "objective.source_multipliers.do_not_share_with", default=1.5
+            ),
+            SourceField.BUNKING_NOTES: self.config.get_float("objective.source_multipliers.bunking_notes", default=1.2),
+            SourceField.INTERNAL_NOTES: self.config.get_float(
+                "objective.source_multipliers.internal_notes", default=1.0
+            ),
+            SourceField.SOCIALIZE_WITH: self.config.get_float(
+                "objective.source_multipliers.socialize_preference", default=0.8
+            ),
         }
 
         # Group requests by person (same as solver)
@@ -461,23 +468,13 @@ class ObjectiveEvaluator:
         return total_penalty
 
     def _get_source_fields(self, request: dict[str, Any]) -> list[str]:
-        """Extract source fields from a request (same logic as solver)."""
-        # Try csv_source_fields first
-        csv_fields = request.get("csv_source_fields")
-        if csv_fields:
-            return list(csv_fields)
-
-        # Try ai_reasoning
-        ai_reasoning = request.get("ai_reasoning")
-        if isinstance(ai_reasoning, dict):
-            fields = ai_reasoning.get("csv_source_fields", [])
-            if fields:
-                return list(fields)
-
-        # Fallback to source_field
+        """Extract source field from a request."""
         source_field = request.get("source_field")
         if source_field:
-            return [str(source_field)]
+            return [source_field]
+
+        if request.get("request_type") == "age_preference":
+            return [SourceField.SOCIALIZE_WITH]
 
         return []
 

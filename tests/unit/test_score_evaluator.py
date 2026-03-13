@@ -13,53 +13,24 @@ from bunking.solver.score_evaluator import (
     _get_source_fields,
     evaluate_scenario_score,
 )
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 class TestGetSourceFields:
     """Tests for _get_source_fields helper function."""
 
-    def test_csv_source_fields_present(self):
-        request = {"csv_source_fields": ["share_bunk_with", "bunking_notes"]}
-        result = _get_source_fields(request)
-        assert result == ["share_bunk_with", "bunking_notes"]
-
-    def test_ai_reasoning_with_fields(self):
-        request = {
-            "ai_reasoning": {
-                "csv_source_fields": ["internal_notes"],
-                "confidence": 0.9,
-            }
-        }
-        result = _get_source_fields(request)
-        assert result == ["internal_notes"]
-
     def test_source_field_fallback(self):
-        request = {"source_field": "bunking_notes"}
+        request = {"source_field": SourceField.BUNKING_NOTES}
         result = _get_source_fields(request)
-        assert result == ["bunking_notes"]
+        assert result == [SourceField.BUNKING_NOTES]
 
     def test_age_preference_maps_to_socialize_with(self):
         request = {"request_type": "age_preference"}
         result = _get_source_fields(request)
-        assert result == ["socialize_with"]
+        assert result == [SourceField.SOCIALIZE_WITH]
 
     def test_empty_request(self):
         request: dict[str, Any] = {}
-        result = _get_source_fields(request)
-        assert result == []
-
-    def test_csv_source_fields_empty(self):
-        request: dict[str, Any] = {"csv_source_fields": []}
-        result = _get_source_fields(request)
-        assert result == []
-
-    def test_ai_reasoning_empty_fields(self):
-        request: dict[str, Any] = {"ai_reasoning": {"csv_source_fields": []}}
-        result = _get_source_fields(request)
-        assert result == []
-
-    def test_ai_reasoning_not_dict(self):
-        request = {"ai_reasoning": "string value"}
         result = _get_source_fields(request)
         assert result == []
 
@@ -204,7 +175,7 @@ class TestEvaluateScenarioScore:
                 "objective.source_multipliers.do_not_share_with": 1.5,
                 "objective.source_multipliers.bunking_notes": 1.2,
                 "objective.source_multipliers.internal_notes": 1.0,
-                "objective.source_multipliers.socialize_with": 0.8,
+                "objective.source_multipliers.socialize_preference": 0.8,
             }
             return values.get(key, default)
 
@@ -230,7 +201,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             }
         ]
         assignments = [
@@ -422,7 +393,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",  # 1.5x multiplier
+                "source_field": SourceField.BUNK_WITH,  # 1.5x multiplier (share_bunk_with)
             }
         ]
         socialize_request = [
@@ -431,7 +402,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "socialize_with",  # 0.8x multiplier
+                "source_field": SourceField.SOCIALIZE_WITH,  # 0.8x multiplier (socialize_preference)
             }
         ]
         assignments = [
@@ -447,7 +418,7 @@ class TestEvaluateScenarioScore:
         share_result = evaluate_scenario_score(share_bunk_request, assignments, persons, bunks, config=mock_config)
         socialize_result = evaluate_scenario_score(socialize_request, assignments, persons, bunks, config=mock_config)
 
-        # share_bunk_with (1.5x) should score higher than socialize_with (0.8x)
+        # BUNK_WITH (1.5x) should score higher than SOCIALIZE_WITH (0.8x)
         assert share_result.request_satisfaction_score > socialize_result.request_satisfaction_score
 
     def test_field_scores_breakdown(self, mock_config):
@@ -458,14 +429,14 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             },
             {
                 "requester_id": 3,
                 "requestee_id": 4,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "bunking_notes",
+                "source_field": SourceField.BUNKING_NOTES,
             },
         ]
         assignments = [
@@ -488,10 +459,10 @@ class TestEvaluateScenarioScore:
 
         result = evaluate_scenario_score(requests, assignments, persons, bunks, config=mock_config)
 
-        assert "share_bunk_with" in result.field_scores
-        assert "bunking_notes" in result.field_scores
-        assert result.field_scores["share_bunk_with"]["satisfied"] == 1
-        assert result.field_scores["bunking_notes"]["satisfied"] == 0
+        assert SourceField.BUNK_WITH in result.field_scores
+        assert SourceField.BUNKING_NOTES in result.field_scores
+        assert result.field_scores[SourceField.BUNK_WITH]["satisfied"] == 1
+        assert result.field_scores[SourceField.BUNKING_NOTES]["satisfied"] == 0
 
     def test_penalties_applied(self, mock_config):
         """Test that penalties are subtracted from total score."""
@@ -501,7 +472,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 10,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             }
         ]
         assignments = [
@@ -557,10 +528,10 @@ class TestScoreBreakdown:
             total_requests=10,
             satisfied_requests=8,
             satisfaction_rate=0.8,
-            field_scores={"share_bunk_with": {"total": 5, "satisfied": 4}},
+            field_scores={SourceField.BUNK_WITH: {"total": 5, "satisfied": 4}},
             penalties={"grade_spread": 100},
         )
 
         assert breakdown.total_score == 1000
         assert breakdown.satisfaction_rate == 0.8
-        assert "share_bunk_with" in breakdown.field_scores
+        assert SourceField.BUNK_WITH in breakdown.field_scores

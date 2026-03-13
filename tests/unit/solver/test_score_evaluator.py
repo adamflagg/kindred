@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
 
 class TestScoreBreakdown:
     """Test the ScoreBreakdown dataclass."""
@@ -25,7 +27,7 @@ class TestScoreBreakdown:
             total_requests=10,
             satisfied_requests=8,
             satisfaction_rate=0.8,
-            field_scores={"share_bunk_with": {"total": 5, "satisfied": 4}},
+            field_scores={SourceField.BUNK_WITH: {"total": 5, "satisfied": 4}},
             penalties={"grade_spread": 100},
         )
 
@@ -35,7 +37,7 @@ class TestScoreBreakdown:
         assert breakdown.total_requests == 10
         assert breakdown.satisfied_requests == 8
         assert breakdown.satisfaction_rate == 0.8
-        assert "share_bunk_with" in breakdown.field_scores
+        assert SourceField.BUNK_WITH in breakdown.field_scores
         assert "grade_spread" in breakdown.penalties
 
 
@@ -64,7 +66,7 @@ class TestEvaluateScenarioScore:
             "objective.source_multipliers.do_not_share_with": 1.5,
             "objective.source_multipliers.bunking_notes": 1.2,
             "objective.source_multipliers.internal_notes": 1.0,
-            "objective.source_multipliers.socialize_with": 0.8,
+            "objective.source_multipliers.socialize_preference": 0.8,
         }.get(key, default)
 
         return config
@@ -96,7 +98,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             }
         ]
         assignments = [
@@ -132,7 +134,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             }
         ]
         assignments = [
@@ -170,7 +172,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "not_bunk_with",
                 "priority": 8,
-                "source_field": "do_not_share_with",
+                "source_field": SourceField.NOT_BUNK_WITH,
             }
         ]
         assignments = [
@@ -209,7 +211,7 @@ class TestEvaluateScenarioScore:
                     "requestee_id": 200,
                     "request_type": "bunk_with",
                     "priority": 1,
-                    "source_field": "share_bunk_with",
+                    "source_field": SourceField.BUNK_WITH,
                 }
             ],
             assignments=[
@@ -232,7 +234,7 @@ class TestEvaluateScenarioScore:
                     "requestee_id": 200,
                     "request_type": "bunk_with",
                     "priority": 10,
-                    "source_field": "share_bunk_with",
+                    "source_field": SourceField.BUNK_WITH,
                 }
             ],
             assignments=[
@@ -302,21 +304,21 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             },
             {
                 "requester_id": 100,
                 "requestee_id": 300,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             },
             {
                 "requester_id": 100,
                 "requestee_id": 400,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": "share_bunk_with",
+                "source_field": SourceField.BUNK_WITH,
             },
         ]
         assignments = [
@@ -358,46 +360,23 @@ class TestEvaluateScenarioScore:
 class TestGetSourceFields:
     """Test the _get_source_fields helper function."""
 
-    def test_csv_source_fields_takes_priority(self):
-        """csv_source_fields should be used if present."""
-        from bunking.solver.score_evaluator import _get_source_fields
-
-        request = {
-            "csv_source_fields": ["share_bunk_with", "bunking_notes"],
-            "source_field": "other",
-        }
-
-        result = _get_source_fields(request)
-        assert result == ["share_bunk_with", "bunking_notes"]
-
-    def test_ai_reasoning_source_fields(self):
-        """Should extract from ai_reasoning.csv_source_fields."""
-        from bunking.solver.score_evaluator import _get_source_fields
-
-        request = {
-            "ai_reasoning": {"csv_source_fields": ["internal_notes"]},
-        }
-
-        result = _get_source_fields(request)
-        assert result == ["internal_notes"]
-
     def test_fallback_to_source_field(self):
-        """Should fall back to source_field as list."""
+        """Should return source_field as list."""
         from bunking.solver.score_evaluator import _get_source_fields
 
-        request = {"source_field": "bunking_notes"}
+        request = {"source_field": SourceField.BUNKING_NOTES}
 
         result = _get_source_fields(request)
-        assert result == ["bunking_notes"]
+        assert result == [SourceField.BUNKING_NOTES]
 
     def test_age_preference_maps_to_socialize_with(self):
-        """age_preference requests should map to socialize_with source."""
+        """age_preference requests should map to SOCIALIZE_WITH source."""
         from bunking.solver.score_evaluator import _get_source_fields
 
         request = {"request_type": "age_preference"}
 
         result = _get_source_fields(request)
-        assert result == ["socialize_with"]
+        assert result == [SourceField.SOCIALIZE_WITH]
 
     def test_empty_request_returns_empty_list(self):
         """Empty request should return empty list."""

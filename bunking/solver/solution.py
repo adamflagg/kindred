@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 
 if TYPE_CHECKING:
@@ -85,7 +86,7 @@ def calculate_field_level_stats(
     satisfied_requests: dict[int, list[str]],
     requests_by_person: dict[int, list[DirectBunkRequest]],
 ) -> dict[str, Any]:
-    """Calculate request satisfaction statistics broken down by CSV source field.
+    """Calculate request satisfaction statistics broken down by source field.
 
     Args:
         satisfied_requests: Dict mapping person CM ID to satisfied request IDs
@@ -96,19 +97,19 @@ def calculate_field_level_stats(
     """
     # Define explicit CSV fields
     explicit_csv_fields = {
-        "share_bunk_with",
-        "do_not_share_with",
-        "bunking_notes",
-        "internal_notes",
+        SourceField.BUNK_WITH,
+        SourceField.NOT_BUNK_WITH,
+        SourceField.BUNKING_NOTES,
+        SourceField.INTERNAL_NOTES,
     }
 
     # Initialize field stats
     field_stats: dict[str, dict[str, Any]] = {
-        "share_bunk_with": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        "do_not_share_with": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        "bunking_notes": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        "internal_notes": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        "socialize_preference": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.BUNK_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.NOT_BUNK_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.BUNKING_NOTES: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.INTERNAL_NOTES: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.SOCIALIZE_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
         "other": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
     }
 
@@ -125,11 +126,7 @@ def calculate_field_level_stats(
         for request in requests:
             # Get source fields
             source_fields: list[str] = []
-            if hasattr(request, "ai_reasoning") and isinstance(request.ai_reasoning, dict):
-                source_fields = request.ai_reasoning.get("csv_source_fields", [])
-            if not source_fields and hasattr(request, "csv_source_fields") and request.csv_source_fields:
-                source_fields = request.csv_source_fields
-            if not source_fields and hasattr(request, "source_field") and request.source_field:
+            if hasattr(request, "source_field") and request.source_field:
                 source_fields = [request.source_field]
             if not source_fields:
                 source_fields = ["other"]
@@ -170,11 +167,7 @@ def calculate_field_level_stats(
         for request in requests:
             # Get source fields
             source_fields = []
-            if hasattr(request, "ai_reasoning") and isinstance(request.ai_reasoning, dict):
-                source_fields = request.ai_reasoning.get("csv_source_fields", [])
-            if not source_fields and hasattr(request, "csv_source_fields") and request.csv_source_fields:
-                source_fields = request.csv_source_fields
-            if not source_fields and hasattr(request, "source_field") and request.source_field:
+            if hasattr(request, "source_field") and request.source_field:
                 source_fields = [request.source_field]
 
             # Check if explicit
