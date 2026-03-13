@@ -269,24 +269,29 @@ export default function CamperDetail() {
             defaultExpanded={true}
           />
 
-          {/* Bunking Status */}
-          <BunkingStatusPanel
-            camper={camper}
-            enrolledCampers={enrolledCampers}
-            sessionShortName={sessionShortName}
-            allBunkRequests={allBunkRequests}
-            agePreferenceRequests={agePreferenceRequests}
-            satisfactionData={satisfactionData}
-            satisfactionLoading={satisfactionLoading}
-          />
+          {/* Bunking panels - only shown for enrolled campers */}
+          {camper.attendee_status === 'enrolled' && (
+            <>
+              {/* Bunking Status */}
+              <BunkingStatusPanel
+                camper={camper}
+                enrolledCampers={enrolledCampers}
+                sessionShortName={sessionShortName}
+                allBunkRequests={allBunkRequests}
+                agePreferenceRequests={agePreferenceRequests}
+                satisfactionData={satisfactionData}
+                satisfactionLoading={satisfactionLoading}
+              />
 
-          {/* Raw Bunking Data */}
-          {originalBunkData && (
-            <RawDataPanel data={originalBunkData} year={currentYear} defaultExpanded={false} />
+              {/* Raw Bunking Data */}
+              {originalBunkData && (
+                <RawDataPanel data={originalBunkData} year={currentYear} defaultExpanded={false} />
+              )}
+
+              {/* Parsed Bunk Requests (admin only) */}
+              {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
+            </>
           )}
-
-          {/* Parsed Bunk Requests (admin only) */}
-          {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
         </div>
 
         {/* Sidebar */}
