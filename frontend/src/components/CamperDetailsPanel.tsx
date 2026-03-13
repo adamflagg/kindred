@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
+import { StatusBadge } from './StatusBadge'
 import {
   getGenderIdentityDisplay,
   getGenderCategory,
@@ -45,6 +46,7 @@ import { CampMinderIcon } from './icons'
 import CamperLink from './CamperLink'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
+import { sortEnrolledFirst } from '../utils/enrollmentSort'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -155,7 +157,7 @@ export default function CamperDetailsPanel({
         (t) => `session.session_type = "${t}"`
       ).join(' || ')
       const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({
-        filter: `person_id = ${personId} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`,
+        filter: `person_id = ${personId} && year = ${currentYear} && (${sessionTypeFilter})`,
         expand: 'session',
       })
 
@@ -165,8 +167,8 @@ export default function CamperDetailsPanel({
         person_id: personId,
         session: '',
         enrollment_date: new Date().toISOString(),
-        is_active: true,
-        status: 'enrolled' as const,
+        is_active: false,
+        status: 'none' as const,
         status_id: 1,
         year: currentYear,
         collectionId: '',
@@ -181,6 +183,13 @@ export default function CamperDetailsPanel({
           enrollments: [] as CurrentEnrollment[],
         }
       }
+
+      // Sort enrolled first, then by session type priority
+      attendees.sort((a, b) => {
+        const aSession = (a.expand as { session?: ExpandedSession } | undefined)?.session
+        const bSession = (b.expand as { session?: ExpandedSession } | undefined)?.session
+        return sortEnrolledFirst(a.status, aSession?.session_type, b.status, bSession?.session_type)
+      })
 
       // Build enrollments list from ALL attendee records
       const enrollments: CurrentEnrollment[] = []
@@ -355,7 +364,7 @@ export default function CamperDetailsPanel({
           const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
             (t) => `session.session_type = "${t}"`
           ).join(' || ')
-          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`
+          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
 
           try {
             const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
@@ -371,12 +380,7 @@ export default function CamperDetailsPanel({
               const bExpand = b.expand as { session?: ExpandedSession } | undefined
               const aType = aExpand?.session?.session_type ?? 'unknown'
               const bType = bExpand?.session?.session_type ?? 'unknown'
-              const typeOrder: Record<string, number> = {
-                main: 1,
-                embedded: 2,
-                ag: 3,
-              }
-              return (typeOrder[aType] ?? 999) - (typeOrder[bType] ?? 999)
+              return sortEnrolledFirst(a.status, aType, b.status, bType)
             })
 
             const primaryAttendee = sortedAttendees[0]
@@ -407,7 +411,7 @@ export default function CamperDetailsPanel({
               }
             }
 
-            return { ...siblingPerson, session, bunkName }
+            return { ...siblingPerson, session, bunkName, attendeeStatus: primaryAttendee.status }
           } catch {
             return null
           }
@@ -1031,8 +1035,11 @@ export default function CamperDetailsPanel({
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 truncate text-sm font-medium">
-                        {sibling.preferred_name || sibling.first_name} {sibling.last_name}
+                      <div className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 flex items-center gap-1.5 truncate text-sm font-medium">
+                        <span>
+                          {sibling.preferred_name || sibling.first_name} {sibling.last_name}
+                        </span>
+                        <StatusBadge status={sibling.attendeeStatus} />
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
                         <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
@@ -1169,17 +1176,20 @@ export default function CamperDetailsPanel({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between">
-                <h2 className="truncate text-lg font-bold">
-                  {camper.first_name}
-                  {camper.preferred_name && camper.preferred_name !== camper.first_name && (
-                    <span className="font-normal text-white/90 italic">
-                      {' '}
-                      "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
-                    </span>
-                  )}
-                  {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
-                  {camper.last_name}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate text-lg font-bold">
+                    {camper.first_name}
+                    {camper.preferred_name && camper.preferred_name !== camper.first_name && (
+                      <span className="font-normal text-white/90 italic">
+                        {' '}
+                        "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
+                      </span>
+                    )}
+                    {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
+                    {camper.last_name}
+                  </h2>
+                  <StatusBadge status={camper?.attendee_status} />
+                </div>
                 <button
                   onClick={handleClose}
                   className="-mr-1 rounded-lg p-1.5 transition-colors hover:bg-white/10"
@@ -1248,17 +1258,21 @@ export default function CamperDetailsPanel({
               {/* Name and info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between">
-                  <h2 className="text-xl font-bold tracking-tight">
-                    {camper.first_name}
-                    {camper.preferred_name && camper.preferred_name !== camper.first_name && (
-                      <span className="font-normal text-white/90 italic">
-                        {' '}
-                        "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
-                      </span>
-                    )}
-                    {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
-                    {camper.last_name}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold tracking-tight">
+                      {camper.first_name}
+                      {camper.preferred_name && camper.preferred_name !== camper.first_name && (
+                        <span className="font-normal text-white/90 italic">
+                          {' '}
+                          "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
+                        </span>
+                      )}
+                      {(!camper.preferred_name || camper.preferred_name === camper.first_name) &&
+                        ' '}
+                      {camper.last_name}
+                    </h2>
+                    <StatusBadge status={camper?.attendee_status} />
+                  </div>
                   <button
                     onClick={handleClose}
                     className="-mr-1 rounded-xl p-2 transition-colors hover:bg-white/10"

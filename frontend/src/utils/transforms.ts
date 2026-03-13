@@ -30,6 +30,7 @@ export function toAppCamper(
   const camper: Camper = {
     id: `${person.cm_id}:${sessionCmId}`,
     attendee_id: attendee.id,
+    attendee_status: attendee.status,
     name: displayName,
     first_name: person.first_name || '',
     last_name: person.last_name || '',

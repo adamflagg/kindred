@@ -3,7 +3,11 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { toAppCamper, buildCampersFromData, createLookupMaps } from './transforms'
-import { Collections, CampSessionsSessionTypeOptions } from '../types/pocketbase-types'
+import {
+  Collections,
+  CampSessionsSessionTypeOptions,
+  AttendeesStatusOptions,
+} from '../types/pocketbase-types'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -171,6 +175,20 @@ describe('toAppCamper', () => {
     expect(camper.gender_pronoun_id).toBe(1)
     expect(camper.gender_pronoun_name).toBe('he/him')
     expect(camper.household_id).toBe(100)
+  })
+
+  it('populates attendee_status from attendee record', () => {
+    const person = createMockPerson({ first_name: 'Emma', last_name: 'Johnson' })
+    const attendee = createMockAttendee({ status: AttendeesStatusOptions.waitlisted })
+    const camper = toAppCamper(person, attendee)
+    expect(camper.attendee_status).toBe('waitlisted')
+  })
+
+  it('populates attendee_status as enrolled for enrolled attendee', () => {
+    const person = createMockPerson({ first_name: 'Liam', last_name: 'Garcia' })
+    const attendee = createMockAttendee({ status: AttendeesStatusOptions.enrolled })
+    const camper = toAppCamper(person, attendee)
+    expect(camper.attendee_status).toBe('enrolled')
   })
 
   it('should set expand property with session and bunk', () => {

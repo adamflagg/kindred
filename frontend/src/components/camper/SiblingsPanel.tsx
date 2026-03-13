@@ -8,6 +8,7 @@ import { formatAge } from '../../utils/age'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
+import { StatusBadge } from '../StatusBadge'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { SiblingWithEnrollment } from '../../hooks/camper/types'
 
@@ -57,8 +58,11 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
 
                 {/* Sibling info */}
                 <div className="min-w-0 flex-1">
-                  <div className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 truncate text-sm font-medium transition-colors">
-                    {sibling.preferred_name || sibling.first_name} {sibling.last_name}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 truncate text-sm font-medium transition-colors">
+                      {sibling.preferred_name || sibling.first_name} {sibling.last_name}
+                    </span>
+                    <StatusBadge status={sibling.attendeeStatus} />
                   </div>
                   <div className="text-muted-foreground mt-0.5 text-xs">
                     {(() => {
@@ -97,7 +101,7 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
         ) : (
           <div className="py-4 text-center">
             <Users className="text-muted-foreground/50 mx-auto mb-2 h-8 w-8" />
-            <p className="text-muted-foreground text-sm">No siblings enrolled</p>
+            <p className="text-muted-foreground text-sm">No siblings found</p>
           </div>
         )}
       </div>
