@@ -401,6 +401,7 @@ class DirectBunkingSolver:
             config_key = SOURCE_FIELD_TO_CONFIG_KEY.get(request.source_field)
             if config_key:
                 return self.config.get_float(f"objective.source_multipliers.{config_key}", default=1.0)
+            logger.warning(f"Unknown source_field value not in SOURCE_FIELD_TO_CONFIG_KEY: {request.source_field!r}")
 
         # Default multiplier
         return 1.0
