@@ -107,7 +107,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -151,7 +150,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -193,7 +191,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -233,7 +230,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -274,7 +270,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -315,7 +310,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -356,7 +350,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
@@ -400,7 +393,6 @@ class TestSolverRunnerPocketBaseSave:
                 run_id="test_run",
                 session_cm_id=100,
                 year=2026,
-                respect_locks=True,
                 time_limit=60,
             )
 
