@@ -30,12 +30,15 @@ os.environ["SKIP_PB_AUTH"] = "true"
 from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 from api.services.velocity_service import (
     SEASON_WEEKS,
+    SeasonContext,
     VelocityService,
     _compute_season_start,
     _partial_week_info,
     _season_end,
+    _week_label,
     _week_number,
     _week_start,
+    rollup_daily_to_weekly,
 )
 
 # ============================================================================
@@ -3740,3 +3743,58 @@ class TestReconstructionEffectiveDate:
         assert last_point.gross_enrolled == 4
         # Net: 4 - 1 cancellation = 3
         assert last_point.enrolled == 3
+
+
+# ============================================================================
+# SeasonContext dataclass
+# ============================================================================
+
+
+class TestSeasonContext:
+    """Test SeasonContext dataclass."""
+
+    def test_season_context_is_frozen(self):
+        from datetime import date, datetime
+
+        ctx = SeasonContext(
+            year=2026,
+            season_start=datetime(2025, 11, 1),
+            season_end=datetime(2026, 8, 31),
+            today=date(2026, 3, 13),
+        )
+        assert ctx.year == 2026
+        assert ctx.season_start == datetime(2025, 11, 1)
+        with pytest.raises(AttributeError):
+            ctx.year = 2027  # type: ignore[misc]
+
+
+# ============================================================================
+# Week-label consolidation regression guard
+# ============================================================================
+
+
+class TestWeekLabelConsolidation:
+    """Guard against week-label format divergence after consolidation."""
+
+    def test_rollup_uses_week_label_format(self):
+        from datetime import date
+
+        from api.schemas.velocity import DailyDataPoint
+
+        season_start = date(2025, 11, 3)
+        daily = [
+            DailyDataPoint(
+                date="2025-11-03",
+                day_offset=0,
+                gross_enrolled=10,
+                enrolled=10,
+                cancelled=0,
+                daily_new=10,
+                daily_cancelled=0,
+                data_source="snapshot",
+            ),
+        ]
+        result = rollup_daily_to_weekly(daily, season_start)
+        assert len(result) == 1
+        expected_label = _week_label(date(2025, 11, 3), season_start)
+        assert result[0].week_label == expected_label

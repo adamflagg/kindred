@@ -7,6 +7,7 @@ Computes week-over-week enrollment velocity using either enrollment snapshots
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -43,6 +44,16 @@ PHASE_KEY_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+@dataclass(frozen=True)
+class SeasonContext:
+    """Bundles the four season-scoped parameters threaded through velocity methods."""
+
+    year: int
+    season_start: datetime
+    season_end: datetime
+    today: date
+
+
 def rollup_daily_to_weekly(
     daily: list[DailyDataPoint],
     season_start: date,
@@ -73,7 +84,7 @@ def rollup_daily_to_weekly(
         week_start_date = season_start + timedelta(days=(week_num - 1) * 7)
         week_end_date = season_start + timedelta(days=week_num * 7 - 1)
 
-        week_label = f"Wk {week_num} ({format_week_date_range(season_start, week_num)})"
+        week_label = _week_label(week_start_date, season_start)
 
         # Aggregations
         weekly_new = sum(dp.daily_new for dp in points)
@@ -121,7 +132,7 @@ def _week_start(d: datetime, season_start: datetime) -> datetime:
     return season_start + timedelta(days=(days_since // 7) * 7)
 
 
-def _week_label(d: datetime, season_start: datetime) -> str:
+def _week_label(d: datetime | date, season_start: datetime | date) -> str:
     """Format a date as a week label like 'Wk N (Jan 6–12)'."""
     week_num = _week_number(d, season_start)
     return f"Wk {week_num} ({format_week_date_range(season_start.date() if isinstance(season_start, datetime) else season_start, week_num)})"
@@ -151,9 +162,11 @@ def _season_end(priority_reg_date: datetime) -> datetime:
     return priority_reg_date + timedelta(days=SEASON_WEEKS * 7)
 
 
-def _week_number(d: datetime, priority_reg_date: datetime) -> int:
+def _week_number(d: datetime | date, priority_reg_date: datetime | date) -> int:
     """Compute 1-based week offset from priority_reg_date."""
-    return (d - priority_reg_date).days // 7 + 1
+    d_date = d.date() if isinstance(d, datetime) else d
+    ref_date = priority_reg_date.date() if isinstance(priority_reg_date, datetime) else priority_reg_date
+    return (d_date - ref_date).days // 7 + 1
 
 
 def _partial_week_info(week_start_str: str, year: int, *, today: date | None = None) -> tuple[bool, int]:
@@ -316,14 +329,11 @@ class VelocityService:
 
     def _gender_data_from_snapshots(
         self,
+        ctx: SeasonContext,
         snapshots: list[Any],
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        year: int = 0,
-        today: date | None = None,
     ) -> tuple[dict[str, dict[int, list[WeeklyDataPoint]]], dict[int, dict[str, int]]]:
         """Extract per-gender per-session weekly data from snapshot gender counts.
 
@@ -408,9 +418,7 @@ class VelocityService:
             for sid, date_counts in gender_session_date[gender].items():
                 date_data: dict[str, dict[str, int]] = {d: {"enrolled": c} for d, c in date_counts.items()}
                 cancelled_for_session = gender_session_cancelled[gender].get(sid, {})
-                weekly = self._aggregate_snapshots_to_weekly(
-                    date_data, cancelled_for_session, season_start, season_end, year=year, today=today
-                )
+                weekly = self._aggregate_snapshots_to_weekly(date_data, cancelled_for_session, ctx)
                 per_session_data[sid] = weekly
             gender_per_session[gender] = per_session_data
 
@@ -486,15 +494,14 @@ class VelocityService:
             sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
         ag_parent_map = build_ag_parent_map(sessions)
 
+        ref_today = today or datetime.now(tz=UTC).date()
+        ctx = SeasonContext(year=year, season_start=season_start_dt, season_end=season_end_dt, today=ref_today)
+
         # Build curves for the primary year (dispatch by metric type)
         if metric == "cancellation":
-            result = await self._build_cancellation_curves(
-                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt, today=today
-            )
+            result = await self._build_cancellation_curves(ctx, sessions, ag_parent_map, session_cm_id)
         else:
-            result = await self._build_curves(
-                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt, today=today
-            )
+            result = await self._build_curves(ctx, sessions, ag_parent_map, session_cm_id)
 
         combined = result.combined
         by_session = result.by_session
@@ -506,17 +513,14 @@ class VelocityService:
         if split_by_gender:
             if metric == "cancellation":
                 by_gender, session_gender_breakdown = await self._build_cancellation_gender_curves(
-                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt, today=today
+                    ctx, sessions, ag_parent_map, session_cm_id
                 )
             else:
                 by_gender, session_gender_breakdown = await self._build_gender_curves(
-                    year,
+                    ctx,
                     sessions,
                     ag_parent_map,
                     session_cm_id,
-                    season_start_dt,
-                    season_end_dt,
-                    today=today,
                     combined_daily=combined.daily,
                 )
 
@@ -547,26 +551,26 @@ class VelocityService:
                     prior_duration_ids = resolve_duration_sessions(prior_sessions, duration)
                     prior_sessions = {sid: s for sid, s in prior_sessions.items() if sid in prior_duration_ids}
                 prior_ag_map = build_ag_parent_map(prior_sessions)
+                prior_ctx = SeasonContext(
+                    year=prior_year,
+                    season_start=prior_season_start,
+                    season_end=prior_season_end,
+                    today=ref_today,
+                )
 
                 if metric == "cancellation":
                     prior_result = await self._build_cancellation_curves(
-                        prior_year,
+                        prior_ctx,
                         prior_sessions,
                         prior_ag_map,
                         session_cm_id=None,
-                        season_start=prior_season_start,
-                        season_end=prior_season_end,
-                        today=today,
                     )
                 else:
                     prior_result = await self._build_curves(
-                        prior_year,
+                        prior_ctx,
                         prior_sessions,
                         prior_ag_map,
                         session_cm_id=None,
-                        season_start=prior_season_start,
-                        season_end=prior_season_end,
-                        today=today,
                     )
                 prior_years.append(
                     PriorYearVelocity(
@@ -598,23 +602,17 @@ class VelocityService:
                 if split_by_gender:
                     if metric == "cancellation":
                         prior_gender_curves, _ = await self._build_cancellation_gender_curves(
-                            prior_year,
+                            prior_ctx,
                             prior_sessions,
                             prior_ag_map,
                             session_cm_id=None,
-                            season_start=prior_season_start,
-                            season_end=prior_season_end,
-                            today=today,
                         )
                     else:
                         prior_gender_curves, _ = await self._build_gender_curves(
-                            prior_year,
+                            prior_ctx,
                             prior_sessions,
                             prior_ag_map,
                             session_cm_id=None,
-                            season_start=prior_season_start,
-                            season_end=prior_season_end,
-                            today=today,
                             combined_daily=prior_result.combined.daily,
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
@@ -854,57 +852,47 @@ class VelocityService:
 
     async def _build_curves(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> _CurveResult:
         """Build combined and per-session velocity curves for a year.
 
         Uses hybrid mode when snapshots don't cover the full season: reconstruction
         fills pre-snapshot weeks, snapshots cover the rest.
         """
-        snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
+        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
         if not snapshots:
-            return await self._curves_from_reconstruction(
-                year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-            )
+            return await self._curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
 
-        snap_result = self._curves_from_snapshots(
-            year, snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-        )
+        snap_result = self._curves_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
         # Determine if we need hybrid mode
-        earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
+        earliest = self._find_earliest_snapshot_datetime(snapshots, ctx.season_start)
         if earliest is None:
             return snap_result
 
-        first_snapshot_week = _week_start(earliest, season_start)
-        if first_snapshot_week <= season_start:
+        first_snapshot_week = _week_start(earliest, ctx.season_start)
+        if first_snapshot_week <= ctx.season_start:
             # Snapshots cover from the start — pure snapshot path
             return snap_result
 
         # Hybrid: need reconstruction for pre-snapshot weeks
-        recon_result = await self._curves_from_reconstruction(
-            year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-        )
+        recon_result = await self._curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
 
         # Build per-session data maps from the curve results
         snap_by_session = {c.session_cm_id: c.weekly for c in snap_result.by_session if c.session_cm_id}
         recon_by_session = {c.session_cm_id: c.weekly for c in recon_result.by_session if c.session_cm_id}
 
-        merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, season_start)
+        merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, ctx.season_start)
 
         # Merge daily data: reconstruction before first snapshot, snapshots from that date onward
         merged_daily = self._merge_hybrid_daily(recon_result.combined.daily, snap_result.combined.daily)
-        season_start_date = season_start.date() if isinstance(season_start, datetime) else season_start
-        season_end_date = season_end.date() if isinstance(season_end, datetime) else season_end
-        ref = today or datetime.now(tz=UTC).date()
-        is_current_season = season_start_date <= ref <= season_end_date
+        season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
+        season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
+        is_current_season = season_start_date <= ctx.today <= season_end_date
         combined_weekly = rollup_daily_to_weekly(merged_daily, season_start_date, is_current_year=is_current_season)
 
         # Fall back to weekly merge if daily merge produced no data
@@ -912,14 +900,14 @@ class VelocityService:
             combined_weekly = self._combine_weekly_curves(merged_by_session)
 
         combined = VelocityCurve(
-            year=year,
+            year=ctx.year,
             session_cm_id=session_cm_id,
             session_name=None,
             gender=None,
             weekly=combined_weekly,
             daily=merged_daily,
         )
-        by_session = self._build_session_curves(year, sessions, merged_by_session)
+        by_session = self._build_session_curves(ctx.year, sessions, merged_by_session)
 
         return _CurveResult(
             combined=combined,
@@ -929,14 +917,11 @@ class VelocityService:
 
     def _curves_from_snapshots(
         self,
-        year: int,
+        ctx: SeasonContext,
         snapshots: list[Any],
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> _CurveResult:
         """Build curves from enrollment snapshots (fast path)."""
         # Group snapshots by session, merging AG into parent
@@ -984,20 +969,20 @@ class VelocityService:
 
         for sid, date_data in session_date_data.items():
             cancelled_data = session_date_cancelled.get(sid, {})
-            weekly = self._aggregate_snapshots_to_weekly(
-                date_data, cancelled_data, season_start, season_end, year=year, today=today
-            )
+            weekly = self._aggregate_snapshots_to_weekly(date_data, cancelled_data, ctx)
             per_session_data[sid] = weekly
 
         # Build combined curve by summing across sessions per week
         combined_data = self._combine_weekly_curves(per_session_data)
 
         # Build daily data from snapshots (sum across sessions per date)
-        season_start_date = season_start.date() if isinstance(season_start, datetime) else season_start
-        daily_data = self._snapshots_to_daily(session_date_data, session_date_cancelled, season_start_date, season_end)
+        season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
+        daily_data = self._snapshots_to_daily(
+            session_date_data, session_date_cancelled, season_start_date, ctx.season_end
+        )
 
         combined = VelocityCurve(
-            year=year,
+            year=ctx.year,
             session_cm_id=session_cm_id,
             session_name=None,
             gender=None,
@@ -1005,7 +990,7 @@ class VelocityService:
             daily=daily_data,
         )
 
-        by_session = self._build_session_curves(year, sessions, per_session_data)
+        by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=cancelled_to_date)
 
@@ -1013,10 +998,7 @@ class VelocityService:
         self,
         date_data: dict[str, dict[str, int]],
         cancelled_data: dict[str, int],
-        season_start: datetime,
-        season_end: datetime,
-        year: int = 0,
-        today: date | None = None,
+        ctx: SeasonContext,
     ) -> list[WeeklyDataPoint]:
         """Aggregate snapshot data to weekly points (priority_reg_date bucketing, last snapshot per week wins).
 
@@ -1028,11 +1010,11 @@ class VelocityService:
 
         for date_str, counts in sorted(date_data.items()):
             dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
-            if dt.date() < season_start.date():
+            if dt.date() < ctx.season_start.date():
                 continue
-            if dt.date() > season_end.date():
+            if dt.date() > ctx.season_end.date():
                 continue
-            bucket = _week_start(dt, season_start)
+            bucket = _week_start(dt, ctx.season_start)
             bucket_key = bucket.strftime("%Y-%m-%d")
             # Last snapshot of the week wins (data is sorted by date)
             weekly_data[bucket_key] = counts
@@ -1052,14 +1034,14 @@ class VelocityService:
             gross = enrolled + cancelled
 
             bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-            wn = _week_number(bucket_dt, season_start)
+            wn = _week_number(bucket_dt, ctx.season_start)
             week_end_date = bucket_dt + timedelta(days=6)
-            is_partial, days_in_week = _partial_week_info(bucket_key, year, today=today)
+            is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
             points.append(
                 WeeklyDataPoint(
                     week_start=bucket_key,
                     week_end=week_end_date.strftime("%Y-%m-%d"),
-                    week_label=_week_label(bucket_dt, season_start),
+                    week_label=_week_label(bucket_dt, ctx.season_start),
                     week_number=wn,
                     enrolled=enrolled,
                     delta=delta,
@@ -1250,13 +1232,10 @@ class VelocityService:
 
     async def _curves_from_reconstruction(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> _CurveResult:
         """Build curves by reconstructing from attendee records.
 
@@ -1264,10 +1243,10 @@ class VelocityService:
         enrollment_date (PostDate = status change date) for cancellation events.
         Only enrolled (2), cancelled (32), and withdrawn (256) statuses contribute.
         """
-        attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
+        attendees = await self.repo.fetch_attendees_with_dates(ctx.year, session_cm_id=session_cm_id)
 
         if not attendees:
-            empty_combined = VelocityCurve(year=year, session_cm_id=None, gender=None, weekly=[])
+            empty_combined = VelocityCurve(year=ctx.year, session_cm_id=None, gender=None, weekly=[])
             return _CurveResult(combined=empty_combined, by_session=[], cancelled_to_date=0)
 
         # Group enrollments and cancellations by session (date -> count), merging AG
@@ -1292,7 +1271,7 @@ class VelocityService:
             enroll_date_str = _get_enrollment_date(att)
             if enroll_date_str:
                 dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-                if season_start.date() <= dt.date() <= season_end.date():
+                if ctx.season_start.date() <= dt.date() <= ctx.season_end.date():
                     date_key = dt.strftime("%Y-%m-%d")
                     session_daily_enrollments[effective_sid][date_key] += 1
 
@@ -1302,7 +1281,7 @@ class VelocityService:
                 if cancel_date_raw:
                     cancel_date_str = parse_date_only(cancel_date_raw)
                     cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                    if season_start.date() <= cancel_dt.date() <= season_end.date():
+                    if ctx.season_start.date() <= cancel_dt.date() <= ctx.season_end.date():
                         session_daily_cancellations[effective_sid][cancel_date_str] += 1
                         total_cancellation_count += 1
 
@@ -1337,7 +1316,7 @@ class VelocityService:
                 new_enrolled = daily_enrollments.get(date_key, 0)
                 cancelled = session_daily_cancellations.get(sid, {}).get(date_key, 0)
                 dt = datetime.strptime(date_key, "%Y-%m-%d")
-                bucket = _week_start(dt, season_start)
+                bucket = _week_start(dt, ctx.season_start)
                 bucket_key = bucket.strftime("%Y-%m-%d")
                 weekly_enrollments[bucket_key] += new_enrolled
                 weekly_cancellations[bucket_key] += cancelled
@@ -1358,14 +1337,14 @@ class VelocityService:
                 delta = net - prev_enrolled_val
 
                 bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-                wn = _week_number(bucket_dt, season_start)
+                wn = _week_number(bucket_dt, ctx.season_start)
                 week_end_date = bucket_dt + timedelta(days=6)
-                is_partial, days_in_week = _partial_week_info(bucket_key, year, today=today)
+                is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
                 points.append(
                     WeeklyDataPoint(
                         week_start=bucket_key,
                         week_end=week_end_date.strftime("%Y-%m-%d"),
-                        week_label=_week_label(bucket_dt, season_start),
+                        week_label=_week_label(bucket_dt, ctx.season_start),
                         week_number=wn,
                         enrolled=net,
                         delta=delta,
@@ -1384,11 +1363,10 @@ class VelocityService:
         combined_data = self._combine_weekly_curves(per_session_data)
 
         # Build daily data via reconstruct_daily
-        season_start_date = season_start.date() if isinstance(season_start, datetime) else season_start
-        season_end_date = season_end.date() if isinstance(season_end, datetime) else season_end
-        ref = today or datetime.now(tz=UTC).date()
-        is_current_season = season_start_date <= ref <= season_end_date
-        end_date = ref if is_current_season else season_end_date
+        season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
+        season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
+        is_current_season = season_start_date <= ctx.today <= season_end_date
+        end_date = ctx.today if is_current_season else season_end_date
         daily_data = reconstruct_daily(
             attendees=attendees,
             season_start=season_start_date,
@@ -1402,14 +1380,14 @@ class VelocityService:
         combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_season)
 
         combined = VelocityCurve(
-            year=year,
+            year=ctx.year,
             session_cm_id=session_cm_id,
             gender=None,
             weekly=combined_weekly if combined_weekly else combined_data,
             daily=daily_data,
         )
 
-        by_session = self._build_session_curves(year, sessions, per_session_data)
+        by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
         return _CurveResult(
             combined=combined,
@@ -1419,20 +1397,19 @@ class VelocityService:
 
     async def _gender_data_from_reconstruction(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> tuple[dict[str, dict[int, list[WeeklyDataPoint]]], dict[int, dict[str, int]]]:
         """Extract per-gender per-session weekly data by reconstructing from attendees.
 
         Returns (gender_per_session, session_gender_totals) — same shape as
         _gender_data_from_snapshots for hybrid merging.
         """
-        attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id, expand_person=True)
+        attendees = await self.repo.fetch_attendees_with_dates(
+            ctx.year, session_cm_id=session_cm_id, expand_person=True
+        )
 
         gender_per_session: dict[str, dict[int, list[WeeklyDataPoint]]] = {"M": {}, "F": {}}
         session_gender_totals: dict[int, dict[str, int]] = defaultdict(lambda: {"M": 0, "F": 0})
@@ -1467,7 +1444,7 @@ class VelocityService:
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if not (season_start.date() <= dt.date() <= season_end.date()):
+            if not (ctx.season_start.date() <= dt.date() <= ctx.season_end.date()):
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1
@@ -1489,7 +1466,9 @@ class VelocityService:
                 session_daily = {sid: dates for sid, dates in session_daily.items() if sid == session_cm_id}
 
             gender_per_session[gender] = {
-                sid: _daily_counts_to_weekly_points(daily, season_start, track_gross=True, year=year, today=today)
+                sid: _daily_counts_to_weekly_points(
+                    daily, ctx.season_start, track_gross=True, year=ctx.year, today=ctx.today
+                )
                 for sid, daily in session_daily.items()
             }
 
@@ -1563,13 +1542,10 @@ class VelocityService:
 
     async def _build_gender_curves(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
         combined_daily: list[DailyDataPoint] | None = None,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split velocity curves with hybrid snapshot/reconstruction support.
@@ -1579,92 +1555,79 @@ class VelocityService:
         2. Snapshots cover full season → pure snapshot fast path
         3. Snapshots start mid-season → hybrid (reconstruction pre-snapshot + snapshots post)
         """
-        snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
+        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
         if not snapshots or not self._snapshots_have_gender_data(snapshots):
             # No gender data → pure reconstruction
-            gps, totals = await self._gender_data_from_reconstruction(
-                year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-            )
+            gps, totals = await self._gender_data_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
             return self._assemble_gender_curves(
-                year, session_cm_id, sessions, gps, totals, combined_daily=combined_daily
+                ctx.year, session_cm_id, sessions, gps, totals, combined_daily=combined_daily
             )
 
-        snap_gps, snap_totals = self._gender_data_from_snapshots(
-            snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end, year=year, today=today
-        )
+        snap_gps, snap_totals = self._gender_data_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
         # Check if hybrid needed
-        earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
-        if earliest is None or _week_start(earliest, season_start) <= season_start:
+        earliest = self._find_earliest_snapshot_datetime(snapshots, ctx.season_start)
+        if earliest is None or _week_start(earliest, ctx.season_start) <= ctx.season_start:
             # Snapshots cover full season → pure snapshot fast path
             return self._assemble_gender_curves(
-                year, session_cm_id, sessions, snap_gps, snap_totals, combined_daily=combined_daily
+                ctx.year, session_cm_id, sessions, snap_gps, snap_totals, combined_daily=combined_daily
             )
 
         # Hybrid: reconstruction pre-snapshot + snapshots post
         recon_gps, _recon_totals = await self._gender_data_from_reconstruction(
-            year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
+            ctx, sessions, ag_parent_map, session_cm_id
         )
 
         merged_gps: dict[str, dict[int, list[WeeklyDataPoint]]] = {}
         for gender in ("M", "F"):
             merged_gps[gender] = self._merge_hybrid_curves(
-                recon_gps.get(gender, {}), snap_gps.get(gender, {}), season_start
+                recon_gps.get(gender, {}), snap_gps.get(gender, {}), ctx.season_start
             )
 
         # Use snapshot totals for breakdown (latest actual counts)
         return self._assemble_gender_curves(
-            year, session_cm_id, sessions, merged_gps, snap_totals, combined_daily=combined_daily
+            ctx.year, session_cm_id, sessions, merged_gps, snap_totals, combined_daily=combined_daily
         )
 
     async def _build_cancellation_curves(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> _CurveResult:
         """Build cancellation velocity curves (cumulative cancelled count over time).
 
         Uses hybrid mode when snapshots don't cover the full season: reconstruction
         fills pre-snapshot weeks, snapshots cover the rest.
         """
-        snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
+        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
         if not snapshots:
-            return await self._cancellation_curves_from_reconstruction(
-                year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-            )
+            return await self._cancellation_curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
 
-        snap_result = self._cancellation_curves_from_snapshots(
-            year, snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-        )
+        snap_result = self._cancellation_curves_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
         # Determine if we need hybrid mode
-        earliest = self._find_earliest_snapshot_datetime(snapshots, season_start)
+        earliest = self._find_earliest_snapshot_datetime(snapshots, ctx.season_start)
         if earliest is None:
             return snap_result
 
-        first_snapshot_week = _week_start(earliest, season_start)
-        if first_snapshot_week <= season_start:
+        first_snapshot_week = _week_start(earliest, ctx.season_start)
+        if first_snapshot_week <= ctx.season_start:
             return snap_result
 
         # Hybrid: need reconstruction for pre-snapshot weeks
-        recon_result = await self._cancellation_curves_from_reconstruction(
-            year, sessions, ag_parent_map, session_cm_id, season_start, season_end, today=today
-        )
+        recon_result = await self._cancellation_curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
 
         snap_by_session = {c.session_cm_id: c.weekly for c in snap_result.by_session if c.session_cm_id}
         recon_by_session = {c.session_cm_id: c.weekly for c in recon_result.by_session if c.session_cm_id}
 
-        merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, season_start)
+        merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, ctx.season_start)
         combined_data = self._combine_weekly_curves(merged_by_session)
-        combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
-        by_session = self._build_session_curves(year, sessions, merged_by_session)
+        combined = VelocityCurve(year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+        by_session = self._build_session_curves(ctx.year, sessions, merged_by_session)
 
         cancelled_to_date = combined_data[-1].enrolled if combined_data else 0
 
@@ -1676,14 +1639,11 @@ class VelocityService:
 
     def _cancellation_curves_from_snapshots(
         self,
-        year: int,
+        ctx: SeasonContext,
         snapshots: list[Any],
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> _CurveResult:
         """Build cancellation curves from snapshot cancelled_count field."""
         # Group by session, merging AG — accumulate cancelled per date
@@ -1710,9 +1670,9 @@ class VelocityService:
             weekly_data: dict[str, int] = {}
             for date_str, cancelled in sorted(date_data.items()):
                 dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
-                if dt.date() < season_start.date() or dt.date() > season_end.date():
+                if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
                     continue
-                bucket = _week_start(dt, season_start)
+                bucket = _week_start(dt, ctx.season_start)
                 bucket_key = bucket.strftime("%Y-%m-%d")
                 weekly_data[bucket_key] = cancelled  # Last wins
 
@@ -1722,14 +1682,14 @@ class VelocityService:
                 val = weekly_data[bucket_key]
                 delta = val - prev_val
                 bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-                wn = _week_number(bucket_dt, season_start)
+                wn = _week_number(bucket_dt, ctx.season_start)
                 week_end_date = bucket_dt + timedelta(days=6)
-                is_partial, days_in_week = _partial_week_info(bucket_key, year, today=today)
+                is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
                 points.append(
                     WeeklyDataPoint(
                         week_start=bucket_key,
                         week_end=week_end_date.strftime("%Y-%m-%d"),
-                        week_label=_week_label(bucket_dt, season_start),
+                        week_label=_week_label(bucket_dt, ctx.season_start),
                         week_number=wn,
                         enrolled=val,
                         delta=delta,
@@ -1745,30 +1705,27 @@ class VelocityService:
             per_session_data[sid] = points
 
         combined_data = self._combine_weekly_curves(per_session_data)
-        combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+        combined = VelocityCurve(year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
 
         # cancelled_to_date = final combined cancelled count
         cancelled_to_date = combined_data[-1].enrolled if combined_data else 0
 
-        by_session = self._build_session_curves(year, sessions, per_session_data)
+        by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=cancelled_to_date)
 
     async def _cancellation_curves_from_reconstruction(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> _CurveResult:
         """Build cancellation curves from status_transitions (reconstruction fallback)."""
-        cancellations = await self.repo.fetch_status_transitions(year, ["cancelled", "withdrawn", "dismissed"])
+        cancellations = await self.repo.fetch_status_transitions(ctx.year, ["cancelled", "withdrawn", "dismissed"])
 
         if not cancellations:
-            empty = VelocityCurve(year=year, session_cm_id=None, gender=None, weekly=[])
+            empty = VelocityCurve(year=ctx.year, session_cm_id=None, gender=None, weekly=[])
             return _CurveResult(combined=empty, by_session=[], cancelled_to_date=0)
 
         # Group cancellations by session and bucket by Monday
@@ -1788,9 +1745,9 @@ class VelocityService:
                 continue
 
             dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
-            if dt.date() < season_start.date() or dt.date() > season_end.date():
+            if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
                 continue
-            bucket = _week_start(dt, season_start)
+            bucket = _week_start(dt, ctx.season_start)
             bucket_key = bucket.strftime("%Y-%m-%d")
             session_weekly_cancels[effective_sid][bucket_key] += 1
             total_count += 1
@@ -1806,14 +1763,14 @@ class VelocityService:
                 prev_val = points[-1].enrolled if points else 0
                 delta = cumulative - prev_val
                 bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-                wn = _week_number(bucket_dt, season_start)
+                wn = _week_number(bucket_dt, ctx.season_start)
                 week_end_date = bucket_dt + timedelta(days=6)
-                is_partial, days_in_week = _partial_week_info(bucket_key, year, today=today)
+                is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
                 points.append(
                     WeeklyDataPoint(
                         week_start=bucket_key,
                         week_end=week_end_date.strftime("%Y-%m-%d"),
-                        week_label=_week_label(bucket_dt, season_start),
+                        week_label=_week_label(bucket_dt, ctx.season_start),
                         week_number=wn,
                         enrolled=cumulative,
                         delta=delta,
@@ -1828,28 +1785,25 @@ class VelocityService:
             per_session_data[sid] = points
 
         combined_data = self._combine_weekly_curves(per_session_data)
-        combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+        combined = VelocityCurve(year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
 
-        by_session = self._build_session_curves(year, sessions, per_session_data)
+        by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=total_count)
 
     async def _build_cancellation_gender_curves(
         self,
-        year: int,
+        ctx: SeasonContext,
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
-        season_start: datetime,
-        season_end: datetime,
-        today: date | None = None,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split cancellation velocity curves from status transitions.
 
         Returns (gender_curves, session_gender_breakdown).
         """
         cancellations = await self.repo.fetch_status_transitions(
-            year, ["cancelled", "withdrawn", "dismissed"], expand_person=True
+            ctx.year, ["cancelled", "withdrawn", "dismissed"], expand_person=True
         )
 
         if not cancellations:
@@ -1880,7 +1834,7 @@ class VelocityService:
                 continue
 
             dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
-            if dt.date() < season_start.date() or dt.date() > season_end.date():
+            if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1
@@ -1900,7 +1854,7 @@ class VelocityService:
             session_daily = gender_session_daily.get(gender, {})
 
             per_session_data: dict[int, list[WeeklyDataPoint]] = {
-                sid: _daily_counts_to_weekly_points(daily, season_start, year=year, today=today)
+                sid: _daily_counts_to_weekly_points(daily, ctx.season_start, year=ctx.year, today=ctx.today)
                 for sid, daily in session_daily.items()
             }
 
@@ -1908,7 +1862,7 @@ class VelocityService:
 
             gender_curves.append(
                 VelocityCurve(
-                    year=year,
+                    year=ctx.year,
                     session_cm_id=session_cm_id,
                     gender=gender,
                     weekly=combined_data,
