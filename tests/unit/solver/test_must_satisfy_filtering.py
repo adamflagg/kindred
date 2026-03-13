@@ -8,7 +8,9 @@ from unittest.mock import Mock
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
-def _make_request(source_field: str, request_type: str = "bunk_with", csv_source_fields: list[str] | None = None):
+def _make_request(
+    source_field: str, request_type: str = "bunk_with", csv_source_fields: list[str] | None = None
+) -> Mock:
     """Create a mock DirectBunkRequest with given source_field."""
     request = Mock()
     request.source_field = source_field

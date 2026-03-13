@@ -81,6 +81,6 @@ def validate_request_type_for_field(parsed: ParsedRequest) -> ParsedRequest | No
 
         # Log unusual but valid combinations for observability
         if source_field == SourceField.BUNK_WITH and parsed.request_type != RequestType.BUNK_WITH:
-            logger.info(f"AI parsed {parsed.request_type} from share_bunk_with field - respecting AI decision")
+            logger.info(f"AI parsed {parsed.request_type} from {source_field} field - respecting AI decision")
 
     return parsed

@@ -170,7 +170,7 @@ class TestRequestTypeValidationForSourceField:
         assert validated is None, "bunk_with without target_name should be None"
 
 
-class TestSocializePreferenceFieldValidation:
+class TestSocializeWithFieldValidation:
     """Tests for socialize_with (RetParent-Socializewithbest) field validation.
 
     This field is handled by direct parsing in _parse_socialize_preference,
