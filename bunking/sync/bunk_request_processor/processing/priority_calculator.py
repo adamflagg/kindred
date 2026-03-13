@@ -121,14 +121,14 @@ class PriorityCalculator:
         family_bunk_requests = [
             r
             for r in all_requests_for_person
-            if r.source_field == "share_bunk_with" and r.request_type == RequestType.BUNK_WITH
+            if r.source_field == SourceField.BUNK_WITH and r.request_type == RequestType.BUNK_WITH
         ]
 
         # Check if ANY family bunk request has priority keywords
         any_family_request_has_priority = any(self._has_priority_keyword(r.raw_text) for r in family_bunk_requests)
 
         # Priority 4 cases
-        if parsed.source_field == "share_bunk_with":
+        if parsed.source_field == SourceField.BUNK_WITH:
             if parsed.request_type == RequestType.BUNK_WITH:
                 if any_family_request_has_priority:
                     # List has keywords = unordered, only keyword requests get highest
@@ -149,7 +149,7 @@ class PriorityCalculator:
             if parsed.request_type == RequestType.AGE_PREFERENCE and not has_other_requests:
                 return self._get_rule_priority("age_preference_sole")
 
-        if parsed.source_field == "do_not_share_with" and parsed.request_type == RequestType.NOT_BUNK_WITH:
+        if parsed.source_field == SourceField.NOT_BUNK_WITH and parsed.request_type == RequestType.NOT_BUNK_WITH:
             return self._get_rule_priority("staff_not_bunk_with")
 
         if parsed.target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER and not has_specific_bunk_requests:
@@ -160,7 +160,7 @@ class PriorityCalculator:
             return self._get_rule_priority("last_year_bunkmates_with_others")
 
         # Priority 2 cases - staff notes
-        if parsed.source_field in ["internal_notes", "bunking_notes"]:
+        if parsed.source_field in [SourceField.INTERNAL_NOTES, SourceField.BUNKING_NOTES]:
             return self._get_rule_priority("staff_notes")
 
         # Priority 1 cases - parent age preference
