@@ -502,11 +502,17 @@ class VelocityService:
         ref_today = today or datetime.now(tz=UTC).date()
         ctx = SeasonContext(year=year, season_start=season_start_dt, season_end=season_end_dt, today=ref_today)
 
+        # Pre-fetch snapshots once for enrollment metric (avoids duplicate fetch
+        # when both _build_curves and _build_gender_curves need the same data).
+        snapshots: list[Any] | None = None
+        if metric != "cancellation":
+            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+
         # Build curves for the primary year (dispatch by metric type)
         if metric == "cancellation":
             result = await self._build_cancellation_curves(ctx, sessions, ag_parent_map, session_cm_id)
         else:
-            result = await self._build_curves(ctx, sessions, ag_parent_map, session_cm_id)
+            result = await self._build_curves(ctx, sessions, ag_parent_map, session_cm_id, snapshots=snapshots)
 
         combined = result.combined
         by_session = result.by_session
@@ -527,6 +533,7 @@ class VelocityService:
                     ag_parent_map,
                     session_cm_id,
                     combined_daily=combined.daily,
+                    snapshots=snapshots,
                 )
 
         # Build prior year curves
@@ -861,13 +868,15 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        snapshots: list[Any] | None = None,
     ) -> _CurveResult:
         """Build combined and per-session velocity curves for a year.
 
         Uses hybrid mode when snapshots don't cover the full season: reconstruction
         fills pre-snapshot weeks, snapshots cover the rest.
         """
-        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+        if snapshots is None:
+            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
         if not snapshots:
             return await self._curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
@@ -1503,7 +1512,7 @@ class VelocityService:
                         day_offset=d.day_offset,
                         gross_enrolled=d.gross_enrolled_boys or 0,
                         enrolled=d.enrolled_boys or 0,
-                        cancelled=0,
+                        cancelled=(d.gross_enrolled_boys or 0) - (d.enrolled_boys or 0),
                         daily_new=d.daily_new_boys or 0,
                         daily_cancelled=d.daily_cancelled_boys or 0,
                         data_source=d.data_source,
@@ -1516,7 +1525,7 @@ class VelocityService:
                         day_offset=d.day_offset,
                         gross_enrolled=d.gross_enrolled_girls or 0,
                         enrolled=d.enrolled_girls or 0,
-                        cancelled=0,
+                        cancelled=(d.gross_enrolled_girls or 0) - (d.enrolled_girls or 0),
                         daily_new=d.daily_new_girls or 0,
                         daily_cancelled=d.daily_cancelled_girls or 0,
                         data_source=d.data_source,
@@ -1557,6 +1566,7 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         combined_daily: list[DailyDataPoint] | None = None,
+        snapshots: list[Any] | None = None,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split velocity curves with hybrid snapshot/reconstruction support.
 
@@ -1565,7 +1575,8 @@ class VelocityService:
         2. Snapshots cover full season → pure snapshot fast path
         3. Snapshots start mid-season → hybrid (reconstruction pre-snapshot + snapshots post)
         """
-        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+        if snapshots is None:
+            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
         if not snapshots or not self._snapshots_have_gender_data(snapshots):
             # No gender data → pure reconstruction
