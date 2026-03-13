@@ -15,6 +15,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 from starlette.responses import Response
 
+from api.constants.geo import GeoCategory
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
@@ -51,9 +52,7 @@ def _get_service() -> GeoService:
 
 @router.get("/gaps", response_model=GapsResponse)
 async def get_gaps(
-    category: Literal["city", "school", "congregation"] = Query(
-        ..., description="Category: city, school, or congregation"
-    ),
+    category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
@@ -78,9 +77,7 @@ async def get_gaps(
 
 @router.get("/canonicals", response_model=CanonicalSearchResponse)
 async def search_canonicals(
-    category: Literal["city", "school", "congregation"] = Query(
-        ..., description="Category: city, school, or congregation"
-    ),
+    category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
     q: str = Query("", description="Search query (case-insensitive substring match). Empty returns in-use entries."),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
     in_use: bool = Query(False, description="If true, only return entries with camper_count > 0"),
@@ -117,9 +114,7 @@ async def search_canonicals(
 @router.get("/canonicals/{canonical_name}/sources", response_model=SourcesResponse)
 async def get_sources(
     canonical_name: str,
-    category: Literal["city", "school", "congregation"] = Query(
-        ..., description="Category: city, school, or congregation"
-    ),
+    category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
@@ -152,9 +147,7 @@ async def get_sources(
 
 @router.post("/batch-resolve-coords", response_model=BatchResolveResponse)
 async def batch_resolve_coords(
-    category: Literal["city", "school", "congregation"] = Query(
-        ..., description="Category: city, school, or congregation"
-    ),
+    category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> BatchResolveResponse:
@@ -171,9 +164,7 @@ async def batch_resolve_coords(
 
 @router.get("/overrides", response_model=list[OverrideResponse])
 async def list_overrides(
-    category: Literal["city", "school", "congregation"] = Query(
-        ..., description="Category: city, school, or congregation"
-    ),
+    category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> list[OverrideResponse]:
