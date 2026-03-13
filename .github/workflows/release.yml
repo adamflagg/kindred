@@ -200,21 +200,53 @@ jobs:
     - name: Install crane and authenticate to GHCR
       uses: imjasonh/setup-crane@6da1ae018866400525525ce74ff892880c099987 # v0.5
 
-    - name: Verify SHA-tagged images exist in registry
+    - name: Find SHA-tagged images in registry
+      id: find-images
       env:
-        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+        HEAD_SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
       run: |
         # CD can succeed without building (e.g., docs-only changes skip the build).
-        # Verify the sha-tagged images actually exist before attempting promotion.
-        IMAGE="${REGISTRY}/${USERNAME}/kindred-api:${SHA_TAG}"
-        echo "Checking registry for ${IMAGE}..."
-        if ! crane manifest "$IMAGE" > /dev/null 2>&1; then
-          echo "::error::Image ${IMAGE} not found in registry."
-          echo "CD may have skipped the build (no relevant file changes)."
-          echo "Ensure the latest CD run on main built and pushed images before releasing."
+        # If HEAD's images don't exist, walk back through recent commits to find
+        # the most recent build. This is safe because non-built commits only changed
+        # docs/config — the application code (and thus Docker images) is identical.
+        echo "Checking for HEAD images: ${HEAD_SHA_TAG}..."
+        if crane manifest "${REGISTRY}/${USERNAME}/kindred-api:${HEAD_SHA_TAG}" > /dev/null 2>&1; then
+          echo "Found images at HEAD (${HEAD_SHA_TAG})"
+          echo "sha_tag=${HEAD_SHA_TAG}" >> "$GITHUB_OUTPUT"
+          echo "lookback=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "HEAD images not found, searching recent commits..."
+        FOUND=""
+        # Skip HEAD (already checked), check up to 20 prior commits
+        for SHA in $(git log --format=%H -20 --skip=1 HEAD); do
+          TAG="sha-$(echo "$SHA" | cut -c1-7)"
+          if crane manifest "${REGISTRY}/${USERNAME}/kindred-api:${TAG}" > /dev/null 2>&1; then
+            FOUND="$TAG"
+            echo "Found images at ${TAG} (commit ${SHA})"
+            break
+          fi
+          echo "  No images at ${TAG}"
+        done
+
+        if [ -z "$FOUND" ]; then
+          echo "::error::No SHA-tagged images found in the last 20 commits."
+          echo "A CD run with an actual build is required before releasing."
           exit 1
         fi
-        echo "Verified: ${SHA_TAG} images exist in registry"
+
+        # Verify all 3 promoted images exist (not just kindred-api)
+        for IMAGE in kindred-pocketbase kindred-api kindred-init; do
+          if ! crane manifest "${REGISTRY}/${USERNAME}/${IMAGE}:${FOUND}" > /dev/null 2>&1; then
+            echo "::error::${IMAGE}:${FOUND} not found — incomplete build at that commit."
+            exit 1
+          fi
+        done
+
+        echo "All 3 images verified at ${FOUND}"
+        echo "sha_tag=${FOUND}" >> "$GITHUB_OUTPUT"
+        echo "lookback=true" >> "$GITHUB_OUTPUT"
 
     - name: Log in to GitHub Container Registry (for docker push)
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
@@ -272,7 +304,7 @@ jobs:
     - name: Promote non-frontend images via crane
       env:
         VERSION: ${{ steps.version.outputs.version }}
-        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+        SHA_TAG: ${{ steps.find-images.outputs.sha_tag }}
       run: |
         # Strip v prefix for Docker tags (git tag v3.2.0 -> Docker tag 3.2.0)
         DOCKER_TAG=${VERSION#v}
@@ -294,14 +326,19 @@ jobs:
     - name: Summarize Docker image promotion
       env:
         VERSION: ${{ steps.version.outputs.version }}
-        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+        SHA_TAG: ${{ steps.find-images.outputs.sha_tag }}
+        HEAD_SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+        LOOKBACK: ${{ steps.find-images.outputs.lookback }}
       run: |
         DOCKER_TAG=${VERSION#v}
         MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
 
         echo "" >> "$GITHUB_STEP_SUMMARY"
         echo "### Docker Images" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$LOOKBACK" = "true" ]; then
+          echo "> **Note:** HEAD (${HEAD_SHA_TAG}) had no images (CD skipped build). Promoting from ${SHA_TAG} instead — application code is identical." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+        fi
         echo "| Image | Method | Source |" >> "$GITHUB_STEP_SUMMARY"
         echo "|-------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
         echo "| kindred-caddy | Rebuilt | VERSION=${VERSION} |" >> "$GITHUB_STEP_SUMMARY"
