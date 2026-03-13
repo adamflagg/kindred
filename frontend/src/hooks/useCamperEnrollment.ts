@@ -8,6 +8,7 @@ import { pb } from '../lib/pocketbase'
 import { useYear } from './useCurrentYear'
 import { toAppCamper } from '../utils/transforms'
 import { VALID_SUMMER_SESSION_TYPES } from '../constants/sessionTypes'
+import { sortEnrolledFirst } from '../utils/enrollmentSort'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -59,7 +60,7 @@ export function useCamperEnrollment(
         (t) => `session.session_type = "${t}"`
       ).join(' || ')
       const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({
-        filter: `person_id = ${numericId} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`,
+        filter: `person_id = ${numericId} && year = ${currentYear} && (${sessionTypeFilter})`,
         expand: 'session',
       })
 
@@ -71,8 +72,8 @@ export function useCamperEnrollment(
           person_id: numericId,
           session: '',
           enrollment_date: new Date().toISOString(),
-          is_active: true,
-          status: 'enrolled' as const,
+          is_active: false,
+          status: 'none' as const,
           status_id: 1,
           year: currentYear,
           collectionId: '',
@@ -89,16 +90,9 @@ export function useCamperEnrollment(
 
       // 3. Get primary attendee (prefer main session)
       const sortedAttendees = [...attendees].sort((a, b) => {
-        const aType =
-          (a.expand as { session?: { session_type?: string } })?.session?.session_type || 'unknown'
-        const bType =
-          (b.expand as { session?: { session_type?: string } })?.session?.session_type || 'unknown'
-        const typeOrder: Record<string, number> = {
-          main: 1,
-          embedded: 2,
-          ag: 3,
-        }
-        return (typeOrder[aType] || 999) - (typeOrder[bType] || 999)
+        const aType = (a.expand as { session?: { session_type?: string } })?.session?.session_type
+        const bType = (b.expand as { session?: { session_type?: string } })?.session?.session_type
+        return sortEnrolledFirst(a.status, aType, b.status, bType)
       })
 
       // Get first attendee - we know this exists since we returned early if attendees.length === 0
