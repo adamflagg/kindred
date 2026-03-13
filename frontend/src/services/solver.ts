@@ -26,6 +26,7 @@ interface ValidationResult {
     capacity_breakdown?: {
       boys: CapacityBreakdownItem
       girls: CapacityBreakdownItem
+      ag: CapacityBreakdownItem
     }
   }
 }
