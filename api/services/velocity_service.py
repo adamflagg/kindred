@@ -508,9 +508,21 @@ class VelocityService:
         if metric != "cancellation":
             snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
+        # Pre-fetch status transitions once for cancellation metric (avoids duplicate fetch
+        # when both _build_cancellation_curves and _build_cancellation_gender_curves need the same data).
+        # Fetch with expand_person=True so gender data is available for both consumers
+        # (reconstruction only reads session from expand, so extra person data is harmless).
+        cancellations: list[Any] | None = None
+        if metric == "cancellation":
+            cancellations = await self.repo.fetch_status_transitions(
+                year, ["cancelled", "withdrawn", "dismissed"], expand_person=True
+            )
+
         # Build curves for the primary year (dispatch by metric type)
         if metric == "cancellation":
-            result = await self._build_cancellation_curves(ctx, sessions, ag_parent_map, session_cm_id)
+            result = await self._build_cancellation_curves(
+                ctx, sessions, ag_parent_map, session_cm_id, cancellations=cancellations
+            )
         else:
             result = await self._build_curves(ctx, sessions, ag_parent_map, session_cm_id, snapshots=snapshots)
 
@@ -524,7 +536,7 @@ class VelocityService:
         if split_by_gender:
             if metric == "cancellation":
                 by_gender, session_gender_breakdown = await self._build_cancellation_gender_curves(
-                    ctx, sessions, ag_parent_map, session_cm_id
+                    ctx, sessions, ag_parent_map, session_cm_id, cancellations=cancellations
                 )
             else:
                 by_gender, session_gender_breakdown = await self._build_gender_curves(
@@ -1617,6 +1629,7 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        cancellations: list[Any] | None = None,
     ) -> _CurveResult:
         """Build cancellation velocity curves (cumulative cancelled count over time).
 
@@ -1626,7 +1639,9 @@ class VelocityService:
         snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
 
         if not snapshots:
-            return await self._cancellation_curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
+            return await self._cancellation_curves_from_reconstruction(
+                ctx, sessions, ag_parent_map, session_cm_id, cancellations=cancellations
+            )
 
         snap_result = self._cancellation_curves_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
@@ -1640,14 +1655,22 @@ class VelocityService:
             return snap_result
 
         # Hybrid: need reconstruction for pre-snapshot weeks
-        recon_result = await self._cancellation_curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
+        recon_result = await self._cancellation_curves_from_reconstruction(
+            ctx, sessions, ag_parent_map, session_cm_id, cancellations=cancellations
+        )
 
         snap_by_session = {c.session_cm_id: c.weekly for c in snap_result.by_session if c.session_cm_id}
         recon_by_session = {c.session_cm_id: c.weekly for c in recon_result.by_session if c.session_cm_id}
 
         merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, ctx.season_start)
+
+        # Merge daily data for hybrid cancellation curves
+        merged_daily = self._merge_hybrid_daily(recon_result.combined.daily, snap_result.combined.daily)
+
         combined_data = self._combine_weekly_curves(merged_by_session)
-        combined = VelocityCurve(year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+        combined = VelocityCurve(
+            year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data, daily=merged_daily
+        )
         by_session = self._build_session_curves(ctx.year, sessions, merged_by_session)
 
         cancelled_to_date = combined_data[-1].enrolled if combined_data else 0
@@ -1735,7 +1758,44 @@ class VelocityService:
             per_session_data[sid] = points
 
         combined_data = self._combine_weekly_curves(per_session_data)
-        combined = VelocityCurve(year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+
+        # Build daily data from snapshot cancellation counts
+        season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
+        daily_data: list[DailyDataPoint] = []
+        combined_dates: dict[str, int] = defaultdict(int)
+        for sid, date_data in session_date_cancelled.items():
+            if sid not in sessions:
+                continue
+            if session_cm_id is not None and sid != session_cm_id:
+                continue
+            for date_str, cancelled in date_data.items():
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                if dt.date() < season_start_date or dt.date() > ctx.season_end.date():
+                    continue
+                combined_dates[date_str] += cancelled
+
+        prev_cancelled = 0
+        for date_str in sorted(combined_dates.keys()):
+            cancelled = combined_dates[date_str]
+            day_offset = (datetime.strptime(date_str, "%Y-%m-%d").date() - season_start_date).days
+            daily_cancelled = cancelled - prev_cancelled
+            daily_data.append(
+                DailyDataPoint(
+                    date=date_str,
+                    day_offset=day_offset,
+                    gross_enrolled=0,
+                    enrolled=cancelled,
+                    cancelled=cancelled,
+                    daily_new=0,
+                    daily_cancelled=max(daily_cancelled, 0),
+                    data_source="snapshot",
+                )
+            )
+            prev_cancelled = cancelled
+
+        combined = VelocityCurve(
+            year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data, daily=daily_data
+        )
 
         # cancelled_to_date = final combined cancelled count
         cancelled_to_date = combined_data[-1].enrolled if combined_data else 0
@@ -1750,9 +1810,11 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        cancellations: list[Any] | None = None,
     ) -> _CurveResult:
         """Build cancellation curves from status_transitions (reconstruction fallback)."""
-        cancellations = await self.repo.fetch_status_transitions(ctx.year, ["cancelled", "withdrawn", "dismissed"])
+        if cancellations is None:
+            cancellations = await self.repo.fetch_status_transitions(ctx.year, ["cancelled", "withdrawn", "dismissed"])
 
         if not cancellations:
             empty = VelocityCurve(year=ctx.year, session_cm_id=None, gender=None, weekly=[])
@@ -1760,6 +1822,7 @@ class VelocityService:
 
         # Group cancellations by session and bucket by Monday
         session_weekly_cancels: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        session_daily_cancels: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
         total_count = 0
 
         for cancel in cancellations:
@@ -1780,6 +1843,8 @@ class VelocityService:
             bucket = _week_start(dt, ctx.season_start)
             bucket_key = bucket.strftime("%Y-%m-%d")
             session_weekly_cancels[effective_sid][bucket_key] += 1
+            date_key = dt.strftime("%Y-%m-%d")
+            session_daily_cancels[effective_sid][date_key] += 1
             total_count += 1
 
         # Build cumulative curves per session
@@ -1815,7 +1880,40 @@ class VelocityService:
             per_session_data[sid] = points
 
         combined_data = self._combine_weekly_curves(per_session_data)
-        combined = VelocityCurve(year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+
+        # Build daily data from reconstruction cancellation counts
+        season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
+        combined_daily_counts: dict[str, int] = defaultdict(int)
+        for sid in session_daily_cancels:
+            if sid not in sessions:
+                continue
+            if session_cm_id is not None and sid != session_cm_id:
+                continue
+            for date_str, count in session_daily_cancels[sid].items():
+                combined_daily_counts[date_str] += count
+
+        daily_data: list[DailyDataPoint] = []
+        cumulative = 0
+        for date_str in sorted(combined_daily_counts.keys()):
+            count = combined_daily_counts[date_str]
+            cumulative += count
+            day_offset = (datetime.strptime(date_str, "%Y-%m-%d").date() - season_start_date).days
+            daily_data.append(
+                DailyDataPoint(
+                    date=date_str,
+                    day_offset=day_offset,
+                    gross_enrolled=0,
+                    enrolled=cumulative,
+                    cancelled=cumulative,
+                    daily_new=0,
+                    daily_cancelled=count,
+                    data_source="reconstructed",
+                )
+            )
+
+        combined = VelocityCurve(
+            year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data, daily=daily_data
+        )
 
         by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
@@ -1827,14 +1925,16 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        cancellations: list[Any] | None = None,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split cancellation velocity curves from status transitions.
 
         Returns (gender_curves, session_gender_breakdown).
         """
-        cancellations = await self.repo.fetch_status_transitions(
-            ctx.year, ["cancelled", "withdrawn", "dismissed"], expand_person=True
-        )
+        if cancellations is None:
+            cancellations = await self.repo.fetch_status_transitions(
+                ctx.year, ["cancelled", "withdrawn", "dismissed"], expand_person=True
+            )
 
         if not cancellations:
             return [], []

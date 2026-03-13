@@ -4005,3 +4005,69 @@ class TestSnapshotFetchDedup:
             if c.args[0] == 2026 or c.kwargs.get("year") == 2026
         ]
         assert len(primary_calls) == 1
+
+
+# ============================================================================
+# Task 3: Reuse status transitions for cancellation gender curves (#475)
+# ============================================================================
+
+
+class TestTransitionsFetchDedup:
+    """Test that status transitions are fetched once for cancellation gender curves."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_gender_split_fetches_transitions_once(self, service, mock_repository, sample_sessions):
+        """With metric=cancellation and split_by_gender=True, fetch_status_transitions should be called once."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []  # Force reconstruction path
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(1, 1001, "2025-11-03T14:00:00Z", gender="M"),
+            create_mock_status_transition(2, 1001, "2025-11-10T14:00:00Z", gender="F"),
+        ]
+
+        await service.get_velocity(year=2026, metric="cancellation", split_by_gender=True)
+
+        primary_calls = [c for c in mock_repository.fetch_status_transitions.call_args_list if c.args[0] == 2026]
+        assert len(primary_calls) == 1
+
+
+# ============================================================================
+# Task 4: Add daily data series to cancellation velocity (#459)
+# ============================================================================
+
+
+class TestCancellationDailyData:
+    """Test that cancellation curves produce daily data like enrollment does."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_snapshots_produce_daily_data(self, service, mock_repository, sample_sessions):
+        """Cancellation curves from snapshots should populate VelocityCurve.daily."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03T14:00:00Z", 1001, 2026, enrolled=100, cancelled=5),
+            create_mock_snapshot("2025-11-04T14:00:00Z", 1001, 2026, enrolled=102, cancelled=7),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert len(result.combined.daily) > 0
+        for dp in result.combined.daily:
+            assert dp.data_source == "snapshot"
+            assert dp.cancelled >= 0
+
+    @pytest.mark.asyncio
+    async def test_cancellation_reconstruction_produces_daily_data(self, service, mock_repository, sample_sessions):
+        """Cancellation curves from reconstruction should populate VelocityCurve.daily."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(1, 1001, "2025-11-03T14:00:00Z"),
+            create_mock_status_transition(2, 1001, "2025-11-10T14:00:00Z"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert len(result.combined.daily) > 0
+        for dp in result.combined.daily:
+            assert dp.data_source == "reconstructed"
+            assert dp.cancelled >= 0
