@@ -1,21 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
-
----
-
-## Group 1: Metrics / Velocity — Frontend Bugs
-
-**Priority: High** — User-facing bugs, tightly coupled
-
-| # | Title | Type |
-|---|-------|------|
-| 512 | `useVelocity` hook missing auth loading guard | bug |
-| 511 | Full-range Brush drag shows unnecessary Reset button | bug |
-| 510 | Shared zoomRange state causes cross-chart zoom contamination | bug |
-
-**Interplay:** #510 and #511 share Brush/zoom code paths. #512 is separate but same hook file.
+Last updated: 2026-03-13 (40 open issues).
 
 ---
 
@@ -64,7 +50,7 @@ Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 
 ---
 
-## Group 5: Sync / Go Backend
+## Group 5: Sync / Go Backend *(in progress)*
 
 **Priority: High** — Data integrity bugs
 
@@ -75,11 +61,9 @@ Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 
 **Interplay:** Independent. #484 is a data integrity risk, #504 prevents future normalization bugs.
 
-> **Stale (close candidates):** #517 (composite-key normalization — fixed via `geoLookupKey` struct), #497 (parent_names — now uses both Relatives and mailing_title), #471 (phase sync year — fixed via `SetYear(qs.Year)`).
-
 ---
 
-## Group 6: Solver (Python)
+## Group 6: Solver (Python) *(in progress)*
 
 **Priority: Medium** — Isolated cluster, forward-compat risk
 
@@ -115,6 +99,7 @@ Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 
 | # | Title | Type |
 |---|-------|------|
+| 531 | Add auth loading guard to remaining year-gated hooks | bug |
 | 479 | Expose `respect_locks` toggle in solver run UI | feature |
 | 468 | Extract `useClickOutside` hook from duplicated pattern | refactor |
 | 461 | Remove redundant double `cy.resize()` in expanded mode | refactor |
@@ -122,7 +107,7 @@ Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 | 436 | Add accessible group labels to MetricsSessionSelector | a11y |
 | 377 | Enable `erasableSyntaxOnly` in tsconfig after migrating enums | tech-debt |
 
-**Interplay:** #479 pairs with solver #483 (Group 6).
+**Interplay:** #479 pairs with solver #483 (Group 6). #531 is a follow-on from Group 1's #512 fix — same auth guard pattern applied to remaining hooks.
 
 ---
 
@@ -159,11 +144,11 @@ Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 
 ## Suggested Attack Order
 
-1. **Group 1** — Velocity frontend bugs (3 user-facing bugs, quick wins)
+1. ~~**Group 1**~~ — ✅ Complete (PR #530)
 2. **Group 7** — Geo frontend leftovers (#520 is a real bug, rest are small)
-3. **Group 5** — Sync bugs (2 remaining after closing stale; #484 is data integrity)
-4. **Group 6** — Solver (isolated, #500 is forward-compat risk)
-5. **Group 2** — Velocity backend (bigger scope, do after Group 1)
+3. **Group 5** — Sync bugs *(in progress)* — #484 is data integrity
+4. **Group 6** — Solver *(in progress)* — #500 is forward-compat risk
+5. **Group 2** — Velocity backend (bigger scope, #456 correctness bug first)
 6. **Group 9** — API refactors (low-risk DRY, good for parallel agents)
 7. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
 8. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
@@ -174,3 +159,5 @@ Last updated: 2026-03-13 (42 open issues, 3 stale candidates for closing).
 |-------|-----|------|-------|
 | Geo normalization bugs (#425-429, #462-466, #469) | #513 | 2026-03-13 | Opened #517-521 during cleanup |
 | Git hooks consolidation | #524 | 2026-03-13 | — |
+| Group 1: Velocity frontend bugs (#510, #511, #512) | #530 | 2026-03-13 | Spawned #531 (auth guard for remaining hooks) |
+| Stale sync issues (#471, #497, #517) | — | 2026-03-13 | Closed as already fixed |
