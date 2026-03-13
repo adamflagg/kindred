@@ -2080,9 +2080,13 @@ func TestAddressCityPopulatedInMappings(t *testing.T) {
 	}
 
 	lookup := &normalizationLookup{
-		city:         map[string]normalizedEntry{"Oakland": {Canonical: "Oakland", Confidence: 1.0}},
-		school:       map[string]normalizedEntry{"Riverside Elementary": {Canonical: "Riverside Elementary", Confidence: 0.9}},
-		congregation: map[string]normalizedEntry{"Temple Beth Abraham": {Canonical: "Temple Beth Abraham", Confidence: 0.95}},
+		city: map[string]normalizedEntry{"Oakland": {Canonical: "Oakland", Confidence: 1.0}},
+		school: map[string]normalizedEntry{
+			"Riverside Elementary": {Canonical: "Riverside Elementary", Confidence: 0.9},
+		},
+		congregation: map[string]normalizedEntry{
+			"Temple Beth Abraham": {Canonical: "Temple Beth Abraham", Confidence: 0.95},
+		},
 	}
 
 	aliasOverrides := map[string]map[string]string{

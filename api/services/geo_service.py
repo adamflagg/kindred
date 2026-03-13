@@ -802,7 +802,7 @@ class GeoService:
         await asyncio.to_thread(
             self.pb.collection("geo_overrides").create,
             {
-                "category": category if isinstance(category, str) else category.value,
+                "category": category,
                 "override_type": "rejected",
                 "canonical_name": canonical_name,
                 "year": year,

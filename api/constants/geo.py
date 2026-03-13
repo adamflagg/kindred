@@ -1,9 +1,9 @@
 """Geographic normalization constants."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class GeoCategory(str, Enum):
+class GeoCategory(StrEnum):
     """Valid categories for geographic normalization.
 
     Used across routers, services, and the normalizer to ensure

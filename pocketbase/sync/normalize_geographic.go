@@ -31,12 +31,19 @@ const (
 // and stores mappings in normalized_mappings table with person+session keys.
 //
 // Orchestrates normalization by:
-// 1. Loading attendees with person+session data
-// 2. Getting school/city from persons table, congregation from person_custom_values
-// 3. Calling Python geo_normalizer for fuzzy matching (RapidFuzz, static lookups)
-// 4. Upserting to normalized_mappings with (person, session, category) keys
-// 5. Updating camper_history.*_normalized columns for backwards compatibility
-// 6. Deleting orphaned mappings
+//  1. Loading attendees with person+session data (school/city from persons,
+//     congregation from person_custom_values, state/country from household)
+//  2. Loading geo_overrides (alias, merge, rejected) for the year
+//  3. Building normalization lookup via Python geo_normalizer (RapidFuzz, static lookups)
+//  4. Creating person+session mappings (applying alias/merge overrides)
+//  5. Preloading existing normalized_mappings for upsert comparison
+//  6. Upserting to normalized_mappings with (person, session, category) keys,
+//     skipping rejected overrides
+//  7. Updating camper_history.*_normalized columns for backwards compatibility
+//  8. Updating persons.normalized_* columns for drilldown consistency
+//  9. Deleting orphaned mappings no longer in source data
+//
+// 10. Running WAL checkpoint if any records were modified
 type NormalizeGeographicSync struct {
 	App            core.App
 	Year           int
@@ -625,7 +632,9 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 
 // buildNormalizationLookup builds lookup maps from unique values
 // Uses Python RapidFuzz for advanced fuzzy matching
-func (n *NormalizeGeographicSync) buildNormalizationLookup(ctx context.Context, data []attendeeGeoData) (*normalizationLookup, error) {
+func (n *NormalizeGeographicSync) buildNormalizationLookup(
+	ctx context.Context, data []attendeeGeoData,
+) (*normalizationLookup, error) {
 	// Collect unique values per category keyed by (value, state, country)
 	// so that "Springfield, IL" and "Springfield, MO" are separate entries.
 	uniqueCities := make(map[geoLookupKey]geoContext)
