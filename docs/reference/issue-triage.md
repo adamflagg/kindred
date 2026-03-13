@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (40 open issues, 3 new from PR #534 review).
+Last updated: 2026-03-13 (35 open issues).
 
 ---
 
@@ -63,23 +63,6 @@ Last updated: 2026-03-13 (40 open issues, 3 new from PR #534 review).
 
 ---
 
----
-
-## Group 7: Geo / Frontend
-
-**Priority: Medium** — Leftovers from geo normalization cleanup (PR #513)
-
-| # | Title | Type |
-|---|-------|------|
-| 521 | Tighten toContain assertion in GeoDetailList tests | test |
-| 520 | `session_cm_id` silently dropped on duration path in geo service | bug |
-| 519 | Migrate GeoAnalysis.tsx to QueryGuard | refactor |
-| 518 | Add keyboard accessibility to GeoDetailList drilldown rows | a11y |
-
-**Interplay:** #520 is the real bug. Rest are quality improvements found during review.
-
----
-
 ## Group 8: Frontend — General Refactors & Quality
 
 **Priority: Low** — Independent quick wins
@@ -135,11 +118,11 @@ Last updated: 2026-03-13 (40 open issues, 3 new from PR #534 review).
 ## Suggested Attack Order
 
 1. ~~**Group 1**~~ — ✅ Complete (PR #530)
-2. **Group 7** — Geo frontend leftovers (#520 is a real bug, rest are small)
+2. ~~**Group 7**~~ — ✅ Complete (PR #539)
 3. **Group 5** — Sync bugs *(in progress)* — #484 is data integrity
 4. ~~**Group 6**~~ — ✅ Complete (PR #534)
 5. **Group 2** — Velocity backend (bigger scope, #456 correctness bug first)
-6. **Group 9** — API refactors (low-risk DRY, good for parallel agents)
+6. **Group 9** — API refactors (#535 bug first, rest are low-risk DRY)
 7. **Group 3** — Velocity frontend refactors (after Groups 1 & 2 stabilize)
 8. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
@@ -152,3 +135,4 @@ Last updated: 2026-03-13 (40 open issues, 3 new from PR #534 review).
 | Group 1: Velocity frontend bugs (#510, #511, #512) | #530 | 2026-03-13 | Spawned #531 (auth guard for remaining hooks) |
 | Stale sync issues (#471, #497, #517) | — | 2026-03-13 | Closed as already fixed |
 | Group 6: Solver (#500, #493, #494, #483) | #534 | 2026-03-13 | Spawned #535, #536, #537 during review |
+| Group 7: Geo frontend (#518, #519, #520, #521) | #539 | 2026-03-13 | Bug + a11y + test + QueryGuard migration |
