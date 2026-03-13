@@ -32,7 +32,6 @@ from ..schemas.geo import (
     OverrideResponse,
     RejectRequest,
     RejectResponse,
-    SourceMappingsResponse,
     SourcesResponse,
 )
 from ..services.geo_service import GeoService
@@ -144,33 +143,6 @@ async def get_sources(
         session_cm_id,
         duration=duration,
     )
-
-
-# ============================================================================
-# Bulk Source Mappings Endpoint
-# ============================================================================
-
-
-@router.get("/source-mappings", response_model=SourceMappingsResponse)
-async def get_source_mappings(
-    category: Literal["city", "school", "congregation"] = Query(
-        ..., description="Category: city, school, or congregation"
-    ),
-    year: int = Query(..., description="Year scope (e.g. 2025)"),
-    active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
-    session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
-    session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
-    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
-        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
-    ),
-    user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
-) -> SourceMappingsResponse:
-    """Get all source mappings grouped by normalized_value with attendee filtering."""
-    check_duration_session_exclusive(duration, session_cm_id)
-
-    service = _get_service()
-    types_list = session_types.split(",") if session_types else None
-    return await service.get_source_mappings(category, year, active_only, types_list, session_cm_id, duration=duration)
 
 
 # ============================================================================

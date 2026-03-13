@@ -78,20 +78,6 @@ class SourcesResponse(BaseModel):
     sources: list[SourceItem] = Field(description="Raw value variants sorted by count descending")
 
 
-class SourceMappingItem(BaseModel):
-    """A source variant within a bulk source-mappings response."""
-
-    original: str = Field(description="The original/raw value")
-    count: int = Field(description="Number of unique persons with this value")
-    confidence: float = Field(description="Min confidence score across matches")
-
-
-class SourceMappingsResponse(BaseModel):
-    """Bulk source mappings grouped by normalized_value."""
-
-    mappings: dict[str, list[SourceMappingItem]]
-
-
 class OverrideCreate(BaseModel):
     """Request body for creating a geo override."""
 

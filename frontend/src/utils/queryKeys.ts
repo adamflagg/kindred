@@ -189,24 +189,6 @@ export const queryKeys = {
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
 
   // Geo Management (Tier 2 - user data)
-  geoSourceMappings: (
-    category: string,
-    year: number,
-    activeOnly?: boolean,
-    sessionTypes?: readonly string[],
-    sessionCmId?: number,
-    duration?: string
-  ) =>
-    [
-      'geo',
-      'source-mappings',
-      category,
-      year,
-      activeOnly,
-      sessionTypes ? [...sessionTypes] : undefined,
-      sessionCmId,
-      duration,
-    ] as const,
   geoGapsPrefix: (category: string, year: number) => ['geo', 'gaps', category, year] as const,
   geoGaps: (category: string, year: number, activeOnly?: boolean) =>
     ['geo', 'gaps', category, year, activeOnly] as const,

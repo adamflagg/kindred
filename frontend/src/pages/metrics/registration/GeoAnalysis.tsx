@@ -9,51 +9,35 @@
  * GeoComparisonDetailList tables when compareYear is active.
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Globe, Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
-import { useSourceMappings, type SourceMapping } from '../../../hooks/useSourceMappings'
-import { usePermissions } from '../../../hooks/usePermissions'
-import { Permission } from '../../../constants/permissions'
 import {
   GeoMap,
   GeoSummaryCards,
   GeoDetailList,
   GeoLayerToggles,
-  GeoGapsList,
   GeoComparisonDetailList,
-  type GeoCategory,
   type GeoCategoryExtended,
   type GeoDataItem,
   type GeoMapLayer,
 } from '../../../components/metrics/geo'
-import { getLocationCoordsWithOverrides } from '../../../data/geoCoords'
 import { useGeoOverrideCoords } from '../../../hooks/useGeoOverrideCoords'
 import { aggregateCityCountsByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 
 /** Default status filter for enrolled campers */
 const DEFAULT_STATUS_FILTER = ['enrolled']
 
-/** Map frontend category names to DB category names */
-const categoryToDbCategory: Record<GeoCategory, string> = {
-  city: 'city',
-  school: 'school',
-  synagogue: 'congregation',
-}
-
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
-  const { hasPermission } = usePermissions()
   const { data: overrideCoords } = useGeoOverrideCoords(currentYear)
   const [activeLayers, setActiveLayers] = useState<Set<GeoCategoryExtended>>(
     new Set(['city', 'school', 'synagogue', 'region'])
   )
   const [showRegions, setShowRegions] = useState(true)
-  const [showSources, setShowSources] = useState(false)
-  const [showGaps, setShowGaps] = useState(false)
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
   const [expandedCategories, setExpandedCategories] = useState<Set<GeoCategoryExtended>>(new Set())
 
@@ -67,14 +51,6 @@ export default function GeoAnalysis() {
     durationParam,
   } = useMetricsSession()
 
-  // Force sources/gaps off when entering compare mode
-  useEffect(() => {
-    if (isComparing) {
-      setShowSources(false)
-      setShowGaps(false)
-    }
-  }, [isComparing])
-
   // Drilldown hook for modal functionality
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
@@ -83,40 +59,6 @@ export default function GeoAnalysis() {
     statusFilter: DEFAULT_STATUS_FILTER,
     duration: durationParam,
   })
-
-  // Fetch source mappings from backend with active_only filtering
-  const needsMappings = showSources || showGaps
-  const sourceMappingOptions: {
-    activeOnly: boolean
-    sessionTypes: readonly string[]
-    sessionCmId?: number
-    duration?: string | null | undefined
-  } = {
-    activeOnly: true,
-    sessionTypes: [...activeSessionTypes],
-    duration: durationParam,
-  }
-  if (selectedSessionCmId != null) {
-    sourceMappingOptions.sessionCmId = selectedSessionCmId
-  }
-  const { data: citySources } = useSourceMappings(
-    currentYear,
-    categoryToDbCategory.city,
-    needsMappings && activeLayers.has('city'),
-    sourceMappingOptions
-  )
-  const { data: schoolSources } = useSourceMappings(
-    currentYear,
-    categoryToDbCategory.school,
-    needsMappings && activeLayers.has('school'),
-    sourceMappingOptions
-  )
-  const { data: synagogueSources } = useSourceMappings(
-    currentYear,
-    categoryToDbCategory.synagogue,
-    needsMappings && activeLayers.has('synagogue'),
-    sourceMappingOptions
-  )
 
   // Fetch registration data with geographic breakdowns + optional comparison
   const { primary, comparison } = useComparisonRegistrationData(
@@ -271,25 +213,6 @@ export default function GeoAnalysis() {
     setSelectedItem((prev) => (prev === name ? null : name))
   }
 
-  // Compute gaps (items without coordinates = not in canonical lookup or overrides)
-  const gaps = useMemo(() => {
-    const computeGaps = (items: GeoDataItem[], category: GeoCategory) =>
-      items.filter((item) => !getLocationCoordsWithOverrides(category, item.name, overrideCoords))
-
-    return {
-      city: computeGaps(geoData.city, 'city'),
-      school: computeGaps(geoData.school, 'school'),
-      synagogue: computeGaps(geoData.synagogue, 'synagogue'),
-    }
-  }, [geoData, overrideCoords])
-
-  // Source mappings per category
-  const sourceMappingsFor: Record<GeoCategory, Map<string, SourceMapping[]> | undefined> = {
-    city: citySources,
-    school: schoolSources,
-    synagogue: synagogueSources,
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -355,12 +278,6 @@ export default function GeoAnalysis() {
             }}
             showRegions={showRegions}
             onToggleRegions={() => setShowRegions((v) => !v)}
-            showSources={showSources}
-            onToggleSources={() => setShowSources((v) => !v)}
-            showGaps={showGaps}
-            onToggleGaps={() => setShowGaps((v) => !v)}
-            hasGeoPermission={hasPermission(Permission.METRICS_GEO)}
-            isComparing={isComparing}
           />
 
           {/* Map - hidden in comparison mode */}
@@ -445,12 +362,8 @@ export default function GeoAnalysis() {
                   selectedItem={selectedItem}
                   onItemClick={handleItemClick}
                   onDrilldown={setFilter}
-                  showSources={showSources}
-                  sourceMappings={sourceMappingsFor.city}
-                  showGaps={showGaps}
                   isOpen={expandedCategories.has('city')}
                   onToggle={() => handleDetailToggle('city')}
-                  overrideCoords={overrideCoords}
                 />
               )}
               {activeLayers.has('school') && geoData.school.length > 0 && (
@@ -460,12 +373,8 @@ export default function GeoAnalysis() {
                   selectedItem={selectedItem}
                   onItemClick={handleItemClick}
                   onDrilldown={setFilter}
-                  showSources={showSources}
-                  sourceMappings={sourceMappingsFor.school}
-                  showGaps={showGaps}
                   isOpen={expandedCategories.has('school')}
                   onToggle={() => handleDetailToggle('school')}
-                  overrideCoords={overrideCoords}
                 />
               )}
               {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
@@ -475,12 +384,8 @@ export default function GeoAnalysis() {
                   selectedItem={selectedItem}
                   onItemClick={handleItemClick}
                   onDrilldown={setFilter}
-                  showSources={showSources}
-                  sourceMappings={sourceMappingsFor.synagogue}
-                  showGaps={showGaps}
                   isOpen={expandedCategories.has('synagogue')}
                   onToggle={() => handleDetailToggle('synagogue')}
-                  overrideCoords={overrideCoords}
                 />
               )}
               {activeLayers.has('region') && geoData.region.length > 0 && (
@@ -489,33 +394,6 @@ export default function GeoAnalysis() {
                   category="region"
                   isOpen={expandedCategories.has('region')}
                   onToggle={() => handleDetailToggle('region')}
-                />
-              )}
-            </div>
-          )}
-
-          {/* Gap Tracking (admin only, single-year mode only) */}
-          {showGaps && !isComparing && (
-            <div className="space-y-3">
-              {activeLayers.has('city') && (
-                <GeoGapsList
-                  gaps={gaps.city}
-                  category="city"
-                  sourceMappings={sourceMappingsFor.city}
-                />
-              )}
-              {activeLayers.has('school') && (
-                <GeoGapsList
-                  gaps={gaps.school}
-                  category="school"
-                  sourceMappings={sourceMappingsFor.school}
-                />
-              )}
-              {activeLayers.has('synagogue') && (
-                <GeoGapsList
-                  gaps={gaps.synagogue}
-                  category="synagogue"
-                  sourceMappings={sourceMappingsFor.synagogue}
                 />
               )}
             </div>

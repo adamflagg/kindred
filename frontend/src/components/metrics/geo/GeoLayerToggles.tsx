@@ -3,7 +3,6 @@
  *
  * Replaces GeoCategoryTabs with simultaneous multi-layer visibility.
  * Three data layers (cities, schools, synagogues) plus region zones.
- * Geo-permission-gated toggles: source strings and gap tracking.
  */
 
 import { MapPin, Building2, Heart, Map } from 'lucide-react'
@@ -15,14 +14,6 @@ export interface GeoLayerTogglesProps {
   counts: Record<GeoCategoryExtended, number>
   showRegions: boolean
   onToggleRegions: () => void
-  showSources: boolean
-  onToggleSources: () => void
-  showGaps?: boolean
-  onToggleGaps?: () => void
-  /** When true, shows sources and gaps toggles. Defaults to false. */
-  hasGeoPermission?: boolean
-  /** When true, disables sources/gaps toggles (not available in compare mode). */
-  isComparing?: boolean
 }
 
 const LAYERS: Array<{
@@ -43,12 +34,6 @@ export function GeoLayerToggles({
   counts,
   showRegions,
   onToggleRegions,
-  showSources,
-  onToggleSources,
-  showGaps = false,
-  onToggleGaps,
-  hasGeoPermission = false,
-  isComparing = false,
 }: GeoLayerTogglesProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -86,43 +71,6 @@ export function GeoLayerToggles({
         />
         <span className="text-muted-foreground">Region zones</span>
       </label>
-
-      {/* Admin-only toggles */}
-      {hasGeoPermission && (
-        <>
-          <label
-            className={`flex items-center gap-1.5 text-sm ${isComparing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-          >
-            <input
-              type="checkbox"
-              checked={showSources}
-              onChange={onToggleSources}
-              disabled={isComparing}
-              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
-            />
-            <span className="text-muted-foreground">Show sources</span>
-          </label>
-
-          <label
-            className={`flex items-center gap-1.5 text-sm ${isComparing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-          >
-            <input
-              type="checkbox"
-              checked={showGaps}
-              onChange={onToggleGaps}
-              disabled={isComparing}
-              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
-            />
-            <span className="text-muted-foreground">Show gaps</span>
-          </label>
-
-          {isComparing && (
-            <span className="text-muted-foreground text-xs italic">
-              Available in single-year mode
-            </span>
-          )}
-        </>
-      )}
     </div>
   )
 }
