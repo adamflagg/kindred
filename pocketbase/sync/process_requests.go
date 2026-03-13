@@ -8,8 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -65,15 +63,15 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		"trace", p.Trace,
 	)
 
-	// Get year from environment
-	year := os.Getenv("CAMPMINDER_SEASON_ID")
-	if year == "" {
-		year = "2025"
+	// Get and validate year from environment
+	yearInt, err := ParseSeasonYear()
+	if err != nil {
+		return fmt.Errorf("year resolution failed: %w", err)
 	}
 
 	apiURL := getAPIURL()
 	pythonStats, err := callAPIProcessor(ctx, apiURL, apiProcessorRequest{
-		Year:          func() int { y, _ := strconv.Atoi(year); return y }(),
+		Year:          yearInt,
 		Session:       p.Session,
 		SourceFields:  p.SourceFields,
 		Limit:         p.Limit,
