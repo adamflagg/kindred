@@ -14,7 +14,6 @@ class SolverRequest(BaseModel):
 
     session_cm_id: int
     year: int
-    respect_locks: bool = True
     apply_results: bool = False
     time_limit: int | None = Field(default=None, ge=1, le=600, description="Override config time limit")
     include_analysis: bool = False
@@ -29,7 +28,6 @@ class MultiSessionSolverRequest(BaseModel):
 
     parent_session_cm_id: int
     year: int
-    respect_locks: bool = True
     apply_results: bool = False
     time_limit_per_session: int | None = Field(default=None, ge=1, le=600, description="Override config time limit")
     include_analysis: bool = False

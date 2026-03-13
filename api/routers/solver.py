@@ -81,7 +81,6 @@ async def run_solver(
         run_id,
         request.session_cm_id,
         request.year,
-        request.respect_locks,
         time_limit,
         request.include_analysis,
         request.scenario,
@@ -722,7 +721,6 @@ async def run_multi_session_solver(
                     "status": "pending",
                     "created_at": datetime.now(UTC),
                     "config": {
-                        "respect_locks": request.respect_locks,
                         "time_limit": time_limit,
                         "parent_session_cm_id": request.parent_session_cm_id,
                         "sex_group": sex_group,
@@ -735,7 +733,6 @@ async def run_multi_session_solver(
                     run_id,
                     session_cm_id,
                     request.year,
-                    request.respect_locks,
                     time_limit,
                     request.include_analysis,
                     request.scenario,
