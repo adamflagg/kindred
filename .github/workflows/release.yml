@@ -197,12 +197,8 @@ jobs:
         echo "The CD workflow may still be running. Wait for it to finish, then re-run this release."
         exit 1
 
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Install crane and authenticate to GHCR
+      uses: imjasonh/setup-crane@6da1ae018866400525525ce74ff892880c099987 # v0.5
 
     - name: Verify SHA-tagged images exist in registry
       env:
@@ -212,7 +208,7 @@ jobs:
         # Verify the sha-tagged images actually exist before attempting promotion.
         IMAGE="${REGISTRY}/${USERNAME}/kindred-api:${SHA_TAG}"
         echo "Checking registry for ${IMAGE}..."
-        if ! docker buildx imagetools inspect "$IMAGE" > /dev/null 2>&1; then
+        if ! crane manifest "$IMAGE" > /dev/null 2>&1; then
           echo "::error::Image ${IMAGE} not found in registry."
           echo "CD may have skipped the build (no relevant file changes)."
           echo "Ensure the latest CD run on main built and pushed images before releasing."
@@ -230,21 +226,21 @@ jobs:
         MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
 
-        echo "Promoting images: ${SHA_TAG} -> ${DOCKER_TAG}, ${MINOR_TAG}"
+        echo "Promoting images: ${SHA_TAG} -> ${DOCKER_TAG}, ${MINOR_TAG}, latest"
 
         for IMAGE in "${IMAGES[@]}"; do
           SRC="${REGISTRY}/${USERNAME}/${IMAGE}:${SHA_TAG}"
           echo "Promoting ${IMAGE}..."
-          docker buildx imagetools create "$SRC" \
-            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${DOCKER_TAG}" \
-            --tag "${REGISTRY}/${USERNAME}/${IMAGE}:${MINOR_TAG}"
+          crane tag "$SRC" "$DOCKER_TAG"
+          crane tag "$SRC" "$MINOR_TAG"
+          crane tag "$SRC" "latest"
         done
 
         echo "All images promoted successfully"
         echo "" >> "$GITHUB_STEP_SUMMARY"
         echo "### Docker Images Promoted" >> "$GITHUB_STEP_SUMMARY"
         echo "Source: \`:${SHA_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
-        echo "Tags: \`:${DOCKER_TAG}\`, \`:${MINOR_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "Tags: \`:${DOCKER_TAG}\`, \`:${MINOR_TAG}\`, \`:latest\`" >> "$GITHUB_STEP_SUMMARY"
         echo "" >> "$GITHUB_STEP_SUMMARY"
         for IMAGE in "${IMAGES[@]}"; do
           echo "- \`${REGISTRY}/${USERNAME}/${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
