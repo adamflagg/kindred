@@ -1,36 +1,56 @@
 #!/bin/bash
-# Setup script to configure git hooks for this repository
+# Setup script to install and configure lefthook for git hooks
 # Run once after cloning or to update hooks configuration
 
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+cd "$PROJECT_ROOT"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${YELLOW}Setting up git hooks...${NC}"
+echo -e "${YELLOW}Setting up git hooks via lefthook...${NC}"
 
-# Configure git to use .githooks directory
-git config core.hooksPath .githooks
-
-# Remove stale .git/hooks/pre-commit if it exists (legacy, replaced by .githooks/)
-if [ -f "$PROJECT_ROOT/.git/hooks/pre-commit" ] && [ ! -L "$PROJECT_ROOT/.git/hooks/pre-commit" ]; then
-    rm -f "$PROJECT_ROOT/.git/hooks/pre-commit"
-    echo -e "${YELLOW}Removed stale .git/hooks/pre-commit (replaced by .githooks/pre-commit)${NC}"
+# Install lefthook if not available
+if ! command -v lefthook &> /dev/null; then
+    echo -e "${YELLOW}Installing lefthook...${NC}"
+    if command -v go &> /dev/null; then
+        go install github.com/evilmartians/lefthook@latest
+    else
+        echo -e "${RED}Error: Go is required to install lefthook${NC}"
+        echo "Install Go first: https://go.dev/dl/"
+        exit 1
+    fi
 fi
 
-echo -e "${GREEN}✓ Git hooks configured${NC}"
+# Unset core.hooksPath if set (legacy — lefthook manages .git/hooks/ directly)
+if git config --get core.hooksPath &> /dev/null; then
+    git config --unset core.hooksPath
+    echo -e "${YELLOW}Cleared legacy core.hooksPath setting${NC}"
+fi
+
+# Remove stale hook files in .git/hooks/ from old setup
+for hook in pre-commit pre-push commit-msg post-merge; do
+    if [ -f ".git/hooks/$hook" ] && [ ! -L ".git/hooks/$hook" ]; then
+        rm -f ".git/hooks/$hook"
+    fi
+done
+
+# Install lefthook hooks
+lefthook install
+
+echo -e "${GREEN}✓ Lefthook installed and configured${NC}"
 echo ""
-echo "Active hooks:"
-ls -la "$PROJECT_ROOT/.githooks/"
+echo "Hook stages (configured in .lefthook.yml):"
+echo "  • pre-commit:  formatters on staged files (<1s)"
+echo "  • commit-msg:  conventional commit validation"
+echo "  • pre-push:    linters + tests, parallel (~1 min)"
+echo "  • post-merge:  worktree cleanup notifications"
 echo ""
-echo -e "${GREEN}Done!${NC} Git will now use hooks from .githooks/"
-echo ""
-echo "Hooks installed:"
-echo "  • commit-msg: Validates commit message format (type(scope): description)"
-echo "  • pre-commit: Runs linting/formatting (quick_check.sh) + behind-origin warning"
-echo "  • pre-push: Blocks pushing main when behind origin"
-echo "  • post-merge: Notifies when worktree branches are merged (auto-cleanup reminder)"
+echo "Escape hatches:"
+echo "  LEFTHOOK=0 git commit   — bypass all hooks"
+echo "  git commit --no-verify  — bypass all hooks (git-native)"
