@@ -107,15 +107,14 @@ Advanced three-phase processing pipeline for bunk requests.
 
 ### Quick Pre-Commit Checks
 ```bash
-./scripts/ci/quick_check.sh
+lefthook run pre-commit                                   # Formatters (staged files)
+lefthook run pre-push                                     # Full lint + test suite
 ```
-Runs fast checks including:
-- Python linting (ruff)
-- TypeScript type checking
-- Go formatting and linting
-- Basic smoke tests
+Lefthook hooks run automatically on commit/push. To run manually:
+- `pre-commit`: Formatters on staged files (prettier, ruff format, gofmt)
+- `pre-push`: Full linters + tests in parallel
 
-**Always run before committing!**
+**Setup:** `./scripts/setup-git-hooks.sh` (run once after cloning)
 
 ### Full Test Suite
 ```bash
@@ -310,8 +309,9 @@ Generates TypeScript types from PocketBase schema.
 
 # Make changes...
 
-# Before committing
-./scripts/ci/quick_check.sh
+# Before committing (hooks run automatically, or manually):
+lefthook run pre-commit                                   # Formatters (staged files)
+lefthook run pre-push                                     # Full lint + test suite
 
 # Commit
 git add -A
