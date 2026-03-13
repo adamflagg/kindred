@@ -21,6 +21,7 @@ class SolverRequest(BaseModel):
     debug_constraints: dict[str, Any] | None = None
     debug_mode: bool = False
     config: dict[str, Any] | None = None
+    respect_locks: bool = Field(default=True, description="Whether to respect locked bunk assignments")
 
 
 class MultiSessionSolverRequest(BaseModel):
@@ -33,6 +34,7 @@ class MultiSessionSolverRequest(BaseModel):
     include_analysis: bool = False
     scenario: str | None = None  # PocketBase ID of saved_scenario (relation)
     solve_by_sex: bool = True
+    respect_locks: bool = Field(default=True, description="Whether to respect locked bunk assignments")
 
 
 class SolverResponse(BaseModel):

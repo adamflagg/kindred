@@ -42,8 +42,12 @@ export interface SessionHeaderProps {
   capturedScenarioId: string | null
   /** Navigate to a different session */
   onSessionChange: (sessionCmId: string) => void
-  /** Run the solver with optional time limit */
-  onRunSolver: (timeLimit?: number) => void
+  /** Run the solver with optional time limit and respectLocks flag */
+  onRunSolver: (timeLimit?: number, respectLocks?: boolean) => void
+  /** Whether to respect locked bunk assignments */
+  respectLocks: boolean
+  /** Callback when respectLocks toggle changes */
+  onRespectLocksChange: (value: boolean) => void
   /** Show clear assignments dialog */
   onShowClearDialog: () => void
   /** Show new scenario modal */
@@ -69,6 +73,8 @@ export default function SessionHeader({
   capturedScenarioId,
   onSessionChange,
   onRunSolver,
+  respectLocks,
+  onRespectLocksChange,
   onShowClearDialog,
   onShowNewScenarioModal,
   onShowScenarioManagement,
@@ -193,6 +199,8 @@ export default function SessionHeader({
                 isSolving={isSolving}
                 isApplyingResults={isApplyingResults}
                 onRunSolver={onRunSolver}
+                respectLocks={respectLocks}
+                onRespectLocksChange={onRespectLocksChange}
               />
             )}
             {session && (

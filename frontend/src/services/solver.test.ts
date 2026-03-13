@@ -10,3 +10,12 @@ describe('solver types', () => {
     expect(source).toContain('ag: CapacityBreakdownItem')
   })
 })
+
+describe('solverService', () => {
+  it('should accept respectLocks parameter in runSolver', async () => {
+    const sourceContent = await import('./solver?raw')
+    const source = sourceContent.default
+    expect(source).toContain('respectLocks')
+    expect(source).toContain('respect_locks')
+  })
+})

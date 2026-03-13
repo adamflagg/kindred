@@ -56,6 +56,7 @@ export interface UseSolverOperationsOptions {
   autoApplyEnabled: boolean
   autoApplyTimeout: number
   fetchWithAuth: FetchWithAuthFn
+  respectLocks: boolean
 }
 
 export interface SolverRunResultWithStats {
@@ -87,6 +88,7 @@ export function useSolverOperations({
   autoApplyEnabled,
   autoApplyTimeout,
   fetchWithAuth,
+  respectLocks,
 }: UseSolverOperationsOptions): UseSolverOperationsReturn {
   const queryClient = useQueryClient()
   const [isSolving, setIsSolving] = useState(false)
@@ -109,7 +111,8 @@ export function useSolverOperations({
           currentYear,
           solverScenarioId,
           fetchWithAuth,
-          timeLimit
+          timeLimit,
+          respectLocks
         )
 
         if (solverRun.status === 'completed') {
@@ -207,6 +210,7 @@ export function useSolverOperations({
       autoApplyTimeout,
       fetchWithAuth,
       queryClient,
+      respectLocks,
     ]
   )
 

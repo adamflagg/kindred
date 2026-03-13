@@ -86,6 +86,7 @@ async def run_solver(
         request.scenario,
         request.debug_constraints,
         request.config,
+        respect_locks=request.respect_locks,
     )
 
     return SolverResponse(run_id=run_id, status="started", message="Solver run started in background")
@@ -736,6 +737,7 @@ async def run_multi_session_solver(
                     time_limit,
                     request.include_analysis,
                     request.scenario,
+                    respect_locks=request.respect_locks,
                 )
 
                 if sex_group not in run_ids:

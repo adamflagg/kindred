@@ -125,8 +125,12 @@ export interface OptimizeBunksButtonProps {
   isSolving: boolean
   /** Whether results are being applied */
   isApplyingResults: boolean
-  /** Callback when user clicks to run solver with selected time limit */
-  onRunSolver: (timeLimit: number) => void
+  /** Callback when user clicks to run solver with selected time limit and respectLocks flag */
+  onRunSolver: (timeLimit: number, respectLocks: boolean) => void
+  /** Whether to respect locked bunk assignments */
+  respectLocks: boolean
+  /** Callback when respectLocks toggle changes */
+  onRespectLocksChange: (value: boolean) => void
   /** Optional class name override */
   className?: string
 }
@@ -135,6 +139,8 @@ export default function OptimizeBunksButton({
   isSolving,
   isApplyingResults,
   onRunSolver,
+  respectLocks,
+  onRespectLocksChange,
   className,
 }: OptimizeBunksButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -208,7 +214,7 @@ export default function OptimizeBunksButton({
   // Handle main button click
   const handleMainClick = () => {
     if (isDisabled) return
-    onRunSolver(selectedLevel.timeLimit)
+    onRunSolver(selectedLevel.timeLimit, respectLocks)
   }
 
   // Handle chevron click to toggle dropdown
@@ -342,6 +348,19 @@ export default function OptimizeBunksButton({
                     </button>
                   )
                 })}
+              </div>
+
+              {/* Lock toggle */}
+              <div className="border-border border-t px-4 py-2.5">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={respectLocks}
+                    onChange={(e) => onRespectLocksChange(e.target.checked)}
+                    className="accent-primary h-3.5 w-3.5 rounded"
+                  />
+                  <span className="text-muted-foreground text-xs">Respect locked assignments</span>
+                </label>
               </div>
 
               {/* Footer hint */}

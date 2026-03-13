@@ -39,6 +39,7 @@ async def run_solver_task_v2(
     scenario: str | None = None,
     debug_constraints: dict[str, Any] | None = None,
     config_overrides: dict[str, Any] | None = None,
+    respect_locks: bool = True,
 ) -> None:
     """Background task to run the solver with direct bunk_requests data."""
     # Create a new PocketBase client for this background task
@@ -86,6 +87,13 @@ async def run_solver_task_v2(
                 pb_client=task_pb,
             )
             solver_input.lock_groups_data = lock_groups
+
+        # If respect_locks is disabled, clear existing assignments and group locks
+        # so the solver is free to reassign all campers from scratch
+        if not respect_locks:
+            solver_input.existing_assignments = []
+            solver_input.lock_groups_data = {}
+            logger.info("respect_locks=False: cleared existing assignments and group locks")
 
         # Run solver
         logger.info(
