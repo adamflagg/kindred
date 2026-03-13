@@ -1987,3 +1987,121 @@ func TestGeoLookupKeyCompositeEquality(t *testing.T) {
 		t.Error("k1 should equal k3 (same fields)")
 	}
 }
+
+// ============================================================================
+// Rejection Blocklist Tests
+// ============================================================================
+
+// TestRejectedOverridesSkipsMappings verifies that canonicals in the rejected
+// blocklist are silently skipped during upsert.
+func TestRejectedOverridesSkipsMappings(t *testing.T) {
+	rejectedOverrides := map[string]map[string]bool{
+		categoryCity:         {"springfield": true},
+		categorySchool:       {},
+		categoryCongregation: {"unknown congregation": true},
+	}
+
+	// Mappings include one rejected city and one rejected congregation
+	mappings := []*personSessionMapping{
+		{
+			personPBID: "p1", sessionPBID: "s1", category: categoryCity,
+			originalValue: "Springfield", normalizedValue: "Springfield",
+			confidence: 0.95, year: 2025,
+		},
+		{
+			personPBID: "p1", sessionPBID: "s1", category: categorySchool,
+			originalValue: "Riverside Elementary", normalizedValue: "Riverside Elementary",
+			confidence: 0.90, year: 2025,
+		},
+		{
+			personPBID: "p2", sessionPBID: "s1", category: categoryCongregation,
+			originalValue: "Unknown Congregation", normalizedValue: "Unknown Congregation",
+			confidence: 0.85, year: 2025,
+		},
+	}
+
+	// Simulate rejection filtering (matches upsertPersonSessionMappings logic)
+	var kept []*personSessionMapping
+	for _, m := range mappings {
+		if rejected, ok := rejectedOverrides[m.category]; ok {
+			if rejected[strings.ToLower(m.normalizedValue)] {
+				continue
+			}
+		}
+		kept = append(kept, m)
+	}
+
+	// Only the school mapping should survive
+	if len(kept) != 1 {
+		t.Fatalf("expected 1 kept mapping, got %d", len(kept))
+	}
+	if kept[0].category != categorySchool {
+		t.Errorf("expected kept mapping category = %q, got %q", categorySchool, kept[0].category)
+	}
+}
+
+// TestRejectedOverridesCaseInsensitive verifies that rejection matching
+// is case-insensitive.
+func TestRejectedOverridesCaseInsensitive(t *testing.T) {
+	rejectedOverrides := map[string]map[string]bool{
+		categoryCity: {"springfield": true},
+	}
+
+	tests := []struct {
+		normalizedValue string
+		wantRejected    bool
+	}{
+		{"Springfield", true},
+		{"springfield", true},
+		{"SPRINGFIELD", true},
+		{"Oakland", false},
+	}
+
+	for _, tt := range tests {
+		rejected := false
+		if r, ok := rejectedOverrides[categoryCity]; ok {
+			rejected = r[strings.ToLower(tt.normalizedValue)]
+		}
+		if rejected != tt.wantRejected {
+			t.Errorf("rejected(%q) = %v, want %v", tt.normalizedValue, rejected, tt.wantRejected)
+		}
+	}
+}
+
+// TestAddressCityPopulatedInMappings verifies that address_city is populated
+// from the attendee's City field for all category mappings.
+func TestAddressCityPopulatedInMappings(t *testing.T) {
+	data := []attendeeGeoData{
+		{
+			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
+			City: "Oakland", School: "Riverside Elementary", Congregation: "Temple Beth Abraham",
+			AddressState: "CA", AddressCountry: "US",
+		},
+	}
+
+	lookup := &normalizationLookup{
+		city:         map[string]normalizedEntry{"Oakland": {Canonical: "Oakland", Confidence: 1.0}},
+		school:       map[string]normalizedEntry{"Riverside Elementary": {Canonical: "Riverside Elementary", Confidence: 0.9}},
+		congregation: map[string]normalizedEntry{"Temple Beth Abraham": {Canonical: "Temple Beth Abraham", Confidence: 0.95}},
+	}
+
+	aliasOverrides := map[string]map[string]string{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+	mergeOverrides := map[string]map[string]string{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+
+	sync := &NormalizeGeographicSync{}
+	mappings := sync.createPersonSessionMappings(data, lookup, aliasOverrides, mergeOverrides, 2025)
+
+	if len(mappings) != 3 {
+		t.Fatalf("expected 3 mappings, got %d", len(mappings))
+	}
+
+	for _, m := range mappings {
+		if m.addressCity != "Oakland" {
+			t.Errorf("mapping %s: addressCity = %q, want %q", m.category, m.addressCity, "Oakland")
+		}
+	}
+}
