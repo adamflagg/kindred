@@ -46,6 +46,7 @@ import { CampMinderIcon } from './icons'
 import CamperLink from './CamperLink'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
+import { sortEnrolledFirst } from '../utils/enrollmentSort'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -182,6 +183,13 @@ export default function CamperDetailsPanel({
           enrollments: [] as CurrentEnrollment[],
         }
       }
+
+      // Sort enrolled first, then by session type priority
+      attendees.sort((a, b) => {
+        const aSession = (a.expand as { session?: ExpandedSession } | undefined)?.session
+        const bSession = (b.expand as { session?: ExpandedSession } | undefined)?.session
+        return sortEnrolledFirst(a.status, aSession?.session_type, b.status, bSession?.session_type)
+      })
 
       // Build enrollments list from ALL attendee records
       const enrollments: CurrentEnrollment[] = []
@@ -372,12 +380,7 @@ export default function CamperDetailsPanel({
               const bExpand = b.expand as { session?: ExpandedSession } | undefined
               const aType = aExpand?.session?.session_type ?? 'unknown'
               const bType = bExpand?.session?.session_type ?? 'unknown'
-              const typeOrder: Record<string, number> = {
-                main: 1,
-                embedded: 2,
-                ag: 3,
-              }
-              return (typeOrder[aType] ?? 999) - (typeOrder[bType] ?? 999)
+              return sortEnrolledFirst(a.status, aType, b.status, bType)
             })
 
             const primaryAttendee = sortedAttendees[0]
@@ -408,7 +411,7 @@ export default function CamperDetailsPanel({
               }
             }
 
-            return { ...siblingPerson, session, bunkName }
+            return { ...siblingPerson, session, bunkName, attendeeStatus: primaryAttendee.status }
           } catch {
             return null
           }
@@ -1032,8 +1035,9 @@ export default function CamperDetailsPanel({
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 truncate text-sm font-medium">
-                        {sibling.preferred_name || sibling.first_name} {sibling.last_name}
+                      <div className="text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 flex items-center gap-1.5 truncate text-sm font-medium">
+                        <span>{sibling.preferred_name || sibling.first_name} {sibling.last_name}</span>
+                        <StatusBadge status={sibling.attendeeStatus} />
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
                         <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>

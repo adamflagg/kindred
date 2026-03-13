@@ -275,7 +275,7 @@ export default function CamperDetail() {
               {/* Bunking Status */}
               <BunkingStatusPanel
                 camper={camper}
-                enrolledCampers={enrolledCampers}
+                enrolledCampers={enrolledCampers.filter((c) => c.attendee_status === 'enrolled')}
                 sessionShortName={sessionShortName}
                 allBunkRequests={allBunkRequests}
                 agePreferenceRequests={agePreferenceRequests}

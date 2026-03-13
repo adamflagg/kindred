@@ -13,6 +13,7 @@ import type {
   BunksResponse,
   CampSessionsResponse,
 } from '../../types/pocketbase-types'
+import { sortEnrolledFirst } from '../../utils/enrollmentSort'
 import type { SiblingWithEnrollment } from './types'
 
 export interface UseSiblingsResult {
@@ -75,17 +76,11 @@ export function useSiblings(
               return null // No attendee records this year
             }
 
-            // Get the first valid enrollment (prefer main session)
+            // Sort enrolled first, then by session type priority
             const sortedAttendees = attendees.sort((a, b) => {
               const aType = a.expand?.session?.session_type || 'unknown'
-
               const bType = b.expand?.session?.session_type || 'unknown'
-              const typeOrder: Record<string, number> = {
-                main: 1,
-                embedded: 2,
-                ag: 3,
-              }
-              return (typeOrder[aType] || 999) - (typeOrder[bType] || 999)
+              return sortEnrolledFirst(a.status, aType, b.status, bType)
             })
 
             const primaryAttendee = sortedAttendees[0]
