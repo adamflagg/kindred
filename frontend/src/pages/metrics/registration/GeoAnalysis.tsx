@@ -10,7 +10,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react'
-import { Globe, Loader2, AlertCircle } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -26,6 +26,7 @@ import {
   type GeoMapLayer,
 } from '../../../components/metrics/geo'
 import { useGeoOverrideCoords } from '../../../hooks/useGeoOverrideCoords'
+import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 import { aggregateCityCountsByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 
 /** Default status filter for enrolled campers */
@@ -213,27 +214,6 @@ export default function GeoAnalysis() {
     setSelectedItem((prev) => (prev === name ? null : name))
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="text-primary h-8 w-8 animate-spin" />
-        <span className="text-muted-foreground ml-2">Loading geographic data...</span>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
-        <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load geographic data: {error.message}</span>
-      </div>
-    )
-  }
-
-  const anyData =
-    geoData.city.length > 0 || geoData.school.length > 0 || geoData.synagogue.length > 0
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -245,161 +225,172 @@ export default function GeoAnalysis() {
         <p className="text-muted-foreground mt-1">Explore where your campers come from</p>
       </div>
 
-      {!anyData ? (
-        <div className="card-lodge p-8 text-center">
-          <Globe className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
-          <h2 className="text-foreground mb-2 text-lg font-semibold">No Geographic Data</h2>
-          <p className="text-muted-foreground">
-            Geographic breakdown data is not yet available for {currentYear}.
-          </p>
-          <p className="text-muted-foreground mt-2 text-sm">
-            Make sure person records have school and address information populated.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Summary Cards */}
-          <GeoSummaryCards
-            cityCount={geoData.city.length}
-            schoolCount={geoData.school.length}
-            synagogueCount={geoData.synagogue.length}
-            topLocation={topLocation}
-          />
+      <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="geographic">
+        {(_queryData) => {
+          const anyData =
+            geoData.city.length > 0 || geoData.school.length > 0 || geoData.synagogue.length > 0
 
-          {/* Layer Toggles */}
-          <GeoLayerToggles
-            activeLayers={activeLayers}
-            onToggleLayer={handleToggleLayer}
-            counts={{
-              city: geoData.city.length,
-              school: geoData.school.length,
-              synagogue: geoData.synagogue.length,
-              region: geoData.region.length,
-            }}
-            showRegions={showRegions}
-            onToggleRegions={() => setShowRegions((v) => !v)}
-          />
+          if (!anyData) {
+            return (
+              <div className="card-lodge p-8 text-center">
+                <Globe className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
+                <h2 className="text-foreground mb-2 text-lg font-semibold">No Geographic Data</h2>
+                <p className="text-muted-foreground">
+                  Geographic breakdown data is not yet available for {currentYear}.
+                </p>
+                <p className="text-muted-foreground mt-2 text-sm">
+                  Make sure person records have school and address information populated.
+                </p>
+              </div>
+            )
+          }
 
-          {/* Map - hidden in comparison mode */}
-          {isComparing ? (
-            <div className="card-lodge p-6 text-center">
-              <p className="text-muted-foreground text-sm">
-                Map view is available in single-year mode. Showing comparison tables below.
-              </p>
-            </div>
-          ) : (
-            <GeoMap
-              layers={(['city', 'school', 'synagogue'] as const)
-                .filter((cat) => activeLayers.has(cat) && geoData[cat].length > 0)
-                .map((cat): GeoMapLayer => ({ category: cat, data: geoData[cat] }))}
-              selectedItem={selectedItem}
-              onMarkerClick={handleItemClick}
-              onDrilldown={setFilter}
-              height={575}
-              showRegions={showRegions}
-              overrideCoords={overrideCoords}
-            />
-          )}
+          return (
+            <>
+              {/* Summary Cards */}
+              <GeoSummaryCards
+                cityCount={geoData.city.length}
+                schoolCount={geoData.school.length}
+                synagogueCount={geoData.synagogue.length}
+                topLocation={topLocation}
+              />
 
-          {/* Detail Lists - comparison or single year */}
-          {isComparing && compGeoData ? (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {activeLayers.has('city') &&
-                (geoData.city.length > 0 || compGeoData.city.length > 0) && (
-                  <GeoComparisonDetailList
-                    category="city"
-                    primaryData={geoData.city}
-                    compareData={compGeoData.city}
-                    primaryYear={currentYear}
-                    compareYear={compareYear!}
-                    isOpen={expandedCategories.has('city')}
-                    onToggle={() => handleDetailToggle('city')}
-                  />
-                )}
-              {activeLayers.has('school') &&
-                (geoData.school.length > 0 || compGeoData.school.length > 0) && (
-                  <GeoComparisonDetailList
-                    category="school"
-                    primaryData={geoData.school}
-                    compareData={compGeoData.school}
-                    primaryYear={currentYear}
-                    compareYear={compareYear!}
-                    isOpen={expandedCategories.has('school')}
-                    onToggle={() => handleDetailToggle('school')}
-                  />
-                )}
-              {activeLayers.has('synagogue') &&
-                (geoData.synagogue.length > 0 || compGeoData.synagogue.length > 0) && (
-                  <GeoComparisonDetailList
-                    category="synagogue"
-                    primaryData={geoData.synagogue}
-                    compareData={compGeoData.synagogue}
-                    primaryYear={currentYear}
-                    compareYear={compareYear!}
-                    isOpen={expandedCategories.has('synagogue')}
-                    onToggle={() => handleDetailToggle('synagogue')}
-                  />
-                )}
-              {activeLayers.has('region') &&
-                (geoData.region.length > 0 || compGeoData.region.length > 0) && (
-                  <GeoComparisonDetailList
-                    category="region"
-                    primaryData={geoData.region}
-                    compareData={compGeoData.region}
-                    primaryYear={currentYear}
-                    compareYear={compareYear!}
-                    isOpen={expandedCategories.has('region')}
-                    onToggle={() => handleDetailToggle('region')}
-                  />
-                )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {activeLayers.has('city') && geoData.city.length > 0 && (
-                <GeoDetailList
-                  data={geoData.city}
-                  category="city"
+              {/* Layer Toggles */}
+              <GeoLayerToggles
+                activeLayers={activeLayers}
+                onToggleLayer={handleToggleLayer}
+                counts={{
+                  city: geoData.city.length,
+                  school: geoData.school.length,
+                  synagogue: geoData.synagogue.length,
+                  region: geoData.region.length,
+                }}
+                showRegions={showRegions}
+                onToggleRegions={() => setShowRegions((v) => !v)}
+              />
+
+              {/* Map - hidden in comparison mode */}
+              {isComparing ? (
+                <div className="card-lodge p-6 text-center">
+                  <p className="text-muted-foreground text-sm">
+                    Map view is available in single-year mode. Showing comparison tables below.
+                  </p>
+                </div>
+              ) : (
+                <GeoMap
+                  layers={(['city', 'school', 'synagogue'] as const)
+                    .filter((cat) => activeLayers.has(cat) && geoData[cat].length > 0)
+                    .map((cat): GeoMapLayer => ({ category: cat, data: geoData[cat] }))}
                   selectedItem={selectedItem}
-                  onItemClick={handleItemClick}
+                  onMarkerClick={handleItemClick}
                   onDrilldown={setFilter}
-                  isOpen={expandedCategories.has('city')}
-                  onToggle={() => handleDetailToggle('city')}
+                  height={575}
+                  showRegions={showRegions}
+                  overrideCoords={overrideCoords}
                 />
               )}
-              {activeLayers.has('school') && geoData.school.length > 0 && (
-                <GeoDetailList
-                  data={geoData.school}
-                  category="school"
-                  selectedItem={selectedItem}
-                  onItemClick={handleItemClick}
-                  onDrilldown={setFilter}
-                  isOpen={expandedCategories.has('school')}
-                  onToggle={() => handleDetailToggle('school')}
-                />
+
+              {/* Detail Lists - comparison or single year */}
+              {isComparing && compGeoData ? (
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  {activeLayers.has('city') &&
+                    (geoData.city.length > 0 || compGeoData.city.length > 0) && (
+                      <GeoComparisonDetailList
+                        category="city"
+                        primaryData={geoData.city}
+                        compareData={compGeoData.city}
+                        primaryYear={currentYear}
+                        compareYear={compareYear!}
+                        isOpen={expandedCategories.has('city')}
+                        onToggle={() => handleDetailToggle('city')}
+                      />
+                    )}
+                  {activeLayers.has('school') &&
+                    (geoData.school.length > 0 || compGeoData.school.length > 0) && (
+                      <GeoComparisonDetailList
+                        category="school"
+                        primaryData={geoData.school}
+                        compareData={compGeoData.school}
+                        primaryYear={currentYear}
+                        compareYear={compareYear!}
+                        isOpen={expandedCategories.has('school')}
+                        onToggle={() => handleDetailToggle('school')}
+                      />
+                    )}
+                  {activeLayers.has('synagogue') &&
+                    (geoData.synagogue.length > 0 || compGeoData.synagogue.length > 0) && (
+                      <GeoComparisonDetailList
+                        category="synagogue"
+                        primaryData={geoData.synagogue}
+                        compareData={compGeoData.synagogue}
+                        primaryYear={currentYear}
+                        compareYear={compareYear!}
+                        isOpen={expandedCategories.has('synagogue')}
+                        onToggle={() => handleDetailToggle('synagogue')}
+                      />
+                    )}
+                  {activeLayers.has('region') &&
+                    (geoData.region.length > 0 || compGeoData.region.length > 0) && (
+                      <GeoComparisonDetailList
+                        category="region"
+                        primaryData={geoData.region}
+                        compareData={compGeoData.region}
+                        primaryYear={currentYear}
+                        compareYear={compareYear!}
+                        isOpen={expandedCategories.has('region')}
+                        onToggle={() => handleDetailToggle('region')}
+                      />
+                    )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  {activeLayers.has('city') && geoData.city.length > 0 && (
+                    <GeoDetailList
+                      data={geoData.city}
+                      category="city"
+                      selectedItem={selectedItem}
+                      onItemClick={handleItemClick}
+                      onDrilldown={setFilter}
+                      isOpen={expandedCategories.has('city')}
+                      onToggle={() => handleDetailToggle('city')}
+                    />
+                  )}
+                  {activeLayers.has('school') && geoData.school.length > 0 && (
+                    <GeoDetailList
+                      data={geoData.school}
+                      category="school"
+                      selectedItem={selectedItem}
+                      onItemClick={handleItemClick}
+                      onDrilldown={setFilter}
+                      isOpen={expandedCategories.has('school')}
+                      onToggle={() => handleDetailToggle('school')}
+                    />
+                  )}
+                  {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
+                    <GeoDetailList
+                      data={geoData.synagogue}
+                      category="synagogue"
+                      selectedItem={selectedItem}
+                      onItemClick={handleItemClick}
+                      onDrilldown={setFilter}
+                      isOpen={expandedCategories.has('synagogue')}
+                      onToggle={() => handleDetailToggle('synagogue')}
+                    />
+                  )}
+                  {activeLayers.has('region') && geoData.region.length > 0 && (
+                    <GeoDetailList
+                      data={geoData.region}
+                      category="region"
+                      isOpen={expandedCategories.has('region')}
+                      onToggle={() => handleDetailToggle('region')}
+                    />
+                  )}
+                </div>
               )}
-              {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
-                <GeoDetailList
-                  data={geoData.synagogue}
-                  category="synagogue"
-                  selectedItem={selectedItem}
-                  onItemClick={handleItemClick}
-                  onDrilldown={setFilter}
-                  isOpen={expandedCategories.has('synagogue')}
-                  onToggle={() => handleDetailToggle('synagogue')}
-                />
-              )}
-              {activeLayers.has('region') && geoData.region.length > 0 && (
-                <GeoDetailList
-                  data={geoData.region}
-                  category="region"
-                  isOpen={expandedCategories.has('region')}
-                  onToggle={() => handleDetailToggle('region')}
-                />
-              )}
-            </div>
-          )}
-        </>
-      )}
+            </>
+          )
+        }}
+      </MetricsQueryGuard>
 
       {/* Drilldown Modal */}
       <DrilldownModal />
