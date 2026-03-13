@@ -26,7 +26,6 @@ def check_feasibility(
     input_data: DirectSolverInput,
     constraint_logger: ConstraintLogger,
     person_idx_map: dict[int, int],
-    bunk_idx_map: dict[int, int],
     possible_requests: dict[int, list[DirectBunkRequest]],
     impossible_requests: dict[int, list[DirectBunkRequest]],
     request_validation_summary: dict[str, int],
@@ -39,7 +38,6 @@ def check_feasibility(
         input_data: The full solver input data
         constraint_logger: Logger for constraint messages
         person_idx_map: Map from person cm_id to solver index
-        bunk_idx_map: Map from bunk cm_id to solver index
         possible_requests: Map from person cm_id to satisfiable requests
         impossible_requests: Map from person cm_id to unsatisfiable requests
         request_validation_summary: Summary of request validation results
@@ -179,21 +177,7 @@ def check_feasibility(
         occupancy_info = f"Cabin {bunk.name}: capacity {bunk.capacity}, gender {bunk.gender}"
         logger.debug(occupancy_info)
 
-    # 5. Check for locked assignments exceeding capacity
-    bunk_locked_counts: dict[int, int] = defaultdict(int)
-    for person_cm_id, bunk_cm_id in input_data.locked_assignments.items():
-        if person_cm_id in person_idx_map and bunk_cm_id in bunk_idx_map:
-            bunk_locked_counts[bunk_cm_id] += 1
-
-    for bunk_cm_id, locked_count in bunk_locked_counts.items():
-        bunk_idx = bunk_idx_map[bunk_cm_id]
-        bunk = bunks[bunk_idx]
-        if locked_count > bunk.capacity:
-            constraint_logger.log_feasibility_warning(
-                f"Cabin {bunk.name} has {locked_count} locked assignments but capacity is only {bunk.capacity}!"
-            )
-
-    # 6. Request validation summary
+    # 5. Request validation summary
     if request_validation_summary["impossible_requests"] > 0:
         logger.info("=== Request Validation Summary ===")
         logger.info(f"Total requests: {request_validation_summary['total_requests']}")

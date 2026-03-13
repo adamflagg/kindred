@@ -280,7 +280,6 @@ class DirectBunkingSolver:
             input_data=self.input,
             constraint_logger=self.constraint_logger,
             person_idx_map=self.person_idx_map,
-            bunk_idx_map=self.bunk_idx_map,
             possible_requests=self.possible_requests,
             impossible_requests=self.impossible_requests,
             request_validation_summary=self.request_validation_summary,
@@ -353,18 +352,7 @@ class DirectBunkingSolver:
         ctx = self._build_solver_context()
         self.bunk_is_used = add_cabin_minimum_occupancy_constraints(ctx)
 
-        # 4. Manual locks (individual)
-        if self.input.locked_assignments:
-            self.constraint_logger.log_constraint(
-                "hard", "manual_locks", f"{len(self.input.locked_assignments)} individual camper locks"
-            )
-        for person_cm_id, bunk_cm_id in self.input.locked_assignments.items():
-            if person_cm_id in self.person_idx_map and bunk_cm_id in self.bunk_idx_map:
-                person_idx = self.person_idx_map[person_cm_id]
-                bunk_idx = self.bunk_idx_map[bunk_cm_id]
-                self.model.Add(self.assignments[(person_idx, bunk_idx)] == 1)
-
-        # 5. Group locks
+        # 4. Group locks
         # Uses extracted constraint module - debug check is internal
         add_group_lock_constraints(self._build_solver_context())
 
