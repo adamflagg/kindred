@@ -27,10 +27,17 @@ from .bunk_requests import add_bunk_request_satisfaction_vars
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunkRequest
 
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
 logger = logging.getLogger(__name__)
 
-# CSV fields that contain explicit camper requests (not inferred preferences)
-EXPLICIT_CSV_FIELDS = {"share_bunk_with", "do_not_share_with", "bunking_notes", "internal_notes"}
+# Source fields that contain explicit camper requests (not inferred preferences)
+EXPLICIT_SOURCE_FIELDS = {
+    SourceField.BUNK_WITH,
+    SourceField.NOT_BUNK_WITH,
+    SourceField.BUNKING_NOTES,
+    SourceField.INTERNAL_NOTES,
+}
 
 
 def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
@@ -176,32 +183,24 @@ def _filter_and_categorize_requests(
 
         if request_csv_fields:
             # Check if ANY of the csv_source_fields are explicit fields
-            is_explicit = any(field in EXPLICIT_CSV_FIELDS for field in request_csv_fields)
+            is_explicit = any(field in EXPLICIT_SOURCE_FIELDS for field in request_csv_fields)
             if not is_explicit:
                 if track_debug:
                     logger.debug(f"Skipping request from {request_csv_fields} for must-satisfy-one (non-explicit)")
                 continue
         else:
             # Fallback to old source_field check
-            if hasattr(request, "source_field") and request.source_field not in EXPLICIT_CSV_FIELDS:
-                # Special handling for backward compatibility
-                if request.source_field in ["Request", "multiple_fields"]:
-                    pass  # These are likely explicit requests from CSV
-                else:
-                    if track_debug:
-                        logger.debug(f"Skipping request from {request.source_field} field for must-satisfy-one")
-                    continue
+            if hasattr(request, "source_field") and request.source_field not in EXPLICIT_SOURCE_FIELDS:
+                logger.debug(f"Skipping request from {request.source_field} field for must-satisfy-one")
+                continue
 
         # Categorize by request type
         if request.request_type in ["bunk_with", "not_bunk_with"]:
             bunk_requests.append(request)
         elif request.request_type == "age_preference":
-            # Only include age preferences from explicit CSV fields (not socialize_preference)
-            if (request_csv_fields and "socialize_preference" not in request_csv_fields) or (
-                not request_csv_fields
-                and hasattr(request, "source_field")
-                and request.source_field != "socialize_preference"
-            ):
-                age_requests.append(request)
+            # SOCIALIZE_WITH requests are excluded by the explicit-field check
+            # above (SOCIALIZE_WITH is NOT in EXPLICIT_SOURCE_FIELDS), so they
+            # never reach this point. Safe to append unconditionally.
+            age_requests.append(request)
 
     return bunk_requests, age_requests
