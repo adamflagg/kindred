@@ -744,9 +744,9 @@ class DirectBunkingSolver:
                 logger.info("Attempting to identify conflicting constraints...")
                 # Log some basic stats about constraints
                 proto = self.model.Proto()
-                bool_and_count = sum(1 for c in proto.constraints if c.HasField("bool_and"))
-                bool_or_count = sum(1 for c in proto.constraints if c.HasField("bool_or"))
-                linear_count = sum(1 for c in proto.constraints if c.HasField("linear"))
+                bool_and_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_and")
+                bool_or_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_or")
+                linear_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "linear")
                 logger.info(
                     f"Constraint types: bool_and={bool_and_count}, bool_or={bool_or_count}, linear={linear_count}"
                 )
