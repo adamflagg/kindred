@@ -27,7 +27,7 @@ from api.services.reconstruction import (
     CANCELLATION_STATUSES,
     ENROLLMENT_STATUSES,
     _get_enrollment_date,
-    _parse_date_only,
+    parse_date_only,
     reconstruct_daily,
 )
 from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
@@ -1300,7 +1300,7 @@ class VelocityService:
             if status_id in CANCELLATION_STATUSES:
                 cancel_date_raw = getattr(att, "enrollment_date", "") or ""
                 if cancel_date_raw:
-                    cancel_date_str = _parse_date_only(cancel_date_raw)
+                    cancel_date_str = parse_date_only(cancel_date_raw)
                     cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
                     if season_start.date() <= cancel_dt.date() <= season_end.date():
                         session_daily_cancellations[effective_sid][cancel_date_str] += 1

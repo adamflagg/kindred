@@ -19,7 +19,7 @@ from api.schemas.day1 import (
 )
 from api.services.camp_calendar import REGISTRATION_TIERS, day1_window
 from api.services.metrics_repository import MetricsRepository
-from api.services.reconstruction import ENROLLMENT_STATUSES
+from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class Day1Service:
             date_str = reg_dates.get(date_key)
             if not date_str:
                 continue
-            tier_date = date.fromisoformat(date_str.split("T")[0].split(" ")[0])
+            tier_date = date.fromisoformat(parse_date_only(date_str))
             window_start, window_end = day1_window(tier_date)
             tier_windows.append((tier_key, date_key, tier_label, tier_date, window_start, window_end))
 
@@ -91,7 +91,7 @@ class Day1Service:
             if not eff_str:
                 continue
 
-            eff_date_str = eff_str.split("T")[0].split(" ")[0]
+            eff_date_str = parse_date_only(eff_str)
 
             # Determine session type once per attendee
             expand = getattr(att, "expand", {}) or {}

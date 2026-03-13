@@ -27,7 +27,7 @@ ENROLLMENT_STATUSES: set[int] = {2, 32, 256}  # enrolled, cancelled, withdrawn
 CANCELLATION_STATUSES: set[int] = {32, 256}  # cancelled, withdrawn
 
 
-def _parse_date_only(value: str) -> str:
+def parse_date_only(value: str) -> str:
     """Extract YYYY-MM-DD from a datetime string that may include time/timezone."""
     return value.split("T")[0].split(" ")[0]
 
@@ -36,10 +36,10 @@ def _get_enrollment_date(att: Any) -> str | None:
     """Get the enrollment date for an attendee, preferring effective_date over enrollment_date."""
     ed = getattr(att, "effective_date", "") or ""
     if ed:
-        return _parse_date_only(ed)
+        return parse_date_only(ed)
     fallback = getattr(att, "enrollment_date", "") or ""
     if fallback:
-        return _parse_date_only(fallback)
+        return parse_date_only(fallback)
     return None
 
 
@@ -104,7 +104,7 @@ def _reconstruct_core(
         if status_id in CANCELLATION_STATUSES:
             cancel_date_raw = getattr(att, "enrollment_date", "") or ""
             if cancel_date_raw:
-                cancel_date_str = _parse_date_only(cancel_date_raw)
+                cancel_date_str = parse_date_only(cancel_date_raw)
                 cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
                 if season_start.date() <= cancel_dt.date() <= cutoff_date:
                     session_cancellations[effective_sid] += 1
@@ -251,7 +251,7 @@ def reconstruct_daily(
         # Enrollment event: bucket by effective_date
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
-            enroll_day = _parse_date_only(enroll_date_str)
+            enroll_day = parse_date_only(enroll_date_str)
             bucket = daily_events.setdefault(enroll_day, dict(_empty_bucket))
             bucket["new"] += 1
             if gender == "M":
@@ -263,7 +263,7 @@ def reconstruct_daily(
         if status in CANCELLATION_STATUSES:
             canc_date_raw = getattr(att, "enrollment_date", "") or ""
             if canc_date_raw:
-                canc_day = _parse_date_only(canc_date_raw)
+                canc_day = parse_date_only(canc_date_raw)
                 bucket = daily_events.setdefault(canc_day, dict(_empty_bucket))
                 bucket["cancelled"] += 1
                 if gender == "M":

@@ -540,3 +540,32 @@ class TestReconstructionWithGender:
         assert result[1001]["enrolled_girls"] == 1
         assert result[2001]["enrolled_boys"] == 0
         assert result[2001]["enrolled_girls"] == 2
+
+
+# ============================================================================
+# parse_date_only Tests
+# ============================================================================
+
+
+class TestParseDateOnly:
+    """Tests for the public parse_date_only utility."""
+
+    def test_iso_datetime_with_utc(self):
+        from api.services.reconstruction import parse_date_only
+
+        assert parse_date_only("2026-03-13T14:30:00Z") == "2026-03-13"
+
+    def test_space_separated_datetime(self):
+        from api.services.reconstruction import parse_date_only
+
+        assert parse_date_only("2026-03-13 14:30:00") == "2026-03-13"
+
+    def test_date_only_string(self):
+        from api.services.reconstruction import parse_date_only
+
+        assert parse_date_only("2026-03-13") == "2026-03-13"
+
+    def test_iso_with_timezone_offset(self):
+        from api.services.reconstruction import parse_date_only
+
+        assert parse_date_only("2026-03-13T14:30:00+05:00") == "2026-03-13"
