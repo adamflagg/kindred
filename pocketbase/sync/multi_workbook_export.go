@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -44,16 +42,13 @@ func NewMultiWorkbookExport(
 	sheetsWriter SheetsWriter,
 	workbookManager WorkbookManagerInterface,
 	year int,
-) *MultiWorkbookExport {
+) (*MultiWorkbookExport, error) {
 	// Get year from environment if not specified
 	if year == 0 {
-		if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-			if parsed, err := strconv.Atoi(yearStr); err == nil {
-				year = parsed
-			}
-		}
-		if year == 0 {
-			year = 2025 // Default
+		var err error
+		year, err = ParseSeasonYear()
+		if err != nil {
+			return nil, fmt.Errorf("year resolution failed: %w", err)
 		}
 	}
 
@@ -66,7 +61,7 @@ func NewMultiWorkbookExport(
 		sheetsWriter:    sheetsWriter,
 		workbookManager: workbookManager,
 		year:            year,
-	}
+	}, nil
 }
 
 // Name returns the name of this sync service.

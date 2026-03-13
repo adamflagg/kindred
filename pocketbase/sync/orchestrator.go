@@ -1679,7 +1679,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			// when the database is cleared but sheets still exist in Drive
 			driveSearcher := &DefaultDriveSearcher{}
 			workbookManager := NewWorkbookManagerWithSearcher(o.app, sheetsWriter, driveSearcher)
-			o.RegisterService("multi_workbook_export", NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0))
+			exporter, err := NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0)
+			if err != nil {
+				return fmt.Errorf("failed to create multi-workbook exporter: %w", err)
+			}
+			o.RegisterService("multi_workbook_export", exporter)
 			slog.Info("Multi-workbook export service registered")
 		}
 	}
