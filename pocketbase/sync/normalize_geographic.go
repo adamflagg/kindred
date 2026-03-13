@@ -27,6 +27,9 @@ const (
 	categoryCongregation = "congregation"
 )
 
+// Common filter fragment
+const filterYearParam = "year = {:year}"
+
 // NormalizeGeographicSync normalizes geographic data from enrolled attendees
 // and stores mappings in normalized_mappings table with person+session keys.
 //
@@ -265,7 +268,7 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 	// Load all attendees for the year regardless of enrollment status.
 	// Normalization is cheap (local fuzzy matching) and benefits all attendees:
 	// waitlisted campers get clean data, and more data points improve clustering.
-	filter := "year = {:year}"
+	filter := filterYearParam
 	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
@@ -450,7 +453,7 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
 
-	filter := "year = {:year}"
+	filter := filterYearParam
 	filterParams := dbx.Params{"year": year}
 	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0, filterParams)
 	if findErr != nil {
@@ -785,7 +788,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]*core.Record, error) {
 	existingRecords := make(map[string]*core.Record)
 
-	filter := "year = {:year}"
+	filter := filterYearParam
 	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
@@ -965,7 +968,7 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 	year int,
 ) error {
 	// Update camper_history records
-	filter := "year = {:year}"
+	filter := filterYearParam
 	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500
@@ -1062,7 +1065,7 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 		}
 	}
 
-	filter := "year = {:year}"
+	filter := filterYearParam
 	filterParams := dbx.Params{"year": year}
 	page := 1
 	perPage := 500

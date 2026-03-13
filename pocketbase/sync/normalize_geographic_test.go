@@ -1852,8 +1852,8 @@ func TestBuildContextValuesFromMap(t *testing.T) {
 	}
 
 	// Oakland should be second
-	if contextValues[1].Value != "Oakland" {
-		t.Errorf("second value = %q, want %q", contextValues[1].Value, "Oakland")
+	if contextValues[1].Value != testCityOakland {
+		t.Errorf("second value = %q, want %q", contextValues[1].Value, testCityOakland)
 	}
 	if contextValues[1].State != "CA" {
 		t.Errorf("Oakland state = %q, want %q", contextValues[1].State, "CA")
