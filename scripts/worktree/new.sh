@@ -147,6 +147,9 @@ WORKTREE_NAME=$FEATURE_NAME
 EOF
 fi
 
+# Point git hooks to the checked-in .githooks directory
+git config core.hooksPath .githooks
+
 # Install dependencies (fast with caching)
 echo -e "${BLUE}Installing dependencies...${NC}"
 uv sync --frozen &

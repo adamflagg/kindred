@@ -328,15 +328,18 @@ After `git pull`, the `post-merge` hook detects merged worktree branches and sug
 - Never push without user consent
 - Never add others' changes to your commits (check `git status` first)
 
-## Pre-Push Checklist
-The pre-push hook runs these automatically. To run manually:
+## Pre-Commit Checklist
+The pre-commit hook (`scripts/ci/quick_check.sh`) runs these automatically. To run manually:
 ```bash
-shellcheck scripts/*.sh scripts/**/*.sh .githooks/*  # Shell linting
-uv run ruff check --fix .      # Python linting (auto-fix)
-uv run ruff format .           # Python formatting (auto-fix)
-uv run mypy bunking api        # Type checking
-cd pocketbase && go build .    # Go build
-cd frontend && npm run lint    # Frontend linting
+uv run ruff check --fix .                  # Python linting (auto-fix)
+uv run ruff format .                       # Python formatting (auto-fix)
+uv run mypy . --explicit-package-bases     # Python type checking
+cd frontend && npm run type-check          # TypeScript type checking
+cd frontend && npm run lint                # ESLint
+cd frontend && npm run format              # Prettier (auto-fix)
+cd pocketbase && go vet ./...              # Go static analysis
+gofmt -w pocketbase                        # Go formatting (auto-fix)
+shellcheck scripts/*.sh .githooks/*        # Shell linting
 ```
 
 ## 🚨 CRITICAL: Development Quality Standards
