@@ -19,6 +19,7 @@ from ..core.models import (
     RequestType,
 )
 from ..prompts import format_prompt
+from ..shared.constants import ALL_FIELD_TO_SOURCE_FIELD
 from ..utils.date_parser import parse_temporal_date
 from .ai_schemas import (
     AIBunkRequestItem,
@@ -342,12 +343,13 @@ class OpenAIProvider(AIProvider):
             if staff_metadata:
                 request_metadata["staff_metadata"] = staff_metadata
 
+            raw_field = ai_req.source_field or context.csv_source_field or "unknown"
             parsed_request = ParsedRequest(
                 raw_text=original_text,
                 request_type=request_type,
                 target_name=ai_req.target_name,
                 age_preference=None,
-                source_field=ai_req.source_field or context.csv_source_field or "unknown",
+                source_field=ALL_FIELD_TO_SOURCE_FIELD.get(raw_field, raw_field),
                 source=self._map_source_type(ai_req.source_type),
                 confidence=self._calculate_confidence(ai_req),
                 csv_position=ai_req.list_position + 1,  # Convert 0-based to 1-based
