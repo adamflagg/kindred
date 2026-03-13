@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
+import { StatusBadge } from './StatusBadge'
 import {
   getGenderIdentityDisplay,
   getGenderCategory,
@@ -1169,17 +1170,20 @@ export default function CamperDetailsPanel({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between">
-                <h2 className="truncate text-lg font-bold">
-                  {camper.first_name}
-                  {camper.preferred_name && camper.preferred_name !== camper.first_name && (
-                    <span className="font-normal text-white/90 italic">
-                      {' '}
-                      "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
-                    </span>
-                  )}
-                  {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
-                  {camper.last_name}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate text-lg font-bold">
+                    {camper.first_name}
+                    {camper.preferred_name && camper.preferred_name !== camper.first_name && (
+                      <span className="font-normal text-white/90 italic">
+                        {' '}
+                        "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
+                      </span>
+                    )}
+                    {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
+                    {camper.last_name}
+                  </h2>
+                  <StatusBadge status={camper?.attendee_status} />
+                </div>
                 <button
                   onClick={handleClose}
                   className="-mr-1 rounded-lg p-1.5 transition-colors hover:bg-white/10"
@@ -1248,17 +1252,21 @@ export default function CamperDetailsPanel({
               {/* Name and info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between">
-                  <h2 className="text-xl font-bold tracking-tight">
-                    {camper.first_name}
-                    {camper.preferred_name && camper.preferred_name !== camper.first_name && (
-                      <span className="font-normal text-white/90 italic">
-                        {' '}
-                        "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
-                      </span>
-                    )}
-                    {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
-                    {camper.last_name}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold tracking-tight">
+                      {camper.first_name}
+                      {camper.preferred_name && camper.preferred_name !== camper.first_name && (
+                        <span className="font-normal text-white/90 italic">
+                          {' '}
+                          "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
+                        </span>
+                      )}
+                      {(!camper.preferred_name || camper.preferred_name === camper.first_name) &&
+                        ' '}
+                      {camper.last_name}
+                    </h2>
+                    <StatusBadge status={camper?.attendee_status} />
+                  </div>
                   <button
                     onClick={handleClose}
                     className="-mr-1 rounded-xl p-2 transition-colors hover:bg-white/10"
