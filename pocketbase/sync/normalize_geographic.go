@@ -71,6 +71,7 @@ type personSessionMapping struct {
 	year            int
 	addressState    string // from household billing_state
 	addressCountry  string // from household billing_country
+	addressCity     string // from persons.address_city
 }
 
 // NewNormalizeGeographicSync creates a new normalize geographic sync service
@@ -151,12 +152,13 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		"attendees", len(attendeeData),
 	)
 
-	// Step 1b: Load geo_overrides (alias + merge) for this year
-	aliasOverrides, mergeOverrides, err := n.loadGeoOverrides(year)
+	// Step 1b: Load geo_overrides (alias + merge + rejected) for this year
+	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides(year)
 	if err != nil {
 		slog.Warn("Could not load geo_overrides, continuing without overrides", "error", err)
 		aliasOverrides = make(map[string]map[string]string)
 		mergeOverrides = make(map[string]map[string]string)
+		rejectedOverrides = make(map[string]map[string]bool)
 	}
 
 	// Step 2: Build normalization lookup maps from all unique values
@@ -193,7 +195,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	}
 
 	// Step 5: Upsert normalized_mappings
-	if err := n.upsertPersonSessionMappings(ctx, mappings, existingMappings, year); err != nil {
+	if err := n.upsertPersonSessionMappings(ctx, mappings, existingMappings, year, rejectedOverrides); err != nil {
 		return fmt.Errorf("upserting normalized mappings: %w", err)
 	}
 
@@ -420,13 +422,15 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 	return result, nil
 }
 
-// loadGeoOverrides loads alias and merge overrides from the geo_overrides table.
+// loadGeoOverrides loads alias, merge, and rejected overrides from the geo_overrides table.
 // Returns:
 //   - aliasOverrides: category -> (lowercase raw_value -> canonical_name)
 //   - mergeOverrides: category -> (canonical_name -> merged_into)
+//   - rejectedOverrides: category -> (lowercase canonical_name -> true)
 func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	aliasOverrides map[string]map[string]string,
 	mergeOverrides map[string]map[string]string,
+	rejectedOverrides map[string]map[string]bool,
 	err error,
 ) {
 	aliasOverrides = map[string]map[string]string{
@@ -435,12 +439,15 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	mergeOverrides = map[string]map[string]string{
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
+	rejectedOverrides = map[string]map[string]bool{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
 
 	filter := "year = {:year}"
 	filterParams := dbx.Params{"year": year}
 	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0, filterParams)
 	if findErr != nil {
-		return aliasOverrides, mergeOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
+		return aliasOverrides, mergeOverrides, rejectedOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
 
 	for _, record := range records {
@@ -464,6 +471,14 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 					mergeOverrides[cat][canonical] = mergedInto
 				}
 			}
+		case "rejected":
+			name := record.GetString("canonical_name")
+			if name != "" {
+				if rejectedOverrides[cat] == nil {
+					rejectedOverrides[cat] = make(map[string]bool)
+				}
+				rejectedOverrides[cat][strings.ToLower(name)] = true
+			}
 		}
 	}
 
@@ -471,11 +486,13 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		len(aliasOverrides[categorySchool]) + len(aliasOverrides[categoryCongregation])
 	mergeCount := len(mergeOverrides[categoryCity]) +
 		len(mergeOverrides[categorySchool]) + len(mergeOverrides[categoryCongregation])
-	if aliasCount > 0 || mergeCount > 0 {
-		slog.Info("Loaded geo_overrides", "aliases", aliasCount, "merges", mergeCount)
+	rejectedCount := len(rejectedOverrides[categoryCity]) +
+		len(rejectedOverrides[categorySchool]) + len(rejectedOverrides[categoryCongregation])
+	if aliasCount > 0 || mergeCount > 0 || rejectedCount > 0 {
+		slog.Info("Loaded geo_overrides", "aliases", aliasCount, "merges", mergeCount, "rejected", rejectedCount)
 	}
 
-	return aliasOverrides, mergeOverrides, nil
+	return aliasOverrides, mergeOverrides, rejectedOverrides, nil
 }
 
 // geoContext holds the first-seen address state and country for a geographic value.
@@ -705,6 +722,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					year:            year,
 					addressState:    d.AddressState,
 					addressCountry:  d.AddressCountry,
+					addressCity:     d.City,
 				})
 			}
 		}
@@ -724,6 +742,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					year:            year,
 					addressState:    d.AddressState,
 					addressCountry:  d.AddressCountry,
+					addressCity:     d.City,
 				})
 			}
 		}
@@ -744,6 +763,7 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 					year:            year,
 					addressState:    d.AddressState,
 					addressCountry:  d.AddressCountry,
+					addressCity:     d.City,
 				})
 			}
 		}
@@ -802,12 +822,14 @@ func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]
 	return existingRecords, nil
 }
 
-// upsertPersonSessionMappings upserts mappings with person+session keys
+// upsertPersonSessionMappings upserts mappings with person+session keys.
+// Rejected canonicals (from rejectedOverrides) are silently skipped.
 func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 	ctx context.Context,
 	mappings []*personSessionMapping,
 	existingMappings map[string]*core.Record,
 	year int,
+	rejectedOverrides map[string]map[string]bool,
 ) error {
 	col, err := n.App.FindCollectionByNameOrId("normalized_mappings")
 	if err != nil {
@@ -819,6 +841,16 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Skip rejected canonicals
+		if rejected, ok := rejectedOverrides[m.category]; ok {
+			if rejected[strings.ToLower(m.normalizedValue)] {
+				slog.Debug("skipping rejected canonical",
+					"category", m.category,
+					"normalized_value", m.normalizedValue)
+				continue
+			}
 		}
 
 		key := fmt.Sprintf("%s:%s:%s", m.personPBID, m.sessionPBID, m.category)
@@ -835,6 +867,7 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 			"year":             year,
 			"address_state":    m.addressState,
 			"address_country":  m.addressCountry,
+			"address_city":     m.addressCity,
 		}
 
 		existing := existingMappings[key]
@@ -900,6 +933,10 @@ func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	}
 	// Compare address_country
 	if existing.GetString("address_country") != fmt.Sprint(newData["address_country"]) {
+		return true
+	}
+	// Compare address_city
+	if existing.GetString("address_city") != fmt.Sprint(newData["address_city"]) {
 		return true
 	}
 	// Compare confidence with epsilon for float precision
