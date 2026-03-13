@@ -610,11 +610,11 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 
 	// Build context array for API request
 	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
-	for key, ctx := range valuesWithContext {
+	for key, geoCtx := range valuesWithContext {
 		contextValues = append(contextValues, valueWithContext{
 			Value:   key.Value,
-			State:   ctx.State,
-			Country: ctx.Country,
+			State:   geoCtx.State,
+			Country: geoCtx.Country,
 		})
 	}
 
