@@ -216,29 +216,6 @@ jobs:
         fi
         echo "Verified: ${SHA_TAG} images exist in registry"
 
-    - name: Promote non-frontend images via crane
-      env:
-        VERSION: ${{ steps.version.outputs.version }}
-        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
-      run: |
-        # Strip v prefix for Docker tags (git tag v3.2.0 -> Docker tag 3.2.0)
-        DOCKER_TAG=${VERSION#v}
-        MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-        # Caddy is excluded — it gets rebuilt below with the clean release version
-        IMAGES=("kindred-pocketbase" "kindred-api" "kindred-init")
-
-        echo "Promoting images: ${SHA_TAG} -> ${DOCKER_TAG}, ${MINOR_TAG}, latest"
-
-        for IMAGE in "${IMAGES[@]}"; do
-          SRC="${REGISTRY}/${USERNAME}/${IMAGE}:${SHA_TAG}"
-          echo "Promoting ${IMAGE}..."
-          crane tag "$SRC" "$DOCKER_TAG"
-          crane tag "$SRC" "$MINOR_TAG"
-          crane tag "$SRC" "latest"
-        done
-
-        echo "Non-frontend images promoted successfully"
-
     - name: Log in to GitHub Container Registry (for docker push)
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
@@ -291,6 +268,28 @@ jobs:
         docker push "${IMAGE}:latest"
 
         echo "kindred-caddy rebuilt and pushed with release version"
+
+    - name: Promote non-frontend images via crane
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
+      run: |
+        # Strip v prefix for Docker tags (git tag v3.2.0 -> Docker tag 3.2.0)
+        DOCKER_TAG=${VERSION#v}
+        MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+        IMAGES=("kindred-pocketbase" "kindred-api" "kindred-init")
+
+        echo "Promoting images: ${SHA_TAG} -> ${DOCKER_TAG}, ${MINOR_TAG}, latest"
+
+        for IMAGE in "${IMAGES[@]}"; do
+          SRC="${REGISTRY}/${USERNAME}/${IMAGE}:${SHA_TAG}"
+          echo "Promoting ${IMAGE}..."
+          crane tag "$SRC" "$DOCKER_TAG"
+          crane tag "$SRC" "$MINOR_TAG"
+          crane tag "$SRC" "latest"
+        done
+
+        echo "Non-frontend images promoted successfully"
 
     - name: Summarize Docker image promotion
       env:
