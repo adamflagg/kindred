@@ -16,8 +16,6 @@ const defaultProps = {
   counts: { city: 42, school: 38, synagogue: 15, region: 9 },
   showRegions: true,
   onToggleRegions: vi.fn(),
-  showSources: false,
-  onToggleSources: vi.fn(),
 }
 
 /** Get all checkboxes as typed inputs */
@@ -26,16 +24,10 @@ function getCheckboxes(): HTMLInputElement[] {
 }
 
 describe('GeoLayerToggles', () => {
-  it('renders 4 layer checkboxes plus region toggle (non-admin)', () => {
+  it('renders 4 layer checkboxes plus region toggle', () => {
     render(<GeoLayerToggles {...defaultProps} />)
-    // 4 layers + 1 region zones = 5 (geo-permission toggles hidden by default)
+    // 4 layers + 1 region zones = 5
     expect(getCheckboxes()).toHaveLength(5)
-  })
-
-  it('renders all 7 checkboxes when hasGeoPermission is true', () => {
-    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} />)
-    // 4 layers + 1 region zones + 2 admin (sources, gaps) = 7
-    expect(getCheckboxes()).toHaveLength(7)
   })
 
   it('renders layer labels with counts', () => {
@@ -49,26 +41,11 @@ describe('GeoLayerToggles', () => {
     expect(screen.getByText(/15/)).toBeInTheDocument()
   })
 
-  it('renders region toggle but hides geo-permission toggles for non-admin', () => {
-    render(<GeoLayerToggles {...defaultProps} />)
-
-    expect(screen.getByText(/Region zones/)).toBeInTheDocument()
-    expect(screen.queryByText(/Show sources/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
-  })
-
-  it('renders all geo-permission toggles when hasGeoPermission is true', () => {
-    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} />)
-
-    expect(screen.getByText(/Show sources/)).toBeInTheDocument()
-    expect(screen.getByText(/Show gaps/)).toBeInTheDocument()
-  })
-
   it('calls onToggleLayer with correct category when clicked', () => {
     const onToggleLayer = vi.fn()
     render(<GeoLayerToggles {...defaultProps} onToggleLayer={onToggleLayer} />)
 
-    // Order: city, school, synagogue, region, region zones, sources, gaps
+    // Order: city, school, synagogue, region, region zones
     const boxes = getCheckboxes()
     fireEvent.click(boxes[1] as HTMLElement)
     expect(onToggleLayer).toHaveBeenCalledWith('school')
@@ -83,21 +60,6 @@ describe('GeoLayerToggles', () => {
     expect(onToggleRegions).toHaveBeenCalledOnce()
   })
 
-  it('calls onToggleSources when sources checkbox is clicked', () => {
-    const onToggleSources = vi.fn()
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        onToggleSources={onToggleSources}
-        hasGeoPermission={true}
-      />
-    )
-
-    const boxes = getCheckboxes()
-    fireEvent.click(boxes[5] as HTMLElement)
-    expect(onToggleSources).toHaveBeenCalledOnce()
-  })
-
   it('reflects checked state from activeLayers prop', () => {
     const partialLayers = new Set<GeoCategoryExtended>(['city'])
     render(<GeoLayerToggles {...defaultProps} activeLayers={partialLayers} />)
@@ -109,70 +71,15 @@ describe('GeoLayerToggles', () => {
     expect(boxes[3]?.checked).toBe(false) // region
   })
 
-  it('reflects showRegions and showSources state', () => {
+  it('reflects showRegions state', () => {
     render(
       <GeoLayerToggles
         {...defaultProps}
         showRegions={false}
-        showSources={true}
-        hasGeoPermission={true}
       />
     )
 
     const boxes = getCheckboxes()
     expect(boxes[4]?.checked).toBe(false) // region zones
-    expect(boxes[5]?.checked).toBe(true) // sources
-  })
-
-  it('calls onToggleGaps when gaps checkbox is clicked', () => {
-    const onToggleGaps = vi.fn()
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        hasGeoPermission={true}
-        showGaps={false}
-        onToggleGaps={onToggleGaps}
-      />
-    )
-
-    const boxes = getCheckboxes()
-    // 4 layers + region zones + sources + gaps = index 6
-    fireEvent.click(boxes[6] as HTMLElement)
-    expect(onToggleGaps).toHaveBeenCalledOnce()
-  })
-
-  it('disables sources and gaps toggles when isComparing is true', () => {
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        hasGeoPermission={true}
-        showSources={false}
-        showGaps={false}
-        isComparing={true}
-      />
-    )
-
-    const boxes = getCheckboxes()
-    // Sources (index 5) and gaps (index 6) should be disabled
-    expect(boxes[5]?.disabled).toBe(true)
-    expect(boxes[6]?.disabled).toBe(true)
-    // Other checkboxes should NOT be disabled
-    expect(boxes[0]?.disabled).toBe(false)
-    expect(boxes[4]?.disabled).toBe(false)
-  })
-
-  it('shows hint text when isComparing disables geo-permission toggles', () => {
-    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} isComparing={true} />)
-
-    expect(screen.getByText(/single-year mode/i)).toBeInTheDocument()
-  })
-
-  it('does not disable geo-permission toggles when isComparing is false', () => {
-    render(<GeoLayerToggles {...defaultProps} hasGeoPermission={true} isComparing={false} />)
-
-    const boxes = getCheckboxes()
-    // Sources and gaps should be enabled
-    expect(boxes[5]?.disabled).toBe(false)
-    expect(boxes[6]?.disabled).toBe(false)
   })
 })
