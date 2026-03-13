@@ -485,6 +485,16 @@ type geoContext struct {
 	Country string `json:"country"`
 }
 
+// geoLookupKey is a composite key for deduplicating geographic values.
+// Using (Value, State, Country) ensures that "Springfield, IL" and
+// "Springfield, MO" are treated as separate entries rather than collapsing
+// to first-seen context.
+type geoLookupKey struct {
+	Value   string
+	State   string
+	Country string
+}
+
 // valueWithContext is the JSON structure sent to the Python normalizer.
 // Each value includes its address context so the normalizer can apply
 // country-specific matching rules (e.g., skip normalization for non-US cities).
@@ -565,7 +575,7 @@ func callGeoNormalizeAPI(
 
 // normalizeWithPython calls the FastAPI geo-normalize endpoint for fuzzy matching.
 func (n *NormalizeGeographicSync) normalizeWithPython(
-	valuesWithContext map[string]geoContext, category string,
+	valuesWithContext map[geoLookupKey]geoContext, category string,
 ) (map[string]normalizedEntry, error) {
 	if len(valuesWithContext) == 0 {
 		return make(map[string]normalizedEntry), nil
@@ -573,9 +583,9 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 
 	// Build context array for API request
 	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
-	for value, ctx := range valuesWithContext {
+	for key, ctx := range valuesWithContext {
 		contextValues = append(contextValues, valueWithContext{
-			Value:   value,
+			Value:   key.Value,
 			State:   ctx.State,
 			Country: ctx.Country,
 		})
@@ -599,26 +609,30 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 // buildNormalizationLookup builds lookup maps from unique values
 // Uses Python RapidFuzz for advanced fuzzy matching
 func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) (*normalizationLookup, error) {
-	// Collect unique values per category WITH first-seen context
-	uniqueCities := make(map[string]geoContext)
-	uniqueSchools := make(map[string]geoContext)
-	uniqueCongregations := make(map[string]geoContext)
+	// Collect unique values per category keyed by (value, state, country)
+	// so that "Springfield, IL" and "Springfield, MO" are separate entries.
+	uniqueCities := make(map[geoLookupKey]geoContext)
+	uniqueSchools := make(map[geoLookupKey]geoContext)
+	uniqueCongregations := make(map[geoLookupKey]geoContext)
 
 	for i := range data {
 		d := &data[i]
 		if d.City != "" {
-			if _, exists := uniqueCities[d.City]; !exists {
-				uniqueCities[d.City] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			cityKey := geoLookupKey{Value: d.City, State: d.AddressState, Country: d.AddressCountry}
+			if _, exists := uniqueCities[cityKey]; !exists {
+				uniqueCities[cityKey] = geoContext{State: d.AddressState, Country: d.AddressCountry}
 			}
 		}
 		if d.School != "" {
-			if _, exists := uniqueSchools[d.School]; !exists {
-				uniqueSchools[d.School] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			schoolKey := geoLookupKey{Value: d.School, State: d.AddressState, Country: d.AddressCountry}
+			if _, exists := uniqueSchools[schoolKey]; !exists {
+				uniqueSchools[schoolKey] = geoContext{State: d.AddressState, Country: d.AddressCountry}
 			}
 		}
 		if d.Congregation != "" {
-			if _, exists := uniqueCongregations[d.Congregation]; !exists {
-				uniqueCongregations[d.Congregation] = geoContext{State: d.AddressState, Country: d.AddressCountry}
+			congKey := geoLookupKey{Value: d.Congregation, State: d.AddressState, Country: d.AddressCountry}
+			if _, exists := uniqueCongregations[congKey]; !exists {
+				uniqueCongregations[congKey] = geoContext{State: d.AddressState, Country: d.AddressCountry}
 			}
 		}
 	}
