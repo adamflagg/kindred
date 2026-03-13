@@ -160,7 +160,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	}
 
 	// Step 2: Build normalization lookup maps from all unique values
-	normalizedLookup, err := n.buildNormalizationLookup(attendeeData)
+	normalizedLookup, err := n.buildNormalizationLookup(ctx, attendeeData)
 	if err != nil {
 		return fmt.Errorf("building normalization lookup: %w", err)
 	}
@@ -531,7 +531,7 @@ type geoNormalizeRequest struct {
 
 // callGeoNormalizeAPI calls the FastAPI geo-normalize endpoint
 func callGeoNormalizeAPI(
-	apiURL, category string, values []valueWithContext,
+	ctx context.Context, apiURL, category string, values []valueWithContext,
 ) (map[string]pythonNormalizedResult, error) {
 	reqBody := geoNormalizeRequest{
 		Category: category,
@@ -544,7 +544,7 @@ func callGeoNormalizeAPI(
 	}
 
 	endpoint := apiURL + "/api/internal/geo-normalize"
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("building geo-normalize request: %w", err)
 	}
@@ -575,7 +575,7 @@ func callGeoNormalizeAPI(
 
 // normalizeWithPython calls the FastAPI geo-normalize endpoint for fuzzy matching.
 func (n *NormalizeGeographicSync) normalizeWithPython(
-	valuesWithContext map[geoLookupKey]geoContext, category string,
+	ctx context.Context, valuesWithContext map[geoLookupKey]geoContext, category string,
 ) (map[string]normalizedEntry, error) {
 	if len(valuesWithContext) == 0 {
 		return make(map[string]normalizedEntry), nil
@@ -592,7 +592,7 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 	}
 
 	apiURL := getAPIURL()
-	results, err := callGeoNormalizeAPI(apiURL, category, contextValues)
+	results, err := callGeoNormalizeAPI(ctx, apiURL, category, contextValues)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +608,7 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 
 // buildNormalizationLookup builds lookup maps from unique values
 // Uses Python RapidFuzz for advanced fuzzy matching
-func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) (*normalizationLookup, error) {
+func (n *NormalizeGeographicSync) buildNormalizationLookup(ctx context.Context, data []attendeeGeoData) (*normalizationLookup, error) {
 	// Collect unique values per category keyed by (value, state, country)
 	// so that "Springfield, IL" and "Springfield, MO" are separate entries.
 	uniqueCities := make(map[geoLookupKey]geoContext)
@@ -651,7 +651,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	if len(uniqueCities) > 0 {
-		result, err := n.normalizeWithPython(uniqueCities, categoryCity)
+		result, err := n.normalizeWithPython(ctx, uniqueCities, categoryCity)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
@@ -659,7 +659,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	if len(uniqueSchools) > 0 {
-		result, err := n.normalizeWithPython(uniqueSchools, categorySchool)
+		result, err := n.normalizeWithPython(ctx, uniqueSchools, categorySchool)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing schools: %w", err)
 		}
@@ -667,7 +667,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 	}
 
 	if len(uniqueCongregations) > 0 {
-		result, err := n.normalizeWithPython(uniqueCongregations, categoryCongregation)
+		result, err := n.normalizeWithPython(ctx, uniqueCongregations, categoryCongregation)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing congregations: %w", err)
 		}

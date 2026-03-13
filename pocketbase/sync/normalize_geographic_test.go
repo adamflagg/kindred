@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1121,7 +1122,7 @@ func TestCallGeoNormalizeAPI(t *testing.T) {
 			}))
 			defer server.Close()
 
-			result, err := callGeoNormalizeAPI(server.URL, "city", []valueWithContext{
+			result, err := callGeoNormalizeAPI(context.Background(), server.URL, "city", []valueWithContext{
 				{Value: "SF", State: "CA", Country: "US"},
 			})
 
@@ -1930,7 +1931,7 @@ func TestBuildNormalizationLookupCompositeKeyDedup(t *testing.T) {
 		},
 	}
 
-	lookup, err := sync.buildNormalizationLookup(data)
+	lookup, err := sync.buildNormalizationLookup(context.Background(), data)
 	if err != nil {
 		t.Fatalf("buildNormalizationLookup failed: %v", err)
 	}
