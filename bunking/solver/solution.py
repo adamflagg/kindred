@@ -86,7 +86,7 @@ def calculate_field_level_stats(
     satisfied_requests: dict[int, list[str]],
     requests_by_person: dict[int, list[DirectBunkRequest]],
 ) -> dict[str, Any]:
-    """Calculate request satisfaction statistics broken down by CSV source field.
+    """Calculate request satisfaction statistics broken down by source field.
 
     Args:
         satisfied_requests: Dict mapping person CM ID to satisfied request IDs

@@ -7,7 +7,7 @@ the full solver.
 The scoring logic mirrors the solver's objective function:
 1. Request satisfaction (bunk_with, not_bunk_with, age_preference)
 2. Priority weighting (1-10)
-3. Source field multipliers (share_bunk_with, bunking_notes, etc.)
+3. Source field multipliers (keyed by canonical SourceField values)
 4. Diminishing returns for multiple satisfied requests per person
 5. Soft constraint penalties (grade spread, capacity violations, etc.)
 """
@@ -61,7 +61,7 @@ def evaluate_scenario_score(
     Args:
         requests: List of bunk requests with fields:
             - requester_id (cm_id), requestee_id (cm_id), request_type,
-            - priority, source_field/csv_source_fields, age_preference_target
+            - priority, source_field, age_preference_target
         assignments: List of assignments with fields:
             - person_cm_id, bunk_cm_id
         persons: List of persons with fields:

@@ -789,7 +789,9 @@ class DirectBunkingSolver:
                     )
 
             explicit_stats = analysis["field_level_stats"]["explicit_csv_requests"]
-            logger.info("Explicit CSV fields (share_bunk_with, do_not_share_with, bunking_notes, internal_notes):")
+            logger.info(
+                "Explicit source fields (Share Bunk With, Do Not Share Bunk With, BunkingNotes Notes, Internal Bunk Notes):"
+            )
             logger.info(f"  Total: {explicit_stats['total']} requests")
             logger.info(f"  Satisfied: {explicit_stats['satisfied']} ({explicit_stats['satisfaction_rate']:.1%})")
             logger.info(
