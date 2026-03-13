@@ -16,6 +16,12 @@ echo -e "${YELLOW}Setting up git hooks...${NC}"
 # Configure git to use .githooks directory
 git config core.hooksPath .githooks
 
+# Remove stale .git/hooks/pre-commit if it exists (legacy, replaced by .githooks/)
+if [ -f "$PROJECT_ROOT/.git/hooks/pre-commit" ] && [ ! -L "$PROJECT_ROOT/.git/hooks/pre-commit" ]; then
+    rm -f "$PROJECT_ROOT/.git/hooks/pre-commit"
+    echo -e "${YELLOW}Removed stale .git/hooks/pre-commit (replaced by .githooks/pre-commit)${NC}"
+fi
+
 echo -e "${GREEN}✓ Git hooks configured${NC}"
 echo ""
 echo "Active hooks:"
@@ -25,6 +31,6 @@ echo -e "${GREEN}Done!${NC} Git will now use hooks from .githooks/"
 echo ""
 echo "Hooks installed:"
 echo "  • commit-msg: Validates commit message format (type(scope): description)"
-echo "  • pre-commit: Blocks commits on main if behind origin (early warning)"
-echo "  • pre-push: Runs linting (shellcheck, ruff, mypy, go build, eslint) + blocks if behind origin"
+echo "  • pre-commit: Runs linting/formatting (quick_check.sh) + behind-origin warning"
+echo "  • pre-push: Blocks pushing main when behind origin"
 echo "  • post-merge: Notifies when worktree branches are merged (auto-cleanup reminder)"

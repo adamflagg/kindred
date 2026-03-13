@@ -1,132 +1,43 @@
 #!/bin/bash
-# Pre-push hook: Runs linting and prevents pushing when behind origin
+# Pre-push hook: blocks pushing main when behind origin
+#
+# All linting/formatting checks run at pre-commit via scripts/ci/quick_check.sh.
+# This hook only guards against diverged main branches.
 #
 # Install: git config core.hooksPath .githooks
 # Or run: ./scripts/setup-git-hooks.sh
 
 set -e
 
-# Colors
 RED='\033[0;31m'
-YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
-
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT"
-
-# =============================================================================
-# LINTING (runs on all branches)
-# =============================================================================
-
-echo -e "${CYAN}Running pre-push checks...${NC}"
-
-# Shell linting
-echo -e "${CYAN}  shellcheck...${NC}"
-shellcheck --severity=warning scripts/*.sh scripts/**/*.sh .githooks/* 2>/dev/null || {
-    echo -e "${RED}❌ shellcheck failed${NC}"
-    exit 1
-}
-
-# Python linting
-echo -e "${CYAN}  ruff check...${NC}"
-uv run ruff check . || {
-    echo -e "${RED}❌ ruff check failed${NC}"
-    exit 1
-}
-
-echo -e "${CYAN}  ruff format...${NC}"
-uv run ruff format --check . || {
-    echo -e "${RED}❌ ruff format failed (run 'uv run ruff format .' to fix)${NC}"
-    exit 1
-}
-
-echo -e "${CYAN}  mypy...${NC}"
-uv run mypy . --explicit-package-bases || {
-    echo -e "${RED}❌ mypy failed${NC}"
-    exit 1
-}
-
-# Go build
-echo -e "${CYAN}  go build...${NC}"
-(cd pocketbase && go build .) || {
-    echo -e "${RED}❌ go build failed${NC}"
-    exit 1
-}
-
-# Go linting (matches CI)
-echo -e "${CYAN}  golangci-lint...${NC}"
-if command -v golangci-lint &> /dev/null; then
-    (cd pocketbase && golangci-lint run --config ../.golangci.yml) || {
-        echo -e "${RED}❌ golangci-lint failed${NC}"
-        exit 1
-    }
-else
-    echo -e "${YELLOW}  ⚠️  golangci-lint not installed, skipping (install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)${NC}"
-fi
-
-# Frontend formatting check
-echo -e "${CYAN}  prettier...${NC}"
-(cd frontend && npm run format:check) || {
-    echo -e "${RED}❌ prettier failed (run 'cd frontend && npm run format' to fix)${NC}"
-    exit 1
-}
-
-# Frontend linting
-echo -e "${CYAN}  eslint...${NC}"
-(cd frontend && npm run lint) || {
-    echo -e "${RED}❌ eslint failed${NC}"
-    exit 1
-}
-
-# Dockerfile chmod check (prevent chmod +x on scripts, must use chmod 755)
-echo -e "${CYAN}  dockerfile chmod...${NC}"
-for df in docker/Dockerfile.*; do
-    if [ -f "$df" ] && grep -qE 'chmod \+x.*/.*\.(sh|bash)' "$df"; then
-        echo -e "${RED}❌ $df uses 'chmod +x' on shell scripts${NC}"
-        echo "   Use 'chmod 755' for explicit world-readable permissions"
-        exit 1
-    fi
-done
-
-echo -e "${GREEN}✓ All linting passed${NC}"
-
-# =============================================================================
-# BEHIND ORIGIN CHECK (main branch only)
-# =============================================================================
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [ "$BRANCH" != "main" ]; then
     exit 0
 fi
 
-# Fetch latest from origin (silently)
+# Fetch latest from origin
 git fetch origin main --quiet 2>/dev/null || {
-    echo -e "${YELLOW}⚠️  Could not fetch from origin (offline?)${NC}"
-    exit 0  # Allow push if can't fetch (might be offline)
+    echo -e "${YELLOW}Could not fetch from origin (offline?)${NC}"
+    exit 0
 }
 
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "")
 BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "")
 
-# If we can't determine remote state, allow push
-if [ -z "$REMOTE" ] || [ -z "$BASE" ]; then
-    exit 0
-fi
+[ -z "$REMOTE" ] || [ -z "$BASE" ] && exit 0
 
-# Check relationship between local and remote
 if [ "$LOCAL" = "$REMOTE" ]; then
-    # Up to date
     exit 0
 elif [ "$REMOTE" = "$BASE" ]; then
-    # Local is ahead of remote - normal push
     exit 0
 elif [ "$LOCAL" = "$BASE" ]; then
-    # Local is behind remote - BLOCK
     BEHIND_COUNT=$(git rev-list --count HEAD..origin/main)
-
     echo ""
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}  PUSH BLOCKED: Local main is ${BEHIND_COUNT} commit(s) behind origin${NC}"
@@ -135,17 +46,12 @@ elif [ "$LOCAL" = "$BASE" ]; then
     echo -e "${CYAN}Recent commits on origin/main that you're missing:${NC}"
     git log --oneline HEAD..origin/main | head -5
     echo ""
-    echo -e "${YELLOW}To sync your local branch:${NC}"
-    echo -e "  ${GREEN}git pull --rebase origin main${NC}"
-    echo ""
-    echo -e "${YELLOW}Then retry your push.${NC}"
+    echo -e "${YELLOW}To sync:${NC} ${GREEN}git pull --rebase origin main${NC}"
     echo ""
     exit 1
 else
-    # Branches have diverged - BLOCK
     BEHIND_COUNT=$(git rev-list --count HEAD..origin/main)
     AHEAD_COUNT=$(git rev-list --count origin/main..HEAD)
-
     echo ""
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}  PUSH BLOCKED: Local and origin/main have diverged${NC}"
@@ -156,11 +62,7 @@ else
     echo -e "${CYAN}Commits on origin/main that you're missing:${NC}"
     git log --oneline HEAD..origin/main | head -5
     echo ""
-    echo -e "${YELLOW}To sync your local branch:${NC}"
-    echo -e "  ${GREEN}git pull --rebase origin main${NC}"
-    echo ""
-    echo -e "${YELLOW}If you have conflicts, resolve them, then:${NC}"
-    echo -e "  ${GREEN}git rebase --continue${NC}"
+    echo -e "${YELLOW}To sync:${NC} ${GREEN}git pull --rebase origin main${NC}"
     echo ""
     exit 1
 fi

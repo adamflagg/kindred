@@ -33,7 +33,7 @@ FAILED=0
 
 # 1. Python formatting with ruff
 echo -n "Python formatting (ruff format)... "
-if uv run ruff format --check . --exclude="docs/,drive/" > /tmp/ruff_format_output.txt 2>&1; then
+if uv run ruff format --check . > /tmp/ruff_format_output.txt 2>&1; then
     echo -e "${GREEN}✓${NC}"
 else
     echo -e "${RED}✗${NC}"
@@ -46,7 +46,7 @@ fi
 
 # 2. Python linting with ruff (includes import sorting via 'I' in ruff.toml)
 echo -n "Python linting (ruff)... "
-if uv run ruff check . --exclude="docs/,drive/" > /tmp/ruff_output.txt 2>&1; then
+if uv run ruff check . > /tmp/ruff_output.txt 2>&1; then
     echo -e "${GREEN}✓${NC}"
 else
     echo -e "${RED}✗${NC}"
@@ -89,6 +89,19 @@ else
     echo -e "${RED}✗${NC}"
     echo "ESLint errors:"
     head -30 /tmp/eslint_output.txt
+    FAILED=1
+fi
+
+# 4c. Frontend formatting with Prettier
+echo -n "Frontend formatting (Prettier)... "
+if (cd frontend && npm run format:check > /tmp/prettier_output.txt 2>&1); then
+    echo -e "${GREEN}✓${NC}"
+else
+    echo -e "${RED}✗${NC}"
+    echo "Prettier formatting issues:"
+    head -20 /tmp/prettier_output.txt
+    echo ""
+    echo "Tip: Run 'cd frontend && npm run format' to auto-format"
     FAILED=1
 fi
 
