@@ -133,18 +133,17 @@ class TestWeekOptionsBasic:
         today = date(2025, 11, 7)
         result = await service.get_week_options(year=2026, today=today)
 
-        # Today (day 23, mid-week 4) + Week 4 boundary + Week 3 + Week 2 + Week 1 = 5 entries
-        # Week 4's boundary (day 21) has passed but today is mid-week, so both appear
-        assert len(result) == 5
+        # Today (day 23, mid-week 4) + Week 3 + Week 2 + Week 1 = 4 entries
+        # Week 4 boundary not included separately; today IS week 4
+        assert len(result) == 4
 
         # First is today (newest)
         assert result[0].is_today is True
 
-        # Then descending week numbers (1-based)
-        assert result[1].week_number == 4
-        assert result[2].week_number == 3
-        assert result[3].week_number == 2
-        assert result[4].week_number == 1
+        # Then descending completed week numbers (1-based)
+        assert result[1].week_number == 3
+        assert result[2].week_number == 2
+        assert result[3].week_number == 1
 
         # All non-today entries have is_today=False
         for entry in result[1:]:
