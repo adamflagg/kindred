@@ -417,7 +417,10 @@ func TestMultiWorkbookExport_StructHasWorkbookManager(t *testing.T) {
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
 
-	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	export, err := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if export == nil {
 		t.Fatal("NewMultiWorkbookExport() should return non-nil export")
@@ -434,7 +437,10 @@ func TestMultiWorkbookExport_Name(t *testing.T) {
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
 
-	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	export, err := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	name := export.Name()
 	if name != "multi_workbook_export" {
@@ -451,7 +457,10 @@ func TestMultiWorkbookExport_SyncGlobalsToGlobalsWorkbook(t *testing.T) {
 	mockManager := NewMockWorkbookManager()
 	mockManager.GlobalsWorkbookID = "globals-wb-id"
 
-	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	export, err := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Track which spreadsheet ID was used for writes
 	// The mock doesn't track the spreadsheet ID, so we verify via manager calls
@@ -483,7 +492,10 @@ func TestMultiWorkbookExport_SyncYearDataToYearWorkbook(t *testing.T) {
 	mockManager := NewMockWorkbookManager()
 	mockManager.YearWorkbookIDs[2025] = testYear2025WorkbookID
 
-	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	export, err := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	ctx := context.Background()
 	_ = export
@@ -506,13 +518,16 @@ func TestMultiWorkbookExport_SyncUpdatesIndex(t *testing.T) {
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
 
-	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	export, err := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	_ = export
 
 	ctx := context.Background()
 
 	// After sync, index should be updated
-	err := mockManager.UpdateMasterIndex(ctx)
+	err = mockManager.UpdateMasterIndex(ctx)
 	if err != nil {
 		t.Fatalf("UpdateMasterIndex() error = %v", err)
 	}
@@ -528,7 +543,10 @@ func TestMultiWorkbookExport_SyncForYearsUsesMultipleWorkbooks(t *testing.T) {
 	mockManager.YearWorkbookIDs[2024] = "year-2024-wb-id"
 	mockManager.YearWorkbookIDs[2025] = testYear2025WorkbookID
 
-	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	export, err := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	_ = export
 
 	ctx := context.Background()

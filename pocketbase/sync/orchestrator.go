@@ -1679,8 +1679,13 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			// when the database is cleared but sheets still exist in Drive
 			driveSearcher := &DefaultDriveSearcher{}
 			workbookManager := NewWorkbookManagerWithSearcher(o.app, sheetsWriter, driveSearcher)
-			o.RegisterService("multi_workbook_export", NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0))
-			slog.Info("Multi-workbook export service registered")
+			exporter, err := NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0)
+			if err != nil {
+				slog.Warn("Multi-workbook export disabled: year resolution failed", "error", err)
+			} else {
+				o.RegisterService("multi_workbook_export", exporter)
+				slog.Info("Multi-workbook export service registered")
+			}
 		}
 	}
 
