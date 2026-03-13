@@ -159,6 +159,7 @@ echo -e "${BLUE}Installing dependencies...${NC}"
 uv sync --frozen &
 npm ci --prefer-offline &  # Root deps (commitlint)
 (cd frontend && npm ci --prefer-offline) &
+(cd pocketbase && npm ci --prefer-offline) &  # PB migration/hook linting
 wait
 
 # Copy/link local config (branding, logos) if kindred-local exists
