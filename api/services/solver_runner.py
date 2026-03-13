@@ -17,6 +17,7 @@ from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
 from pocketbase import PocketBase
 
+from ..constants.collections import SOLVER_RUNS, SUPERUSERS
 from ..dependencies import pb_url, solver_runs
 from ..settings import get_settings
 from .data_fetcher import (
@@ -48,7 +49,7 @@ async def run_solver_task_v2(
         # Authenticate the task-specific client
         logger.info("Authenticating task-specific PocketBase client...")
         await asyncio.to_thread(
-            task_pb.collection("_superusers").auth_with_password,
+            task_pb.collection(SUPERUSERS).auth_with_password,
             settings.pocketbase_admin_email,
             settings.pocketbase_admin_password,
         )
@@ -194,7 +195,7 @@ async def run_solver_task_v2(
                 pb_data["scenario"] = scenario
             logger.debug(f"Attempting to save to PocketBase with data: {pb_data}")
 
-            pb_record = await asyncio.to_thread(task_pb.collection("solver_runs").create, pb_data)
+            pb_record = await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).create, pb_data)
             logger.info(f"Created PocketBase record: {pb_record.id}")
         except Exception as pb_error:
             logger.error(f"Failed to save to PocketBase: {type(pb_error).__name__}: {pb_error}")
@@ -213,7 +214,7 @@ async def run_solver_task_v2(
         # Record failure in PocketBase
         try:
             await asyncio.to_thread(
-                task_pb.collection("solver_runs").create,
+                task_pb.collection(SOLVER_RUNS).create,
                 {
                     "run_id": run_id,
                     "session": str(session_cm_id),
