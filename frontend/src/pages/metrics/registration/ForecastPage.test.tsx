@@ -511,7 +511,7 @@ describe('ForecastPage', () => {
     renderWithProviders(<ForecastPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('Registration Forecast')).toBeInTheDocument()
+      expect(screen.getByText('Enrollment Forecast')).toBeInTheDocument()
       expect(screen.getByText(/80\/100/)).toBeInTheDocument()
       expect(screen.getByText(/80\.0% of goal/)).toBeInTheDocument()
     })

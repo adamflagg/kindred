@@ -221,7 +221,7 @@ export default function ForecastPage() {
     <div className="space-y-6">
       <div>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h2 className="text-lg font-semibold">Registration Forecast</h2>
+          <h2 className="text-lg font-semibold">Enrollment Forecast</h2>
           {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
             <span className="text-muted-foreground text-sm">
               <span className="text-foreground font-medium">

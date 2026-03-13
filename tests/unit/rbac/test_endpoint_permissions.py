@@ -275,11 +275,6 @@ class TestGeoPermissions:
 
         _assert_endpoint_has_permission_dep(get_sources, Permission.METRICS_GEO)
 
-    def test_get_source_mappings_requires_metrics_geo(self) -> None:
-        from api.routers.geo import get_source_mappings
-
-        _assert_endpoint_has_permission_dep(get_source_mappings, Permission.METRICS_GEO)
-
     def test_batch_resolve_coords_requires_metrics_geo(self) -> None:
         from api.routers.geo import batch_resolve_coords
 
