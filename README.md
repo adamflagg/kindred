@@ -57,7 +57,8 @@ CampMinder API → Go Sync → PocketBase ← React Frontend
 ./scripts/start_dev.sh
 
 # Quick checks before commit
-./scripts/ci/quick_check.sh
+lefthook run pre-commit                                   # Formatters (staged files)
+lefthook run pre-push                                     # Full lint + test suite
 
 # Full test suite
 ./scripts/ci/run_all_tests.sh
@@ -131,7 +132,7 @@ docker compose pull && docker compose up -d
 
 1. Follow the [Development Guide](docs/guides/development.md)
 2. Write tests for new features
-3. Run `./scripts/ci/quick_check.sh` before committing
+3. Run `./scripts/setup-git-hooks.sh` once to install lefthook (auto-runs on commit/push)
 4. Submit pull requests for review
 
 ## License
