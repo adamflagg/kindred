@@ -15,10 +15,11 @@ import { useApiWithAuth } from './useApiWithAuth'
  */
 export function useSocialGraphData(sessionCmId: number) {
   const currentYear = useYear()
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery<GraphData>({
     queryKey: ['social-graph', sessionCmId, currentYear],
+    enabled: !isAuthLoading,
     queryFn: async () => {
       return graphCacheService.getSessionGraph(sessionCmId, async () => {
         return socialGraphService.getSessionSocialGraph(sessionCmId, currentYear, fetchWithAuth)
