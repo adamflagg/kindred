@@ -16,7 +16,45 @@ from pydantic import BaseModel, Field
 
 from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
+from bunking.sync.bunk_request_processor.shared.constants import (
+    CSV_KEY_TO_SOURCE_FIELD,
+    FIELD_TO_SOURCE_FIELD,
+    SOURCE_FIELD_TO_CONFIG_KEY,
+    SourceField,
+)
 from bunking.utils.age_preference import is_age_preference_satisfied
+
+# Canonical SourceField value → field_stats key used by the validator.
+# This is the single source of truth: adding a new SourceField means adding one
+# entry here, and all input variations are handled automatically.
+_SOURCEFIELD_TO_STATS_KEY: dict[str, str] = {
+    SourceField.BUNK_WITH: "share_bunk_with",
+    SourceField.NOT_BUNK_WITH: "do_not_share_with",
+    SourceField.BUNKING_NOTES: "bunking_notes",
+    SourceField.INTERNAL_NOTES: "internal_notes",
+    SourceField.SOCIALIZE_WITH: "socialize_with",
+}
+
+# Build a single lookup dict for normalize_source_field().
+# Maps all known lowered variations → field_stats keys.
+_SOURCE_FIELD_NORMALIZE_LOOKUP: dict[str, str] = {}
+# 1. Canonical SourceField values (case-insensitive)
+for _src_val, _stats_key in _SOURCEFIELD_TO_STATS_KEY.items():
+    _SOURCE_FIELD_NORMALIZE_LOOKUP[_src_val.lower()] = _stats_key
+# 2. Stats keys themselves (identity: "socialize_with" → "socialize_with")
+_SOURCE_FIELD_NORMALIZE_LOOKUP.update({k: k for k in _SOURCEFIELD_TO_STATS_KEY.values()})
+# 3. FIELD_TO_SOURCE_FIELD keys (e.g., "bunk_with" → "share_bunk_with")
+for _field_key, _src_val in FIELD_TO_SOURCE_FIELD.items():
+    if _src_val in _SOURCEFIELD_TO_STATS_KEY:
+        _SOURCE_FIELD_NORMALIZE_LOOKUP[_field_key] = _SOURCEFIELD_TO_STATS_KEY[_src_val]
+# 4. CSV column keys (e.g., "ret_parent_socialize_with_best" → "socialize_with")
+for _csv_key, _src_val in CSV_KEY_TO_SOURCE_FIELD.items():
+    if _src_val in _SOURCEFIELD_TO_STATS_KEY:
+        _SOURCE_FIELD_NORMALIZE_LOOKUP[_csv_key] = _SOURCEFIELD_TO_STATS_KEY[_src_val]
+# 5. Config key values (e.g., "socialize_preference" → "socialize_with")
+for _src_val, _config_key in SOURCE_FIELD_TO_CONFIG_KEY.items():
+    if _src_val in _SOURCEFIELD_TO_STATS_KEY:
+        _SOURCE_FIELD_NORMALIZE_LOOKUP[_config_key] = _SOURCEFIELD_TO_STATS_KEY[_src_val]
 
 
 @dataclass
@@ -335,41 +373,14 @@ class BunkingValidator:
 
             Maps values like 'Share Bunk With' -> 'share_bunk_with'
             Returns None if the field cannot be mapped to a known field.
+
+            Derives all mappings from the canonical constants in
+            bunking.sync.bunk_request_processor.shared.constants so that new
+            SourceField values are handled automatically.
             """
             if not raw_field:
                 return None
-
-            # Direct mappings for known source_field values
-            field_mappings = {
-                # Standard field names
-                "share bunk with": "share_bunk_with",
-                "do not share bunk with": "do_not_share_with",
-                "bunkingnotes notes": "bunking_notes",
-                "bunking_notes": "bunking_notes",
-                "internal bunk notes": "internal_notes",
-                "internal_notes": "internal_notes",
-                # Socialize variations
-                "ret_parent_socialize_with_best": "socialize_with",
-                "socialize_preference": "socialize_with",
-                "socialize_with": "socialize_with",
-                # Already normalized
-                "share_bunk_with": "share_bunk_with",
-                "do_not_share_with": "do_not_share_with",
-            }
-
-            normalized = raw_field.strip().lower()
-            if normalized in field_mappings:
-                return field_mappings[normalized]
-
-            # Fallback: convert to snake_case and check if it's a known field
-            import re
-
-            snake_case = re.sub(r"[\s\-]+", "_", normalized)
-            snake_case = re.sub(r"[^a-z0-9_]", "", snake_case)
-
-            # Only return if it maps to a known field
-            known_fields = {"share_bunk_with", "do_not_share_with", "bunking_notes", "internal_notes", "socialize_with"}
-            return snake_case if snake_case in known_fields else None
+            return _SOURCE_FIELD_NORMALIZE_LOOKUP.get(raw_field.strip().lower())
 
         def get_source_fields(request: BunkRequest) -> list[str]:
             """Extract and normalize source fields from request."""

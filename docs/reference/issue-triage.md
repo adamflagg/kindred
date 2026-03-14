@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-13 (15 open issues).
+Last updated: 2026-03-14 (14 open issues).
 
 ---
 
@@ -59,16 +59,6 @@ Last updated: 2026-03-13 (15 open issues).
 
 ---
 
-## Group 12: Solver / API Bug
-
-**Priority: Medium** — Standalone bug fix
-
-| # | Title | Type |
-|---|-------|------|
-| 553 | `normalize_source_field` doesn't handle canonical socialize value | bug |
-
-**Interplay:** None — isolated fix in `bunking_validator.py` field mapping table.
-
 ---
 
 ## Group 13: Frontend — Auth & State Gaps
@@ -94,10 +84,10 @@ Last updated: 2026-03-13 (15 open issues).
 6. ~~**Group 9**~~ — ✅ Complete (PR #549)
 7. ~~**Group 11**~~ — ✅ Complete (PR #551)
 8. ~~**Group 8 (7/8)**~~ — ✅ Complete (PRs #555, #556, #557) — #377 remains (blocked on fork)
+8. ~~**Group 12**~~ — ✅ Complete (PR #561)
 9. **Group 3** — Velocity frontend refactors (now unblocked)
-10. **Group 12** — Solver normalize_source_field bug
-11. **Group 13** — Frontend auth & state gaps
-12. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
+10. **Group 13** — Frontend auth & state gaps
+11. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
 ## Completed Groups
 
@@ -116,3 +106,4 @@ Last updated: 2026-03-13 (15 open issues).
 | Group 2 PR2: Velocity perf + feature (#474, #475, #459, #550) | #554 | 2026-03-13 | Completes Group 2 |
 | Stale issues (#478, #445) | — | 2026-03-13 | Closed — already fixed in prior work |
 | Group 8 (7/8): Frontend quick wins (#531, #537, #479, #468, #461, #440, #436) | #555, #556, #557 | 2026-03-13 | #377 remains (blocked on pocketbase-typegen fork); spawned #559, #560 |
+| Group 12: Solver normalize_source_field bug (#553) | #561 | 2026-03-14 | Derived mappings from canonical SourceField constants |
