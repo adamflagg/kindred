@@ -16,30 +16,11 @@ import pytest
 
 from api.services.waitlist_service import WaitlistService
 
-from tests.unit.api.conftest import create_mock_person, create_mock_session
+from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_attendee(
-    person_id: int,
-    session: Mock,
-    year: int = 2026,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record with embedded session."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    attendee.expand = {"session": session}
-    return attendee
 
 
 def create_mock_status_history(
@@ -128,7 +109,9 @@ class TestWaitlistedNoEnrollment:
         """Person waitlisted in Session 1 with no enrolled records anywhere."""
         session1 = sample_sessions[1001]
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees: list[Mock] = []
 
@@ -157,8 +140,12 @@ class TestWaitlistedNoEnrollment:
         session1 = sample_sessions[1001]
         session2 = sample_sessions[1002]
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(103, session2, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                103, session_cm_id=session2.cm_id, session=session2, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees: list[Mock] = []
 
@@ -196,10 +183,14 @@ class TestWaitlistedHasEnrollment:
         session1 = sample_sessions[1001]
         session2 = sample_sessions[1002]
         waitlisted_attendees = [
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -227,11 +218,17 @@ class TestWaitlistedHasEnrollment:
         session1 = sample_sessions[1001]
         session2 = sample_sessions[1002]
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -371,8 +368,22 @@ class TestSessionFiltering:
         ag_session = sample_sessions[1004]
         main_session = sample_sessions[1001]
         waitlisted_attendees = [
-            create_mock_attendee(101, main_session, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, ag_session, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101,
+                session_cm_id=main_session.cm_id,
+                session=main_session,
+                status="waitlisted",
+                status_id=8,
+                is_active=False,
+            ),
+            create_mock_attendee(
+                102,
+                session_cm_id=ag_session.cm_id,
+                session=ag_session,
+                status="waitlisted",
+                status_id=8,
+                is_active=False,
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -402,8 +413,22 @@ class TestSessionFiltering:
         ag_session = sample_sessions[1004]  # AG Session 1, parent_id=1001
         main_session = sample_sessions[1001]
         waitlisted_attendees = [
-            create_mock_attendee(101, main_session, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, ag_session, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101,
+                session_cm_id=main_session.cm_id,
+                session=main_session,
+                status="waitlisted",
+                status_id=8,
+                is_active=False,
+            ),
+            create_mock_attendee(
+                102,
+                session_cm_id=ag_session.cm_id,
+                session=ag_session,
+                status="waitlisted",
+                status_id=8,
+                is_active=False,
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -493,9 +518,15 @@ class TestSessionBreakdown:
         session1 = sample_sessions[1001]
         session2 = sample_sessions[1002]
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(103, session2, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                103, session_cm_id=session2.cm_id, session=session2, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -538,10 +569,14 @@ class TestEnrolledInBreakdown:
         session2a = sample_sessions[1003]  # Session 2a (embedded)
         # Emma (101) waitlisted for Session 2a, enrolled in Session 1
         waitlisted_attendees = [
-            create_mock_attendee(101, session2a, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session2a.cm_id, session=session2a, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(101, session1, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -580,11 +615,17 @@ class TestEnrolledInBreakdown:
         session2a = sample_sessions[1003]
         # Liam (102) waitlisted for Session 2a, enrolled in Sessions 1 and 2
         waitlisted_attendees = [
-            create_mock_attendee(102, session2a, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                102, session_cm_id=session2a.cm_id, session=session2a, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session1, status="enrolled", status_id=2, is_active=True),
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="enrolled", status_id=2, is_active=True
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -621,12 +662,20 @@ class TestEnrolledInBreakdown:
         session2a = sample_sessions[1003]
         # Emma (101) and Liam (102) both waitlisted for Session 2a, both enrolled in Session 1
         waitlisted_attendees = [
-            create_mock_attendee(101, session2a, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session2a, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session2a.cm_id, session=session2a, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session2a.cm_id, session=session2a, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(101, session1, status="enrolled", status_id=2, is_active=True),
-            create_mock_attendee(102, session1, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="enrolled", status_id=2, is_active=True
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -660,7 +709,9 @@ class TestEnrolledInBreakdown:
         """Person with no_enrollment -> enrolled_in is empty list."""
         session1 = sample_sessions[1001]
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -716,10 +767,24 @@ class TestCrossTypeEnrollment:
 
         # Emma (101) waitlisted for quest, enrolled in main
         waitlisted_attendees = [
-            create_mock_attendee(101, quest_session, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101,
+                session_cm_id=quest_session.cm_id,
+                session=quest_session,
+                status="waitlisted",
+                status_id=8,
+                is_active=False,
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(101, main_session, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                101,
+                session_cm_id=main_session.cm_id,
+                session=main_session,
+                status="enrolled",
+                status_id=2,
+                is_active=True,
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -761,7 +826,14 @@ class TestCrossTypeEnrollment:
             return {k: v for k, v in all_s.items() if v.session_type in types}
 
         waitlisted_attendees = [
-            create_mock_attendee(101, quest_session, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101,
+                session_cm_id=quest_session.cm_id,
+                session=quest_session,
+                status="waitlisted",
+                status_id=8,
+                is_active=False,
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -804,8 +876,12 @@ class TestPerSessionDedup:
 
         # Emma (101) waitlisted in BOTH sessions, not enrolled anywhere
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(101, session2, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                101, session_cm_id=session2.cm_id, session=session2, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -846,11 +922,17 @@ class TestPerSessionDedup:
 
         # Liam (102) waitlisted in Session 1 and Session 2, enrolled in Session 2a
         waitlisted_attendees = [
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session2, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2a, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2a.cm_id, session=session2a, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -909,8 +991,12 @@ class TestFilterToSessionsBug:
 
         # Emma waitlisted in S1, Olivia waitlisted in S2
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(103, session2, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                103, session_cm_id=session2.cm_id, session=session2, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -940,8 +1026,12 @@ class TestFilterToSessionsBug:
         session2 = sample_sessions[1002]
 
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(103, session2, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                103, session_cm_id=session2.cm_id, session=session2, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1098,11 +1188,17 @@ class TestDemographicEnrollmentSplit:
         # Emma (101, grade 5) waitlisted in S1, no enrollment
         # Liam (102, grade 6) waitlisted in S1, enrolled in S2
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1139,11 +1235,17 @@ class TestDemographicEnrollmentSplit:
         # Emma (101, F) waitlisted in S1, no enrollment
         # Liam (102, M) waitlisted in S1, enrolled in S2
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1180,11 +1282,17 @@ class TestDemographicEnrollmentSplit:
         # Liam (102, grade 6) waitlisted, enrolled in S2
         # Ava (105, grade 6) waitlisted, no enrollment
         waitlisted_attendees = [
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(105, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                105, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1216,12 +1324,20 @@ class TestDemographicEnrollmentSplit:
         session2 = sample_sessions[1002]
         # Emma (101) and Liam (102) both waitlisted in S1, both enrolled in S2
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(101, session2, status="enrolled", status_id=2, is_active=True),
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                101, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1253,8 +1369,12 @@ class TestDemographicEnrollmentSplit:
         session1 = sample_sessions[1001]
         # Emma (101) and Liam (102) both waitlisted, neither enrolled
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1285,12 +1405,20 @@ class TestDemographicEnrollmentSplit:
         session2 = sample_sessions[1002]
         # 3 waitlisted: Emma (grade 5), Liam (grade 6), Ava (grade 6)
         waitlisted_attendees = [
-            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
-            create_mock_attendee(105, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(
+                101, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
+            create_mock_attendee(
+                105, session_cm_id=session1.cm_id, session=session1, status="waitlisted", status_id=8, is_active=False
+            ),
         ]
         enrolled_attendees = [
-            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(
+                102, session_cm_id=session2.cm_id, session=session2, status="enrolled", status_id=2, is_active=True
+            ),
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
@@ -1326,7 +1454,15 @@ def create_mock_attendee_with_dates(
     effective_date: str | None = None,
 ) -> Mock:
     """Create a mock attendee with enrollment_date and effective_date."""
-    attendee = create_mock_attendee(person_id, session, year, status, status_id, is_active)
+    attendee = create_mock_attendee(
+        person_id,
+        session_cm_id=session.cm_id,
+        year=year,
+        status=status,
+        status_id=status_id,
+        is_active=is_active,
+        session=session,
+    )
     attendee.enrollment_date = enrollment_date
     attendee.effective_date = effective_date
     return attendee

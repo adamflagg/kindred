@@ -20,31 +20,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 
-from tests.unit.api.conftest import create_mock_person, create_mock_session
-
-# ============================================================================
-# Test Data Factories
-# ============================================================================
-
-
-def create_mock_attendee(
-    person_id: int,
-    session: Mock,
-    year: int,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record with session expand."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.session_cm_id = session.cm_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    attendee.expand = {"session": session}
-    return attendee
+from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 
 # ============================================================================
@@ -130,7 +106,9 @@ def multi_year_attendees(
             person_ids = [101, 102, 201, 301, 302]
 
         for pid in person_ids:
-            attendees[year].append(create_mock_attendee(pid, session_2, year))
+            attendees[year].append(
+                create_mock_attendee(pid, session_cm_id=session_2.cm_id, session=session_2, year=year)
+            )
 
     return attendees
 

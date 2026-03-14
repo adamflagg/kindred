@@ -72,3 +72,48 @@ def create_mock_person(
     person.normalized_city = normalized_city
     person.normalized_congregation = normalized_congregation
     return person
+
+
+def create_mock_attendee(
+    person_id: int,
+    session_cm_id: int,
+    year: int = 2026,
+    status: str = "enrolled",
+    status_id: int = 2,
+    is_active: bool = True,
+    gender: str | None = None,
+    enrollment_date: str | None = None,
+    effective_date: str | None = None,
+    session: MagicMock | None = None,
+) -> MagicMock:
+    """Create a mock PocketBase attendee record for API tests.
+
+    Args:
+        session_cm_id: The session's CampMinder ID (always set on the attendee).
+        session: Optional pre-built session mock for the expand dict.
+            If not provided, a minimal session mock with cm_id is created.
+    """
+    attendee = MagicMock()
+    attendee.person_id = person_id
+    attendee.session_cm_id = session_cm_id
+    attendee.year = year
+    attendee.status = status
+    attendee.status_id = status_id
+    attendee.is_active = is_active
+    attendee.enrollment_date = enrollment_date
+    attendee.effective_date = effective_date
+
+    # Build expand dict
+    if session is None:
+        session = MagicMock()
+        session.cm_id = session_cm_id
+    expand = {"session": session}
+
+    if gender is not None:
+        person = MagicMock()
+        person.cm_id = person_id
+        person.gender = gender
+        expand["person"] = person
+
+    attendee.expand = expand
+    return attendee

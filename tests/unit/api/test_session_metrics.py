@@ -16,32 +16,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, Mock
 
-from tests.unit.api.conftest import create_mock_session
-
-# ============================================================================
-# Test Data Factories
-# ============================================================================
-
-
-def create_mock_attendee(
-    person_id: int,
-    session: Mock,
-    year: int,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record with session expand."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.session_cm_id = session.cm_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    # Add expand for session relation (mimics PocketBase expansion)
-    attendee.expand = {"session": session}
-    return attendee
+from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
 
 # ============================================================================
@@ -201,8 +176,8 @@ class TestComputeSummerMetrics:
 
         # Person 101: Quest in 2025, Main in 2026 = 2 summers
         enrollment_history = [
-            create_mock_attendee(101, quest_session, 2025),
-            create_mock_attendee(101, main_session, 2026),
+            create_mock_attendee(101, session_cm_id=quest_session.cm_id, session=quest_session, year=2025),
+            create_mock_attendee(101, session_cm_id=main_session.cm_id, session=main_session, year=2026),
         ]
 
         person_ids = {101}
@@ -224,8 +199,8 @@ class TestComputeSummerMetrics:
         quest_2025 = create_mock_session(902, "Quest 2025", 2025, "quest")
 
         enrollment_history = [
-            create_mock_attendee(102, quest_2024, 2024),
-            create_mock_attendee(102, quest_2025, 2025),
+            create_mock_attendee(102, session_cm_id=quest_2024.cm_id, session=quest_2024, year=2024),
+            create_mock_attendee(102, session_cm_id=quest_2025.cm_id, session=quest_2025, year=2025),
         ]
 
         person_ids = {102}
@@ -248,8 +223,8 @@ class TestComputeSummerMetrics:
 
         # Person 103: Family camp in 2025 (shouldn't count), Main in 2026
         enrollment_history = [
-            create_mock_attendee(103, family_session, 2025),
-            create_mock_attendee(103, main_session, 2026),
+            create_mock_attendee(103, session_cm_id=family_session.cm_id, session=family_session, year=2025),
+            create_mock_attendee(103, session_cm_id=main_session.cm_id, session=main_session, year=2026),
         ]
 
         person_ids = {103}
@@ -267,8 +242,8 @@ class TestComputeSummerMetrics:
         main_session = create_mock_session(2001, "Session 2", 2026, "main")
 
         enrollment_history = [
-            create_mock_attendee(104, training, 2025),
-            create_mock_attendee(104, main_session, 2026),
+            create_mock_attendee(104, session_cm_id=training.cm_id, session=training, year=2025),
+            create_mock_attendee(104, session_cm_id=main_session.cm_id, session=main_session, year=2026),
         ]
 
         person_ids = {104}
@@ -289,10 +264,10 @@ class TestComputeSummerMetrics:
 
         # Person attended one of each type in different years
         enrollment_history = [
-            create_mock_attendee(105, main_session, 2023),
-            create_mock_attendee(105, embedded_session, 2024),
-            create_mock_attendee(105, ag_session, 2025),
-            create_mock_attendee(105, quest_session, 2026),
+            create_mock_attendee(105, session_cm_id=main_session.cm_id, session=main_session, year=2023),
+            create_mock_attendee(105, session_cm_id=embedded_session.cm_id, session=embedded_session, year=2024),
+            create_mock_attendee(105, session_cm_id=ag_session.cm_id, session=ag_session, year=2025),
+            create_mock_attendee(105, session_cm_id=quest_session.cm_id, session=quest_session, year=2026),
         ]
 
         person_ids = {105}
@@ -312,9 +287,9 @@ class TestComputeSummerMetrics:
 
         # Person attended 3 sessions in 2026, should count as 1 summer
         enrollment_history = [
-            create_mock_attendee(106, session_2, 2026),
-            create_mock_attendee(106, session_3, 2026),
-            create_mock_attendee(106, quest, 2026),
+            create_mock_attendee(106, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(106, session_cm_id=session_3.cm_id, session=session_3, year=2026),
+            create_mock_attendee(106, session_cm_id=quest.cm_id, session=quest, year=2026),
         ]
 
         person_ids = {106}
@@ -344,8 +319,8 @@ class TestComputeSummerMetrics:
         session = create_mock_session(2001, "Session 2", 2026, "main")
 
         enrollment_history = [
-            create_mock_attendee(109, session, 2026),  # Person 109
-            create_mock_attendee(110, session, 2026),  # Person 110
+            create_mock_attendee(109, session_cm_id=session.cm_id, session=session, year=2026),  # Person 109
+            create_mock_attendee(110, session_cm_id=session.cm_id, session=session, year=2026),  # Person 110
         ]
 
         # Only include person 109 in the set
@@ -370,9 +345,9 @@ class TestComputeSummerMetrics:
 
         # Person attended out of order (by fixture order)
         enrollment_history = [
-            create_mock_attendee(111, session_2026, 2026),
-            create_mock_attendee(111, session_2024, 2024),  # Earliest
-            create_mock_attendee(111, session_2025, 2025),
+            create_mock_attendee(111, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
+            create_mock_attendee(111, session_cm_id=session_2024.cm_id, session=session_2024, year=2024),  # Earliest
+            create_mock_attendee(111, session_cm_id=session_2025.cm_id, session=session_2025, year=2025),
         ]
 
         person_ids = {111}
@@ -386,7 +361,7 @@ class TestComputeSummerMetrics:
         from api.utils.session_metrics import compute_summer_metrics
 
         session = create_mock_session(2001, "Session 2", 2026, "main")
-        good_attendee = create_mock_attendee(112, session, 2026)
+        good_attendee = create_mock_attendee(112, session_cm_id=session.cm_id, session=session, year=2026)
 
         # Create attendee with missing expand
         bad_attendee = Mock()

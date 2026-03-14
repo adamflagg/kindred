@@ -15,32 +15,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 
-from tests.unit.api.conftest import create_mock_person, create_mock_session
-
-# ============================================================================
-# Test Data Factories
-# ============================================================================
-
-
-def create_mock_attendee(
-    person_id: int,
-    session_cm_id: int,
-    year: int,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.session_cm_id = session_cm_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    # Add expand for session relation
-    attendee.expand = {"session": Mock(cm_id=session_cm_id)}
-    return attendee
+from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 
 # ============================================================================
