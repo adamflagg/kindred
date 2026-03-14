@@ -9,16 +9,11 @@ These tests are written FIRST before implementation (TDD).
 
 from __future__ import annotations
 
-import os
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.forecast_service import ForecastService
 

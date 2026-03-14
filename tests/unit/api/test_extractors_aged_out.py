@@ -6,11 +6,7 @@ that filter 10th graders (and above) from retention calculations.
 
 from __future__ import annotations
 
-import os
 from unittest.mock import Mock
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.extractors import (
     RETENTION_AGED_OUT_GRADE,

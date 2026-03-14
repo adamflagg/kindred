@@ -8,14 +8,10 @@ Verifies that:
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.retention_trends_service import RetentionTrendsService
 

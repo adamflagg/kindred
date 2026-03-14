@@ -7,16 +7,11 @@ using mocked PocketBase data.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.main import create_app
 

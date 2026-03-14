@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.camp_calendar import (
     CAMP_TZ,

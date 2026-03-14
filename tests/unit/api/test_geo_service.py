@@ -14,7 +14,6 @@ Tests verify:
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -22,10 +21,6 @@ import pytest
 
 if TYPE_CHECKING:
     from api.services.geo_service import GeoService
-
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 
 # ============================================================================
