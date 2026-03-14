@@ -46,13 +46,11 @@ export default function SessionFlowPage() {
     [sessions, priorSessions]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(
-    priorYear,
-    currentYear,
-    sessionTypesParam,
-    selectedSessionCmId ?? undefined,
-    durationParam
-  )
+  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, {
+    sessionTypes: sessionTypesParam,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
 
   return (
     <div className="space-y-4">

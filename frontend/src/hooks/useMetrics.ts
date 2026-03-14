@@ -14,33 +14,52 @@ import type {
   CancellationMetrics,
 } from '../types/metrics'
 
+/** Shared filter options for metrics hooks using the hybrid (required, options?) pattern. */
+export interface MetricsFilterOptions {
+  sessionTypes?: string | undefined
+  sessionCmId?: number | undefined
+  duration?: string | undefined
+}
+
+export interface RegistrationFilterOptions extends MetricsFilterOptions {
+  statuses?: string | undefined
+}
+
+export interface HistoricalFilterOptions extends MetricsFilterOptions {
+  years?: string | undefined
+}
+
 /**
  * Fetch retention metrics comparing two years.
  */
 export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
-  sessionTypes?: string,
-  sessionCmId?: number,
-  duration?: string
+  options?: MetricsFilterOptions
 ) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId, duration),
+    queryKey: queryKeys.retention(
+      baseYear,
+      compareYear,
+      options?.sessionTypes,
+      options?.sessionCmId,
+      options?.duration
+    ),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
         base_year: baseYear.toString(),
         compare_year: compareYear.toString(),
       })
-      if (sessionTypes) {
-        params.set('session_types', sessionTypes)
+      if (options?.sessionTypes) {
+        params.set('session_types', options.sessionTypes)
       }
-      if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString())
+      if (options?.sessionCmId !== undefined) {
+        params.set('session_cm_id', options.sessionCmId.toString())
       }
-      if (duration) {
-        params.set('duration', duration)
+      if (options?.duration) {
+        params.set('duration', options.duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`)
@@ -59,32 +78,32 @@ export function useRetentionMetrics(
 /**
  * Fetch registration metrics for a single year.
  */
-export function useRegistrationMetrics(
-  year: number,
-  sessionTypes?: string,
-  statuses?: string,
-  sessionCmId?: number,
-  duration?: string
-) {
+export function useRegistrationMetrics(year: number, options?: RegistrationFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.registration(year, sessionTypes, statuses, sessionCmId, duration),
+    queryKey: queryKeys.registration(
+      year,
+      options?.sessionTypes,
+      options?.statuses,
+      options?.sessionCmId,
+      options?.duration
+    ),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
       })
-      if (sessionTypes) {
-        params.set('session_types', sessionTypes)
+      if (options?.sessionTypes) {
+        params.set('session_types', options.sessionTypes)
       }
-      if (statuses) {
-        params.set('statuses', statuses)
+      if (options?.statuses) {
+        params.set('statuses', options.statuses)
       }
-      if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString())
+      if (options?.sessionCmId !== undefined) {
+        params.set('session_cm_id', options.sessionCmId.toString())
       }
-      if (duration) {
-        params.set('duration', duration)
+      if (options?.duration) {
+        params.set('duration', options.duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`)
@@ -131,35 +150,35 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
  * Fetch historical trends across multiple years.
  * Default: last 5 years (2021-2025).
  *
- * @param years - Comma-separated years (e.g., "2021,2022,2023")
- * @param sessionTypes - Comma-separated session types (e.g., "main,embedded,ag")
- * @param sessionCmId - Filter to specific session by CampMinder ID.
+ * @param options.years - Comma-separated years (e.g., "2021,2022,2023")
+ * @param options.sessionTypes - Comma-separated session types (e.g., "main,embedded,ag")
+ * @param options.sessionCmId - Filter to specific session by CampMinder ID.
  *                      Uses name-matching across years to show trends
  *                      for the same session across multiple years.
  */
-export function useHistoricalTrends(
-  years?: string,
-  sessionTypes?: string,
-  sessionCmId?: number,
-  duration?: string
-) {
+export function useHistoricalTrends(options?: HistoricalFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.historical(years, sessionTypes, sessionCmId, duration),
+    queryKey: queryKeys.historical(
+      options?.years,
+      options?.sessionTypes,
+      options?.sessionCmId,
+      options?.duration
+    ),
     queryFn: async (): Promise<HistoricalTrendsResponse> => {
       const params = new URLSearchParams()
-      if (years) {
-        params.set('years', years)
+      if (options?.years) {
+        params.set('years', options.years)
       }
-      if (sessionTypes) {
-        params.set('session_types', sessionTypes)
+      if (options?.sessionTypes) {
+        params.set('session_types', options.sessionTypes)
       }
-      if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString())
+      if (options?.sessionCmId !== undefined) {
+        params.set('session_cm_id', options.sessionCmId.toString())
       }
-      if (duration) {
-        params.set('duration', duration)
+      if (options?.duration) {
+        params.set('duration', options.duration)
       }
 
       const url = params.toString()
@@ -182,28 +201,28 @@ export function useHistoricalTrends(
 /**
  * Fetch waitlist analysis metrics for a single year.
  */
-export function useWaitlistMetrics(
-  year: number,
-  sessionTypes?: string,
-  sessionCmId?: number,
-  duration?: string
-) {
+export function useWaitlistMetrics(year: number, options?: MetricsFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.waitlist(year, sessionTypes, sessionCmId, duration),
+    queryKey: queryKeys.waitlist(
+      year,
+      options?.sessionTypes,
+      options?.sessionCmId,
+      options?.duration
+    ),
     queryFn: async (): Promise<WaitlistMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
       })
-      if (sessionTypes) {
-        params.set('session_types', sessionTypes)
+      if (options?.sessionTypes) {
+        params.set('session_types', options.sessionTypes)
       }
-      if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString())
+      if (options?.sessionCmId !== undefined) {
+        params.set('session_cm_id', options.sessionCmId.toString())
       }
-      if (duration) {
-        params.set('duration', duration)
+      if (options?.duration) {
+        params.set('duration', options.duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/waitlist?${params}`)
@@ -222,28 +241,28 @@ export function useWaitlistMetrics(
 /**
  * Fetch cancellation analysis metrics for a single year.
  */
-export function useCancellationMetrics(
-  year: number,
-  sessionTypes?: string,
-  sessionCmId?: number,
-  duration?: string
-) {
+export function useCancellationMetrics(year: number, options?: MetricsFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.cancellations(year, sessionTypes, sessionCmId, duration),
+    queryKey: queryKeys.cancellations(
+      year,
+      options?.sessionTypes,
+      options?.sessionCmId,
+      options?.duration
+    ),
     queryFn: async (): Promise<CancellationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
       })
-      if (sessionTypes) {
-        params.set('session_types', sessionTypes)
+      if (options?.sessionTypes) {
+        params.set('session_types', options.sessionTypes)
       }
-      if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString())
+      if (options?.sessionCmId !== undefined) {
+        params.set('session_cm_id', options.sessionCmId.toString())
       }
-      if (duration) {
-        params.set('duration', duration)
+      if (options?.duration) {
+        params.set('duration', options.duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/cancellations?${params}`)

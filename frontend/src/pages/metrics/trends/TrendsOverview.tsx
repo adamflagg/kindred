@@ -140,12 +140,12 @@ export default function TrendsOverview() {
   }, [currentYear])
 
   // Historical trends (enrollment, new vs returning, gender lines)
-  const { data, isLoading, error } = useHistoricalTrends(
-    yearsParam,
-    sessionTypesParam,
-    selectedSessionCmId ?? undefined,
-    durationParam
-  )
+  const { data, isLoading, error } = useHistoricalTrends({
+    years: yearsParam,
+    sessionTypes: sessionTypesParam,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
 
   // Always fetch 5 years of retention trends for caching; slice when toggling
   const {

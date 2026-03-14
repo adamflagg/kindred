@@ -32,21 +32,22 @@ import { useVelocity } from '../../../hooks/useVelocity'
 import { useChartZoom } from '../../../hooks/useChartZoom'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import type { WeeklyDataPoint } from '../../../types/velocity'
-import { resolveSessionAlias } from '../../../utils/sessionAliases'
+import { useVelocityControls } from '../../../hooks/useVelocityControls'
+import { useVelocityChartData } from '../../../hooks/useVelocityChartData'
+import type { SessionColumnDef, DeltaColumnDef } from '../../../components/velocity'
 import {
-  sortSessionDataByCampThenQuest,
-  buildSessionDateLookup,
-  buildSessionTypeLookup,
-} from '../../../utils/sessionUtils'
+  VelocityControls,
+  SessionBreakdownTable,
+  WeeklyDeltaTable,
+} from '../../../components/velocity'
+import type { WeeklyDataPoint } from '../../../types/velocity'
 import { PHASE_COLORS } from './phaseColors'
-import { PhaseBadge } from './PhaseBadge'
 import {
   PRIOR_YEAR_COLORS,
   GENDER_COLORS,
   formatDateShort,
   priorYearDailyDateLabel,
-} from './chartConstants'
+} from '../../../utils/chartFormatters'
 import PartialWeekDot from './PartialWeekDot'
 
 type VelocityViewMode = 'gross' | 'net' | 'delta'
@@ -90,327 +91,29 @@ function priorYearDateLabel(
 export default function VelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
-  const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
-  const [splitByGender, setSplitByGender] = useState(false)
+  const controls = useVelocityControls(availableYears, currentYear)
   const [viewMode, setViewMode] = useState<VelocityViewMode>('net')
-
-  const priorYearOptions = useMemo(
-    () => availableYears.filter((y) => y < currentYear).sort((a, b) => b - a),
-    [availableYears, currentYear]
-  )
 
   const { data, isLoading, error } = useVelocity(currentYear, {
     sessionCmId: selectedSessionCmId,
-    compareYears: selectedPriorYears,
+    compareYears: controls.selectedPriorYears,
     sessionTypes: sessionTypesParam,
-    splitByGender,
+    splitByGender: controls.splitByGender,
     duration: durationParam,
   })
 
-  // Build unified chart data aligned by week_number
-  const weeklyChartData = useMemo(() => {
-    if (!data?.combined?.weekly?.length) return []
-
-    // Build week_number -> data maps for current year
-    const currentMap = new Map(data.combined.weekly.map((d) => [d.week_number, d]))
-
-    // Build week_number -> data maps for each prior year
-    const priorMaps = data.prior_years.map(
-      (py) => new Map(py.weekly.map((d) => [d.week_number, d]))
-    )
-
-    // Build gender maps
-    const mCurve = data.by_gender?.find((c) => c.gender === 'M')
-    const fCurve = data.by_gender?.find((c) => c.gender === 'F')
-    const mMap = mCurve ? new Map(mCurve.weekly.map((d) => [d.week_number, d])) : new Map()
-    const fMap = fCurve ? new Map(fCurve.weekly.map((d) => [d.week_number, d])) : new Map()
-
-    // Build prior year gender maps
-    const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
-    const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
-    const priorMGenderMaps = priorMGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.weekly.map((d) => [d.week_number, d])),
-    }))
-    const priorFGenderMaps = priorFGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.weekly.map((d) => [d.week_number, d])),
-    }))
-
-    // Collect all week_numbers across all years and gender curves
-    const allWeekNumbers = new Set<number>()
-    for (const wn of currentMap.keys()) allWeekNumbers.add(wn)
-    for (const pm of priorMaps) {
-      for (const wn of pm.keys()) allWeekNumbers.add(wn)
-    }
-    for (const wn of mMap.keys()) allWeekNumbers.add(wn)
-    for (const wn of fMap.keys()) allWeekNumbers.add(wn)
-    for (const { map } of priorMGenderMaps) {
-      for (const wn of map.keys()) allWeekNumbers.add(wn)
-    }
-    for (const { map } of priorFGenderMaps) {
-      for (const wn of map.keys()) allWeekNumbers.add(wn)
-    }
-
-    const sorted = [...allWeekNumbers].sort((a, b) => a - b)
-
-    return sorted.map((wn) => {
-      const current = currentMap.get(wn)
-      let weekLabel = current?.week_label ?? ''
-
-      // Fill label from prior year if current year doesn't have it
-      if (!weekLabel) {
-        for (const pm of priorMaps) {
-          const pd = pm.get(wn)
-          if (pd?.week_label) {
-            weekLabel = pd.week_label
-            break
-          }
-        }
-      }
-      if (!weekLabel) weekLabel = `Wk ${wn}`
-
-      const row: Record<string, string | number | boolean | null> = {
-        week_number: wn,
-        label: weekLabel,
-        week_start: current?.week_start ?? '',
-        enrolled: current?.enrolled ?? null,
-        delta: current?.delta ?? null,
-        gross_enrolled: current?.gross_enrolled ?? null,
-        weekly_new: current?.weekly_new ?? null,
-        weekly_cancelled: current?.weekly_cancelled != null ? -current.weekly_cancelled : null,
-        is_partial: current?.is_partial ?? false,
-        days_in_week: current?.days_in_week ?? 7,
-      }
-
-      // Prior year combined lines
-      data.prior_years.forEach((py, i) => {
-        const pyPoint = priorMaps[i]?.get(wn)
-        row[`enrolled_${py.year}`] = pyPoint?.enrolled ?? null
-        row[`gross_enrolled_${py.year}`] = pyPoint?.gross_enrolled ?? null
-        row[`weekly_new_${py.year}`] = pyPoint?.weekly_new ?? null
-        row[`weekly_cancelled_${py.year}`] =
-          pyPoint?.weekly_cancelled != null ? -pyPoint.weekly_cancelled : null
-      })
-
-      // Gender lines
-      if (splitByGender) {
-        row['enrolled_boys'] = mMap.get(wn)?.enrolled ?? null
-        row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
-        row['gross_enrolled_boys'] = mMap.get(wn)?.gross_enrolled ?? null
-        row['gross_enrolled_girls'] = fMap.get(wn)?.gross_enrolled ?? null
-        // Gender delta keys for Weekly Delta view
-        row['weekly_new_boys'] = mMap.get(wn)?.weekly_new ?? null
-        row['weekly_new_girls'] = fMap.get(wn)?.weekly_new ?? null
-        row['weekly_cancelled_boys'] =
-          mMap.get(wn)?.weekly_cancelled != null ? -mMap.get(wn)!.weekly_cancelled : null
-        row['weekly_cancelled_girls'] =
-          fMap.get(wn)?.weekly_cancelled != null ? -fMap.get(wn)!.weekly_cancelled : null
-
-        for (const { year, map } of priorMGenderMaps) {
-          row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
-          row[`gross_enrolled_boys_${year}`] = map.get(wn)?.gross_enrolled ?? null
-          row[`weekly_new_boys_${year}`] = map.get(wn)?.weekly_new ?? null
-          row[`weekly_cancelled_boys_${year}`] =
-            map.get(wn)?.weekly_cancelled != null ? -map.get(wn)!.weekly_cancelled : null
-        }
-        for (const { year, map } of priorFGenderMaps) {
-          row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
-          row[`gross_enrolled_girls_${year}`] = map.get(wn)?.gross_enrolled ?? null
-          row[`weekly_new_girls_${year}`] = map.get(wn)?.weekly_new ?? null
-          row[`weekly_cancelled_girls_${year}`] =
-            map.get(wn)?.weekly_cancelled != null ? -map.get(wn)!.weekly_cancelled : null
-        }
-      }
-
-      return row
-    })
-  }, [data, splitByGender])
-
-  // Build daily chart data for cumulative (gross/net) views, aligned by day_offset
-  const dailyChartData = useMemo(() => {
-    if (!data?.daily?.length) return []
-
-    // Build day_offset -> data map for current year
-    const currentMap = new Map(data.daily.map((d) => [d.day_offset, d]))
-
-    // Build day_offset -> data maps for each prior year
-    const priorMaps = data.prior_years.map((py) => new Map(py.daily.map((d) => [d.day_offset, d])))
-
-    // Build gender maps from by_gender daily data
-    const mCurve = data.by_gender?.find((c) => c.gender === 'M')
-    const fCurve = data.by_gender?.find((c) => c.gender === 'F')
-    const mMap = mCurve ? new Map(mCurve.daily.map((d) => [d.day_offset, d])) : new Map()
-    const fMap = fCurve ? new Map(fCurve.daily.map((d) => [d.day_offset, d])) : new Map()
-
-    // Build prior year gender daily maps
-    const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
-    const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
-    const priorMGenderMaps = priorMGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.daily.map((d) => [d.day_offset, d])),
-    }))
-    const priorFGenderMaps = priorFGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.daily.map((d) => [d.day_offset, d])),
-    }))
-
-    // Collect all day_offsets across all years
-    const allDayOffsets = new Set<number>()
-    for (const offset of currentMap.keys()) allDayOffsets.add(offset)
-    for (const pm of priorMaps) {
-      for (const offset of pm.keys()) allDayOffsets.add(offset)
-    }
-    for (const offset of mMap.keys()) allDayOffsets.add(offset)
-    for (const offset of fMap.keys()) allDayOffsets.add(offset)
-    for (const { map } of priorMGenderMaps) {
-      for (const offset of map.keys()) allDayOffsets.add(offset)
-    }
-    for (const { map } of priorFGenderMaps) {
-      for (const offset of map.keys()) allDayOffsets.add(offset)
-    }
-
-    const sorted = [...allDayOffsets].sort((a, b) => a - b)
-
-    return sorted.map((dayOffset) => {
-      const current = currentMap.get(dayOffset)
-
-      const row: Record<string, string | number | boolean | null> = {
-        day_offset: dayOffset,
-        date: current?.date ?? '',
-        enrolled: current?.enrolled ?? null,
-        gross_enrolled: current?.gross_enrolled ?? null,
-      }
-
-      // Prior year combined lines
-      data.prior_years.forEach((py, i) => {
-        const pyPoint = priorMaps[i]?.get(dayOffset)
-        row[`enrolled_${py.year}`] = pyPoint?.enrolled ?? null
-        row[`gross_enrolled_${py.year}`] = pyPoint?.gross_enrolled ?? null
-      })
-
-      // Gender lines
-      if (splitByGender) {
-        row['enrolled_boys'] = mMap.get(dayOffset)?.enrolled ?? null
-        row['enrolled_girls'] = fMap.get(dayOffset)?.enrolled ?? null
-        row['gross_enrolled_boys'] = mMap.get(dayOffset)?.gross_enrolled ?? null
-        row['gross_enrolled_girls'] = fMap.get(dayOffset)?.gross_enrolled ?? null
-
-        for (const { year, map } of priorMGenderMaps) {
-          row[`enrolled_boys_${year}`] = map.get(dayOffset)?.enrolled ?? null
-          row[`gross_enrolled_boys_${year}`] = map.get(dayOffset)?.gross_enrolled ?? null
-        }
-        for (const { year, map } of priorFGenderMaps) {
-          row[`enrolled_girls_${year}`] = map.get(dayOffset)?.enrolled ?? null
-          row[`gross_enrolled_girls_${year}`] = map.get(dayOffset)?.gross_enrolled ?? null
-        }
-      }
-
-      return row
-    })
-  }, [data, splitByGender])
+  const chartData = useVelocityChartData(data, sessions, {
+    metric: 'enrollment',
+    splitByGender: controls.splitByGender,
+    selectedPriorYears: controls.selectedPriorYears,
+  })
+  const { phaseLines } = chartData
 
   // Separate zoom state per chart to avoid cross-contamination (#510)
-  const weeklyZoom = useChartZoom(weeklyChartData.length)
-  const dailyZoom = useChartZoom(dailyChartData.length)
+  const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
+  const dailyZoom = useChartZoom(chartData.dailyChartData.length)
 
-  // Sort by-session table using camp-then-quest ordering
-  // Must be before early returns to satisfy React hooks rules
-  const sortedBySession = useMemo(() => {
-    if (!data?.by_session?.length || !sessions.length) return data?.by_session ?? []
-
-    const dateLookup = buildSessionDateLookup(sessions)
-    const typeLookup = buildSessionTypeLookup(sessions)
-
-    const withNames = data.by_session
-      .filter((s) => s.session_name != null)
-      .map((s) => ({
-        ...s,
-        session_name: s.session_name as string,
-      }))
-
-    return sortSessionDataByCampThenQuest(withNames, dateLookup, typeLookup)
-  }, [data?.by_session, sessions])
-
-  // Build week_number -> label lookup for XAxis tick formatting
-  const weekLabelMap = useMemo(() => {
-    const map = new Map<number, string>()
-    for (const pt of weeklyChartData) {
-      const wn = pt['week_number'] as number
-      const label = pt['label'] as string
-      if (label) map.set(wn, label)
-    }
-    return map
-  }, [weeklyChartData])
-
-  // Build day_offset -> date label map for daily x-axis tick formatting
-  // Only show ticks every 7 days to avoid overcrowding
-  const dailyTickFormatter = useMemo(() => {
-    if (!data?.season_start) return (_offset: number) => ''
-    const seasonStart = new Date(data.season_start + 'T00:00:00')
-    return (offset: number) => {
-      const d = new Date(seasonStart)
-      d.setDate(d.getDate() + offset)
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    }
-  }, [data?.season_start])
-
-  // Phase lines with week_number for X-axis positioning
-  const phaseLines = useMemo(() => {
-    if (!data?.phase_markers) return []
-    return data.phase_markers
-      .filter((marker) => marker.week_number != null)
-      .map((marker) => ({
-        ...marker,
-        weekNumber: marker.week_number,
-      }))
-  }, [data?.phase_markers])
-
-  // Phase day offsets for ReferenceArea bands on daily cumulative charts
-  const phaseDayOffsets = useMemo(() => {
-    if (!data?.phase_markers || !data?.season_start) return []
-    const sp = data.season_start.split('-')
-    const seasonStartUtc = Date.UTC(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]))
-    return data.phase_markers.map((marker) => {
-      const mp = marker.date.split('-')
-      return {
-        phase: marker.phase,
-        label: marker.label,
-        dayOffset: Math.floor(
-          (Date.UTC(Number(mp[0]), Number(mp[1]) - 1, Number(mp[2])) - seasonStartUtc) / 86400000
-        ),
-      }
-    })
-  }, [data?.phase_markers, data?.season_start])
-
-  // Weekly milestone indices in dailyChartData for zoom dropdown (every 7th day)
-  const dailyZoomMilestones = useMemo(() => {
-    if (!dailyChartData.length) return []
-    const milestones: Array<{ index: number; label: string }> = []
-    dailyChartData.forEach((pt, i) => {
-      const offset = pt['day_offset'] as number
-      if (offset % 7 === 0) {
-        const weekNum = Math.floor(offset / 7) + 1
-        const dateStr = pt['date'] as string
-        const dateLabel = dateStr ? formatDateShort(dateStr) : ''
-        milestones.push({ index: i, label: `Wk ${weekNum}${dateLabel ? ` - ${dateLabel}` : ''}` })
-      }
-    })
-    // Always include the last point if not already a milestone
-    const lastIdx = dailyChartData.length - 1
-    const lastMilestone = milestones[milestones.length - 1]
-    if (!lastMilestone || lastMilestone.index !== lastIdx) {
-      const lastPt = dailyChartData[lastIdx]
-      if (lastPt) {
-        const dateStr = lastPt['date'] as string
-        const dateLabel = dateStr ? formatDateShort(dateStr) : ''
-        milestones.push({ index: lastIdx, label: `Latest${dateLabel ? ` - ${dateLabel}` : ''}` })
-      }
-    }
-    return milestones
-  }, [dailyChartData])
-
-  // Map week_number -> PhaseMarker for table badge lookup
+  // Map week_number -> PhaseMarker for table badge lookup (page-specific)
   const phaseByWeek = useMemo(() => {
     const map = new Map<number, (typeof phaseLines)[0]>()
     for (const phase of phaseLines) {
@@ -418,33 +121,6 @@ export default function VelocityPage() {
     }
     return map
   }, [phaseLines])
-
-  // Build prior year session summary map keyed by canonical session name
-  const priorSessionMap = useMemo(() => {
-    const map = new Map<
-      string,
-      { enrolled_at_current_week: number | null; final_enrolled: number; year: number }
-    >()
-    for (const summary of data?.prior_year_session_summaries ?? []) {
-      if (summary.session_name) {
-        const canonical = resolveSessionAlias(summary.session_name)
-        map.set(canonical, {
-          enrolled_at_current_week: summary.enrolled_at_current_week,
-          final_enrolled: summary.final_enrolled,
-          year: summary.year,
-        })
-      }
-    }
-    return map
-  }, [data?.prior_year_session_summaries])
-
-  // Build prior year week map for delta table
-  const priorWeekMap = useMemo(() => {
-    if (!data?.prior_years?.length) return null
-    const py = data.prior_years[0]
-    if (!py) return null
-    return new Map(py.weekly.map((d) => [d.week_number, d]))
-  }, [data?.prior_years])
 
   // Summary card values
   const summaryCards = useMemo(() => {
@@ -517,107 +193,201 @@ export default function VelocityPage() {
     )
   }
 
-  const togglePriorYear = (year: number) => {
-    if (splitByGender) {
-      // When gender split is on, only allow 1 prior year
-      setSelectedPriorYears((prev) => (prev.includes(year) ? [] : [year]))
-    } else {
-      setSelectedPriorYears((prev) =>
-        prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]
-      )
-    }
-  }
-
-  const handleGenderToggle = (enabled: boolean) => {
-    setSplitByGender(enabled)
-    // When enabling gender, limit prior years to max 1
-    if (enabled && selectedPriorYears.length > 1) {
-      setSelectedPriorYears(selectedPriorYears.slice(0, 1))
-    }
-  }
-
   // Build gender breakdown lookup for session table
   const genderBreakdownMap = new Map(
     (data.session_gender_breakdown ?? []).map((b) => [b.session_cm_id, b])
   )
 
-  const hasPriorYear = selectedPriorYears.length > 0
+  const hasPriorYear = controls.selectedPriorYears.length > 0
+
+  // View mode toggle (passed as extraControls to VelocityControls)
+  const viewModeToggle = (
+    <div className="border-border flex overflow-hidden rounded-lg border">
+      {(['gross', 'net', 'delta'] as VelocityViewMode[]).map((mode) => (
+        <button
+          key={mode}
+          onClick={() => {
+            setViewMode(mode)
+            weeklyZoom.resetZoom()
+            dailyZoom.resetZoom()
+          }}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+            viewMode === mode
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-card text-muted-foreground hover:bg-muted/50'
+          }`}
+        >
+          {VIEW_MODE_LABELS[mode]}
+        </button>
+      ))}
+    </div>
+  )
+
+  // Column definitions for session breakdown table
+  const sessionColumns: SessionColumnDef[] = [
+    {
+      header: 'Session',
+      accessor: (session) => session.session_name ?? `Session ${session.session_cm_id}`,
+      className: 'text-left',
+    },
+    ...(controls.splitByGender
+      ? [
+          {
+            header: 'Boys',
+            accessor: (session) => {
+              const genderData = session.session_cm_id
+                ? genderBreakdownMap.get(session.session_cm_id)
+                : undefined
+              return (
+                <span style={{ color: GENDER_COLORS.boys }}>
+                  {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
+                </span>
+              )
+            },
+            className: 'text-right',
+          } satisfies SessionColumnDef,
+          {
+            header: 'Girls',
+            accessor: (session) => {
+              const genderData = session.session_cm_id
+                ? genderBreakdownMap.get(session.session_cm_id)
+                : undefined
+              return (
+                <span style={{ color: GENDER_COLORS.girls }}>
+                  {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
+                </span>
+              )
+            },
+            className: 'text-right',
+          } satisfies SessionColumnDef,
+        ]
+      : []),
+    {
+      header: controls.splitByGender ? 'Total' : 'Latest Enrolled',
+      accessor: (session) => {
+        const lastPoint = session.weekly[session.weekly.length - 1]
+        return (lastPoint?.enrolled ?? 0).toLocaleString()
+      },
+      className: 'text-right',
+    },
+    ...(hasPriorYear
+      ? [
+          {
+            header: `Prior Yr${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
+            accessor: (_session, priorSession) => (
+              <span className="text-muted-foreground">
+                {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
+              </span>
+            ),
+            className: 'text-right',
+          } satisfies SessionColumnDef,
+          {
+            header: 'Prior Yr Final',
+            accessor: (_session, priorSession) => (
+              <span className="text-muted-foreground">
+                {priorSession?.final_enrolled?.toLocaleString() ?? '-'}
+              </span>
+            ),
+            className: 'text-right',
+          } satisfies SessionColumnDef,
+          {
+            header: 'vs Prior',
+            accessor: (session, priorSession) => {
+              const lastPoint = session.weekly[session.weekly.length - 1]
+              const currentEnrolled = lastPoint?.enrolled ?? 0
+              const vsPrior =
+                priorSession != null ? currentEnrolled - priorSession.final_enrolled : null
+              return (
+                <span className={deltaColorClass(vsPrior)}>
+                  {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
+                </span>
+              )
+            },
+            className: 'text-right',
+          } satisfies SessionColumnDef,
+        ]
+      : []),
+    {
+      header: 'Weeks Tracked',
+      accessor: (session) => <span className="text-muted-foreground">{session.weekly.length}</span>,
+      className: 'text-right',
+    },
+  ]
+
+  // Column definitions for weekly delta table
+  const deltaColumns: DeltaColumnDef[] = [
+    {
+      header: 'New',
+      accessor: (week) => (
+        <span className="text-green-600 dark:text-green-400">
+          {week.weekly_new > 0 ? `+${week.weekly_new}` : week.weekly_new}
+        </span>
+      ),
+      className: 'text-right',
+    },
+    {
+      header: 'Cancelled',
+      accessor: (week) => (
+        <span className="text-red-600 dark:text-red-400">
+          {week.weekly_cancelled > 0 ? `-${week.weekly_cancelled}` : 0}
+        </span>
+      ),
+      className: 'text-right',
+    },
+    {
+      header: 'Net Change',
+      accessor: (week) => (
+        <span className={deltaColorClass(week.delta)}>{formatDeltaValue(week.delta)}</span>
+      ),
+      className: 'text-right',
+    },
+    {
+      header: 'Net Cumulative',
+      accessor: (week) => <span className="text-foreground">{week.enrolled.toLocaleString()}</span>,
+      className: 'text-right',
+    },
+    {
+      header: 'Gross Cumulative',
+      accessor: (week) => (
+        <span className="text-foreground">{week.gross_enrolled.toLocaleString()}</span>
+      ),
+      className: 'text-right',
+    },
+    ...(hasPriorYear && chartData.priorWeekMap
+      ? [
+          {
+            header: 'Prior Year',
+            accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
+              <span className="text-muted-foreground">
+                {priorPoint?.enrolled?.toLocaleString() ?? '-'}
+              </span>
+            ),
+            className: 'text-right',
+          } satisfies DeltaColumnDef,
+          {
+            header: 'Prior Delta',
+            accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
+              <span className={deltaColorClass(priorPoint?.delta ?? null)}>
+                {priorPoint ? formatDeltaValue(priorPoint.delta) : '-'}
+              </span>
+            ),
+            className: 'text-right',
+          } satisfies DeltaColumnDef,
+        ]
+      : []),
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Controls: Prior year checkboxes + Gender toggle */}
-      <div className="card-lodge p-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          {/* Prior year checkboxes */}
-          {priorYearOptions.length > 0 && (
-            <div>
-              <h3 className="text-foreground mb-2 text-sm font-medium">Compare with prior years</h3>
-              <div className="flex flex-wrap gap-3">
-                {priorYearOptions.slice(0, 5).map((year) => {
-                  const disabled =
-                    splitByGender &&
-                    !selectedPriorYears.includes(year) &&
-                    selectedPriorYears.length >= 1
-                  return (
-                    <label
-                      key={year}
-                      className={`flex items-center gap-2 text-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedPriorYears.includes(year)}
-                        onChange={() => togglePriorYear(year)}
-                        disabled={disabled}
-                        className="accent-primary h-4 w-4 rounded"
-                      />
-                      <span className="text-foreground">{year}</span>
-                    </label>
-                  )
-                })}
-              </div>
-              {splitByGender && (
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Limited to 1 prior year when gender split is on
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="flex items-center gap-4">
-            {/* View mode toggle */}
-            <div className="border-border flex overflow-hidden rounded-lg border">
-              {(['gross', 'net', 'delta'] as VelocityViewMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    setViewMode(mode)
-                    weeklyZoom.resetZoom()
-                    dailyZoom.resetZoom()
-                  }}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    viewMode === mode
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-card text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  {VIEW_MODE_LABELS[mode]}
-                </button>
-              ))}
-            </div>
-
-            {/* Gender split toggle */}
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={splitByGender}
-                onChange={(e) => handleGenderToggle(e.target.checked)}
-                className="accent-primary h-4 w-4 rounded"
-              />
-              <span className="text-foreground">Split by gender</span>
-            </label>
-          </div>
-        </div>
-      </div>
+      {/* Controls */}
+      <VelocityControls
+        priorYearOptions={controls.priorYearOptions}
+        selectedPriorYears={controls.selectedPriorYears}
+        splitByGender={controls.splitByGender}
+        onTogglePriorYear={controls.togglePriorYear}
+        onToggleGender={controls.handleGenderToggle}
+        extraControls={viewModeToggle}
+      />
 
       {/* Summary Comparison Cards */}
       {summaryCards && hasPriorYear && (
@@ -676,9 +446,9 @@ export default function VelocityPage() {
         </h3>
 
         {/* Phase marker legend */}
-        {phaseLines.length > 0 && (
+        {chartData.phaseLines.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-4 text-xs">
-            {phaseLines.map((phase) => (
+            {chartData.phaseLines.map((phase) => (
               <div key={phase.phase} className="flex items-center gap-1.5">
                 {viewMode === 'delta' ? (
                   <span
@@ -703,7 +473,7 @@ export default function VelocityPage() {
         )}
 
         {/* X-axis date context note when comparing years */}
-        {selectedPriorYears.length > 0 && (
+        {controls.selectedPriorYears.length > 0 && (
           <p className="text-muted-foreground mb-3 text-xs italic">
             X-axis dates are for {currentYear}. Hover for prior year dates.
           </p>
@@ -711,7 +481,7 @@ export default function VelocityPage() {
 
         {/* Zoom range selectors */}
         {viewMode === 'delta'
-          ? weeklyChartData.length > 0 && (
+          ? chartData.weeklyChartData.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
                 <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
                 <select
@@ -719,11 +489,11 @@ export default function VelocityPage() {
                   value={weeklyZoom.zoomRange?.[0] ?? 0}
                   onChange={(e) => {
                     const start = Number(e.target.value)
-                    const end = weeklyZoom.zoomRange?.[1] ?? weeklyChartData.length - 1
+                    const end = weeklyZoom.zoomRange?.[1] ?? chartData.weeklyChartData.length - 1
                     weeklyZoom.setZoomRange([start, Math.max(start, end)])
                   }}
                 >
-                  {weeklyChartData.map((pt, i) => (
+                  {chartData.weeklyChartData.map((pt, i) => (
                     <option key={i} value={i}>
                       Wk {pt['week_number']} - {pt['label']}
                     </option>
@@ -732,14 +502,14 @@ export default function VelocityPage() {
                 <span className="text-muted-foreground">to</span>
                 <select
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-                  value={weeklyZoom.zoomRange?.[1] ?? weeklyChartData.length - 1}
+                  value={weeklyZoom.zoomRange?.[1] ?? chartData.weeklyChartData.length - 1}
                   onChange={(e) => {
                     const end = Number(e.target.value)
                     const start = weeklyZoom.zoomRange?.[0] ?? 0
                     weeklyZoom.setZoomRange([Math.min(start, end), end])
                   }}
                 >
-                  {weeklyChartData.map((pt, i) => (
+                  {chartData.weeklyChartData.map((pt, i) => (
                     <option key={i} value={i}>
                       Wk {pt['week_number']} - {pt['label']}
                     </option>
@@ -755,7 +525,7 @@ export default function VelocityPage() {
                 )}
               </div>
             )
-          : dailyZoomMilestones.length > 0 && (
+          : chartData.dailyZoomMilestones.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
                 <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
                 <select
@@ -763,11 +533,11 @@ export default function VelocityPage() {
                   value={dailyZoom.zoomRange?.[0] ?? 0}
                   onChange={(e) => {
                     const start = Number(e.target.value)
-                    const end = dailyZoom.zoomRange?.[1] ?? dailyChartData.length - 1
+                    const end = dailyZoom.zoomRange?.[1] ?? chartData.dailyChartData.length - 1
                     dailyZoom.setZoomRange([start, Math.max(start, end)])
                   }}
                 >
-                  {dailyZoomMilestones.map((m) => (
+                  {chartData.dailyZoomMilestones.map((m) => (
                     <option key={m.index} value={m.index}>
                       {m.label}
                     </option>
@@ -776,14 +546,14 @@ export default function VelocityPage() {
                 <span className="text-muted-foreground">to</span>
                 <select
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
-                  value={dailyZoom.zoomRange?.[1] ?? dailyChartData.length - 1}
+                  value={dailyZoom.zoomRange?.[1] ?? chartData.dailyChartData.length - 1}
                   onChange={(e) => {
                     const end = Number(e.target.value)
                     const start = dailyZoom.zoomRange?.[0] ?? 0
                     dailyZoom.setZoomRange([Math.min(start, end), end])
                   }}
                 >
-                  {dailyZoomMilestones.map((m) => (
+                  {chartData.dailyZoomMilestones.map((m) => (
                     <option key={m.index} value={m.index}>
                       {m.label}
                     </option>
@@ -802,7 +572,10 @@ export default function VelocityPage() {
 
         <ResponsiveContainer width="100%" height={380}>
           {viewMode === 'delta' ? (
-            <LineChart data={weeklyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+            <LineChart
+              data={chartData.weeklyChartData}
+              margin={{ top: 20, right: 30, left: 20, bottom: 35 }}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis
                 dataKey="week_number"
@@ -810,7 +583,7 @@ export default function VelocityPage() {
                 domain={['dataMin', 'dataMax']}
                 className="text-xs"
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+                tickFormatter={(wn: number) => chartData.weekLabelMap.get(wn) ?? `Wk${wn}`}
                 interval="preserveStartEnd"
               />
               <YAxis
@@ -828,8 +601,9 @@ export default function VelocityPage() {
                   if (!active || !payload?.length) return null
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
-                  const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                  const row = weeklyChartData.find((d) => d['week_number'] === label)
+                  const displayLabel =
+                    chartData.weekLabelMap.get(label as number) ?? `Week ${label}`
+                  const row = chartData.weeklyChartData.find((d) => d['week_number'] === label)
                   const weekStart = row?.['week_start']
                   const isPartial = row?.['is_partial'] as boolean
                   const daysInWeek = row?.['days_in_week'] as number
@@ -882,19 +656,19 @@ export default function VelocityPage() {
                   ? {
                       startIndex: Math.min(
                         weeklyZoom.zoomRange[0],
-                        Math.max(0, weeklyChartData.length - 1)
+                        Math.max(0, chartData.weeklyChartData.length - 1)
                       ),
                       endIndex: Math.min(
                         weeklyZoom.zoomRange[1],
-                        Math.max(0, weeklyChartData.length - 1)
+                        Math.max(0, chartData.weeklyChartData.length - 1)
                       ),
                     }
                   : {})}
-                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+                tickFormatter={(wn: number) => chartData.weekLabelMap.get(wn) ?? `Wk${wn}`}
               />
 
               {/* Phase marker vertical lines */}
-              {phaseLines.map((phase) => (
+              {chartData.phaseLines.map((phase) => (
                 <ReferenceLine
                   key={phase.phase}
                   x={phase.weekNumber}
@@ -904,7 +678,7 @@ export default function VelocityPage() {
                 />
               ))}
 
-              {splitByGender ? (
+              {controls.splitByGender ? (
                 <>
                   {/* Gender split delta: boys + girls new/cancelled lines */}
                   <Line
@@ -950,7 +724,7 @@ export default function VelocityPage() {
                     connectNulls={false}
                   />
                   {/* Prior year gender delta (first prior year only) */}
-                  {selectedPriorYears.slice(0, 1).map((year) => (
+                  {controls.selectedPriorYears.slice(0, 1).map((year) => (
                     <Fragment key={year}>
                       <Line
                         type="monotone"
@@ -1054,7 +828,10 @@ export default function VelocityPage() {
               )}
             </LineChart>
           ) : (
-            <LineChart data={dailyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+            <LineChart
+              data={chartData.dailyChartData}
+              margin={{ top: 20, right: 30, left: 20, bottom: 35 }}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis
                 dataKey="day_offset"
@@ -1065,7 +842,7 @@ export default function VelocityPage() {
                 tickFormatter={(offset: number) => {
                   // Show date labels every 7 days
                   if (offset % 7 !== 0) return ''
-                  return dailyTickFormatter(offset)
+                  return chartData.dailyTickFormatter(offset)
                 }}
                 interval={0}
                 minTickGap={40}
@@ -1086,12 +863,12 @@ export default function VelocityPage() {
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const dayOffset = label as number
-                  const row = dailyChartData.find((d) => d['day_offset'] === dayOffset)
+                  const row = chartData.dailyChartData.find((d) => d['day_offset'] === dayOffset)
                   const dateStr = row?.['date'] as string
                   const weekNum = Math.floor(dayOffset / 7) + 1
                   const dateLabel = dateStr
                     ? formatDateShort(dateStr)
-                    : dailyTickFormatter(dayOffset)
+                    : chartData.dailyTickFormatter(dayOffset)
                   return (
                     <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                       <p className="text-foreground mb-1 font-medium">{dateLabel}</p>
@@ -1134,19 +911,19 @@ export default function VelocityPage() {
                   ? {
                       startIndex: Math.min(
                         dailyZoom.zoomRange[0],
-                        Math.max(0, dailyChartData.length - 1)
+                        Math.max(0, chartData.dailyChartData.length - 1)
                       ),
                       endIndex: Math.min(
                         dailyZoom.zoomRange[1],
-                        Math.max(0, dailyChartData.length - 1)
+                        Math.max(0, chartData.dailyChartData.length - 1)
                       ),
                     }
                   : {})}
-                tickFormatter={(offset: number) => dailyTickFormatter(offset)}
+                tickFormatter={(offset: number) => chartData.dailyTickFormatter(offset)}
               />
 
               {/* Phase marker bands (ReferenceArea) */}
-              {phaseDayOffsets.map((phase) => (
+              {chartData.phaseDayOffsets.map((phase) => (
                 <ReferenceArea
                   key={phase.phase}
                   x1={phase.dayOffset}
@@ -1157,7 +934,7 @@ export default function VelocityPage() {
                 />
               ))}
 
-              {splitByGender ? (
+              {controls.splitByGender ? (
                 <>
                   {/* Gender split: boys + girls lines */}
                   <Line
@@ -1181,7 +958,7 @@ export default function VelocityPage() {
                     connectNulls={false}
                   />
                   {/* Prior year gender lines (dashed) */}
-                  {selectedPriorYears.slice(0, 1).map((year) => (
+                  {controls.selectedPriorYears.slice(0, 1).map((year) => (
                     <Fragment key={year}>
                       <Line
                         type="monotone"
@@ -1256,113 +1033,14 @@ export default function VelocityPage() {
       </div>
 
       {/* Per-Session Breakdown */}
-      {sortedBySession.length > 1 && (
+      {chartData.sortedBySession.length > 1 && (
         <div className="card-lodge p-4">
           <h3 className="text-foreground mb-4 text-base font-semibold">By Session</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-border bg-muted/30 border-b">
-                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
-                  {splitByGender && (
-                    <>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Boys
-                      </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Girls
-                      </th>
-                    </>
-                  )}
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    {splitByGender ? 'Total' : 'Latest Enrolled'}
-                  </th>
-                  {hasPriorYear && (
-                    <>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Prior Yr{summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}
-                      </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Prior Yr Final
-                      </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        vs Prior
-                      </th>
-                    </>
-                  )}
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Weeks Tracked
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedBySession.map((session) => {
-                  const lastPoint = session.weekly[session.weekly.length - 1]
-                  const genderData = session.session_cm_id
-                    ? genderBreakdownMap.get(session.session_cm_id)
-                    : undefined
-                  const currentEnrolled = lastPoint?.enrolled ?? 0
-
-                  // Prior year session lookup
-                  const canonical = session.session_name
-                    ? resolveSessionAlias(session.session_name)
-                    : null
-                  const priorSession = canonical ? priorSessionMap.get(canonical) : null
-
-                  const vsPrior =
-                    priorSession != null ? currentEnrolled - priorSession.final_enrolled : null
-
-                  return (
-                    <tr
-                      key={session.session_cm_id}
-                      className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
-                    >
-                      <td className="text-foreground px-4 py-3 font-medium">
-                        {session.session_name ?? `Session ${session.session_cm_id}`}
-                      </td>
-                      {splitByGender && (
-                        <>
-                          <td
-                            className="px-4 py-3 text-right"
-                            style={{ color: GENDER_COLORS.boys }}
-                          >
-                            {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
-                          </td>
-                          <td
-                            className="px-4 py-3 text-right"
-                            style={{ color: GENDER_COLORS.girls }}
-                          >
-                            {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
-                          </td>
-                        </>
-                      )}
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {currentEnrolled.toLocaleString()}
-                      </td>
-                      {hasPriorYear && (
-                        <>
-                          <td className="text-muted-foreground px-4 py-3 text-right">
-                            {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
-                          </td>
-                          <td className="text-muted-foreground px-4 py-3 text-right">
-                            {priorSession?.final_enrolled?.toLocaleString() ?? '-'}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={deltaColorClass(vsPrior)}>
-                              {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
-                            </span>
-                          </td>
-                        </>
-                      )}
-                      <td className="text-muted-foreground px-4 py-3 text-right">
-                        {session.weekly.length}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <SessionBreakdownTable
+            sortedBySession={chartData.sortedBySession}
+            priorSessionMap={chartData.priorSessionMap}
+            columns={sessionColumns}
+          />
         </div>
       )}
 
@@ -1373,93 +1051,12 @@ export default function VelocityPage() {
             Week-over-Week Enrollment Changes
           </h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border bg-muted/30 border-b">
-                <th className="text-muted-foreground px-4 py-3 text-left font-medium">Week</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">New</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Cancelled
-                </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Net Change
-                </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Net Cumulative
-                </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Gross Cumulative
-                </th>
-                {hasPriorYear && priorWeekMap && (
-                  <>
-                    <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                      Prior Year
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                      Prior Delta
-                    </th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {data.combined.weekly.map((week: WeeklyDataPoint) => {
-                const priorPoint = priorWeekMap?.get(week.week_number)
-                return (
-                  <tr
-                    key={week.week_start}
-                    className={`border-border hover:bg-muted/20 border-b transition-colors last:border-0 ${week.is_partial ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}`}
-                  >
-                    <td className="text-foreground px-4 py-3 font-medium">
-                      {week.week_label}
-                      {(() => {
-                        const marker = phaseByWeek.get(week.week_number)
-                        return marker ? (
-                          <PhaseBadge phase={marker.phase} label={marker.label} />
-                        ) : null
-                      })()}
-                      {week.is_partial && (
-                        <span className="ml-1.5 text-xs font-normal text-amber-600 dark:text-amber-400">
-                          ({week.days_in_week}/7 days)
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
-                      {week.weekly_new > 0 ? `+${week.weekly_new}` : week.weekly_new}
-                    </td>
-                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
-                      {week.weekly_cancelled > 0 ? `-${week.weekly_cancelled}` : 0}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={deltaColorClass(week.delta)}>
-                        {formatDeltaValue(week.delta)}
-                      </span>
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {week.enrolled.toLocaleString()}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {week.gross_enrolled.toLocaleString()}
-                    </td>
-                    {hasPriorYear && priorWeekMap && (
-                      <>
-                        <td className="text-muted-foreground px-4 py-3 text-right">
-                          {priorPoint?.enrolled?.toLocaleString() ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={deltaColorClass(priorPoint?.delta ?? null)}>
-                            {priorPoint ? formatDeltaValue(priorPoint.delta) : '-'}
-                          </span>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <WeeklyDeltaTable
+          weeks={data.combined.weekly}
+          priorWeekMap={chartData.priorWeekMap}
+          columns={deltaColumns}
+          phaseByWeek={phaseByWeek}
+        />
       </div>
     </div>
   )

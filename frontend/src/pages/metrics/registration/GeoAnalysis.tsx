@@ -62,14 +62,12 @@ export default function GeoAnalysis() {
   })
 
   // Fetch registration data with geographic breakdowns + optional comparison
-  const { primary, comparison } = useComparisonRegistrationData(
-    currentYear,
-    compareYear,
-    sessionTypesParam,
-    'enrolled',
-    selectedSessionCmId ?? undefined,
-    durationParam
-  )
+  const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
+    sessionTypes: sessionTypesParam,
+    statuses: 'enrolled',
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
   const { data, isLoading, error } = primary
   const compData = comparison?.data
 
