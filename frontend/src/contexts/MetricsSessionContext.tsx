@@ -8,6 +8,10 @@
  * View mode (?view=quests) switches between camp sessions and quest sessions.
  * Default (no view param) shows camp sessions only.
  *
+ * Duration filter (?duration=<category>) filters sessions by length category
+ * (e.g., "1-week", "2-week"). Mutually exclusive with session selection --
+ * setting one clears the other.
+ *
  * Pattern: Similar to CurrentYearContext - provider here, hook in useMetricsSession.ts
  */
 import { type ReactNode, useCallback, useMemo, useState } from 'react'

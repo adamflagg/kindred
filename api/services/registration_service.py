@@ -77,6 +77,8 @@ class RegistrationService:
             session_types: Optional list of session types to filter.
             status_filter: Optional status filter (default: enrolled).
             session_cm_id: Optional specific session ID to filter.
+            duration: Optional duration category (e.g., "1-week", "2-week") to filter
+                sessions by length.
 
         Returns:
             RegistrationMetricsResponse with all breakdown metrics.
