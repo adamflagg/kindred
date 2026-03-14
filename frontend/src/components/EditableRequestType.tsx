@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, memo } from 'react'
+import { useState, useRef, memo } from 'react'
 import { ChevronDown } from 'lucide-react'
 import clsx from 'clsx'
+import { useClickOutside } from '../hooks/useClickOutside'
 
 interface EditableRequestTypeProps {
   value: string
@@ -21,18 +22,7 @@ const EditableRequestType = memo(
     const dropdownRef = useRef<HTMLDivElement>(null)
 
     // Close dropdown when clicking outside
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-          setIsOpen(false)
-        }
-      }
-
-      if (isOpen) {
-        document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
-      }
-    }, [isOpen])
+    useClickOutside(dropdownRef, () => setIsOpen(false), isOpen)
 
     const currentType = requestTypes.find((t) => t.value === value)
     const label = currentType?.label || value

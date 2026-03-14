@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Search, User, ExternalLink, Quote } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
@@ -6,6 +6,7 @@ import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-typ
 import { calculateAge } from '../utils/ageCalculator'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import clsx from 'clsx'
+import { useClickOutside } from '../hooks/useClickOutside'
 
 interface EditableRequestTargetProps {
   requestType: string
@@ -217,19 +218,11 @@ export default function EditableRequestTarget({
   }, [allCampers, searchQuery, requesterCmId])
 
   // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
-        setSearchQuery('')
-      }
-    }
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isOpen])
+  const handleClickOutside = useCallback(() => {
+    setIsOpen(false)
+    setSearchQuery('')
+  }, [])
+  useClickOutside(dropdownRef, handleClickOutside, isOpen)
 
   // Focus search input when opening
   useEffect(() => {

@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, memo } from 'react'
+import { useState, useRef, memo } from 'react'
 import { ChevronDown } from 'lucide-react'
 import clsx from 'clsx'
+import { useClickOutside } from '../hooks/useClickOutside'
 
 interface EditablePriorityProps {
   value: number
@@ -32,18 +33,7 @@ const EditablePriority = memo(
     const dropdownRef = useRef<HTMLDivElement>(null)
 
     // Close dropdown when clicking outside
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-          setIsOpen(false)
-        }
-      }
-
-      if (isOpen) {
-        document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
-      }
-    }, [isOpen])
+    useClickOutside(dropdownRef, () => setIsOpen(false), isOpen)
 
     const handleSelect = (newPriority: number) => {
       if (newPriority !== value) {

@@ -108,6 +108,22 @@ function buildSessionLengthCssData(
   return { chartData, segments }
 }
 
+/** Transform gender-by-grade API data into chart-ready format */
+function transformGenderByGrade(
+  data:
+    | Array<{ grade: number | null; total: number; male_count: number; female_count: number }>
+    | undefined
+) {
+  return (data ?? []).map((g) => ({
+    name: g.grade !== null ? String(g.grade) : '?',
+    tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+    total: g.total,
+    male_count: g.male_count,
+    female_count: g.female_count,
+    grade: g.grade,
+  }))
+}
+
 export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
 
@@ -352,14 +368,7 @@ export default function RegistrationOverview() {
             <CssVerticalStackedBarChart
               key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
               title={`${currentYear} Gender by Grade`}
-              data={(data.by_gender_grade ?? []).map((g) => ({
-                name: g.grade !== null ? String(g.grade) : '?',
-                tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-                total: g.total,
-                male_count: g.male_count,
-                female_count: g.female_count,
-                grade: g.grade,
-              }))}
+              data={transformGenderByGrade(data.by_gender_grade)}
               segments={[
                 { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
                 { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
@@ -374,14 +383,7 @@ export default function RegistrationOverview() {
             />
             <CssVerticalStackedBarChart
               title={`${compareYear} Gender by Grade`}
-              data={(compData.by_gender_grade ?? []).map((g) => ({
-                name: g.grade !== null ? String(g.grade) : '?',
-                tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-                total: g.total,
-                male_count: g.male_count,
-                female_count: g.female_count,
-                grade: g.grade,
-              }))}
+              data={transformGenderByGrade(compData.by_gender_grade)}
               segments={[
                 { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
                 { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
@@ -404,14 +406,7 @@ export default function RegistrationOverview() {
           <CssVerticalStackedBarChart
             key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
             title="Gender by Grade"
-            data={(data.by_gender_grade ?? []).map((g) => ({
-              name: g.grade !== null ? String(g.grade) : '?',
-              tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-              total: g.total,
-              male_count: g.male_count,
-              female_count: g.female_count,
-              grade: g.grade,
-            }))}
+            data={transformGenderByGrade(data.by_gender_grade)}
             segments={[
               { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
               { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },

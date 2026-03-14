@@ -25,3 +25,21 @@ describe('SocialNetworkGraph safety guards', () => {
     expect(source).toContain('clearBubbles(bubbleRefs)')
   })
 })
+
+describe('SocialNetworkGraph resize behavior', () => {
+  it('should not have redundant double cy.resize() in expanded mode', async () => {
+    const sourceContent = await import('./SocialNetworkGraph?raw')
+    const source = sourceContent.default
+
+    // Find the expand/collapse resize effect (from "Handle resize" to "Update edge visibility")
+    const resizeEffect = source.match(
+      /Handle resize when expanding.*?(?=\/\/ Update edge visibility)/s
+    )
+    expect(resizeEffect).not.toBeNull()
+
+    // Count cy.resize() calls within this effect - should be exactly 1
+    const resizeCalls = resizeEffect![0].match(/cy\.resize\(\)/g)
+    expect(resizeCalls).not.toBeNull()
+    expect(resizeCalls!.length).toBe(1)
+  })
+})

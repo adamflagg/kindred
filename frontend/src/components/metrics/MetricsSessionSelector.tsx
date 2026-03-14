@@ -105,9 +105,12 @@ export function MetricsSessionSelector() {
 
             {/* Duration groups */}
             {durationEntries.length > 0 && (
-              <>
+              <div role="group" aria-labelledby="duration-group-label">
                 <div className="border-border my-1 border-t" />
-                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase">
+                <div
+                  id="duration-group-label"
+                  className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                >
                   By Duration
                 </div>
                 {durationEntries.map(([category]) => (
@@ -119,14 +122,17 @@ export function MetricsSessionSelector() {
                     {DURATION_LABELS[category] ?? category}
                   </ListboxOption>
                 ))}
-              </>
+              </div>
             )}
 
             {/* Individual camp sessions */}
             {campSessions.length > 0 && (
-              <>
+              <div role="group" aria-labelledby="camp-sessions-group-label">
                 <div className="border-border my-1 border-t" />
-                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase">
+                <div
+                  id="camp-sessions-group-label"
+                  className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                >
                   Camp Sessions
                 </div>
                 {campSessions.map((session) => (
@@ -138,14 +144,17 @@ export function MetricsSessionSelector() {
                     {session.name}
                   </ListboxOption>
                 ))}
-              </>
+              </div>
             )}
 
             {/* Individual quest sessions */}
             {questSessions.length > 0 && (
-              <>
+              <div role="group" aria-labelledby="quests-group-label">
                 <div className="border-border my-1 border-t" />
-                <div className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase">
+                <div
+                  id="quests-group-label"
+                  className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                >
                   Quests
                 </div>
                 {questSessions.map((session) => (
@@ -157,7 +166,7 @@ export function MetricsSessionSelector() {
                     {session.name}
                   </ListboxOption>
                 ))}
-              </>
+              </div>
             )}
           </ListboxOptions>
         </div>

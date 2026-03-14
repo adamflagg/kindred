@@ -295,15 +295,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       if (cy && !cy.destroyed()) {
         cy.resize()
         cy.fit(undefined, 50)
-        // Double-check resize after another frame for expanded mode
-        if (isExpanded) {
-          requestAnimationFrame(() => {
-            if (cy && !cy.destroyed()) {
-              cy.resize()
-              cy.fit(undefined, 50)
-            }
-          })
-        }
 
         // Redraw bubbles after resize if enabled
         if (showBubbles && bunksData) {
