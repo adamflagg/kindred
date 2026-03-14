@@ -181,41 +181,46 @@ export function CssStackedHorizontalBarChart({
         </div>
 
         {/* Tooltip */}
-        {tooltip.visible && tooltip.item && (
-          <div
-            ref={tooltipRef}
-            className="bg-card border-border pointer-events-none fixed z-50 rounded-lg border p-3 shadow-lg"
-            style={{
-              left: tooltip.x,
-              top: tooltip.y,
-              transform: 'translateY(-50%)',
-            }}
-          >
-            <p className="text-foreground mb-2 font-medium">{tooltip.item.name}</p>
-            {activeSegments
-              .filter((seg) => ((tooltip.item![seg.key] as number) || 0) > 0)
-              .sort(
-                (a, b) =>
-                  ((tooltip.item![b.key] as number) || 0) - ((tooltip.item![a.key] as number) || 0)
-              )
-              .map((seg) => {
-                const value = (tooltip.item![seg.key] as number) || 0
-                const pct =
-                  tooltip.item!.total > 0 ? ((value / tooltip.item!.total) * 100).toFixed(0) : '0'
-                return (
-                  <p key={seg.key} className="text-muted-foreground text-sm">
-                    <span style={{ color: seg.color }}>{seg.label}:</span>{' '}
-                    <span className="text-foreground font-semibold">
-                      {value} ({pct}%)
-                    </span>
-                  </p>
-                )
-              })}
-            <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
-              Total: <span className="text-foreground font-semibold">{tooltip.item.total}</span>
-            </p>
-          </div>
-        )}
+        {tooltip.visible &&
+          tooltip.item &&
+          (() => {
+            const tooltipItem = tooltip.item
+            return (
+              <div
+                ref={tooltipRef}
+                className="bg-card border-border pointer-events-none fixed z-50 rounded-lg border p-3 shadow-lg"
+                style={{
+                  left: tooltip.x,
+                  top: tooltip.y,
+                  transform: 'translateY(-50%)',
+                }}
+              >
+                <p className="text-foreground mb-2 font-medium">{tooltipItem.name}</p>
+                {activeSegments
+                  .filter((seg) => ((tooltipItem[seg.key] as number) || 0) > 0)
+                  .sort(
+                    (a, b) =>
+                      ((tooltipItem[b.key] as number) || 0) - ((tooltipItem[a.key] as number) || 0)
+                  )
+                  .map((seg) => {
+                    const value = (tooltipItem[seg.key] as number) || 0
+                    const pct =
+                      tooltipItem.total > 0 ? ((value / tooltipItem.total) * 100).toFixed(0) : '0'
+                    return (
+                      <p key={seg.key} className="text-muted-foreground text-sm">
+                        <span style={{ color: seg.color }}>{seg.label}:</span>{' '}
+                        <span className="text-foreground font-semibold">
+                          {value} ({pct}%)
+                        </span>
+                      </p>
+                    )
+                  })}
+                <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
+                  Total: <span className="text-foreground font-semibold">{tooltipItem.total}</span>
+                </p>
+              </div>
+            )
+          })()}
       </div>
 
       {/* Legend */}

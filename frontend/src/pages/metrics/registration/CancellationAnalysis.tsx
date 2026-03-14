@@ -438,11 +438,11 @@ export default function CancellationAnalysis() {
                     />
                   )}
                 </div>
-                {isComparing && compSessionData && (
+                {compareYear !== null && compSessionData && (
                   <ComparisonSummaryTable
                     title="Cancellations by Session Comparison"
                     primaryYear={currentYear}
-                    compareYear={compareYear!}
+                    compareYear={compareYear}
                     primaryData={primarySession.sorted.map((s) => ({
                       name: s.session_name,
                       value: s.total_cancelled,
@@ -461,7 +461,7 @@ export default function CancellationAnalysis() {
             {/* Grade + Gender Charts Row */}
             {(data.by_grade.length > 0 || data.by_gender.length > 0) && (
               <>
-                {isComparing && compData ? (
+                {compareYear !== null && compData ? (
                   <>
                     {data.by_grade.length > 0 && primaryGrade.length > 0 && (
                       <>
@@ -496,7 +496,7 @@ export default function CancellationAnalysis() {
                         <ComparisonSummaryTable
                           title="Grade Distribution Comparison"
                           primaryYear={currentYear}
-                          compareYear={compareYear!}
+                          compareYear={compareYear}
                           primaryData={data.by_grade.map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
@@ -524,7 +524,7 @@ export default function CancellationAnalysis() {
                         <ComparisonSummaryTable
                           title="Gender Distribution Comparison"
                           primaryYear={currentYear}
-                          compareYear={compareYear!}
+                          compareYear={compareYear}
                           primaryData={transformGenderData(data.by_gender)}
                           compareData={transformGenderData(compData.by_gender)}
                         />

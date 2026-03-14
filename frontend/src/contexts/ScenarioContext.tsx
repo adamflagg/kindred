@@ -226,6 +226,7 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     const validatedResult = getValidatedScenario(scenarios)
     // undefined means no change needed, null/Scenario means update
     if (validatedResult !== undefined) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: syncs scenario state when external data (scenarios list, session) changes; useEffectEvent prevents re-run loops
       setCurrentScenario(validatedResult)
     }
   }, [scenarios, currentSessionId])

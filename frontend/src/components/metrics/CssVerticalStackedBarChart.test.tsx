@@ -264,7 +264,7 @@ describe('CssVerticalStackedBarChart labels', () => {
       <CssVerticalStackedBarChart
         data={singleItem}
         segments={segments}
-        labelFormat={(item) => `N=${item['total']}`}
+        labelFormat={(item) => `N=${String(item['total'])}`}
       />
     )
     expect(screen.getByText('N=10')).toBeInTheDocument()

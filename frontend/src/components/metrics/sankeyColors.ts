@@ -25,6 +25,7 @@ export function buildCmIdColorMap(nodes: Array<{ cmId: number | null }>): Map<nu
   let colorIdx = 0
   for (const node of nodes) {
     if (node.cmId != null && !map.has(node.cmId)) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- modulo of non-empty constant array always produces valid index
       map.set(node.cmId, SESSION_COLORS[colorIdx % SESSION_COLORS.length]!)
       colorIdx++
     }

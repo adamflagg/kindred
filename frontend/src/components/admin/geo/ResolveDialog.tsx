@@ -11,7 +11,7 @@
  *   Lat/lng input fields for adding coordinates to an existing canonical.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Search, Plus, MapPin } from 'lucide-react'
 import { Modal } from '../../ui/Modal'
 import { useAllCanonicals, useCreateOverride } from '../../../hooks/useGeoData'
@@ -71,16 +71,6 @@ export function ResolveDialog({
         entry.state.toLowerCase().includes(q)
     )
   }, [allCanonicals, searchQuery, searchAll])
-
-  // Clear stale selection when filter changes and selected entry is no longer visible
-  useEffect(() => {
-    if (
-      selectedEntry &&
-      !filteredResults.some((e) => e.canonical_name === selectedEntry.canonical_name)
-    ) {
-      setSelectedEntry(null)
-    }
-  }, [filteredResults, selectedEntry])
 
   const resetForm = useCallback(() => {
     setSearchQuery('')
@@ -211,7 +201,10 @@ export function ResolveDialog({
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setSelectedEntry(null)
+              }}
               placeholder="Search existing entries..."
               className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
               autoFocus
@@ -223,7 +216,10 @@ export function ResolveDialog({
             <input
               type="checkbox"
               checked={searchAll}
-              onChange={(e) => setSearchAll(e.target.checked)}
+              onChange={(e) => {
+                setSearchAll(e.target.checked)
+                setSelectedEntry(null)
+              }}
               className="checkbox-lodge"
               aria-label="Search all"
             />

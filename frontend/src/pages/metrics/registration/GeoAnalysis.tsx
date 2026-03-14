@@ -289,7 +289,7 @@ export default function GeoAnalysis() {
               )}
 
               {/* Detail Lists - comparison or single year */}
-              {isComparing && compGeoData ? (
+              {compareYear !== null && compGeoData ? (
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   {activeLayers.has('city') &&
                     (geoData.city.length > 0 || compGeoData.city.length > 0) && (
@@ -298,7 +298,7 @@ export default function GeoAnalysis() {
                         primaryData={geoData.city}
                         compareData={compGeoData.city}
                         primaryYear={currentYear}
-                        compareYear={compareYear!}
+                        compareYear={compareYear}
                         isOpen={expandedCategories.has('city')}
                         onToggle={() => handleDetailToggle('city')}
                       />
@@ -310,7 +310,7 @@ export default function GeoAnalysis() {
                         primaryData={geoData.school}
                         compareData={compGeoData.school}
                         primaryYear={currentYear}
-                        compareYear={compareYear!}
+                        compareYear={compareYear}
                         isOpen={expandedCategories.has('school')}
                         onToggle={() => handleDetailToggle('school')}
                       />
@@ -322,7 +322,7 @@ export default function GeoAnalysis() {
                         primaryData={geoData.synagogue}
                         compareData={compGeoData.synagogue}
                         primaryYear={currentYear}
-                        compareYear={compareYear!}
+                        compareYear={compareYear}
                         isOpen={expandedCategories.has('synagogue')}
                         onToggle={() => handleDetailToggle('synagogue')}
                       />
@@ -334,7 +334,7 @@ export default function GeoAnalysis() {
                         primaryData={geoData.region}
                         compareData={compGeoData.region}
                         primaryYear={currentYear}
-                        compareYear={compareYear!}
+                        compareYear={compareYear}
                         isOpen={expandedCategories.has('region')}
                         onToggle={() => handleDetailToggle('region')}
                       />

@@ -142,6 +142,7 @@ function ManageRedirect() {
   if (isLoading) return null // parent Suspense shows skeleton
 
   const firstPermitted = MANAGE_TABS.find((tab) => hasPermission(tab.requiredPermission))
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- MANAGE_TABS is a compile-time constant, always non-empty
   return <Navigate to={firstPermitted?.path ?? MANAGE_TABS[0]!.path} replace />
 }
 

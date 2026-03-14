@@ -5,7 +5,7 @@
  * All source variants will be reassigned to the target canonical.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Search, MapPin } from 'lucide-react'
 import { Modal } from '../../ui/Modal'
 import { useAllCanonicals, useMergeCanonical } from '../../../hooks/useGeoData'
@@ -46,16 +46,6 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
     )
   }, [allCanonicals, searchQuery, sourceCanonical, searchAll])
 
-  // Clear stale selection when filter changes and selected entry is no longer visible
-  useEffect(() => {
-    if (
-      selectedEntry &&
-      !filteredResults.some((e) => e.canonical_name === selectedEntry.canonical_name)
-    ) {
-      setSelectedEntry(null)
-    }
-  }, [filteredResults, selectedEntry])
-
   const resetForm = useCallback(() => {
     setSearchQuery('')
     setSelectedEntry(null)
@@ -94,7 +84,10 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setSelectedEntry(null)
+            }}
             placeholder="Search canonicals..."
             className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
             autoFocus
@@ -106,7 +99,10 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
           <input
             type="checkbox"
             checked={searchAll}
-            onChange={(e) => setSearchAll(e.target.checked)}
+            onChange={(e) => {
+              setSearchAll(e.target.checked)
+              setSelectedEntry(null)
+            }}
             className="checkbox-lodge"
             aria-label="Search all"
           />

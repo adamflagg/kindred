@@ -478,7 +478,7 @@ function formatGradeValue(value: unknown): string {
   const v = value as Record<string, unknown>
   const min = v['min_grade'] ?? '?'
   const max = v['max_grade'] ?? '?'
-  return `Grades ${min}–${max}`
+  return `Grades ${String(min)}–${String(max)}`
 }
 
 function formatBudgetValue(value: unknown): string {
@@ -486,5 +486,5 @@ function formatBudgetValue(value: unknown): string {
   const v = value as Record<string, unknown>
   const goal = v['participant_goal'] ?? '?'
   const fee = v['session_fee'] ?? '?'
-  return `Goal: ${goal}, Fee: $${fee}`
+  return `Goal: ${String(goal)}, Fee: $${String(fee)}`
 }

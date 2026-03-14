@@ -130,24 +130,28 @@ export function useVelocityChartData(
           // Gender delta keys for Weekly Delta view
           row['weekly_new_boys'] = mMap.get(wn)?.weekly_new ?? null
           row['weekly_new_girls'] = fMap.get(wn)?.weekly_new ?? null
+          const mVal = mMap.get(wn)
           row['weekly_cancelled_boys'] =
-            mMap.get(wn)?.weekly_cancelled != null ? -mMap.get(wn)!.weekly_cancelled : null
+            mVal?.weekly_cancelled != null ? -mVal.weekly_cancelled : null
+          const fVal = fMap.get(wn)
           row['weekly_cancelled_girls'] =
-            fMap.get(wn)?.weekly_cancelled != null ? -fMap.get(wn)!.weekly_cancelled : null
+            fVal?.weekly_cancelled != null ? -fVal.weekly_cancelled : null
 
           for (const { year, map } of priorMGenderMaps) {
             row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
             row[`gross_enrolled_boys_${year}`] = map.get(wn)?.gross_enrolled ?? null
             row[`weekly_new_boys_${year}`] = map.get(wn)?.weekly_new ?? null
+            const pmVal = map.get(wn)
             row[`weekly_cancelled_boys_${year}`] =
-              map.get(wn)?.weekly_cancelled != null ? -map.get(wn)!.weekly_cancelled : null
+              pmVal?.weekly_cancelled != null ? -pmVal.weekly_cancelled : null
           }
           for (const { year, map } of priorFGenderMaps) {
             row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
             row[`gross_enrolled_girls_${year}`] = map.get(wn)?.gross_enrolled ?? null
             row[`weekly_new_girls_${year}`] = map.get(wn)?.weekly_new ?? null
+            const pfVal = map.get(wn)
             row[`weekly_cancelled_girls_${year}`] =
-              map.get(wn)?.weekly_cancelled != null ? -map.get(wn)!.weekly_cancelled : null
+              pfVal?.weekly_cancelled != null ? -pfVal.weekly_cancelled : null
           }
         } else {
           // cancellation: gender maps from enrolled value

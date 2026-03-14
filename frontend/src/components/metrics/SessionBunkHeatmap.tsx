@@ -170,8 +170,8 @@ export function SessionBunkHeatmap({
   const { categoryBunks, categorySessions, lookup } = useMemo(() => {
     if (!data.length)
       return {
-        categoryBunks: {} as Record<BunkCategory, string[]>,
-        categorySessions: {} as Record<BunkCategory, string[]>,
+        categoryBunks: {} as Partial<Record<BunkCategory, string[]>>,
+        categorySessions: {} as Partial<Record<BunkCategory, string[]>>,
         lookup: new Map(),
       }
 
@@ -211,24 +211,24 @@ export function SessionBunkHeatmap({
     }
 
     return {
-      categoryBunks: catBunks as Record<BunkCategory, string[]>,
-      categorySessions: catSessions as Record<BunkCategory, string[]>,
+      categoryBunks: catBunks as Partial<Record<BunkCategory, string[]>>,
+      categorySessions: catSessions as Partial<Record<BunkCategory, string[]>>,
       lookup: map,
     }
   }, [data, sessionDateLookup])
 
-  const hasData = CATEGORY_ORDER.some((cat) => categoryBunks[cat]?.length > 0)
+  const hasData = CATEGORY_ORDER.some((cat) => (categoryBunks[cat]?.length ?? 0) > 0)
   if (!hasData) return null
 
   return (
     <div className="card-lodge p-4">
       <div className="space-y-6">
-        {CATEGORY_ORDER.filter((cat) => categoryBunks[cat]?.length > 0).map((cat) => (
+        {CATEGORY_ORDER.filter((cat) => (categoryBunks[cat]?.length ?? 0) > 0).map((cat) => (
           <BunkHeatmapTable
             key={cat}
             title={CATEGORY_LABELS[cat]}
-            sessions={categorySessions[cat]}
-            bunks={categoryBunks[cat]}
+            sessions={categorySessions[cat] ?? []}
+            bunks={categoryBunks[cat] ?? []}
             lookup={lookup}
             bunkStaff={bunkStaff}
           />
