@@ -94,7 +94,8 @@ export const solverService = {
     year: number,
     scenarioId: string | null | undefined,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-    timeLimit: number = 60
+    timeLimit: number = 60,
+    respectLocks: boolean = true
   ): Promise<SolverRun> {
     try {
       // Call solver API directly
@@ -109,6 +110,7 @@ export const solverService = {
           apply_results: false,
           time_limit: timeLimit,
           scenario: scenarioId || null,
+          respect_locks: respectLocks,
         }),
       })
 

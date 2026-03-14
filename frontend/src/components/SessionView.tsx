@@ -88,6 +88,17 @@ export default function SessionView() {
   // Solver progress modal
   const solverProgress = useSolverProgress()
 
+  // Respect locks toggle (localStorage-backed)
+  const [respectLocks, setRespectLocks] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('solver-respect-locks') !== 'false'
+  })
+
+  const handleRespectLocksChange = (value: boolean) => {
+    setRespectLocks(value)
+    localStorage.setItem('solver-respect-locks', String(value))
+  }
+
   // Solver operations hook
   const {
     isSolving,
@@ -103,11 +114,14 @@ export default function SessionView() {
     autoApplyEnabled,
     autoApplyTimeout,
     fetchWithAuth,
+    respectLocks,
   })
 
   // Wrapped handleRunSolver that coordinates with progress modal
+  // respectLocks is already wired through useSolverOperations state, so
+  // we accept (but don't use) it from the button to satisfy the type signature
   const handleRunSolver = useCallback(
-    async (timeLimit: number = 60) => {
+    async (timeLimit: number = 60, _respectLocks?: boolean) => {
       // Start progress modal
       solverProgress.start(timeLimit, currentScenario?.name)
 
@@ -245,6 +259,8 @@ export default function SessionView() {
           }
         }}
         onRunSolver={handleRunSolver}
+        respectLocks={respectLocks}
+        onRespectLocksChange={handleRespectLocksChange}
         onShowClearDialog={() => setShowClearDialog(true)}
         onShowNewScenarioModal={() => setShowNewScenarioModal(true)}
         onShowScenarioManagement={() => setShowScenarioManagementModal(true)}
