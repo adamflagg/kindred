@@ -71,13 +71,11 @@ export default function RetentionOverview() {
     [priorYear, currentYear]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(
-    priorYear,
-    currentYear,
-    sessionTypesParam,
-    selectedSessionCmId ?? undefined,
-    durationParam
-  )
+  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, {
+    sessionTypes: sessionTypesParam,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
 
   // Build date lookup from API response (prior year sessions have start_date)
   const priorSessionDateLookup = useMemo(() => {

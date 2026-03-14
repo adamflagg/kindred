@@ -174,14 +174,12 @@ export default function RegistrationOverview() {
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   // Fetch registration data with optional comparison year
-  const { primary, comparison } = useComparisonRegistrationData(
-    currentYear,
-    compareYear,
-    sessionTypesParam,
-    statusesParam,
-    selectedSessionCmId ?? undefined,
-    durationParam
-  )
+  const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
+    sessionTypes: sessionTypesParam,
+    statuses: statusesParam,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
   const { data, isLoading, error } = primary
   const compData = comparison?.data
 

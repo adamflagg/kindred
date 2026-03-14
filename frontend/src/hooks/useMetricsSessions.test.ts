@@ -137,7 +137,7 @@ describe('useRetentionMetrics hook updates', () => {
     expect(typeof module.useRetentionMetrics).toBe('function')
 
     // The function signature should be:
-    // useRetentionMetrics(baseYear, compareYear, sessionTypes?, sessionCmId?)
+    // useRetentionMetrics(baseYear, compareYear, options?: MetricsFilterOptions)
     // This is tested by TypeScript, we just verify it exists
   })
 })

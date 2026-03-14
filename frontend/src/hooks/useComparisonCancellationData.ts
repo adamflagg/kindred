@@ -6,23 +6,17 @@
  */
 
 import { useCancellationMetrics } from './useMetrics'
+import type { MetricsFilterOptions } from './useMetrics'
 
 export function useComparisonCancellationData(
   primaryYear: number,
   compareYear: number | null,
-  sessionTypesParam?: string,
-  sessionCmId?: number,
-  duration?: string
+  options?: MetricsFilterOptions
 ) {
-  const primary = useCancellationMetrics(primaryYear, sessionTypesParam, sessionCmId, duration)
+  const primary = useCancellationMetrics(primaryYear, options)
 
   // Pass 0 to disable the query when not comparing (enabled: year > 0)
-  const comparison = useCancellationMetrics(
-    compareYear ?? 0,
-    sessionTypesParam,
-    sessionCmId,
-    duration
-  )
+  const comparison = useCancellationMetrics(compareYear ?? 0, options)
 
   return {
     primary,

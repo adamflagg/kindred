@@ -6,31 +6,17 @@
  */
 
 import { useRegistrationMetrics } from './useMetrics'
+import type { RegistrationFilterOptions } from './useMetrics'
 
 export function useComparisonRegistrationData(
   primaryYear: number,
   compareYear: number | null,
-  sessionTypesParam?: string,
-  statuses?: string,
-  sessionCmId?: number,
-  duration?: string
+  options?: RegistrationFilterOptions
 ) {
-  const primary = useRegistrationMetrics(
-    primaryYear,
-    sessionTypesParam,
-    statuses,
-    sessionCmId,
-    duration
-  )
+  const primary = useRegistrationMetrics(primaryYear, options)
 
   // Pass 0 to disable the query when not comparing (enabled: year > 0)
-  const comparison = useRegistrationMetrics(
-    compareYear ?? 0,
-    sessionTypesParam,
-    statuses,
-    sessionCmId,
-    duration
-  )
+  const comparison = useRegistrationMetrics(compareYear ?? 0, options)
 
   return {
     primary,
