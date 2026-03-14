@@ -25,7 +25,7 @@ class TestGenderConstraintBasics:
     def test_male_cannot_be_in_female_cabin(self):
         """A male camper must be forbidden from female cabins."""
         # Setup: 1 male camper, 1 female bunk, 1 male bunk
-        male = create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5)
+        male = create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5)
         female_bunk = create_bunk(cm_id=2001, name="G-1", gender="F")
         male_bunk = create_bunk(cm_id=2002, name="B-1", gender="M")
 
@@ -52,7 +52,7 @@ class TestGenderConstraintBasics:
     def test_female_cannot_be_in_male_cabin(self):
         """A female camper must be forbidden from male cabins."""
         # Setup: 1 female camper, 1 male bunk, 1 female bunk
-        female = create_person(cm_id=1001, first_name="Jane", last_name="Smith", gender="F", grade=5)
+        female = create_person(cm_id=1001, first_name="Emma", last_name="Johnson", gender="F", grade=5)
         male_bunk = create_bunk(cm_id=2001, name="B-1", gender="M")
         female_bunk = create_bunk(cm_id=2002, name="G-1", gender="F")
 
@@ -79,8 +79,8 @@ class TestGenderConstraintBasics:
     def test_mixed_cabin_accepts_any_gender(self):
         """Mixed/AG cabins should accept both male and female campers."""
         # Setup: 1 male, 1 female, 1 mixed bunk (only option)
-        male = create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5)
-        female = create_person(cm_id=1002, first_name="Jane", last_name="Smith", gender="F", grade=5)
+        male = create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5)
+        female = create_person(cm_id=1002, first_name="Emma", last_name="Johnson", gender="F", grade=5)
         mixed_bunk = create_bunk(cm_id=2001, name="AG-1", gender="Mixed", capacity=12)
 
         ctx = build_solver_context(persons=[male, female], bunks=[mixed_bunk])
@@ -105,7 +105,7 @@ class TestGenderConstraintBasics:
 
     def test_ag_gender_value_allows_any(self):
         """AG bunks (gender='AG') should also accept any gender."""
-        male = create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5)
+        male = create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5)
         ag_bunk = create_bunk(cm_id=2001, name="AG-8", gender="AG", capacity=12)
 
         ctx = build_solver_context(persons=[male], bunks=[ag_bunk])
@@ -131,7 +131,7 @@ class TestGenderConstraintInfeasibility:
 
     def test_male_only_with_female_bunks_infeasible(self):
         """A male camper with only female bunks should be infeasible."""
-        male = create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5)
+        male = create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5)
         female_bunk = create_bunk(cm_id=2001, name="G-1", gender="F")
 
         ctx = build_solver_context(persons=[male], bunks=[female_bunk])
@@ -148,7 +148,7 @@ class TestGenderConstraintInfeasibility:
 
     def test_female_only_with_male_bunks_infeasible(self):
         """A female camper with only male bunks should be infeasible."""
-        female = create_person(cm_id=1001, first_name="Jane", last_name="Smith", gender="F", grade=5)
+        female = create_person(cm_id=1001, first_name="Emma", last_name="Johnson", gender="F", grade=5)
         male_bunk = create_bunk(cm_id=2001, name="B-1", gender="M")
 
         ctx = build_solver_context(persons=[female], bunks=[male_bunk])
@@ -189,7 +189,7 @@ class TestGenderConstraintEdgeCases:
 
     def test_bunk_with_no_gender_not_constrained(self):
         """Bunks with no gender specified should accept any camper."""
-        male = create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5)
+        male = create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5)
         no_gender_bunk = create_bunk(cm_id=2001, name="Cabin-1", gender=None)
         # Workaround
         no_gender_bunk.gender = None
@@ -208,7 +208,7 @@ class TestGenderConstraintEdgeCases:
     def test_constraint_can_be_disabled(self):
         """Gender constraint should be skippable via debug_constraints."""
         # Setup that would normally be infeasible
-        male = create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5)
+        male = create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5)
         female_bunk = create_bunk(cm_id=2001, name="G-1", gender="F")
 
         ctx = build_solver_context(
@@ -234,7 +234,7 @@ class TestGenderConstraintMultipleCampers:
         """Multiple campers of both genders should be correctly segregated."""
         # 3 males, 2 females
         males = [
-            create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5),
+            create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5),
             create_person(cm_id=1002, first_name="Jake", last_name="Smith", gender="M", grade=5),
             create_person(cm_id=1003, first_name="Jim", last_name="Brown", gender="M", grade=5),
         ]
@@ -276,7 +276,7 @@ class TestGenderConstraintMultipleCampers:
         """Males can go to either male bunks or mixed bunks (not female bunks)."""
         # 2 males, male bunk has capacity 1, mixed bunk has capacity 12
         males = [
-            create_person(cm_id=1001, first_name="John", last_name="Doe", gender="M", grade=5),
+            create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5),
             create_person(cm_id=1002, first_name="Jake", last_name="Smith", gender="M", grade=5),
         ]
 
