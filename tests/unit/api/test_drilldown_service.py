@@ -15,7 +15,7 @@ import pytest
 
 from api.services.drilldown_service import DrilldownService
 
-from tests.unit.api.conftest import create_mock_person, create_mock_session
+from tests.unit.api.conftest import create_mock_person, create_mock_session, create_mock_status_history
 
 # ============================================================================
 # Test Data Factories
@@ -1530,28 +1530,6 @@ class TestPersonLevelDeduplication:
 # ============================================================================
 # Tests for waitlist drilldown breakdown types
 # ============================================================================
-
-
-def create_mock_status_history(
-    person_id: int,
-    session: Mock,
-    person: Mock | None,
-    old_status: str,
-    new_status: str,
-    detected_at: str = "2026-01-15 10:00:00.000Z",
-    year: int = 2026,
-) -> Mock:
-    """Create a mock attendee_status_history record."""
-    record = Mock()
-    record.person_id = person_id
-    record.old_status = old_status
-    record.new_status = new_status
-    record.detected_at = detected_at
-    record.year = year
-    record.expand = {"session": session}
-    if person:
-        record.expand["person"] = person
-    return record
 
 
 class TestWaitlistDrilldowns:

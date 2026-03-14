@@ -117,3 +117,25 @@ def create_mock_attendee(
 
     attendee.expand = expand
     return attendee
+
+
+def create_mock_status_history(
+    person_id: int,
+    session: MagicMock,
+    person: MagicMock | None,
+    old_status: str,
+    new_status: str,
+    detected_at: str = "2026-01-15 10:00:00.000Z",
+    year: int = 2026,
+) -> MagicMock:
+    """Create a mock attendee_status_history record."""
+    record = MagicMock()
+    record.person_id = person_id
+    record.old_status = old_status
+    record.new_status = new_status
+    record.detected_at = detected_at
+    record.year = year
+    record.expand = {"session": session}
+    if person:
+        record.expand["person"] = person
+    return record
