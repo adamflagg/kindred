@@ -12,84 +12,14 @@ These tests are written FIRST before implementation (TDD).
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.main import create_app
-
-# ============================================================================
-# Test Data Factories
-# ============================================================================
-
-
-def create_mock_person(
-    cm_id: int,
-    first_name: str,
-    last_name: str,
-    gender: str = "M",
-    grade: int = 6,
-    years_at_camp: int = 2,
-    year: int = 2026,
-) -> Mock:
-    """Create a mock person record."""
-    person = Mock()
-    person.cm_id = cm_id
-    person.first_name = first_name
-    person.last_name = last_name
-    person.gender = gender
-    person.grade = grade
-    person.years_at_camp = years_at_camp
-    person.year = year
-    return person
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    end_date: str = "2026-07-05",
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.end_date = end_date
-    session.parent_id = None
-    return session
-
-
-def create_mock_attendee(
-    person_id: int,
-    session: Mock,
-    year: int,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record with session expand."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.session_cm_id = session.cm_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    attendee.expand = {"session": session}
-    return attendee
-
+from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
 # Fixtures
@@ -174,7 +104,9 @@ def multi_year_attendees(
             person_ids = [101, 102, 201, 301, 302]
 
         for pid in person_ids:
-            attendees[year].append(create_mock_attendee(pid, session_2, year))
+            attendees[year].append(
+                create_mock_attendee(pid, session_cm_id=session_2.cm_id, session=session_2, year=year)
+            )
 
     return attendees
 

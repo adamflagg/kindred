@@ -8,14 +8,10 @@ week-relative offsets.
 
 from __future__ import annotations
 
-import os
 from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.schemas.forecast import WeekOption
 from api.services.forecast_service import ForecastService

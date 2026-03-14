@@ -11,72 +11,16 @@ Tests verify the availability matrix computation:
 
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.services.session_availability_service import SessionAvailabilityService
+from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int = 2026,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    parent_id: int | None = None,
-    pb_id: str | None = None,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.id = pb_id or f"pb_{cm_id}"
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.parent_id = parent_id
-    session.sort_order = 0
-    return session
-
-
-def create_mock_attendee(
-    person_id: int,
-    session_cm_id: int,
-    gender: str = "M",
-    year: int = 2026,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee with person and session expand."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-
-    # Person expand
-    person = Mock()
-    person.gender = gender
-    person.cm_id = person_id
-
-    # Session expand
-    session = Mock()
-    session.cm_id = session_cm_id
-
-    attendee.expand = {"person": person, "session": session}
-    return attendee
 
 
 def create_mock_bunk_plan(
@@ -275,11 +219,11 @@ class TestEnrollmentCounting:
 
         # 3 boys, 2 girls enrolled
         mock_repository.fetch_attendees_with_persons.return_value = [
-            create_mock_attendee(101, 1001, "M", status="enrolled"),
-            create_mock_attendee(102, 1001, "M", status="enrolled"),
-            create_mock_attendee(103, 1001, "M", status="enrolled"),
-            create_mock_attendee(201, 1001, "F", status="enrolled"),
-            create_mock_attendee(202, 1001, "F", status="enrolled"),
+            create_mock_attendee(101, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(102, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(103, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(201, 1001, gender="F", status="enrolled"),
+            create_mock_attendee(202, 1001, gender="F", status="enrolled"),
         ]
 
         result = await service.calculate_availability(year=2026)
@@ -298,9 +242,9 @@ class TestEnrollmentCounting:
         mock_repository.fetch_capacity_config.return_value = 12
 
         mock_repository.fetch_attendees_with_persons.return_value = [
-            create_mock_attendee(101, 1001, "M", status="enrolled"),
-            create_mock_attendee(102, 1001, "M", status="waitlisted"),
-            create_mock_attendee(201, 1001, "F", status="waitlisted"),
+            create_mock_attendee(101, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(102, 1001, gender="M", status="waitlisted"),
+            create_mock_attendee(201, 1001, gender="F", status="waitlisted"),
         ]
 
         result = await service.calculate_availability(year=2026)
@@ -320,8 +264,8 @@ class TestEnrollmentCounting:
         mock_repository.fetch_capacity_config.return_value = 12
 
         mock_repository.fetch_attendees_with_persons.return_value = [
-            create_mock_attendee(101, 2001, "M", status="enrolled"),
-            create_mock_attendee(201, 2001, "F", status="enrolled"),
+            create_mock_attendee(101, 2001, gender="M", status="enrolled"),
+            create_mock_attendee(201, 2001, gender="F", status="enrolled"),
         ]
 
         result = await service.calculate_availability(year=2026)
@@ -647,7 +591,7 @@ class TestDefunctAGHiding:
         mock_repository.fetch_capacity_config.return_value = 12
         # But has enrolled attendees
         mock_repository.fetch_attendees_with_persons.return_value = [
-            create_mock_attendee(101, 2001, "M", status="enrolled"),
+            create_mock_attendee(101, 2001, gender="M", status="enrolled"),
         ]
 
         result = await service.calculate_availability(year=2026)
@@ -666,7 +610,7 @@ class TestDefunctAGHiding:
         mock_repository.fetch_bunk_plans.return_value = []
         mock_repository.fetch_capacity_config.return_value = 12
         mock_repository.fetch_attendees_with_persons.return_value = [
-            create_mock_attendee(101, 2001, "F", status="waitlisted"),
+            create_mock_attendee(101, 2001, gender="F", status="waitlisted"),
         ]
 
         result = await service.calculate_availability(year=2026)

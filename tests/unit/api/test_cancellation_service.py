@@ -11,118 +11,20 @@ Tests verify:
 
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.services.cancellation_service import CancellationService
+from tests.unit.api.conftest import (
+    create_mock_attendee,
+    create_mock_person,
+    create_mock_session,
+)
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_person(
-    cm_id: int,
-    first_name: str,
-    last_name: str,
-    gender: str = "M",
-    grade: int = 6,
-    years_at_camp: int = 2,
-    year: int = 2026,
-    school: str = "Riverside Elementary",
-    address_city: str = "Springfield",
-    address_state: str = "IL",
-) -> Mock:
-    """Create a mock person record."""
-    person = Mock()
-    person.cm_id = cm_id
-    person.first_name = first_name
-    person.last_name = last_name
-    person.gender = gender
-    person.grade = grade
-    person.years_at_camp = years_at_camp
-    person.year = year
-    person.school = school
-    person.address_city = address_city
-    person.address_state = address_state
-    person.preferred_name = None
-    person.age = 12
-    person.normalized_school = None
-    person.normalized_city = None
-    person.normalized_congregation = None
-    return person
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int = 2026,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    end_date: str = "2026-07-05",
-    parent_id: int | None = None,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.end_date = end_date
-    session.parent_id = parent_id
-    return session
-
-
-def create_mock_attendee(
-    person_id: int,
-    session: Mock,
-    year: int = 2026,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-    enrollment_date: str | None = None,
-    effective_date: str | None = None,
-) -> Mock:
-    """Create a mock attendee record with embedded session."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    attendee.enrollment_date = enrollment_date
-    attendee.effective_date = effective_date
-    attendee.expand = {"session": session}
-    return attendee
-
-
-def create_mock_status_history(
-    person_id: int,
-    session: Mock,
-    person: Mock | None,
-    old_status: str,
-    new_status: str,
-    detected_at: str = "2026-01-15 10:00:00.000Z",
-    year: int = 2026,
-) -> Mock:
-    """Create a mock attendee_status_history record."""
-    record = Mock()
-    record.person_id = person_id
-    record.old_status = old_status
-    record.new_status = new_status
-    record.detected_at = detected_at
-    record.year = year
-    record.expand = {"session": session}
-    if person:
-        record.expand["person"] = person
-    return record
 
 
 # ============================================================================
@@ -188,12 +90,22 @@ class TestSessionSwapDetection:
         # Emma cancelled from Session 1 and enrolled in Session 2 same day
         cancelled = [
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
         ]
         enrolled = [
             create_mock_attendee(
-                101, session2, status="enrolled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session2.cm_id,
+                session=session2,
+                status="enrolled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
         ]
 
@@ -222,12 +134,22 @@ class TestSessionSwapDetection:
 
         cancelled = [
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
         ]
         enrolled = [
             create_mock_attendee(
-                101, session2, status="enrolled", enrollment_date="2026-02-16", effective_date="2025-11-10"
+                101,
+                session_cm_id=session2.cm_id,
+                session=session2,
+                status="enrolled",
+                enrollment_date="2026-02-16",
+                effective_date="2025-11-10",
             ),
         ]
 
@@ -254,7 +176,12 @@ class TestSessionSwapDetection:
 
         cancelled = [
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
         ]
         # No enrolled attendees at all
@@ -294,10 +221,20 @@ class TestTimeToCancellation:
         # Liam: registered Nov 15, cancelled Mar 10 → 115 days
         cancelled = [
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
             create_mock_attendee(
-                102, session1, status="cancelled", enrollment_date="2026-03-10", effective_date="2025-11-15"
+                102,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-03-10",
+                effective_date="2025-11-15",
             ),
         ]
 
@@ -327,19 +264,39 @@ class TestTimeToCancellation:
         cancelled = [
             # 20 days → <30d bucket
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2025-12-01", effective_date="2025-11-11"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2025-12-01",
+                effective_date="2025-11-11",
             ),
             # 60 days → 30-90d bucket
             create_mock_attendee(
-                102, session1, status="cancelled", enrollment_date="2026-01-10", effective_date="2025-11-11"
+                102,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-01-10",
+                effective_date="2025-11-11",
             ),
             # 120 days → 90-180d bucket
             create_mock_attendee(
-                103, session1, status="cancelled", enrollment_date="2026-03-11", effective_date="2025-11-11"
+                103,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-03-11",
+                effective_date="2025-11-11",
             ),
             # 200 days → 180d+ bucket
             create_mock_attendee(
-                104, session1, status="cancelled", enrollment_date="2026-05-30", effective_date="2025-11-11"
+                104,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-05-30",
+                effective_date="2025-11-11",
             ),
         ]
 
@@ -372,16 +329,31 @@ class TestTimeToCancellation:
         # Liam: true departure (90 days)
         cancelled = [
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
             create_mock_attendee(
-                102, session1, status="cancelled", enrollment_date="2026-02-10", effective_date="2025-11-12"
+                102,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-10",
+                effective_date="2025-11-12",
             ),
         ]
         enrolled = [
             # Emma enrolled in Session 2 same day as cancel → swap
             create_mock_attendee(
-                101, session2, status="enrolled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session2.cm_id,
+                session=session2,
+                status="enrolled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
         ]
 
@@ -419,14 +391,29 @@ class TestRegistrationMonthBreakdown:
         cancelled = [
             # 2 from November registration
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
             ),
             create_mock_attendee(
-                102, session1, status="cancelled", enrollment_date="2026-03-10", effective_date="2025-11-20"
+                102,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-03-10",
+                effective_date="2025-11-20",
             ),
             # 1 from December registration
             create_mock_attendee(
-                103, session1, status="cancelled", enrollment_date="2026-04-01", effective_date="2025-12-05"
+                103,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-04-01",
+                effective_date="2025-12-05",
             ),
         ]
 
@@ -455,15 +442,30 @@ class TestRegistrationMonthBreakdown:
         cancelled = [
             # Mar 2025 registration
             create_mock_attendee(
-                101, session1, status="cancelled", enrollment_date="2026-06-15", effective_date="2025-03-10"
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-06-15",
+                effective_date="2025-03-10",
             ),
             # Jan 2026 registration
             create_mock_attendee(
-                102, session1, status="cancelled", enrollment_date="2026-06-20", effective_date="2026-01-05"
+                102,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-06-20",
+                effective_date="2026-01-05",
             ),
             # Nov 2025 registration
             create_mock_attendee(
-                103, session1, status="cancelled", enrollment_date="2026-06-25", effective_date="2025-11-15"
+                103,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-06-25",
+                effective_date="2025-11-15",
             ),
         ]
 

@@ -9,80 +9,16 @@ These tests verify drilldown filtering logic for new breakdown types:
 
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.services.drilldown_service import DrilldownService
+from tests.unit.api.conftest import create_mock_person, create_mock_session, create_mock_status_history
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_person(
-    cm_id: int,
-    first_name: str,
-    last_name: str,
-    gender: str = "M",
-    grade: int = 6,
-    years_at_camp: int = 2,
-    year: int = 2026,
-    school: str = "Riverside Elementary",
-    address_city: str = "Springfield",
-    address_state: str = "IL",
-    normalized_school: str | None = None,
-    normalized_city: str | None = None,
-    normalized_congregation: str | None = None,
-) -> Mock:
-    """Create a mock person record.
-
-    Uses discrete address columns (address_city, address_state) instead of JSON.
-    """
-    person = Mock()
-    person.cm_id = cm_id
-    person.first_name = first_name
-    person.last_name = last_name
-    person.gender = gender
-    person.grade = grade
-    person.years_at_camp = years_at_camp
-    person.year = year
-    person.school = school
-    # Use discrete address columns
-    person.address_city = address_city
-    person.address_state = address_state
-    person.preferred_name = None
-    person.age = 12
-    person.normalized_school = normalized_school
-    person.normalized_city = normalized_city
-    person.normalized_congregation = normalized_congregation
-    return person
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    end_date: str = "2026-07-05",
-    parent_id: int | None = None,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.end_date = end_date
-    session.parent_id = parent_id
-    return session
 
 
 def create_mock_attendee(
@@ -1593,28 +1529,6 @@ class TestPersonLevelDeduplication:
 # ============================================================================
 # Tests for waitlist drilldown breakdown types
 # ============================================================================
-
-
-def create_mock_status_history(
-    person_id: int,
-    session: Mock,
-    person: Mock | None,
-    old_status: str,
-    new_status: str,
-    detected_at: str = "2026-01-15 10:00:00.000Z",
-    year: int = 2026,
-) -> Mock:
-    """Create a mock attendee_status_history record."""
-    record = Mock()
-    record.person_id = person_id
-    record.old_status = old_status
-    record.new_status = new_status
-    record.detected_at = detected_at
-    record.year = year
-    record.expand = {"session": session}
-    if person:
-        record.expand["person"] = person
-    return record
 
 
 class TestWaitlistDrilldowns:

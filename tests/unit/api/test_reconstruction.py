@@ -8,16 +8,11 @@ module is used by both velocity and forecast services.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.reconstruction import reconstruct_enrollment_at_offset, reconstruct_enrollment_with_gender
 

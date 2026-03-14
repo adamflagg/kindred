@@ -1,10 +1,5 @@
 """Tests for Day 1 registration counting service."""
 
-import os
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

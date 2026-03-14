@@ -1,10 +1,5 @@
 """Tests for weekly rollup derived from daily data points."""
 
-import os
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from datetime import date
 
 from api.schemas.velocity import DailyDataPoint

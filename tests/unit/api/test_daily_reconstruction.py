@@ -1,12 +1,7 @@
 """Tests for daily reconstruction from attendee records."""
 
-import os
-from typing import Any
-
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from datetime import date
+from typing import Any
 
 from api.services.reconstruction import reconstruct_daily
 

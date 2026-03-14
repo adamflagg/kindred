@@ -9,74 +9,17 @@ These tests are written FIRST before implementation (TDD).
 
 from __future__ import annotations
 
-import os
 from datetime import date
-from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.services.forecast_service import ForecastService
+from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int = 2026,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    parent_id: int | None = None,
-    pb_id: str | None = None,
-    sort_order: int = 0,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.id = pb_id or f"pb_{cm_id}"
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.parent_id = parent_id
-    session.sort_order = sort_order
-    return session
-
-
-def create_mock_attendee(
-    person_id: int,
-    session_cm_id: int,
-    year: int = 2026,
-    status: str = "enrolled",
-    is_active: bool = True,
-    status_id: int = 2,
-    gender: str | None = None,
-) -> Mock:
-    """Create a mock attendee with session expand and optional person/gender."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.year = year
-    attendee.status = status
-    attendee.is_active = is_active
-    attendee.status_id = status_id
-
-    session = Mock()
-    session.cm_id = session_cm_id
-    expand: dict[str, Any] = {"session": session}
-    if gender is not None:
-        person = Mock()
-        person.gender = gender
-        person.cm_id = person_id + 1000
-        expand["person"] = person
-    attendee.expand = expand
-    return attendee
 
 
 def create_mock_budget_config(

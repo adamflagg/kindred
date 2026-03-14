@@ -17,15 +17,10 @@ Tests verify the enrollment velocity curve computation:
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 from api.services.velocity_service import (
@@ -40,30 +35,11 @@ from api.services.velocity_service import (
     _week_start,
     rollup_daily_to_weekly,
 )
+from tests.unit.api.conftest import create_mock_session
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int = 2026,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    parent_id: int | None = None,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.id = f"pb_{cm_id}"
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.parent_id = parent_id
-    return session
 
 
 def create_mock_snapshot(

@@ -7,95 +7,14 @@ using mocked PocketBase data.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.main import create_app
-
-# ============================================================================
-# Test Data Factories
-# ============================================================================
-
-
-def create_mock_person(
-    cm_id: int,
-    first_name: str,
-    last_name: str,
-    gender: str = "M",
-    grade: int = 6,
-    years_at_camp: int = 2,
-    last_year_attended: int = 2025,
-    year: int = 2026,
-    school: str = "Riverside Elementary",
-    address_city: str = "Springfield",
-    address_state: str = "IL",
-) -> Mock:
-    """Create a mock person record with discrete address columns."""
-    person = Mock()
-    person.cm_id = cm_id
-    person.first_name = first_name
-    person.last_name = last_name
-    person.gender = gender
-    person.grade = grade
-    person.years_at_camp = years_at_camp
-    person.last_year_attended = last_year_attended
-    person.year = year
-    person.school = school
-    # Use discrete address columns
-    person.address_city = address_city
-    person.address_state = address_state
-    return person
-
-
-def create_mock_attendee(
-    person_id: int,
-    session_cm_id: int,
-    year: int,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.session_cm_id = session_cm_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    # Add expand for session relation
-    attendee.expand = {"session": Mock(cm_id=session_cm_id)}
-    return attendee
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    end_date: str = "2026-07-05",
-    parent_id: int | None = None,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.end_date = end_date
-    session.parent_id = parent_id
-    return session
-
+from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
 # Fixtures
@@ -138,11 +57,11 @@ def sample_sessions_2026() -> list[Mock]:
 def sample_persons_2025() -> list[Mock]:
     """Sample persons for 2025 (last year's campers)."""
     return [
-        create_mock_person(101, "Emma", "Johnson", "F", 5, 1, 2025, 2025),
-        create_mock_person(102, "Liam", "Garcia", "M", 6, 2, 2025, 2025),
-        create_mock_person(103, "Olivia", "Chen", "F", 5, 1, 2025, 2025),
-        create_mock_person(104, "Noah", "Williams", "M", 7, 3, 2025, 2025),
-        create_mock_person(105, "Ava", "Brown", "F", 6, 2, 2025, 2025),
+        create_mock_person(101, "Emma", "Johnson", "F", 5, 1, year=2025, last_year_attended=2025),
+        create_mock_person(102, "Liam", "Garcia", "M", 6, 2, year=2025, last_year_attended=2025),
+        create_mock_person(103, "Olivia", "Chen", "F", 5, 1, year=2025, last_year_attended=2025),
+        create_mock_person(104, "Noah", "Williams", "M", 7, 3, year=2025, last_year_attended=2025),
+        create_mock_person(105, "Ava", "Brown", "F", 6, 2, year=2025, last_year_attended=2025),
     ]
 
 
@@ -151,12 +70,12 @@ def sample_persons_2026() -> list[Mock]:
     """Sample persons for 2026 (current year campers)."""
     return [
         # Returning campers (same cm_id as 2025, updated year)
-        create_mock_person(101, "Emma", "Johnson", "F", 6, 2, 2026, 2026),
-        create_mock_person(102, "Liam", "Garcia", "M", 7, 3, 2026, 2026),
-        create_mock_person(104, "Noah", "Williams", "M", 8, 4, 2026, 2026),
+        create_mock_person(101, "Emma", "Johnson", "F", 6, 2, year=2026, last_year_attended=2026),
+        create_mock_person(102, "Liam", "Garcia", "M", 7, 3, year=2026, last_year_attended=2026),
+        create_mock_person(104, "Noah", "Williams", "M", 8, 4, year=2026, last_year_attended=2026),
         # New campers in 2026
-        create_mock_person(201, "Sophia", "Martinez", "F", 5, 1, 2026, 2026),
-        create_mock_person(202, "Jackson", "Lee", "M", 6, 1, 2026, 2026),
+        create_mock_person(201, "Sophia", "Martinez", "F", 5, 1, year=2026, last_year_attended=2026),
+        create_mock_person(202, "Jackson", "Lee", "M", 6, 1, year=2026, last_year_attended=2026),
     ]
 
 
@@ -665,7 +584,7 @@ class TestEdgeCases:
 
         # Partial persons data - only one person exists
         persons = [
-            create_mock_person(101, "Emma", "Johnson"),
+            create_mock_person(101, "Emma", "Johnson", last_year_attended=2025),
         ]
 
         persons_by_id = {p.cm_id: p for p in persons}
@@ -677,8 +596,8 @@ class TestEdgeCases:
     def test_grade_with_none_values(self) -> None:
         """Test handling persons with None grade."""
         persons = [
-            create_mock_person(101, "Emma", "Johnson", grade=5),
-            create_mock_person(102, "Unknown", "Camper", grade=None),  # type: ignore
+            create_mock_person(101, "Emma", "Johnson", grade=5, last_year_attended=2025),
+            create_mock_person(102, "Unknown", "Camper", grade=None, last_year_attended=2025),  # type: ignore
         ]
 
         by_grade: dict[int | None, int] = {}

@@ -12,97 +12,17 @@ These tests are written FIRST before implementation (TDD).
 
 from __future__ import annotations
 
-import os
 from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-# Set AUTH_MODE before any imports that might load settings
-os.environ["AUTH_MODE"] = "bypass"
-os.environ["SKIP_PB_AUTH"] = "true"
-
 from api.main import create_app
+from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_person(
-    cm_id: int,
-    first_name: str,
-    last_name: str,
-    gender: str = "M",
-    grade: int = 6,
-    years_at_camp: int = 2,
-    year: int = 2026,
-) -> Mock:
-    """Create a mock person record."""
-    person = Mock()
-    person.cm_id = cm_id
-    person.first_name = first_name
-    person.last_name = last_name
-    person.gender = gender
-    person.grade = grade
-    person.years_at_camp = years_at_camp
-    person.year = year
-    return person
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    end_date: str = "2026-07-05",
-    parent_id: int | None = None,
-    pb_id: str | None = None,
-) -> Mock:
-    """Create a mock session record.
-
-    Args:
-        cm_id: CampMinder ID (used as key in sessions dict).
-        name: Session name.
-        year: Year.
-        session_type: main, ag, or embedded.
-        start_date: Start date string.
-        end_date: End date string.
-        parent_id: Parent session cm_id (for AG sessions).
-        pb_id: PocketBase ID (defaults to "session_{cm_id}").
-    """
-    session = Mock()
-    session.id = pb_id or f"session_{cm_id}"  # PocketBase ID
-    session.cm_id = cm_id
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.end_date = end_date
-    session.parent_id = parent_id
-    return session
-
-
-def create_mock_attendee(
-    person_id: int,
-    session: Mock,
-    year: int,
-    status: str = "enrolled",
-    status_id: int = 2,
-    is_active: bool = True,
-) -> Mock:
-    """Create a mock attendee record with session expand."""
-    attendee = Mock()
-    attendee.person_id = person_id
-    attendee.session_cm_id = session.cm_id
-    attendee.year = year
-    attendee.status = status
-    attendee.status_id = status_id
-    attendee.is_active = is_active
-    # Add expand for session relation (mimics PocketBase expansion)
-    attendee.expand = {"session": session}
-    return attendee
 
 
 def create_mock_camper_history(
@@ -250,16 +170,16 @@ def sample_attendees_2026(sample_sessions_2026: list[Mock]) -> list[Mock]:
     session_2, session_3, session_4, taste, ag_session = sample_sessions_2026
     return [
         # Session 2 attendees (4 campers)
-        create_mock_attendee(101, session_2, 2026),  # Emma F G5
-        create_mock_attendee(102, session_2, 2026),  # Liam M G5
-        create_mock_attendee(103, session_2, 2026),  # Olivia F G6
-        create_mock_attendee(104, session_2, 2026),  # Noah M G6
+        create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Emma F G5
+        create_mock_attendee(102, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Liam M G5
+        create_mock_attendee(103, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Olivia F G6
+        create_mock_attendee(104, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Noah M G6
         # Session 3 attendees (2 campers)
-        create_mock_attendee(105, session_3, 2026),  # Ava F G7
-        create_mock_attendee(106, session_3, 2026),  # Mason M G7
+        create_mock_attendee(105, session_cm_id=session_3.cm_id, session=session_3, year=2026),  # Ava F G7
+        create_mock_attendee(106, session_cm_id=session_3.cm_id, session=session_3, year=2026),  # Mason M G7
         # Session 4 attendees (2 campers)
-        create_mock_attendee(107, session_4, 2026),  # Sophia F G8
-        create_mock_attendee(108, session_4, 2026),  # Jackson M G8
+        create_mock_attendee(107, session_cm_id=session_4.cm_id, session=session_4, year=2026),  # Sophia F G8
+        create_mock_attendee(108, session_cm_id=session_4.cm_id, session=session_4, year=2026),  # Jackson M G8
     ]
 
 
@@ -298,29 +218,31 @@ def sample_attendees_history() -> list[Mock]:
 
     return [
         # Person 101 (Emma): 2 summers (2025, 2026)
-        create_mock_attendee(101, session_2025, 2025),
-        create_mock_attendee(101, session_2026, 2026),
+        create_mock_attendee(101, session_cm_id=session_2025.cm_id, session=session_2025, year=2025),
+        create_mock_attendee(101, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 102 (Liam): 1 summer (2026 only - first year)
-        create_mock_attendee(102, session_2026, 2026),
+        create_mock_attendee(102, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 103 (Olivia): 3 summers (2024, 2025, 2026)
-        create_mock_attendee(103, session_2024, 2024),
-        create_mock_attendee(103, session_2025, 2025),
-        create_mock_attendee(103, session_2026, 2026),
+        create_mock_attendee(103, session_cm_id=session_2024.cm_id, session=session_2024, year=2024),
+        create_mock_attendee(103, session_cm_id=session_2025.cm_id, session=session_2025, year=2025),
+        create_mock_attendee(103, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 104 (Noah): 2 summers (2025, 2026)
-        create_mock_attendee(104, session_2025, 2025),
-        create_mock_attendee(104, session_2026, 2026),
+        create_mock_attendee(104, session_cm_id=session_2025.cm_id, session=session_2025, year=2025),
+        create_mock_attendee(104, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 105 (Ava): 1 summer (2026 only - first year)
-        create_mock_attendee(105, session_2026, 2026),
+        create_mock_attendee(105, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 106 (Mason): 2 summers (2025, 2026)
-        create_mock_attendee(106, session_2025, 2025),
-        create_mock_attendee(106, session_2026, 2026),
+        create_mock_attendee(106, session_cm_id=session_2025.cm_id, session=session_2025, year=2025),
+        create_mock_attendee(106, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 107 (Sophia): 4 summers (2023, 2024, 2025, 2026)
-        create_mock_attendee(107, create_mock_session(501, "Session 4", 2023, "main"), 2023),
-        create_mock_attendee(107, session_2024, 2024),
-        create_mock_attendee(107, session_2025, 2025),
-        create_mock_attendee(107, session_2026, 2026),
+        create_mock_attendee(
+            107, session_cm_id=501, session=create_mock_session(501, "Session 4", 2023, "main"), year=2023
+        ),
+        create_mock_attendee(107, session_cm_id=session_2024.cm_id, session=session_2024, year=2024),
+        create_mock_attendee(107, session_cm_id=session_2025.cm_id, session=session_2025, year=2025),
+        create_mock_attendee(107, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
         # Person 108 (Jackson): 1 summer (2026 only - first year)
-        create_mock_attendee(108, session_2026, 2026),
+        create_mock_attendee(108, session_cm_id=session_2026.cm_id, session=session_2026, year=2026),
     ]
 
 
@@ -372,16 +294,16 @@ class TestRegistrationSessionFilter:
 
         # Create attendees in AG session
         ag_attendees = [
-            create_mock_attendee(109, ag_session, 2026),  # AG camper
-            create_mock_attendee(110, ag_session, 2026),  # AG camper
+            create_mock_attendee(109, session_cm_id=ag_session.cm_id, session=ag_session, year=2026),  # AG camper
+            create_mock_attendee(110, session_cm_id=ag_session.cm_id, session=ag_session, year=2026),  # AG camper
         ]
 
         # When filtering to session 2001, both main and AG attendees should be included
         # AG attendees should be included because their session's parent_id matches
         all_session_2_attendees = [
             # Regular session 2 attendees
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(102, session_2, 2026),
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(102, session_cm_id=session_2.cm_id, session=session_2, year=2026),
         ] + ag_attendees
 
         # Total should be 4 (2 main + 2 AG)
@@ -535,8 +457,12 @@ class TestSummerYearsBreakdown:
         summer_session = create_mock_session(2001, "Session 2", 2026, "main")
 
         attendees = [
-            create_mock_attendee(101, family_session, 2025),  # Should NOT count
-            create_mock_attendee(101, summer_session, 2026),  # Should count
+            create_mock_attendee(
+                101, session_cm_id=family_session.cm_id, session=family_session, year=2025
+            ),  # Should NOT count
+            create_mock_attendee(
+                101, session_cm_id=summer_session.cm_id, session=summer_session, year=2026
+            ),  # Should count
         ]
 
         # Filter to summer session types
@@ -768,9 +694,15 @@ class TestWaitlistedCancelledDeduplication:
 
         # One person (ID 101) waitlisted in 3 different sessions
         waitlisted_attendees = [
-            create_mock_attendee(101, session_2, 2026, status="waitlisted", status_id=3),
-            create_mock_attendee(101, session_3, 2026, status="waitlisted", status_id=3),
-            create_mock_attendee(101, session_4, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(
+                101, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="waitlisted", status_id=3
+            ),
+            create_mock_attendee(
+                101, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="waitlisted", status_id=3
+            ),
+            create_mock_attendee(
+                101, session_cm_id=session_4.cm_id, session=session_4, year=2026, status="waitlisted", status_id=3
+            ),
         ]
 
         # WRONG (current bug): counting raw records = 3
@@ -797,9 +729,15 @@ class TestWaitlistedCancelledDeduplication:
 
         # One person (ID 102) cancelled from 3 different sessions
         cancelled_attendees = [
-            create_mock_attendee(102, session_2, 2026, status="cancelled", status_id=4),
-            create_mock_attendee(102, session_3, 2026, status="cancelled", status_id=4),
-            create_mock_attendee(102, session_4, 2026, status="cancelled", status_id=4),
+            create_mock_attendee(
+                102, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="cancelled", status_id=4
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="cancelled", status_id=4
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session_4.cm_id, session=session_4, year=2026, status="cancelled", status_id=4
+            ),
         ]
 
         # WRONG (current bug): counting raw records = 3
@@ -825,8 +763,12 @@ class TestWaitlistedCancelledDeduplication:
 
         # One person (ID 103) enrolled in 2 different sessions
         enrolled_attendees = [
-            create_mock_attendee(103, session_2, 2026, status="enrolled", status_id=2),
-            create_mock_attendee(103, session_3, 2026, status="enrolled", status_id=2),
+            create_mock_attendee(
+                103, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="enrolled", status_id=2
+            ),
+            create_mock_attendee(
+                103, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="enrolled", status_id=2
+            ),
         ]
 
         # Enrolled uses set deduplication (correct existing behavior)
@@ -849,16 +791,26 @@ class TestWaitlistedCancelledDeduplication:
 
         # Person 104: enrolled in session 2, waitlisted in session 3
         enrolled_attendees = [
-            create_mock_attendee(104, session_2, 2026, status="enrolled", status_id=2),
+            create_mock_attendee(
+                104, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="enrolled", status_id=2
+            ),
         ]
         waitlisted_attendees = [
-            create_mock_attendee(104, session_3, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(
+                104, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="waitlisted", status_id=3
+            ),
         ]
 
         # Person 105: waitlisted in session 2, cancelled in session 3
-        waitlisted_attendees.append(create_mock_attendee(105, session_2, 2026, status="waitlisted", status_id=3))
+        waitlisted_attendees.append(
+            create_mock_attendee(
+                105, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="waitlisted", status_id=3
+            )
+        )
         cancelled_attendees = [
-            create_mock_attendee(105, session_3, 2026, status="cancelled", status_id=4),
+            create_mock_attendee(
+                105, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="cancelled", status_id=4
+            ),
         ]
 
         # Deduplicate each status category
@@ -897,14 +849,26 @@ class TestWaitlistedCancelledDeduplication:
 
         waitlisted_attendees = [
             # Person 101 waitlisted in 2 sessions
-            create_mock_attendee(101, session_2, 2026, status="waitlisted", status_id=3),
-            create_mock_attendee(101, session_3, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(
+                101, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="waitlisted", status_id=3
+            ),
+            create_mock_attendee(
+                101, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="waitlisted", status_id=3
+            ),
             # Person 102 waitlisted in 3 sessions
-            create_mock_attendee(102, session_2, 2026, status="waitlisted", status_id=3),
-            create_mock_attendee(102, session_3, 2026, status="waitlisted", status_id=3),
-            create_mock_attendee(102, session_4, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(
+                102, session_cm_id=session_2.cm_id, session=session_2, year=2026, status="waitlisted", status_id=3
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session_3.cm_id, session=session_3, year=2026, status="waitlisted", status_id=3
+            ),
+            create_mock_attendee(
+                102, session_cm_id=session_4.cm_id, session=session_4, year=2026, status="waitlisted", status_id=3
+            ),
             # Person 103 waitlisted in 1 session
-            create_mock_attendee(103, session_4, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(
+                103, session_cm_id=session_4.cm_id, session=session_4, year=2026, status="waitlisted", status_id=3
+            ),
         ]
 
         # Total records: 6, but unique persons: 3
@@ -1087,12 +1051,12 @@ class TestSessionLengthBySessionBreakdown:
 
         # Create attendees in different sessions
         attendees = [
-            create_mock_attendee(101, taste, 2026),
-            create_mock_attendee(102, taste, 2026),
-            create_mock_attendee(103, session_2, 2026),
-            create_mock_attendee(104, session_2, 2026),
-            create_mock_attendee(105, session_2, 2026),
-            create_mock_attendee(106, session_3, 2026),
+            create_mock_attendee(101, session_cm_id=taste.cm_id, session=taste, year=2026),
+            create_mock_attendee(102, session_cm_id=taste.cm_id, session=taste, year=2026),
+            create_mock_attendee(103, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(104, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(105, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(106, session_cm_id=session_3.cm_id, session=session_3, year=2026),
         ]
 
         mock_repo = Mock()
@@ -1136,7 +1100,7 @@ class TestSessionLengthBySessionBreakdown:
         sessions_dict = {2001: session_2}
 
         # Create attendees, one with missing expand
-        attendee_with_session = create_mock_attendee(101, session_2, 2026)
+        attendee_with_session = create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026)
         attendee_no_expand = Mock()
         attendee_no_expand.expand = {}  # Empty expand, no session
 
@@ -1166,10 +1130,10 @@ class TestSessionLengthBySessionBreakdown:
         }
 
         attendees = [
-            create_mock_attendee(101, four_week, 2026),  # 4-week+ first
-            create_mock_attendee(102, one_week, 2026),  # 1-week second
-            create_mock_attendee(103, three_week, 2026),  # 3-week third
-            create_mock_attendee(104, two_week, 2026),  # 2-week fourth
+            create_mock_attendee(101, session_cm_id=four_week.cm_id, session=four_week, year=2026),  # 4-week+ first
+            create_mock_attendee(102, session_cm_id=one_week.cm_id, session=one_week, year=2026),  # 1-week second
+            create_mock_attendee(103, session_cm_id=three_week.cm_id, session=three_week, year=2026),  # 3-week third
+            create_mock_attendee(104, session_cm_id=two_week.cm_id, session=two_week, year=2026),  # 2-week fourth
         ]
 
         mock_repo = Mock()
@@ -1204,12 +1168,12 @@ class TestSessionLengthBySessionAGMerging:
 
         # 4 campers in main, 2 in AG
         attendees = [
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(102, session_2, 2026),
-            create_mock_attendee(103, session_2, 2026),
-            create_mock_attendee(104, session_2, 2026),
-            create_mock_attendee(105, ag_session_2, 2026),
-            create_mock_attendee(106, ag_session_2, 2026),
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(102, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(103, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(104, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(105, session_cm_id=ag_session_2.cm_id, session=ag_session_2, year=2026),
+            create_mock_attendee(106, session_cm_id=ag_session_2.cm_id, session=ag_session_2, year=2026),
         ]
 
         mock_repo = Mock()
@@ -1234,9 +1198,9 @@ class TestSessionLengthBySessionAGMerging:
         sessions_dict = {2001: session_2, 2002: session_3, 2005: ag_session_2}
 
         attendees = [
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(102, ag_session_2, 2026),
-            create_mock_attendee(103, session_3, 2026),
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(102, session_cm_id=ag_session_2.cm_id, session=ag_session_2, year=2026),
+            create_mock_attendee(103, session_cm_id=session_3.cm_id, session=session_3, year=2026),
         ]
 
         mock_repo = Mock()
@@ -1261,9 +1225,9 @@ class TestSessionLengthBySessionAGMerging:
         sessions_dict = {1001: taste, 2001: session_2, 2005: ag_session_2}
 
         attendees = [
-            create_mock_attendee(101, taste, 2026),
-            create_mock_attendee(102, session_2, 2026),
-            create_mock_attendee(103, ag_session_2, 2026),
+            create_mock_attendee(101, session_cm_id=taste.cm_id, session=taste, year=2026),
+            create_mock_attendee(102, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(103, session_cm_id=ag_session_2.cm_id, session=ag_session_2, year=2026),
         ]
 
         mock_repo = Mock()
@@ -1293,8 +1257,8 @@ class TestSessionLengthBySessionAGMerging:
         sessions_dict = {2001: session_2, 2005: orphan_ag}
 
         attendees = [
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(102, orphan_ag, 2026),
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(102, session_cm_id=orphan_ag.cm_id, session=orphan_ag, year=2026),
         ]
 
         mock_repo = Mock()
@@ -1533,8 +1497,9 @@ class TestSessionCapacityUtilization:
         """
         from api.services.registration_service import RegistrationService
 
-        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
-        session_2.pb_id = "session_2001"
+        session_2 = create_mock_session(
+            2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05", pb_id="session_2001"
+        )
 
         sessions_dict = {2001: session_2}
 
@@ -1543,7 +1508,10 @@ class TestSessionCapacityUtilization:
         bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks]
 
         # 30 attendees enrolled
-        attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(30)]
+        attendees = [
+            create_mock_attendee(100 + i, session_cm_id=session_2.cm_id, session=session_2, year=2026)
+            for i in range(30)
+        ]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)
@@ -1570,10 +1538,12 @@ class TestSessionCapacityUtilization:
         """
         from api.services.registration_service import RegistrationService
 
-        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
-        session_2.pb_id = "session_2001"
-        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
-        ag_session_2.pb_id = "session_2005"
+        session_2 = create_mock_session(
+            2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05", pb_id="session_2001"
+        )
+        ag_session_2 = create_mock_session(
+            2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001, pb_id="session_2005"
+        )
 
         sessions_dict = {2001: session_2, 2005: ag_session_2}
 
@@ -1589,8 +1559,13 @@ class TestSessionCapacityUtilization:
         ag_bunk_plans = [create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks]
 
         # 4 main attendees + 2 AG attendees
-        main_attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(4)]
-        ag_attendees = [create_mock_attendee(200 + i, ag_session_2, 2026) for i in range(2)]
+        main_attendees = [
+            create_mock_attendee(100 + i, session_cm_id=session_2.cm_id, session=session_2, year=2026) for i in range(4)
+        ]
+        ag_attendees = [
+            create_mock_attendee(200 + i, session_cm_id=ag_session_2.cm_id, session=ag_session_2, year=2026)
+            for i in range(2)
+        ]
         all_attendees = main_attendees + ag_attendees
         all_bunk_plans = main_bunk_plans + ag_bunk_plans
 
@@ -1624,8 +1599,9 @@ class TestSessionCapacityUtilization:
         """
         from api.services.registration_service import RegistrationService
 
-        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
-        taste.pb_id = "session_1001"
+        taste = create_mock_session(
+            1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23", pb_id="session_1001"
+        )
 
         sessions_dict = {1001: taste}
 
@@ -1638,7 +1614,9 @@ class TestSessionCapacityUtilization:
         bunk_plans = [create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks]
 
         # 18 attendees
-        attendees = [create_mock_attendee(100 + i, taste, 2026) for i in range(18)]
+        attendees = [
+            create_mock_attendee(100 + i, session_cm_id=taste.cm_id, session=taste, year=2026) for i in range(18)
+        ]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)
@@ -1664,7 +1642,10 @@ class TestSessionCapacityUtilization:
         sessions_dict = {2001: session_2}
         bunk_plans: list[Mock] = []  # No bunk plans for any session
 
-        attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(10)]
+        attendees = [
+            create_mock_attendee(100 + i, session_cm_id=session_2.cm_id, session=session_2, year=2026)
+            for i in range(10)
+        ]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)
@@ -2312,11 +2293,13 @@ class TestGenderBySessionLength:
         }
 
         attendees = [
-            create_mock_attendee(101, taste, 2026),  # Emma F -> 1-week
-            create_mock_attendee(102, taste, 2026),  # Liam M -> 1-week
-            create_mock_attendee(103, session_2, 2026),  # Olivia F -> 3-week
-            create_mock_attendee(104, session_2, 2026),  # Noah M -> 3-week
-            create_mock_attendee(105, session_2, 2026),  # Ava F -> 3-week
+            create_mock_attendee(101, session_cm_id=taste.cm_id, session=taste, year=2026),  # Emma F -> 1-week
+            create_mock_attendee(102, session_cm_id=taste.cm_id, session=taste, year=2026),  # Liam M -> 1-week
+            create_mock_attendee(
+                103, session_cm_id=session_2.cm_id, session=session_2, year=2026
+            ),  # Olivia F -> 3-week
+            create_mock_attendee(104, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Noah M -> 3-week
+            create_mock_attendee(105, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Ava F -> 3-week
         ]
 
         mock_repo = Mock()
@@ -2353,9 +2336,9 @@ class TestGenderBySessionLength:
         }
 
         attendees = [
-            create_mock_attendee(103, four_week, 2026),  # 4-week+ first
-            create_mock_attendee(101, one_week, 2026),  # 1-week second
-            create_mock_attendee(102, three_week, 2026),  # 3-week third
+            create_mock_attendee(103, session_cm_id=four_week.cm_id, session=four_week, year=2026),  # 4-week+ first
+            create_mock_attendee(101, session_cm_id=one_week.cm_id, session=one_week, year=2026),  # 1-week second
+            create_mock_attendee(102, session_cm_id=three_week.cm_id, session=three_week, year=2026),  # 3-week third
         ]
 
         mock_repo = Mock()
@@ -2391,8 +2374,10 @@ class TestGenderBySessionLength:
         }
 
         attendees = [
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(102, session_2, 2026),  # No matching person
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(
+                102, session_cm_id=session_2.cm_id, session=session_2, year=2026
+            ),  # No matching person
         ]
 
         mock_repo = Mock()
@@ -2419,9 +2404,11 @@ class TestGenderBySessionLength:
         }
 
         attendees = [
-            create_mock_attendee(101, session_2, 2026),  # Emma F -> main
-            create_mock_attendee(102, session_2, 2026),  # Liam M -> main
-            create_mock_attendee(103, ag_session_2, 2026),  # Olivia F -> AG (merges to parent)
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Emma F -> main
+            create_mock_attendee(102, session_cm_id=session_2.cm_id, session=session_2, year=2026),  # Liam M -> main
+            create_mock_attendee(
+                103, session_cm_id=ag_session_2.cm_id, session=ag_session_2, year=2026
+            ),  # Olivia F -> AG (merges to parent)
         ]
 
         mock_repo = Mock()
@@ -2449,8 +2436,8 @@ class TestGenderBySessionLength:
 
         # Emma is in both 3-week sessions
         attendees = [
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(101, session_3, 2026),
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(101, session_cm_id=session_3.cm_id, session=session_3, year=2026),
         ]
 
         mock_repo = Mock()
@@ -2477,8 +2464,12 @@ class TestGenderBySessionLength:
         }
 
         attendees = [
-            create_mock_attendee(101, session_2, 2026),  # Emma F -> main (included)
-            create_mock_attendee(102, family, 2026),  # Liam M -> family (excluded)
+            create_mock_attendee(
+                101, session_cm_id=session_2.cm_id, session=session_2, year=2026
+            ),  # Emma F -> main (included)
+            create_mock_attendee(
+                102, session_cm_id=family.cm_id, session=family, year=2026
+            ),  # Liam M -> family (excluded)
         ]
 
         mock_repo = Mock()
@@ -2507,7 +2498,7 @@ class TestGenderBySessionLength:
         }
 
         # Simulate person_id as a different numeric type
-        attendee = create_mock_attendee(101, session_2, 2026)
+        attendee = create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026)
         attendee.person_id = "101"  # String instead of int
 
         mock_repo = Mock()
@@ -2538,10 +2529,10 @@ class TestGenderBySessionLength:
         }
 
         attendees = [
-            create_mock_attendee(101, session_2, 2026),
-            create_mock_attendee(102, session_2, 2026),
-            create_mock_attendee(103, session_2, 2026),
-            create_mock_attendee(104, session_2, 2026),
+            create_mock_attendee(101, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(102, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(103, session_cm_id=session_2.cm_id, session=session_2, year=2026),
+            create_mock_attendee(104, session_cm_id=session_2.cm_id, session=session_2, year=2026),
         ]
 
         mock_repo = Mock()
