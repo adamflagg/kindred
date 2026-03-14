@@ -7,12 +7,12 @@ Soft incentive: Prefer moving campers up levels (handled in objective function)
 
 from __future__ import annotations
 
-import logging
+from bunking.logging_config import get_logger
 
 from .base import SolverContext
 from .helpers import extract_bunk_level, get_level_order
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_level_progression_constraints(ctx: SolverContext) -> None:

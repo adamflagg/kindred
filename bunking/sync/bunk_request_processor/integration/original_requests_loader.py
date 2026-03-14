@@ -17,11 +17,11 @@ The original_bunk_requests table structure (from Go import):
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ from ..shared.constants import (
     FIELD_TO_SOURCE_FIELD,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

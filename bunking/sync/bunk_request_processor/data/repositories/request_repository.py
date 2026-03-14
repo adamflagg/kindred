@@ -5,9 +5,9 @@ Handles all database operations related to BunkRequest records."""
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ...core.models import (
@@ -18,7 +18,7 @@ from ...core.models import (
 )
 from ..pocketbase_wrapper import PocketBaseWrapper
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RequestRepository:

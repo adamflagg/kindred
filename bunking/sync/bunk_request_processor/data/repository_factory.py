@@ -7,9 +7,9 @@ ensuring all repositories share the same PocketBase client and caches.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
     TemporalNameCache,
 )
@@ -30,7 +30,7 @@ from bunking.sync.bunk_request_processor.data.repositories.session_repository im
 )
 from pocketbase import PocketBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RepositoryFactory:

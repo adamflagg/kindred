@@ -8,13 +8,13 @@ No silent fallbacks - fails immediately on missing/invalid config.
 
 from __future__ import annotations
 
-import logging
 import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .errors import (
@@ -30,7 +30,7 @@ from .types import ConfigType
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConfigLoader:

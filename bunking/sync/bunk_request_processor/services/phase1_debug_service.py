@@ -9,9 +9,10 @@ This service wraps Phase1ParseService to enable:
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import TYPE_CHECKING, Any
+
+from bunking.logging_config import get_logger
 
 from ..core.models import ParseRequest, ParseResult, RequestType
 from ..shared.constants import FIELD_TO_SOURCE_FIELD
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from ..integration.original_requests_loader import OriginalRequest, OriginalRequestsLoader
     from .phase1_parse_service import Phase1ParseService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Phase1DebugService:

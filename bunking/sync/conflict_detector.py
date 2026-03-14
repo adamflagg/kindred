@@ -6,13 +6,14 @@ Identifies opposing directional requests and other conflicts that require manual
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

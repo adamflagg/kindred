@@ -17,16 +17,16 @@ Components evaluated:
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
 from bunking.config import ConfigLoader
+from bunking.logging_config import get_logger
 from bunking.solver.bunk_ordering import get_bunk_rank
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

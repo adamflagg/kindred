@@ -6,13 +6,13 @@ This router provides endpoints for merging and splitting bunk_requests.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from bunking.auth_middleware import AuthUser
+from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 from bunking.sync.bunk_request_processor.core.models import (
@@ -32,7 +32,7 @@ from ..dependencies import pb
 # Reverse mapping: source_field ("Share Bunk With") -> field enum ("bunk_with")
 SOURCE_FIELD_TO_DB_FIELD = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["requests"])
 

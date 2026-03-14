@@ -6,14 +6,15 @@ parsing and resolution, not constraint satisfaction."""
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from bunking.logging_config import get_logger
+
 from ..core.models import ParsedRequest, RequestType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConflictType(Enum):

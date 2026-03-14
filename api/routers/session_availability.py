@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.logging_config import get_logger
 
 from ..dependencies import pb
 from ..schemas.session_availability import SessionAvailabilityResponse
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 

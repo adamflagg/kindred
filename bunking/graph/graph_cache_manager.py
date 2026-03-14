@@ -7,14 +7,15 @@ Thread-safe implementation for concurrent access.
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from typing import Any
 
 import networkx as nx
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class GraphCacheManager:

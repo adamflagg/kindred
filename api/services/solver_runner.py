@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ..constants.collections import SOLVER_RUNS, SUPERUSERS
@@ -27,7 +27,7 @@ from .data_fetcher import (
     prepare_direct_solver_input,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def run_solver_task_v2(

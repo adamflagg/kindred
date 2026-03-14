@@ -5,14 +5,15 @@ potentially malicious input before sending to AI providers."""
 
 from __future__ import annotations
 
-import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class RiskLevel(Enum):

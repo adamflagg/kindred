@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
@@ -14,7 +15,7 @@ from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER, SIBLING_PLACEHOL
 from ..shared.name_utils import normalize_name
 from ..shared.nickname_groups import names_match_via_nicknames
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ResolutionCase:

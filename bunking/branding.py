@@ -14,12 +14,13 @@ Usage:
 from __future__ import annotations
 
 import json
-import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Config file paths relative to project root
 CONFIG_DIR = Path(__file__).parent.parent / "config"

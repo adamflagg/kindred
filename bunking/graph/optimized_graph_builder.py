@@ -7,16 +7,17 @@ while maintaining all data fields and readability.
 
 from __future__ import annotations
 
-import logging
 import time
 from collections import defaultdict
 from typing import Any
 
 import networkx as nx
 
+from bunking.logging_config import get_logger
+
 from .social_graph_builder import SocialGraphBuilder
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class OptimizedSocialGraphBuilder(SocialGraphBuilder):

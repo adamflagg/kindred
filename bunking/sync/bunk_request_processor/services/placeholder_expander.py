@@ -11,8 +11,9 @@ Supported placeholders:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
+
+from bunking.logging_config import get_logger
 
 from ..core.models import (
     ParsedRequest,
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from ..data.repositories.attendee_repository import AttendeeRepository
     from ..data.repositories.person_repository import PersonRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PlaceholderExpander:

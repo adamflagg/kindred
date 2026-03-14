@@ -10,13 +10,14 @@ This helps maintain age-appropriate groupings within each bunk.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from .base import SolverContext
 from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_grade_spread_constraints(ctx: SolverContext) -> None:

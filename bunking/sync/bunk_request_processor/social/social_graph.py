@@ -6,19 +6,19 @@ confidence scoring and name disambiguation, not for creating new requests."""
 
 from __future__ import annotations
 
-import logging
 from enum import Enum
 from typing import Any
 
 import networkx as nx
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ..core.models import Person
 from ..data.repositories.session_repository import SessionRepository
 from ..resolution.interfaces import ResolutionResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RelationshipType(Enum):

@@ -14,16 +14,16 @@ The scoring logic mirrors the solver's objective function:
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
 from bunking.config import ConfigLoader
+from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

@@ -7,9 +7,9 @@ handling initialization and cleanup automatically.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
+from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.data.connection_manager import (
     ConnectionConfig,
     ConnectionManager,
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     )
     from pocketbase import PocketBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DataAccessContext:

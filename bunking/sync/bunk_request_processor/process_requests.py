@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from bunking.logging_config import get_logger
+
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -25,7 +27,7 @@ from .orchestrator import RequestOrchestrator
 from .shared.constants import ALL_PROCESSING_FIELDS, validate_source_fields
 
 # Setup logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def load_configuration() -> dict[str, Any]:

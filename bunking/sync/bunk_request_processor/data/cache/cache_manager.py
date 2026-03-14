@@ -5,12 +5,13 @@ and separate caches for different phases of processing."""
 
 from __future__ import annotations
 
-import logging
 import time
 from collections import OrderedDict
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class CacheEntry:

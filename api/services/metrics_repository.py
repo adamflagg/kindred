@@ -7,15 +7,15 @@ enabling dependency injection and testability.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, Any
 
 from api.services.reconstruction import parse_date_only
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from pocketbase import PocketBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MetricsRepository:

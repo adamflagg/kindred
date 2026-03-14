@@ -8,15 +8,16 @@ Handles the case when an original_bunk_request's content changes (hash differs):
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from ..data.repositories.request_repository import RequestRepository
     from ..data.repositories.source_link_repository import SourceLinkRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

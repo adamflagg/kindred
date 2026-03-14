@@ -6,17 +6,16 @@ are URL-encoded with '+' for spaces, but PocketBase server expects
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from pocketbase.models.utils.list_result import ListResult
 from pocketbase.services.record_service import RecordService
 
 # Import TRACE constant and ensure trace method is available
-from bunking.logging_config import TRACE
+from bunking.logging_config import TRACE, get_logger
 from pocketbase import PocketBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WrappedRecordService(RecordService):

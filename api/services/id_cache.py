@@ -7,11 +7,11 @@ Provides efficient CM ID <-> PB ID translations with caching.
 from __future__ import annotations
 
 import asyncio
-import logging
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class IDLookupCache:

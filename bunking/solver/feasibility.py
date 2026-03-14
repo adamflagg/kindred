@@ -6,18 +6,19 @@ Pre-solve checks to identify potential issues before running the solver.
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from ortools.sat.python import cp_model
+
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from bunking.config import ConfigLoader
     from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectSolverInput
     from bunking.solver.logging import ConstraintLogger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def check_feasibility(

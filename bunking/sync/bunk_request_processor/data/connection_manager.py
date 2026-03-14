@@ -7,18 +7,18 @@ for isolated connections when needed (e.g., concurrent operations).
 
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.data.pocketbase_wrapper import PocketBaseWrapper
 from pocketbase import PocketBase
 
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

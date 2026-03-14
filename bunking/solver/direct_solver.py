@@ -5,7 +5,6 @@ No transformation needed.
 
 from __future__ import annotations
 
-import logging
 import os
 from collections import defaultdict
 from typing import Any
@@ -13,6 +12,7 @@ from typing import Any
 from ortools.sat.python import cp_model
 
 from bunking.config import ConfigLoader
+from bunking.logging_config import get_logger
 from bunking.models_v2 import (
     DirectBunkAssignment,
     DirectBunkRequest,
@@ -43,7 +43,7 @@ from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
 from .solution import analyze_solution, calculate_satisfied_requests
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DirectBunkingSolver:

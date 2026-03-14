@@ -13,9 +13,10 @@ from typing import Any
 import community as community_louvain
 import networkx as nx
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create dedicated logger for self-referential detection
 self_ref_logger = logging.getLogger("self_referential")

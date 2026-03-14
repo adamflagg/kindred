@@ -6,8 +6,9 @@ Extracted from orchestrator to reduce class size and improve testability.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from ..core.models import (
     BunkRequest,
@@ -16,7 +17,7 @@ from ..core.models import (
     RequestType,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RequestBuilder:

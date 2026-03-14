@@ -11,17 +11,17 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 from bunking.graph.graph_cache_manager import GraphCacheManager
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .services.id_cache import IDLookupCache
 from .services.metrics_cache import MetricsCache
 from .settings import get_settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ========================================
 # PocketBase Client

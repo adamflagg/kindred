@@ -12,17 +12,18 @@ This module handles the MECHANICS of request satisfaction:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ortools.sat.python import cp_model
+
+from bunking.logging_config import get_logger
 
 from .base import SolverContext
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunkRequest
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_bunk_request_satisfaction_vars(

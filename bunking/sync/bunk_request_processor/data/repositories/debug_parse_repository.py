@@ -6,9 +6,9 @@ Phase 1 parsing output separately from production bunk_requests.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
+from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.services.staff_note_parser import (
     extract_staff_pattern,
 )
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from ..pocketbase_wrapper import PocketBaseWrapper
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Maximum IDs per query to avoid URL length limits
 # Each ID adds ~40 chars to filter, 50 IDs keeps URLs under 2KB

@@ -12,12 +12,13 @@ This service:
 from __future__ import annotations
 
 import json
-import logging
 import re
 from pathlib import Path
 from typing import Any, ClassVar
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Default path for staff list config
 DEFAULT_STAFF_LIST_PATH = Path(__file__).parent.parent.parent.parent.parent / "config" / "staff_list.json"

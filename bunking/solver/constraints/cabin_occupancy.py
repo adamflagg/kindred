@@ -9,15 +9,16 @@ Staff never put fewer than ~8 campers in a cabin. This module adds:
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from ortools.sat.python import cp_model
 
+from bunking.logging_config import get_logger
+
 from .base import SolverContext
 from .helpers import is_ag_session_bunk
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_cabin_minimum_occupancy_constraints(

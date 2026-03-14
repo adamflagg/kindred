@@ -5,7 +5,6 @@ Bunking validation system to analyze assignments and report issues.
 from __future__ import annotations
 
 import json
-import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
 from bunking.sync.bunk_request_processor.shared.constants import (
@@ -67,7 +67,7 @@ class HistoricalBunkingRecord:
     session_cm_id: int | None = None  # For same-session regression comparison
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ValidationSeverity(str, Enum):

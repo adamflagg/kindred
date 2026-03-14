@@ -6,11 +6,12 @@ WAL mode for safe concurrent reads while PocketBase writes.
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 _connection: sqlite3.Connection | None = None
 

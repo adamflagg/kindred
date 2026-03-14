@@ -7,8 +7,9 @@ enrollment counts, capacity, and status (open/limited/waitlist).
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, Any, ClassVar
+
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from api.services.metrics_repository import MetricsRepository
@@ -21,7 +22,7 @@ from api.schemas.session_availability import (
 )
 from api.utils.session_metrics import resolve_duration_sessions
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SessionAvailabilityService:

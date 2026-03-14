@@ -11,8 +11,9 @@ capacity, the first N overflows are exempt from penalty (where N = campers - cap
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
+
+from bunking.logging_config import get_logger
 
 from .base import SolverContext
 from .helpers import is_ag_session_bunk
@@ -20,7 +21,7 @@ from .helpers import is_ag_session_bunk
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_cabin_capacity_constraints(ctx: SolverContext) -> None:

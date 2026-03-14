@@ -11,7 +11,6 @@ This router handles:
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -20,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.social_graph_builder import SocialGraphBuilder
+from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
@@ -36,7 +36,7 @@ from ..schemas import (
 )
 from ..settings import get_settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Load settings for graph algorithm configuration
 _settings = get_settings()

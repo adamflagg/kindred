@@ -8,7 +8,6 @@ against constraints and rules.
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,6 +18,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
 from bunking.bunking_validator import BunkingValidator, HistoricalBunkingRecord
+from bunking.logging_config import get_logger
 from bunking.models import (
     Bunk,
     BunkAssignment,
@@ -33,7 +33,7 @@ from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
 from ..services.session_context import build_session_context
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["validation"])
 

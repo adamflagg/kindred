@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from bunking.logging_config import get_logger
+
 from .age_preference import add_age_preference_satisfaction_vars
 from .base import SolverContext
 from .bunk_requests import add_bunk_request_satisfaction_vars
@@ -29,7 +31,7 @@ if TYPE_CHECKING:
 
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Source fields that contain explicit camper requests (not inferred preferences)
 EXPLICIT_SOURCE_FIELDS = {

@@ -9,16 +9,17 @@ original_bunk_requests. Enables:
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING
+
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from pocketbase import PocketBase
 
     from ..pocketbase_wrapper import PocketBaseWrapper
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 COLLECTION_NAME = "bunk_request_sources"
 

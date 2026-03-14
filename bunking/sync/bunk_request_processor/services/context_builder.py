@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+
+from bunking.logging_config import get_logger
 
 from ..core.models import Person
 from ..integration.ai_service import AIRequestContext
@@ -14,7 +15,7 @@ from ..shared.nickname_groups import find_nickname_variations
 if TYPE_CHECKING:
     from ..data.repositories import AttendeeRepository, PersonRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ContextBuilder:

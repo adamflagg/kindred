@@ -8,12 +8,12 @@ If AI returns the wrong type for a strict field, this validator corrects it."""
 
 from __future__ import annotations
 
-import logging
+from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, RequestType
 from ..shared.constants import SourceField
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Fields with strict type requirements

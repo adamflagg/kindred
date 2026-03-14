@@ -17,13 +17,15 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from bunking.logging_config import get_logger
+
 from ..bunk_ordering import get_bunk_rank
 from .base import SolverContext
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunk
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any]) -> None:

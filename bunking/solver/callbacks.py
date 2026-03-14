@@ -4,14 +4,15 @@ Solver Callbacks - Progress monitoring for OR-Tools CP-SAT solver.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 
 from ortools.sat.python import cp_model
 
+from bunking.logging_config import get_logger
+
 from .logging import ConstraintLogger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SolverProgressCallback(cp_model.CpSolverSolutionCallback):  # type: ignore[misc]

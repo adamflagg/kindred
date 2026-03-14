@@ -16,17 +16,18 @@ are determined by the solver at solve time, not when created.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from ortools.sat.python import cp_model
+
+from bunking.logging_config import get_logger
 
 from .base import SolverContext
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunkRequest
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_age_preference_satisfaction_vars(
