@@ -107,6 +107,7 @@ export default function VelocityPage() {
     splitByGender: controls.splitByGender,
     selectedPriorYears: controls.selectedPriorYears,
   })
+  const { phaseLines } = chartData
 
   // Separate zoom state per chart to avoid cross-contamination (#510)
   const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
@@ -114,12 +115,12 @@ export default function VelocityPage() {
 
   // Map week_number -> PhaseMarker for table badge lookup (page-specific)
   const phaseByWeek = useMemo(() => {
-    const map = new Map<number, (typeof chartData.phaseLines)[0]>()
-    for (const phase of chartData.phaseLines) {
+    const map = new Map<number, (typeof phaseLines)[0]>()
+    for (const phase of phaseLines) {
       map.set(phase.weekNumber, phase)
     }
     return map
-  }, [chartData.phaseLines])
+  }, [phaseLines])
 
   // Summary card values
   const summaryCards = useMemo(() => {
