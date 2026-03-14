@@ -627,6 +627,8 @@ describe('useVelocityChartData', () => {
         enrolled_at_current_week: 80,
         final_enrolled: 95,
         year: 2024,
+        session_name: 'Session 1',
+        session_cm_id: 1,
       })
     })
 

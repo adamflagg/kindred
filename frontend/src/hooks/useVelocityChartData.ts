@@ -369,18 +369,11 @@ export function useVelocityChartData(
 
   // Build prior year session summary map keyed by canonical session name
   const priorSessionMap = useMemo(() => {
-    const map = new Map<
-      string,
-      { enrolled_at_current_week: number | null; final_enrolled: number; year: number }
-    >()
+    const map = new Map<string, VelocityResponse['prior_year_session_summaries'][number]>()
     for (const summary of data?.prior_year_session_summaries ?? []) {
       if (summary.session_name) {
         const canonical = resolveSessionAlias(summary.session_name)
-        map.set(canonical, {
-          enrolled_at_current_week: summary.enrolled_at_current_week,
-          final_enrolled: summary.final_enrolled,
-          year: summary.year,
-        })
+        map.set(canonical, summary)
       }
     }
     return map
