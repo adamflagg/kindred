@@ -44,7 +44,7 @@ import {
   GENDER_COLORS,
   formatDateShort,
   priorYearDailyDateLabel,
-} from './chartConstants'
+} from '../../../utils/chartFormatters'
 import PartialWeekDot from './PartialWeekDot'
 
 export default function CancellationVelocityPage() {
