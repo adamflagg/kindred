@@ -71,6 +71,8 @@ class RetentionService:
             compare_year: The comparison year (e.g., 2026).
             session_types: Optional list of session types to filter.
             session_cm_id: Optional specific session ID to filter.
+            duration: Optional duration category (e.g., "1-week", "2-week") to filter
+                sessions by length.
 
         Returns:
             RetentionMetricsResponse with all breakdown metrics.

@@ -53,6 +53,8 @@ class HistoricalService:
             session_types: Optional list of session types to filter.
             session_cm_id: Optional session CampMinder ID to filter by.
                 When provided, filters to sessions with the same NAME across years.
+            duration: Optional duration category (e.g., "1-week", "2-week") to filter
+                sessions by length.
 
         Returns:
             HistoricalTrendsResponse with trend data.

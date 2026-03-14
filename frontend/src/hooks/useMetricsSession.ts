@@ -24,7 +24,7 @@ export interface MetricsSessionContextType {
   clearSession: () => void
   /** Current view mode: 'sessions' (camp) or 'quests' */
   viewMode: MetricsViewMode
-  /** Set the view mode and clear session selection */
+  /** Set the view mode, clearing both session selection and duration filter */
   setViewMode: (mode: MetricsViewMode) => void
   /** Active session types derived from viewMode + selectedSessionCmId */
   activeSessionTypes: readonly string[]

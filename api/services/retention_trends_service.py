@@ -69,6 +69,8 @@ class RetentionTrendsService:
             num_years: Number of year-to-year transitions to include (default: 3).
             session_types: Optional list of session types to filter.
             session_cm_id: Optional specific session ID to filter.
+            duration: Optional duration category (e.g., "1-week", "2-week") to filter
+                sessions by length.
 
         Returns:
             RetentionTrendsResponse with trend data.
