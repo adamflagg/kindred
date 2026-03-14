@@ -196,6 +196,8 @@ class DirectBunkingSolver:
         - bunk_with targeting a person in a different session (session boundaries
           prevent sharing a bunk). not_bunk_with across sessions is still possible
           since separation is guaranteed by session boundaries.
+        - bunk_with or not_bunk_with request with no requested_person_cm_id
+          (malformed request)
         """
         person_by_cm_id = self.input.person_by_cm_id
         total_requests = 0
@@ -245,7 +247,7 @@ class DirectBunkingSolver:
         if impossible_count > 0:
             logger.warning(
                 f"Request validation: {impossible_count} of {total_requests} requests "
-                f"are infeasible (person not in solver or in a different session)"
+                f"are infeasible (person not in solver, in a different session, or missing target)"
             )
             logger.warning(f"Affected campers: {len(affected_campers)}")
 
