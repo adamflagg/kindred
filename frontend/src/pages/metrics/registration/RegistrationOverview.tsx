@@ -335,7 +335,7 @@ export default function RegistrationOverview() {
       </div>
 
       {/* Charts Row 1: Gender + Gender by Grade */}
-      {isComparing && compData ? (
+      {compareYear !== null && compData ? (
         <>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <BreakdownChart
@@ -358,7 +358,7 @@ export default function RegistrationOverview() {
           <ComparisonSummaryTable
             title="Gender Comparison"
             primaryYear={currentYear}
-            compareYear={compareYear!}
+            compareYear={compareYear}
             primaryData={genderChartData}
             compareData={transformGenderData(compData.by_gender)}
           />
@@ -375,7 +375,7 @@ export default function RegistrationOverview() {
               onBarClick={(item) => {
                 const grade = item['grade']
                 const value = grade !== null ? String(grade) : 'null'
-                const label = grade !== null ? `Grade ${grade}` : 'Unknown'
+                const label = grade !== null ? `Grade ${String(grade)}` : 'Unknown'
                 setFilter({ type: 'grade', value, label })
               }}
             />
@@ -413,7 +413,7 @@ export default function RegistrationOverview() {
             onBarClick={(item) => {
               const grade = item['grade']
               const value = grade !== null ? String(grade) : 'null'
-              const label = grade !== null ? `Grade ${grade}` : 'Unknown'
+              const label = grade !== null ? `Grade ${String(grade)}` : 'Unknown'
               setFilter({ type: 'grade', value, label })
             }}
           />
@@ -421,7 +421,7 @@ export default function RegistrationOverview() {
       )}
 
       {/* Charts Row 2: New vs Returning + Grade */}
-      {isComparing && compData ? (
+      {compareYear !== null && compData ? (
         <>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <BreakdownChart
@@ -442,7 +442,7 @@ export default function RegistrationOverview() {
           <ComparisonSummaryTable
             title="New vs Returning Comparison"
             primaryYear={currentYear}
-            compareYear={compareYear!}
+            compareYear={compareYear}
             primaryData={newVsReturningData}
             compareData={transformNewVsReturningData(compData.new_vs_returning)}
           />
@@ -463,7 +463,7 @@ export default function RegistrationOverview() {
           <ComparisonSummaryTable
             title="Grade Comparison"
             primaryYear={currentYear}
-            compareYear={compareYear!}
+            compareYear={compareYear}
             primaryData={gradeChartData}
             compareData={transformGradeData(compData.by_grade)}
           />
@@ -492,7 +492,7 @@ export default function RegistrationOverview() {
       {/* Charts Row 3: Session + Session Length (hidden when single session selected) */}
       {!selectedSessionCmId && (
         <>
-          {isComparing && compData ? (
+          {compareYear !== null && compData ? (
             <>
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <CssHorizontalBarChart
@@ -519,7 +519,7 @@ export default function RegistrationOverview() {
               <ComparisonSummaryTable
                 title="Session Enrollment Comparison"
                 primaryYear={currentYear}
-                compareYear={compareYear!}
+                compareYear={compareYear}
                 primaryData={sessionChartData}
                 compareData={transformSessionData(
                   compData.by_session,
@@ -549,7 +549,7 @@ export default function RegistrationOverview() {
                         setFilter({
                           type: 'session_length',
                           value: String(item['name'] ?? ''),
-                          label: `${item['name']} Sessions`,
+                          label: `${String(item['name'] ?? '')} Sessions`,
                         })
                       }
                     />
@@ -586,7 +586,7 @@ export default function RegistrationOverview() {
                       setFilter({
                         type: 'session_length',
                         value: String(item['name'] ?? ''),
-                        label: `${item['name']} Sessions`,
+                        label: `${String(item['name'] ?? '')} Sessions`,
                       })
                     }
                   />
@@ -605,7 +605,7 @@ export default function RegistrationOverview() {
                 <ComparisonSummaryTable
                   title="Gender by Session Length Comparison"
                   primaryYear={currentYear}
-                  compareYear={compareYear!}
+                  compareYear={compareYear}
                   primaryData={genderByLengthData.map((g) => ({
                     name: g.name,
                     value: g.total,
@@ -648,7 +648,7 @@ export default function RegistrationOverview() {
                       setFilter({
                         type: 'session_length',
                         value: String(item['name'] ?? ''),
-                        label: `${item['name']} Sessions`,
+                        label: `${String(item['name'] ?? '')} Sessions`,
                       })
                     }
                   />
@@ -666,7 +666,7 @@ export default function RegistrationOverview() {
                     setFilter({
                       type: 'session_length',
                       value: String(item['name'] ?? ''),
-                      label: `${item['name']} Sessions`,
+                      label: `${String(item['name'] ?? '')} Sessions`,
                     })
                   }
                 />
@@ -677,7 +677,7 @@ export default function RegistrationOverview() {
       )}
 
       {/* Charts Row 4: Years at Camp + First Summer Year */}
-      {isComparing && compData ? (
+      {compareYear !== null && compData ? (
         <>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <CssHorizontalBarChart
@@ -704,7 +704,7 @@ export default function RegistrationOverview() {
           <ComparisonSummaryTable
             title="Summers at Camp Comparison"
             primaryYear={currentYear}
-            compareYear={compareYear!}
+            compareYear={compareYear}
             primaryData={yearsChartData}
             compareData={
               (compData.by_summer_years?.length ?? 0) > 0
@@ -735,7 +735,7 @@ export default function RegistrationOverview() {
               <ComparisonSummaryTable
                 title="First Summer Year Comparison"
                 primaryYear={currentYear}
-                compareYear={compareYear!}
+                compareYear={compareYear}
                 primaryData={firstSummerYearData}
                 compareData={transformFirstSummerYearData(compData.by_first_summer_year)}
               />

@@ -298,8 +298,8 @@ export function splitCampAndQuest<T>(
 export function getSessionLengthCategory(startDate: string, endDate: string): string {
   if (!startDate || !endDate) return 'unknown'
 
-  const start = new Date(startDate.split('T')[0]!)
-  const end = new Date(endDate.split('T')[0]!)
+  const start = new Date(startDate.split('T')[0] ?? '')
+  const end = new Date(endDate.split('T')[0] ?? '')
 
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'unknown'
 
@@ -343,8 +343,12 @@ export function groupSessionsByDuration<T extends SessionWithDates>(
     const category = getSessionLengthCategory(session.start_date, session.end_date)
     if (category === 'unknown') continue
     const cat = category as DurationCategory
-    if (!groups.has(cat)) groups.set(cat, [])
-    groups.get(cat)!.push(session)
+    let arr = groups.get(cat)
+    if (!arr) {
+      arr = []
+      groups.set(cat, arr)
+    }
+    arr.push(session)
   }
 
   // Sort sessions within each group by start_date
@@ -355,7 +359,8 @@ export function groupSessionsByDuration<T extends SessionWithDates>(
   // Return in canonical order (remove empty categories)
   const ordered = new Map<DurationCategory, T[]>()
   for (const cat of DURATION_CATEGORIES) {
-    if (groups.has(cat)) ordered.set(cat, groups.get(cat)!)
+    const sessions = groups.get(cat)
+    if (sessions) ordered.set(cat, sessions)
   }
   return ordered
 }

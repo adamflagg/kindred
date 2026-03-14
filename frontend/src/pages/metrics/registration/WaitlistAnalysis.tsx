@@ -325,11 +325,11 @@ export default function WaitlistAnalysis() {
                     />
                   )}
                 </div>
-                {isComparing && compSession && (
+                {compareYear !== null && compSession && (
                   <ComparisonSummaryTable
                     title="Waitlist by Session Comparison"
                     primaryYear={currentYear}
-                    compareYear={compareYear!}
+                    compareYear={compareYear}
                     primaryData={primarySession.sorted.map((s) => ({
                       name: s.session_name,
                       value: s.waitlisted,
@@ -348,7 +348,7 @@ export default function WaitlistAnalysis() {
             {/* Grade + Gender Charts Row */}
             {(data.by_grade.length > 0 || data.by_gender.length > 0) && (
               <>
-                {isComparing && compData ? (
+                {compareYear !== null && compData ? (
                   <>
                     {data.by_grade.length > 0 && primaryGrade.length > 0 && (
                       <>
@@ -384,7 +384,7 @@ export default function WaitlistAnalysis() {
                         <ComparisonSummaryTable
                           title="Grade Distribution Comparison"
                           primaryYear={currentYear}
-                          compareYear={compareYear!}
+                          compareYear={compareYear}
                           primaryData={data.by_grade.map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
@@ -412,7 +412,7 @@ export default function WaitlistAnalysis() {
                         <ComparisonSummaryTable
                           title="Gender Distribution Comparison"
                           primaryYear={currentYear}
-                          compareYear={compareYear!}
+                          compareYear={compareYear}
                           primaryData={transformGenderData(data.by_gender)}
                           compareData={transformGenderData(compData.by_gender)}
                         />

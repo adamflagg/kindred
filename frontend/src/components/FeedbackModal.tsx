@@ -30,8 +30,9 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      if (!category) return
       const formData = new FormData()
-      formData.append('category', category!)
+      formData.append('category', category)
       formData.append('description', description)
       formData.append('page_url', window.location.pathname)
       formData.append('browser', navigator.userAgent)

@@ -104,5 +104,5 @@ export function isAgePreferenceSatisfied(
   }
 
   // TypeScript ensures this is unreachable, but just in case
-  return { satisfied: false, detail: `Unknown preference: ${preference}` }
+  return { satisfied: false, detail: `Unknown preference: ${String(preference)}` }
 }

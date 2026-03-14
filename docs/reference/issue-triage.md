@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-14 (6 open issues).
+Last updated: 2026-03-14 (6 open issues, all verified against current code).
 
 ---
 
@@ -38,7 +38,7 @@ Last updated: 2026-03-14 (6 open issues).
 | 567 | Enforce mutual exclusivity of `sessionCmId` and `duration` in MetricsFilterOptions | enhancement |
 | 562 | Evaluate migrating all metrics hooks to full options objects | enhancement |
 
-**Interplay:** Both spawned from Group 3 (PR #566). #562 is a broader evaluation; #567 is a concrete fix. Address #567 first, then evaluate #562 in that context.
+**Interplay:** Both spawned from Group 3 (PR #566). #567 is a concrete fix — `MetricsFilterOptions` still allows both `sessionCmId` and `duration` with zero validation. #562: most hooks now use hybrid `(year, options)` pattern; `useComparisonMetrics` is the remaining outlier. Address #567 first, then evaluate #562.
 
 ---
 
@@ -51,7 +51,7 @@ Last updated: 2026-03-14 (6 open issues).
 | 571 | Resolve remaining ESLint warnings requiring design decisions | tech-debt |
 | 573 | Audit 57 `eslint-disable` comments added in ESLint cleanup for proper type fixes | tech-debt |
 
-**Interplay:** Both spawned from PR #572 (885 ESLint warnings fixed). #571 covers warnings that need design decisions (non-null-assertion, restrict-template-expressions). #573 audits the `eslint-disable` comments added as quick fixes. Address #571 first, then #573.
+**Interplay:** Both spawned from PR #572 (~320 ESLint warnings fixed). #571 has ~58 remaining warnings needing design decisions (non-null-assertion, restrict-template-expressions, setState-in-effect). #573: actual eslint-disable count is 111 (not 57 as originally estimated), with ~54 being `@typescript-eslint` rules. Address #571 first, then #573.
 
 ---
 

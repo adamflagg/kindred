@@ -32,7 +32,7 @@ describe('SnapshotDateSelector', () => {
     render(
       <SnapshotDateSelector dayOffset={null} onOffsetChange={vi.fn()} weekOptions={weekOptions} />
     )
-    const select = screen.getByRole('combobox') as HTMLSelectElement
+    const select = screen.getByRole<HTMLSelectElement>('combobox')
     expect(select.value).toBe('__today__')
   })
 
@@ -68,7 +68,7 @@ describe('SnapshotDateSelector', () => {
     render(
       <SnapshotDateSelector dayOffset={147} onOffsetChange={vi.fn()} weekOptions={weekOptions} />
     )
-    const select = screen.getByRole('combobox') as HTMLSelectElement
+    const select = screen.getByRole<HTMLSelectElement>('combobox')
     expect(select.value).toBe('147')
   })
 })

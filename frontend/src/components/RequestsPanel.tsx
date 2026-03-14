@@ -84,11 +84,11 @@ export default function RequestsPanel({
       case 'keep_apart':
         return `Keep ${camperNames.join(', ')} in different bunks`
       case 'age_preference': {
-        const pref = constraint.metadata?.['preference'] ?? 'similar'
+        const pref = String(constraint.metadata?.['preference'] ?? 'similar')
         return `${camperNames[0]} prefers ${pref} age campers`
       }
       case 'bunk_preference': {
-        const bunkName = constraint.metadata?.['bunkName'] ?? 'specific bunk'
+        const bunkName = String(constraint.metadata?.['bunkName'] ?? 'specific bunk')
         return `${camperNames[0]} prefers ${bunkName}`
       }
       default:

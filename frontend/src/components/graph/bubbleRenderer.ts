@@ -117,7 +117,7 @@ export function drawBunkBubbles(
         renderedBunks.push(`${bunkId} (${bunkName})`)
       } catch (pathError) {
         console.error(`Error creating path for bunk ${bunkId}:`, pathError)
-        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${pathError}`)
+        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(pathError)}`)
         return
       }
 
@@ -125,7 +125,7 @@ export function drawBunkBubbles(
       pathsRef.current.push(path)
     } catch (error) {
       console.error(`Error creating bubble for bunk ${bunkId}:`, error)
-      failedBunks.push(`${bunkId} (${bunkName}) - Error: ${error}`)
+      failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
     }
   })
 
