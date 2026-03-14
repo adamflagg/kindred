@@ -724,7 +724,7 @@ class TestNormalizeSourceField:
             MockBunkAssignment(person_cm_id="10002", bunk_cm_id="20001"),
         ]
 
-    def _get_field_total(self, result: ValidationResult, field_key: str) -> int:
+    def _get_field_total(self, result: ValidationResult, field_key: str) -> int | float:
         """Get the total count for a given field_stats key."""
         return result.statistics.field_stats[field_key]["total"]
 
