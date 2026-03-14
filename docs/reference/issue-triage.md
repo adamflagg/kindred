@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-14 (10 open issues).
+Last updated: 2026-03-14 (6 open issues).
 
 ---
 
@@ -29,20 +29,29 @@ Last updated: 2026-03-14 (10 open issues).
 
 ---
 
-## Group 10: Tests & Docs
+## Group 14: Metrics Hook API Design
 
-**Priority: Low** — No behavior change, can be sprinkled in anytime
+**Priority: Low** — Enhancement, no blockers
 
 | # | Title | Type |
 |---|-------|------|
-| 536 | Replace John Doe/Jane Smith with fictional name list in solver conftest | test |
-| 528 | Align hadolint CI with local `.hadolint.yaml` config | ci |
-| 495 | Migrate `logging.getLogger` to `get_logger` | chore |
-| 485 | Scope module-level env var overrides to fixtures | test |
-| 442 | Extract shared mock factory functions to conftest | test |
-| 552 | `_validate_requests` docstring omits missing-target impossible case | docs |
-| 435 | Add missing docstrings for duration parameter | docs |
-| 421 | Improve docstring coverage in forecast and metrics modules | docs |
+| 567 | Enforce mutual exclusivity of `sessionCmId` and `duration` in MetricsFilterOptions | enhancement |
+| 562 | Evaluate migrating all metrics hooks to full options objects | enhancement |
+
+**Interplay:** Both spawned from Group 3 (PR #566). #562 is a broader evaluation; #567 is a concrete fix. Address #567 first, then evaluate #562 in that context.
+
+---
+
+## Group 15: ESLint Follow-Up Tech Debt
+
+**Priority: Low** — No behavior change, cleanup from ESLint overhaul (PR #572)
+
+| # | Title | Type |
+|---|-------|------|
+| 571 | Resolve remaining ESLint warnings requiring design decisions | tech-debt |
+| 573 | Audit 57 `eslint-disable` comments added in ESLint cleanup for proper type fixes | tech-debt |
+
+**Interplay:** Both spawned from PR #572 (885 ESLint warnings fixed). #571 covers warnings that need design decisions (non-null-assertion, restrict-template-expressions). #573 audits the `eslint-disable` comments added as quick fixes. Address #571 first, then #573.
 
 ---
 
@@ -56,10 +65,11 @@ Last updated: 2026-03-14 (10 open issues).
 6. ~~**Group 9**~~ — ✅ Complete (PR #549)
 7. ~~**Group 11**~~ — ✅ Complete (PR #551)
 8. ~~**Group 8 (7/8)**~~ — ✅ Complete (PRs #555, #556, #557) — #377 remains (blocked on fork)
-8. ~~**Group 12**~~ — ✅ Complete (PR #561)
-9. ~~**Group 13**~~ — ✅ Complete (PR #563) — #559 fixed; #560 closed as stale
-10. ~~**Group 3**~~ — ✅ Complete (PR #566) — #437, #472; spawned #562, #567
-11. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
+9. ~~**Group 12**~~ — ✅ Complete (PR #561)
+10. ~~**Group 13**~~ — ✅ Complete (PR #563) — #559 fixed; #560 closed as stale
+11. ~~**Group 3**~~ — ✅ Complete (PR #566) — #437, #472; spawned #562, #567
+12. ~~**Group 10**~~ — ✅ Complete (PRs #564, #565, #568, #569, #570, #572) — All 8 issues closed; spawned #571, #573
+13. **Groups 4, 8, 14, 15** — Independent items, sprinkle in anytime
 
 ## Completed Groups
 
@@ -81,3 +91,4 @@ Last updated: 2026-03-14 (10 open issues).
 | Group 12: Solver normalize_source_field bug (#553) | #561 | 2026-03-14 | Derived mappings from canonical SourceField constants |
 | Group 13: Frontend auth & state gaps (#559, #560) | #563 | 2026-03-14 | #559 fixed; #560 closed as stale |
 | Group 3: Velocity frontend refactors (#437, #472) | #566 | 2026-03-14 | Spawned #562 (full-options eval), #567 (mutual exclusivity) |
+| Group 10: Tests & docs (#536, #528, #485, #442, #552, #435, #495, #421) | #564, #565, #568, #569, #570, #572 | 2026-03-14 | All 8 issues closed; ESLint cleanup (885 warnings fixed); spawned #571, #573 |
