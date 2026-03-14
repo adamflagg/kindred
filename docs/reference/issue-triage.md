@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-14 (6 open issues, all verified against current code).
+Last updated: 2026-03-14 (6 open issues, all verified against current code; #576 opened during review).
 
 ---
 
@@ -48,10 +48,9 @@ Last updated: 2026-03-14 (6 open issues, all verified against current code).
 
 | # | Title | Type |
 |---|-------|------|
-| 571 | Resolve remaining ESLint warnings requiring design decisions | tech-debt |
 | 573 | Audit 57 `eslint-disable` comments added in ESLint cleanup for proper type fixes | tech-debt |
 
-**Interplay:** Both spawned from PR #572 (~320 ESLint warnings fixed). #571 has ~58 remaining warnings needing design decisions (non-null-assertion, restrict-template-expressions, setState-in-effect). #573: actual eslint-disable count is 111 (not 57 as originally estimated), with ~54 being `@typescript-eslint` rules. Address #571 first, then #573.
+**Interplay:** Spawned from PR #572 (~320 ESLint warnings fixed). #571 resolved by PR #575 (all 58 design-decision warnings fixed). #573 remains: actual eslint-disable count is 111 (not 57 as originally estimated), with ~54 being `@typescript-eslint` rules — 76 audited and confirmed appropriate in PR #575, deeper type refactor needed to remove `as` cast patterns.
 
 ---
 
@@ -69,7 +68,8 @@ Last updated: 2026-03-14 (6 open issues, all verified against current code).
 10. ~~**Group 13**~~ — ✅ Complete (PR #563) — #559 fixed; #560 closed as stale
 11. ~~**Group 3**~~ — ✅ Complete (PR #566) — #437, #472; spawned #562, #567
 12. ~~**Group 10**~~ — ✅ Complete (PRs #564, #565, #568, #569, #570, #572) — All 8 issues closed; spawned #571, #573
-13. **Groups 4, 8, 14, 15** — Independent items, sprinkle in anytime
+13. ~~**Group 15 (1/2)**~~ — ✅ Complete (PR #575) — #571 resolved (58 warnings); #573 remains (eslint-disable audit)
+14. **Groups 4, 8, 14, 15** — Independent items, sprinkle in anytime
 
 ## Completed Groups
 
@@ -92,3 +92,4 @@ Last updated: 2026-03-14 (6 open issues, all verified against current code).
 | Group 13: Frontend auth & state gaps (#559, #560) | #563 | 2026-03-14 | #559 fixed; #560 closed as stale |
 | Group 3: Velocity frontend refactors (#437, #472) | #566 | 2026-03-14 | Spawned #562 (full-options eval), #567 (mutual exclusivity) |
 | Group 10: Tests & docs (#536, #528, #485, #442, #552, #435, #495, #421) | #564, #565, #568, #569, #570, #572 | 2026-03-14 | All 8 issues closed; ESLint cleanup (885 warnings fixed); spawned #571, #573 |
+| Group 15 (1/2): ESLint design decisions (#571) | #575 | 2026-03-14 | 58 warnings resolved with per-case design decisions; #573 remains; spawned #576 (GradeEligibility threshold bug) |
