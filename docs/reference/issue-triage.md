@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-14 (14 open issues).
+Last updated: 2026-03-14 (12 open issues).
 
 ---
 
@@ -59,21 +59,6 @@ Last updated: 2026-03-14 (14 open issues).
 
 ---
 
----
-
-## Group 13: Frontend — Auth & State Gaps
-
-**Priority: Low** — Independent bugs discovered during Group 8 review
-
-| # | Title | Type |
-|---|-------|------|
-| 559 | Add auth loading guard to `useSocialGraphData` hook | bug |
-| 560 | Handle `useWeekOptions` loading/error/empty states in ForecastPage | bug |
-
-**Interplay:** Independent. #559 follows the same pattern as #531 (fixed in PR #555). #560 is a pre-existing 4-state handling gap from PR #430.
-
----
-
 ## Suggested Attack Order
 
 1. ~~**Group 1**~~ — ✅ Complete (PR #530)
@@ -85,8 +70,8 @@ Last updated: 2026-03-14 (14 open issues).
 7. ~~**Group 11**~~ — ✅ Complete (PR #551)
 8. ~~**Group 8 (7/8)**~~ — ✅ Complete (PRs #555, #556, #557) — #377 remains (blocked on fork)
 8. ~~**Group 12**~~ — ✅ Complete (PR #561)
-9. **Group 3** — Velocity frontend refactors (now unblocked)
-10. **Group 13** — Frontend auth & state gaps
+9. ~~**Group 13**~~ — ✅ Complete (PR #563) — #559 fixed; #560 closed as stale
+10. **Group 3** — Velocity frontend refactors (now unblocked)
 11. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
 ## Completed Groups
@@ -107,3 +92,4 @@ Last updated: 2026-03-14 (14 open issues).
 | Stale issues (#478, #445) | — | 2026-03-13 | Closed — already fixed in prior work |
 | Group 8 (7/8): Frontend quick wins (#531, #537, #479, #468, #461, #440, #436) | #555, #556, #557 | 2026-03-13 | #377 remains (blocked on pocketbase-typegen fork); spawned #559, #560 |
 | Group 12: Solver normalize_source_field bug (#553) | #561 | 2026-03-14 | Derived mappings from canonical SourceField constants |
+| Group 13: Frontend auth & state gaps (#559, #560) | #563 | 2026-03-14 | #559 fixed; #560 closed as stale |
