@@ -16,6 +16,7 @@ from bunking.bunking_validator import (
     ValidationSeverity,
     ValidationStatistics,
 )
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 # Test fixtures
@@ -687,3 +688,162 @@ class TestLevelProgressionValidation:
         # Should not detect regression since different session
         regression_issues = [i for i in result.issues if i.type == "level_regression"]
         assert len(regression_issues) == 0
+
+
+class TestNormalizeSourceField:
+    """Tests that normalize_source_field derives mappings from canonical SourceField constants.
+
+    The validator's normalize_source_field must handle every canonical SourceField
+    value (as stored in PocketBase) — not just hand-picked variations. This ensures
+    new SourceField values automatically work without maintaining parallel mapping dicts.
+    """
+
+    @pytest.fixture
+    def validator(self):
+        return BunkingValidator()
+
+    @pytest.fixture
+    def session(self):
+        return MockSession(campminder_id="1234567", name="Session 1")
+
+    @pytest.fixture
+    def bunks(self):
+        return [MockBunk(campminder_id="20001", name="B-1")]
+
+    @pytest.fixture
+    def persons(self):
+        return [
+            MockPerson(campminder_id="10001", name="Emma Johnson", grade=5),
+            MockPerson(campminder_id="10002", name="Liam Garcia", grade=5),
+        ]
+
+    @pytest.fixture
+    def assignments(self):
+        return [
+            MockBunkAssignment(person_cm_id="10001", bunk_cm_id="20001"),
+            MockBunkAssignment(person_cm_id="10002", bunk_cm_id="20001"),
+        ]
+
+    def _get_field_total(self, result: ValidationResult, field_key: str) -> int:
+        """Get the total count for a given field_stats key."""
+        return result.statistics.field_stats[field_key]["total"]
+
+    def test_canonical_socialize_with_value(self, validator, session, bunks, persons, assignments):
+        """SourceField.SOCIALIZE_WITH canonical value is counted in socialize_with stats."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.SOCIALIZE_WITH,  # "RetParent-Socializewithbest"
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        assert self._get_field_total(result, "socialize_with") == 1
+
+    def test_canonical_bunk_with_value(self, validator, session, bunks, persons, assignments):
+        """SourceField.BUNK_WITH canonical value is counted in share_bunk_with stats."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.BUNK_WITH,  # "Share Bunk With"
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        assert self._get_field_total(result, "share_bunk_with") == 1
+
+    def test_canonical_not_bunk_with_value(self, validator, session, bunks, persons, assignments):
+        """SourceField.NOT_BUNK_WITH canonical value is counted in do_not_share_with stats."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="not_bunk_with",
+                source_field=SourceField.NOT_BUNK_WITH,  # "Do Not Share Bunk With"
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        assert self._get_field_total(result, "do_not_share_with") == 1
+
+    def test_canonical_bunking_notes_value(self, validator, session, bunks, persons, assignments):
+        """SourceField.BUNKING_NOTES canonical value is counted in bunking_notes stats."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.BUNKING_NOTES,  # "BunkingNotes Notes"
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        assert self._get_field_total(result, "bunking_notes") == 1
+
+    def test_canonical_internal_notes_value(self, validator, session, bunks, persons, assignments):
+        """SourceField.INTERNAL_NOTES canonical value is counted in internal_notes stats."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.INTERNAL_NOTES,  # "Internal Bunk Notes"
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        assert self._get_field_total(result, "internal_notes") == 1
+
+    def test_already_normalized_keys_still_work(self, validator, session, bunks, persons, assignments):
+        """Already-normalized field keys (e.g., 'socialize_with') still map correctly."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field="socialize_with",
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        assert self._get_field_total(result, "socialize_with") == 1
+
+    def test_unknown_source_field_not_counted(self, validator, session, bunks, persons, assignments):
+        """Unknown source fields produce no field_stats counts."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field="totally_unknown_field",
+            )
+        ]
+
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+
+        for field_data in result.statistics.field_stats.values():
+            assert field_data["total"] == 0
