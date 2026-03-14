@@ -22,6 +22,11 @@ vi.mock('../../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026 }),
 }))
 
+// Mock useAuth (needed by useAdminSessions auth guard)
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1' }, isLoading: false }),
+}))
+
 // Helper to create a QueryClient for tests
 function createTestQueryClient() {
   return new QueryClient({

@@ -42,4 +42,11 @@ describe('useForecast', () => {
       expect(hasPlainFetchApiCall).toBe(false)
     })
   })
+
+  it('should guard query with isAuthLoading', async () => {
+    const sourceContent = await import('./useForecast?raw')
+    const source = sourceContent.default
+    expect(source).toContain('isAuthLoading')
+    expect(source).toMatch(/enabled:.*!isAuthLoading/)
+  })
 })

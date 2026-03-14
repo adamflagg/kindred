@@ -205,4 +205,11 @@ describe('useBunkStaff', () => {
       expect(exampleReturn.get('Session 1|B-3')).toBeUndefined()
     })
   })
+
+  it('should guard query with auth loading state', async () => {
+    const sourceContent = await import('./useBunkStaff?raw')
+    const source = sourceContent.default
+    expect(source).toMatch(/isLoading|isAuthLoading/)
+    expect(source).toMatch(/enabled:.*!(isLoading|isAuthLoading)/)
+  })
 })

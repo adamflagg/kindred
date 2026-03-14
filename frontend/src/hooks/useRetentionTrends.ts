@@ -31,7 +31,7 @@ export interface UseRetentionTrendsOptions {
  * @param options - Optional filtering parameters
  */
 export function useRetentionTrends(currentYear: number, options: UseRetentionTrendsOptions = {}) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
   const { numYears = 3, sessionTypes, sessionCmId, duration } = options
 
   return useQuery({
@@ -64,7 +64,7 @@ export function useRetentionTrends(currentYear: number, options: UseRetentionTre
       }
       return response.json()
     },
-    enabled: currentYear > 0,
+    enabled: currentYear > 0 && !isAuthLoading,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })
