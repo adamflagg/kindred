@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import type { CssHorizontalBarChart as CssHorizontalBarChartType } from './CssHorizontalBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -24,7 +25,7 @@ describe('CssHorizontalBarChart exports', () => {
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart rendering', () => {
-  let CssHorizontalBarChart: typeof import('./CssHorizontalBarChart').CssHorizontalBarChart
+  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssHorizontalBarChart')
@@ -52,7 +53,7 @@ describe('CssHorizontalBarChart rendering', () => {
     const { container } = render(<CssHorizontalBarChart data={sampleData} title="Values" />)
     // Value labels are in the tabular-nums spans at the end of each row
     const valueSpans = container.querySelectorAll<HTMLElement>('.tabular-nums')
-    const values = Array.from(valueSpans).map((el) => el.textContent?.trim())
+    const values = Array.from(valueSpans).map((el) => el.textContent.trim())
     expect(values).toContain('40')
     expect(values).toContain('70')
     expect(values).toContain('100')
@@ -73,7 +74,7 @@ describe('CssHorizontalBarChart rendering', () => {
 // Bar sizing
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart bar sizing', () => {
-  let CssHorizontalBarChart: typeof import('./CssHorizontalBarChart').CssHorizontalBarChart
+  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssHorizontalBarChart')
@@ -88,8 +89,8 @@ describe('CssHorizontalBarChart bar sizing', () => {
     const { container } = render(<CssHorizontalBarChart data={data} title="Scale" />)
     const fills = container.querySelectorAll<HTMLElement>('.rounded.transition-all')
     // The "Full" bar should be wider than the "Half" bar
-    const halfWidth = parseFloat(fills[0]?.style.width || '0')
-    const fullWidth = parseFloat(fills[1]?.style.width || '0')
+    const halfWidth = parseFloat(fills[0]?.style.width ?? '0')
+    const fullWidth = parseFloat(fills[1]?.style.width ?? '0')
     expect(fullWidth).toBeGreaterThan(halfWidth)
   })
 
@@ -106,7 +107,7 @@ describe('CssHorizontalBarChart bar sizing', () => {
 // Click handler
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart click', () => {
-  let CssHorizontalBarChart: typeof import('./CssHorizontalBarChart').CssHorizontalBarChart
+  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssHorizontalBarChart')
@@ -158,7 +159,7 @@ describe('CssHorizontalBarChart click', () => {
 // X-axis ticks
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart x-axis', () => {
-  let CssHorizontalBarChart: typeof import('./CssHorizontalBarChart').CssHorizontalBarChart
+  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssHorizontalBarChart')

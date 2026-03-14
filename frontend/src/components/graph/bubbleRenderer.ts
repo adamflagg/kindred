@@ -37,7 +37,7 @@ export function drawBunkBubbles(
   const { bubblesetsRef, pathsRef, poppersRef, containerRef } = refs
 
   // Check if cy is valid before doing anything
-  if (!cy || cy.destroyed()) {
+  if (cy.destroyed()) {
     console.error('Cytoscape instance is not valid, cannot create bubbles')
     return
   }
@@ -59,13 +59,9 @@ export function drawBunkBubbles(
     .forEach((node) => {
       const bunkId = node.data('bunk_cm_id')
       if (bunkId) {
-        if (!bunkGroups[bunkId]) {
-          bunkGroups[bunkId] = []
-        }
-        const group = bunkGroups[bunkId]
-        if (group) {
-          group.push(node)
-        }
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime: Record index access may be undefined
+        bunkGroups[bunkId] ??= []
+        bunkGroups[bunkId].push(node)
       }
     })
 
@@ -85,7 +81,7 @@ export function drawBunkBubbles(
   Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
     if (nodes.length === 0) return // Skip empty bunks
 
-    const bunkName = bunksData?.[parseInt(bunkId)] || `Bunk ${bunkId}`
+    const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
     const bunkColor = getBunkColor(parseInt(bunkId))
 
     try {
@@ -96,12 +92,6 @@ export function drawBunkBubbles(
       // Add path to the single bubbleset instance
       let path
       try {
-        // Double-check bb is still valid
-        if (!bb) {
-          console.error(`Bubblesets instance is null for bunk ${bunkId}`)
-          return
-        }
-
         path = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath(
           nodeCollection, // Nodes to include in the bubble
           cy.collection(), // Empty edge collection
@@ -124,11 +114,7 @@ export function drawBunkBubbles(
           }
         )
 
-        if (path) {
-          renderedBunks.push(`${bunkId} (${bunkName})`)
-        } else {
-          failedBunks.push(`${bunkId} (${bunkName})`)
-        }
+        renderedBunks.push(`${bunkId} (${bunkName})`)
       } catch (pathError) {
         console.error(`Error creating path for bunk ${bunkId}:`, pathError)
         failedBunks.push(`${bunkId} (${bunkName}) - Error: ${pathError}`)
@@ -160,7 +146,7 @@ export function drawBunkBubbles(
   }
 
   // Force a render update to ensure bubbles are drawn
-  if (cy && !cy.destroyed()) {
+  if (!cy.destroyed()) {
     cy.forceRender()
   }
 
@@ -177,7 +163,7 @@ export function drawBunkBubbles(
   Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
     if (nodes.length === 0) return
 
-    const bunkName = bunksData?.[parseInt(bunkId)] || `Bunk ${bunkId}`
+    const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
     const bunkColor = getBunkColor(parseInt(bunkId))
 
     // Find the topmost node in the bunk to position label above it
@@ -216,7 +202,7 @@ export function drawBunkBubbles(
     // Create virtual element for Popper that tracks the node position
     const virtualElement = {
       getBoundingClientRect: () => {
-        const pos = topmostNode?.renderedPosition() || { x: 0, y: 0 }
+        const pos = topmostNode?.renderedPosition() ?? { x: 0, y: 0 }
         const containerRect = containerRef.current?.getBoundingClientRect()
 
         if (!containerRect) {

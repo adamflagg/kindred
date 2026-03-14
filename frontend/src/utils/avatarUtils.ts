@@ -20,5 +20,6 @@ export function getAvatarColor(gender: string | undefined): string {
  * Get initial letter from first name for avatar display
  */
 export function getInitial(firstName: string | undefined): string {
-  return firstName?.charAt(0)?.toUpperCase() || '?'
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional || to handle empty string
+  return firstName?.charAt(0).toUpperCase() || '?'
 }

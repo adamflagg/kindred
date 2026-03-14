@@ -59,7 +59,7 @@ interface ValidationResultsModalProps {
 function groupIssuesByType(issues: Issue[]): Map<string, Issue[]> {
   const grouped = new Map<string, Issue[]>()
   for (const issue of issues) {
-    const existing = grouped.get(issue.type) || []
+    const existing = grouped.get(issue.type) ?? []
     existing.push(issue)
     grouped.set(issue.type, existing)
   }
@@ -76,7 +76,7 @@ function getIssueTypeLabel(type: string): string {
     unassigned_camper: 'Unassigned Campers',
     conflicting_request: 'Conflicting Requests',
   }
-  return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+  return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
 interface CollapsibleIssueGroupProps {
@@ -200,7 +200,7 @@ export default function ValidationResultsModal({
   results,
   scenarioId,
 }: ValidationResultsModalProps) {
-  if (!isOpen || !results) return null
+  if (!isOpen) return null
 
   const { statistics, issues } = results
 
@@ -378,7 +378,7 @@ export default function ValidationResultsModal({
           </div>
 
           {/* CSV Field Source Breakdown */}
-          {statistics.field_stats && Object.keys(statistics.field_stats).length > 0 && (
+          {Object.keys(statistics.field_stats).length > 0 && (
             <div className="border-border border-b p-6">
               <h3 className="text-muted-foreground mb-4 text-sm font-medium tracking-wider uppercase">
                 By Request Source

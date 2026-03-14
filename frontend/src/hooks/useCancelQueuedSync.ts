@@ -27,7 +27,7 @@ export function useCancelQueuedSync() {
       const pbError = error as {
         response?: { data?: { error?: string }; message?: string }
       }
-      if (pbError?.response?.data?.error) {
+      if (pbError.response?.data?.error) {
         errorMessage = pbError.response.data.error
       }
 

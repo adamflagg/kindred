@@ -47,7 +47,7 @@ export function buildAgSessionCmIdMap(sessions: DebugSession[]): Map<number, num
 
   sessions.forEach((session) => {
     if (session.session_type === 'ag' && session.parent_id) {
-      const existing = map.get(session.parent_id) || []
+      const existing = map.get(session.parent_id) ?? []
       existing.push(session.cm_id)
       map.set(session.parent_id, existing)
     }
@@ -73,7 +73,7 @@ export function getEffectiveCmIds(
     return undefined
   }
 
-  const agCmIds = agSessionMap.get(selectedCmId) || []
+  const agCmIds = agSessionMap.get(selectedCmId) ?? []
   return [selectedCmId, ...agCmIds]
 }
 

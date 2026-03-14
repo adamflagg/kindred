@@ -24,8 +24,8 @@ describe('useSolverOperations', () => {
       }
 
       // Simulate the auto-apply logic
-      const autoApplyEnabled = true
-      const autoApplyTimeout = 0
+      const autoApplyEnabled = true as boolean
+      const autoApplyTimeout = 0 as number
 
       const solverRun = await mockSolverService.runSolver('1234', 2025, null, vi.fn())
 
@@ -55,7 +55,7 @@ describe('useSolverOperations', () => {
         applySolverResults: vi.fn().mockResolvedValue({ success: true }),
       }
 
-      const autoApplyEnabled = false
+      const autoApplyEnabled = false as boolean
 
       const solverRun = await mockSolverService.runSolver('1234', 2025, null, vi.fn())
 
@@ -141,7 +141,7 @@ describe('useSolverOperations', () => {
     })
 
     it('should not allow clearing when in production mode (no scenario)', async () => {
-      const currentScenario = null
+      const currentScenario = null as { id: string } | null
 
       // In production mode, clear button should not trigger action
       const canClear = currentScenario !== null

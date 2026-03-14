@@ -33,7 +33,7 @@ export function useCreateScenario() {
 
       const scenarioData: Record<string, unknown> = {
         name: params.name,
-        session: sessions[0]?.id || '', // Use the PocketBase relation ID
+        session: sessions[0]?.id ?? '', // Use the PocketBase relation ID
         year: params.year, // Store year for filtering
         is_active: true,
         ...(params.description && { description: params.description }),
@@ -119,7 +119,7 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
       console.error('Failed to create draft assignment:', {
         draftData,
         originalAssignment: assignment,
-        error: pbError?.response?.data ?? pbError?.message ?? error,
+        error: pbError.response?.data ?? pbError.message ?? error,
       })
       errors.push({ assignment, error })
     }

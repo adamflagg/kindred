@@ -116,11 +116,11 @@ export function CamperHistoryProvider({
           if (lastYearAssignment?.expand) {
             historyRecord[personCmId] = {
               year: lastYearAssignment.year,
-              sessionName: lastYearAssignment.expand.session?.name || '',
-              sessionType: lastYearAssignment.expand.session?.session_type || '',
-              bunkName: lastYearAssignment.expand.bunk?.name || 'Unassigned',
-              startDate: lastYearAssignment.expand.session?.start_date || '',
-              endDate: lastYearAssignment.expand.session?.end_date || '',
+              sessionName: lastYearAssignment.expand.session?.name ?? '',
+              sessionType: lastYearAssignment.expand.session?.session_type ?? '',
+              bunkName: lastYearAssignment.expand.bunk?.name ?? 'Unassigned',
+              startDate: lastYearAssignment.expand.session?.start_date ?? '',
+              endDate: lastYearAssignment.expand.session?.end_date ?? '',
             }
           }
         })
@@ -136,11 +136,11 @@ export function CamperHistoryProvider({
   })
 
   const getLastYearHistory = (personCmId: number): CamperHistory | null => {
-    if (!historyMap || typeof historyMap !== 'object') {
+    if (typeof historyMap !== 'object') {
       console.warn('historyMap is not a valid object:', historyMap)
       return null
     }
-    return historyMap[personCmId] || null
+    return historyMap[personCmId] ?? null
   }
 
   const value = {

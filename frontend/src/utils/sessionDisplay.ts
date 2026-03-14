@@ -263,5 +263,5 @@ export function getSessionShorthand(sessionName: string, sessionType?: string): 
 
   // Last resort - return first word
   const firstWord = sessionName.split(' ')[0]
-  return firstWord || sessionName
+  return firstWord ?? sessionName
 }

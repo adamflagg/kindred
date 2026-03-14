@@ -7,8 +7,8 @@ const DISABLE_AUTH = import.meta.env['VITE_DISABLE_AUTH'] === 'true'
 // Admin credentials for bypass mode (testing only)
 // These are injected by Vite at build time when VITE_DISABLE_AUTH=true
 // See vite.config.ts testAuthDefines - they come from POCKETBASE_ADMIN_* env vars
-const BYPASS_ADMIN_EMAIL = import.meta.env['VITE_ADMIN_EMAIL'] || ''
-const BYPASS_ADMIN_PASSWORD = import.meta.env['VITE_ADMIN_PASSWORD'] || ''
+const BYPASS_ADMIN_EMAIL = import.meta.env['VITE_ADMIN_EMAIL'] ?? ''
+const BYPASS_ADMIN_PASSWORD = import.meta.env['VITE_ADMIN_PASSWORD'] ?? ''
 
 // Configure PocketBase URL based on access method
 // IMPORTANT: The URL here must match EXACTLY what's configured in the OAuth2 provider's redirect URLs
@@ -118,14 +118,13 @@ export function handlePocketBaseError(error: unknown): string {
     // Extract validation errors
     const messages = Object.entries(pbError.data)
       .map(([field, err]) => {
-        const errMessage =
-          typeof err === 'object' && err !== null && 'message' in err ? err.message : String(err)
+        const errMessage = typeof err === 'object' && 'message' in err ? err.message : String(err)
         return `${field}: ${errMessage}`
       })
       .join(', ')
-    return messages || pbError.message || 'An error occurred'
+    return messages || (pbError.message ?? 'An error occurred')
   }
-  return pbError?.message || 'An error occurred'
+  return pbError?.message ?? 'An error occurred'
 }
 
 // Add global error handling for 401 responses

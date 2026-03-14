@@ -68,7 +68,7 @@ const STORAGE_KEY = 'bunking-optimization-level'
 
 function getStoredLevel(): string {
   if (typeof window === 'undefined') return 'standard'
-  return localStorage.getItem(STORAGE_KEY) || 'standard'
+  return localStorage.getItem(STORAGE_KEY) ?? 'standard'
 }
 
 function setStoredLevel(levelId: string): void {
@@ -240,7 +240,7 @@ export default function OptimizeBunksButton({
     <div className="relative">
       {/* Main button with split action */}
       <div
-        className={`inline-flex items-stretch overflow-hidden rounded-xl transition-all duration-300 ${isDisabled ? 'opacity-70' : warmth.glow} ${className || ''} `}
+        className={`inline-flex items-stretch overflow-hidden rounded-xl transition-all duration-300 ${isDisabled ? 'opacity-70' : warmth.glow} ${className ?? ''} `}
       >
         {/* Primary action button */}
         <button

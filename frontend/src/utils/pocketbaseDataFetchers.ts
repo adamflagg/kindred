@@ -174,8 +174,8 @@ export async function fetchCampersForSession(
 
   // Extract bunks from assignments
   const bunksFromAssignments = assignments
-    .map((a) => a.expand?.bunk)
-    .filter((b): b is BunksResponse => b !== undefined && b !== null)
+    .map((a) => a.expand.bunk)
+    .filter((b): b is BunksResponse => b !== undefined)
 
   // Get session from cache or fetch
   const sessions = await pb.collection<CampSessionsResponse>('camp_sessions').getList(1, 1, {

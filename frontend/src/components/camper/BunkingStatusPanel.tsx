@@ -34,9 +34,7 @@ export function BunkingStatusPanel({
       r.status !== 'pending' &&
       (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
         ? r.requestee_id && r.requestee_id > 0
-        : r.request_type === 'age_preference'
-          ? !!r.age_preference_target
-          : false)
+        : !!r.age_preference_target)
   )
   const totalCount = countableRequests.length
   const satisfiedCount = countableRequests.filter(
@@ -68,18 +66,18 @@ export function BunkingStatusPanel({
               enrolledCampers.map((ec) => {
                 const sess = ec.expand?.session
                 const bunk = ec.expand?.assigned_bunk
-                const sessMatch = sess?.name?.match(/(\d+[ab]?)/i)
+                const sessMatch = sess?.name.match(/(\d+[ab]?)/i)
                 const sessLabel = sessMatch?.[1]
                   ? `S${sessMatch[1]}`
-                  : sess?.name?.toLowerCase().includes('taste')
+                  : sess?.name.toLowerCase().includes('taste')
                     ? 'ToC'
                     : sess?.session_type === 'ag'
                       ? 'AG'
-                      : sess?.name || '?'
+                      : (sess?.name ?? '?')
                 return bunk ? (
                   <Link
                     key={ec.id}
-                    to={`/summer/session/${sessionNameToUrl(sess?.name || '')}/board`}
+                    to={`/summer/session/${sessionNameToUrl(sess?.name ?? '')}/board`}
                     className="bg-forest-50 dark:bg-forest-900/30 border-forest-200 dark:border-forest-800 hover:bg-forest-100 dark:hover:bg-forest-900/50 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 transition-colors"
                   >
                     <Home className="text-forest-600 dark:text-forest-400 h-3.5 w-3.5" />
@@ -101,7 +99,7 @@ export function BunkingStatusPanel({
               })
             ) : camper.expand?.assigned_bunk ? (
               <Link
-                to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
+                to={`/summer/session/${sessionNameToUrl(camper.expand.session?.name ?? '')}/board`}
                 className="bg-forest-50 dark:bg-forest-900/30 border-forest-200 dark:border-forest-800 hover:bg-forest-100 dark:hover:bg-forest-900/50 inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 transition-colors"
               >
                 <Home className="text-forest-600 dark:text-forest-400 h-4 w-4" />
@@ -153,8 +151,8 @@ export function BunkingStatusPanel({
 
               // Determine display name
               const displayName =
-                request.requestedPersonName ||
-                (request as unknown as { requested_person_name?: string }).requested_person_name ||
+                request.requestedPersonName ??
+                (request as unknown as { requested_person_name?: string }).requested_person_name ??
                 (request.requestee_id && request.requestee_id < 0
                   ? `Person ${request.requestee_id}`
                   : 'Unknown')

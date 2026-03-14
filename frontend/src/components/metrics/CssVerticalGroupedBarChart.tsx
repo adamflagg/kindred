@@ -103,7 +103,8 @@ export function CssVerticalGroupedBarChart({
   const { axisMax, ticks } = useMemo(() => {
     const dataMax =
       data.length > 0
-        ? Math.max(...data.flatMap((d) => series.map((s) => (d[s.key] as number) ?? 0)))
+        ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
+          Math.max(...data.flatMap((d) => series.map((s) => (d[s.key] as number) ?? 0)))
         : 0
     let max = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
     const t = getNiceTicks(max)
@@ -183,6 +184,7 @@ export function CssVerticalGroupedBarChart({
                     {/* Grouped bars side-by-side */}
                     <div className="flex w-full flex-row items-end justify-center gap-1">
                       {series.map((s) => {
+                        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
                         const value = (item[s.key] as number) ?? 0
                         // Intentionally skip zero-value bars so remaining bars center
                         // naturally, rather than reserving a placeholder gap.
@@ -250,14 +252,17 @@ export function CssVerticalGroupedBarChart({
             ) : (
               <>
                 <p className="text-foreground mb-2 font-medium">
-                  {String(tooltip.item['name'] ?? '')}
+                  {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- tooltip.item is guarded by parent conditional */}
+                  {String(tooltip.item?.['name'] ?? '')}
                 </p>
                 {series
+                  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
                   .filter((s) => ((tooltip.item?.[s.key] as number) ?? 0) > 0)
                   .map((s) => (
                     <p key={s.key} className="text-muted-foreground text-sm">
                       <span style={{ color: s.color }}>{s.label}:</span>{' '}
                       <span className="text-foreground font-semibold">
+                        {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback */}
                         {(tooltip.item?.[s.key] as number) ?? 0}
                       </span>
                     </p>

@@ -23,17 +23,15 @@ export default function SessionStatsCompact({
   // Filter bunks based on selected area (for capacity/bunk count)
   const filteredBunks = bunks.filter((bunk) => {
     if (selectedArea === 'all') return true
-    const bunkGender = bunk.gender?.toLowerCase()
+    const bunkGender = bunk.gender.toLowerCase()
     if (selectedArea === 'boys') return bunkGender === 'm' || bunkGender === 'boys'
     if (selectedArea === 'girls') return bunkGender === 'f' || bunkGender === 'girls'
-    if (selectedArea === 'all-gender')
-      return (
-        bunkGender === 'ag' ||
-        bunkGender === 'all-gender' ||
-        bunkGender === 'nb' ||
-        bunkGender === 'mixed'
-      )
-    return true
+    return (
+      bunkGender === 'ag' ||
+      bunkGender === 'all-gender' ||
+      bunkGender === 'nb' ||
+      bunkGender === 'mixed'
+    )
   })
 
   // Get IDs of filtered bunks for determining assigned status
@@ -54,9 +52,7 @@ export default function SessionStatsCompact({
     if (isAgCamper) return false // AG campers only show in AG area
 
     if (selectedArea === 'boys') return camper.gender === 'M'
-    if (selectedArea === 'girls') return camper.gender === 'F'
-
-    return true
+    return camper.gender === 'F'
   })
 
   // Count assigned campers (those with a bunk assignment in filtered bunks)

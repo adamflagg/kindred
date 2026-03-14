@@ -30,7 +30,7 @@ function getAvatarColor(str: string): string {
     hash = hash & hash
   }
   return (
-    colors[Math.abs(hash) % colors.length] ||
+    colors[Math.abs(hash) % colors.length] ??
     'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
   )
 }

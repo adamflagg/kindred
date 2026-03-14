@@ -61,8 +61,8 @@ function parseStaffAttribution(text: string | undefined): StaffAttribution | nul
 
   return {
     content: allContent || text,
-    staffName: mostRecent?.staff || null,
-    timestamp: mostRecent?.timestamp || null,
+    staffName: mostRecent?.staff ?? null,
+    timestamp: mostRecent?.timestamp ?? null,
   }
 }
 
@@ -80,7 +80,7 @@ function RawDataField({
   staffParsing?: boolean
 }) {
   const parsed = staffParsing ? parseStaffAttribution(value) : null
-  const displayContent = parsed?.content || value
+  const displayContent = parsed?.content ?? value
 
   return (
     <div>

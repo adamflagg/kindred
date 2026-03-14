@@ -75,7 +75,7 @@ export function useDrilldownAttendees({
       const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`)
       if (!res.ok) {
         const error = await res.json().catch(() => ({}))
-        throw new Error(error.detail || `Failed to fetch drilldown data: ${res.statusText}`)
+        throw new Error(error.detail ?? `Failed to fetch drilldown data: ${res.statusText}`)
       }
       return res.json()
     },

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import type { ChartLegend as ChartLegendType } from './ChartLegend'
 
 // ---------------------------------------------------------------------------
 // Module export
@@ -15,7 +16,7 @@ describe('ChartLegend exports', () => {
 // Rendering
 // ---------------------------------------------------------------------------
 describe('ChartLegend rendering', () => {
-  let ChartLegend: typeof import('./ChartLegend').ChartLegend
+  let ChartLegend: typeof ChartLegendType
 
   beforeAll(async () => {
     const mod = await import('./ChartLegend')

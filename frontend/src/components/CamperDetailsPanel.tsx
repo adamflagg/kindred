@@ -199,7 +199,7 @@ export default function CamperDetailsPanel({
       let primaryBunk: ExpandedBunk | null = null
 
       for (const att of attendees) {
-        const expAtt = att?.expand as { session?: ExpandedSession } | undefined
+        const expAtt = att.expand as { session?: ExpandedSession } | undefined
         const sess = expAtt?.session ?? null
 
         let bunkName: string | null = null
@@ -232,7 +232,7 @@ export default function CamperDetailsPanel({
 
       const camper = toAppCamper(
         person,
-        primaryAttendee || dummyAttendee,
+        primaryAttendee ?? dummyAttendee,
         primaryAssignment,
         primaryBunk as BunksResponse | null,
         primarySession as CampSessionsResponse | null
@@ -254,7 +254,7 @@ export default function CamperDetailsPanel({
       const persons = await pb.collection<PersonsResponse>('persons').getList(1, 1, {
         filter: `cm_id = ${personId} && year = ${currentYear}`,
       })
-      return persons.items[0] || null
+      return persons.items[0] ?? null
     },
     enabled: !!camperId,
   })
@@ -332,7 +332,7 @@ export default function CamperDetailsPanel({
               req.requested_person_name
               ? `${req.requested_person_name} (unresolved)`
               : undefined,
-          metadata: req.metadata || ({} as Record<string, unknown>),
+          metadata: req.metadata ?? ({} as Record<string, unknown>),
         }
       })
     },
@@ -396,7 +396,7 @@ export default function CamperDetailsPanel({
                 const assignments = await pb
                   .collection<BunkAssignmentsResponse>('bunk_assignments')
                   .getFullList({
-                    filter: `person = "${siblingPerson?.id || ''}" && session = "${session?.id || ''}" && year = ${currentYear}`,
+                    filter: `person = "${siblingPerson.id || ''}" && session = "${session.id ?? ''}" && year = ${currentYear}`,
                     expand: 'bunk',
                     $autoCancel: false,
                   })
@@ -469,14 +469,14 @@ export default function CamperDetailsPanel({
     if (!session) return null
     if (session.session_type === 'ag') return session.name
     if (session.session_type === 'embedded') {
-      const match = session.name?.match(/([23][ab])/i)
+      const match = session.name.match(/([23][ab])/i)
       if (match) return `Session ${match[1]}`
     }
     if (session.session_type === 'main') {
-      const match = session.name?.match(/(\d+)/)
+      const match = session.name.match(/(\d+)/)
       if (match) return `Session ${match[1]}`
     }
-    if (session.name?.toLowerCase().includes('taste')) return 'Taste of Camp'
+    if (session.name.toLowerCase().includes('taste')) return 'Taste of Camp'
     return session.name || 'Unknown'
   }
 
@@ -513,7 +513,7 @@ export default function CamperDetailsPanel({
       queryFn: async () => {
         const results: SatisfactionMap = {}
 
-        if (!camper?.assigned_bunk_cm_id || !camper?.session_cm_id) {
+        if (!camper?.assigned_bunk_cm_id || !camper.session_cm_id) {
           return results // Requester not assigned - can't check
         }
 
@@ -565,7 +565,7 @@ export default function CamperDetailsPanel({
             if (personCmId && bunkCmId) {
               personToBunk.set(personCmId, bunkCmId)
               if (!bunkToPersons.has(bunkCmId)) bunkToPersons.set(bunkCmId, [])
-              if (grade !== undefined && grade !== null) {
+              if (grade !== undefined) {
                 const bunkPersons = bunkToPersons.get(bunkCmId)
                 if (bunkPersons) {
                   bunkPersons.push({ cmId: personCmId, grade })
@@ -602,7 +602,7 @@ export default function CamperDetailsPanel({
 
           // Check age preference requests
           for (const req of agePrefs) {
-            const allInBunk = bunkToPersons.get(camper.assigned_bunk_cm_id) || []
+            const allInBunk = bunkToPersons.get(camper.assigned_bunk_cm_id) ?? []
             // Filter out the camper to get only bunkmates
             const bunkmates = allInBunk.filter((b) => b.cmId !== camper.person_cm_id)
 
@@ -615,9 +615,7 @@ export default function CamperDetailsPanel({
             }
 
             const camperGrade = camper.grade
-            const bunkmateGrades = bunkmates
-              .map((b) => b.grade)
-              .filter((g): g is number => g !== null && g !== undefined)
+            const bunkmateGrades = bunkmates.map((b) => b.grade)
 
             if (bunkmateGrades.length === 0) {
               results[req.id] = {
@@ -638,9 +636,7 @@ export default function CamperDetailsPanel({
             // Create grade breakdown for rich UI display
             const gradeCounts = new Map<number, number>()
             bunkmates.forEach((b) => {
-              if (b.grade !== null && b.grade !== undefined) {
-                gradeCounts.set(b.grade, (gradeCounts.get(b.grade) || 0) + 1)
-              }
+              gradeCounts.set(b.grade, (gradeCounts.get(b.grade) ?? 0) + 1)
             })
             const gradeBreakdown = Array.from(gradeCounts.entries())
               .sort((a, b) => a[0] - b[0])
@@ -749,7 +745,7 @@ export default function CamperDetailsPanel({
           <div className="text-forest-100 flex items-center gap-1.5">
             <TreePine className="text-forest-300 h-3 w-3" />
             <span>
-              {camper.years_at_camp || 0} {(camper.years_at_camp || 0) === 1 ? 'year' : 'years'}
+              {camper.years_at_camp ?? 0} {(camper.years_at_camp ?? 0) === 1 ? 'year' : 'years'}
             </span>
           </div>
           {currentEnrollments.length > 1 ? (
@@ -793,7 +789,7 @@ export default function CamperDetailsPanel({
 
       <div className="space-y-3 px-4">
         {/* Bunking Preferences - Compact view */}
-        {bunkRequests && bunkRequests.length > 0 && (
+        {bunkRequests.length > 0 && (
           <section>
             <SectionHeader
               title="Bunking Preferences"
@@ -844,7 +840,7 @@ export default function CamperDetailsPanel({
                         {/* Target - clickable if confirmed */}
                         <CamperLink
                           personCmId={request.requestee_id}
-                          displayName={request.requestedPersonName || 'Unknown'}
+                          displayName={request.requestedPersonName ?? 'Unknown'}
                           isConfirmed={isConfirmed}
                           showUnresolved={!isConfirmed && !!request.requestedPersonName}
                         />
@@ -923,7 +919,7 @@ export default function CamperDetailsPanel({
               icon={TreePine}
               isExpanded={expandedSections.history}
               onToggle={() => toggleSection('history')}
-              badge={camper.years_at_camp || historicalData.length + 1}
+              badge={camper.years_at_camp ?? historicalData.length + 1}
               accentColor="forest"
             />
             {expandedSections.history && (
@@ -950,7 +946,7 @@ export default function CamperDetailsPanel({
                           <span
                             className={`truncate text-xs ${enrollment.bunkName ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
                           >
-                            {enrollment.bunkName || 'Unassigned'}
+                            {enrollment.bunkName ?? 'Unassigned'}
                           </span>
                           {idx === 0 && (
                             <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
@@ -970,9 +966,9 @@ export default function CamperDetailsPanel({
                           </span>
                           <span className="text-muted-foreground text-xs">·</span>
                           <span
-                            className={`truncate text-xs ${camper.expand?.assigned_bunk ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
+                            className={`truncate text-xs ${camper.expand.assigned_bunk ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
                           >
-                            {camper.expand?.assigned_bunk?.name || 'Unassigned'}
+                            {camper.expand.assigned_bunk?.name ?? 'Unassigned'}
                           </span>
                           <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
                             Now
@@ -1188,7 +1184,7 @@ export default function CamperDetailsPanel({
                     {(!camper.preferred_name || camper.preferred_name === camper.first_name) && ' '}
                     {camper.last_name}
                   </h2>
-                  <StatusBadge status={camper?.attendee_status} />
+                  <StatusBadge status={camper.attendee_status} />
                 </div>
                 <button
                   onClick={handleClose}
@@ -1200,7 +1196,7 @@ export default function CamperDetailsPanel({
               <div className="text-forest-100 mt-1 flex items-center gap-2 text-xs">
                 <span>{camper.gender === 'M' ? 'M' : camper.gender === 'F' ? 'F' : 'NB'}</span>
                 <span>•</span>
-                <span>{camper.pronouns || 'No Preference'}</span>
+                <span>{camper.pronouns ?? 'No Preference'}</span>
                 <span>•</span>
                 <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
                 <span
@@ -1271,7 +1267,7 @@ export default function CamperDetailsPanel({
                         ' '}
                       {camper.last_name}
                     </h2>
-                    <StatusBadge status={camper?.attendee_status} />
+                    <StatusBadge status={camper.attendee_status} />
                   </div>
                   <button
                     onClick={handleClose}
@@ -1290,7 +1286,7 @@ export default function CamperDetailsPanel({
                         : 'Non-Binary'}
                   </span>
                   <span>•</span>
-                  <span>{camper.pronouns || 'No Preference'}</span>
+                  <span>{camper.pronouns ?? 'No Preference'}</span>
                   <span>•</span>
                   <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
                 </div>

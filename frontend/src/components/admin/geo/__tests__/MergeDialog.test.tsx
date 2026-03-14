@@ -93,8 +93,7 @@ describe('MergeDialog', () => {
     // The title has it, but the results list should not
     const resultButtons = screen.getAllByRole('button').filter((btn) => {
       return (
-        btn.textContent?.includes('Oak Valley Middle') ||
-        btn.textContent?.includes('Hillcrest High')
+        btn.textContent.includes('Oak Valley Middle') || btn.textContent.includes('Hillcrest High')
       )
     })
     expect(resultButtons.length).toBeGreaterThan(0)
@@ -104,7 +103,7 @@ describe('MergeDialog', () => {
     const allButtons = screen.getAllByRole('button')
     const sourceInResults = allButtons.filter(
       (btn) =>
-        btn.textContent?.includes('Riverside Elementary') &&
+        btn.textContent.includes('Riverside Elementary') &&
         !btn.getAttribute('aria-label')?.includes('Close')
     )
     // The only mention of Riverside Elementary should be in the title, not as a selectable row

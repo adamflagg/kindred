@@ -94,8 +94,8 @@ export default function ProcessRequestOptions({
     if (sessions) {
       // Sort logically: 1, 2, 2a, 2b, 3, 3a, 4
       const sorted = [...sessions].sort((a, b) => {
-        const aName = extractFriendlyName(a.name) || ''
-        const bName = extractFriendlyName(b.name) || ''
+        const aName = extractFriendlyName(a.name) ?? ''
+        const bName = extractFriendlyName(b.name) ?? ''
         // Compare numeric part first, then alpha suffix
         const aNum = parseInt(aName) || 0
         const bNum = parseInt(bName) || 0

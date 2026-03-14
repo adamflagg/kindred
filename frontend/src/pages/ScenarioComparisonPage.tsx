@@ -290,7 +290,7 @@ export default function ScenarioComparisonPage() {
   const normalizeAssignments = useCallback(
     (assignments: ExpandedAssignment[]): CamperAssignment[] => {
       return assignments
-        .filter((a) => a.expand?.person && a.expand?.bunk)
+        .filter((a) => a.expand?.person && a.expand.bunk)
         .map((a) => {
           const person = a.expand?.person
           const bunk = a.expand?.bunk
@@ -301,9 +301,9 @@ export default function ScenarioComparisonPage() {
           return {
             personId: person.id,
             personCmId: person.cm_id,
-            name: `${person.preferred_name ?? person.first_name} ${person.last_name}`,
-            grade: person.grade ?? 0,
-            gender: person.gender ?? '',
+            name: `${person.preferred_name || person.first_name} ${person.last_name}`,
+            grade: person.grade,
+            gender: person.gender,
             bunkId: bunk.id,
             bunkName: bunk.name,
             bunkPlanId: a.bunk_plan ?? '',
@@ -419,8 +419,7 @@ export default function ScenarioComparisonPage() {
       if (selectedBunkArea === 'all') return true
       if (selectedBunkArea === 'boys') return bunk.gender === 'M'
       if (selectedBunkArea === 'girls') return bunk.gender === 'F'
-      if (selectedBunkArea === 'ag') return bunk.gender === 'Mixed'
-      return true
+      return bunk.gender === 'Mixed'
     })
   }, [allBunks, selectedBunkArea])
 
@@ -444,7 +443,7 @@ export default function ScenarioComparisonPage() {
           const prevAssignment = leftByPerson.get(c.personCmId)
           return {
             camper: c,
-            fromBunk: prevAssignment?.bunkName || '(Unassigned)',
+            fromBunk: prevAssignment?.bunkName ?? '(Unassigned)',
           }
         })
 
@@ -455,7 +454,7 @@ export default function ScenarioComparisonPage() {
           const nextAssignment = rightByPerson.get(c.personCmId)
           return {
             camper: c,
-            toBunk: nextAssignment?.bunkName || '(Unassigned)',
+            toBunk: nextAssignment?.bunkName ?? '(Unassigned)',
           }
         })
 
@@ -504,12 +503,12 @@ export default function ScenarioComparisonPage() {
   const leftScenarioName =
     leftScenarioId === 'production'
       ? 'CampMinder (Production)'
-      : scenarios.find((s) => s.id === leftScenarioId)?.name || 'Select scenario'
+      : (scenarios.find((s) => s.id === leftScenarioId)?.name ?? 'Select scenario')
 
   const rightScenarioName =
     rightScenarioId === 'production'
       ? 'CampMinder (Production)'
-      : scenarios.find((s) => s.id === rightScenarioId)?.name || 'Select scenario'
+      : (scenarios.find((s) => s.id === rightScenarioId)?.name ?? 'Select scenario')
 
   if (authLoading) {
     return (
@@ -591,7 +590,7 @@ export default function ScenarioComparisonPage() {
                     <span className="truncate">
                       {leftScenarioId === 'production'
                         ? 'CampMinder (Production)'
-                        : scenarios.find((s) => s.id === leftScenarioId)?.name || 'Select...'}
+                        : (scenarios.find((s) => s.id === leftScenarioId)?.name ?? 'Select...')}
                     </span>
                     <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
@@ -639,7 +638,7 @@ export default function ScenarioComparisonPage() {
                         ? 'Select a scenario...'
                         : rightScenarioId === 'production'
                           ? 'CampMinder (Production)'
-                          : scenarios.find((s) => s.id === rightScenarioId)?.name || 'Select...'}
+                          : (scenarios.find((s) => s.id === rightScenarioId)?.name ?? 'Select...')}
                     </span>
                     <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
@@ -693,7 +692,7 @@ export default function ScenarioComparisonPage() {
         ) : (
           <>
             {/* Validation Score Comparison - Detailed breakdown */}
-            {(leftValidation || rightValidation) && (
+            {(leftValidation ?? rightValidation) && (
               <div className="card-lodge mb-6 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <CheckCircle2 className="text-forest-600 h-5 w-5" />

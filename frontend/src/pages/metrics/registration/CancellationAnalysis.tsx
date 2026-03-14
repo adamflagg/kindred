@@ -59,14 +59,18 @@ function transformCancelSessionData(
     const known =
       item.was_enrolled +
       item.was_waitlisted +
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       (item.was_applied ?? 0) +
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       (item.other_prior_status ?? 0)
     return {
       name: item.session_name,
       total: item.total_cancelled,
       was_enrolled: item.was_enrolled,
       was_waitlisted: item.was_waitlisted,
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       was_applied: item.was_applied ?? 0,
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       other_prior_status: item.other_prior_status ?? 0,
       unknown: Math.max(0, item.total_cancelled - known),
     }
@@ -147,12 +151,9 @@ export default function CancellationAnalysis() {
     [compData, sessionDateLookup, sessionTypeLookup]
   )
 
-  const primaryGrade = useMemo(
-    () => (data ? transformCancelGradeData(data.by_grade || []) : []),
-    [data]
-  )
+  const primaryGrade = useMemo(() => (data ? transformCancelGradeData(data.by_grade) : []), [data])
   const compGrade = useMemo(
-    () => (compData ? transformCancelGradeData(compData.by_grade || []) : []),
+    () => (compData ? transformCancelGradeData(compData.by_grade) : []),
     [compData]
   )
 
@@ -458,11 +459,11 @@ export default function CancellationAnalysis() {
             )}
 
             {/* Grade + Gender Charts Row */}
-            {((data.by_grade || []).length > 0 || (data.by_gender || []).length > 0) && (
+            {(data.by_grade.length > 0 || data.by_gender.length > 0) && (
               <>
                 {isComparing && compData ? (
                   <>
-                    {(data.by_grade || []).length > 0 && primaryGrade.length > 0 && (
+                    {data.by_grade.length > 0 && primaryGrade.length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                           <CssStackedHorizontalBarChart
@@ -470,7 +471,7 @@ export default function CancellationAnalysis() {
                             segments={CANCEL_SEGMENTS}
                             title={`${currentYear} Grade Distribution`}
                             onBarClick={(item) => {
-                              const grade = data.by_grade?.find(
+                              const grade = data.by_grade.find(
                                 (g) =>
                                   (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
                               )
@@ -496,18 +497,18 @@ export default function CancellationAnalysis() {
                           title="Grade Distribution Comparison"
                           primaryYear={currentYear}
                           compareYear={compareYear!}
-                          primaryData={(data.by_grade || []).map((g) => ({
+                          primaryData={data.by_grade.map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
                           }))}
-                          compareData={(compData.by_grade || []).map((g) => ({
+                          compareData={compData.by_grade.map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
                           }))}
                         />
                       </>
                     )}
-                    {(data.by_gender || []).length > 0 && (
+                    {data.by_gender.length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                           <CancellationGenderChart
@@ -516,7 +517,7 @@ export default function CancellationAnalysis() {
                             title={`${currentYear} Gender Distribution`}
                           />
                           <CancellationGenderChart
-                            data={compData.by_gender || []}
+                            data={compData.by_gender}
                             title={`${compareYear} Gender Distribution`}
                           />
                         </div>
@@ -532,13 +533,13 @@ export default function CancellationAnalysis() {
                   </>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    {(data.by_grade || []).length > 0 && primaryGrade.length > 0 && (
+                    {data.by_grade.length > 0 && primaryGrade.length > 0 && (
                       <CssStackedHorizontalBarChart
                         data={primaryGrade}
                         segments={CANCEL_SEGMENTS}
                         title="Grade Distribution"
                         onBarClick={(item) => {
-                          const grade = data.by_grade?.find(
+                          const grade = data.by_grade.find(
                             (g) => (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
                           )
                           if (grade) {
@@ -552,7 +553,7 @@ export default function CancellationAnalysis() {
                         }}
                       />
                     )}
-                    {(data.by_gender || []).length > 0 && (
+                    {data.by_gender.length > 0 && (
                       <CancellationGenderChart
                         data={data.by_gender}
                         onSegmentClick={setFilter}

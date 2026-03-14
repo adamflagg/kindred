@@ -64,7 +64,7 @@ export function useRunIndividualSync() {
     // Note: No onMutate toast - the API responds within ~100ms with status: "started"
     // which triggers the onSuccess toast. Having both is redundant.
     onSuccess: (data, syncType) => {
-      const displayName = SYNC_TYPE_NAMES[syncType] || syncType
+      const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
 
       // The Go API runs syncs in background goroutines and returns immediately
       // with status: "started". Actual completion comes via status polling.
@@ -72,7 +72,7 @@ export function useRunIndividualSync() {
 
       // Check if response indicates queued (sync is busy)
       if (data?.status === 'queued') {
-        toast(`${displayName} sync queued (position ${data?.position || '?'})`, {
+        toast(`${displayName} sync queued (position ${data?.position ?? '?'})`, {
           icon: '📋',
           duration: 4000,
           className: 'toast-lodge toast-lodge-info',
@@ -105,7 +105,7 @@ export function useRunIndividualSync() {
         })
       } else if (data?.stats || data?.created !== undefined) {
         // Synchronous response with actual stats (some endpoints may return this)
-        const stats = data?.stats || data
+        const stats = data?.stats ?? data
         const created = stats?.created ?? 0
         const updated = stats?.updated ?? 0
         const skipped = stats?.skipped ?? 0
@@ -141,7 +141,7 @@ export function useRunIndividualSync() {
       void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error, syncType) => {
-      const displayName = SYNC_TYPE_NAMES[syncType] || syncType
+      const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
       // Handle specific error cases

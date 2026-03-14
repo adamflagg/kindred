@@ -55,7 +55,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
   const getRequestsByPerson = () => {
     const map = new Map<number, BunkRequest[]>()
     allRequests.forEach((request) => {
-      const existing = map.get(request.requester_id) || []
+      const existing = map.get(request.requester_id) ?? []
       map.set(request.requester_id, [...existing, request])
     })
     return map
@@ -68,7 +68,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
   }
 
   const getRequestsForCamper = (personCmId: number): BunkRequest[] => {
-    return requestsByPerson.get(personCmId) || []
+    return requestsByPerson.get(personCmId) ?? []
   }
 
   // Cache bunk person sets to avoid recreating for each camper in the bunk
@@ -95,7 +95,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     campersInBunk: BunkmateInfo[],
     requesterGrade: number | null
   ) => {
-    const personRequests = requestsByPerson.get(personCmId) || []
+    const personRequests = requestsByPerson.get(personCmId) ?? []
 
     if (personRequests.length === 0 || !bunkCmId) {
       return {
@@ -137,10 +137,10 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     })
 
     // Sort by priority to find top priority
-    const sortedSatisfied = satisfiedRequests.sort((a, b) => (b.priority || 0) - (a.priority || 0))
-    const topPriority = personRequests.reduce((max, req) => Math.max(max, req.priority || 0), 0)
-    const topPrioritySatisfied = sortedSatisfied.some((req) => (req.priority || 0) === topPriority)
-    const priorityLevels = [...new Set(sortedSatisfied.map((r) => r.priority || 0))].sort(
+    const sortedSatisfied = satisfiedRequests.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+    const topPriority = personRequests.reduce((max, req) => Math.max(max, req.priority ?? 0), 0)
+    const topPrioritySatisfied = sortedSatisfied.some((req) => (req.priority ?? 0) === topPriority)
+    const priorityLevels = [...new Set(sortedSatisfied.map((r) => r.priority ?? 0))].sort(
       (a, b) => b - a
     )
     const hasLockedPriority = satisfiedRequests.some((req) => req.priority_locked)

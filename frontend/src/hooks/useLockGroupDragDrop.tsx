@@ -72,7 +72,7 @@ export function useLockGroupDragDrop({
         id: active.id as string,
         type: 'camper',
         camper,
-        sourceBunkId: camper.assigned_bunk || '',
+        sourceBunkId: camper.assigned_bunk ?? '',
       })
 
       // Call the original onDragStart if provided
@@ -121,9 +121,7 @@ export function useLockGroupDragDrop({
       try {
         // Move all campers in the group
         for (const camper of campersToMove) {
-          if (camper) {
-            await onCamperMove(camper.id, targetBunkId)
-          }
+          await onCamperMove(camper.id, targetBunkId)
         }
 
         if (campersToMove.length > 1) {
@@ -163,7 +161,7 @@ export function useLockGroupDragDrop({
         <div className="opacity-90">
           {/* This would be your CamperCard component */}
           <div className="border-primary rounded-lg border-2 bg-white p-2 shadow-lg dark:bg-gray-800">
-            <div className="font-medium">{activeDragItem.camper?.name}</div>
+            <div className="font-medium">{activeDragItem.camper.name}</div>
           </div>
         </div>
 

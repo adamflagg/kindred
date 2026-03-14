@@ -66,7 +66,7 @@ export function ParseAnalysisTab() {
       )
       if (!res.ok) throw new Error('Failed to fetch sessions')
       const data = await res.json()
-      return data.items || []
+      return data.items ?? []
     },
     enabled: isAuthenticated,
     ...syncDataOptions,
@@ -230,7 +230,7 @@ export function ParseAnalysisTab() {
       source_field: sourceField ?? undefined,
     }
 
-    const hasFilters = effectiveCmIds || sourceField
+    const hasFilters = effectiveCmIds ?? sourceField
     const confirmMessage = hasFilters
       ? 'Are you sure you want to clear debug results for the current filtered view?'
       : 'Are you sure you want to clear ALL debug parse analysis results?'

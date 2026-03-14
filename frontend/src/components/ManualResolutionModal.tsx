@@ -4,7 +4,6 @@ import { Search, UserCheck } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
 import type { BunkRequest, Camper } from '../types/app-types'
 import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-types'
-import { calculateAge } from '../utils/ageCalculator'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { Modal } from './ui/Modal'
 
@@ -20,9 +19,9 @@ interface ManualResolutionModalProps {
 
 // Helper function to format camper name
 function formatCamperName(camper: Camper): string {
-  const firstName = camper.first_name || ''
+  const firstName = camper.first_name ?? ''
   const preferredName = camper.preferred_name?.replace(/^["']|["']$/g, '')
-  const lastName = camper.last_name || ''
+  const lastName = camper.last_name ?? ''
 
   if (preferredName && preferredName !== firstName) {
     return `${firstName} "${preferredName}" ${lastName}`.trim()
@@ -92,7 +91,7 @@ export default function ManualResolutionModal({
           first_name: person.first_name,
           last_name: person.last_name,
           preferred_name: person.preferred_name,
-          age: person.age ?? (person.birthdate ? calculateAge(person.birthdate) : 0),
+          age: person.age,
           birthdate: person.birthdate,
           grade: person.grade || 0,
           gender: (person.gender || 'NB') as 'M' | 'F' | 'NB',
@@ -120,9 +119,9 @@ export default function ManualResolutionModal({
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter((camper: Camper) => {
         const fullName = formatCamperName(camper).toLowerCase()
-        const firstName = camper.first_name?.toLowerCase() || ''
-        const lastName = camper.last_name?.toLowerCase() || ''
-        const preferredName = camper.preferred_name?.toLowerCase() || ''
+        const firstName = camper.first_name?.toLowerCase() ?? ''
+        const lastName = camper.last_name?.toLowerCase() ?? ''
+        const preferredName = camper.preferred_name?.toLowerCase() ?? ''
 
         return (
           fullName.includes(query) ||

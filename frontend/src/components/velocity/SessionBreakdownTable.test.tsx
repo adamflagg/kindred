@@ -50,7 +50,7 @@ describe('SessionBreakdownTable', () => {
       header: 'Enrolled',
       accessor: (session: VelocityCurve) => {
         const last = session.weekly[session.weekly.length - 1]
-        return last?.enrolled?.toLocaleString() ?? '-'
+        return last?.enrolled.toLocaleString() ?? '-'
       },
       className: 'text-right',
     },
@@ -98,7 +98,7 @@ describe('SessionBreakdownTable', () => {
   it('passes prior session data to column accessors', () => {
     const accessor = vi.fn(
       (_session: VelocityCurve, prior?: PriorYearSessionSummary) =>
-        prior?.final_enrolled?.toString() ?? 'no-prior'
+        prior?.final_enrolled.toString() ?? 'no-prior'
     )
     const columns = [{ header: 'Prior', accessor }]
     const session = makeSession({ session_name: 'Session 1' })

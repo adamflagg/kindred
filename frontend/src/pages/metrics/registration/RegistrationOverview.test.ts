@@ -6,7 +6,7 @@ describe('RegistrationOverview', () => {
     const source = sourceContent.default
 
     // Ensure no inline .map() calls on by_gender_grade exist (should use transformGenderByGrade helper)
-    const inlineMapCount = (source.match(/by_gender_grade.*?\.map\(\(g\) => \(\{/g) || []).length
+    const inlineMapCount = (source.match(/by_gender_grade.*?\.map\(\(g\) => \(\{/g) ?? []).length
     expect(inlineMapCount).toBeLessThanOrEqual(0)
   })
 })

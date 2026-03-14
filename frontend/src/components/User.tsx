@@ -27,7 +27,7 @@ export default function User() {
           <h2 className="font-display text-destructive mb-2 text-xl font-bold">
             Authentication Error
           </h2>
-          <p className="text-muted-foreground">{error || 'Not authenticated'}</p>
+          <p className="text-muted-foreground">{error ?? 'Not authenticated'}</p>
         </div>
       </div>
     )
@@ -56,7 +56,7 @@ export default function User() {
                     {user['avatar'] ? (
                       <img
                         src={pb.files.getURL(user, user['avatar'])}
-                        alt={user['name'] || user['email']}
+                        alt={user['name'] ?? user['email']}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -66,7 +66,7 @@ export default function User() {
                 </div>
                 <div className="flex-1">
                   <h2 className="text-foreground text-2xl font-bold">
-                    {user['name'] || user['email']}
+                    {user['name'] ?? user['email']}
                   </h2>
                   <p className="text-muted-foreground">{user['email']}</p>
                 </div>
@@ -89,7 +89,7 @@ export default function User() {
                   </div>
                   <div className="flex-1">
                     <p className="text-muted-foreground text-sm">Email Address</p>
-                    <p className="font-medium">{user['email'] || 'No email address provided'}</p>
+                    <p className="font-medium">{user['email'] ?? 'No email address provided'}</p>
                   </div>
                 </div>
               </div>

@@ -227,21 +227,21 @@ describe('API endpoint format', () => {
 
 describe('useRetentionTrends enabled state', () => {
   it('should be enabled when currentYear > 0', () => {
-    const currentYear = 2026
+    const currentYear = 2026 as number
     const enabled = currentYear > 0
 
     expect(enabled).toBe(true)
   })
 
   it('should be disabled when currentYear is 0', () => {
-    const currentYear = 0
+    const currentYear = 0 as number
     const enabled = currentYear > 0
 
     expect(enabled).toBe(false)
   })
 
   it('should be disabled when currentYear is negative', () => {
-    const currentYear = -1
+    const currentYear = -1 as number
     const enabled = currentYear > 0
 
     expect(enabled).toBe(false)

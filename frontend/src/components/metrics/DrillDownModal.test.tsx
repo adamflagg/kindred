@@ -202,7 +202,7 @@ describe('DrillDownModal', () => {
 
       // In retention mode, School column should not appear in table headers
       const headers = screen.queryAllByRole('columnheader')
-      const schoolHeader = headers.find((h) => h.textContent?.includes('School'))
+      const schoolHeader = headers.find((h) => h.textContent.includes('School'))
       expect(schoolHeader).toBeUndefined()
     })
 
@@ -211,10 +211,10 @@ describe('DrillDownModal', () => {
 
       // Should show "Prior Session" instead of "Last Year's Session(s)"
       const headers = screen.queryAllByRole('columnheader')
-      const priorHeader = headers.find((h) => h.textContent?.includes('Prior Session'))
+      const priorHeader = headers.find((h) => h.textContent.includes('Prior Session'))
       expect(priorHeader).toBeDefined()
       // "Last Year" should NOT appear
-      const lastYearHeader = headers.find((h) => h.textContent?.includes('Last Year'))
+      const lastYearHeader = headers.find((h) => h.textContent.includes('Last Year'))
       expect(lastYearHeader).toBeUndefined()
     })
 
@@ -224,7 +224,7 @@ describe('DrillDownModal', () => {
       const headers = screen.queryAllByRole('columnheader')
       // Should have a "Session" column distinct from "Prior Session"
       const sessionHeaders = headers.filter((h) => {
-        const text = h.textContent ?? ''
+        const text = h.textContent
         return text.includes('Session') && !text.includes('Prior')
       })
       expect(sessionHeaders.length).toBeGreaterThanOrEqual(1)

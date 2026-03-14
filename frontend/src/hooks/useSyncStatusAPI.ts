@@ -116,13 +116,13 @@ export function useSyncStatusAPI() {
       if (!data) return false // Don't poll if no data yet
 
       // Check if daily sync is running
-      const dailySyncRunning = data._daily_sync_running || false
+      const dailySyncRunning = data._daily_sync_running ?? false
 
       // Check if historical sync is running
-      const historicalSyncRunning = data._historical_sync_running || false
+      const historicalSyncRunning = data._historical_sync_running ?? false
 
       // Check if queue has items
-      const hasQueuedItems = (data._queue_length || 0) > 0
+      const hasQueuedItems = (data._queue_length ?? 0) > 0
 
       // Check if any individual sync is running or pending
       const hasActiveSync = Object.entries(data).some(([key, value]) => {

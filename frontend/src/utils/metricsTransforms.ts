@@ -71,7 +71,7 @@ export function transformGradeData(data: GradeBreakdown[] | undefined): ChartDat
     name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
     value: g.count,
     percentage: g.percentage,
-    id: g.grade !== null ? g.grade : 'null',
+    id: g.grade ?? 'null',
   }))
 }
 

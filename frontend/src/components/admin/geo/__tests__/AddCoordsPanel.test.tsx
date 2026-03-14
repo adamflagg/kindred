@@ -51,7 +51,7 @@ describe('AddCoordsPanel', () => {
     const user = userEvent.setup()
     const buttons = screen.getAllByRole('button', { name: /add/i })
     // First Add button (skip Auto-fill All if it matches)
-    const addButtons = buttons.filter((b) => b.textContent?.trim() === 'Add')
+    const addButtons = buttons.filter((b) => b.textContent.trim() === 'Add')
     await user.click(addButtons[0]!)
     expect(onAdd).toHaveBeenCalledWith('Riverside Elementary')
   })

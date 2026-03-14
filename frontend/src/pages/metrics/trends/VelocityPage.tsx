@@ -152,7 +152,7 @@ export default function VelocityPage() {
 
     const cancelledToDate = data.cancelled_to_date
     const priorCancelled =
-      data.prior_year_cancelled_to_date?.length > 0 ? data.prior_year_cancelled_to_date[0] : null
+      data.prior_year_cancelled_to_date.length > 0 ? data.prior_year_cancelled_to_date[0] : null
 
     return {
       currentEnrolled,
@@ -194,9 +194,7 @@ export default function VelocityPage() {
   }
 
   // Build gender breakdown lookup for session table
-  const genderBreakdownMap = new Map(
-    (data.session_gender_breakdown ?? []).map((b) => [b.session_cm_id, b])
-  )
+  const genderBreakdownMap = new Map(data.session_gender_breakdown.map((b) => [b.session_cm_id, b]))
 
   const hasPriorYear = controls.selectedPriorYears.length > 0
 
@@ -240,7 +238,7 @@ export default function VelocityPage() {
                 : undefined
               return (
                 <span style={{ color: GENDER_COLORS.boys }}>
-                  {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
+                  {genderData?.boys_enrolled.toLocaleString() ?? '-'}
                 </span>
               )
             },
@@ -254,7 +252,7 @@ export default function VelocityPage() {
                 : undefined
               return (
                 <span style={{ color: GENDER_COLORS.girls }}>
-                  {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
+                  {genderData?.girls_enrolled.toLocaleString() ?? '-'}
                 </span>
               )
             },
@@ -285,7 +283,7 @@ export default function VelocityPage() {
             header: 'Prior Yr Final',
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
-                {priorSession?.final_enrolled?.toLocaleString() ?? '-'}
+                {priorSession?.final_enrolled.toLocaleString() ?? '-'}
               </span>
             ),
             className: 'text-right',
@@ -359,7 +357,7 @@ export default function VelocityPage() {
             header: 'Prior Year',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">
-                {priorPoint?.enrolled?.toLocaleString() ?? '-'}
+                {priorPoint?.enrolled.toLocaleString() ?? '-'}
               </span>
             ),
             className: 'text-right',
@@ -598,7 +596,7 @@ export default function VelocityPage() {
               />
               <Tooltip
                 content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null
+                  if (!active || !payload.length) return null
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const displayLabel =
@@ -623,7 +621,7 @@ export default function VelocityPage() {
                         const priorDate =
                           yearMatch && label != null
                             ? priorYearDateLabel(
-                                data?.prior_year_season_starts,
+                                data.prior_year_season_starts,
                                 Number(yearMatch[1]),
                                 label as number
                               )
@@ -859,7 +857,7 @@ export default function VelocityPage() {
               />
               <Tooltip
                 content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null
+                  if (!active || !payload.length) return null
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const dayOffset = label as number
@@ -879,7 +877,7 @@ export default function VelocityPage() {
                         const yearMatch = entry.name?.match(/\b(\d{4})\b/)
                         const priorDate = yearMatch
                           ? priorYearDailyDateLabel(
-                              data?.prior_year_season_starts,
+                              data.prior_year_season_starts,
                               Number(yearMatch[1]),
                               dayOffset
                             )

@@ -7,7 +7,10 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-import type { VerticalStackedSegment } from './CssVerticalStackedBarChart'
+import type {
+  VerticalStackedSegment,
+  CssVerticalStackedBarChart as CssVerticalStackedBarChartType,
+} from './CssVerticalStackedBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -44,7 +47,7 @@ describe('CssVerticalStackedBarChart exports', () => {
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart rendering', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -83,7 +86,7 @@ describe('CssVerticalStackedBarChart rendering', () => {
 // Empty state
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart empty state', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -105,7 +108,7 @@ describe('CssVerticalStackedBarChart empty state', () => {
 // Stacked bar rendering
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart bar rendering', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -173,7 +176,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
 // Y-axis
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart Y-axis', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -199,7 +202,7 @@ describe('CssVerticalStackedBarChart Y-axis', () => {
 // Percent mode
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart percent mode', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -243,7 +246,7 @@ describe('CssVerticalStackedBarChart percent mode', () => {
 // Labels above bars
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart labels', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -272,7 +275,7 @@ describe('CssVerticalStackedBarChart labels', () => {
 // X-axis labels
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart X-axis', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -299,7 +302,7 @@ describe('CssVerticalStackedBarChart X-axis', () => {
 // Legend
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart legend', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -348,7 +351,7 @@ describe('CssVerticalStackedBarChart legend', () => {
 // Legend spacing (rotated vs straight labels)
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart legend spacing', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -376,7 +379,7 @@ describe('CssVerticalStackedBarChart legend spacing', () => {
 // Click handling
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart click handling', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -420,7 +423,7 @@ describe('CssVerticalStackedBarChart click handling', () => {
 // Tooltip
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart tooltip', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -443,7 +446,7 @@ describe('CssVerticalStackedBarChart tooltip', () => {
 // Column sizing integration
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart column sizing', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -582,7 +585,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
 // Tooltip zero filtering
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -597,6 +600,7 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
     )
     // Trigger tooltip by hovering over a column
     const column = container.querySelector('.flex-1.flex-col.items-center') as HTMLElement
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- querySelector may return null at runtime
     if (column) {
       fireEvent.mouseEnter(column)
       fireEvent.mouseMove(column, { clientX: 100, clientY: 100 })
@@ -606,7 +610,7 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
     const tooltipLabels = container.querySelectorAll<HTMLElement>('.text-muted-foreground.text-sm')
     const labelTexts = Array.from(tooltipLabels).map((el) => el.textContent)
     // Should NOT find "Female:" with "0 (0%)" in tooltip
-    const hasFemaleZero = labelTexts.some((t) => t?.includes('Female:') && t?.includes('0 (0%)'))
+    const hasFemaleZero = labelTexts.some((t) => t.includes('Female:') && t.includes('0 (0%)'))
     expect(hasFemaleZero).toBe(false)
   })
 })
@@ -615,7 +619,7 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
 // maxColumnWidth prop
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')
@@ -661,7 +665,7 @@ describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
 // No imports from GenderByGradeBreakdown or DrilldownFilter
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
-  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalStackedBarChart')

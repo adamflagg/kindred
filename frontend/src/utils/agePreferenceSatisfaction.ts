@@ -70,6 +70,7 @@ export function isAgePreferenceSatisfied(
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive: handles unexpected preference values at runtime
   if (preference === 'younger') {
     const hasYounger = minGrade < requesterGrade
     const hasOlder = maxGrade > requesterGrade

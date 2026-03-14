@@ -72,15 +72,11 @@ export function TrendLineChart({
           }
         }
 
-        if (metric === 'cancellation_rate') {
-          return {
-            ...base,
-            cancelled: yearData.total_cancelled ?? 0,
-            cancellation_rate: yearData.cancellation_rate ?? 0,
-          }
+        return {
+          ...base,
+          cancelled: yearData.total_cancelled ?? 0,
+          cancellation_rate: yearData.cancellation_rate ?? 0,
         }
-
-        return base
       }),
     [data, metric]
   )

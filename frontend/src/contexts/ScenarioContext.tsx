@@ -14,7 +14,7 @@ interface ScenarioProviderProps {
 // Convert SavedScenario to Scenario format
 function savedScenarioToScenario(saved: SavedScenario): Scenario {
   // Get the session CM ID from the expanded relation if available
-  const sessionCmId = saved.expand?.session?.cm_id || 0
+  const sessionCmId = saved.expand.session?.cm_id ?? 0
 
   return {
     id: saved.id,
@@ -22,7 +22,7 @@ function savedScenarioToScenario(saved: SavedScenario): Scenario {
     session_cm_id: sessionCmId,
     created: saved.created,
     updated: saved.updated,
-    is_active: saved.is_active ?? true,
+    is_active: saved.is_active,
     description: saved.description || '',
   }
 }
@@ -50,11 +50,11 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
 
   // Combine errors from queries and mutations
   const error =
-    queryError?.message ||
-    createScenarioMutation.error?.message ||
-    updateScenarioMutation.error?.message ||
-    deleteScenarioMutation.error?.message ||
-    clearScenarioMutation.error?.message ||
+    queryError?.message ??
+    createScenarioMutation.error?.message ??
+    updateScenarioMutation.error?.message ??
+    deleteScenarioMutation.error?.message ??
+    clearScenarioMutation.error?.message ??
     null
 
   // Combined loading state
@@ -226,7 +226,6 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     const validatedResult = getValidatedScenario(scenarios)
     // undefined means no change needed, null/Scenario means update
     if (validatedResult !== undefined) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Legitimate sync: restore scenario from localStorage on session change. Using useEffectEvent avoids dependency cycle. NOT a cascading render - only fires on scenarios/session change.
       setCurrentScenario(validatedResult)
     }
   }, [scenarios, currentSessionId])

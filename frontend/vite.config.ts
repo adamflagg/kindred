@@ -74,7 +74,7 @@ const branding: BrandingConfig = {
   ...localBranding,
   logo: {
     ...defaultBranding.logo,
-    ...(localBranding.logo || {}),
+    ...(localBranding.logo ?? {}),
   },
 }
 
@@ -119,7 +119,7 @@ function serveLocalAssets(): Plugin {
               'webp': 'image/webp',
             }
 
-            res.setHeader('Content-Type', mimeTypes[ext || ''] || 'application/octet-stream')
+            res.setHeader('Content-Type', mimeTypes[ext ?? ''] || 'application/octet-stream')
             res.setHeader('Content-Length', stat.size)
             res.setHeader('Cache-Control', 'public, max-age=3600')
 
@@ -166,19 +166,19 @@ if (process.env.VITE_DISABLE_AUTH === 'true' && process.env.IS_DOCKER === 'true'
 
 // Expose PocketBase admin credentials when VITE_DISABLE_AUTH is set (for Playwright testing)
 const testAuthDefines = process.env.VITE_DISABLE_AUTH === 'true' ? {
-  'import.meta.env.VITE_ADMIN_EMAIL': JSON.stringify(process.env.POCKETBASE_ADMIN_EMAIL || ''),
-  'import.meta.env.VITE_ADMIN_PASSWORD': JSON.stringify(process.env.POCKETBASE_ADMIN_PASSWORD || ''),
+  'import.meta.env.VITE_ADMIN_EMAIL': JSON.stringify(process.env.POCKETBASE_ADMIN_EMAIL ?? ''),
+  'import.meta.env.VITE_ADMIN_PASSWORD': JSON.stringify(process.env.POCKETBASE_ADMIN_PASSWORD ?? ''),
 } : {};
 
 // Version info from build process (with fallbacks for development)
 const versionDefines = {
-  'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.VITE_APP_VERSION || 'dev'),
-  'import.meta.env.VITE_APP_BUILD_DATE': JSON.stringify(process.env.VITE_APP_BUILD_DATE || new Date().toISOString()),
+  'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.VITE_APP_VERSION ?? 'dev'),
+  'import.meta.env.VITE_APP_BUILD_DATE': JSON.stringify(process.env.VITE_APP_BUILD_DATE ?? new Date().toISOString()),
 };
 
 // Admin UI access control
 const adminDefines = {
-  'import.meta.env.ADMIN_USER': JSON.stringify(process.env.ADMIN_USER || ''),
+  'import.meta.env.ADMIN_USER': JSON.stringify(process.env.ADMIN_USER ?? ''),
 };
 
 // =============================================================================
@@ -240,7 +240,7 @@ const baseConfig: UserConfig = {
       // All API requests go through Caddy (single source of truth for routing)
       // Caddy routes PocketBase patterns to PocketBase, everything else to FastAPI
       '/api': {
-        target: `http://127.0.0.1:${process.env.CADDY_PORT || 8080}`,  // Caddy handles all routing
+        target: `http://127.0.0.1:${process.env.CADDY_PORT ?? 8080}`,  // Caddy handles all routing
         changeOrigin: true,
         ws: true,
         configure: (proxy) => {
@@ -254,7 +254,7 @@ const baseConfig: UserConfig = {
       },
       // PocketBase admin UI (direct to PocketBase)
       '/_': {
-        target: `http://127.0.0.1:${process.env.POCKETBASE_PORT || 8090}`,
+        target: `http://127.0.0.1:${process.env.POCKETBASE_PORT ?? 8090}`,
         changeOrigin: true,
       },
     },

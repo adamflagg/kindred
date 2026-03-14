@@ -10,6 +10,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import type {
   GroupedBarSeries,
   CssVerticalGroupedBarChartProps,
+  CssVerticalGroupedBarChart as CssVerticalGroupedBarChartType,
 } from './CssVerticalGroupedBarChart'
 
 // ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@ describe('CssVerticalGroupedBarChart exports', () => {
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart rendering', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -84,7 +85,7 @@ describe('CssVerticalGroupedBarChart rendering', () => {
 // Empty state
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart empty state', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -106,7 +107,7 @@ describe('CssVerticalGroupedBarChart empty state', () => {
 // Bar rendering
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart bar rendering', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -161,7 +162,7 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
 // Y-axis
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart Y-axis', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -199,7 +200,7 @@ describe('CssVerticalGroupedBarChart Y-axis', () => {
 // X-axis labels
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart X-axis', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -245,7 +246,7 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
 // Legend
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart legend', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -263,7 +264,7 @@ describe('CssVerticalGroupedBarChart legend', () => {
 // Tooltip
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart tooltip', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -296,7 +297,7 @@ describe('CssVerticalGroupedBarChart tooltip', () => {
 // Click handling
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart click handling', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -348,7 +349,7 @@ describe('CssVerticalGroupedBarChart click handling', () => {
 // Column sizing integration
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart column sizing', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -413,7 +414,7 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
 // Height prop
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart height', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -441,7 +442,7 @@ describe('CssVerticalGroupedBarChart height', () => {
 // Title spacing (Fix 1: title overlap with y-axis)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart title spacing', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -462,7 +463,7 @@ describe('CssVerticalGroupedBarChart title spacing', () => {
 // groupGap prop (Fix 3: inter-group spacing)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart groupGap prop', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -502,7 +503,7 @@ describe('CssVerticalGroupedBarChart groupGap prop', () => {
 // barWidthPercent prop (Fix 2: thinner bars)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -533,7 +534,7 @@ describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
 // Y-axis scaling: axisMax must match top tick to prevent overflow
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart y-axis scaling', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -575,7 +576,7 @@ describe('CssVerticalGroupedBarChart y-axis scaling', () => {
 // Contiguous hover areas (two-div column structure)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')
@@ -677,7 +678,7 @@ describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
 // X-axis alignment in sparse mode (Fix 4)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart x-axis alignment', () => {
-  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalGroupedBarChart')

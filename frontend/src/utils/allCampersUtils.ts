@@ -94,7 +94,7 @@ export function getSessionRelationshipsForCamperView(
       if (session.parent_id) {
         const parentSession = sessionByCmId.get(session.parent_id)
         if (parentSession) {
-          const existing = relationships.get(parentSession.id) || [parentSession.id]
+          const existing = relationships.get(parentSession.id) ?? [parentSession.id]
           if (!existing.includes(session.id)) {
             existing.push(session.id)
           }

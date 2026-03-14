@@ -52,14 +52,14 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       style: {
         'background-color': (ele: NodeSingular) => {
           const grade = ele.data('grade')
-          return grade ? GRADE_COLORS[grade] || '#95a5a6' : '#95a5a6'
+          return grade ? (GRADE_COLORS[grade] ?? '#95a5a6') : '#95a5a6'
         },
         width: (ele: NodeSingular) => {
-          const centrality = ele.data('centrality') || 0
+          const centrality = ele.data('centrality') ?? 0
           return 10 + centrality * 40 // 10-50px range
         },
         height: (ele: NodeSingular) => {
-          const centrality = ele.data('centrality') || 0
+          const centrality = ele.data('centrality') ?? 0
           return 10 + centrality * 40 // 10-50px range
         },
         label: showLabels ? 'data(label)' : '',
@@ -75,7 +75,7 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'border-width': 3,
         'border-color': (ele: NodeSingular) => {
           const status = ele.data('satisfaction_status')
-          return STATUS_COLORS[status] || STATUS_COLORS['default'] || '#2c3e50'
+          return STATUS_COLORS[status] ?? STATUS_COLORS['default'] ?? '#2c3e50'
         },
         'overlay-padding': '6px',
       },
@@ -95,16 +95,16 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         width: 2,
         'line-color': (ele: EdgeSingular) => {
           const edgeType = ele.data('edge_type')
-          return EDGE_COLORS[edgeType] || '#95a5a6'
+          return EDGE_COLORS[edgeType] ?? '#95a5a6'
         },
         'line-opacity': (ele: EdgeSingular) => {
-          const confidence = ele.data('confidence') || 0.5
+          const confidence = ele.data('confidence') ?? 0.5
           return 0.3 + confidence * 0.7 // 0.3-1.0 range
         },
         'target-arrow-shape': 'triangle',
         'target-arrow-color': (ele: EdgeSingular) => {
           const edgeType = ele.data('edge_type')
-          return EDGE_COLORS[edgeType] || '#95a5a6'
+          return EDGE_COLORS[edgeType] ?? '#95a5a6'
         },
         'curve-style': 'bezier',
         'overlay-padding': '2px',
@@ -244,13 +244,8 @@ export function createGraphElements(
   nodeData.forEach((node) => {
     if (node.bunk_cm_id) {
       const bunkId = node.bunk_cm_id
-      if (!bunkGroups[bunkId]) {
-        bunkGroups[bunkId] = []
-      }
-      const group = bunkGroups[bunkId]
-      if (group) {
-        group.push(node)
-      }
+      bunkGroups[bunkId] ??= []
+      bunkGroups[bunkId].push(node)
     }
   })
 
@@ -260,7 +255,7 @@ export function createGraphElements(
     return {
       data: {
         id: `bunk-${bunkId}`,
-        label: bunksData?.[bunkId] || `Bunk ${bunkId}`,
+        label: bunksData?.[bunkId] ?? `Bunk ${bunkId}`,
         isBunkParent: true,
         bunk_cm_id: bunkId,
       },

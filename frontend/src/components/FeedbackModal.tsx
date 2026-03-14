@@ -83,7 +83,7 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   }, [isOpen])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
+    const file = e.target.files?.[0] ?? null
     if (file && file.size > MAX_SCREENSHOT_SIZE) {
       setFileSizeError(true)
       setScreenshot(null)

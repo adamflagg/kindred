@@ -54,7 +54,7 @@ export function useUnifiedSync() {
       void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
 
       // Check if sync was queued (202 response)
-      if (data?.status === 'queued') {
+      if (data.status === 'queued') {
         const serviceDisplay = variables.service === 'all' ? 'all services' : variables.service
         toast.success(
           `Sync for ${variables.year} - ${serviceDisplay} queued (position ${data.position})`,
@@ -81,11 +81,11 @@ export function useUnifiedSync() {
         }
         message?: string
       }
-      if (pbError?.response?.data?.error) {
+      if (pbError.response?.data?.error) {
         errorMessage = pbError.response.data.error
-      } else if (pbError?.response?.data?.message) {
+      } else if (pbError.response?.data?.message) {
         errorMessage = pbError.response.data.message
-      } else if (pbError?.response?.message) {
+      } else if (pbError.response?.message) {
         errorMessage = pbError.response.message
       }
 

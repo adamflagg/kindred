@@ -128,10 +128,10 @@ export function BreakdownChart({
               }
               // Position labels to the left/right of the pie, never above/below
               const RADIAN = Math.PI / 180
-              const midAngle = Number(props.midAngle ?? 0)
-              const outerR = Number(props.outerRadius ?? 80)
-              const cx = Number(props.cx ?? 0)
-              const cy = Number(props.cy ?? 0)
+              const midAngle = Number(props.midAngle)
+              const outerR = Number(props.outerRadius)
+              const cx = Number(props.cx)
+              const cy = Number(props.cy)
               const radius = outerR + 16
               const x = cx + radius * Math.cos(-midAngle * RADIAN)
               const y = cy + radius * Math.sin(-midAngle * RADIAN)

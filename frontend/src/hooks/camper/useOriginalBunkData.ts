@@ -92,7 +92,7 @@ export function useOriginalBunkData(
 
         // Get first/last name from expanded requester if available
         const firstRecord = records.items[0]
-        const requester = firstRecord?.expand?.requester
+        const requester = firstRecord?.expand.requester
         if (requester?.first_name) {
           result.first_name = requester.first_name
         }

@@ -54,7 +54,7 @@ export function HeroHeader({
             className={`h-20 w-20 rounded-2xl sm:h-24 sm:w-24 ${getAvatarColor(camper.gender)} flex flex-shrink-0 items-center justify-center shadow-lg ring-4 ring-white/20`}
           >
             <span className="font-display text-3xl font-bold text-white sm:text-4xl">
-              {getInitial(camper.first_name || '')}
+              {getInitial(camper.first_name ?? '')}
             </span>
           </div>
 
@@ -107,7 +107,7 @@ export function HeroHeader({
           )}
           <div className="text-forest-100 flex items-center gap-2">
             <TreePine className="text-forest-300 h-4 w-4" />
-            <span className="text-sm">{camper.years_at_camp || 0} years at camp</span>
+            <span className="text-sm">{camper.years_at_camp ?? 0} years at camp</span>
           </div>
           {enrolledCampers && enrolledCampers.length > 1
             ? enrolledCampers
@@ -116,7 +116,7 @@ export function HeroHeader({
                   <div key={ec.id} className="text-forest-100 flex items-center gap-2">
                     <Home className="text-forest-300 h-4 w-4" />
                     <Link
-                      to={`/summer/session/${sessionNameToUrl(ec.expand?.session?.name || '')}/board`}
+                      to={`/summer/session/${sessionNameToUrl(ec.expand?.session?.name ?? '')}/board`}
                       className="text-sm transition-colors hover:text-white"
                     >
                       {ec.expand?.assigned_bunk?.name}
@@ -127,7 +127,7 @@ export function HeroHeader({
                 <div className="text-forest-100 flex items-center gap-2">
                   <Home className="text-forest-300 h-4 w-4" />
                   <Link
-                    to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
+                    to={`/summer/session/${sessionNameToUrl(camper.expand.session?.name ?? '')}/board`}
                     className="text-sm transition-colors hover:text-white"
                   >
                     {camper.expand.assigned_bunk.name}

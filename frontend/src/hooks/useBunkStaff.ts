@@ -52,7 +52,7 @@ export function useBunkStaff(year: number) {
 
       for (const record of staffRecords) {
         const expanded = record.expand
-        if (!expanded?.person) continue
+        if (!expanded.person) continue
 
         const person = expanded.person
         const displayName =
@@ -63,8 +63,8 @@ export function useBunkStaff(year: number) {
         staffPersonPBIDs.push(personPBID)
         personPBIDToInfo.set(personPBID, {
           name: displayName,
-          cmId: String(person.cm_id ?? record.id),
-          status: record.status || undefined,
+          cmId: String(person.cm_id),
+          status: record.status,
         })
       }
 
@@ -101,16 +101,16 @@ export function useBunkStaff(year: number) {
 
       for (const assignment of assignmentRecords) {
         const expanded = assignment.expand
-        const session = expanded?.session
+        const session = expanded.session
         let sessionName = session?.name
-        const bunkName = expanded?.bunk?.name
+        const bunkName = expanded.bunk?.name
         const personPBID = assignment.person
 
         if (!sessionName || !bunkName) continue
 
         // Normalize AG session names to parent session names
         // so map keys match retention data (which merges AG into parent)
-        if (session?.session_type === CampSessionsSessionTypeOptions.ag && session?.parent_id) {
+        if (session?.session_type === CampSessionsSessionTypeOptions.ag && session.parent_id) {
           const parentName = sessionNameByCmId.get(session.parent_id)
           if (parentName) {
             sessionName = parentName

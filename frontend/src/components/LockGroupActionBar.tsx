@@ -79,8 +79,8 @@ function validateFriendGroup(campers: Camper[]): ValidationResult {
 
   for (const camper of campers) {
     const sessionCmId = camper.session_cm_id
-    const sessionType = camper.expand?.session?.session_type || 'main'
-    const sessionName = camper.expand?.session?.name || `Session ${sessionCmId}`
+    const sessionType = camper.expand?.session?.session_type ?? 'main'
+    const sessionName = camper.expand?.session?.name ?? `Session ${sessionCmId}`
 
     if (sessionType === 'ag') {
       hasAGSession = true
@@ -108,9 +108,7 @@ function validateFriendGroup(campers: Camper[]): ValidationResult {
   if (!hasAGSession) {
     const genders = new Set<string>()
     for (const camper of campers) {
-      if (camper.gender) {
-        genders.add(camper.gender)
-      }
+      genders.add(camper.gender)
     }
 
     // Check if we have both M and F (excluding NB which can go with either)
@@ -143,7 +141,7 @@ function LockGroupActionBar({
   // Auto-select next color based on existing groups count
   const nextColorIndex = groups.length % GROUP_COLORS.length
   const [selectedColor, setSelectedColor] = useState(
-    GROUP_COLORS[nextColorIndex] || GROUP_COLORS[0]
+    GROUP_COLORS[nextColorIndex] ?? GROUP_COLORS[0]
   )
   const [groupName, setGroupName] = useState('')
 
@@ -205,7 +203,7 @@ function LockGroupActionBar({
       onClearPending()
       // Advance to next color and clear name
       const newNextIndex = (groups.length + 1) % GROUP_COLORS.length
-      setSelectedColor(GROUP_COLORS[newNextIndex] || GROUP_COLORS[0])
+      setSelectedColor(GROUP_COLORS[newNextIndex] ?? GROUP_COLORS[0])
       setGroupName('')
     },
   })

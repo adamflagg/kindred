@@ -45,7 +45,7 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
     // Build connected components
     pairConstraints.forEach((constraint) => {
       // Check if constraint references campers not in this session
-      const missingCampers = constraint.campers?.filter((id) => !sessionCamperIds.has(id)) || []
+      const missingCampers = constraint.campers?.filter((id) => !sessionCamperIds.has(id)) ?? []
       if (missingCampers.length > 0 && constraint.campers) {
         // Create error group for cross-session constraints
         const errorGroupId = `error-${groups.size}`
@@ -66,7 +66,7 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
         if (!existingGroupId) {
           // Create new group
           const groupId = `group-${groups.size}`
-          const newGroup = new Set(constraint.campers || [])
+          const newGroup = new Set(constraint.campers ?? [])
           groups.set(groupId, newGroup)
           constraint.campers?.forEach((id) => camperToGroup.set(id, groupId))
         } else {
@@ -113,7 +113,7 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
         .map((id) => campers.find((c) => c.id === id))
         .filter(Boolean) as Camper[]
 
-      const bunks = new Set<string | null>(groupCampers.map((c) => c.assigned_bunk || null))
+      const bunks = new Set<string | null>(groupCampers.map((c) => c.assigned_bunk ?? null))
       const isComplete = bunks.size === 1 && !bunks.has(null)
       const isSplit = bunks.size > 1
 
@@ -323,7 +323,7 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
                   <span className="font-medium">{camper.name}</span>
                   <span className="text-muted-foreground">
                     {camper.assigned_bunk
-                      ? bunkIdToName.get(camper.assigned_bunk) || camper.assigned_bunk
+                      ? (bunkIdToName.get(camper.assigned_bunk) ?? camper.assigned_bunk)
                       : 'Unassigned'}
                   </span>
                 </div>

@@ -25,7 +25,7 @@ const EditableRequestType = memo(
     useClickOutside(dropdownRef, () => setIsOpen(false), isOpen)
 
     const currentType = requestTypes.find((t) => t.value === value)
-    const label = currentType?.label || value
+    const label = currentType?.label ?? value
 
     const handleSelect = (newType: string) => {
       if (newType !== value) {

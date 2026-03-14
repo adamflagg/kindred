@@ -184,11 +184,11 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
           <h4 className="text-muted-foreground mb-2 text-sm font-medium">Bunking Preferences</h4>
           <div className="space-y-2">
             <p className="text-muted-foreground text-sm">
-              {agePreferenceRequests[0]?.original_text || 'No preference specified'}
+              {agePreferenceRequests[0]?.original_text ?? 'No preference specified'}
             </p>
             {agePreferenceRequests[0]?.parse_notes && (
               <div className="text-muted-foreground text-sm italic">
-                "{agePreferenceRequests[0]?.parse_notes}"
+                "{agePreferenceRequests[0].parse_notes}"
               </div>
             )}
           </div>

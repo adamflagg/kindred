@@ -15,9 +15,9 @@ interface RequestFormProps {
 
 export default function RequestForm({ campers, constraint, onSubmit, onCancel }: RequestFormProps) {
   const viewingYear = useYear()
-  const [type, setType] = useState<ConstraintType>(constraint?.type || 'pair_together')
-  const [selectedCampers, setSelectedCampers] = useState<string[]>(constraint?.campers || [])
-  const [metadata, setMetadata] = useState<Record<string, unknown>>(constraint?.metadata || {})
+  const [type, setType] = useState<ConstraintType>(constraint?.type ?? 'pair_together')
+  const [selectedCampers, setSelectedCampers] = useState<string[]>(constraint?.campers ?? [])
+  const [metadata, setMetadata] = useState<Record<string, unknown>>(constraint?.metadata ?? {})
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()

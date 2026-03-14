@@ -12,8 +12,8 @@ export function getLocationDisplay(
   city: string | null | undefined,
   state: string | null | undefined
 ): string | null {
-  const trimmedCity = city?.trim() || ''
-  const trimmedState = state?.trim() || ''
+  const trimmedCity = city?.trim() ?? ''
+  const trimmedState = state?.trim() ?? ''
 
   if (!trimmedCity && !trimmedState) {
     return null

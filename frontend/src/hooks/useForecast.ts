@@ -32,7 +32,7 @@ export function useForecast(
       const response = await fetchWithAuth(`/api/metrics/forecast?${searchParams}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch forecast')
+        throw new Error(error.detail ?? 'Failed to fetch forecast')
       }
       return response.json()
     },

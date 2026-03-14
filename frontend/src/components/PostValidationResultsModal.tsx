@@ -74,7 +74,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
 
   // Handle unsatisfied request messages
   const unsatMatch = msg.match(/Request from (.+?) to (?:bunk with|avoid) (.+?) not satisfied/i)
-  if (unsatMatch?.[1] && unsatMatch?.[2]) {
+  if (unsatMatch?.[1] && unsatMatch[2]) {
     const requester = unsatMatch[1].replace(/\s*\(\d+\)$/, '').trim()
     const requested = unsatMatch[2].replace(/\s*\(\d+\)$/, '').trim()
     return { primary: requester, secondary: requested }
@@ -105,12 +105,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
   const regressionMatch = msg.match(
     /(.+?) was in (.+?) last year but is now in (.+?) \(regression of (\d+) level/i
   )
-  if (
-    regressionMatch?.[1] &&
-    regressionMatch?.[2] &&
-    regressionMatch?.[3] &&
-    regressionMatch?.[4]
-  ) {
+  if (regressionMatch?.[1] && regressionMatch[2] && regressionMatch[3] && regressionMatch[4]) {
     const name = regressionMatch[1].replace(/\s*\(\d+\)$/, '').trim()
     return {
       primary: name,
@@ -124,7 +119,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
   const ageFlowMatch = msg.match(
     /(.+?) \(avg age ([\d.]+)\) has older campers than (.+?) \(avg age ([\d.]+)\)/i
   )
-  if (ageFlowMatch?.[1] && ageFlowMatch?.[2] && ageFlowMatch?.[3] && ageFlowMatch?.[4]) {
+  if (ageFlowMatch?.[1] && ageFlowMatch[2] && ageFlowMatch[3] && ageFlowMatch[4]) {
     return {
       primary: `${ageFlowMatch[1]} > ${ageFlowMatch[3]}`,
       badge: `${ageFlowMatch[2]} vs ${ageFlowMatch[4]}`,
@@ -134,7 +129,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
 
   // Handle isolation risk messages
   const isolationMatch = msg.match(/(.+?) has (\d+) connected friends \+ (\d+) isolated camper/i)
-  if (isolationMatch?.[1] && isolationMatch?.[2] && isolationMatch?.[3]) {
+  if (isolationMatch?.[1] && isolationMatch[2] && isolationMatch[3]) {
     return {
       primary: isolationMatch[1],
       secondary: `${isolationMatch[2]} friends`,
@@ -165,7 +160,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
   }
   // Fallback regex for grade ratio if details not available
   const gradeRatioMatch = msg.match(/Bunk (.+?) has ([\d.]+)% of campers from grade (\d+)/i)
-  if (gradeRatioMatch?.[1] && gradeRatioMatch?.[2] && gradeRatioMatch?.[3]) {
+  if (gradeRatioMatch?.[1] && gradeRatioMatch[2] && gradeRatioMatch[3]) {
     const percentage = parseFloat(gradeRatioMatch[2])
     const grade = parseInt(gradeRatioMatch[3], 10)
     const estimatedTotal = 12
@@ -187,7 +182,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
   const gradeSpreadMatch = msg.match(
     /Bunk (.+?) has too many different grades \((\d+) grades?, max.*?(\d+)\)/i
   )
-  if (gradeSpreadMatch?.[1] && gradeSpreadMatch?.[2] && gradeSpreadMatch?.[3]) {
+  if (gradeSpreadMatch?.[1] && gradeSpreadMatch[2] && gradeSpreadMatch[3]) {
     return {
       primary: gradeSpreadMatch[1],
       badge: `${gradeSpreadMatch[2]}/${gradeSpreadMatch[3]} grades`,
@@ -198,7 +193,7 @@ export function parseIssueMessage(issue: Issue): ParsedIssue {
   // Handle grade adjacency warning messages
   // "Bunk B-5 has non-adjacent grades [2, 4] (missing grade 3)"
   const gradeAdjMatch = msg.match(/Bunk (.+?) has non-adjacent grades.*missing grades? (.+?)\)/i)
-  if (gradeAdjMatch?.[1] && gradeAdjMatch?.[2]) {
+  if (gradeAdjMatch?.[1] && gradeAdjMatch[2]) {
     return {
       primary: gradeAdjMatch[1],
       badge: `gap: gr ${gradeAdjMatch[2]}`,
@@ -257,7 +252,7 @@ export function getIssueTypeLabel(type: string): string {
     negative_request_violated: 'Separation Violated',
     campers_with_unsatisfied_valid_requests: 'Unsatisfied Requests',
   }
-  return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+  return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
 // Format field names nicely
@@ -269,7 +264,7 @@ function formatFieldName(fieldName: string): string {
     internal_notes: 'Staff Notes',
     socialize_with: 'Socialize With',
   }
-  return labels[fieldName] || fieldName.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+  return labels[fieldName] ?? fieldName.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
 // Satisfaction ring component - the visual centerpiece
@@ -521,10 +516,10 @@ export default function PostValidationResultsModal({
   const [showDetails, setShowDetails] = useState(false)
 
   // Need to compute these even when modal is closed since Modal might render conditionally
-  const statistics = results?.statistics
+  const statistics = results.statistics
   // Memoize issues to prevent dependency array changes on every render
-  const issues = useMemo(() => results?.issues || [], [results?.issues])
-  const satisfactionRate = statistics?.request_satisfaction_rate ?? 0
+  const issues = useMemo(() => results.issues, [results.issues])
+  const satisfactionRate = statistics.request_satisfaction_rate
 
   // Group issues by type and severity
   const groupedIssues = useMemo(() => {
@@ -546,7 +541,7 @@ export default function PostValidationResultsModal({
       info: 2,
     }
     return [...byType.entries()].sort((a, b) => {
-      return (severityOrder[a[1].severity] || 3) - (severityOrder[b[1].severity] || 3)
+      return (severityOrder[a[1].severity] ?? 3) - (severityOrder[b[1].severity] ?? 3)
     })
   }, [issues])
 
@@ -612,7 +607,7 @@ export default function PostValidationResultsModal({
     </div>
   )
 
-  const footerContent = results ? (
+  const footerContent = (
     <div className="bg-muted/30 border-border/50 flex items-center justify-between border-t px-5 py-4">
       <span className="text-muted-foreground text-xs">
         {new Date(results.validated_at).toLocaleString()}
@@ -628,7 +623,7 @@ export default function PostValidationResultsModal({
         {satisfactionRate >= 0.7 && errorCount === 0 ? 'Looks Great!' : 'Close'}
       </button>
     </div>
-  ) : null
+  )
 
   return (
     <Modal
@@ -734,7 +729,7 @@ export default function PostValidationResultsModal({
       )}
 
       {/* Collapsible Details */}
-      {statistics.field_stats && Object.keys(statistics.field_stats).length > 0 && (
+      {Object.keys(statistics.field_stats).length > 0 && (
         <div className="border-border/50 border-t">
           <button
             onClick={() => setShowDetails(!showDetails)}

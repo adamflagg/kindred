@@ -25,7 +25,7 @@ export function useVelocityChartData(
 
   // Build unified chart data aligned by week_number
   const weeklyChartData = useMemo(() => {
-    if (!data?.combined?.weekly?.length) return []
+    if (!data?.combined.weekly.length) return []
 
     // Build week_number -> data maps for current year
     const currentMap = new Map(data.combined.weekly.map((d) => [d.week_number, d]))
@@ -36,14 +36,14 @@ export function useVelocityChartData(
     )
 
     // Build gender maps
-    const mCurve = data.by_gender?.find((c) => c.gender === 'M')
-    const fCurve = data.by_gender?.find((c) => c.gender === 'F')
+    const mCurve = data.by_gender.find((c) => c.gender === 'M')
+    const fCurve = data.by_gender.find((c) => c.gender === 'F')
     const mMap = mCurve ? new Map(mCurve.weekly.map((d) => [d.week_number, d])) : new Map()
     const fMap = fCurve ? new Map(fCurve.weekly.map((d) => [d.week_number, d])) : new Map()
 
     // Build prior year gender maps
-    const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
-    const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
+    const priorMGender = data.prior_year_by_gender.filter((c) => c.gender === 'M')
+    const priorFGender = data.prior_year_by_gender.filter((c) => c.gender === 'F')
     const priorMGenderMaps = priorMGender.map((c) => ({
       year: c.year,
       map: new Map(c.weekly.map((d) => [d.week_number, d])),
@@ -169,7 +169,7 @@ export function useVelocityChartData(
 
   // Build daily chart data aligned by day_offset
   const dailyChartData = useMemo(() => {
-    if (!data?.daily?.length) return []
+    if (!data?.daily.length) return []
 
     // Build day_offset -> data map for current year
     const currentMap = new Map(data.daily.map((d) => [d.day_offset, d]))
@@ -178,14 +178,14 @@ export function useVelocityChartData(
     const priorMaps = data.prior_years.map((py) => new Map(py.daily.map((d) => [d.day_offset, d])))
 
     // Build gender maps from by_gender daily data
-    const mCurve = data.by_gender?.find((c) => c.gender === 'M')
-    const fCurve = data.by_gender?.find((c) => c.gender === 'F')
+    const mCurve = data.by_gender.find((c) => c.gender === 'M')
+    const fCurve = data.by_gender.find((c) => c.gender === 'F')
     const mMap = mCurve ? new Map(mCurve.daily.map((d) => [d.day_offset, d])) : new Map()
     const fMap = fCurve ? new Map(fCurve.daily.map((d) => [d.day_offset, d])) : new Map()
 
     // Build prior year gender daily maps
-    const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
-    const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
+    const priorMGender = data.prior_year_by_gender.filter((c) => c.gender === 'M')
+    const priorFGender = data.prior_year_by_gender.filter((c) => c.gender === 'F')
     const priorMGenderMaps = priorMGender.map((c) => ({
       year: c.year,
       map: new Map(c.daily.map((d) => [d.day_offset, d])),
@@ -275,7 +275,7 @@ export function useVelocityChartData(
 
   // Sort by-session table using camp-then-quest ordering
   const sortedBySession = useMemo(() => {
-    if (!data?.by_session?.length || !sessions.length) return data?.by_session ?? []
+    if (!data?.by_session.length || !sessions.length) return data?.by_session ?? []
 
     const dateLookup = buildSessionDateLookup(sessions)
     const typeLookup = buildSessionTypeLookup(sessions)
@@ -304,17 +304,20 @@ export function useVelocityChartData(
   // Phase lines with week_number for X-axis positioning
   const phaseLines = useMemo(() => {
     if (!data?.phase_markers) return []
-    return data.phase_markers
-      .filter((marker) => marker.week_number != null)
-      .map((marker) => ({
-        ...marker,
-        weekNumber: marker.week_number,
-      }))
+    return (
+      data.phase_markers
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- week_number may be null at runtime despite Required<> type
+        .filter((marker) => marker.week_number != null)
+        .map((marker) => ({
+          ...marker,
+          weekNumber: marker.week_number,
+        }))
+    )
   }, [data?.phase_markers])
 
   // Phase day offsets for ReferenceArea bands on daily cumulative charts
   const phaseDayOffsets = useMemo(() => {
-    if (!data?.phase_markers || !data?.season_start) return []
+    if (!data?.phase_markers || !data.season_start) return []
     const sp = data.season_start.split('-')
     const seasonStartUtc = Date.UTC(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]))
     return data.phase_markers.map((marker) => {
@@ -356,7 +359,7 @@ export function useVelocityChartData(
     // Always include the last point if not already a milestone
     const lastIdx = dailyChartData.length - 1
     const lastMilestone = milestones[milestones.length - 1]
-    if (!lastMilestone || lastMilestone.index !== lastIdx) {
+    if (lastMilestone?.index !== lastIdx) {
       const lastPt = dailyChartData[lastIdx]
       if (lastPt) {
         const dateStr = lastPt['date'] as string
@@ -381,7 +384,7 @@ export function useVelocityChartData(
 
   // Build prior year week map for delta table
   const priorWeekMap = useMemo(() => {
-    if (!data?.prior_years?.length) return null
+    if (!data?.prior_years.length) return null
     const py = data.prior_years[0]
     if (!py) return null
     return new Map(py.weekly.map((d) => [d.week_number, d]))

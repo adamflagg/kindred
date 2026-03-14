@@ -78,8 +78,8 @@ export function useSiblings(
 
             // Sort enrolled first, then by session type priority
             const sortedAttendees = attendees.sort((a, b) => {
-              const aType = a.expand?.session?.session_type || 'unknown'
-              const bType = b.expand?.session?.session_type || 'unknown'
+              const aType = a.expand.session?.session_type ?? 'unknown'
+              const bType = b.expand.session?.session_type ?? 'unknown'
               return sortEnrolledFirst(a.status, aType, b.status, bType)
             })
 
@@ -87,7 +87,7 @@ export function useSiblings(
             if (!primaryAttendee) {
               return null
             }
-            const session = primaryAttendee.expand?.session
+            const session = primaryAttendee.expand.session
 
             // Try to get bunk assignment
             let bunkName: string | null = null
@@ -96,13 +96,13 @@ export function useSiblings(
                 const assignments = await pb
                   .collection('bunk_assignments')
                   .getFullList<BunkAssignmentsResponse<{ bunk?: BunksResponse }>>({
-                    filter: `person = "${siblingPerson?.id || ''}" && session = "${session?.id || ''}" && year = ${currentYear}`,
+                    filter: `person = "${siblingPerson.id || ''}" && session = "${session.id || ''}" && year = ${currentYear}`,
                     expand: 'bunk',
                     $autoCancel: false,
                   })
 
                 if (assignments.length > 0 && assignments[0]) {
-                  bunkName = assignments[0].expand?.bunk?.name || null
+                  bunkName = assignments[0].expand.bunk?.name ?? null
                 }
               } catch {
                 // Assignment fetch failed, continue without bunk

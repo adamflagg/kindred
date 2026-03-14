@@ -101,9 +101,6 @@ async function resolveCamperIds(
   }
 
   const attendee = await pb.collection<AttendeesResponse>('attendees').getOne(parsed.legacyId)
-  if (!attendee) {
-    throw new Error('Attendee not found')
-  }
 
   // Need to fetch the person to get cm_id
   const person = await pb.collection<PersonsResponse>('persons').getOne(attendee.person)
@@ -121,9 +118,6 @@ async function resolveCamperIds(
  */
 async function getBunkCmId(bunkId: string): Promise<number> {
   const bunk = await pb.collection('bunks').getOne(bunkId)
-  if (!bunk) {
-    throw new Error('Bunk not found')
-  }
   return bunk.cm_id
 }
 
@@ -195,9 +189,6 @@ async function traditionalAssignment(
 
   // Get the attendee (camper)
   const attendeeData = await pb.collection<AttendeesResponse>('attendees').getOne(attendeeId)
-  if (!attendeeData) {
-    throw new Error('Attendee not found')
-  }
 
   // Get the session by CampMinder ID
   const sessionCmIdParsed =
@@ -244,9 +235,6 @@ async function traditionalAssignment(
 
   // Get the bunk
   const bunk = await pb.collection('bunks').getOne(bunkId)
-  if (!bunk) {
-    throw new Error('Bunk not found')
-  }
 
   // Prepare the assignment data using CampMinder IDs
   const assignmentData = {

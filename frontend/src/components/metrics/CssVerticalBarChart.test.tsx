@@ -7,7 +7,10 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-import type { CssVerticalBarItem } from './CssVerticalBarChart'
+import type {
+  CssVerticalBarItem,
+  CssVerticalBarChart as CssVerticalBarChartType,
+} from './CssVerticalBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -40,7 +43,7 @@ describe('CssVerticalBarChart exports', () => {
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart rendering', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -73,7 +76,7 @@ describe('CssVerticalBarChart rendering', () => {
 // Empty state
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart empty state', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -95,7 +98,7 @@ describe('CssVerticalBarChart empty state', () => {
 // Bar rendering
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart bar rendering', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -156,7 +159,7 @@ describe('CssVerticalBarChart bar rendering', () => {
 // Y-axis
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart Y-axis', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -211,7 +214,7 @@ describe('CssVerticalBarChart Y-axis', () => {
 // X-axis labels
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart X-axis', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -237,7 +240,7 @@ describe('CssVerticalBarChart X-axis', () => {
 // Labels above bars
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart label format', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -262,7 +265,7 @@ describe('CssVerticalBarChart label format', () => {
 // Tooltip
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart tooltip', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -284,7 +287,7 @@ describe('CssVerticalBarChart tooltip', () => {
 // Click handling
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart click handling', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -317,7 +320,7 @@ describe('CssVerticalBarChart click handling', () => {
 // Column sizing integration
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart column sizing', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')
@@ -408,7 +411,7 @@ describe('CssVerticalBarChart column sizing', () => {
 // Bar width percent
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart barWidthPercent', () => {
-  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+  let CssVerticalBarChart: typeof CssVerticalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssVerticalBarChart')

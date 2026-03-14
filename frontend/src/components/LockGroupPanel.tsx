@@ -77,9 +77,7 @@ function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
   if (isFromAGSession) return false
 
   if (area === 'boys') return camper.gender === 'M'
-  if (area === 'girls') return camper.gender === 'F'
-
-  return true
+  return camper.gender === 'F'
 }
 
 function LockGroupPanel({
@@ -100,7 +98,7 @@ function LockGroupPanel({
   // Track expanded group - derive from prop or allow local overrides
   const [localExpandedGroupId, setLocalExpandedGroupId] = useState<string | null>(null)
   // Derive effective expanded group: use selectedGroupId if provided, otherwise use local state
-  const expandedGroupId = selectedGroupId || localExpandedGroupId
+  const expandedGroupId = selectedGroupId ?? localExpandedGroupId
   const setExpandedGroupId = setLocalExpandedGroupId
 
   const [isClosing, setIsClosing] = useState(false)
@@ -167,10 +165,8 @@ function LockGroupPanel({
   const membersByGroup = allMembers.reduce<Record<string, ExpandedMember[]>>(
     (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
       const groupId = member.group
-      if (!acc[groupId]) {
-        acc[groupId] = []
-      }
-      acc[groupId]?.push(member)
+      acc[groupId] ??= []
+      acc[groupId].push(member)
       return acc
     },
     {}
@@ -201,8 +197,8 @@ function LockGroupPanel({
   // Sort groups by average age of members (ascending)
   const sortedGroups = useMemo(() => {
     return [...groups].sort((a, b) => {
-      const avgA = getGroupAverageAge(membersByGroup[a.id] || []) ?? Infinity
-      const avgB = getGroupAverageAge(membersByGroup[b.id] || []) ?? Infinity
+      const avgA = getGroupAverageAge(membersByGroup[a.id] ?? []) ?? Infinity
+      const avgB = getGroupAverageAge(membersByGroup[b.id] ?? []) ?? Infinity
       return avgA - avgB
     })
   }, [groups, membersByGroup, getGroupAverageAge])
@@ -221,7 +217,7 @@ function LockGroupPanel({
     if (selectedArea === 'all') return sortedGroups
 
     return sortedGroups.filter((group) => {
-      const members = membersByGroup[group.id] || []
+      const members = membersByGroup[group.id] ?? []
       if (members.length === 0) return true // Empty groups show everywhere
 
       // Get the person CM IDs for this group's members
@@ -241,7 +237,7 @@ function LockGroupPanel({
   // Calculate filtered member count for footer
   const filteredMemberCount = useMemo(() => {
     return filteredGroups.reduce((sum, group) => {
-      return sum + (membersByGroup[group.id]?.length || 0)
+      return sum + (membersByGroup[group.id]?.length ?? 0)
     }, 0)
   }, [filteredGroups, membersByGroup])
 
@@ -270,7 +266,7 @@ function LockGroupPanel({
   const deleteGroupMutation = useMutation({
     mutationFn: async (groupId: string) => {
       // Delete all members first
-      const members = membersByGroup[groupId] || []
+      const members = membersByGroup[groupId] ?? []
       for (const member of members) {
         await pb.collection('locked_group_members').delete(member.id)
       }
@@ -320,8 +316,8 @@ function LockGroupPanel({
   const getMemberDisplayName = (member: ExpandedMember): string => {
     const person = member.expand?.attendee?.expand?.person
     if (person) {
-      const firstName = person.preferred_name || person.first_name || ''
-      const lastName = person.last_name || ''
+      const firstName = person.preferred_name ?? person.first_name ?? ''
+      const lastName = person.last_name ?? ''
       return `${firstName} ${lastName}`.trim() || `Camper ${person.cm_id}`
     }
     return `Attendee ${member.attendee}`
@@ -347,7 +343,7 @@ function LockGroupPanel({
     // Gender is on the attendee, not the person
     const attendee = member.expand?.attendee
     if (attendee && 'gender' in attendee) {
-      return (attendee as { gender?: string }).gender || null
+      return (attendee as { gender?: string }).gender ?? null
     }
     return null
   }
@@ -445,7 +441,7 @@ function LockGroupPanel({
           ) : (
             <div className="space-y-4 p-4">
               {filteredGroups.map((group: LockedGroupsResponse) => {
-                const members = membersByGroup[group.id] || []
+                const members = membersByGroup[group.id] ?? []
                 const isExpanded = expandedGroupId === group.id
                 const validationIssues = getGroupValidationIssues(members)
                 const hasIssues = validationIssues.length > 0
@@ -595,7 +591,7 @@ function LockGroupPanel({
                                         {getMemberDisplayName(member)}
                                       </p>
                                       <p className="text-muted-foreground text-xs">
-                                        {sessionInfo?.name || 'Unknown session'}
+                                        {sessionInfo?.name ?? 'Unknown session'}
                                         {gender && ` • ${gender}`}
                                       </p>
                                     </div>

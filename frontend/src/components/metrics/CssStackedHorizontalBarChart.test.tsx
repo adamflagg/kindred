@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import type { StackedSegment, StackedBarDataItem } from './CssStackedHorizontalBarChart'
+import type {
+  StackedSegment,
+  StackedBarDataItem,
+  CssStackedHorizontalBarChart as CssStackedHorizontalBarChartType,
+} from './CssStackedHorizontalBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -30,7 +34,7 @@ describe('CssStackedHorizontalBarChart exports', () => {
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart rendering', () => {
-  let CssStackedHorizontalBarChart: typeof import('./CssStackedHorizontalBarChart').CssStackedHorizontalBarChart
+  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssStackedHorizontalBarChart')
@@ -63,7 +67,7 @@ describe('CssStackedHorizontalBarChart rendering', () => {
       <CssStackedHorizontalBarChart data={sampleData} segments={segments} title="Totals" />
     )
     const valueSpans = container.querySelectorAll('.tabular-nums')
-    const values = Array.from(valueSpans).map((el) => el.textContent?.trim())
+    const values = Array.from(valueSpans).map((el) => el.textContent.trim())
     expect(values).toContain('80')
     expect(values).toContain('50')
     expect(values).toContain('120')
@@ -86,7 +90,7 @@ describe('CssStackedHorizontalBarChart rendering', () => {
 // Legend
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart legend', () => {
-  let CssStackedHorizontalBarChart: typeof import('./CssStackedHorizontalBarChart').CssStackedHorizontalBarChart
+  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssStackedHorizontalBarChart')
@@ -113,7 +117,7 @@ describe('CssStackedHorizontalBarChart legend', () => {
 // Click handler
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart click', () => {
-  let CssStackedHorizontalBarChart: typeof import('./CssStackedHorizontalBarChart').CssStackedHorizontalBarChart
+  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssStackedHorizontalBarChart')
@@ -149,7 +153,7 @@ describe('CssStackedHorizontalBarChart click', () => {
 // Stacked segment rendering
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart segments', () => {
-  let CssStackedHorizontalBarChart: typeof import('./CssStackedHorizontalBarChart').CssStackedHorizontalBarChart
+  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
 
   beforeAll(async () => {
     const mod = await import('./CssStackedHorizontalBarChart')

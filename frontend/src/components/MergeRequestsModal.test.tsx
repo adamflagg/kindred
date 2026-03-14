@@ -104,10 +104,7 @@ describe('MergeRequestsModal', () => {
       )
 
       // Title appears in the modal header
-      expect(
-        screen.getByRole('heading', { name: /merge requests/i }) ||
-          screen.getAllByText(/merge requests/i).length
-      ).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /merge requests/i })).toBeTruthy()
     })
 
     it('shows both requests in side-by-side comparison', () => {
@@ -188,9 +185,7 @@ describe('MergeRequestsModal', () => {
       )
 
       // Should have a way to select final type
-      expect(
-        screen.getByLabelText(/final.*type/i) || screen.getByRole('combobox')
-      ).toBeInTheDocument()
+      expect(screen.getByLabelText(/final.*type/i)).toBeInTheDocument()
     })
   })
 
@@ -211,9 +206,7 @@ describe('MergeRequestsModal', () => {
       )
 
       // Should show merged source fields preview
-      expect(
-        screen.getByText(/source.*fields/i) || screen.getByText(/combined/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/source.*fields/i)).toBeInTheDocument()
     })
   })
 

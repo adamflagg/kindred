@@ -91,7 +91,7 @@ export const mockPocketBase = {
     }
 
     return (
-      collections[name] || {
+      collections[name] ?? {
         getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
         getOne: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: 'new-item' }),
@@ -120,7 +120,5 @@ vi.mock('pocketbase', () => ({
 export const resetPocketBaseMocks = () => {
   // Reset all mocks in the PocketBase mock
   const collectionMock = mockPocketBase.collection as ReturnType<typeof vi.fn>
-  if (collectionMock.mockReset) {
-    collectionMock.mockReset()
-  }
+  collectionMock.mockReset()
 }

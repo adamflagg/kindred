@@ -49,9 +49,7 @@ function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
   if (isFromAGSession) return false
 
   if (area === 'boys') return camper.gender === 'M'
-  if (area === 'girls') return camper.gender === 'F'
-
-  return true
+  return camper.gender === 'F'
 }
 
 export default function LockGroupsHub({
@@ -79,7 +77,7 @@ export default function LockGroupsHub({
     if (selectedArea === 'all') return groups
 
     return groups.filter((group) => {
-      const members = membersByGroup[group.id] || []
+      const members = membersByGroup[group.id] ?? []
       if (members.length === 0) return true // Empty groups show everywhere
 
       // Get the person CM IDs for this group's members

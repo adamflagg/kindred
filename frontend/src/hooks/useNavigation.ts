@@ -29,7 +29,7 @@ export function useNavigation() {
       ? 'family'
       : location.pathname.startsWith('/metrics')
         ? 'metrics'
-        : currentProgram || 'summer'
+        : (currentProgram ?? 'summer')
 
   // Navigate to a session
   const navigateToSession = useCallback(

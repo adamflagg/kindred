@@ -57,7 +57,7 @@ export function useSessionAvailability(
       const response = await fetchWithAuth(`/api/metrics/session-availability?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch session availability')
+        throw new Error(error.detail ?? 'Failed to fetch session availability')
       }
       return response.json()
     },

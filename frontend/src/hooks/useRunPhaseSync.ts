@@ -51,7 +51,7 @@ export function useRunPhaseSync() {
       })
     },
     onMutate: (variables) => {
-      const phaseName = PHASE_NAMES[variables.phase] || variables.phase
+      const phaseName = PHASE_NAMES[variables.phase]
       toast(`Starting ${phaseName} phase for ${variables.year}...`, {
         icon: '🔄',
         duration: 3000,
@@ -60,8 +60,8 @@ export function useRunPhaseSync() {
     onSuccess: (data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
 
-      const phaseName = PHASE_NAMES[variables.phase] || variables.phase
-      const jobCount = data.jobs?.length || 0
+      const phaseName = PHASE_NAMES[variables.phase]
+      const jobCount = data.jobs?.length ?? 0
 
       // Handle queued vs started
       if (data.status === 'queued') {
@@ -79,7 +79,7 @@ export function useRunPhaseSync() {
       setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000)
     },
     onError: (error, variables) => {
-      const phaseName = PHASE_NAMES[variables.phase] || variables.phase
+      const phaseName = PHASE_NAMES[variables.phase]
 
       // Extract error message from PocketBase error structure
       let errorMessage = 'Unknown error'
@@ -93,11 +93,11 @@ export function useRunPhaseSync() {
         }
         message?: string
       }
-      if (pbError?.response?.data?.error) {
+      if (pbError.response?.data?.error) {
         errorMessage = pbError.response.data.error
-      } else if (pbError?.response?.data?.message) {
+      } else if (pbError.response?.data?.message) {
         errorMessage = pbError.response.data.message
-      } else if (pbError?.response?.message) {
+      } else if (pbError.response?.message) {
         errorMessage = pbError.response.message
       }
 

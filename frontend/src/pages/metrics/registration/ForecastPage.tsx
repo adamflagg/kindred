@@ -246,7 +246,7 @@ export default function ForecastPage() {
         </div>
         <p className="text-muted-foreground text-sm">
           {dayOffset != null
-            ? `Enrollment at Week ${data?.week_number ?? Math.floor(dayOffset / 7)} (${dayOffset} days after priority reg)`
+            ? `Enrollment at Week ${data.week_number ?? Math.floor(dayOffset / 7)} (${dayOffset} days after priority reg)`
             : `Budget goals and revenue projections for ${currentYear}`}
         </p>
       </div>

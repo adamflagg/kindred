@@ -45,7 +45,7 @@ export function useRunOnDemandSync() {
       return response
     },
     onSuccess: (data, { syncType, session }) => {
-      const displayName = SYNC_TYPE_NAMES[syncType] || syncType
+      const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
       const sessionText = session && session !== 'all' ? ` (Session ${session})` : ' (All sessions)'
 
       if (data?.status === 'started') {
@@ -63,7 +63,7 @@ export function useRunOnDemandSync() {
       void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error, { syncType }) => {
-      const displayName = SYNC_TYPE_NAMES[syncType] || syncType
+      const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
       // Handle specific error cases

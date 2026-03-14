@@ -35,7 +35,7 @@ describe('GraphControls', () => {
     })
 
     it('should show different icons for show/hide state', () => {
-      const showLabels = true
+      const showLabels = true as boolean
       const iconName = showLabels ? 'Eye' : 'EyeOff'
 
       expect(iconName).toBe('Eye')
@@ -77,7 +77,7 @@ describe('GraphControls', () => {
     })
 
     it('should show different icons for expanded/collapsed', () => {
-      const isExpanded = true
+      const isExpanded = true as boolean
       const iconName = isExpanded ? 'Minimize2' : 'Maximize2'
 
       expect(iconName).toBe('Minimize2')

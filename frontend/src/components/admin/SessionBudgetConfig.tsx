@@ -140,7 +140,7 @@ export function SessionBudgetConfig() {
     const origRows = buildRows(sessions, configRecords)
     return rows.some((r) => {
       const orig = origRows.find((o) => o.cm_id === r.cm_id)
-      return r.participant_goal !== orig?.participant_goal || r.session_fee !== orig?.session_fee
+      return r.participant_goal !== orig?.participant_goal || r.session_fee !== orig.session_fee
     })
   })()
 

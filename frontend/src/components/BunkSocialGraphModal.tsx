@@ -196,7 +196,7 @@ export default function BunkSocialGraphModal({
         return 'B' // Default fallback
       }
 
-      const currentBunkType = getBunkType(currentBunk?.name || '')
+      const currentBunkType = getBunkType(currentBunk?.name ?? '')
 
       // For AG bunks, no navigation
       if (currentBunkType === 'AG') {
@@ -302,7 +302,7 @@ export default function BunkSocialGraphModal({
             width: 2, // Uniform width for all edges
             'line-color': (ele: EdgeSingular) => {
               const type = ele.data('type')
-              return EDGE_COLORS[type] || '#95a5a6'
+              return EDGE_COLORS[type] ?? '#95a5a6'
             },
             'target-arrow-shape': (ele: EdgeSingular) => {
               // Show arrows for request edges, none for sibling edges
@@ -314,7 +314,7 @@ export default function BunkSocialGraphModal({
             },
             'target-arrow-color': (ele: EdgeSingular) => {
               const type = ele.data('type')
-              return EDGE_COLORS[type] || '#95a5a6'
+              return EDGE_COLORS[type] ?? '#95a5a6'
             },
             'source-arrow-shape': (ele: EdgeSingular) => {
               // Show arrow at source for reciprocal requests
@@ -328,15 +328,15 @@ export default function BunkSocialGraphModal({
             },
             'source-arrow-color': (ele: EdgeSingular) => {
               const type = ele.data('type')
-              return EDGE_COLORS[type] || '#95a5a6'
+              return EDGE_COLORS[type] ?? '#95a5a6'
             },
             'line-opacity': (ele: EdgeSingular) => {
-              const confidence = ele.data('confidence') || 0.5
+              const confidence = ele.data('confidence') ?? 0.5
               // Opacity based on confidence: 0.3 to 0.9
               return Math.max(0.3, Math.min(0.9, confidence))
             },
             'curve-style': (ele: EdgeSingular) => {
-              return ele.data('curveStyle') || 'straight'
+              return ele.data('curveStyle') ?? 'straight'
             },
             'control-point-step-size': 40,
             'overlay-padding': '3px',
@@ -359,8 +359,8 @@ export default function BunkSocialGraphModal({
     graphData.edges.forEach((edge) => {
       const sourceId = `node-${edge.source}`
       const targetId = `node-${edge.target}`
-      nodeDegrees[sourceId] = (nodeDegrees[sourceId] || 0) + 1
-      nodeDegrees[targetId] = (nodeDegrees[targetId] || 0) + 1
+      nodeDegrees[sourceId] = (nodeDegrees[sourceId] ?? 0) + 1
+      nodeDegrees[targetId] = (nodeDegrees[targetId] ?? 0) + 1
     })
 
     // Calculate grade colors based on bunk structure (lower/upper grades)
@@ -394,7 +394,7 @@ export default function BunkSocialGraphModal({
     // Add nodes with vertical randomization
     graphData.nodes.forEach((node, index) => {
       const nodeId = `node-${node.id}`
-      const degree = nodeDegrees[nodeId] || 0
+      const degree = nodeDegrees[nodeId] ?? 0
 
       // Add significant vertical randomization to reduce text overlap
       const verticalOffset = (Math.random() - 0.5) * 300 // -150 to +150 range
@@ -417,7 +417,7 @@ export default function BunkSocialGraphModal({
           fullName: node.name,
           degree: degree,
           gradeColor: node.grade ? gradeColors[node.grade] : '#666666',
-          firstYear: node.first_year || false,
+          firstYear: node.first_year ?? false,
         },
         position: { x: index * 100, y: verticalOffset }, // Even horizontal spacing, random vertical
         classes: nodeClasses.join(' '),
@@ -440,9 +440,7 @@ export default function BunkSocialGraphModal({
 
       // Track edge types per node pair
       const pairKey = [edge.source, edge.target].sort().join('-')
-      if (!nodePairEdgeTypes[pairKey]) {
-        nodePairEdgeTypes[pairKey] = new Set()
-      }
+      nodePairEdgeTypes[pairKey] ??= new Set()
       nodePairEdgeTypes[pairKey].add(edge.type)
     })
 
@@ -509,7 +507,7 @@ export default function BunkSocialGraphModal({
       }
       layoutRef.current = null
 
-      if (cy && !cy.destroyed()) {
+      if (!cy.destroyed()) {
         // Remove all event listeners first
         cy.removeAllListeners()
         cy.nodes().removeAllListeners()
@@ -526,7 +524,7 @@ export default function BunkSocialGraphModal({
     if (cyRef.current && !cyRef.current.destroyed()) {
       const cy = cyRef.current
       setTimeout(() => {
-        if (cy && !cy.destroyed()) {
+        if (!cy.destroyed()) {
           cy.resize()
           cy.fit()
         }
@@ -718,7 +716,7 @@ export default function BunkSocialGraphModal({
                           // Count campers per grade
                           const gradeCounts: Record<number, number> = {}
                           grades.forEach((grade) => {
-                            gradeCounts[grade] = (gradeCounts[grade] || 0) + 1
+                            gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1
                           })
 
                           const uniqueGrades = Object.keys(gradeCounts)
@@ -732,7 +730,7 @@ export default function BunkSocialGraphModal({
                           // Format grade range with counts
                           if (uniqueGrades.length === 1) {
                             const count = gradeCounts[minGrade]
-                            return `${formatGradeOrdinal(minGrade)} (${count || 0})`
+                            return `${formatGradeOrdinal(minGrade)} (${count ?? 0})`
                           } else {
                             // Format as "3rd (4) - 4th (8)" instead of "3rd - 4th (4, 8)"
                             const formattedGrades = uniqueGrades
@@ -898,7 +896,7 @@ export default function BunkSocialGraphModal({
                               .filter((g) => g !== null)
                             const gradeCounts: Record<number, number> = {}
                             allGrades.forEach((grade) => {
-                              gradeCounts[grade] = (gradeCounts[grade] || 0) + 1
+                              gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1
                             })
                             const uniqueGrades = Object.keys(gradeCounts)
                               .map(Number)
@@ -911,8 +909,8 @@ export default function BunkSocialGraphModal({
                                 <div className="flex items-center gap-2">
                                   <div className="h-3 w-3 rounded-full border-2 border-blue-500"></div>
                                   <span>
-                                    {formatGradeOrdinal(uniqueGrades[0] || 0)} (
-                                    {gradeCounts[uniqueGrades[0] || 0] || 0})
+                                    {formatGradeOrdinal(uniqueGrades[0] ?? 0)} (
+                                    {gradeCounts[uniqueGrades[0] ?? 0] ?? 0})
                                   </span>
                                 </div>
                               )
@@ -922,15 +920,15 @@ export default function BunkSocialGraphModal({
                                   <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 rounded-full border-2 border-blue-500"></div>
                                     <span>
-                                      {formatGradeOrdinal(uniqueGrades[0] || 0)} (
-                                      {gradeCounts[uniqueGrades[0] || 0] || 0})
+                                      {formatGradeOrdinal(uniqueGrades[0] ?? 0)} (
+                                      {gradeCounts[uniqueGrades[0] ?? 0] ?? 0})
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 rounded-full border-2 border-red-500"></div>
                                     <span>
-                                      {formatGradeOrdinal(uniqueGrades[1] || 0)} (
-                                      {gradeCounts[uniqueGrades[1] || 0] || 0})
+                                      {formatGradeOrdinal(uniqueGrades[1] ?? 0)} (
+                                      {gradeCounts[uniqueGrades[1] ?? 0] ?? 0})
                                     </span>
                                   </div>
                                 </>
@@ -941,22 +939,22 @@ export default function BunkSocialGraphModal({
                                   <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 rounded-full border-2 border-blue-500"></div>
                                     <span>
-                                      {formatGradeOrdinal(uniqueGrades[0] || 0)} (
-                                      {gradeCounts[uniqueGrades[0] || 0] || 0})
+                                      {formatGradeOrdinal(uniqueGrades[0] ?? 0)} (
+                                      {gradeCounts[uniqueGrades[0] ?? 0] ?? 0})
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 rounded-full border-2 border-red-500"></div>
                                     <span>
-                                      {formatGradeOrdinal(uniqueGrades[1] || 0)} (
-                                      {gradeCounts[uniqueGrades[1] || 0] || 0})
+                                      {formatGradeOrdinal(uniqueGrades[1] ?? 0)} (
+                                      {gradeCounts[uniqueGrades[1] ?? 0] ?? 0})
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 rounded-full border-2 border-teal-600"></div>
                                     <span>
-                                      {formatGradeOrdinal(uniqueGrades[2] || 0)} (
-                                      {gradeCounts[uniqueGrades[2] || 0] || 0})
+                                      {formatGradeOrdinal(uniqueGrades[2] ?? 0)} (
+                                      {gradeCounts[uniqueGrades[2] ?? 0] ?? 0})
                                     </span>
                                   </div>
                                 </>

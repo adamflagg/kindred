@@ -29,7 +29,7 @@ const LoginPage = () => {
   // Get the 'from' location if redirected from a protected route or query param
   const searchParams = new URLSearchParams(location.search)
   const fromQuery = searchParams.get('from')
-  const from = fromQuery || location.state?.from?.pathname || '/'
+  const from = fromQuery ?? location.state?.from?.pathname ?? '/'
 
   // Define handleProviderLogin BEFORE useEffects that use it
   const handleProviderLogin = useCallback(
@@ -52,7 +52,7 @@ const LoginPage = () => {
     const fetchProviders = async () => {
       try {
         const authMethods = await getAuthMethods()
-        const oauth2Providers = authMethods.oauth2?.providers || []
+        const oauth2Providers = authMethods.oauth2.providers
         setProviders(oauth2Providers)
         setIsLoading(false)
       } catch (err) {
@@ -99,7 +99,7 @@ const LoginPage = () => {
       apple: 'Apple',
     }
 
-    return nameMap[provider.name] || provider.name
+    return nameMap[provider.name] ?? provider.name
   }
 
   return (

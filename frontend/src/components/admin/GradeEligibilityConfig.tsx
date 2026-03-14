@@ -108,6 +108,7 @@ export function GradeEligibilityConfig() {
   useEffect(() => {
     if (thresholdRecords && thresholdRecords.length > 0) {
       const rec = thresholdRecords[0]!
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
       setThreshold((rec.value as number) ?? 80)
       setThresholdId(rec.id)
     }

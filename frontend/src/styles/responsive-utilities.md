@@ -23,6 +23,7 @@ This project uses a centralized responsive system defined in `index.css` to ensu
 ## Utility Classes
 
 ### Navigation Text
+
 For buttons that transition from icon-only → short text → full text:
 
 ```jsx
@@ -36,6 +37,7 @@ For buttons that transition from icon-only → short text → full text:
 The `nav-btn-icon-only` class automatically hides all text between 640-900px.
 
 ### Stats Labels
+
 For labels that transition from icon → short → full label:
 
 ```jsx
@@ -45,6 +47,7 @@ For labels that transition from icon → short → full label:
 ```
 
 ### Spacing
+
 Responsive spacing that increases with screen size:
 
 ```jsx
@@ -54,6 +57,7 @@ Responsive spacing that increases with screen size:
 ```
 
 ### Visibility
+
 Progressive display utilities:
 
 ```jsx

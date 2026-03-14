@@ -56,7 +56,7 @@ function transformWaitlistSessionData(
   const sorted = sortSessionDataByCampThenQuest(bySession, sessionDateLookup, sessionTypeLookup)
   const enrolledSessions = new Map<number, string>()
   for (const item of sorted) {
-    for (const enrolled of item.enrolled_in || []) {
+    for (const enrolled of item.enrolled_in) {
       enrolledSessions.set(enrolled.session_cm_id, enrolled.session_name)
     }
   }
@@ -76,8 +76,8 @@ function transformWaitlistSessionData(
       no_enrollment: item.no_enrollment,
     }
     for (const [sessionId] of enrolledList) {
-      const enrolled = (item.enrolled_in || []).find((e) => e.session_cm_id === sessionId)
-      point[`session_${sessionId}`] = enrolled?.count || 0
+      const enrolled = item.enrolled_in.find((e) => e.session_cm_id === sessionId)
+      point[`session_${sessionId}`] = enrolled?.count ?? 0
     }
     return point
   })
@@ -146,11 +146,11 @@ export default function WaitlistAnalysis() {
   )
 
   const primaryGrade = useMemo(
-    () => (data ? transformWaitlistGradeData(data.by_grade || []) : []),
+    () => (data ? transformWaitlistGradeData(data.by_grade) : []),
     [data]
   )
   const compGrade = useMemo(
-    () => (compData ? transformWaitlistGradeData(compData.by_grade || []) : []),
+    () => (compData ? transformWaitlistGradeData(compData.by_grade) : []),
     [compData]
   )
 
@@ -346,11 +346,11 @@ export default function WaitlistAnalysis() {
             )}
 
             {/* Grade + Gender Charts Row */}
-            {((data.by_grade || []).length > 0 || (data.by_gender || []).length > 0) && (
+            {(data.by_grade.length > 0 || data.by_gender.length > 0) && (
               <>
                 {isComparing && compData ? (
                   <>
-                    {(data.by_grade || []).length > 0 && primaryGrade.length > 0 && (
+                    {data.by_grade.length > 0 && primaryGrade.length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                           <CssStackedHorizontalBarChart
@@ -358,7 +358,7 @@ export default function WaitlistAnalysis() {
                             segments={WAITLIST_GRADE_SEGMENTS}
                             title={`${currentYear} Grade Distribution`}
                             onBarClick={(item) => {
-                              const grade = data.by_grade?.find(
+                              const grade = data.by_grade.find(
                                 (g) =>
                                   (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
                               )
@@ -385,18 +385,18 @@ export default function WaitlistAnalysis() {
                           title="Grade Distribution Comparison"
                           primaryYear={currentYear}
                           compareYear={compareYear!}
-                          primaryData={(data.by_grade || []).map((g) => ({
+                          primaryData={data.by_grade.map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
                           }))}
-                          compareData={(compData.by_grade || []).map((g) => ({
+                          compareData={compData.by_grade.map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
                           }))}
                         />
                       </>
                     )}
-                    {(data.by_gender || []).length > 0 && (
+                    {data.by_gender.length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                           <WaitlistGenderChart
@@ -405,7 +405,7 @@ export default function WaitlistAnalysis() {
                             title={`${currentYear} Gender Distribution`}
                           />
                           <WaitlistGenderChart
-                            data={compData.by_gender || []}
+                            data={compData.by_gender}
                             title={`${compareYear} Gender Distribution`}
                           />
                         </div>
@@ -421,13 +421,13 @@ export default function WaitlistAnalysis() {
                   </>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    {(data.by_grade || []).length > 0 && primaryGrade.length > 0 && (
+                    {data.by_grade.length > 0 && primaryGrade.length > 0 && (
                       <CssStackedHorizontalBarChart
                         data={primaryGrade}
                         segments={WAITLIST_GRADE_SEGMENTS}
                         title="Grade Distribution"
                         onBarClick={(item) => {
-                          const grade = data.by_grade?.find(
+                          const grade = data.by_grade.find(
                             (g) => (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
                           )
                           if (grade) {
@@ -442,7 +442,7 @@ export default function WaitlistAnalysis() {
                         }}
                       />
                     )}
-                    {(data.by_gender || []).length > 0 && (
+                    {data.by_gender.length > 0 && (
                       <WaitlistGenderChart
                         data={data.by_gender}
                         onSegmentClick={setFilter}
