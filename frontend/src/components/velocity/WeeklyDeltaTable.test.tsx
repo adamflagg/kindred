@@ -45,9 +45,7 @@ describe('WeeklyDeltaTable', () => {
 
   const defaultProps = {
     weeks: [makeWeek()],
-    weekLabelMap: new Map<number, string>([[1, 'Jan 5 - Jan 11']]),
     priorWeekMap: null as Map<number, WeeklyDataPoint> | null,
-    selectedPriorYears: [] as number[],
     columns: defaultColumns,
   }
 
@@ -122,7 +120,6 @@ describe('WeeklyDeltaTable', () => {
         weeks={[week]}
         columns={columns}
         priorWeekMap={priorWeekMap}
-        selectedPriorYears={[2025]}
       />
     )
     expect(screen.getByText('42')).toBeInTheDocument()

@@ -11,8 +11,6 @@ export interface SessionColumnDef {
 interface SessionBreakdownTableProps {
   sortedBySession: VelocityCurve[]
   priorSessionMap: Map<string, PriorYearSessionSummary>
-  selectedPriorYears: number[]
-  splitByGender: boolean
   columns: SessionColumnDef[]
 }
 

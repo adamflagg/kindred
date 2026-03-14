@@ -64,8 +64,6 @@ describe('SessionBreakdownTable', () => {
   const defaultProps = {
     sortedBySession: [makeSession()],
     priorSessionMap: new Map<string, PriorYearSessionSummary>(),
-    selectedPriorYears: [] as number[],
-    splitByGender: false,
     columns: defaultColumns,
   }
 

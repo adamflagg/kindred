@@ -1039,8 +1039,6 @@ export default function VelocityPage() {
           <SessionBreakdownTable
             sortedBySession={chartData.sortedBySession}
             priorSessionMap={chartData.priorSessionMap}
-            selectedPriorYears={controls.selectedPriorYears}
-            splitByGender={controls.splitByGender}
             columns={sessionColumns}
           />
         </div>
@@ -1055,9 +1053,7 @@ export default function VelocityPage() {
         </div>
         <WeeklyDeltaTable
           weeks={data.combined.weekly}
-          weekLabelMap={chartData.weekLabelMap}
           priorWeekMap={chartData.priorWeekMap}
-          selectedPriorYears={controls.selectedPriorYears}
           columns={deltaColumns}
           phaseByWeek={phaseByWeek}
         />

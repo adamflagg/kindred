@@ -113,14 +113,25 @@ export default function CancellationVelocityPage() {
     let priorFinal: number | null = null
     let priorYear: number | null = null
 
+    // Use backend cancelled_at_current_week when available (more accurate with fallback)
+    const priorCancelledSummary =
+      data.prior_year_cancelled_to_date?.length > 0 ? data.prior_year_cancelled_to_date[0] : null
+
     if (data.prior_years.length > 0) {
       const py = data.prior_years[0]
       if (py) {
         priorYear = py.year
-        const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
-        priorAtWeek = pyMap.get(currentMaxWeek)?.enrolled ?? null
-        const pyLast = py.weekly[py.weekly.length - 1]
-        priorFinal = pyLast?.enrolled ?? null
+        priorAtWeek = priorCancelledSummary?.cancelled_at_current_week ?? null
+        // Fallback to manual week lookup if backend didn't provide it
+        if (priorAtWeek == null) {
+          const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
+          priorAtWeek = pyMap.get(currentMaxWeek)?.enrolled ?? null
+        }
+        priorFinal = priorCancelledSummary?.cancelled_final ?? null
+        if (priorFinal == null) {
+          const pyLast = py.weekly[py.weekly.length - 1]
+          priorFinal = pyLast?.enrolled ?? null
+        }
       }
     }
 
@@ -889,8 +900,6 @@ export default function CancellationVelocityPage() {
           <SessionBreakdownTable
             sortedBySession={chartData.sortedBySession}
             priorSessionMap={chartData.priorSessionMap}
-            selectedPriorYears={controls.selectedPriorYears}
-            splitByGender={controls.splitByGender}
             columns={sessionColumns}
           />
         </div>
@@ -905,9 +914,7 @@ export default function CancellationVelocityPage() {
         </div>
         <WeeklyDeltaTable
           weeks={data.combined.weekly}
-          weekLabelMap={chartData.weekLabelMap}
           priorWeekMap={chartData.priorWeekMap}
-          selectedPriorYears={controls.selectedPriorYears}
           columns={deltaColumns}
         />
       </div>

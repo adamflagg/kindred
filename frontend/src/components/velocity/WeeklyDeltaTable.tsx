@@ -10,9 +10,7 @@ export interface DeltaColumnDef {
 
 interface WeeklyDeltaTableProps {
   weeks: WeeklyDataPoint[]
-  weekLabelMap: Map<number, string>
   priorWeekMap: Map<number, WeeklyDataPoint> | null
-  selectedPriorYears: number[]
   columns: DeltaColumnDef[]
   phaseByWeek?: Map<number, { phase: string; label: string }>
 }
