@@ -235,12 +235,12 @@ class TestGenderConstraintMultipleCampers:
         # 3 males, 2 females
         males = [
             create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5),
-            create_person(cm_id=1002, first_name="Jake", last_name="Smith", gender="M", grade=5),
-            create_person(cm_id=1003, first_name="Jim", last_name="Brown", gender="M", grade=5),
+            create_person(cm_id=1002, first_name="Noah", last_name="Williams", gender="M", grade=5),
+            create_person(cm_id=1003, first_name="Mason", last_name="Davis", gender="M", grade=5),
         ]
         females = [
-            create_person(cm_id=1004, first_name="Jane", last_name="Doe", gender="F", grade=5),
-            create_person(cm_id=1005, first_name="Jill", last_name="Smith", gender="F", grade=5),
+            create_person(cm_id=1004, first_name="Olivia", last_name="Chen", gender="F", grade=5),
+            create_person(cm_id=1005, first_name="Ava", last_name="Brown", gender="F", grade=5),
         ]
         persons = males + females
 
@@ -277,7 +277,7 @@ class TestGenderConstraintMultipleCampers:
         # 2 males, male bunk has capacity 1, mixed bunk has capacity 12
         males = [
             create_person(cm_id=1001, first_name="Liam", last_name="Garcia", gender="M", grade=5),
-            create_person(cm_id=1002, first_name="Jake", last_name="Smith", gender="M", grade=5),
+            create_person(cm_id=1002, first_name="Noah", last_name="Williams", gender="M", grade=5),
         ]
 
         male_bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=1)
