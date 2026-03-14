@@ -10,6 +10,31 @@ os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
 
+def create_mock_session(
+    cm_id: int,
+    name: str,
+    year: int = 2026,
+    session_type: str = "main",
+    start_date: str = "2026-06-15",
+    end_date: str = "2026-07-05",
+    parent_id: int | None = None,
+    pb_id: str | None = None,
+    sort_order: int = 0,
+) -> MagicMock:
+    """Create a mock PocketBase session record for API tests."""
+    session = MagicMock()
+    session.id = pb_id or f"pb_{cm_id}"
+    session.cm_id = cm_id
+    session.name = name
+    session.year = year
+    session.session_type = session_type
+    session.start_date = start_date
+    session.end_date = end_date
+    session.parent_id = parent_id
+    session.sort_order = sort_order
+    return session
+
+
 def create_mock_person(
     cm_id: int,
     first_name: str,

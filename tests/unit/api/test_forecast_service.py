@@ -17,32 +17,11 @@ import pytest
 
 from api.services.forecast_service import ForecastService
 
+from tests.unit.api.conftest import create_mock_session
+
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int = 2026,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    parent_id: int | None = None,
-    pb_id: str | None = None,
-    sort_order: int = 0,
-) -> Mock:
-    """Create a mock session record."""
-    session = Mock()
-    session.cm_id = cm_id
-    session.id = pb_id or f"pb_{cm_id}"
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.parent_id = parent_id
-    session.sort_order = sort_order
-    return session
 
 
 def create_mock_attendee(

@@ -19,45 +19,11 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 
-from tests.unit.api.conftest import create_mock_person
+from tests.unit.api.conftest import create_mock_person, create_mock_session
 
 # ============================================================================
 # Test Data Factories
 # ============================================================================
-
-
-def create_mock_session(
-    cm_id: int,
-    name: str,
-    year: int,
-    session_type: str = "main",
-    start_date: str = "2026-06-15",
-    end_date: str = "2026-07-05",
-    parent_id: int | None = None,
-    pb_id: str | None = None,
-) -> Mock:
-    """Create a mock session record.
-
-    Args:
-        cm_id: CampMinder ID (used as key in sessions dict).
-        name: Session name.
-        year: Year.
-        session_type: main, ag, or embedded.
-        start_date: Start date string.
-        end_date: End date string.
-        parent_id: Parent session cm_id (for AG sessions).
-        pb_id: PocketBase ID (defaults to "session_{cm_id}").
-    """
-    session = Mock()
-    session.id = pb_id or f"session_{cm_id}"  # PocketBase ID
-    session.cm_id = cm_id
-    session.name = name
-    session.year = year
-    session.session_type = session_type
-    session.start_date = start_date
-    session.end_date = end_date
-    session.parent_id = parent_id
-    return session
 
 
 def create_mock_attendee(
@@ -1509,8 +1475,9 @@ class TestSessionCapacityUtilization:
         """
         from api.services.registration_service import RegistrationService
 
-        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
-        session_2.pb_id = "session_2001"
+        session_2 = create_mock_session(
+            2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05", pb_id="session_2001"
+        )
 
         sessions_dict = {2001: session_2}
 
@@ -1546,10 +1513,12 @@ class TestSessionCapacityUtilization:
         """
         from api.services.registration_service import RegistrationService
 
-        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
-        session_2.pb_id = "session_2001"
-        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
-        ag_session_2.pb_id = "session_2005"
+        session_2 = create_mock_session(
+            2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05", pb_id="session_2001"
+        )
+        ag_session_2 = create_mock_session(
+            2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001, pb_id="session_2005"
+        )
 
         sessions_dict = {2001: session_2, 2005: ag_session_2}
 
@@ -1600,8 +1569,9 @@ class TestSessionCapacityUtilization:
         """
         from api.services.registration_service import RegistrationService
 
-        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
-        taste.pb_id = "session_1001"
+        taste = create_mock_session(
+            1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23", pb_id="session_1001"
+        )
 
         sessions_dict = {1001: taste}
 
