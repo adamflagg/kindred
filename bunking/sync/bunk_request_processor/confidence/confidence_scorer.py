@@ -5,15 +5,16 @@ that works directly with V2 models and data structures."""
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, RequestSource, RequestType
 from ..resolution.interfaces import ResolutionResult
 from .social_graph_signals import SocialGraphSignals
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 from collections.abc import Callable
+
+from bunking.logging_config import get_logger
 
 # Import types from ai_types to avoid circular imports
 from .ai_types import (
@@ -31,7 +32,7 @@ __all__ = [
     "TokenUsage",
 ]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AIService:

@@ -7,7 +7,6 @@ and revenue projections.
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -24,11 +23,12 @@ from api.utils.session_metrics import (
     get_session_from_expand,
     resolve_duration_sessions,
 )
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from api.services.metrics_repository import MetricsRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ForecastService:

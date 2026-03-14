@@ -9,11 +9,11 @@ CRITICAL SAFETY CONSTRAINT:
 
 from __future__ import annotations
 
-import logging
+from bunking.logging_config import get_logger
 
 from .base import SolverContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_gender_constraints(ctx: SolverContext) -> None:

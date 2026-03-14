@@ -6,7 +6,6 @@ AI intent parsing without running the full 3-phase pipeline.
 
 from __future__ import annotations
 
-import logging
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -16,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from bunking.auth_middleware import AuthUser
+from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_admin
 from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
     DebugParseRepository,
@@ -63,7 +63,7 @@ from ..schemas.debug import (
 )
 from ..settings import get_settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
 

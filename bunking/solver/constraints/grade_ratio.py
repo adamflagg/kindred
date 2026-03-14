@@ -7,15 +7,16 @@ makes up more than the configured percentage (default 67%) of the cabin.
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 
 from ortools.sat.python import cp_model
 
+from bunking.logging_config import get_logger
+
 from .base import SolverContext
 from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk, should_exempt_edge_bunk_from_ratio
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def add_grade_ratio_constraints(ctx: SolverContext) -> None:

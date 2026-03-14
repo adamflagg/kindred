@@ -11,7 +11,6 @@ This router handles:
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import uuid4
@@ -20,6 +19,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
+from bunking.logging_config import get_logger
 from bunking.models import (
     ClearScenarioRequest,
     CreateScenarioRequest,
@@ -35,7 +35,7 @@ from ..dependencies import pb, solver_runs
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 

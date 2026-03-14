@@ -7,13 +7,13 @@ This module provides session-related utility functions used across multiple rout
 from __future__ import annotations
 
 import asyncio
-import logging
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ..dependencies import pb
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def get_related_session_ids(session_cm_id: int, year: int, pb_client: PocketBase | None = None) -> list[int]:

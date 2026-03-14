@@ -8,12 +8,13 @@ service-layer code expects.
 from __future__ import annotations
 
 import json
-import logging
 import sqlite3
 from types import SimpleNamespace
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class MetricsSQLRepository:

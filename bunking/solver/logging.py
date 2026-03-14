@@ -7,13 +7,14 @@ Tracks constraints added, violations, and solver progress.
 from __future__ import annotations
 
 import json
-import logging
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConstraintLogger:

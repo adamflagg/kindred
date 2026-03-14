@@ -9,7 +9,6 @@ This service handles:
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections import defaultdict
 from typing import Any
 
@@ -24,12 +23,13 @@ from bunking.direct_solver import (
     DirectSolverInput,
     HistoricalBunkingRecord,
 )
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ..dependencies import pb
 from .session_context import SessionContext, build_session_context
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def fetch_session_data_v2(

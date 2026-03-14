@@ -9,7 +9,6 @@ Implements four use cases:
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -24,11 +23,12 @@ from api.schemas.metrics import (
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
 from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Summer session types to include in analysis
 SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")

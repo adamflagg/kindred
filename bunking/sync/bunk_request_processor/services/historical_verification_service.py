@@ -7,8 +7,9 @@ in the same bunk together, boosting confidence when verified.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
+
+from bunking.logging_config import get_logger
 
 from ..resolution.interfaces import ResolutionResult
 
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from ..core.models import ParseResult
     from ..data.cache.temporal_name_cache import TemporalNameCache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HistoricalVerificationService:

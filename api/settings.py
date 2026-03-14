@@ -13,6 +13,8 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from bunking.logging_config import get_logger
+
 
 def _is_docker_environment() -> bool:
     """Detect if running inside a Docker container."""
@@ -107,9 +109,7 @@ class Settings(BaseSettings):
         """Validate admin password is set and not using insecure defaults."""
         insecure_defaults = {"campbunking123", "password", "admin", "123456", ""}
         if v in insecure_defaults:
-            import logging
-
-            logger = logging.getLogger(__name__)
+            logger = get_logger(__name__)
             logger.warning(
                 "SECURITY WARNING: POCKETBASE_ADMIN_PASSWORD is not set or uses an insecure default. "
                 "Set a strong password in your .env file for production use."

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +26,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
 from bunking.config import ConfigLoader
+from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
@@ -40,7 +40,7 @@ from ..schemas import (
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["solver"])
 

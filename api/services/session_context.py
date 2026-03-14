@@ -17,17 +17,17 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass
 
 from fastapi import HTTPException
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .id_cache import IDLookupCache
 from .session_utils import get_related_session_ids
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

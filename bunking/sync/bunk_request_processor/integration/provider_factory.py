@@ -4,9 +4,10 @@ Supports OpenAI (with SDK structured outputs) and Mock providers."""
 
 from __future__ import annotations
 
-import logging
 import os
 import re
+
+from bunking.logging_config import get_logger
 
 from ..core.models import (
     ParsedRequest,
@@ -21,7 +22,7 @@ from .ai_types import (
     TokenUsage,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MockProvider(AIProvider):

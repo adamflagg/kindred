@@ -7,7 +7,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import logging
 import time
 from typing import Any, cast
 
@@ -16,7 +15,9 @@ import jwt
 from jwt import PyJWK
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
-logger = logging.getLogger(__name__)
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def _decode_jwt_claims_unsafe(token: str) -> dict[str, Any]:

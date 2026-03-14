@@ -4,16 +4,16 @@ Provides methods to query camp session data and find related sessions."""
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 if TYPE_CHECKING:
     from ..pocketbase_wrapper import PocketBaseWrapper
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Valid session types for bunking
 VALID_BUNKING_SESSION_TYPES = {"main", "embedded", "ag"}

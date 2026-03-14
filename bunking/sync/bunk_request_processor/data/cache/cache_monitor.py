@@ -5,14 +5,15 @@ Provides periodic logging of cache statistics and performance metrics."""
 from __future__ import annotations
 
 import json
-import logging
 import threading
 import time
 from typing import Any
 
+from bunking.logging_config import get_logger
+
 from .cache_manager import CacheManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CacheMonitor:

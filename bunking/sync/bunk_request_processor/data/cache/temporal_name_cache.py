@@ -11,14 +11,15 @@ This eliminates SQL queries for name resolution and fixes the apostrophe bug
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from ...core.models import Person
 from ...shared import parse_date
 from ...shared.name_utils import normalize_name
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TemporalNameCache:

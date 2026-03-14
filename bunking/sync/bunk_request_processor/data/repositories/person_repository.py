@@ -5,10 +5,10 @@ When a TemporalNameCache is provided, uses O(1) cache lookups instead of DB quer
 
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ...core.interfaces import Repository
@@ -20,7 +20,7 @@ from ..pocketbase_wrapper import PocketBaseWrapper
 if TYPE_CHECKING:
     from ..cache.temporal_name_cache import TemporalNameCache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _escape_filter_value(value: str) -> str:

@@ -5,7 +5,6 @@ Authentication middleware v2 - supports both JWT validation and legacy modes.
 from __future__ import annotations
 
 import json
-import logging
 import os
 import time
 from pathlib import Path
@@ -19,10 +18,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from api.settings import _allow_auth_bypass
+from bunking.logging_config import get_logger
 
 from .jwt_auth import JWTValidator, PocketBaseTokenValidator, extract_bearer_token
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _is_docker_environment() -> bool:

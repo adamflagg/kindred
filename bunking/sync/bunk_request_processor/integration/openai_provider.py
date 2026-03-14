@@ -6,11 +6,12 @@ GPT-4.1 and GPT-5 models fully support structured outputs via this API.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from openai import AsyncOpenAI
 from openai.types.shared_params import Reasoning, ReasoningEffort
+
+from bunking.logging_config import get_logger
 
 from ..core.models import (
     AgePreference,
@@ -28,7 +29,7 @@ from .ai_schemas import (
 )
 from .ai_types import AIProvider, AIRequestContext, ParsedResponse, TokenUsage
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class OpenAIProvider(AIProvider):

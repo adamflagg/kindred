@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult
@@ -13,7 +14,7 @@ from ..integration.batch_processor import BatchProcessor
 from ..resolution.interfaces import ResolutionResult
 from .context_builder import ContextBuilder
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DisambiguationCase:

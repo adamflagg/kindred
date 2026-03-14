@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from bunking.config.loader import ConfigLoader
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 if TYPE_CHECKING:
@@ -66,7 +66,7 @@ from ..social.social_graph import SocialGraph
 from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def generate_unresolved_person_id(name_text: str) -> int:

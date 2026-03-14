@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-import logging
 import random
 import time
 from collections.abc import Callable
@@ -23,11 +22,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from bunking.logging_config import get_logger
+
 from ..core.models import ParsedRequest, ParseRequest, ParseResult
 from ..shared.constants import VALID_PLACEHOLDERS as _VALID_PLACEHOLDERS
 from .ai_service import AIProvider, AIRequestContext, ParsedResponse
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ============================================================================
 # HARDCODED TECHNICAL CONSTANTS

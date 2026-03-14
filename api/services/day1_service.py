@@ -7,7 +7,6 @@ by matching attendee effective_date against tier opening dates.
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import date, datetime
 
 from api.schemas.day1 import (
@@ -20,8 +19,9 @@ from api.schemas.day1 import (
 from api.services.camp_calendar import REGISTRATION_TIERS, day1_window
 from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
+from bunking.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 AT_CAMP_TYPES = {"main", "embedded", "ag"}
 QUEST_TYPES = {"quest"}

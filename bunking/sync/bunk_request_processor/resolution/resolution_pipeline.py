@@ -5,14 +5,15 @@ handling caching, fallbacks, and ambiguous results."""
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from ..data.repositories import AttendeeRepository, PersonRepository
 from ..name_resolution.filters.spread_filter import SpreadFilter
 from .interfaces import ResolutionResult, ResolutionStrategy
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ResolutionPipeline:

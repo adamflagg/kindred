@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import logging
 
+from bunking.logging_config import get_logger
+
 from .base import SolverContext
 from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # =============================================================================
