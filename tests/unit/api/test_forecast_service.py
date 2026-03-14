@@ -10,13 +10,11 @@ These tests are written FIRST before implementation (TDD).
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from api.services.forecast_service import ForecastService
-
 from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
 # ============================================================================

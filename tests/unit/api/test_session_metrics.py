@@ -18,7 +18,6 @@ from unittest.mock import MagicMock, Mock
 
 from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
-
 # ============================================================================
 # SUMMER_PROGRAM_SESSION_TYPES Constant Tests
 # ============================================================================

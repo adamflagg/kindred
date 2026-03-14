@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from api.services.waitlist_service import WaitlistService
-
 from tests.unit.api.conftest import (
     create_mock_attendee,
     create_mock_person,

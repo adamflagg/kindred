@@ -18,7 +18,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-
 from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================

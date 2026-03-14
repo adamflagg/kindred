@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from api.services.session_availability_service import SessionAvailabilityService
-
 from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
 # ============================================================================

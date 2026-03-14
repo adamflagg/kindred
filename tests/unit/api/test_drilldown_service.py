@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from api.services.drilldown_service import DrilldownService
-
 from tests.unit.api.conftest import create_mock_person, create_mock_session, create_mock_status_history
 
 # ============================================================================

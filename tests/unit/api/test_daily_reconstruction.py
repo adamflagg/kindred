@@ -1,8 +1,7 @@
 """Tests for daily reconstruction from attendee records."""
 
-from typing import Any
-
 from datetime import date
+from typing import Any
 
 from api.services.reconstruction import reconstruct_daily
 

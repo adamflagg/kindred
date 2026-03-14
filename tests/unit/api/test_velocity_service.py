@@ -35,7 +35,6 @@ from api.services.velocity_service import (
     _week_start,
     rollup_daily_to_weekly,
 )
-
 from tests.unit.api.conftest import create_mock_session
 
 # ============================================================================
