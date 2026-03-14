@@ -1,20 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-14 (12 open issues).
-
----
-
-## Group 3: Metrics / Velocity — Frontend Refactors
-
-**Priority: Medium** — Groups 1 & 2 are complete; this is now unblocked
-
-| # | Title | Type |
-|---|-------|------|
-| 437 | Migrate metrics hooks from positional params to options objects | refactor |
-| 472 | Extract shared hooks/components from VelocityPage and CancellationVelocityPage | refactor |
-
-**Interplay:** #437 simplifies hook signatures that #472 then consolidates. Do #437 → #472. (#478 completed in Group 2 PR2.)
+Last updated: 2026-03-14 (10 open issues).
 
 ---
 
@@ -71,7 +58,7 @@ Last updated: 2026-03-14 (12 open issues).
 8. ~~**Group 8 (7/8)**~~ — ✅ Complete (PRs #555, #556, #557) — #377 remains (blocked on fork)
 8. ~~**Group 12**~~ — ✅ Complete (PR #561)
 9. ~~**Group 13**~~ — ✅ Complete (PR #563) — #559 fixed; #560 closed as stale
-10. **Group 3** — Velocity frontend refactors (now unblocked)
+10. ~~**Group 3**~~ — ✅ Complete (PR #566) — #437, #472; spawned #562, #567
 11. **Groups 4, 8, 10** — Independent items, sprinkle in anytime
 
 ## Completed Groups
@@ -93,3 +80,4 @@ Last updated: 2026-03-14 (12 open issues).
 | Group 8 (7/8): Frontend quick wins (#531, #537, #479, #468, #461, #440, #436) | #555, #556, #557 | 2026-03-13 | #377 remains (blocked on pocketbase-typegen fork); spawned #559, #560 |
 | Group 12: Solver normalize_source_field bug (#553) | #561 | 2026-03-14 | Derived mappings from canonical SourceField constants |
 | Group 13: Frontend auth & state gaps (#559, #560) | #563 | 2026-03-14 | #559 fixed; #560 closed as stale |
+| Group 3: Velocity frontend refactors (#437, #472) | #566 | 2026-03-14 | Spawned #562 (full-options eval), #567 (mutual exclusivity) |
