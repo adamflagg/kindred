@@ -5,8 +5,7 @@ describe('RegistrationOverview', () => {
     const sourceContent = await import('./RegistrationOverview?raw')
     const source = sourceContent.default
 
-    // The mapping pattern (by_gender_grade inline with tooltipLabel) should appear
-    // at most once as a function definition, not repeated inline in JSX
+    // Ensure no inline .map() calls on by_gender_grade exist (should use transformGenderByGrade helper)
     const inlineMapCount = (source.match(/by_gender_grade.*?\.map\(\(g\) => \(\{/g) || []).length
     expect(inlineMapCount).toBeLessThanOrEqual(0)
   })
