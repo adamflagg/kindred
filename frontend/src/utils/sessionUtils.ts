@@ -61,17 +61,17 @@ export function findSessionByUrlSegment(sessions: Session[], urlSegment: string)
   // First try to find by known URL mapping
   const knownName = urlToSessionName(urlSegment)
   if (knownName) {
-    return sessions.find((s) => s.name === knownName) || null
+    return sessions.find((s) => s.name === knownName) ?? null
   }
 
   // Then try numeric ID
   if (isNumericSessionId(urlSegment)) {
     const cmId = parseInt(urlSegment, 10)
-    return sessions.find((s) => s.cm_id === cmId) || null
+    return sessions.find((s) => s.cm_id === cmId) ?? null
   }
 
   // Finally, try to match the URL-friendly version of session names
-  return sessions.find((s) => sessionNameToUrl(s.name) === urlSegment) || null
+  return sessions.find((s) => sessionNameToUrl(s.name) === urlSegment) ?? null
 }
 
 // Valid tab paths for routing
@@ -88,7 +88,7 @@ export function isValidTab(tab: string): tab is ValidTab {
 export function parseSessionName(name: string): [number, string] {
   const match = name.match(/session\s+(\d+)([a-z])?/i)
   if (match?.[1]) {
-    return [parseInt(match[1], 10), match[2]?.toLowerCase() || '']
+    return [parseInt(match[1], 10), match[2]?.toLowerCase() ?? '']
   }
   return [0, name.toLowerCase()]
 }

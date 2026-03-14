@@ -81,7 +81,7 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       randomize: true,
       // Edge length based on weight for better clustering
       idealEdgeLength: (edge: cytoscape.EdgeSingular) => {
-        const weight = edge.data('weight') || 1
+        const weight = edge.data('weight') ?? 1
         return 100 / Math.sqrt(weight)
       },
     } as cytoscape.LayoutOptions)

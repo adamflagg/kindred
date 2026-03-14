@@ -123,7 +123,7 @@ export function GeoMap({
   // Process all layers: resolve coords, compute max count across all
   const processedLayers = useMemo(() => {
     return layers.map((layer) => {
-      const mappable: (GeoDataItem & { coords: LatLng })[] = []
+      const mappable: Array<GeoDataItem & { coords: LatLng }> = []
       const unmappable: GeoDataItem[] = []
       for (const item of layer.data) {
         const coords = getLocationCoordsWithOverrides(layer.category, item.name, overrideCoords)

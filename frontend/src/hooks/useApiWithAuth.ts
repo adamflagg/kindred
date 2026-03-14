@@ -13,7 +13,7 @@ export function useApiWithAuth() {
     const { skipAuth = false, ...fetchOptions } = options
 
     // Initialize headers
-    const headers = new Headers(fetchOptions.headers || {})
+    const headers = new Headers(fetchOptions.headers ?? {})
 
     // Add auth header if we have a token and auth is not skipped
     // Note: pb.authStore.token is read at call time, not dependency time

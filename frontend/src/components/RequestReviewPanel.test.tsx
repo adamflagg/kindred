@@ -92,7 +92,7 @@ describe('RequestReviewPanel', () => {
     it('opens CamperDetailsPanel when requester name is clicked', async () => {
       // Test: clicking requester name should set selectedCamperId state
       // which conditionally renders CamperDetailsPanel
-      let selectedCamperId: string | null = null
+      let selectedCamperId: string | null = null as string | null
 
       // Simulate the click handler behavior
       const setSelectedCamperId = (id: string) => {

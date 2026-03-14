@@ -34,13 +34,13 @@ export default function FloatingUnassignedBadge({
 
   // Sort campers by lastname (alpha), then firstname
   const sortedCampers = [...campers].sort((a, b) => {
-    const lastNameA = a.last_name || a.name.split(' ').pop() || ''
-    const lastNameB = b.last_name || b.name.split(' ').pop() || ''
+    const lastNameA = a.last_name ?? a.name.split(' ').pop() ?? ''
+    const lastNameB = b.last_name ?? b.name.split(' ').pop() ?? ''
     const lastNameCompare = lastNameA.localeCompare(lastNameB)
     if (lastNameCompare !== 0) return lastNameCompare
 
-    const firstNameA = a.first_name || a.name.split(' ')[0] || ''
-    const firstNameB = b.first_name || b.name.split(' ')[0] || ''
+    const firstNameA = a.first_name ?? a.name.split(' ')[0] ?? ''
+    const firstNameB = b.first_name ?? b.name.split(' ')[0] ?? ''
     return firstNameA.localeCompare(firstNameB)
   })
 
@@ -184,7 +184,7 @@ export default function FloatingUnassignedBadge({
                       key={camper.id}
                       camper={camper}
                       onClick={handleCamperClick}
-                      hasRequests={requestStatus?.[camper.person_cm_id] ?? true}
+                      hasRequests={requestStatus[camper.person_cm_id] ?? true}
                       bunkCampers={[]}
                       lockState={isDraftMode ? getCamperLockState(camper.person_cm_id) : 'none'}
                       lockGroupColor={

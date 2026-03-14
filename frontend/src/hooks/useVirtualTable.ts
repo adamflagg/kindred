@@ -100,7 +100,7 @@ export function useVirtualTable<T extends { id: string }>({
 
   // Force remeasure when expanded rows change
   useEffect(() => {
-    if (enableDynamicHeights && expandedRows && expandedRows.size >= 0) {
+    if (enableDynamicHeights) {
       // Use requestAnimationFrame to avoid synchronous updates
       requestAnimationFrame(() => {
         rowVirtualizer.measure()

@@ -145,6 +145,6 @@ export function useStaffRetentionData(priorYear: number, currentYear: number) {
     ...result,
     bunkStaff: bunkStaffData ?? new Map(),
     isLoading: retLoading || staffLoading,
-    error: retError || staffError,
+    error: retError ?? staffError,
   }
 }

@@ -71,6 +71,7 @@ export function formatLocation(
   fallbackName?: string
 ): string {
   if (country && !['US', 'USA', ''].includes(country)) {
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional || to fall through on empty string
     return `${city || fallbackName || ''}, ${country}`.replace(/^, /, '')
   }
   return [city, state].filter(Boolean).join(', ')

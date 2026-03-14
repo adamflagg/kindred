@@ -109,7 +109,7 @@ export function useSatisfactionData(
             if (!bunkToPersonsMap.has(bunkCmId)) {
               bunkToPersonsMap.set(bunkCmId, [])
             }
-            if (grade !== undefined && grade !== null) {
+            if (grade !== undefined) {
               const bunkPersons = bunkToPersonsMap.get(bunkCmId)
               if (bunkPersons) {
                 bunkPersons.push({ cmId: personCmIdValue, grade })
@@ -158,10 +158,10 @@ export function useSatisfactionData(
 
         // Check age preference requests
         for (const request of agePreferenceRequests) {
-          const allInBunk = bunkToPersonsMap.get(assignedBunkCmId) || []
+          const allInBunk = bunkToPersonsMap.get(assignedBunkCmId) ?? []
           // Filter out the camper to get only bunkmates
           const bunkmates = allInBunk.filter((b) => b.cmId !== personCmId)
-          const grade = camperGrade || 0
+          const grade = camperGrade ?? 0
 
           if (bunkmates.length === 0) {
             results[request.id] = {
@@ -172,9 +172,7 @@ export function useSatisfactionData(
           }
 
           // Get bunkmate grades (filter out nulls)
-          const bunkmateGrades = bunkmates
-            .map((b) => b.grade)
-            .filter((g): g is number => g !== null && g !== undefined)
+          const bunkmateGrades = bunkmates.map((b) => b.grade)
 
           if (bunkmateGrades.length === 0) {
             results[request.id] = {
@@ -191,9 +189,7 @@ export function useSatisfactionData(
           // Calculate grade distribution for rich UI display
           const gradeCounts = new Map<number, number>()
           bunkmates.forEach((b) => {
-            if (b.grade !== null && b.grade !== undefined) {
-              gradeCounts.set(b.grade, (gradeCounts.get(b.grade) || 0) + 1)
-            }
+            gradeCounts.set(b.grade, (gradeCounts.get(b.grade) ?? 0) + 1)
           })
 
           const sortedGrades = Array.from(gradeCounts.entries()).sort((a, b) => a[0] - b[0])

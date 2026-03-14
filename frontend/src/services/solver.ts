@@ -109,7 +109,7 @@ export const solverService = {
           year: year,
           apply_results: false,
           time_limit: timeLimit,
-          scenario: scenarioId || null,
+          scenario: scenarioId ?? null,
           respect_locks: respectLocks,
         }),
       })
@@ -153,19 +153,19 @@ export const solverService = {
         // Transform the API response to match our SolverRun type
         return {
           id: solverRunId,
-          session: runStatus.session_id || '',
+          session: runStatus.session_id ?? '',
           status: 'completed',
-          started_at: runStatus.started_at || new Date().toISOString(),
-          completed_at: runStatus.completed_at || new Date().toISOString(),
+          started_at: runStatus.started_at ?? new Date().toISOString(),
+          completed_at: runStatus.completed_at ?? new Date().toISOString(),
           results: runStatus.results,
           // Don't include error_message when undefined
-          created: runStatus.created_at || new Date().toISOString(),
-          updated: runStatus.updated_at || new Date().toISOString(),
+          created: runStatus.created_at ?? new Date().toISOString(),
+          updated: runStatus.updated_at ?? new Date().toISOString(),
         }
       }
 
       if (runStatus.status === 'failed') {
-        const errorMsg = runStatus.error_message || 'Solver failed'
+        const errorMsg = runStatus.error_message ?? 'Solver failed'
         console.error('Solver failed with error:', errorMsg)
         throw new Error(errorMsg)
       }

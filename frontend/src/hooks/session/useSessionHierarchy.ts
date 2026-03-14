@@ -50,7 +50,7 @@ export function getSubSessions(
   // Filter out sessions with no bunk_plans (cancelled/empty sessions)
   // Only apply filter once counts have loaded
   if (bunkPlanCountsLoaded && Object.keys(bunkPlanCounts).length > 0) {
-    embedded = embedded.filter((s) => (bunkPlanCounts[s.id] || 0) > 0)
+    embedded = embedded.filter((s) => (bunkPlanCounts[s.id] ?? 0) > 0)
   }
 
   return embedded.sort((a, b) => a.name.localeCompare(b.name))
@@ -85,7 +85,7 @@ export function getAgSessions(
 
   // Filter out sessions with no bunk_plans
   if (bunkPlanCountsLoaded && Object.keys(bunkPlanCounts).length > 0) {
-    ag = ag.filter((s) => (bunkPlanCounts[s.id] || 0) > 0)
+    ag = ag.filter((s) => (bunkPlanCounts[s.id] ?? 0) > 0)
   }
 
   return ag
@@ -198,7 +198,7 @@ export function useSessionHierarchy(
       // Count bunk_plans per session (keyed by PocketBase session ID)
       const counts: Record<string, number> = {}
       for (const bp of bunkPlans) {
-        counts[bp.session] = (counts[bp.session] || 0) + 1
+        counts[bp.session] = (counts[bp.session] ?? 0) + 1
       }
 
       return counts
@@ -208,13 +208,13 @@ export function useSessionHierarchy(
 
   // Calculate sub-sessions and AG sessions
   const subSessions = getSubSessions(
-    session || resolvedSession,
+    session ?? resolvedSession,
     allSessions,
     sessionBunkPlanCounts,
     bunkPlanCountsLoaded
   )
   const agSessions = getAgSessions(
-    session || resolvedSession,
+    session ?? resolvedSession,
     allSessions,
     sessionBunkPlanCounts,
     bunkPlanCountsLoaded
@@ -249,7 +249,7 @@ export function useSessionHierarchy(
   }, [enableRedirects, session, sessionId, tabPath, navigate])
 
   return {
-    session: session || null,
+    session: session ?? null,
     allSessions,
     allSessionsForLookup,
     subSessions,

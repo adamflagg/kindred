@@ -68,6 +68,7 @@ function buildGroupedChartData(
       const rawKey = item[labelKey]
       const key = rawKey != null ? String(rawKey) : ''
       if (!key) continue
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
       const count = (item['count'] as number) ?? 0
       categoryTotals.set(key, (categoryTotals.get(key) ?? 0) + count)
     }
@@ -96,6 +97,7 @@ function buildGroupedChartData(
       const item: GroupedChartItem = { name: String(year) }
       topCategories.forEach((key, idx) => {
         const match = breakdown?.find((b) => String(b[labelKey]) === key)
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: array index and `as` cast may be undefined
         item[categoryDisplayNames[idx] ?? ''] = (match?.['count'] as number) ?? 0
       })
       return item
@@ -115,7 +117,7 @@ function buildGroupedChartData(
     for (const yearData of data) {
       const breakdown = getBreakdown(yearData)
       const match = breakdown?.find((b) => String(b[labelKey]) === key)
-      item[String(yearData.year)] = (match?.['count'] as number) ?? 0
+      item[String(yearData.year)] = (match?.['count'] as number) ?? 0 // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
     }
     return item
   })
@@ -535,7 +537,7 @@ export default function TrendsOverview() {
         })()}
 
       {/* Region Distribution */}
-      {enrollmentDataWithRegions.some((y) => (y.by_region?.length ?? 0) > 0) &&
+      {enrollmentDataWithRegions.some((y) => y.by_region.length > 0) &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
             enrollmentDataWithRegions,

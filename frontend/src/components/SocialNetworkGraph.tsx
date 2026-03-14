@@ -205,12 +205,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         setIsComputingLayout(true)
 
         // Create worker if not exists
-        if (!layoutWorkerRef.current) {
-          layoutWorkerRef.current = new Worker(
-            new URL('../workers/layoutWorker.ts', import.meta.url),
-            { type: 'module' }
-          )
-        }
+        layoutWorkerRef.current ??= new Worker(
+          new URL('../workers/layoutWorker.ts', import.meta.url),
+          { type: 'module' }
+        )
 
         const worker = layoutWorkerRef.current
 
@@ -292,7 +290,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     // Longer delay to allow CSS layout to stabilize in expanded mode
     const timeoutId = setTimeout(() => {
-      if (cy && !cy.destroyed()) {
+      if (!cy.destroyed()) {
         cy.resize()
         cy.fit(undefined, 50)
 
@@ -375,7 +373,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
   if (!graphData || graphData.nodes.length === 0) {
     // Display API warnings if available, otherwise show default message
-    const warningMessage = graphData?.warnings?.[0] || 'No social network data available'
+    const warningMessage = graphData?.warnings?.[0] ?? 'No social network data available'
     return (
       <div className="card-lodge p-12 text-center">
         <Network className="text-muted-foreground mx-auto mb-4 h-12 w-12" />

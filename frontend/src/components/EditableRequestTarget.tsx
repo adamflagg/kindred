@@ -3,7 +3,6 @@ import { ChevronDown, ChevronUp, Search, User, ExternalLink, Quote } from 'lucid
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-types'
-import { calculateAge } from '../utils/ageCalculator'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import clsx from 'clsx'
 import { useClickOutside } from '../hooks/useClickOutside'
@@ -174,7 +173,7 @@ export default function EditableRequestTarget({
             first_name: person.first_name,
             last_name: person.last_name,
             preferred_name: person.preferred_name,
-            age: person.age ?? (person.birthdate ? calculateAge(person.birthdate) : 0),
+            age: person.age,
             birthdate: person.birthdate,
             grade: person.grade || 0,
             gender: person.gender || '',
@@ -353,8 +352,8 @@ export default function EditableRequestTarget({
         <div
           className="bg-popover border-border fixed z-[9999] w-80 rounded-md border shadow-lg"
           style={{
-            top: dropdownPosition.top !== undefined ? dropdownPosition.top : undefined,
-            bottom: dropdownPosition.bottom !== undefined ? dropdownPosition.bottom : undefined,
+            top: dropdownPosition.top ?? undefined,
+            bottom: dropdownPosition.bottom ?? undefined,
             left: Math.min(dropdownPosition.left, window.innerWidth - 340), // Keep on screen
             maxWidth: 'calc(100vw - 2rem)',
           }}

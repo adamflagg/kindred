@@ -83,7 +83,7 @@ export function SyncTab() {
   const runPhaseSync = useRunPhaseSync()
 
   // Get queue from status
-  const queue: QueuedSyncItem[] = syncStatus?._queue || []
+  const queue: QueuedSyncItem[] = syncStatus?._queue ?? []
   const hasQueuedItems = queue.length > 0
 
   // Find the currently running job(s) with their status (includes year)
@@ -96,7 +96,7 @@ export function SyncTab() {
         if (statusValue && typeof statusValue === 'object' && 'status' in statusValue) {
           const status = statusValue
           if (status.status === 'running') {
-            return { ...syncType, year: status.year || currentYear }
+            return { ...syncType, year: status.year ?? currentYear }
           }
         }
         return null
@@ -135,7 +135,7 @@ export function SyncTab() {
     const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES]
     const syncType = allSyncTypes.find((t) => t.id === item.service)
     return (
-      syncType?.name || item.service.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      syncType?.name ?? item.service.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     )
   }
 
@@ -149,7 +149,7 @@ export function SyncTab() {
 
   // Render a sync card for a given sync type
   const renderSyncCard = (syncType: (typeof availableSyncTypes)[number]) => {
-    const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus]
+    const statusValue = syncStatus[syncType.id as keyof typeof syncStatus]
     const status =
       statusValue && typeof statusValue === 'object' && 'status' in statusValue
         ? statusValue
@@ -235,7 +235,7 @@ export function SyncTab() {
                     {status.summary.updated} upd
                   </span>
                 )}
-                {(status.summary.already_processed || 0) > 0 && (
+                {(status.summary.already_processed ?? 0) > 0 && (
                   <span className="text-muted-foreground">
                     {status.summary.already_processed} done
                   </span>
@@ -438,7 +438,7 @@ export function SyncTab() {
 
             {/* Action Group */}
             <div className="flex gap-2 lg:ml-auto">
-              {(syncStatus?._daily_sync_running || syncStatus?._historical_sync_running) && (
+              {(syncStatus._daily_sync_running ?? syncStatus._historical_sync_running) && (
                 <button
                   onClick={() => cancelRunningSync.mutate()}
                   disabled={cancelRunningSync.isPending}
@@ -547,8 +547,7 @@ export function SyncTab() {
                   })}
 
                   {/* Connector to remaining jobs or queue */}
-                  {syncStatus?._current_run &&
-                  syncStatus._current_run.remaining_jobs?.length > 0 ? (
+                  {syncStatus._current_run && syncStatus._current_run.remaining_jobs.length > 0 ? (
                     <div className="text-bark-400 dark:text-bark-600 flex flex-shrink-0 items-center gap-1 px-1">
                       <div className="from-forest-300 dark:from-forest-700 h-px w-6 bg-gradient-to-r to-teal-300 dark:to-teal-700" />
                       <ChevronRight className="h-3 w-3" />
@@ -565,7 +564,7 @@ export function SyncTab() {
               )}
 
               {/* Remaining Jobs in Current Sequence - teal theme */}
-              {syncStatus?._current_run && syncStatus._current_run.remaining_jobs?.length > 0 && (
+              {syncStatus._current_run && syncStatus._current_run.remaining_jobs.length > 0 && (
                 <>
                   {/* Remaining label with count */}
                   <div className="flex flex-shrink-0 items-center gap-1.5">
@@ -586,7 +585,7 @@ export function SyncTab() {
                         className="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-teal-700 dark:border-teal-800 dark:bg-teal-900/20 dark:text-teal-300"
                       >
                         <span className="text-xs font-medium">
-                          {syncType?.name || jobId.replace(/_/g, ' ')}
+                          {syncType?.name ?? jobId.replace(/_/g, ' ')}
                         </span>
                       </div>
                     )
@@ -766,7 +765,7 @@ export function SyncTab() {
         {globalsExpanded && (
           <div className="mt-3 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
             {GLOBAL_SYNC_TYPES.map((syncType) => {
-              const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus]
+              const statusValue = syncStatus[syncType.id as keyof typeof syncStatus]
               const status =
                 statusValue && typeof statusValue === 'object' && 'status' in statusValue
                   ? statusValue

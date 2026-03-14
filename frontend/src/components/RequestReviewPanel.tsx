@@ -352,22 +352,18 @@ export default function RequestReviewPanel({
         case 'requester': {
           const aRequester = personMap.get(a.requester_id)
           const bRequester = personMap.get(b.requester_id)
-          aValue = aRequester
-            ? `${aRequester?.first_name || ''} ${aRequester?.last_name || ''}`
-            : ''
-          bValue = bRequester
-            ? `${bRequester?.first_name || ''} ${bRequester?.last_name || ''}`
-            : ''
+          aValue = aRequester ? `${aRequester.first_name || ''} ${aRequester.last_name || ''}` : ''
+          bValue = bRequester ? `${bRequester.first_name || ''} ${bRequester.last_name || ''}` : ''
           break
         }
         case 'request': {
           const aRequested = a.requestee_id ? personMap.get(a.requestee_id) : null
           const bRequested = b.requestee_id ? personMap.get(b.requestee_id) : null
           aValue = aRequested
-            ? `${aRequested?.first_name || ''} ${aRequested?.last_name || ''}`
+            ? `${aRequested.first_name || ''} ${aRequested.last_name || ''}`
             : a.parse_notes || ''
           bValue = bRequested
-            ? `${bRequested?.first_name || ''} ${bRequested?.last_name || ''}`
+            ? `${bRequested.first_name || ''} ${bRequested.last_name || ''}`
             : b.parse_notes || ''
           break
         }
@@ -583,7 +579,7 @@ export default function RequestReviewPanel({
     (request: BunkRequestsResponse, updates: Partial<BunkRequestsResponse>) => {
       // Only validate if changing target or type (potential conflict fields)
       if (updates.requestee_id !== undefined || updates.request_type !== undefined) {
-        const newRequesteeId = updates.requestee_id ?? request.requestee_id ?? 0
+        const newRequesteeId = updates.requestee_id ?? request.requestee_id
         const newType = updates.request_type ?? request.request_type
 
         validateChange({
@@ -1178,7 +1174,7 @@ export default function RequestReviewPanel({
                               className="hover:text-primary text-left font-medium transition-colors hover:underline"
                             >
                               {requester
-                                ? `${requester?.first_name || ''} ${requester?.last_name || ''}`
+                                ? `${requester.first_name || ''} ${requester.last_name || ''}`
                                 : `Person ${request.requester_id}`}
                             </button>
                             <div className="text-muted-foreground mt-0.5 text-xs">
@@ -1204,10 +1200,8 @@ export default function RequestReviewPanel({
                           <div className="card-request">
                             <EditableRequestTarget
                               requestType={request.request_type}
-                              currentPersonId={request.requestee_id ?? null}
-                              {...(request.age_preference_target !== undefined && {
-                                agePreferenceTarget: request.age_preference_target,
-                              })}
+                              currentPersonId={request.requestee_id}
+                              agePreferenceTarget={request.age_preference_target}
                               sessionId={sessionId}
                               year={year}
                               requesterCmId={request.requester_id}
@@ -1228,9 +1222,7 @@ export default function RequestReviewPanel({
                               disabled={request.request_locked || false}
                               originalText={request.original_text}
                               requestedPersonName={request.requested_person_name}
-                              {...(request.parse_notes !== undefined && {
-                                parseNotes: request.parse_notes,
-                              })}
+                              parseNotes={request.parse_notes}
                               onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
                               personMap={personMap}
                             />
@@ -1397,17 +1389,15 @@ export default function RequestReviewPanel({
                               title="View camper details"
                             >
                               {requester
-                                ? `${requester?.first_name || ''} ${requester?.last_name || ''}`
+                                ? `${requester.first_name || ''} ${requester.last_name || ''}`
                                 : `Person ${request.requester_id}`}
                             </button>
                           </div>
                           <div className="flex items-center px-4 py-3">
                             <EditableRequestTarget
                               requestType={request.request_type}
-                              currentPersonId={request.requestee_id ?? null}
-                              {...(request.age_preference_target !== undefined && {
-                                agePreferenceTarget: request.age_preference_target,
-                              })}
+                              currentPersonId={request.requestee_id}
+                              agePreferenceTarget={request.age_preference_target}
                               sessionId={sessionId}
                               year={year}
                               requesterCmId={request.requester_id}
@@ -1430,9 +1420,7 @@ export default function RequestReviewPanel({
                               disabled={request.request_locked || false}
                               originalText={request.original_text}
                               requestedPersonName={request.requested_person_name}
-                              {...(request.parse_notes !== undefined && {
-                                parseNotes: request.parse_notes,
-                              })}
+                              parseNotes={request.parse_notes}
                               onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
                               personMap={personMap}
                             />
@@ -1600,13 +1588,13 @@ export default function RequestReviewPanel({
                                                 )}
                                               </div>
                                               <p className="text-muted-foreground text-sm">
-                                                {source.original_content || (
+                                                {source.original_content ?? (
                                                   <span className="italic">No original text</span>
                                                 )}
                                               </p>
                                               <p className="text-muted-foreground bg-muted/50 mt-1.5 rounded px-2 py-1 text-xs">
                                                 <span className="font-medium">Parse notes:</span>{' '}
-                                                {source.parse_notes || (
+                                                {source.parse_notes ?? (
                                                   <span className="italic">No parse notes</span>
                                                 )}
                                               </p>
@@ -1668,7 +1656,7 @@ export default function RequestReviewPanel({
                                       } else {
                                         // Single source: use first available field
                                         const field =
-                                          sourceFields?.[0] || singleField || aiField || ''
+                                          (sourceFields?.[0] ?? singleField) || aiField || ''
                                         fieldName = field ? formatFieldName(field) : 'Unknown Field'
                                       }
 

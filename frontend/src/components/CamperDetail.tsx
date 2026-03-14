@@ -62,8 +62,8 @@ function getSessionShortName(
     | undefined
 ): string {
   if (!session) return 'Unknown'
-  if (session.session_type === 'quest') return session.name || 'Quest'
-  if (session.session_type === 'ag') return session.name || 'AG'
+  if (session.session_type === 'quest') return session.name ?? 'Quest'
+  if (session.session_type === 'ag') return session.name ?? 'AG'
   if (session.session_type === 'embedded') {
     const match = session.name?.match(/([23][ab])/i)
     if (match) return `Session ${match[1]}`
@@ -73,7 +73,7 @@ function getSessionShortName(
     if (match) return `Session ${match[1]}`
   }
   if (session.name?.toLowerCase().includes('taste')) return 'Taste of Camp'
-  return session.name || 'Unknown'
+  return session.name ?? 'Unknown'
 }
 
 export default function CamperDetail() {
@@ -161,7 +161,7 @@ export default function CamperDetail() {
       <div className="py-12 text-center">
         <p className="text-muted-foreground">Error loading person details</p>
         <p className="text-muted-foreground mt-2 text-sm">
-          {camperError?.message || 'Unable to load person information.'}
+          {camperError.message || 'Unable to load person information.'}
         </p>
       </div>
     )
@@ -170,7 +170,7 @@ export default function CamperDetail() {
   // Show person info even if no current enrollments
   if ((person || enrolledCampers.length === 0) && !camper) {
     const displayPerson =
-      person ||
+      person ??
       (enrolledCampers.length === 0 && personCmId
         ? {
             first_name: 'Person',
@@ -299,7 +299,7 @@ export default function CamperDetail() {
           {/* Camp Journey Timeline */}
           <CampJourneyTimeline
             history={camperHistory}
-            yearsAtCamp={camper.years_at_camp || 0}
+            yearsAtCamp={camper.years_at_camp ?? 0}
             currentYear={currentYear}
           />
 

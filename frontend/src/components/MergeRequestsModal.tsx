@@ -29,9 +29,9 @@ export default function MergeRequestsModal({
 }: MergeRequestsModalProps) {
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
-  const [selectedTargetId, setSelectedTargetId] = useState<string>(requests[0]?.id || '')
+  const [selectedTargetId, setSelectedTargetId] = useState<string>(requests[0]?.id ?? '')
   const [finalType, setFinalType] = useState<BunkRequestsRequestTypeOptions>(
-    requests[0]?.request_type || BunkRequestsRequestTypeOptions.bunk_with
+    requests[0]?.request_type ?? BunkRequestsRequestTypeOptions.bunk_with
   )
   const [error, setError] = useState<string | null>(null)
 
@@ -140,7 +140,7 @@ export default function MergeRequestsModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || 'Merge failed')
+        throw new Error(errorData.detail ?? 'Merge failed')
       }
 
       return response.json() as Promise<MergeResponse>

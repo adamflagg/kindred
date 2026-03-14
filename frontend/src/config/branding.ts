@@ -44,7 +44,7 @@ export const branding = {
   ...localBranding,
   logo: {
     ...defaultBranding.logo,
-    ...(localBranding.logo || {}),
+    ...(localBranding.logo ?? {}),
   },
 }
 

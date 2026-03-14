@@ -127,8 +127,8 @@ export default function CampersView({
         (camper.assigned_bunk && bunkMap.get(camper.assigned_bunk))
           ? {
               bunkName:
-                camper.expand?.assigned_bunk?.name ||
-                (camper.assigned_bunk && bunkMap.get(camper.assigned_bunk)) ||
+                camper.expand?.assigned_bunk?.name ??
+                (camper.assigned_bunk && bunkMap.get(camper.assigned_bunk)) ??
                 '',
             }
           : {}),
@@ -147,9 +147,9 @@ export default function CampersView({
       filtered = filtered.filter(
         (camper) =>
           camper.name.toLowerCase().includes(term) ||
-          camper.first_name?.toLowerCase().includes(term) ||
-          camper.last_name?.toLowerCase().includes(term) ||
-          camper.preferred_name?.toLowerCase().includes(term)
+          (camper.first_name?.toLowerCase().includes(term) ?? false) ||
+          (camper.last_name?.toLowerCase().includes(term) ?? false) ||
+          (camper.preferred_name?.toLowerCase().includes(term) ?? false)
       )
     }
 
@@ -245,7 +245,7 @@ export default function CampersView({
                       ? 'All Bunks'
                       : filterBunk === 'unassigned'
                         ? 'Unassigned'
-                        : visibleBunks.find((b) => b.id === filterBunk)?.name || 'Select...'}
+                        : (visibleBunks.find((b) => b.id === filterBunk)?.name ?? 'Select...')}
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>

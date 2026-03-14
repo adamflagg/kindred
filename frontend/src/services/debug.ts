@@ -275,7 +275,7 @@ export const debugService = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to run Phase 1 parsing')
+      throw new Error(error.detail ?? 'Failed to run Phase 1 parsing')
     }
     return response.json()
   },
@@ -519,7 +519,7 @@ export const debugService = {
         throw new Error(`Prompt '${name}' not found`)
       }
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to update prompt')
+      throw new Error(error.detail ?? 'Failed to update prompt')
     }
     return response.json()
   },

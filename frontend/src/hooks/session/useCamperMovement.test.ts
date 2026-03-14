@@ -183,8 +183,11 @@ describe('camper movement scenarios', () => {
 
   describe('production confirmation', () => {
     it('should require confirmation before production moves', () => {
-      const isProductionMode = true
-      const pendingMove = { camperId: '123:456', bunkId: 'bunk-1' }
+      const isProductionMode = true as boolean
+      const pendingMove = { camperId: '123:456', bunkId: 'bunk-1' } as {
+        camperId: string
+        bunkId: string
+      } | null
 
       const shouldShowDialog = isProductionMode && pendingMove !== null
 
@@ -192,8 +195,11 @@ describe('camper movement scenarios', () => {
     })
 
     it('should not require confirmation in scenario mode', () => {
-      const isProductionMode = false
-      const pendingMove = { camperId: '123:456', bunkId: 'bunk-1' }
+      const isProductionMode = false as boolean
+      const pendingMove = { camperId: '123:456', bunkId: 'bunk-1' } as {
+        camperId: string
+        bunkId: string
+      } | null
 
       const shouldShowDialog = isProductionMode && pendingMove !== null
 

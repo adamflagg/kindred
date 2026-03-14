@@ -36,7 +36,7 @@ vi.mock('react-leaflet', () => ({
       fillColor: pathOptions?.fillColor,
     })
     return (
-      <div data-testid="circle-marker" data-pane={pane || ''} onClick={eventHandlers?.click}>
+      <div data-testid="circle-marker" data-pane={pane ?? ''} onClick={eventHandlers?.click}>
         {children}
       </div>
     )

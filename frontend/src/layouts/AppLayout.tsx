@@ -64,6 +64,7 @@ export const AppLayout = () => {
 
   // Determine current program from URL if not set
   const urlProgram = getProgramFromPath(location.pathname)
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional || to fall through on empty string
   const activeProgram = urlProgram || currentProgram || 'summer'
 
   // Close program menu on click outside
@@ -324,7 +325,7 @@ export const AppLayout = () => {
                       {user['avatar'] ? (
                         <img
                           src={pb.files.getURL(user, user['avatar'])}
-                          alt={user['name'] || user['email']}
+                          alt={(user['name'] ?? user['email']) as string}
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -333,10 +334,15 @@ export const AppLayout = () => {
                     </div>
                     <div className="hidden text-left lg:block">
                       <div className="text-sm leading-tight font-semibold text-white">
-                        {user['name'] || user['email']?.split('@')[0] || 'User'}
+                        {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
+                        {(user['name'] as string) ||
+                          (user['email'] as string).split('@')[0] ||
+                          'User'}
+                        {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
                       </div>
                       <div className="text-xs leading-tight text-white/70">
-                        {user['email'] || 'Profile'}
+                        {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: email may be null */}
+                        {(user['email'] as string) ?? 'Profile'}
                       </div>
                     </div>
                     <ChevronDown
@@ -353,7 +359,7 @@ export const AppLayout = () => {
                             {user['avatar'] ? (
                               <img
                                 src={pb.files.getURL(user, user['avatar'])}
-                                alt={user['name'] || user['email']}
+                                alt={(user['name'] ?? user['email']) as string}
                                 className="h-full w-full object-cover"
                               />
                             ) : (
@@ -362,7 +368,11 @@ export const AppLayout = () => {
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-foreground truncate font-semibold">
-                              {user['name'] || user['email']?.split('@')[0] || 'User'}
+                              {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
+                              {(user['name'] as string) ||
+                                (user['email'] as string).split('@')[0] ||
+                                'User'}
+                              {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
                             </p>
                             <p className="text-muted-foreground truncate text-xs">
                               {user['email']}
@@ -504,7 +514,7 @@ export const AppLayout = () => {
                       {user['avatar'] ? (
                         <img
                           src={pb.files.getURL(user, user['avatar'])}
-                          alt={user['name'] || user['email']}
+                          alt={(user['name'] ?? user['email']) as string}
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -513,7 +523,11 @@ export const AppLayout = () => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-foreground truncate font-semibold">
-                        {user['name'] || user['email']?.split('@')[0] || 'User'}
+                        {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
+                        {(user['name'] as string) ||
+                          (user['email'] as string).split('@')[0] ||
+                          'User'}
+                        {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
                       </p>
                       <p className="text-muted-foreground truncate text-xs">{user['email']}</p>
                     </div>
@@ -718,8 +732,10 @@ export const AppLayout = () => {
                 <YearSelector />
               </div>
               {activeProgram === 'summer' &&
-                (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
+                // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves
+                (syncStatus?.bunk_assignments?.end_time ?? syncStatus?.bunk_requests?.end_time) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
+                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
                     {syncStatus?.bunk_assignments?.end_time && (
                       <span
                         className="flex items-center gap-1.5"
@@ -732,6 +748,7 @@ export const AppLayout = () => {
                         })}
                       </span>
                     )}
+                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
                     {syncStatus?.bunk_requests?.end_time && (
                       <span className="flex items-center gap-1.5" title="Last bunk requests sync">
                         <Clock className="h-3 w-3" />

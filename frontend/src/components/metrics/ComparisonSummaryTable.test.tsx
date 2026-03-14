@@ -111,7 +111,7 @@ describe('ComparisonSummaryTable', () => {
 
       // Positive change cell should have emerald color
       const changeCells = container.querySelectorAll('td')
-      const changeCell = Array.from(changeCells).find((td) => td.textContent?.includes('+10'))
+      const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('+10'))
       expect(changeCell).toHaveClass('text-emerald-600')
     })
 
@@ -128,7 +128,7 @@ describe('ComparisonSummaryTable', () => {
       )
 
       const changeCells = container.querySelectorAll('td')
-      const changeCell = Array.from(changeCells).find((td) => td.textContent?.includes('+10'))
+      const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('+10'))
       expect(changeCell).toHaveClass('text-red-600')
     })
 
@@ -145,7 +145,7 @@ describe('ComparisonSummaryTable', () => {
       )
 
       const changeCells = container.querySelectorAll('td')
-      const changeCell = Array.from(changeCells).find((td) => td.textContent?.includes('-10'))
+      const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('-10'))
       expect(changeCell).toHaveClass('text-emerald-600')
     })
 
@@ -162,7 +162,7 @@ describe('ComparisonSummaryTable', () => {
       )
 
       const changeCells = container.querySelectorAll('td')
-      const changeCell = Array.from(changeCells).find((td) => td.textContent?.includes('+10'))
+      const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('+10'))
       expect(changeCell).toHaveClass('text-blue-600')
     })
   })

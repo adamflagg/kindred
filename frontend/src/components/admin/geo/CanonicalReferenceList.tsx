@@ -340,7 +340,7 @@ function ExpandedSources({
                 {Math.round(src.confidence * 100)}%
               </span>
               {/* State distribution tags */}
-              {src.state_distribution && Object.keys(src.state_distribution).length > 0 && (
+              {Object.keys(src.state_distribution).length > 0 && (
                 <span className="ml-1.5 text-xs text-stone-400">
                   {Object.entries(src.state_distribution)
                     .sort(([, a], [, b]) => b - a)

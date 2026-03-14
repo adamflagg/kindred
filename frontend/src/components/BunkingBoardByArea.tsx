@@ -131,7 +131,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         ...bunk,
         campers: assignedCampers,
         occupancy: assignedCampers.length,
-        utilization: (assignedCampers.length / (bunk.capacity || defaultCapacity)) * 100,
+        utilization: (assignedCampers.length / (bunk.capacity ?? defaultCapacity)) * 100,
       }
 
       // Categorize by bunk name prefix
@@ -149,8 +149,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     Object.keys(areas).forEach((area) => {
       areas[area as BunkArea].sort((a, b) => {
         // Extract the part after the dash
-        const aPart = a.name.split('-')[1] || ''
-        const bPart = b.name.split('-')[1] || ''
+        const aPart = a.name.split('-')[1] ?? ''
+        const bPart = b.name.split('-')[1] ?? ''
 
         // Check if parts are numeric
         const aIsNumeric = /^\d+/.test(aPart)
@@ -243,11 +243,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       // For non-AG campers, filter by gender
       if (selectedArea === 'boys') {
         return camper.gender === 'M'
-      } else if (selectedArea === 'girls') {
-        return camper.gender === 'F'
       }
-
-      return true
+      return camper.gender === 'F'
     })
   }
 
@@ -284,7 +281,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     } else if (lockState === 'none') {
       // Not in a group - add to pending selection
       addPendingCamper(camper)
-    } else if (lockState === 'locked') {
+    } else {
       // Already in a group - open panel and select the group
       const group = getCamperLockGroup(camper.person_cm_id)
       if (group) {
@@ -334,7 +331,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         id: active.id as string,
         type: 'camper',
         camper,
-        sourceBunkId: camper.assigned_bunk || '',
+        sourceBunkId: camper.assigned_bunk ?? '',
       })
     }
   }
@@ -368,7 +365,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
 
     // No-op detection: if camper is already in the target location, do nothing silently
     const sourceCamperForNoop = campers.find((c) => c.id === camperId)
-    const currentBunkId = sourceCamperForNoop?.assigned_bunk || null
+    const currentBunkId = sourceCamperForNoop?.assigned_bunk ?? null
     if (currentBunkId === targetBunkId) {
       // Already in the same place - no action needed
       return
@@ -382,7 +379,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       const sourceCamper = campers.find((c) => c.id === camperId)
 
       if (targetBunk && sourceCamper) {
-        const bunkGender = targetBunk.gender?.toLowerCase()
+        const bunkGender = targetBunk.gender.toLowerCase()
         const isFromAGSession = sourceCamper.expand?.session?.session_type === 'ag'
 
         let isValidGender = true
@@ -393,9 +390,9 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         } else {
           // Non-AG campers must go to matching gendered bunks
           if (sourceCamper.gender === 'M') {
-            isValidGender = bunkGender === 'm' || targetBunk.name?.startsWith('B-')
+            isValidGender = bunkGender === 'm' || targetBunk.name.startsWith('B-')
           } else if (sourceCamper.gender === 'F') {
-            isValidGender = bunkGender === 'f' || targetBunk.name?.startsWith('G-')
+            isValidGender = bunkGender === 'f' || targetBunk.name.startsWith('G-')
           }
         }
 
@@ -417,7 +414,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           toast.error('Target bunk has reached maximum capacity (14 campers)')
           return
         }
-      } else if (targetBunk && targetBunk.occupancy >= (targetBunk.capacity || defaultCapacity)) {
+      } else if (targetBunk && targetBunk.occupancy >= (targetBunk.capacity ?? defaultCapacity)) {
         // Still allow move but show warning
         const sourceCamper = campers.find((c) => c.id === camperId)
         if (sourceCamper?.assigned_bunk !== targetBunkId) {

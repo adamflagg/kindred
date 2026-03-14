@@ -4,6 +4,7 @@
  * TDD: These tests define the expected behavior before implementation.
  */
 import { describe, it, expect } from 'vitest'
+import type { MetricsSession } from './useMetricsSessions'
 
 describe('useMetricsSessions', () => {
   it('should export useMetricsSessions hook', async () => {
@@ -43,7 +44,7 @@ describe('useMetricsSessions', () => {
 
     it('should include end_date in MetricsSession type', async () => {
       // Type-level verification: this test fails to compile if end_date is removed from MetricsSession
-      const verifyShape = (s: import('./useMetricsSessions').MetricsSession) => s.end_date
+      const verifyShape = (s: MetricsSession) => s.end_date
       expect(verifyShape).toBeDefined()
     })
 

@@ -208,7 +208,7 @@ export class GraphCacheService {
       })
 
       // Update global metrics
-      if (graph.metrics) {
+      {
         // Recalculate average clustering
         const totalClustering = graph.nodes.reduce((sum, node) => sum + node.clustering, 0)
         graph.metrics.average_clustering =
@@ -367,10 +367,10 @@ export class GraphCacheService {
     size += data.edges.length * 100 // Estimate ~100 bytes per edge
 
     // Metrics
-    size += Object.keys(data.metrics || {}).length * 50
+    size += Object.keys(data.metrics).length * 50
 
     // Communities
-    const communityEntries = Object.entries(data.communities || {})
+    const communityEntries = Object.entries(data.communities)
     size += communityEntries.reduce((acc, [_, members]) => acc + members.length * 8, 0)
 
     return size

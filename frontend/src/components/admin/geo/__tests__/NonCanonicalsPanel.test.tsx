@@ -58,7 +58,7 @@ describe('NonCanonicalsPanel', () => {
     const user = userEvent.setup()
     const buttons = screen.getAllByRole('button', { name: /resolve/i })
     // Filter out the header toggle button ("Resolve Non-Canonicals") to get only item-level "Resolve" buttons
-    const resolveButtons = buttons.filter((b) => b.textContent?.trim() === 'Resolve')
+    const resolveButtons = buttons.filter((b) => b.textContent.trim() === 'Resolve')
     await user.click(resolveButtons[0]!)
     expect(onResolve).toHaveBeenCalledWith('Hillcrest High', 'non_canonical_grouped')
   })

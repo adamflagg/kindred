@@ -16,6 +16,7 @@ function createMockSession(overrides: {
   [key: string]: unknown
 }): Session {
   const id =
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as string` cast may be undefined
     (overrides['id'] as string) ?? `session-${overrides.name.replace(/\s/g, '-').toLowerCase()}`
   return {
     id,

@@ -112,7 +112,7 @@ function parseWarnings(warnings: string[]): ParsedWarning[] {
   return warnings.map((warning) => {
     // Conflicting requests
     const conflictMatch = warning.match(/(.+?) has conflicting requests for (.+?) \(both/)
-    if (conflictMatch?.[1] && conflictMatch?.[2]) {
+    if (conflictMatch?.[1] && conflictMatch[2]) {
       return {
         type: 'conflict' as const,
         names: {
@@ -399,7 +399,7 @@ export default function PreValidationResultsModal({
       )}
 
       {/* Collapsible Details */}
-      {(statistics.unsatisfiable_requests?.length > 0 || hasIssues) && (
+      {(statistics.unsatisfiable_requests.length > 0 || hasIssues) && (
         <div className="border-border/50 border-t">
           <button
             onClick={() => setShowDetails(!showDetails)}
@@ -531,7 +531,7 @@ export default function PreValidationResultsModal({
               </div>
 
               {/* Unsatisfiable requests detail - compact table */}
-              {statistics.unsatisfiable_requests?.length > 0 && (
+              {statistics.unsatisfiable_requests.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                     Unfulfillable Requests
@@ -542,13 +542,13 @@ export default function PreValidationResultsModal({
                         {statistics.unsatisfiable_requests.map((req, index) => (
                           <tr key={index} className="hover:bg-muted/30">
                             <td className="text-foreground max-w-[120px] truncate px-2 py-1.5">
-                              {req.requester_name || 'Unknown'}
+                              {req.requester_name ?? 'Unknown'}
                             </td>
                             <td className="text-muted-foreground px-1 py-1.5 text-center">
                               <ArrowRight className="inline h-3 w-3" />
                             </td>
                             <td className="text-foreground max-w-[120px] truncate px-2 py-1.5">
-                              {req.requested_name || 'Unknown'}
+                              {req.requested_name ?? 'Unknown'}
                             </td>
                             <td className="px-2 py-1.5 text-right">
                               <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">

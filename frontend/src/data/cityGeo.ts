@@ -62133,16 +62133,12 @@ let _lowerStatesMap: Map<string, string> | null = null
 let _bareCityCoordsMap: Map<string, LatLng> | null = null
 
 export function getLowerCoordsMap(): Map<string, LatLng> {
-  if (!_lowerCoordsMap) {
-    _lowerCoordsMap = new Map(Object.entries(US_CITY_COORDS).map(([k, v]) => [k.toLowerCase(), v]))
-  }
+  _lowerCoordsMap ??= new Map(Object.entries(US_CITY_COORDS).map(([k, v]) => [k.toLowerCase(), v]))
   return _lowerCoordsMap
 }
 
 export function getLowerStatesMap(): Map<string, string> {
-  if (!_lowerStatesMap) {
-    _lowerStatesMap = new Map(Object.entries(US_CITY_STATES).map(([k, v]) => [k.toLowerCase(), v]))
-  }
+  _lowerStatesMap ??= new Map(Object.entries(US_CITY_STATES).map(([k, v]) => [k.toLowerCase(), v]))
   return _lowerStatesMap
 }
 

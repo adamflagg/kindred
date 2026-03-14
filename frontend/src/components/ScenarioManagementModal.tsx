@@ -140,7 +140,7 @@ export default function ScenarioManagementModal({
                   <div>
                     <h3 className="font-semibold">CampMinder</h3>
                     <p className="text-muted-foreground text-sm">
-                      {syncStatus?.bunk_assignments?.end_time
+                      {syncStatus?.bunk_assignments.end_time
                         ? `Synced ${formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), { addSuffix: true })}`
                         : 'Production bunking assignments'}
                     </p>

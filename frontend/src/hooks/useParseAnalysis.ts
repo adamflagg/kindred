@@ -49,7 +49,7 @@ export function useParseAnalysisDetail(id: string | null) {
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.parseAnalysisDetail(id || ''),
+    queryKey: queryKeys.parseAnalysisDetail(id ?? ''),
     queryFn: () => {
       if (!id) throw new Error('ID is required')
       return debugService.getParseAnalysisDetail(id, fetchWithAuth)
@@ -120,7 +120,7 @@ export function useParseResultWithFallback(originalRequestId: string | null) {
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.parseResultWithFallback(originalRequestId || ''),
+    queryKey: queryKeys.parseResultWithFallback(originalRequestId ?? ''),
     queryFn: () => {
       if (!originalRequestId) throw new Error('Original request ID is required')
       return debugService.getParseResultWithFallback(originalRequestId, fetchWithAuth)
@@ -318,7 +318,7 @@ export function usePrompt(name: string | null) {
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.prompt(name || ''),
+    queryKey: queryKeys.prompt(name ?? ''),
     queryFn: () => {
       if (!name) throw new Error('Prompt name is required')
       return debugService.getPrompt(name, fetchWithAuth)

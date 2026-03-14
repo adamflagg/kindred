@@ -22,7 +22,7 @@ export interface EdgeFiltersProps {
  */
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for edge label display
 export function getEdgeLabel(type: string): string {
-  return EDGE_LABELS[type] || type
+  return EDGE_LABELS[type] ?? type
 }
 
 export default function EdgeFilters({

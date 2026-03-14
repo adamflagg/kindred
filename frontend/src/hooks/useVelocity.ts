@@ -42,7 +42,7 @@ export function useVelocity(
       const response = await fetchWithAuth(`/api/metrics/velocity?${searchParams}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch velocity data')
+        throw new Error(error.detail ?? 'Failed to fetch velocity data')
       }
       return response.json()
     },

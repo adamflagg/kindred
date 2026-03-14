@@ -90,19 +90,19 @@ export function useCamperEnrollment(
 
       // 3. Get primary attendee (prefer main session)
       const sortedAttendees = [...attendees].sort((a, b) => {
-        const aType = (a.expand as { session?: { session_type?: string } })?.session?.session_type
-        const bType = (b.expand as { session?: { session_type?: string } })?.session?.session_type
+        const aType = (a.expand as { session?: { session_type?: string } }).session?.session_type
+        const bType = (b.expand as { session?: { session_type?: string } }).session?.session_type
         return sortEnrolledFirst(a.status, aType, b.status, bType)
       })
 
       // Get first attendee - we know this exists since we returned early if attendees.length === 0
       const attendee = sortedAttendees[0]
       if (!attendee) throw new Error('No attendee found')
-      const session = (attendee.expand as { session?: unknown })?.session ?? null
+      const session = (attendee.expand as { session?: unknown }).session ?? null
 
       // 4. Fetch bunk assignment for this session
       let bunk = null
-      if (attendee?.session) {
+      if (attendee.session) {
         const assignments = await pb
           .collection('bunk_assignments')
           .getFullList<BunkAssignmentsResponse>({
@@ -110,7 +110,7 @@ export function useCamperEnrollment(
             expand: 'bunk',
           })
         if (assignments.length > 0) {
-          bunk = (assignments[0]?.expand as { bunk?: unknown })?.bunk || null
+          bunk = (assignments[0]?.expand as { bunk?: unknown }).bunk ?? null
         }
       }
 

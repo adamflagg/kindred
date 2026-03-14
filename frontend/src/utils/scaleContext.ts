@@ -353,6 +353,7 @@ export function inferScaleType(
   }
 
   // Use metadata max_value for range checks
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
   const maxVal = (metadata?.['max_value'] as number) ?? value
 
   // Infer from key name patterns (order matters - more specific checks first)
@@ -402,9 +403,11 @@ export function getImpactLevel(
   metadata?: Record<string, unknown>
 ): { label: string; color: string; bgColor: string } | null {
   const scale = SCALE_DEFINITIONS[scaleType]
-  if (!scale || scale.levels.length === 0) return null
+  if (scale.levels.length === 0) return null
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
   const minValue = (metadata?.['min_value'] as number) ?? scale.min
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
   const maxValue = (metadata?.['max_value'] as number) ?? scale.max
 
   const normalizedValue = (value - minValue) / (maxValue - minValue)

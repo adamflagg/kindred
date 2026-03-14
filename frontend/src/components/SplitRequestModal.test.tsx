@@ -117,10 +117,7 @@ describe('SplitRequestModal', () => {
         />
       )
 
-      expect(
-        screen.getByRole('heading', { name: /split request/i }) ||
-          screen.getAllByText(/split request/i).length
-      ).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /split request/i })).toBeTruthy()
     })
 
     it('shows all contributing sources', () => {
@@ -229,7 +226,7 @@ describe('SplitRequestModal', () => {
 
       // Should now show a type dropdown
       await waitFor(() => {
-        expect(screen.getByRole('combobox') || screen.getByLabelText(/type/i)).toBeInTheDocument()
+        expect(screen.getByRole('combobox')).toBeInTheDocument()
       })
     })
   })
@@ -537,14 +534,14 @@ describe('SplitRequestModal', () => {
 
     it('should show primary badge text for primary source', () => {
       // Test the visual indicator logic
-      const isPrimary = true
+      const isPrimary = true as boolean
       const badgeText = isPrimary ? 'Primary' : null
 
       expect(badgeText).toBe('Primary')
     })
 
     it('should not show primary badge for non-primary sources', () => {
-      const isPrimary = false
+      const isPrimary = false as boolean
       const badgeText = isPrimary ? 'Primary' : null
 
       expect(badgeText).toBeNull()

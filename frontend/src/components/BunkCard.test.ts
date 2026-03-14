@@ -74,7 +74,7 @@ function isValidDropTarget(camper: MockCamper, bunk: MockBunk): boolean {
     }
 
     // Check if bunk grade is compatible with session grade range
-    const sessionName = camper.expand?.session?.name || ''
+    const sessionName = camper.expand?.session?.name ?? ''
     const [sessionGradeMin, sessionGradeMax] = extractGradeRange(sessionName)
     const [bunkGradeMin, bunkGradeMax] = extractGradeRange(bunk.name || '')
 
@@ -98,13 +98,9 @@ function isValidDropTarget(camper: MockCamper, bunk: MockBunk): boolean {
 
   // Non-AG campers go to gendered bunks based on their gender
   if (camper.gender === 'M') {
-    return bunkGender === 'm' || bunk.name?.startsWith('B-')
+    return bunkGender === 'm' || bunk.name.startsWith('B-')
   }
-  if (camper.gender === 'F') {
-    return bunkGender === 'f' || bunk.name?.startsWith('G-')
-  }
-
-  return true
+  return bunkGender === 'f' || bunk.name.startsWith('G-')
 }
 
 describe('BunkCard utility functions', () => {
@@ -268,15 +264,15 @@ describe('BunkCard capacity warnings', () => {
   // These are logic tests for the warning calculations
 
   it('should trigger over-capacity warning when occupancy exceeds capacity', () => {
-    const occupancy = 13
-    const capacity = 12
+    const occupancy = 13 as number
+    const capacity = 12 as number
     const isOverCapacity = occupancy > capacity
     expect(isOverCapacity).toBe(true)
   })
 
   it('should not trigger over-capacity at exactly capacity', () => {
-    const occupancy = 12
-    const capacity = 12
+    const occupancy = 12 as number
+    const capacity = 12 as number
     const isOverCapacity = occupancy > capacity
     expect(isOverCapacity).toBe(false)
   })
@@ -316,7 +312,7 @@ describe('BunkCard capacity warnings', () => {
   })
 
   it('should trigger too many grades warning when more than 2 grades', () => {
-    const gradeCount = 3
+    const gradeCount = 3 as number
     const tooManyGradesWarning = gradeCount > 2
     expect(tooManyGradesWarning).toBe(true)
   })

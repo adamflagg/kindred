@@ -93,7 +93,7 @@ export function useSyncCompletionToasts() {
 
         if (currentStatus === 'failed') {
           // Error toast
-          const errorMsg = status.error || 'Unknown error'
+          const errorMsg = status.error ?? 'Unknown error'
           toast(`${displayName} sync failed: ${errorMsg}`, {
             icon: '❌',
             duration: 8000,

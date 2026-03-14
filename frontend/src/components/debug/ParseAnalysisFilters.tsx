@@ -93,7 +93,7 @@ export function ParseAnalysisFilters({
       <div className="relative">
         <select
           value={selectedSourceField ?? ''}
-          onChange={(e) => onSourceFieldChange((e.target.value as SourceFieldType) || null)}
+          onChange={(e) => onSourceFieldChange((e.target.value as SourceFieldType) || null)} // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- intentional || to convert empty string to null
           className="dark:bg-bark-800 border-bark-200 dark:border-bark-700 hover:border-forest-400 dark:hover:border-forest-600 focus:ring-forest-500/20 focus:border-forest-500 cursor-pointer appearance-none rounded-xl border-2 bg-white py-2.5 pr-9 pl-4 text-sm font-medium transition-all duration-200 focus:ring-2 focus:outline-none"
         >
           <option value="">All Fields</option>

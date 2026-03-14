@@ -2611,9 +2611,7 @@ export const SCHOOL_COORDS: Record<string, LatLng> = {
 let _lowerCache: Map<string, LatLng> | null = null
 
 function getLowerCache(): Map<string, LatLng> {
-  if (!_lowerCache) {
-    _lowerCache = new Map(Object.entries(SCHOOL_COORDS).map(([k, v]) => [k.toLowerCase(), v]))
-  }
+  _lowerCache ??= new Map(Object.entries(SCHOOL_COORDS).map(([k, v]) => [k.toLowerCase(), v]))
   return _lowerCache
 }
 

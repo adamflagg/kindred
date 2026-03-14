@@ -49,15 +49,13 @@ function StatusBadge({
     },
   }[status]
 
-  if (!config) return null
-
   const Icon = config.icon
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${config.classes}`}
       title={status === 'error' && errorMessage ? errorMessage : undefined}
     >
-      <Icon className={`h-3 w-3 ${config.iconClass || ''}`} />
+      <Icon className={`h-3 w-3 ${config.iconClass ?? ''}`} />
       <span>{config.label}</span>
     </span>
   )
@@ -124,7 +122,7 @@ export function SheetsTab() {
   }
 
   // Combine all workbooks: globals first, then years descending
-  const sortedWorkbooks = [...(workbooks || [])].sort((a, b) => {
+  const sortedWorkbooks = [...(workbooks ?? [])].sort((a, b) => {
     if (a.workbook_type === 'globals') return -1
     if (b.workbook_type === 'globals') return 1
     return b.year - a.year

@@ -102,7 +102,7 @@ export function useSolverOperations({
       setIsSolving(true)
 
       // Capture the current scenario ID at the start of solving
-      const solverScenarioId = currentScenario?.id || null
+      const solverScenarioId = currentScenario?.id ?? null
       setCapturedScenarioId(solverScenarioId)
 
       try {
@@ -188,7 +188,7 @@ export function useSolverOperations({
           // Return success with stats
           return { success: true, stats: resultStats }
         } else {
-          const errorMessage = solverRun.error_message || 'Optimization failed'
+          const errorMessage = solverRun.error_message ?? 'Optimization failed'
           return { success: false, errorMessage }
         }
       } catch (error) {

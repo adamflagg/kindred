@@ -60,7 +60,7 @@ export default function SessionView() {
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Extract tab from URL path
-  const activeTab = (isValidTab(tabPath || '') ? tabPath : 'bunks') as ValidTab
+  const activeTab = (isValidTab(tabPath ?? '') ? tabPath : 'bunks') as ValidTab
 
   // Session hierarchy hook - handles session lookups, sub-sessions, AG sessions
   const { session, allSessionsForLookup, subSessions, agSessions, showAgArea, selectedSession } =
@@ -141,7 +141,7 @@ export default function SessionView() {
         })
       } else {
         // Show error in modal
-        solverProgress.fail(result.errorMessage || 'Optimization failed')
+        solverProgress.fail(result.errorMessage ?? 'Optimization failed')
       }
     },
     [solverProgress, runSolverInternal, currentScenario?.name]
@@ -295,14 +295,14 @@ export default function SessionView() {
       <div className="pt-4">
         {/* Bunks Tab - preserves drag state and complex board state */}
         <Activity mode={activeTab === 'bunks' ? 'visible' : 'hidden'}>
-          <BunkRequestProvider sessionCmId={session?.cm_id || 0}>
+          <BunkRequestProvider sessionCmId={session.cm_id || 0}>
             <CamperHistoryProvider
-              sessionCmId={session?.cm_id || 0}
+              sessionCmId={session.cm_id || 0}
               camperPersonIds={campers.map((c) => c.person_cm_id)}
             >
               <BunkingBoardByArea
                 sessionId={sessionId || ''}
-                sessionCmId={session?.cm_id || 0}
+                sessionCmId={session.cm_id || 0}
                 bunks={bunks}
                 campers={campers}
                 selectedArea={selectedBunkArea}
@@ -339,7 +339,7 @@ export default function SessionView() {
               <RequestReviewPanel
                 sessionId={parseInt(selectedSession, 10)}
                 relatedSessionIds={
-                  selectedSession === session?.cm_id.toString()
+                  selectedSession === session.cm_id.toString()
                     ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
                     : []
                 }
@@ -366,7 +366,7 @@ export default function SessionView() {
       </div>
 
       {/* New Scenario Modal (manage permission required) */}
-      {canManage && showNewScenarioModal && session && (
+      {canManage && showNewScenarioModal && (
         <NewScenarioModal
           sessionId={session.cm_id}
           onClose={() => setShowNewScenarioModal(false)}
@@ -378,7 +378,7 @@ export default function SessionView() {
       )}
 
       {/* Scenario Management Modal (manage permission required) */}
-      {canManage && showScenarioManagementModal && session && (
+      {canManage && showScenarioManagementModal && (
         <ScenarioManagementModal
           sessionId={session.cm_id}
           onClose={() => setShowScenarioManagementModal(false)}

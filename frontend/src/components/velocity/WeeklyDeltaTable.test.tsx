@@ -108,7 +108,7 @@ describe('WeeklyDeltaTable', () => {
   it('passes prior week data to column accessors when available', () => {
     const accessor = vi.fn(
       (_week: WeeklyDataPoint, priorWeek?: WeeklyDataPoint) =>
-        priorWeek?.enrolled?.toString() ?? 'no-prior'
+        priorWeek?.enrolled.toString() ?? 'no-prior'
     )
     const columns = [{ header: 'Prior', accessor }]
     const week = makeWeek({ week_number: 1 })

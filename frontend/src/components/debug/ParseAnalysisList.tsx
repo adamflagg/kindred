@@ -89,7 +89,7 @@ export function ParseAnalysisList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-foreground truncate font-medium">
-                    {item.requester_name || 'Unknown'}
+                    {item.requester_name ?? 'Unknown'}
                   </span>
                   {/* Parse status badge */}
                   {item.has_debug_result ? (

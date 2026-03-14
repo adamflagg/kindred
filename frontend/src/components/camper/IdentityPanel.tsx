@@ -76,7 +76,7 @@ export function IdentityPanel({
                 <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   School
                 </dt>
-                <dd className="mt-0.5 text-sm font-medium">{camper.school || 'Not provided'}</dd>
+                <dd className="mt-0.5 text-sm font-medium">{camper.school ?? 'Not provided'}</dd>
                 <dd className="text-muted-foreground text-xs">
                   {formatGradeOrdinal(camper.grade)} Grade
                 </dd>
@@ -89,7 +89,7 @@ export function IdentityPanel({
                 <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   Location
                 </dt>
-                <dd className="mt-0.5 text-sm font-medium">{location || 'Not specified'}</dd>
+                <dd className="mt-0.5 text-sm font-medium">{location ?? 'Not specified'}</dd>
               </div>
             </div>
           </div>
@@ -114,7 +114,7 @@ export function IdentityPanel({
                     {camper.gender_identity_write_in &&
                     camper.gender_identity_write_in.trim() !== ''
                       ? camper.gender_identity_write_in
-                      : camper.gender_identity_name || 'Not specified'}
+                      : (camper.gender_identity_name ?? 'Not specified')}
                   </span>
                 </dd>
               </div>

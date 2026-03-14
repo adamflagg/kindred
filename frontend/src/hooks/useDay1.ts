@@ -15,7 +15,7 @@ export function useDay1(year: number) {
       const response = await fetchWithAuth(`/api/metrics/registration/day1?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch Day 1 data')
+        throw new Error(error.detail ?? 'Failed to fetch Day 1 data')
       }
       return response.json()
     },

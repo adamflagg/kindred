@@ -87,13 +87,13 @@ function BunkCard({
 }: BunkCardProps) {
   const viewingYear = useYear()
   // Use bunk.capacity if set, otherwise fall back to config default
-  const effectiveCapacity = bunk.capacity || defaultCapacity
+  const effectiveCapacity = bunk.capacity ?? defaultCapacity
 
   // Check if this bunk is a valid drop target for the dragged camper
   const isValidDropTarget = (): boolean => {
     if (!activeDragCamper) return true // No drag = valid
 
-    const bunkGender = bunk.gender?.toLowerCase()
+    const bunkGender = bunk.gender.toLowerCase()
     const isFromAGSession = activeDragCamper.expand?.session?.session_type === 'ag'
 
     if (isFromAGSession) {
@@ -104,7 +104,7 @@ function BunkCard({
 
       // Check if bunk grade is compatible with session grade range
       // Logic mirrors pocketbase/sync/bunk_plans.go lines 329-360
-      const sessionName = activeDragCamper.expand?.session?.name || ''
+      const sessionName = activeDragCamper.expand?.session?.name ?? ''
       const [sessionGradeMin, sessionGradeMax] = extractGradeRange(sessionName)
       const [bunkGradeMin, bunkGradeMax] = extractGradeRange(bunk.name || '')
 
@@ -128,10 +128,10 @@ function BunkCard({
 
     // Non-AG campers go to gendered bunks based on their gender
     if (activeDragCamper.gender === 'M') {
-      return bunkGender === 'm' || bunk.name?.startsWith('B-')
+      return bunkGender === 'm' || bunk.name.startsWith('B-')
     }
     if (activeDragCamper.gender === 'F') {
-      return bunkGender === 'f' || bunk.name?.startsWith('G-')
+      return bunkGender === 'f' || bunk.name.startsWith('G-')
     }
 
     return true // Unknown gender = allow anywhere
@@ -190,7 +190,7 @@ function BunkCard({
     const gradeCounts = new Map<number, number>()
     bunk.campers.forEach((camper) => {
       const grade = camper.grade
-      gradeCounts.set(grade, (gradeCounts.get(grade) || 0) + 1)
+      gradeCounts.set(grade, (gradeCounts.get(grade) ?? 0) + 1)
     })
 
     // Get all grades sorted by count
@@ -420,11 +420,9 @@ function BunkCard({
                 isDraggable={!isProductionMode}
                 {...(onCamperClick && { onClick: onCamperClick })}
                 hasRequests={
-                  (requestStatus &&
-                  typeof requestStatus === 'object' &&
                   camper.person_cm_id in requestStatus
-                    ? requestStatus[camper.person_cm_id]
-                    : true) || false
+                    ? (requestStatus[camper.person_cm_id] ?? true)
+                    : true
                 }
                 {...(onCamperLockToggle && {
                   onLockToggle: onCamperLockToggle,

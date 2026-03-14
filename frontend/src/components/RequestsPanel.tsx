@@ -75,8 +75,8 @@ export default function RequestsPanel({
   }
 
   const getConstraintDescription = (constraint: Constraint) => {
-    const camperNames = constraint.expand?.campers?.map((c) => c.name) || []
-    const constraintType = constraint.type || constraint.constraint_type
+    const camperNames = constraint.expand?.campers?.map((c) => c.name) ?? []
+    const constraintType = constraint.type ?? constraint.constraint_type
 
     switch (constraintType) {
       case 'pair_together':
@@ -84,11 +84,11 @@ export default function RequestsPanel({
       case 'keep_apart':
         return `Keep ${camperNames.join(', ')} in different bunks`
       case 'age_preference': {
-        const pref = constraint.metadata?.['preference'] || 'similar'
+        const pref = constraint.metadata?.['preference'] ?? 'similar'
         return `${camperNames[0]} prefers ${pref} age campers`
       }
       case 'bunk_preference': {
-        const bunkName = constraint.metadata?.['bunkName'] || 'specific bunk'
+        const bunkName = constraint.metadata?.['bunkName'] ?? 'specific bunk'
         return `${camperNames[0]} prefers ${bunkName}`
       }
       default:
@@ -146,17 +146,17 @@ export default function RequestsPanel({
                   <span
                     className="text-2xl"
                     role="img"
-                    aria-label={constraint.type || constraint.constraint_type}
+                    aria-label={constraint.type ?? constraint.constraint_type}
                   >
                     {getConstraintIcon(
-                      (constraint.type || constraint.constraint_type) as ConstraintType
+                      (constraint.type ?? constraint.constraint_type) as ConstraintType
                     )}
                   </span>
                   <div>
                     <p className="font-medium">{getConstraintDescription(constraint)}</p>
                     <div className="mt-1 flex items-center space-x-2">
                       <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800">
-                        {constraint.severity || 'soft'}
+                        {constraint.severity ?? 'soft'}
                       </span>
                     </div>
                   </div>

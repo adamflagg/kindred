@@ -37,7 +37,7 @@ describe('SessionHeader', () => {
       // Sort logic extracted from SessionView
       const parseSession = (name: string): [number, string] => {
         const match = name.match(/session\s+(\d+)([a-z])?/i)
-        if (match?.[1]) return [parseInt(match[1], 10), match[2]?.toLowerCase() || '']
+        if (match?.[1]) return [parseInt(match[1], 10), match[2]?.toLowerCase() ?? '']
         return [0, name.toLowerCase()]
       }
 
@@ -60,16 +60,16 @@ describe('SessionHeader', () => {
 
   describe('solver button state', () => {
     it('should be disabled when solving', () => {
-      const isSolving = true
-      const isApplyingResults = false
+      const isSolving = true as boolean
+      const isApplyingResults = false as boolean
       const isDisabled = isSolving || isApplyingResults
 
       expect(isDisabled).toBe(true)
     })
 
     it('should be disabled when applying results', () => {
-      const isSolving = false
-      const isApplyingResults = true
+      const isSolving = false as boolean
+      const isApplyingResults = true as boolean
       const isDisabled = isSolving || isApplyingResults
 
       expect(isDisabled).toBe(true)
@@ -90,9 +90,9 @@ describe('SessionHeader', () => {
 
   describe('scenario selector', () => {
     it('should be disabled while solving or applying', () => {
-      const scenarioLoading = false
-      const isSolving = true
-      const isApplyingResults = false
+      const scenarioLoading = false as boolean
+      const isSolving = true as boolean
+      const isApplyingResults = false as boolean
 
       const isDisabled = scenarioLoading || isSolving || isApplyingResults
 
@@ -129,8 +129,8 @@ describe('SessionHeader', () => {
 
   describe('conditional rendering', () => {
     it('should show pre-validate button only in non-production mode', () => {
-      const isProductionMode = false
-      const session = { cm_id: 1001 }
+      const isProductionMode = false as boolean
+      const session = { cm_id: 1001 } as { cm_id: number } | null
 
       const shouldShowPreValidate = !isProductionMode && session !== null
 
@@ -138,8 +138,8 @@ describe('SessionHeader', () => {
     })
 
     it('should hide pre-validate button in production mode', () => {
-      const isProductionMode = true
-      const session = { cm_id: 1001 }
+      const isProductionMode = true as boolean
+      const session = { cm_id: 1001 } as { cm_id: number } | null
 
       const shouldShowPreValidate = !isProductionMode && session !== null
 
@@ -147,8 +147,11 @@ describe('SessionHeader', () => {
     })
 
     it('should show clear button only when in scenario mode', () => {
-      const isProductionMode = false
-      const currentScenario = { id: 'scenario-1', name: 'Test Scenario' }
+      const isProductionMode = false as boolean
+      const currentScenario = { id: 'scenario-1', name: 'Test Scenario' } as {
+        id: string
+        name: string
+      } | null
 
       const shouldShowClear = !isProductionMode && currentScenario !== null
 
@@ -156,8 +159,8 @@ describe('SessionHeader', () => {
     })
 
     it('should hide clear button in production mode', () => {
-      const isProductionMode = true
-      const currentScenario = null
+      const isProductionMode = true as boolean
+      const currentScenario = null as { id: string; name: string } | null
 
       const shouldShowClear = !isProductionMode && currentScenario !== null
 
@@ -173,9 +176,9 @@ describe('SessionHeader', () => {
 
   describe('scenario indicator pulse', () => {
     it('should show pulse when solving/applying with captured scenario', () => {
-      const isSolving = true
-      const isApplyingResults = false
-      const capturedScenarioId = 'scenario-123'
+      const isSolving = true as boolean
+      const isApplyingResults = false as boolean
+      const capturedScenarioId = 'scenario-123' as string | null
 
       const shouldPulse = (isSolving || isApplyingResults) && capturedScenarioId !== null
 
@@ -183,9 +186,9 @@ describe('SessionHeader', () => {
     })
 
     it('should not show pulse when not solving or applying', () => {
-      const isSolving = false
-      const isApplyingResults = false
-      const capturedScenarioId = 'scenario-123'
+      const isSolving = false as boolean
+      const isApplyingResults = false as boolean
+      const capturedScenarioId = 'scenario-123' as string | null
 
       const shouldPulse = (isSolving || isApplyingResults) && capturedScenarioId !== null
 
@@ -212,7 +215,7 @@ describe('SessionHeader', () => {
       it('should include scenario name in draft mode tooltip/aria-label', () => {
         const scenarioName = 'Test Scenario'
         const getAriaLabel = (isProd: boolean, name?: string) =>
-          isProd ? 'Viewing live CampMinder data' : `Draft mode: ${name || 'Untitled Scenario'}`
+          isProd ? 'Viewing live CampMinder data' : `Draft mode: ${name ?? 'Untitled Scenario'}`
 
         expect(getAriaLabel(false, scenarioName)).toBe('Draft mode: Test Scenario')
         expect(getAriaLabel(true)).toBe('Viewing live CampMinder data')

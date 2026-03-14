@@ -15,7 +15,7 @@ interface ScenarioEditModalProps {
 
 export default function ScenarioEditModal({ scenario, onClose, onSave }: ScenarioEditModalProps) {
   const [name, setName] = useState(scenario.name)
-  const [description, setDescription] = useState(scenario.description || '')
+  const [description, setDescription] = useState(scenario.description ?? '')
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

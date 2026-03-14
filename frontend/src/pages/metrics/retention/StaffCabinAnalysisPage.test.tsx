@@ -245,7 +245,7 @@ describe('StaffCabinAnalysisPage', () => {
       const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
       const cells = within(emmaRow).getAllByRole('cell')
       // First cell is Session 1 (B-3, 80%)
-      const session1Cell = cells.find((c) => c.textContent?.includes('B-3'))!
+      const session1Cell = cells.find((c) => c.textContent.includes('B-3'))!
 
       fireEvent.mouseEnter(session1Cell)
 
@@ -516,7 +516,7 @@ describe('StaffCabinAnalysisPage', () => {
       const rows = within(table).getAllByRole('row')
       const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
       const cells = within(emmaRow).getAllByRole('cell')
-      const session1Cell = cells.find((c) => c.textContent?.includes('B-3'))!
+      const session1Cell = cells.find((c) => c.textContent.includes('B-3'))!
 
       fireEvent.mouseEnter(session1Cell)
 
@@ -532,7 +532,7 @@ describe('StaffCabinAnalysisPage', () => {
       const rows = within(table).getAllByRole('row')
       const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
       const cells = within(emmaRow).getAllByRole('cell')
-      const session2Cell = cells.find((c) => c.textContent?.includes('B-5'))!
+      const session2Cell = cells.find((c) => c.textContent.includes('B-5'))!
 
       fireEvent.mouseEnter(session2Cell)
 
@@ -549,7 +549,7 @@ describe('StaffCabinAnalysisPage', () => {
       const rows = within(table).getAllByRole('row')
       const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
       const cells = within(emmaRow).getAllByRole('cell')
-      const session1Cell = cells.find((c) => c.textContent?.includes('B-3'))!
+      const session1Cell = cells.find((c) => c.textContent.includes('B-3'))!
 
       fireEvent.mouseEnter(session1Cell)
       expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
@@ -619,7 +619,7 @@ describe('StaffCabinAnalysisPage', () => {
 
       // Get session column headers (exclude Staff and Overall)
       const headers = screen.getAllByRole('columnheader')
-      const sessionHeaders = headers.filter((h) => !h.textContent?.match(/staff|overall/i))
+      const sessionHeaders = headers.filter((h) => !h.textContent.match(/staff|overall/i))
 
       // Should be chronological: Taste of Camp, Session 1, Session 2
       expect(sessionHeaders[0]!.textContent).toBe('Taste of Camp')

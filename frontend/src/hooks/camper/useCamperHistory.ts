@@ -56,12 +56,12 @@ export function useCamperHistory(
         for (const enrolled of enrollments) {
           if (enrolled.expand?.session) {
             const session = enrolled.expand.session
-            const assignedBunk = enrolled.expand?.assigned_bunk
+            const assignedBunk = enrolled.expand.assigned_bunk
             allHistory.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',
               sessionType: session.session_type,
-              bunkName: assignedBunk?.name || 'Unassigned',
+              bunkName: assignedBunk?.name ?? 'Unassigned',
               startDate: session.start_date,
               endDate: session.end_date,
             })
@@ -87,8 +87,8 @@ export function useCamperHistory(
         const yearMap = new Map<number, HistoricalRecord>()
 
         for (const assignment of historicalAssignments) {
-          const session = assignment.expand?.session
-          const bunk = assignment.expand?.bunk
+          const session = assignment.expand.session
+          const bunk = assignment.expand.bunk
 
           if (session && isValidSummerSession(session.session_type)) {
             const year = assignment.year
@@ -103,7 +103,7 @@ export function useCamperHistory(
                 year,
                 sessionName,
                 sessionType: session.session_type,
-                bunkName: bunk?.name || 'Unassigned',
+                bunkName: bunk?.name ?? 'Unassigned',
                 startDate: session.start_date,
                 endDate: session.end_date,
               })
@@ -132,12 +132,12 @@ export function useCamperHistory(
         for (const enrolled of fallbackEnrollments) {
           if (enrolled.expand?.session) {
             const session = enrolled.expand.session
-            const assignedBunk = enrolled.expand?.assigned_bunk
+            const assignedBunk = enrolled.expand.assigned_bunk
             fallback.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',
               sessionType: session.session_type,
-              bunkName: assignedBunk?.name || 'Unassigned',
+              bunkName: assignedBunk?.name ?? 'Unassigned',
               startDate: session.start_date,
               endDate: session.end_date,
             })

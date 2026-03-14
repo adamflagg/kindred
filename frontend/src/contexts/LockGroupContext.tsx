@@ -151,10 +151,8 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
     return allMembers.reduce<Record<string, ExpandedMember[]>>(
       (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
         const groupId = member.group
-        if (!acc[groupId]) {
-          acc[groupId] = []
-        }
-        acc[groupId]?.push(member)
+        acc[groupId] ??= []
+        acc[groupId].push(member)
         return acc
       },
       {}
@@ -166,7 +164,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
     const map = new Map<number, LockedGroupsResponse>()
 
     for (const group of groups) {
-      const members = membersByGroup[group.id] || []
+      const members = membersByGroup[group.id] ?? []
       for (const member of members) {
         // Get person_id from expanded attendee
         const personCmId = member.expand?.attendee?.person_id
@@ -234,7 +232,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
   const getCamperLockGroup = useCallback(
     (camperCmId: number) => {
       if (!isDraftMode) return null
-      return camperToGroup.get(camperCmId) || null
+      return camperToGroup.get(camperCmId) ?? null
     },
     [camperToGroup, isDraftMode]
   )
@@ -269,7 +267,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
 
   const getGroupMembers = useCallback(
     (groupId: string) => {
-      const members = membersByGroup[groupId] || []
+      const members = membersByGroup[groupId] ?? []
       // Return person_id (CM ID) from expanded attendee
       return members
         .map((m: ExpandedMember) => m.expand?.attendee?.person_id)
@@ -284,7 +282,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
       if (!isDraftMode) return
 
       // Get the attendee PB ID from the camper
-      const attendeePbId = camper.attendee_id || camper.id
+      const attendeePbId = camper.attendee_id ?? camper.id
 
       if (!attendeePbId) {
         console.error('Camper missing attendee_id')
@@ -302,7 +300,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         await pb.collection('locked_group_members').create({
           group: groupId,
           attendee: attendeePbId,
-          added_by: pb.authStore.record?.['email'] || 'unknown',
+          added_by: pb.authStore.record?.['email'] ?? 'unknown',
         })
 
         // Invalidate queries to refresh
@@ -320,7 +318,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         })
 
         const group = groups.find((g) => g.id === groupId)
-        const groupName = group?.name || 'friend group'
+        const groupName = group?.name ?? 'friend group'
         toast.success(`Added ${camper.name} to ${groupName}`)
       } catch (error) {
         console.error('Failed to add camper to group:', error)

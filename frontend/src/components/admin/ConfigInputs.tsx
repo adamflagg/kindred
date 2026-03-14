@@ -222,6 +222,7 @@ export function StatusIcon({ status }: { status: SyncStatus['status'] | 'pending
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for duration formatting
 export function formatDuration(seconds?: number): string {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive: callers may pass null at runtime
   if (seconds === null || seconds === undefined) return ''
   if (seconds === 0) return '< 1s'
   if (seconds < 60) return `${seconds}s`
@@ -259,9 +260,11 @@ export interface ScaleContextBarProps {
 
 export function ScaleContextBar({ scaleType, value, metadata }: ScaleContextBarProps) {
   const scale = SCALE_DEFINITIONS[scaleType]
-  if (!scale || scaleType === 'unknown') return null
+  if (scaleType === 'unknown') return null
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
   const minValue = (metadata?.['min_value'] as number) ?? scale.min
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
   const maxValue = (metadata?.['max_value'] as number) ?? scale.max
 
   const normalizedValue = (value - minValue) / (maxValue - minValue)
@@ -399,14 +402,14 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
 
   // useLayoutEffect for synchronous DOM measurements before paint
   useLayoutEffect(() => {
-    if (!scale || scaleType === 'unknown' || !isVisible) return
+    if (scaleType === 'unknown' || !isVisible) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
     updatePosition()
   }, [isVisible, scale, scaleType, updatePosition])
 
   // Regular useEffect for event listeners
   useEffect(() => {
-    if (!scale || scaleType === 'unknown' || !isVisible) return
+    if (scaleType === 'unknown' || !isVisible) return
 
     window.addEventListener('scroll', updatePosition, true)
     window.addEventListener('resize', updatePosition)
@@ -416,9 +419,11 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
     }
   }, [isVisible, scale, scaleType, updatePosition])
 
-  if (!scale || scaleType === 'unknown') return null
+  if (scaleType === 'unknown') return null
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
   const minValue = (metadata?.['min_value'] as number) ?? scale.min
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
   const maxValue = (metadata?.['max_value'] as number) ?? scale.max
   const impactText = scale.impactExplainer(value, minValue, maxValue)
 

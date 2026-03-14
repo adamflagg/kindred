@@ -29,8 +29,8 @@ describe('AreaFilterBar', () => {
     })
 
     it('should highlight selected area', () => {
-      const selectedArea = 'girls'
-      const areaKey = 'girls'
+      const selectedArea = 'girls' as string
+      const areaKey = 'girls' as string
 
       const isSelected = selectedArea === areaKey
 
@@ -49,7 +49,7 @@ describe('AreaFilterBar', () => {
 
   describe('conditional rendering', () => {
     it('should only render when activeTab is bunks', () => {
-      const activeTab = 'bunks'
+      const activeTab = 'bunks' as string
       const shouldRender = activeTab === 'bunks'
 
       expect(shouldRender).toBe(true)
@@ -67,7 +67,7 @@ describe('AreaFilterBar', () => {
 
   describe('available areas configuration', () => {
     it('should include All-Gender when showAgArea is true', () => {
-      const showAgArea = true
+      const showAgArea = true as boolean
       const baseAreas: Record<string, string> = {
         all: 'All',
         boys: 'Boys',
@@ -82,7 +82,7 @@ describe('AreaFilterBar', () => {
     })
 
     it('should exclude All-Gender when showAgArea is false', () => {
-      const showAgArea = false
+      const showAgArea = false as boolean
       const baseAreas: Record<string, string> = {
         all: 'All',
         boys: 'Boys',

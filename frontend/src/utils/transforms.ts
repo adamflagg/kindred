@@ -10,7 +10,6 @@ import type {
   CampSessionsResponse,
 } from '../types/pocketbase-types'
 import type { Camper } from '../types/app-types'
-import { calculateAge } from './ageCalculator'
 
 /**
  * Transform database responses to app-level Camper type
@@ -25,7 +24,7 @@ export function toAppCamper(
   const displayName = `${person.first_name} ${person.last_name}`.trim() || ''
 
   // Extract session CM ID - prefer from session object, fallback to hardcoded logic
-  const sessionCmId = session?.cm_id || 0 // We need the session to be passed in properly
+  const sessionCmId = session?.cm_id ?? 0 // We need the session to be passed in properly
 
   const camper: Camper = {
     id: `${person.cm_id}:${sessionCmId}`,
@@ -35,9 +34,11 @@ export function toAppCamper(
     first_name: person.first_name || '',
     last_name: person.last_name || '',
     preferred_name: person.preferred_name || '',
-    age: person.age ?? (person.birthdate ? calculateAge(person.birthdate) : 0),
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: age may be undefined despite Required<> type
+    age: person.age ?? 0,
     birthdate: person.birthdate,
     grade: person.grade || 0,
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: gender could be empty string
     gender: (person.gender as 'M' | 'F' | 'NB') || 'NB',
     session_cm_id: sessionCmId,
     ...(bunk?.id && { assigned_bunk: bunk.id }),
@@ -101,18 +102,21 @@ export function buildCampersFromData(
 
   for (const attendee of attendees) {
     // Get person from expanded relation
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
     const person = attendee.expand?.person
     if (!person || !person.is_camper) continue
 
     // Get session from expanded relation
-    const session = attendee.expand?.session || null
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
+    const session = attendee.expand?.session ?? null
 
     // Get assignment and bunk using person CM ID
-    const assignment = assignments.get(person.cm_id) || null
+    const assignment = assignments.get(person.cm_id) ?? null
     let bunk: BunksResponse | null = null
 
     if (assignment) {
       // Try to get bunk from assignment expand first
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
       if (assignment.expand?.bunk && typeof assignment.expand.bunk === 'object') {
         bunk = assignment.expand.bunk
       }
@@ -157,6 +161,7 @@ export function createLookupMaps(data: {
   if (data.assignments) {
     data.assignments.forEach((assignment) => {
       // Get person CM ID from the expanded relation
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
       const person = assignment.expand?.person
       if (person && 'cm_id' in person) {
         const personCmId = person.cm_id

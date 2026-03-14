@@ -66,7 +66,7 @@ export default function UnassignedCampers({
                   key={camper.id}
                   camper={camper}
                   {...(onCamperClick && { onClick: onCamperClick })}
-                  hasRequests={requestStatus?.[camper.person_cm_id] ?? true}
+                  hasRequests={requestStatus[camper.person_cm_id] ?? true}
                   bunkCampers={[]} // Unassigned campers have no bunk mates
                 />
               ))}

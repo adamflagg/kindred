@@ -122,6 +122,7 @@ export function CssVerticalStackedBarChart({
   const legendItems = useMemo(
     () =>
       segments
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` may be undefined
         .filter((s) => data.some((item) => ((item[s.key] as number) ?? 0) > 0))
         .map((s) => ({ label: s.label, color: s.color })),
     [segments, data]
@@ -201,6 +202,7 @@ export function CssVerticalStackedBarChart({
                     }}
                   >
                     {segments.map((seg) => {
+                      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
                       const value = (item[seg.key] as number) ?? 0
                       if (value <= 0) return null
                       return (
@@ -254,11 +256,14 @@ export function CssVerticalStackedBarChart({
               ) : (
                 <>
                   <p className="text-foreground mb-2 font-medium">
+                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback */}
                     {(ttItem['tooltipLabel'] as string) ?? ttItem.name}
                   </p>
                   {segments
+                    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
                     .filter((s) => ((ttItem[s.key] as number) ?? 0) > 0)
                     .map((s) => {
+                      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
                       const val = (ttItem[s.key] as number) ?? 0
                       const pct = ttItem.total > 0 ? ((val / ttItem.total) * 100).toFixed(0) : '0'
                       return (

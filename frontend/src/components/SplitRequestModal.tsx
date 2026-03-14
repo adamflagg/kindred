@@ -81,7 +81,7 @@ export default function SplitRequestModal({
   // Get current source fields from request
   // source_fields may be an array if the request was merged
   const currentSourceFields = (request as unknown as { source_fields?: string[] })
-    .source_fields || [request.source_field]
+    .source_fields ?? [request.source_field]
 
   // Fetch person data for resolved target
   const requesteeId = request.requestee_id
@@ -94,7 +94,7 @@ export default function SplitRequestModal({
 
       const filter = `cm_id = ${requesteeId} && year = ${year}`
       const results = await pb.collection<PersonsResponse>('persons').getFullList({ filter })
-      return results[0] || null
+      return results[0] ?? null
     },
     enabled: !!requesteeId && requesteeId > 0,
   })
@@ -184,7 +184,7 @@ export default function SplitRequestModal({
     mutationFn: async () => {
       const splitSources: SplitSourceConfig[] = Array.from(selectedSources).map((origId) => ({
         original_request_id: origId,
-        new_type: sourceTypes[origId] || BunkRequestsRequestTypeOptions.bunk_with,
+        new_type: sourceTypes[origId] ?? BunkRequestsRequestTypeOptions.bunk_with,
         new_target_id: null,
       }))
 
@@ -201,7 +201,7 @@ export default function SplitRequestModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || 'Split failed')
+        throw new Error(errorData.detail ?? 'Split failed')
       }
 
       return response.json() as Promise<SplitResponse>
@@ -344,7 +344,7 @@ export default function SplitRequestModal({
                           <select
                             id={`type-${link.original_request_id}`}
                             aria-label="New request type"
-                            value={sourceTypes[link.original_request_id] || request.request_type}
+                            value={sourceTypes[link.original_request_id] ?? request.request_type}
                             onChange={(e) =>
                               updateSourceType(
                                 link.original_request_id,

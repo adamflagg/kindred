@@ -48,7 +48,7 @@ export function MetricsSessionSelector() {
   const displayName = selectedSession
     ? selectedSession.name
     : selectedDuration
-      ? (DURATION_LABELS[selectedDuration] ?? selectedDuration)
+      ? DURATION_LABELS[selectedDuration]
       : viewMode === 'all'
         ? 'All Summer'
         : viewMode === 'quests'
@@ -119,7 +119,7 @@ export function MetricsSessionSelector() {
                     value={`${DURATION_PREFIX}${category}`}
                     className="listbox-option"
                   >
-                    {DURATION_LABELS[category] ?? category}
+                    {DURATION_LABELS[category]}
                   </ListboxOption>
                 ))}
               </div>

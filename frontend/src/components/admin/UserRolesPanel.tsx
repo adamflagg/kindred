@@ -140,7 +140,7 @@ export function UserRolesPanel({ user, onClose }: UserRolesPanelProps) {
                     <p className="text-muted-foreground mt-0.5 text-xs">{role.description}</p>
                   )}
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {(role.permissions || []).map((perm) => (
+                    {role.permissions.map((perm) => (
                       <span
                         key={perm}
                         className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-xs"

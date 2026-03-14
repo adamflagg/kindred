@@ -6,7 +6,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
-import { calculateAge } from '../../utils/ageCalculator'
+
 import { sortEnrolledFirst } from '../../utils/enrollmentSort'
 import type { Camper } from '../../types/app-types'
 import type {
@@ -90,7 +90,7 @@ export function useCamperEnrollment(
       const campers = attendees.map((attendee) => {
         const expand = attendee.expand as AttendeeExpand | undefined
         const expandedSession = expand?.session
-        const expandedPerson = expand?.person || person
+        const expandedPerson = expand?.person ?? person
 
         // Find assignment for this attendee's session
         // First try exact session match (for regular campers)
@@ -111,22 +111,21 @@ export function useCamperEnrollment(
         const displayName = `${expandedPerson.first_name} ${expandedPerson.last_name}`.trim() || ''
 
         return {
-          id: `${attendee.person_id}:${expandedSession?.cm_id || 0}`,
+          id: `${attendee.person_id}:${expandedSession?.cm_id ?? 0}`,
           attendee_id: attendee.id,
           attendee_status: attendee.status,
           name: displayName,
           first_name: expandedPerson.first_name,
           last_name: expandedPerson.last_name,
           preferred_name: expandedPerson.preferred_name,
-          age:
-            expandedPerson.age ??
-            (expandedPerson.birthdate ? calculateAge(expandedPerson.birthdate) : 0),
+          age: expandedPerson.age,
           birthdate: expandedPerson.birthdate,
-          grade: expandedPerson.grade || 0,
+          grade: expandedPerson.grade,
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: gender could be empty string
           gender: (expandedPerson.gender as 'M' | 'F' | 'NB') || 'NB',
-          session_cm_id: expandedSession?.cm_id || 0,
+          session_cm_id: expandedSession?.cm_id ?? 0,
           assigned_bunk_cm_id: assignedBunk?.cm_id,
-          assigned_bunk: assignedBunk?.id || '',
+          assigned_bunk: assignedBunk?.id ?? '',
           person_cm_id: expandedPerson.cm_id,
           created: attendee.created || new Date().toISOString(),
           updated: attendee.updated || new Date().toISOString(),

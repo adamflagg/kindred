@@ -83,7 +83,7 @@ export function gradeToBarData(data: RetentionByGrade[] | undefined): RetentionR
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
-    id: d.grade !== null ? d.grade : 'null',
+    id: d.grade ?? 'null',
   }))
 }
 

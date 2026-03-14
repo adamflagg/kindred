@@ -60,7 +60,7 @@ export function useRetentionTrends(currentYear: number, options: UseRetentionTre
       const response = await fetchWithAuth(`/api/metrics/retention-trends?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch retention trends')
+        throw new Error(error.detail ?? 'Failed to fetch retention trends')
       }
       return response.json()
     },

@@ -43,7 +43,7 @@ function formatDate(dateStr: string | undefined | null): string {
 
 /** Get the best registration date: effective_date if available, fallback to enrollment_date. */
 function getRegistrationDate(a: DrilldownAttendee): string | undefined {
-  return a.effective_date || a.enrollment_date
+  return a.effective_date ?? a.enrollment_date
 }
 
 interface DrillDownModalProps {
@@ -80,7 +80,7 @@ export function DrillDownModal({
   onClose,
 }: DrillDownModalProps) {
   const isWaitlistDrilldown =
-    (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
+    filter?.type.startsWith('waitlist_') ?? filter?.waitlistContext ?? false
 
   const [searchTerm, setSearchTerm] = useState('')
   const [sortField, setSortField] = useState<SortField>(
@@ -88,7 +88,7 @@ export function DrillDownModal({
   )
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const isRetentionDrilldown = !!filter?.retentionContext
-  const isCancellationDrilldown = filter?.type?.startsWith('cancellation_') ?? false
+  const isCancellationDrilldown = filter?.type.startsWith('cancellation_') ?? false
   // These cancellation types use default layout (School + Session columns)
   const isCancellationDefaultLayout =
     filter?.type === 'cancellation_no_other_sessions' || filter?.type === 'cancellation_re_enrolled'
@@ -204,7 +204,6 @@ export function DrillDownModal({
         if (!aVal && bVal) return 1
         if (aVal && !bVal) return -1
       }
-      if (aVal == null || bVal == null) return 0
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
       return 0
@@ -293,7 +292,7 @@ export function DrillDownModal({
       isWaitlistDrilldown
         ? [
             a.person_id,
-            `${a.preferred_name || a.first_name} ${a.last_name}`,
+            `${a.preferred_name ?? a.first_name} ${a.last_name}`,
             a.grade ?? '',
             a.gender ?? '',
             a.age ?? '',
@@ -310,7 +309,7 @@ export function DrillDownModal({
         : isRetentionDrilldown
           ? [
               a.person_id,
-              `${a.preferred_name || a.first_name} ${a.last_name}`,
+              `${a.preferred_name ?? a.first_name} ${a.last_name}`,
               a.grade ?? '',
               a.gender ?? '',
               a.age ?? '',
@@ -326,7 +325,7 @@ export function DrillDownModal({
           : isCancellationSpecial
             ? [
                 a.person_id,
-                `${a.preferred_name || a.first_name} ${a.last_name}`,
+                `${a.preferred_name ?? a.first_name} ${a.last_name}`,
                 a.grade ?? '',
                 a.gender ?? '',
                 a.age ?? '',
@@ -343,7 +342,7 @@ export function DrillDownModal({
               ]
             : [
                 a.person_id,
-                `${a.preferred_name || a.first_name} ${a.last_name}`,
+                `${a.preferred_name ?? a.first_name} ${a.last_name}`,
                 a.grade ?? '',
                 a.gender ?? '',
                 a.age ?? '',
@@ -612,7 +611,7 @@ export function DrillDownModal({
                   >
                     <td
                       className="text-foreground max-w-[180px] truncate px-4 py-3 font-medium"
-                      title={`${attendee.preferred_name || attendee.first_name} ${attendee.last_name}`}
+                      title={`${attendee.preferred_name ?? attendee.first_name} ${attendee.last_name}`}
                     >
                       <Link
                         to={`/camper/${attendee.person_id}`}
@@ -620,7 +619,7 @@ export function DrillDownModal({
                         rel="noopener noreferrer"
                         className="hover:text-forest-700 dark:hover:text-forest-400 transition-colors"
                       >
-                        {`${attendee.preferred_name || attendee.first_name} ${attendee.last_name}`}
+                        {`${attendee.preferred_name ?? attendee.first_name} ${attendee.last_name}`}
                       </Link>
                       {attendee.is_returning && (
                         <span className="bg-primary/10 text-primary ml-1.5 rounded px-1 py-0.5 text-xs">

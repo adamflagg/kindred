@@ -44,6 +44,7 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
   for (const item of primaryData) {
     const key = String(item[mk] ?? '')
     const displayName = String(item[nameKey] ?? '')
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
     primaryMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
   }
 
@@ -51,6 +52,7 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
     let key = String(item[mk] ?? '')
     if (aliasMap) key = aliasMap[key] ?? key
     const displayName = String(item[nameKey] ?? '')
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
     compareMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
   }
 

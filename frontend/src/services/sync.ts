@@ -106,7 +106,7 @@ export const syncService = {
     })
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || 'Failed to export to Google Sheets')
+      throw new Error(error.error ?? 'Failed to export to Google Sheets')
     }
     return response.json()
   },

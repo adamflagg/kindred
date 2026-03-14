@@ -113,7 +113,7 @@ describe('edge type to label mapping', () => {
         sibling: 'Siblings',
         school: 'Classmates',
       }
-      return labels[type] || type
+      return labels[type] ?? type
     }
 
     expect(getEdgeLabel('request')).toBe('Requests')

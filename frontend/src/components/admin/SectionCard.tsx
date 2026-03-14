@@ -31,28 +31,23 @@ export function SectionCard({
   const renderConfigRow = (item: ConfigWithMetadata) => {
     const fullKey = [item.category, item.subcategory, item.config_key].filter(Boolean).join('.')
     const editedValue = editedValues[fullKey]
-    const currentValue = editedValue !== undefined ? editedValue : String(item.value)
+    const currentValue = editedValue ?? String(item.value)
     const hasChange = editedValue !== undefined && editedValue !== String(item.value)
     const numericValue = parseFloat(currentValue)
 
     // Use metadata component_type or infer from value
-    let componentType = item.metadata?.['component_type']
-    if (!componentType) {
-      componentType = inferComponentType(item.value, item.config_key)
-    }
+    let componentType = item.metadata['component_type']
+    componentType ??= inferComponentType(item.value, item.config_key)
 
     // Merge component_config with metadata min/max
-    const baseConfig = (item.metadata?.['component_config'] as Record<string, unknown>) || {}
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as` cast may be undefined at runtime
+    const baseConfig = (item.metadata['component_config'] as Record<string, unknown>) || {}
     const componentConfig: Record<string, unknown> = {
       ...baseConfig,
-      ...(item.metadata?.['min_value'] != null
-        ? { min: item.metadata['min_value'] as number }
-        : {}),
-      ...(item.metadata?.['max_value'] != null
-        ? { max: item.metadata['max_value'] as number }
-        : {}),
+      ...(item.metadata['min_value'] != null ? { min: item.metadata['min_value'] as number } : {}),
+      ...(item.metadata['max_value'] != null ? { max: item.metadata['max_value'] as number } : {}),
     }
-    const Component = COMPONENT_MAP[componentType as string] || TextInput
+    const Component = COMPONENT_MAP[componentType as string] ?? TextInput
 
     // Determine scale type for numeric values (not toggles)
     const isNumeric =
@@ -72,14 +67,14 @@ export function SectionCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-foreground text-base font-medium">
-                {item.metadata?.friendly_name || item.config_key}
+                {item.metadata.friendly_name ?? item.config_key}
               </span>
               {/* Impact badge for numeric values */}
               {showScaleContext && (
                 <ImpactBadge scaleType={scaleType} value={numericValue} metadata={item.metadata} />
               )}
               {/* Existing tooltip */}
-              {item.metadata?.tooltip && (
+              {item.metadata.tooltip && (
                 <PortalTooltip
                   content={
                     <div className="bg-popover text-popover-foreground border-border rounded-lg border p-3 text-sm leading-relaxed shadow-lg">

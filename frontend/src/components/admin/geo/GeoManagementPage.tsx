@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { AlertCircle, MapPin } from 'lucide-react'
 import { SUB_TABS, SUB_TAB_TO_CATEGORY, getActiveSubTab, geoBasePath } from '../geoConstants'
-import type { GeoCategory } from '../geoConstants'
 import {
   useGeoGaps,
   useBatchResolveCoords,
@@ -30,7 +29,7 @@ export function GeoManagementPage() {
   const year = useYear()
   const basePath = geoBasePath(location.pathname)
   const activeSubTab = getActiveSubTab(location.pathname)
-  const category = (SUB_TAB_TO_CATEGORY[activeSubTab] ?? 'city') as GeoCategory
+  const category = SUB_TAB_TO_CATEGORY[activeSubTab] ?? 'city'
   const [activeOnly, setActiveOnly] = useState(true)
   const [nonCanonicalsOpen, setNonCanonicalsOpen] = useState(false)
   const [coordsOpen, setCoordsOpen] = useState(false)

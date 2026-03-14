@@ -181,8 +181,8 @@ export default function AllCampersView() {
       if (attendees.length === 0) return []
 
       const bunksFromAssignments = assignments
-        .map((a) => a.expand?.bunk)
-        .filter((b): b is BunksResponse => b !== undefined && b !== null)
+        .map((a) => a.expand.bunk)
+        .filter((b): b is BunksResponse => b !== undefined)
 
       const maps = createLookupMaps({
         assignments,
@@ -234,7 +234,7 @@ export default function AllCampersView() {
     }
 
     if (filterSession !== 'all') {
-      const relatedSessionIds = sessionRelationships.get(filterSession) || [filterSession]
+      const relatedSessionIds = sessionRelationships.get(filterSession) ?? [filterSession]
       filtered = filtered.filter((camper) => {
         // Check primary session
         const session = allSessions.find((s) => s.cm_id === camper.session_cm_id)
@@ -391,7 +391,7 @@ export default function AllCampersView() {
                       ? 'All Bunks'
                       : filterBunk === 'unassigned'
                         ? 'Unassigned'
-                        : allBunks.find((b) => b.id === filterBunk)?.name || 'Select...'}
+                        : (allBunks.find((b) => b.id === filterBunk)?.name ?? 'Select...')}
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>

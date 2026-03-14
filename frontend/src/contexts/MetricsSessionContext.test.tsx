@@ -57,9 +57,7 @@ function TestConsumer() {
   } = useMetricsSession()
   return (
     <div>
-      <span data-testid="selectedSessionCmId">
-        {selectedSessionCmId === null ? 'null' : selectedSessionCmId}
-      </span>
+      <span data-testid="selectedSessionCmId">{selectedSessionCmId ?? 'null'}</span>
       <span data-testid="selectedSessionName">{selectedSession?.name ?? 'All Sessions'}</span>
       <span data-testid="sessionsCount">{sessions.length}</span>
       <span data-testid="isLoading">{isLoading ? 'true' : 'false'}</span>

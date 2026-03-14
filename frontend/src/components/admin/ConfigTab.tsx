@@ -31,10 +31,8 @@ export function ConfigTab() {
       const configsByCategory: Record<string, typeof section.configs> = {}
 
       section.configs.forEach((config) => {
-        const businessCategory = (config.metadata?.['business_category'] as string) || 'solver'
-        if (!configsByCategory[businessCategory]) {
-          configsByCategory[businessCategory] = []
-        }
+        const businessCategory = (config.metadata['business_category'] as string) || 'solver'
+        configsByCategory[businessCategory] ??= []
         configsByCategory[businessCategory].push(config)
       })
 
@@ -53,7 +51,7 @@ export function ConfigTab() {
 
   // Filter sections by search term
   const filteredSections = useMemo(() => {
-    const categorySections = categorizedSections[activeCategory] || []
+    const categorySections = categorizedSections[activeCategory] ?? []
 
     if (!searchTerm.trim()) return categorySections
 
@@ -63,8 +61,8 @@ export function ConfigTab() {
         ...section,
         configs: section.configs.filter(
           (config) =>
-            config.metadata?.friendly_name?.toLowerCase().includes(term) ||
-            config.description?.toLowerCase().includes(term) ||
+            (config.metadata.friendly_name?.toLowerCase().includes(term) ?? false) ||
+            (config.description?.toLowerCase().includes(term) ?? false) ||
             config.config_key.toLowerCase().includes(term)
         ),
       }))
@@ -135,7 +133,7 @@ export function ConfigTab() {
           {CONFIG_CATEGORIES.map((category) => {
             const Icon = category.icon
             const isActive = activeCategory === category.id
-            const sectionCount = categorizedSections[category.id]?.length || 0
+            const sectionCount = categorizedSections[category.id]?.length ?? 0
 
             return (
               <Link
@@ -162,7 +160,7 @@ export function ConfigTab() {
           {CONFIG_CATEGORIES.map((category) => {
             const Icon = category.icon
             const isActive = activeCategory === category.id
-            const sectionCount = categorizedSections[category.id]?.length || 0
+            const sectionCount = categorizedSections[category.id]?.length ?? 0
 
             return (
               <Link

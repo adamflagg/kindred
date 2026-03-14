@@ -101,7 +101,7 @@ interface RequestCardProps {
 
 function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
   // Check direct source_field first, then ai_reasoning.csv_source_field
-  const sourceField = request.source_field || request.ai_reasoning?.csv_source_field
+  const sourceField = request.source_field ?? request.ai_reasoning?.csv_source_field
 
   const borderColor =
     request.request_type === 'bunk_with'
@@ -129,9 +129,7 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
       ? 'Bunk With'
       : request.request_type === 'not_bunk_with'
         ? 'Not Bunk With'
-        : request.request_type === 'age_preference'
-          ? 'Age Preference'
-          : request.request_type
+        : 'Age Preference'
 
   const typeIcon =
     request.request_type === 'bunk_with'
@@ -234,9 +232,9 @@ function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) 
   if (!sourceField) return null
 
   const normalized = normalizeSourceField(sourceField)
-  const label = SOURCE_FIELD_LABELS[normalized] || sourceField
+  const label = SOURCE_FIELD_LABELS[normalized] ?? sourceField
   const colorClass =
-    SOURCE_FIELD_COLORS[normalized] ||
+    SOURCE_FIELD_COLORS[normalized] ??
     'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
 
   return (
@@ -250,7 +248,7 @@ function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) 
 
 function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
   // Check direct source_field first, then ai_reasoning.csv_source_field
-  const sourceField = request.source_field || request.ai_reasoning?.csv_source_field
+  const sourceField = request.source_field ?? request.ai_reasoning?.csv_source_field
 
   return (
     <div className="border-border bg-muted/20 border-t px-4 pt-2 pb-4">
@@ -268,7 +266,7 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
       )}
 
       {/* Notes section */}
-      {(request.parse_notes || request.socialize_explain || request.manual_notes) && (
+      {(request.parse_notes ?? request.socialize_explain ?? request.manual_notes) && (
         <div className="mb-4 space-y-2">
           {request.parse_notes && (
             <div className="flex items-start gap-2 text-sm">
@@ -318,7 +316,7 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
         />
         <DetailField
           label="Requested Name"
-          value={request.requestedPersonName || 'N/A'}
+          value={request.requestedPersonName ?? 'N/A'}
           color={undefined}
           warning={request.requestee_id != null && request.requestee_id < 0}
           suffix={
@@ -464,7 +462,7 @@ function DetailField({
     <div>
       <span className="text-muted-foreground block">{label}</span>
       <span
-        className={`${mono ? 'font-mono' : 'font-medium'} ${color || 'text-foreground'} ${warning ? 'text-amber-600 italic dark:text-amber-400' : ''}`}
+        className={`${mono ? 'font-mono' : 'font-medium'} ${color ?? 'text-foreground'} ${warning ? 'text-amber-600 italic dark:text-amber-400' : ''}`}
       >
         {value}
         {suffix}

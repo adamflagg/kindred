@@ -41,8 +41,8 @@ function TestConsumer() {
       <div data-testid="loading">{isLoading ? 'loading' : 'ready'}</div>
       <div data-testid="authenticated">{isAuthenticated ? 'yes' : 'no'}</div>
       <div data-testid="bypass">{isBypassMode ? 'bypass' : 'production'}</div>
-      <div data-testid="user">{user?.['email'] || 'no-user'}</div>
-      <div data-testid="error">{error || 'no-error'}</div>
+      <div data-testid="user">{user?.['email'] ?? 'no-user'}</div>
+      <div data-testid="error">{error ?? 'no-error'}</div>
     </div>
   )
 }

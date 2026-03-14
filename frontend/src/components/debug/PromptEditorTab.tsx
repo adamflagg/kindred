@@ -94,7 +94,7 @@ export function PromptEditorTab() {
   // Derive the effective selected prompt (user selection or first from list)
   const selectedPrompt = useMemo(() => {
     if (userSelectedPrompt) return userSelectedPrompt
-    return promptsData?.prompts?.[0]?.name ?? null
+    return promptsData?.prompts[0]?.name ?? null
   }, [userSelectedPrompt, promptsData])
 
   const {
@@ -105,7 +105,7 @@ export function PromptEditorTab() {
   const updatePromptMutation = useUpdatePrompt()
 
   // Combined error for display
-  const queryError = listError || contentError
+  const queryError = listError ?? contentError
 
   // Update editor content when prompt loads
   useEffect(() => {
@@ -229,7 +229,7 @@ export function PromptEditorTab() {
 
   // Selected prompt metadata
   const selectedPromptMeta = useMemo(() => {
-    return promptsData?.prompts?.find((p) => p.name === selectedPrompt)
+    return promptsData?.prompts.find((p) => p.name === selectedPrompt)
   }, [promptsData, selectedPrompt])
 
   const isLoading = isLoadingList || isLoadingContent

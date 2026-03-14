@@ -129,13 +129,13 @@ export default function SessionHeader({
             <>
               <div className="relative">
                 <Listbox
-                  value={currentScenario?.id || 'production'}
+                  value={currentScenario?.id ?? 'production'}
                   onChange={handleScenarioChange}
                   disabled={scenarioLoading || isSolving || isApplyingResults}
                 >
                   <ListboxButton className="listbox-button-compact min-w-[130px]">
                     <span className="flex-1 truncate text-left">
-                      {currentScenario?.name || 'CampMinder'}
+                      {currentScenario?.name ?? 'CampMinder'}
                     </span>
                     <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                   </ListboxButton>
@@ -187,7 +187,7 @@ export default function SessionHeader({
 
           {/* Right: Action buttons - ml-auto pushes to far right */}
           <div className="ml-auto flex items-center gap-2">
-            {canManage && !isProductionMode && session && (
+            {canManage && !isProductionMode && (
               <PreValidateRequestsButton
                 sessionCmId={session.cm_id}
                 year={currentYear}
@@ -203,13 +203,11 @@ export default function SessionHeader({
                 onRespectLocksChange={onRespectLocksChange}
               />
             )}
-            {session && (
-              <ValidateBunkingButton
-                sessionCmId={session.cm_id}
-                year={currentYear}
-                className="px-3 py-2 text-sm"
-              />
-            )}
+            <ValidateBunkingButton
+              sessionCmId={session.cm_id}
+              year={currentYear}
+              className="px-3 py-2 text-sm"
+            />
             {canManage && !isProductionMode && currentScenario && (
               <button
                 onClick={onShowClearDialog}

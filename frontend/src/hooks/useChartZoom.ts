@@ -15,7 +15,7 @@ export function useChartZoom(dataLength: number) {
     if (range.startIndex !== undefined && range.endIndex !== undefined) {
       const s = range.startIndex
       const e = range.endIndex
-      setZoomRange((prev) => (prev && prev[0] === s && prev[1] === e ? prev : [s, e]))
+      setZoomRange((prev) => (prev?.[0] === s && prev[1] === e ? prev : [s, e]))
     }
   }, [])
 

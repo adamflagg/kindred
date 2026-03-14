@@ -75,7 +75,7 @@ function getSessionStatus(session: CampSessionsResponse): SessionStatus {
 function parseSessionForSort(name: string): [number, string] {
   const match = name.match(/session\s+(\d+)([a-z])?/i)
   if (match?.[1]) {
-    return [parseInt(match[1], 10), match[2]?.toLowerCase() || '']
+    return [parseInt(match[1], 10), match[2]?.toLowerCase() ?? '']
   }
   // Taste of Camp sorts first (0)
   if (name.toLowerCase().includes('taste')) return [0, '']
@@ -514,7 +514,7 @@ export default function SessionList() {
 
         const filteredBunkPlans = bunkPlans.filter((bp) => {
           if (!isMainSession) return true
-          const bunkGender = bp.expand?.bunk?.gender?.toLowerCase() || ''
+          const bunkGender = bp.expand.bunk?.gender.toLowerCase() ?? ''
           const isAgBunk = ['ag', 'mixed', 'all-gender', 'nb'].includes(bunkGender)
           if (bp.session === session.id) return !isAgBunk
           return true
@@ -525,14 +525,14 @@ export default function SessionList() {
 
         const sexDistribution = { M: 0, F: 0 }
         attendees.forEach((attendee) => {
-          const sex = attendee.expand?.person?.gender
+          const sex = attendee.expand.person?.gender
           if (sex === 'M') sexDistribution.M++
           else if (sex === 'F') sexDistribution.F++
         })
 
         const ageGroups = { '7-9': 0, '10-12': 0, '13-15': 0, '16+': 0 }
         attendees.forEach((attendee) => {
-          const age = attendee.expand?.person?.age
+          const age = attendee.expand.person?.age
           if (age !== undefined) {
             if (age >= 7 && age <= 9) ageGroups['7-9']++
             else if (age >= 10 && age <= 12) ageGroups['10-12']++
@@ -544,7 +544,7 @@ export default function SessionList() {
         let newCampers = 0,
           returningCampers = 0
         attendees.forEach((attendee) => {
-          const years = attendee.expand?.person?.years_at_camp || 0
+          const years = attendee.expand.person?.years_at_camp ?? 0
           if (years <= 1) newCampers++
           else returningCampers++
         })
@@ -584,12 +584,12 @@ export default function SessionList() {
 
   // Aggregate stats
   const totalCampers = sessionsWithStats.reduce(
-    (sum, s) => sum + (s.statistics?.totalCampers || 0),
+    (sum, s) => sum + (s.statistics?.totalCampers ?? 0),
     0
   )
   const totalUnassigned = sessionsWithStats
     .filter((s) => getSessionStatus(s) === 'upcoming')
-    .reduce((sum, s) => sum + (s.statistics?.unassignedCampers || 0), 0)
+    .reduce((sum, s) => sum + (s.statistics?.unassignedCampers ?? 0), 0)
 
   if (isLoading) {
     return (

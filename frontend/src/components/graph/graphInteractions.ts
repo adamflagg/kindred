@@ -9,7 +9,7 @@ import type { Core, NodeSingular } from 'cytoscape'
  */
 export function adjustLabelPositions(cy: Core): void {
   // Check if cy is valid and not destroyed
-  if (!cy || cy.destroyed()) return
+  if (cy.destroyed()) return
 
   // Sort nodes by Y position (exclude parent nodes - they have fixed label positions)
   const nodes = cy
@@ -29,13 +29,13 @@ export function adjustLabelPositions(cy: Core): void {
   }> = []
 
   nodes.forEach((node) => {
-    // Add null check for node and ensure it's not removed
-    if (!node || node.removed()) return
+    // Ensure node is not removed
+    if (node.removed()) return
 
     try {
       const pos = node.renderedPosition()
       const bb = node.renderedBoundingBox()
-      const label = node.data('label') || ''
+      const label = node.data('label') ?? ''
       const labelWidth = label.length * 6 // Approximate width
       const labelHeight = 14 // Font size
 
@@ -99,7 +99,7 @@ export function adjustLabelPositions(cy: Core): void {
  * Show ego network for a specific node (highlight the node and its neighbors)
  */
 export function showEgoNetwork(cy: Core, nodeId: string): void {
-  if (!cy || cy.destroyed()) return
+  if (cy.destroyed()) return
 
   const node = cy.$(`#${nodeId}`)
   const neighborhood = node.closedNeighborhood()
@@ -112,7 +112,7 @@ export function showEgoNetwork(cy: Core, nodeId: string): void {
  * Update edge visibility based on filter settings
  */
 export function updateEdgeVisibility(cy: Core, showEdges: Record<string, boolean>): void {
-  if (!cy || cy.destroyed()) return
+  if (cy.destroyed()) return
 
   // Batch style updates for better performance
   cy.batch(() => {
@@ -122,7 +122,7 @@ export function updateEdgeVisibility(cy: Core, showEdges: Record<string, boolean
 
       if (isBundled) {
         // For bundled edges, check if any of the bundled types should be shown
-        const types = edge.data('types') || []
+        const types = edge.data('types') ?? []
         const shouldShow = types.some((type: string) => showEdges[type])
 
         edge.style({
@@ -161,7 +161,7 @@ export function updateEdgeVisibility(cy: Core, showEdges: Record<string, boolean
  * Setup dynamic label visibility based on zoom level
  */
 export function setupZoomBasedLabels(cy: Core): void {
-  if (!cy || cy.destroyed()) return
+  if (cy.destroyed()) return
 
   cy.on('zoom', () => {
     const zoom = cy.zoom()
@@ -186,7 +186,7 @@ export function setupZoomBasedLabels(cy: Core): void {
  * Setup node hover interactions (for mouse devices)
  */
 export function setupNodeHover(cy: Core): void {
-  if (!cy || cy.destroyed()) return
+  if (cy.destroyed()) return
 
   // Show label on hover
   cy.on('mouseover', 'node', (event) => {
@@ -208,7 +208,7 @@ export function setupNodeHover(cy: Core): void {
  * On touch, tapping a node reveals its label temporarily
  */
 export function setupTapToReveal(cy: Core): void {
-  if (!cy || cy.destroyed()) return
+  if (cy.destroyed()) return
 
   let lastTappedNode: NodeSingular | null = null
   let hideTimeout: ReturnType<typeof setTimeout> | null = null

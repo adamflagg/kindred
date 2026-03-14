@@ -11,10 +11,6 @@ export interface GraphMetricsProps {
 }
 
 export default function GraphMetrics({ graphData }: GraphMetricsProps) {
-  if (!graphData.metrics) {
-    return null
-  }
-
   return (
     <div className="bg-card/95 border-border shadow-lodge-sm absolute bottom-4 left-4 rounded-xl border p-3 text-sm backdrop-blur-sm">
       <div className="text-foreground mb-2 font-medium">Network Metrics</div>

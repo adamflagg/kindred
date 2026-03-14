@@ -65,7 +65,7 @@ export function useRetentionMetrics(
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch retention metrics')
+        throw new Error(error.detail ?? 'Failed to fetch retention metrics')
       }
       return response.json()
     },
@@ -109,7 +109,7 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch registration metrics')
+        throw new Error(error.detail ?? 'Failed to fetch registration metrics')
       }
       return response.json()
     },
@@ -136,7 +136,7 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
       const response = await fetchWithAuth(`/api/metrics/comparison?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch comparison metrics')
+        throw new Error(error.detail ?? 'Failed to fetch comparison metrics')
       }
       return response.json()
     },
@@ -188,7 +188,7 @@ export function useHistoricalTrends(options?: HistoricalFilterOptions) {
       const response = await fetchWithAuth(url)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch historical trends')
+        throw new Error(error.detail ?? 'Failed to fetch historical trends')
       }
       return response.json()
     },
@@ -228,7 +228,7 @@ export function useWaitlistMetrics(year: number, options?: MetricsFilterOptions)
       const response = await fetchWithAuth(`/api/metrics/waitlist?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch waitlist metrics')
+        throw new Error(error.detail ?? 'Failed to fetch waitlist metrics')
       }
       return response.json()
     },
@@ -268,7 +268,7 @@ export function useCancellationMetrics(year: number, options?: MetricsFilterOpti
       const response = await fetchWithAuth(`/api/metrics/cancellations?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to fetch cancellation metrics')
+        throw new Error(error.detail ?? 'Failed to fetch cancellation metrics')
       }
       return response.json()
     },
