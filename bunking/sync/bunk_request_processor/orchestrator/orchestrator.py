@@ -35,6 +35,7 @@ from ..data.repositories.session_repository import SessionRepository
 from ..data.repositories.source_link_repository import SourceLinkRepository
 from ..debug.trace_collector import NoOpTraceCollector, TraceCollector
 from ..debug.trace_models import (
+    CandidateTrace,
     FinalBunkRequestTrace,
     Phase2FinalResult,
     Phase2IntentTrace,
@@ -1032,11 +1033,28 @@ class RequestOrchestrator:
                 }
                 for req in pr.parsed_requests
             ]
+            pr_meta = pr.metadata or {}
+            security_meta = pr_meta.get("security_metadata") or {}
+            sanitization_info = (
+                {
+                    "is_suspicious": security_meta.get("is_suspicious", False),
+                    "risk_level": security_meta.get("risk_level"),
+                    "confidence_penalty": security_meta.get("confidence_penalty", 0.0),
+                }
+                if security_meta
+                else None
+            )
             self.trace_collector.record_phase1(
                 key=trace_key,
                 ran=ran,
                 parsed_intents=parsed_intents,
                 is_valid=pr.is_valid,
+                error_message=pr_meta.get("failure_reason"),
+                token_count=pr_meta.get("token_count"),
+                processing_time_ms=pr_meta.get("processing_time_ms"),
+                ai_raw_response=pr_meta.get("ai_raw_response"),
+                ai_reasoning_summary=pr_meta.get("ai_reasoning_summary"),
+                sanitization=sanitization_info,
                 parse_request={"field_name": pr.parse_request.field_name} if pr.parse_request else {},
             )
 
@@ -1101,11 +1119,25 @@ class RequestOrchestrator:
             if not trace_key:
                 continue
             for intent_idx, rr in enumerate(res_list):
+                rr_meta = rr.metadata or {}
+                candidates_trace = [
+                    CandidateTrace(
+                        person_cm_id=c.cm_id,
+                        name=c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                        session_cm_id=c.session_cm_id,
+                        grade=c.grade,
+                        school=c.school,
+                    )
+                    for c in (rr.candidates or [])
+                ]
                 self.trace_collector.record_phase2(
                     key=trace_key,
                     intent_idx=intent_idx,
                     intent_trace=Phase2IntentTrace(
                         target_name=rr.target_name or "",
+                        all_candidates=candidates_trace,
+                        staff_filtered=rr.method == "staff_filtered",
+                        hallucination_detected=bool(rr_meta.get("below_threshold")),
                         final_result=Phase2FinalResult(
                             person_cm_id=rr.person.cm_id if rr.person else None,
                             person_name=rr.person.full_name if rr.person else None,
@@ -1128,12 +1160,28 @@ class RequestOrchestrator:
             if not trace_key:
                 continue
             # Detect if expansion happened by checking for placeholder-expanded requests
-            has_expansion = any(
-                getattr(req, "metadata", {}).get("expanded_from_placeholder") for req in pr.parsed_requests
+            expanded_reqs = [
+                req
+                for req in pr.parsed_requests
+                if (getattr(req, "metadata", None) or {}).get("expanded_from_placeholder")
+            ]
+            has_expansion = len(expanded_reqs) > 0
+            expansion_type = (
+                (expanded_reqs[0].metadata or {}).get("expanded_from_placeholder") if expanded_reqs else None
             )
+            expanded_targets = [
+                {
+                    "target_name": req.target_name or "",
+                    "request_type": req.request_type.value if req.request_type else "",
+                }
+                for req in expanded_reqs
+            ]
             self.trace_collector.record_expansion(
                 key=trace_key,
                 triggered=has_expansion,
+                expansion_type=str(expansion_type) if expansion_type else None,
+                expanded_count=len(expanded_reqs),
+                expanded_targets=expanded_targets,
             )
 
         # Post-expansion conflict detection: catch conflicts that weren't visible before
@@ -1146,6 +1194,14 @@ class RequestOrchestrator:
         # Verify that multiple targets for same historical year were actually in same bunk
         # Boost confidence by +0.10 for verified groups (capped at 0.95)
         logger.info("=== Phase 2.5: Historical Group Verification ===")
+
+        # Snapshot confidence values before historical verification for trace comparison
+        pre_historical_confidences: dict[str, list[float]] = {}
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if trace_key:
+                pre_historical_confidences[trace_key] = [rr.confidence for rr in res_list]
+
         resolution_results = await self.historical_verification_service.verify(resolution_results)
 
         # --- Trace: Historical verification results ---
@@ -1155,10 +1211,16 @@ class RequestOrchestrator:
                 continue
             # Check if any historical boost was applied
             boost_applied = any(rr.metadata.get("historical_verified") if rr.metadata else False for rr in res_list)
+            pre_confs = pre_historical_confidences.get(trace_key, [])
+            # Find the max confidence change to report as the boost
+            original_conf = max(pre_confs) if pre_confs else None
+            boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
             self.trace_collector.record_historical(
                 key=trace_key,
                 ran=True,
                 boost_applied=boost_applied,
+                original_confidence=original_conf if boost_applied else None,
+                boosted_confidence=boosted_conf if boost_applied else None,
             )
 
         # Count Phase 2 results (on expanded results)
@@ -1221,13 +1283,33 @@ class RequestOrchestrator:
             if not trace_key:
                 continue
             ran_phase3 = idx in phase3_processed
+            pre_confs = pre_historical_confidences.get(trace_key, [])
             for intent_idx, rr in enumerate(res_list):
+                rr_meta = rr.metadata or {}
+                # Build candidates sent to AI from the ResolutionResult's candidate list
+                candidates_sent = (
+                    [
+                        {
+                            "person_cm_id": c.cm_id,
+                            "name": c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                        }
+                        for c in (rr.candidates or [])
+                    ]
+                    if ran_phase3
+                    else []
+                )
+                # Phase 3 metadata: ai_confidence, reason, candidates_considered
+                ai_reasoning = rr_meta.get("reason")
+                confidence_before = pre_confs[intent_idx] if intent_idx < len(pre_confs) else None
                 self.trace_collector.record_phase3(
                     key=trace_key,
                     intent_idx=intent_idx,
                     intent_trace=Phase3IntentTrace(
                         target_name=rr.target_name or "",
                         ran=ran_phase3 and not rr.is_resolved,
+                        candidates_sent=candidates_sent,
+                        ai_reasoning=ai_reasoning,
+                        confidence_before=confidence_before,
                         result="resolved"
                         if rr.is_resolved
                         else ("not_needed" if not ran_phase3 else "still_ambiguous"),
@@ -1266,10 +1348,38 @@ class RequestOrchestrator:
                 continue
             requester_cm_id = pr.parse_request.requester_cm_id if pr.parse_request else 0
             final_bunk_requests = []
+            # Track post-pipeline enrichments across all intents for this trace
+            any_self_ref = False
+            any_reciprocal = False
+            reciprocal_boost_amount: float | None = None
+            reciprocal_pair_cm_id: int | None = None
+            any_dedup = False
             for req_idx, (parsed_req, rr) in enumerate(zip(pr.parsed_requests, res_list, strict=False)):
                 # Find the matching created BunkRequest (if any)
                 target_name = parsed_req.target_name or ""
                 matched_br = created_by_key.get((requester_cm_id, target_name))
+                br_meta = matched_br.metadata if matched_br and hasattr(matched_br, "metadata") else {}
+                br_meta = br_meta or {}
+
+                # Detect post-pipeline flags from BunkRequest metadata
+                if br_meta.get("self_referential"):
+                    any_self_ref = True
+                if br_meta.get("is_reciprocal"):
+                    any_reciprocal = True
+                    reciprocal_boost_amount = br_meta.get("reciprocal_boost")
+                    reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
+
+                # Determine final status from BunkRequest if available
+                final_status = "RESOLVED" if rr.is_resolved else "PENDING"
+                final_confidence = rr.confidence
+                if matched_br:
+                    if hasattr(matched_br, "status") and matched_br.status:
+                        final_status = (
+                            matched_br.status.value if hasattr(matched_br.status, "value") else str(matched_br.status)
+                        )
+                    if hasattr(matched_br, "confidence_score"):
+                        final_confidence = matched_br.confidence_score
+
                 final_bunk_requests.append(
                     FinalBunkRequestTrace(
                         bunk_request_id=getattr(matched_br, "id", None) if matched_br else None,
@@ -1277,9 +1387,11 @@ class RequestOrchestrator:
                         requested_cm_id=rr.person.cm_id if rr.person else None,
                         requested_name=target_name,
                         request_type=parsed_req.request_type.value if parsed_req.request_type else "",
-                        status="RESOLVED" if rr.is_resolved else "PENDING",
-                        confidence=rr.confidence,
+                        status=final_status,
+                        confidence=final_confidence,
+                        priority=getattr(matched_br, "priority", 0) if matched_br else 0,
                         resolution_method=rr.method,
+                        declined_reason=br_meta.get("declined_reason"),
                     )
                 )
             self.trace_collector.record_post_pipeline(
@@ -1288,6 +1400,17 @@ class RequestOrchestrator:
                     conflict_detection={
                         "has_conflict": conflict_result.has_conflicts,
                         "details": [],
+                    },
+                    self_reference={"detected": any_self_ref},
+                    reciprocal={
+                        "detected": any_reciprocal,
+                        "boost_applied": any_reciprocal and reciprocal_boost_amount is not None,
+                        "boost_amount": reciprocal_boost_amount,
+                        "pair_cm_id": reciprocal_pair_cm_id,
+                    },
+                    deduplication={
+                        "was_duplicate": any_dedup,
+                        "kept_over": None,
                     },
                     final_bunk_requests=final_bunk_requests,
                 ),
@@ -1437,6 +1560,19 @@ class RequestOrchestrator:
 
                 if not request_text:
                     skipped_no_text += 1
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_empty",
+                            original_text="",
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="empty_text",
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Track original text before any modifications
