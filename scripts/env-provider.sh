@@ -96,7 +96,7 @@ load_env() {
     # ── 2. Doppler CLI ────────────────────────────────────────────────
     if [ "$provider" = "auto" ] || [ "$provider" = "doppler" ]; then
     if [ "$loaded" = false ] && command -v doppler &>/dev/null; then
-        if doppler setup --check &>/dev/null 2>&1; then
+        if doppler configure debug &>/dev/null 2>&1; then
             local doppler_output
             doppler_output=$(doppler secrets download --no-file --format=env-no-quotes 2>/dev/null)
 
@@ -115,6 +115,12 @@ load_env() {
     fi
     fi
 
+    # ── 2b. Explicit provider failed — don't silently fall back ─────
+    if [ "$loaded" = false ] && [ "$provider" != "auto" ]; then
+        echo -e "${_red}SECRETS_PROVIDER=$provider requested but failed${_nc}"
+        return 1
+    fi
+
     # ── 3. .env file ─────────────────────────────────────────────────
     if [ "$loaded" = false ] && [ -f "$project_root/.env" ]; then
         echo -e "${_blue}Loading environment from .env${_nc}"
@@ -127,9 +133,10 @@ load_env() {
     fi
 
     # ── 3b. Local overrides (.env) after secrets manager ─────────────
-    # When a secrets manager provides the base secrets, .env may still
-    # contain local overrides (e.g. worktree port assignments). Source it
-    # as a second pass so local values win.
+    # When a secrets manager provides the base secrets, .env is sourced
+    # as a second pass so ALL .env values override the manager's values.
+    # This is critical for worktrees where .env contains unique port
+    # assignments that the secrets manager doesn't know about.
     if [ "$loaded" = true ] && [ "$_env_source" != "dotenv" ] && [ -f "$project_root/.env" ]; then
         set -a
         # shellcheck source=/dev/null
