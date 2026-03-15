@@ -182,9 +182,9 @@ class DrilldownService:
             return await self._handle_waitlist_session_gender(
                 year=year,
                 breakdown_value=breakdown_value,
-                sessions=sessions,
-                session_types=session_types,
-                duration_session_ids=duration_session_ids,
+                _sessions=sessions,
+                _session_types=session_types,
+                _duration_session_ids=duration_session_ids,
             )
 
         # Waitlist breakdown types need separate fetching logic
@@ -998,9 +998,9 @@ class DrilldownService:
         self,
         year: int,
         breakdown_value: str,
-        sessions: dict[int, Any],
-        session_types: list[str] | None,
-        duration_session_ids: set[int] | None,
+        _sessions: dict[int, Any],
+        _session_types: list[str] | None,
+        _duration_session_ids: set[int] | None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist drilldown filtered by session + gender.
 
@@ -1008,7 +1008,10 @@ class DrilldownService:
         """
         # Parse "session_cm_id:gender" format
         parts = breakdown_value.split(":", 1)
-        target_session = int(parts[0])
+        try:
+            target_session = int(parts[0])
+        except (ValueError, IndexError):
+            return []
         target_gender = parts[1] if len(parts) > 1 and parts[1] else None
 
         # Fetch waitlisted attendees with person expansion

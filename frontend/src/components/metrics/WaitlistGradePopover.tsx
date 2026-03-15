@@ -59,8 +59,21 @@ export function WaitlistGradePopover({
 
   if (!isOpen) return null
 
-  const top = anchorRect.top + anchorRect.height + 8
-  const left = anchorRect.left
+  const popoverWidth = 260
+  const popoverHeight = Math.min(persons.length * 24 + 80, 320)
+  const padding = 10
+
+  let top = anchorRect.top + anchorRect.height + 8
+  let left = anchorRect.left
+
+  // Flip above anchor if clipped at bottom
+  if (top + popoverHeight > window.innerHeight - padding) {
+    top = Math.max(padding, anchorRect.top - popoverHeight - 8)
+  }
+  // Shift left if clipped at right
+  if (left + popoverWidth > window.innerWidth - padding) {
+    left = Math.max(padding, window.innerWidth - popoverWidth - padding)
+  }
 
   const gradeLbl = gradeLabel(grade)
   const headerText = genderLabel
