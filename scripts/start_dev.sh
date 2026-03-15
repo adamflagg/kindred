@@ -12,17 +12,17 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 # shellcheck source=./colors.sh
 source "$SCRIPT_DIR/colors.sh"
 
-if [ -n "${WORKTREE_NAME:-}" ]; then
-    echo -e "${GREEN}Starting Kindred Development Environment${NC} (worktree: ${YELLOW}${WORKTREE_NAME}${NC})"
-else
-    echo -e "${GREEN}Starting Kindred Development Environment${NC}"
-fi
-
 # Load environment from best available provider (Infisical → Doppler → .env)
 # shellcheck source=./env-provider.sh
 source "$SCRIPT_DIR/env-provider.sh"
 if ! load_env "$PROJECT_ROOT"; then
     exit 1
+fi
+
+if [ -n "${WORKTREE_NAME:-}" ]; then
+    echo -e "${GREEN}Starting Kindred Development Environment${NC} (worktree: ${YELLOW}${WORKTREE_NAME}${NC})"
+else
+    echo -e "${GREEN}Starting Kindred Development Environment${NC}"
 fi
 
 # Port configuration (can be overridden via .env for worktrees)
@@ -57,11 +57,9 @@ POCKETBASE_PID=$!
 
 # Wait for PocketBase to be ready
 echo "Waiting for PocketBase to start..."
-PB_READY=false
 for i in {1..30}; do
     if curl -s http://127.0.0.1:$POCKETBASE_PORT/api/health > /dev/null 2>&1; then
         echo -e "${GREEN}PocketBase is ready${NC}"
-        PB_READY=true
         break
     fi
     if [ "$i" -eq 30 ]; then
@@ -200,6 +198,9 @@ for i in {1..15}; do
     if curl -s http://127.0.0.1:$CADDY_PORT > /dev/null 2>&1; then
         echo -e "${GREEN}Caddy is ready${NC}"
         break
+    fi
+    if [ "$i" -eq 15 ]; then
+        echo -e "${RED}Warning: Caddy may not have started properly${NC}"
     fi
     sleep 1
 done

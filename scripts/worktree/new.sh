@@ -212,6 +212,8 @@ if [ -f "$MAIN_REPO/pocketbase/pb_data/data.db" ]; then
     # Copy WAL files if they exist (for consistency)
     cp "$MAIN_REPO/pocketbase/pb_data/data.db-shm" "$WORKTREE_DIR/pocketbase/pb_data/" 2>/dev/null || true
     cp "$MAIN_REPO/pocketbase/pb_data/data.db-wal" "$WORKTREE_DIR/pocketbase/pb_data/" 2>/dev/null || true
+    # Mark as initialized so start_dev.sh skips admin bootstrap (DB already has credentials)
+    touch "$WORKTREE_DIR/pocketbase/pb_data/.initialized"
     echo -e "${GREEN}Database seeded from main${NC}"
 else
     echo -e "${YELLOW}No database in main to seed (will start fresh)${NC}"
