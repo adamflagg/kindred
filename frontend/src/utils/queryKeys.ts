@@ -101,6 +101,12 @@ export const queryKeys = {
   prompts: () => ['prompts'] as const,
   prompt: (name: string) => ['prompts', name] as const,
 
+  // Pipeline Debug (Tier 2 - frequently updated during testing)
+  pipelineRuns: () => ['pipeline-runs'] as const,
+  pipelineSummary: (runId: string) => ['pipeline-summary', runId] as const,
+  pipelineTrace: (traceId: string) => ['pipeline-trace', traceId] as const,
+  pipelineTracesByCamper: (cmId: number) => ['pipeline-traces-camper', cmId] as const,
+
   // Metrics (Tier 1 - sync data, historical analysis)
   retention: (
     baseYear: number,
