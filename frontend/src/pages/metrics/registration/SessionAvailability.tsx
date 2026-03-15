@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -6,8 +6,12 @@ import {
   useSessionAvailability,
   type SessionAvailabilityData,
   type AGSessionAvailabilityData,
+  type WaitlistedPerson,
 } from '../../../hooks/useSessionAvailability'
 import { splitCampAndQuest } from '../../../utils/sessionUtils'
+import { WaitlistTooltip } from '../../../components/metrics/WaitlistTooltip'
+import { WaitlistGradePopover } from '../../../components/metrics/WaitlistGradePopover'
+import { useDrilldown } from '../../../hooks/useDrilldown'
 
 const GRADES = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -61,9 +65,35 @@ function cellClass(status: Status): string {
 function SessionRow({
   session,
   gender,
+  onHover,
+  onMove,
+  onLeave,
+  onGradeClick,
+  onPillClick,
 }: {
   session: SessionAvailabilityData
   gender: 'girls' | 'boys'
+  onHover?: (
+    e: React.MouseEvent,
+    totalCount: number,
+    genderLabel: string,
+    persons: WaitlistedPerson[]
+  ) => void
+  onMove?: (e: React.MouseEvent) => void
+  onLeave?: () => void
+  onGradeClick?: (
+    e: React.MouseEvent,
+    grade: number,
+    genderLabel: string,
+    allPersons: WaitlistedPerson[]
+  ) => void
+  onPillClick?: (
+    sessionCmId: number,
+    sessionName: string,
+    genderCode: string,
+    genderLabel: string,
+    totalCount: number
+  ) => void
 }) {
   const genderData = session[gender]
   const hasWaitlist = genderData.waitlisted > 0
@@ -74,7 +104,22 @@ function SessionRow({
         const status = statusForGrade(genderData, grade)
         const wlCount = genderData.waitlisted_by_grade[grade] ?? 0
         return (
-          <td key={grade} className={cellClass(status)}>
+          <td
+            key={grade}
+            className={`${cellClass(status)}${wlCount > 0 ? 'cursor-pointer' : ''}`}
+            onMouseEnter={
+              wlCount > 0
+                ? (e) => onHover?.(e, genderData.waitlisted, gender, genderData.waitlisted_persons)
+                : undefined
+            }
+            onMouseMove={wlCount > 0 ? (e) => onMove?.(e) : undefined}
+            onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
+            onClick={
+              wlCount > 0
+                ? (e) => onGradeClick?.(e, grade, gender, genderData.waitlisted_persons)
+                : undefined
+            }
+          >
             {wlCount > 0 ? (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
                 {wlCount}
@@ -88,7 +133,23 @@ function SessionRow({
       {/* WL pill column */}
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
-          <span className="inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+          <span
+            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+            onMouseEnter={(e) =>
+              onHover?.(e, genderData.waitlisted, gender, genderData.waitlisted_persons)
+            }
+            onMouseMove={(e) => onMove?.(e)}
+            onMouseLeave={() => onLeave?.()}
+            onClick={() =>
+              onPillClick?.(
+                session.session_cm_id,
+                session.session_name,
+                gender === 'girls' ? 'F' : 'M',
+                gender,
+                genderData.waitlisted
+              )
+            }
+          >
             {genderData.waitlisted}
           </span>
         ) : (
@@ -99,7 +160,37 @@ function SessionRow({
   )
 }
 
-function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
+function AGSessionRow({
+  session,
+  onHover,
+  onMove,
+  onLeave,
+  onGradeClick,
+  onPillClick,
+}: {
+  session: AGSessionAvailabilityData
+  onHover?: (
+    e: React.MouseEvent,
+    totalCount: number,
+    genderLabel: string,
+    persons: WaitlistedPerson[]
+  ) => void
+  onMove?: (e: React.MouseEvent) => void
+  onLeave?: () => void
+  onGradeClick?: (
+    e: React.MouseEvent,
+    grade: number,
+    genderLabel: string,
+    allPersons: WaitlistedPerson[]
+  ) => void
+  onPillClick?: (
+    sessionCmId: number,
+    sessionName: string,
+    genderCode: string,
+    genderLabel: string,
+    totalCount: number
+  ) => void
+}) {
   const hasWaitlist = session.waitlisted > 0
 
   return (
@@ -111,7 +202,22 @@ function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
         )
         const wlCount = session.waitlisted_by_grade[grade] ?? 0
         return (
-          <td key={grade} className={cellClass(status)}>
+          <td
+            key={grade}
+            className={`${cellClass(status)}${wlCount > 0 ? 'cursor-pointer' : ''}`}
+            onMouseEnter={
+              wlCount > 0
+                ? (e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)
+                : undefined
+            }
+            onMouseMove={wlCount > 0 ? (e) => onMove?.(e) : undefined}
+            onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
+            onClick={
+              wlCount > 0
+                ? (e) => onGradeClick?.(e, grade, '', session.waitlisted_persons)
+                : undefined
+            }
+          >
             {wlCount > 0 ? (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
                 {wlCount}
@@ -125,7 +231,15 @@ function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
       {/* WL pill column */}
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
-          <span className="inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+          <span
+            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+            onMouseEnter={(e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)}
+            onMouseMove={(e) => onMove?.(e)}
+            onMouseLeave={() => onLeave?.()}
+            onClick={() =>
+              onPillClick?.(session.session_cm_id, session.session_name, '', '', session.waitlisted)
+            }
+          >
             {session.waitlisted}
           </span>
         ) : (
@@ -169,7 +283,37 @@ function Legend() {
   )
 }
 
-function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
+interface WaitlistHandlers {
+  onHover?: (
+    e: React.MouseEvent,
+    totalCount: number,
+    genderLabel: string,
+    persons: WaitlistedPerson[]
+  ) => void
+  onMove?: (e: React.MouseEvent) => void
+  onLeave?: () => void
+  onGradeClick?: (
+    e: React.MouseEvent,
+    grade: number,
+    genderLabel: string,
+    allPersons: WaitlistedPerson[]
+  ) => void
+  onPillClick?: (
+    sessionCmId: number,
+    sessionName: string,
+    genderCode: string,
+    genderLabel: string,
+    totalCount: number
+  ) => void
+}
+
+function SessionsTable({
+  sessions,
+  handlers,
+}: {
+  sessions: SessionAvailabilityData[]
+  handlers: WaitlistHandlers
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-separate border-spacing-0 text-xs">
@@ -226,9 +370,9 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
               <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
                 {session.session_name}
               </td>
-              <SessionRow session={session} gender="girls" />
+              <SessionRow session={session} gender="girls" {...handlers} />
               <td className="w-3" aria-hidden="true" />
-              <SessionRow session={session} gender="boys" />
+              <SessionRow session={session} gender="boys" {...handlers} />
             </tr>
           ))}
         </tbody>
@@ -239,7 +383,8 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
 
 export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam, durationParam } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, activeSessionTypes, durationParam } =
+    useMetricsSession()
   const { data, isLoading, error } = useSessionAvailability(
     currentYear,
     sessionTypesParam,
@@ -251,6 +396,105 @@ export default function SessionAvailability() {
     () => splitCampAndQuest(data?.sessions ?? []),
     [data?.sessions]
   )
+
+  // Tooltip state
+  const [tooltipData, setTooltipData] = useState<{
+    totalCount: number
+    genderLabel: string
+    persons: WaitlistedPerson[]
+  } | null>(null)
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  // Popover state
+  const [popoverData, setPopoverData] = useState<{
+    grade: number
+    genderLabel: string
+    persons: WaitlistedPerson[]
+  } | null>(null)
+  const [popoverAnchor, setPopoverAnchor] = useState<{
+    top: number
+    left: number
+    width: number
+    height: number
+  }>({
+    top: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+  })
+
+  // Drilldown
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: currentYear,
+    sessionTypes: [...activeSessionTypes],
+    statusFilter: ['waitlisted'],
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
+
+  // Tooltip handlers
+  const handleHover = useCallback(
+    (e: React.MouseEvent, totalCount: number, genderLabel: string, persons: WaitlistedPerson[]) => {
+      setTooltipData({ totalCount, genderLabel, persons })
+      setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+    },
+    []
+  )
+
+  const handleMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!tooltipData) return
+      setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+    },
+    [tooltipData]
+  )
+
+  const handleLeave = useCallback(() => {
+    setTooltipData(null)
+  }, [])
+
+  // Grade cell click -> popover
+  const handleGradeClick = useCallback(
+    (e: React.MouseEvent, grade: number, genderLabel: string, allPersons: WaitlistedPerson[]) => {
+      setTooltipData(null) // hide tooltip when opening popover
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const gradePersons = allPersons.filter((p) => p.grade === grade)
+      setPopoverData({ grade, genderLabel, persons: gradePersons })
+      setPopoverAnchor({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+    },
+    []
+  )
+
+  // WL pill click -> drilldown modal (only if > 5 waitlisted)
+  const handlePillClick = useCallback(
+    (
+      sessionCmId: number,
+      sessionName: string,
+      genderCode: string,
+      genderLabel: string,
+      totalCount: number
+    ) => {
+      if (totalCount <= 5) return // tooltip has everything
+      setTooltipData(null)
+      setFilter({
+        type: 'waitlist_session_gender',
+        value: `${sessionCmId}:${genderCode}`,
+        label: `${genderLabel ? genderLabel.charAt(0).toUpperCase() + genderLabel.slice(1) : 'Campers'} Waitlisted — ${sessionName}`,
+        titleFormat: 'adjective',
+        statusOverride: ['waitlisted'],
+        waitlistContext: true,
+      })
+    },
+    [setFilter]
+  )
+
+  const waitlistHandlers: WaitlistHandlers = {
+    onHover: handleHover,
+    onMove: handleMove,
+    onLeave: handleLeave,
+    onGradeClick: handleGradeClick,
+    onPillClick: handlePillClick,
+  }
 
   if (isLoading) {
     return (
@@ -293,7 +537,9 @@ export default function SessionAvailability() {
       <div className="card-lodge p-4">
         <div className="space-y-6">
           {/* Camp sessions matrix (main + embedded) */}
-          {campSessions.length > 0 && <SessionsTable sessions={campSessions} />}
+          {campSessions.length > 0 && (
+            <SessionsTable sessions={campSessions} handlers={waitlistHandlers} />
+          )}
 
           {/* AG Sessions */}
           {ag_sessions.length > 0 && (
@@ -325,7 +571,7 @@ export default function SessionAvailability() {
                         <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
                           {session.session_name}
                         </td>
-                        <AGSessionRow session={session} />
+                        <AGSessionRow session={session} {...waitlistHandlers} />
                       </tr>
                     ))}
                   </tbody>
@@ -338,13 +584,32 @@ export default function SessionAvailability() {
           {questSessions.length > 0 && (
             <div>
               <h4 className="text-muted-foreground mb-3 text-sm font-semibold">Quests</h4>
-              <SessionsTable sessions={questSessions} />
+              <SessionsTable sessions={questSessions} handlers={waitlistHandlers} />
             </div>
           )}
         </div>
 
         <Legend />
       </div>
+
+      <WaitlistTooltip
+        isVisible={tooltipData !== null}
+        position={tooltipPos}
+        totalCount={tooltipData?.totalCount ?? 0}
+        genderLabel={tooltipData?.genderLabel ?? ''}
+        persons={tooltipData?.persons ?? []}
+      />
+
+      <WaitlistGradePopover
+        isOpen={popoverData !== null}
+        anchorRect={popoverAnchor}
+        grade={popoverData?.grade ?? 0}
+        genderLabel={popoverData?.genderLabel ?? ''}
+        persons={popoverData?.persons ?? []}
+        onClose={() => setPopoverData(null)}
+      />
+
+      <DrilldownModal />
     </div>
   )
 }
