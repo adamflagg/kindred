@@ -414,6 +414,7 @@ export interface DrilldownFilter {
     | 'cancellation_has_other_sessions'
     | 'cancellation_no_other_sessions'
     | 'cancellation_re_enrolled'
+    | 'waitlist_session_gender'
   value: string
   label: string // Display label for modal title
   /** Title format: 'in' → "X campers in Label", 'adjective' → "X Label Camper(s)" */

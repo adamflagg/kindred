@@ -17,7 +17,7 @@ function gradeLabel(grade: number): string {
   return `${grade}th`
 }
 
-type Status = 'open' | 'limited' | 'waitlist' | 'na'
+type Status = 'open' | 'limited' | 'full' | 'na'
 
 function statusForGrade(
   gender: { min_grade: number | null; max_grade: number | null; status: string },
@@ -37,8 +37,8 @@ function CellContent({ status }: { status: Status }) {
       return <span className="sr-only">Open</span>
     case 'limited':
       return <span className="sr-only">Limited</span>
-    case 'waitlist':
-      return <span className="text-xs font-bold">WL</span>
+    case 'full':
+      return <span className="sr-only">Full</span>
     case 'na':
       return <span className="sr-only">N/A</span>
   }
@@ -51,7 +51,7 @@ function cellClass(status: Status): string {
       return `${base} bg-emerald-100 dark:bg-emerald-900/40`
     case 'limited':
       return `${base} bg-amber-200 dark:bg-amber-800/50`
-    case 'waitlist':
+    case 'full':
       return `${base} bg-red-200 dark:bg-red-900/50`
     case 'na':
       return `${base} bg-neutral-200 dark:bg-neutral-700`
@@ -110,10 +110,8 @@ function Legend() {
         Limited Space
       </span>
       <span className="flex items-center gap-1">
-        <span className="border-border/50 flex h-5 w-5 items-center justify-center rounded border bg-red-200 text-[10px] font-bold dark:bg-red-900/50">
-          WL
-        </span>
-        Waitlist
+        <span className="border-border/50 h-5 w-5 rounded border bg-red-200 dark:bg-red-900/50" />
+        Full
       </span>
       <span className="flex items-center gap-1">
         <span className="border-border/50 h-5 w-5 rounded border bg-neutral-200 dark:bg-neutral-700" />

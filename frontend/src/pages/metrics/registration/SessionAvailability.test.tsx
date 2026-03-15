@@ -61,6 +61,8 @@ const mockAvailabilityResponse = {
         waitlisted: 0,
         capacity: 36,
         status: 'open',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
       boys: {
         min_grade: 2,
@@ -69,6 +71,8 @@ const mockAvailabilityResponse = {
         waitlisted: 0,
         capacity: 36,
         status: 'open',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
     },
     {
@@ -82,7 +86,9 @@ const mockAvailabilityResponse = {
         enrolled: 50,
         waitlisted: 3,
         capacity: 60,
-        status: 'waitlist',
+        status: 'full',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
       boys: {
         min_grade: 2,
@@ -91,6 +97,8 @@ const mockAvailabilityResponse = {
         waitlisted: 0,
         capacity: 60,
         status: 'limited',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
     },
   ],
@@ -105,6 +113,8 @@ const mockAvailabilityResponse = {
       waitlisted: 0,
       capacity: 24,
       status: 'open',
+      waitlisted_by_grade: {},
+      waitlisted_persons: [],
     },
   ],
   limited_threshold: 80,
@@ -192,7 +202,7 @@ describe('SessionAvailability', () => {
     expect(screen.getByText(/ag sessions/i)).toBeInTheDocument()
   })
 
-  it('shows WL text for waitlisted sessions', async () => {
+  it('renders full status cells', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => mockAvailabilityResponse,
@@ -204,9 +214,9 @@ describe('SessionAvailability', () => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
     })
 
-    // Session 2 girls has status=waitlist, should show WL cells
-    const wlCells = screen.getAllByText('WL')
-    expect(wlCells.length).toBeGreaterThan(0)
+    // Session 2 girls has status='full', should have sr-only "Full" text
+    const fullCells = screen.getAllByText('Full')
+    expect(fullCells.length).toBeGreaterThan(0)
   })
 
   it('renders page title', async () => {
@@ -237,8 +247,7 @@ describe('SessionAvailability', () => {
     // Legend items — use exact text unique to the legend
     expect(screen.getByText('Open Space')).toBeInTheDocument()
     expect(screen.getByText('Limited Space')).toBeInTheDocument()
-    // "WL" appears in legend and cells, "N/A" appears in legend and sr-only cells
-    expect(screen.getAllByText('WL').length).toBeGreaterThanOrEqual(2) // legend + cells
+    expect(screen.getAllByText('Full').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1)
   })
 
