@@ -255,7 +255,7 @@ describe('PipelineBatchList', () => {
       await user.selectOptions(statusFilter, 'RESOLVED')
 
       expect(defaultProps.onFiltersChange).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'RESOLVED' })
+        expect.objectContaining({ final_status: 'RESOLVED' })
       )
     })
 

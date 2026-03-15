@@ -1222,6 +1222,7 @@ def toggle_pipeline_run_pin(
     user: AuthUser = Depends(require_admin),
 ) -> PinToggleResponse:
     """Toggle the pinned status of a pipeline run."""
+    _validate_run_id(run_id)
     # Find the run record by run_id
     records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"filter": f'run_id = "{run_id}"'})
     if not records:
@@ -1247,22 +1248,36 @@ def get_pipeline_run_summary(
     source_field: str | None = Query(default=None),
     phase3_triggered: bool | None = Query(default=None),
     pre_p1_action: str | None = Query(default=None),
+    session_cm_id: int | None = Query(default=None, ge=1),
+    min_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
+    max_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
     sort: str = Query(default="-final_confidence"),
     user: AuthUser = Depends(require_admin),
 ) -> PipelineSummaryResponse:
     """Get summary rows for a run with PB-native filtering/sort/pagination."""
+    _validate_run_id(run_id)
     filter_parts = [f'run_id = "{run_id}"']
 
     if final_status:
+        _validate_allowlist(final_status, VALID_FINAL_STATUSES, "final_status")
         filter_parts.append(f'final_status = "{final_status}"')
     if resolution_method:
+        _validate_allowlist(resolution_method, VALID_RESOLUTION_METHODS, "resolution_method")
         filter_parts.append(f'resolution_method = "{resolution_method}"')
     if source_field:
+        _validate_allowlist(source_field, VALID_SOURCE_FIELDS, "source_field")
         filter_parts.append(f'source_field = "{source_field}"')
     if phase3_triggered is not None:
         filter_parts.append(f"phase3_triggered = {str(phase3_triggered).lower()}")
     if pre_p1_action:
+        _validate_allowlist(pre_p1_action, VALID_PRE_P1_ACTIONS, "pre_p1_action")
         filter_parts.append(f'pre_p1_action = "{pre_p1_action}"')
+    if session_cm_id is not None:
+        filter_parts.append(f"session_cm_id = {session_cm_id}")
+    if min_confidence is not None:
+        filter_parts.append(f"final_confidence >= {min_confidence}")
+    if max_confidence is not None:
+        filter_parts.append(f"final_confidence <= {max_confidence}")
 
     filter_str = " && ".join(filter_parts)
 
@@ -1318,7 +1333,51 @@ def get_traces_by_camper(
 # Pipeline Debug Endpoints — On-Demand Phase Execution
 # =============================================================================
 
+# Allowlists for PB filter injection prevention
+VALID_RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+VALID_FINAL_STATUSES = {"RESOLVED", "PENDING", "DECLINED"}
+VALID_RESOLUTION_METHODS = {
+    "exact_match",
+    "fuzzy_match",
+    "nickname",
+    "social_graph",
+    "ai_disambiguation",
+    "age_preference",
+    "placeholder",
+    "unresolved",
+}
+VALID_SOURCE_FIELDS = {
+    "bunk_with",
+    "not_bunk_with",
+    "bunking_notes",
+    "socialize_with",
+    "socialize_not_with",
+}
+VALID_PRE_P1_ACTIONS = {
+    "parsed",
+    "skipped_no_preference",
+    "skipped_no_session",
+    "skipped_already_processed",
+    "skipped_staff",
+    "socialize_direct_map",
+}
+
 VALID_CASCADE_PHASES = {"phase1", "phase2", "phase3"}
+
+
+def _validate_run_id(run_id: str) -> None:
+    """Validate run_id matches expected UUID hex format to prevent PB filter injection."""
+    if not VALID_RUN_ID_PATTERN.match(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format")
+
+
+def _validate_allowlist(value: str, allowlist: set[str], field_name: str) -> None:
+    """Validate a string value against an allowlist to prevent PB filter injection."""
+    if value not in allowlist:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field_name} value: '{value}'",
+        )
 
 
 def _create_phase_runner() -> Any:
@@ -1398,12 +1457,13 @@ async def run_phase2(
             dry_run=True,
             results={"trace_data_loaded": True, "trace_id": body.trace_id},
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Phase 2 execution failed")
         return PhaseRunResponse(
             success=False,
             phase="phase2",
             dry_run=True,
-            error=str(e),
+            error="Phase execution failed",
         )
 
 
@@ -1437,12 +1497,13 @@ async def run_phase3(
             dry_run=True,
             results={"trace_data_loaded": True, "trace_id": body.trace_id},
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Phase 3 execution failed")
         return PhaseRunResponse(
             success=False,
             phase="phase3",
             dry_run=True,
-            error=str(e),
+            error="Phase execution failed",
         )
 
 
@@ -1487,12 +1548,13 @@ async def run_from_phase(
             dry_run=body.dry_run,
             results={"trace_data_loaded": True, "trace_id": body.trace_id},
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Phase execution failed for phase=%s", phase)
         return PhaseRunResponse(
             success=False,
             phase=phase,
             dry_run=body.dry_run,
-            error=str(e),
+            error="Phase execution failed",
         )
 
 
@@ -1523,10 +1585,11 @@ async def run_full_trace(
             dry_run=body.dry_run,
             results={"original_request_ids": body.original_request_ids},
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Full trace execution failed")
         return PhaseRunResponse(
             success=False,
             phase="full",
             dry_run=body.dry_run,
-            error=str(e),
+            error="Phase execution failed",
         )

@@ -215,6 +215,7 @@ class PhaseRunner:
     def _reconstruct_parse_results_from_trace(
         self,
         trace_data: TraceData | None,
+        original_request_id: str = "",
     ) -> list[ParseResult]:
         """Reconstruct ParseResult objects from trace data for Phase 2 input.
 
@@ -223,6 +224,8 @@ class PhaseRunner:
 
         Args:
             trace_data: Trace data with Phase 1 results.
+            original_request_id: PB record ID for the original bunk request,
+                used to build row_data so _get_trace_key can resolve back to this trace.
 
         Returns:
             List of ParseResult objects (may be empty if trace_data is None).
@@ -232,6 +235,7 @@ class PhaseRunner:
 
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
+            ParseRequest,
             ParseResult,
             RequestSource,
             RequestType,
@@ -260,10 +264,34 @@ class PhaseRunner:
             )
             parsed_requests.append(parsed_req)
 
-        # Create a minimal ParseResult
+        # Build a ParseRequest with enough context for _get_trace_key to resolve
+        # the original_request_id. _get_trace_key reads:
+        #   parse_request.field_name -> maps to PB field -> looks up in row_data._original_request_ids
+        source_field = trace_data.pre_phase1.field_path or "bunk_with"
+
+        from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
+
+        # Build reverse map: source_field value -> PB field name
+        source_to_pb_field = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
+        pb_field_name = source_to_pb_field.get(source_field, source_field)
+
+        parse_request = ParseRequest(
+            request_text=trace_data.pre_phase1.original_text,
+            field_name=source_field,
+            requester_name=trace_data.pre_phase1.requester_info.name,
+            requester_cm_id=trace_data.pre_phase1.requester_info.cm_id,
+            requester_grade=trace_data.pre_phase1.requester_info.grade,
+            session_cm_id=trace_data.pre_phase1.session_cm_ids[0] if trace_data.pre_phase1.session_cm_ids else 0,
+            session_name="",
+            year=0,
+            row_data={"_original_request_ids": {pb_field_name: original_request_id}},
+        )
+
+        # Create a minimal ParseResult with parse_request for trace key resolution
         parse_result = ParseResult(
             is_valid=trace_data.phase1_parse.is_valid,
             parsed_requests=parsed_requests,
+            parse_request=parse_request,
         )
 
         return [parse_result]

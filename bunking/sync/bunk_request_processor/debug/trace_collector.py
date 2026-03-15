@@ -282,10 +282,19 @@ class TraceCollector:
         for trace_data in self._traces.values():
             if not trace_data.post_pipeline.final_bunk_requests:
                 breakdown["skipped"] += 1
+                continue
+            # Determine the most significant status across all requests in this trace.
+            # Priority: pending > declined > resolved (pending is most actionable).
+            trace_status = "resolved"
             for br in trace_data.post_pipeline.final_bunk_requests:
                 status = br.status.lower()
-                if status in breakdown:
-                    breakdown[status] += 1
+                if status == "pending":
+                    trace_status = "pending"
+                    break  # pending is highest priority, no need to check further
+                elif status == "declined" and trace_status != "pending":
+                    trace_status = "declined"
+            if trace_status in breakdown:
+                breakdown[trace_status] += 1
         return breakdown
 
 

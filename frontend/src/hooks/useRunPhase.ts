@@ -25,7 +25,7 @@ export function useRunPhase1() {
     mutationFn: (request: RunPhaseRequest) =>
       pipelineDebugService.runPhase1(request, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'] })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'], exact: false })
       void queryClient.invalidateQueries({ queryKey: queryKeys.pipelineRuns() })
     },
   })
@@ -43,7 +43,7 @@ export function useRunPhase2() {
     mutationFn: (request: RunPhaseRequest) =>
       pipelineDebugService.runPhase2(request, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'] })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'], exact: false })
       void queryClient.invalidateQueries({ queryKey: queryKeys.pipelineRuns() })
     },
   })
@@ -61,7 +61,7 @@ export function useRunPhase3() {
     mutationFn: (request: RunPhaseRequest) =>
       pipelineDebugService.runPhase3(request, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'] })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'], exact: false })
       void queryClient.invalidateQueries({ queryKey: queryKeys.pipelineRuns() })
     },
   })
@@ -80,8 +80,8 @@ export function useRunFromPhase() {
     mutationFn: ({ phase, request }: { phase: PipelinePhase; request: RunFromPhaseRequest }) =>
       pipelineDebugService.runFromPhase(phase, request, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'] })
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-summary'] })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'], exact: false })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-summary'], exact: false })
       void queryClient.invalidateQueries({ queryKey: queryKeys.pipelineRuns() })
     },
   })
@@ -100,8 +100,8 @@ export function useRunFullTrace() {
     mutationFn: (request: RunFullTraceRequest) =>
       pipelineDebugService.runFullTrace(request, fetchWithAuth),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'] })
-      void queryClient.invalidateQueries({ queryKey: ['pipeline-summary'] })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-trace'], exact: false })
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-summary'], exact: false })
       void queryClient.invalidateQueries({ queryKey: queryKeys.pipelineRuns() })
     },
   })

@@ -101,8 +101,8 @@ export function PipelineBatchList({
             </label>
             <select
               id="filter-status"
-              value={filters.status ?? ''}
-              onChange={(e) => updateFilter('status', e.target.value || undefined)}
+              value={filters.final_status ?? ''}
+              onChange={(e) => updateFilter('final_status', e.target.value || undefined)}
               className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 rounded-md border px-2 py-1 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
             >
               <option value="">All</option>

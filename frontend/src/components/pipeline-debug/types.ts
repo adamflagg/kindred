@@ -277,7 +277,7 @@ export interface PipelineSummaryResponse {
 }
 
 export interface PipelineSummaryFilters {
-  status?: string
+  final_status?: string
   resolution_method?: string
   source_field?: string
   session_cm_id?: number
@@ -285,8 +285,8 @@ export interface PipelineSummaryFilters {
   pre_p1_action?: string
   min_confidence?: number
   max_confidence?: number
-  limit?: number
-  offset?: number
+  page?: number
+  per_page?: number
   sort?: string
 }
 
@@ -307,7 +307,9 @@ export type PipelinePhase =
 export interface RunPhaseRequest {
   trace_id?: string
   original_request_ids?: string[]
-  write_to_production?: boolean
+  year: number
+  session_cm_ids: number[]
+  dry_run?: boolean
 }
 
 export interface RunPhaseResponse {
@@ -315,16 +317,21 @@ export interface RunPhaseResponse {
   trace_id: string | null
   error?: string
   phase?: string
+  dry_run?: boolean
 }
 
 export interface RunFromPhaseRequest {
   trace_id: string
-  write_to_production?: boolean
+  year: number
+  session_cm_ids: number[]
+  dry_run?: boolean
 }
 
 export interface RunFullTraceRequest {
-  original_request_id: string
-  write_to_production?: boolean
+  original_request_ids: string[]
+  year: number
+  session_cm_ids: number[]
+  dry_run?: boolean
 }
 
 export interface TogglePinResponse {

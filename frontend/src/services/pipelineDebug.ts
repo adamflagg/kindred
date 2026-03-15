@@ -65,7 +65,7 @@ export const pipelineDebugService = {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<PipelineSummaryResponse> {
     const params = new URLSearchParams()
-    if (filters.status) params.set('status', filters.status)
+    if (filters.final_status) params.set('final_status', filters.final_status)
     if (filters.resolution_method) params.set('resolution_method', filters.resolution_method)
     if (filters.source_field) params.set('source_field', filters.source_field)
     if (filters.session_cm_id !== undefined) {
@@ -81,8 +81,8 @@ export const pipelineDebugService = {
     if (filters.max_confidence !== undefined) {
       params.set('max_confidence', String(filters.max_confidence))
     }
-    if (filters.limit !== undefined) params.set('limit', String(filters.limit))
-    if (filters.offset !== undefined) params.set('offset', String(filters.offset))
+    if (filters.page !== undefined) params.set('page', String(filters.page))
+    if (filters.per_page !== undefined) params.set('per_page', String(filters.per_page))
     if (filters.sort) params.set('sort', filters.sort)
 
     const queryString = params.toString()
@@ -109,7 +109,8 @@ export const pipelineDebugService = {
     if (!response.ok) {
       throw new Error('Failed to fetch pipeline trace')
     }
-    return response.json()
+    const data = await response.json()
+    return data.trace
   },
 
   /**

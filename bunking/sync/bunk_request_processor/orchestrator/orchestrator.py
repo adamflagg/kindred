@@ -1340,7 +1340,7 @@ class RequestOrchestrator:
         created_by_key: dict[tuple[int, str], Any] = {}
         for req in created_requests:
             req_key = (req.requester_cm_id, getattr(req, "requested_name", "") or "")
-            created_by_key[req_key] = req
+            created_by_key.setdefault(req_key, req)
 
         for pr, res_list in resolution_results:
             trace_key = _get_trace_key(pr)

@@ -49,7 +49,7 @@ def _make_mock_pb_record(**kwargs: Any) -> MagicMock:
 
 def _make_pb_run_record(
     record_id: str = "rec_run_1",
-    run_id: str = "abc123",
+    run_id: str = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
     year: int = 2025,
     session: str = "1",
     source_fields: list[str] | None = None,
@@ -77,7 +77,7 @@ def _make_pb_run_record(
 
 def _make_pb_summary_record(
     record_id: str = "rec_sum_1",
-    run_id: str = "abc123",
+    run_id: str = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
     trace: str = "rec_trace_1",
     original_request: str = "rec_orig_1",
     requester_cm_id: int = 12345,
@@ -112,7 +112,7 @@ def _make_pb_summary_record(
 
 def _make_pb_trace_record(
     record_id: str = "rec_trace_1",
-    run_id: str = "abc123",
+    run_id: str = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
     requester_cm_id: int = 12345,
     trace_data: dict | None = None,
 ) -> MagicMock:
@@ -169,7 +169,7 @@ class TestListPipelineRuns:
         data = response.json()
         assert "items" in data
         assert data["total"] == 1
-        assert data["items"][0]["run_id"] == "abc123"
+        assert data["items"][0]["run_id"] == "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
         assert data["items"][0]["year"] == 2025
         assert data["items"][0]["trace_count"] == 5
 
@@ -197,11 +197,11 @@ class TestPinPipelineRun:
         mock_collection.get_full_list.return_value = [run_record]
         mock_collection.update.return_value = _make_mock_pb_record(pinned=True)
 
-        response = client.post("/api/debug/pipeline-runs/abc123/pin")
+        response = client.post("/api/debug/pipeline-runs/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/pin")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["run_id"] == "abc123"
+        assert data["run_id"] == "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
         assert data["pinned"] is True
 
 
@@ -220,7 +220,7 @@ class TestGetPipelineRunSummary:
         result_list.per_page = 50
         mock_collection.get_list.return_value = result_list
 
-        response = client.get("/api/debug/pipeline-runs/abc123/summary")
+        response = client.get("/api/debug/pipeline-runs/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/summary")
 
         assert response.status_code == 200
         data = response.json()
@@ -240,7 +240,7 @@ class TestGetPipelineRunSummary:
         mock_collection.get_list.return_value = result_list
 
         response = client.get(
-            "/api/debug/pipeline-runs/abc123/summary",
+            "/api/debug/pipeline-runs/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/summary",
             params={"final_status": "RESOLVED", "page": 1, "per_page": 20},
         )
 

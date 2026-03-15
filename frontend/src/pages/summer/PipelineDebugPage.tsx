@@ -87,10 +87,16 @@ export default function PipelineDebugPage() {
       setStalePhases(downstream)
 
       // Run the phase (dry-run, single phase via runFromPhase with same start/end)
+      const trace = traceQuery.data
       runFromPhase.mutate(
         {
           phase,
-          request: { trace_id: traceId, write_to_production: false },
+          request: {
+            trace_id: traceId,
+            year: trace?.year ?? 0,
+            session_cm_ids: trace?.session_cm_id ? [trace.session_cm_id] : [],
+            dry_run: true,
+          },
         },
         {
           onSuccess: (result) => {
@@ -110,10 +116,16 @@ export default function PipelineDebugPage() {
       if (!traceId) return
       setStalePhases(new Set()) // Clear stale since we're re-running everything downstream
 
+      const trace = traceQuery.data
       runFromPhase.mutate(
         {
           phase,
-          request: { trace_id: traceId, write_to_production: writeToProduction },
+          request: {
+            trace_id: traceId,
+            year: trace?.year ?? 0,
+            session_cm_ids: trace?.session_cm_id ? [trace.session_cm_id] : [],
+            dry_run: !writeToProduction,
+          },
         },
         {
           onSuccess: (result) => {

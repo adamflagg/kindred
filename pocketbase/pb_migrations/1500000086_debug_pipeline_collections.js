@@ -24,9 +24,9 @@ migrate((app) => {
     name: "debug_pipeline_runs",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.collectionName = "_superusers"',
+    updateRule: '@request.auth.collectionName = "_superusers"',
+    deleteRule: '@request.auth.collectionName = "_superusers"',
     fields: [
       { type: "text", name: "run_id", required: true },
       { type: "number", name: "year", required: true },
@@ -51,9 +51,9 @@ migrate((app) => {
     name: "debug_pipeline_traces",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.collectionName = "_superusers"',
+    updateRule: '@request.auth.collectionName = "_superusers"',
+    deleteRule: '@request.auth.collectionName = "_superusers"',
     fields: [
       { type: "text", name: "run_id", required: true },
       {
@@ -83,9 +83,9 @@ migrate((app) => {
     name: "debug_pipeline_summary",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.collectionName = "_superusers"',
+    updateRule: '@request.auth.collectionName = "_superusers"',
+    deleteRule: '@request.auth.collectionName = "_superusers"',
     fields: [
       { type: "text", name: "run_id", required: true },
       {
