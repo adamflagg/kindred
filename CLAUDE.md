@@ -281,7 +281,7 @@ git pull --rebase origin main
 cd ../kindred-worktrees/<feature-name>
 
 # 4. Start development
-./start.sh
+./scripts/start_dev.sh
 
 # 5. Work, commit, push, create PR as normal
 
