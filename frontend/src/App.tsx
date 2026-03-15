@@ -56,7 +56,8 @@ const ManageRegistrationPage = lazy(() =>
 )
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
-const DebugPage = lazy(() => import('./pages/summer/DebugPage'))
+const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
+const PromptEditorPage = lazy(() => import('./pages/summer/PromptEditorPage'))
 // Metrics module - hierarchical navigation
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
 const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'))
@@ -325,18 +326,49 @@ function App() {
                             <Route path="user" element={<Navigate to="/user" replace />} />
                             <Route path="users" element={<Navigate to="/users" replace />} />
                             <Route path="admin" element={<Navigate to="/admin" replace />} />
-                            <Route
-                              path="debug"
-                              element={
-                                <AdminRoute>
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <DebugPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </AdminRoute>
-                              }
-                            />
+                            {/* Debug routes — pipeline trace tool + prompt editor */}
+                            <Route path="debug">
+                              <Route
+                                index
+                                element={<Navigate to="/summer/debug/pipeline" replace />}
+                              />
+                              <Route
+                                path="pipeline"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <PipelineDebugPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="pipeline/:traceId"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <PipelineDebugPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="prompts"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <PromptEditorPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                            </Route>
                           </Route>
 
                           {/* Metrics routes - hierarchical navigation */}
