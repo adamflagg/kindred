@@ -18,7 +18,7 @@ function gradeLabel(grade: number | null | undefined): string {
 }
 
 function abbreviateName(person: WaitlistedPerson): string {
-  const first = person.preferred_name || person.first_name
+  const first = person.preferred_name ?? person.first_name
   const lastInitial = person.last_name.charAt(0)
   return `${first} ${lastInitial}.`
 }
@@ -64,7 +64,6 @@ export function WaitlistTooltip({
     <div
       className="bg-popover pointer-events-none fixed z-[100] max-w-[260px] min-w-[180px] rounded-lg border p-3 shadow-lg"
       style={{
-        position: 'fixed',
         top: `${tooltipPosition.top}px`,
         left: `${tooltipPosition.left}px`,
       }}
@@ -85,7 +84,7 @@ export function WaitlistTooltip({
       </div>
       {remaining > 0 && (
         <div className="text-muted-foreground mt-2 border-t pt-1.5 text-center text-[10px]">
-          + {remaining} more — click for full list
+          + {remaining} more
         </div>
       )}
     </div>,

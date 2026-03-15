@@ -1,7 +1,7 @@
 """Session availability service.
 
 Computes the availability matrix: for each session × gender, determine
-enrollment counts, capacity, and status (open/limited/waitlist).
+enrollment counts, capacity, and status (open/limited/full).
 """
 
 from __future__ import annotations

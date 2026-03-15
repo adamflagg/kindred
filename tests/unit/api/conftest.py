@@ -118,8 +118,17 @@ def create_mock_attendee(
         person = MagicMock()
         person.cm_id = person_id
         person.gender = gender
-        person.first_name = first_name or f"Person{person_id}"
-        person.last_name = last_name or "Test"
+        _names = [
+            ("Emma", "Johnson"),
+            ("Liam", "Garcia"),
+            ("Olivia", "Chen"),
+            ("Noah", "Williams"),
+            ("Sophia", "Davis"),
+            ("Ethan", "Martinez"),
+        ]
+        _fn, _ln = _names[person_id % len(_names)]
+        person.first_name = first_name or _fn
+        person.last_name = last_name or _ln
         person.preferred_name = preferred_name
         person.grade = grade
         person.years_at_camp = years_at_camp or 0

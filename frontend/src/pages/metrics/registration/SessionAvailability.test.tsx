@@ -667,8 +667,8 @@ describe('SessionAvailability', () => {
       expect(screen.getByText('Session 1')).toBeInTheDocument()
     })
 
-    // The WL pill should have cursor-pointer class
+    // WL pill with count 3 (<=5) should NOT have cursor-pointer (no drilldown action)
     const pill = screen.getByText('3', { selector: 'span.inline-flex' })
-    expect(pill).toHaveClass('cursor-pointer')
+    expect(pill).not.toHaveClass('cursor-pointer')
   })
 })

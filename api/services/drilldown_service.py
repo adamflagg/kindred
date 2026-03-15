@@ -1049,7 +1049,9 @@ class DrilldownService:
                     session_cm_id=session_cm_id,
                     session_name=str(getattr(session, "name", "Unknown")),
                     status="waitlisted",
-                    is_returning=False,
+                    is_returning=bool(
+                        getattr(person, "years_at_camp", None) and getattr(person, "years_at_camp", 0) > 1
+                    ),
                     effective_date=_get_str_attr(att, "effective_date"),
                     enrollment_date=_get_str_attr(att, "enrollment_date"),
                 )

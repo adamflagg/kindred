@@ -788,8 +788,8 @@ class TestWaitlistByGrade:
                     gender="F",
                     status="waitlisted",
                     grade=3 + (i % 3),
-                    first_name=f"Girl{i}",
-                    last_name=f"Test{i}",
+                    first_name=["Emma", "Olivia", "Sophia", "Mia", "Ava", "Isabella", "Charlotte"][i],
+                    last_name=["Johnson", "Chen", "Garcia", "Williams", "Davis", "Martinez", "Brown"][i],
                     effective_date=eff,
                     enrollment_date=enr,
                 )

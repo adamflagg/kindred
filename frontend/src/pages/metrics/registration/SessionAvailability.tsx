@@ -84,6 +84,7 @@ function SessionRow({
   onGradeClick?: (
     e: React.MouseEvent,
     grade: number,
+    gradeCount: number,
     genderLabel: string,
     allPersons: WaitlistedPerson[]
   ) => void
@@ -118,7 +119,7 @@ function SessionRow({
             onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
             onClick={
               wlCount > 0
-                ? (e) => onGradeClick?.(e, grade, gender, genderData.waitlisted_persons)
+                ? (e) => onGradeClick?.(e, grade, wlCount, gender, genderData.waitlisted_persons)
                 : undefined
             }
           >
@@ -136,7 +137,12 @@ function SessionRow({
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
           <span
-            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+            className={[
+              'inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+              genderData.waitlisted > 5 && 'cursor-pointer',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             onMouseEnter={(e) =>
               onHover?.(e, genderData.waitlisted, gender, genderData.waitlisted_persons)
             }
@@ -182,6 +188,7 @@ function AGSessionRow({
   onGradeClick?: (
     e: React.MouseEvent,
     grade: number,
+    gradeCount: number,
     genderLabel: string,
     allPersons: WaitlistedPerson[]
   ) => void
@@ -218,7 +225,7 @@ function AGSessionRow({
             onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
             onClick={
               wlCount > 0
-                ? (e) => onGradeClick?.(e, grade, '', session.waitlisted_persons)
+                ? (e) => onGradeClick?.(e, grade, wlCount, '', session.waitlisted_persons)
                 : undefined
             }
           >
@@ -236,7 +243,12 @@ function AGSessionRow({
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
           <span
-            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+            className={[
+              'inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+              session.waitlisted > 5 && 'cursor-pointer',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             onMouseEnter={(e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)}
             onMouseMove={(e) => onMove?.(e)}
             onMouseLeave={() => onLeave?.()}
@@ -299,6 +311,7 @@ interface WaitlistHandlers {
   onGradeClick?: (
     e: React.MouseEvent,
     grade: number,
+    gradeCount: number,
     genderLabel: string,
     allPersons: WaitlistedPerson[]
   ) => void
@@ -412,6 +425,7 @@ export default function SessionAvailability() {
   // Popover state
   const [popoverData, setPopoverData] = useState<{
     grade: number
+    totalGradeCount: number
     genderLabel: string
     persons: WaitlistedPerson[]
   } | null>(null)
@@ -459,11 +473,17 @@ export default function SessionAvailability() {
 
   // Grade cell click -> popover
   const handleGradeClick = useCallback(
-    (e: React.MouseEvent, grade: number, genderLabel: string, allPersons: WaitlistedPerson[]) => {
+    (
+      e: React.MouseEvent,
+      grade: number,
+      gradeCount: number,
+      genderLabel: string,
+      allPersons: WaitlistedPerson[]
+    ) => {
       setTooltipData(null) // hide tooltip when opening popover
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
       const gradePersons = allPersons.filter((p) => p.grade === grade)
-      setPopoverData({ grade, genderLabel, persons: gradePersons })
+      setPopoverData({ grade, totalGradeCount: gradeCount, genderLabel, persons: gradePersons })
       setPopoverAnchor({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
     },
     []
@@ -608,6 +628,7 @@ export default function SessionAvailability() {
         isOpen={popoverData !== null}
         anchorRect={popoverAnchor}
         grade={popoverData?.grade ?? 0}
+        totalGradeCount={popoverData?.totalGradeCount ?? 0}
         genderLabel={popoverData?.genderLabel ?? ''}
         persons={popoverData?.persons ?? []}
         onClose={() => setPopoverData(null)}

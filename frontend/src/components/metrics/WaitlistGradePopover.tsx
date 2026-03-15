@@ -6,8 +6,9 @@ export interface WaitlistGradePopoverProps {
   isOpen: boolean
   anchorRect: { top: number; left: number; width: number; height: number }
   grade: number
+  totalGradeCount?: number // actual count from waitlisted_by_grade (may exceed persons.length)
   genderLabel: string // "girls", "boys", or "" for AG
-  persons: WaitlistedPerson[] // already filtered to this grade by parent
+  persons: WaitlistedPerson[] // already filtered to this grade by parent (may be partial from top-5)
   onClose: () => void
 }
 
@@ -18,7 +19,7 @@ function gradeLabel(grade: number): string {
 }
 
 function abbreviateName(person: WaitlistedPerson): string {
-  const first = person.preferred_name || person.first_name
+  const first = person.preferred_name ?? person.first_name
   const lastInitial = person.last_name.charAt(0)
   return `${first} ${lastInitial}.`
 }
@@ -27,6 +28,7 @@ export function WaitlistGradePopover({
   isOpen,
   anchorRect,
   grade,
+  totalGradeCount,
   genderLabel,
   persons,
   onClose,
@@ -76,9 +78,11 @@ export function WaitlistGradePopover({
   }
 
   const gradeLbl = gradeLabel(grade)
+  const displayCount = totalGradeCount ?? persons.length
+  const isPartial = persons.length < displayCount
   const headerText = genderLabel
-    ? `${persons.length} waitlisted ${gradeLbl}-grade ${genderLabel}`
-    : `${persons.length} waitlisted ${gradeLbl}-grade`
+    ? `${displayCount} waitlisted ${gradeLbl}-grade ${genderLabel}`
+    : `${displayCount} waitlisted ${gradeLbl}-grade`
 
   return createPortal(
     <div
@@ -101,7 +105,9 @@ export function WaitlistGradePopover({
         ))}
       </div>
       <div className="text-muted-foreground mt-2 border-t pt-1.5 text-[10px]">
-        Position # is session waitlist order
+        {isPartial
+          ? `Showing ${persons.length} of ${displayCount} — click WL pill for full list`
+          : 'Position # is session waitlist order'}
       </div>
     </div>,
     document.body

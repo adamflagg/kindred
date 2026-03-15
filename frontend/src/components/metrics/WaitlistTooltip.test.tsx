@@ -37,10 +37,11 @@ describe('WaitlistTooltip', () => {
   })
 
   it('shows top 5 with footer when more than 5 total', () => {
-    const manyPersons = Array.from({ length: 5 }, (_, i) => ({
+    const names = ['Emma Johnson', 'Olivia Chen', 'Sophia Garcia', 'Mia Williams', 'Ava Davis']
+    const manyPersons = names.map((name, i) => ({
       person_id: i,
-      first_name: `Girl${i}`,
-      last_name: `Test${i}`,
+      first_name: name.split(' ')[0]!,
+      last_name: name.split(' ')[1]!,
       position: i + 1,
       grade: 3,
     }))
