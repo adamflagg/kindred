@@ -234,10 +234,7 @@ class JWTValidator:
             }
             if self.audience is not None:
                 decode_kwargs["audience"] = self.audience
-            claims = cast(
-                dict[str, Any],
-                jwt.decode(token, signing_key, **decode_kwargs),
-            )
+            claims: dict[str, Any] = jwt.decode(token, signing_key, **decode_kwargs)
             logger.debug(f"Token validated successfully, sub: {claims.get('sub')}")
 
             # Check required scopes if provided
