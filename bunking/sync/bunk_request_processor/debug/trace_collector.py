@@ -20,6 +20,7 @@ from .trace_models import (
     PostPipelineTrace,
     PrePhase1Trace,
     RequesterInfo,
+    SanitizationInfo,
     TraceData,
 )
 
@@ -42,8 +43,7 @@ class TraceCollector:
 
     def _get_trace_metadata(self, key: str) -> dict[str, Any]:
         meta = self._trace_metadata.get(key, {})
-        meta["schema_version"] = SCHEMA_VERSION
-        return meta
+        return {**meta, "schema_version": SCHEMA_VERSION}
 
     def record_pre_phase1(
         self,
@@ -100,8 +100,6 @@ class TraceCollector:
         sanitization: dict[str, Any] | None = None,
     ) -> None:
         trace = self._ensure_trace(key)
-        from .trace_models import SanitizationInfo
-
         trace.phase1_parse = Phase1Trace(
             ran=ran,
             parse_request=parse_request or {},
