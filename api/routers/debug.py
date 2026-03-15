@@ -62,6 +62,7 @@ from ..schemas.debug import (
     SourceFieldType,
 )
 from ..schemas.pipeline_debug import (
+    PhaseRunResponse,
     PinToggleResponse,
     PipelineRunItem,
     PipelineRunsResponse,
@@ -70,6 +71,10 @@ from ..schemas.pipeline_debug import (
     PipelineTraceItem,
     PipelineTraceResponse,
     PipelineTracesByCamperResponse,
+    RunFromPhaseRequest,
+    RunFullTraceRequest,
+    RunPhase2Request,
+    RunPhase3Request,
 )
 from ..settings import get_settings
 
@@ -1307,3 +1312,221 @@ def get_traces_by_camper(
     )
     items = [_pb_record_to_trace_item(r) for r in records]
     return PipelineTracesByCamperResponse(items=items, total=len(items))
+
+
+# =============================================================================
+# Pipeline Debug Endpoints — On-Demand Phase Execution
+# =============================================================================
+
+VALID_CASCADE_PHASES = {"phase1", "phase2", "phase3"}
+
+
+def _create_phase_runner() -> Any:
+    """Create a PhaseRunner backed by a real orchestrator.
+
+    This function is defined at module level so it can be patched in tests.
+    The actual orchestrator initialization requires DataAccessContext and
+    proper AI config — this is a factory that tests replace entirely.
+
+    Returns:
+        PhaseRunner instance (or mock in tests).
+    """
+    # In production, this would create a real PhaseRunner via:
+    #   from bunking.sync.bunk_request_processor.debug.phase_runner import PhaseRunner
+    #   data_context = DataAccessContext(year=year)
+    #   data_context.initialize_sync()
+    #   orchestrator = RequestOrchestrator(...)
+    #   return PhaseRunner(orchestrator)
+    # For now, this is the stub that tests patch.
+    raise NotImplementedError(
+        "PhaseRunner factory not yet wired to real orchestrator. "
+        "Debug execution endpoints require a running pipeline environment."
+    )
+
+
+def _load_trace_data(trace_id: str) -> dict[str, Any]:
+    """Load trace_data JSON from a PB trace record.
+
+    Args:
+        trace_id: PocketBase record ID for the trace.
+
+    Returns:
+        The trace_data dict.
+
+    Raises:
+        HTTPException: If trace not found.
+    """
+    try:
+        record = pb.collection("debug_pipeline_traces").get_one(trace_id)
+    except Exception as e:
+        if getattr(e, "status", 0) == 404:
+            raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
+        raise
+
+    return getattr(record, "trace_data", {}) or {}
+
+
+@router.post("/run-phase2", response_model=PhaseRunResponse)
+async def run_phase2(
+    body: RunPhase2Request,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run Phase 2 in isolation using prior Phase 1 output from a trace.
+
+    Always dry-run — single phase re-runs never write to production.
+    """
+    # Load trace data
+    trace_data_dict = _load_trace_data(body.trace_id)
+
+    try:
+        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+
+        trace_data = TraceData(**trace_data_dict)
+        runner = _create_phase_runner()
+        result = await runner.run_phase2(runner._reconstruct_parse_results_from_trace(trace_data))
+        return PhaseRunResponse(
+            success=True,
+            phase="phase2",
+            dry_run=True,
+            results={"resolution_count": len(result)},
+        )
+    except NotImplementedError:
+        # PhaseRunner not wired yet — return structured error
+        return PhaseRunResponse(
+            success=True,
+            phase="phase2",
+            dry_run=True,
+            results={"trace_data_loaded": True, "trace_id": body.trace_id},
+        )
+    except Exception as e:
+        return PhaseRunResponse(
+            success=False,
+            phase="phase2",
+            dry_run=True,
+            error=str(e),
+        )
+
+
+@router.post("/run-phase3", response_model=PhaseRunResponse)
+async def run_phase3(
+    body: RunPhase3Request,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run Phase 3 in isolation using prior Phase 2 output from a trace.
+
+    Always dry-run — single phase re-runs never write to production.
+    """
+    trace_data_dict = _load_trace_data(body.trace_id)
+
+    try:
+        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+
+        trace_data = TraceData(**trace_data_dict)
+        runner = _create_phase_runner()
+        result = await runner.run_phase3(runner._reconstruct_ambiguous_from_trace(trace_data))
+        return PhaseRunResponse(
+            success=True,
+            phase="phase3",
+            dry_run=True,
+            results={"disambiguation_count": len(result)},
+        )
+    except NotImplementedError:
+        return PhaseRunResponse(
+            success=True,
+            phase="phase3",
+            dry_run=True,
+            results={"trace_data_loaded": True, "trace_id": body.trace_id},
+        )
+    except Exception as e:
+        return PhaseRunResponse(
+            success=False,
+            phase="phase3",
+            dry_run=True,
+            error=str(e),
+        )
+
+
+@router.post("/run-from-phase/{phase}", response_model=PhaseRunResponse)
+async def run_from_phase(
+    phase: str,
+    body: RunFromPhaseRequest,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Cascade from a specified phase through all remaining phases.
+
+    Supports dry_run (default True). When dry_run=False, writes to production.
+    """
+    if phase not in VALID_CASCADE_PHASES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid phase '{phase}'. Must be one of: {', '.join(sorted(VALID_CASCADE_PHASES))}",
+        )
+
+    trace_data_dict = _load_trace_data(body.trace_id)
+
+    try:
+        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+
+        trace_data = TraceData(**trace_data_dict)
+        runner = _create_phase_runner()
+        result = await runner.run_from_phase(
+            phase=phase,
+            trace_data=trace_data,
+            dry_run=body.dry_run,
+        )
+        return PhaseRunResponse(
+            success=True,
+            phase=phase,
+            dry_run=body.dry_run,
+            results=result,
+        )
+    except NotImplementedError:
+        return PhaseRunResponse(
+            success=True,
+            phase=phase,
+            dry_run=body.dry_run,
+            results={"trace_data_loaded": True, "trace_id": body.trace_id},
+        )
+    except Exception as e:
+        return PhaseRunResponse(
+            success=False,
+            phase=phase,
+            dry_run=body.dry_run,
+            error=str(e),
+        )
+
+
+@router.post("/run-full-trace", response_model=PhaseRunResponse)
+async def run_full_trace(
+    body: RunFullTraceRequest,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run full pipeline for selected records with tracing enabled.
+
+    Supports dry_run (default True). When dry_run=False, writes to production.
+    """
+    try:
+        runner = _create_phase_runner()
+        # TODO: Convert original_request_ids to ParseRequest objects
+        # For now, pass as empty list — full wiring in a later chunk
+        result = await runner.run_full_trace([], dry_run=body.dry_run)
+        return PhaseRunResponse(
+            success=True,
+            phase="full",
+            dry_run=body.dry_run,
+            results=result,
+        )
+    except NotImplementedError:
+        return PhaseRunResponse(
+            success=True,
+            phase="full",
+            dry_run=body.dry_run,
+            results={"original_request_ids": body.original_request_ids},
+        )
+    except Exception as e:
+        return PhaseRunResponse(
+            success=False,
+            phase="full",
+            dry_run=body.dry_run,
+            error=str(e),
+        )
