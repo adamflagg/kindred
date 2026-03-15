@@ -634,3 +634,39 @@ class TestDefunctAGHiding:
         result = await service.calculate_availability(year=2026)
 
         assert len(result.ag_sessions) == 1
+
+
+# ============================================================================
+# WaitlistedPerson Schema Tests
+# ============================================================================
+
+
+class TestWaitlistedPersonSchema:
+    """Test WaitlistedPerson schema validation."""
+
+    def test_waitlisted_person_fields(self):
+        from api.schemas.session_availability import WaitlistedPerson
+
+        person = WaitlistedPerson(
+            person_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name="Em",
+            grade=4,
+            position=1,
+        )
+        assert person.person_id == 12345
+        assert person.preferred_name == "Em"
+        assert person.position == 1
+
+    def test_waitlisted_person_optional_fields(self):
+        from api.schemas.session_availability import WaitlistedPerson
+
+        person = WaitlistedPerson(
+            person_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            position=1,
+        )
+        assert person.preferred_name is None
+        assert person.grade is None
