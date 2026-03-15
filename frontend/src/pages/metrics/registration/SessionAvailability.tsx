@@ -106,7 +106,9 @@ function SessionRow({
         return (
           <td
             key={grade}
-            className={`${cellClass(status)}${wlCount > 0 ? 'cursor-pointer' : ''}`}
+            className={[cellClass(status), wlCount > 0 && 'cursor-pointer']
+              .filter(Boolean)
+              .join(' ')}
             onMouseEnter={
               wlCount > 0
                 ? (e) => onHover?.(e, genderData.waitlisted, gender, genderData.waitlisted_persons)
@@ -204,7 +206,9 @@ function AGSessionRow({
         return (
           <td
             key={grade}
-            className={`${cellClass(status)}${wlCount > 0 ? 'cursor-pointer' : ''}`}
+            className={[cellClass(status), wlCount > 0 && 'cursor-pointer']
+              .filter(Boolean)
+              .join(' ')}
             onMouseEnter={
               wlCount > 0
                 ? (e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)
