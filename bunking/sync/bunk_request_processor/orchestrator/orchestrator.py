@@ -33,6 +33,7 @@ from ..data.cache.temporal_name_cache import TemporalNameCache
 from ..data.repositories.request_repository import RequestRepository
 from ..data.repositories.session_repository import SessionRepository
 from ..data.repositories.source_link_repository import SourceLinkRepository
+from ..debug.trace_collector import NoOpTraceCollector, TraceCollector
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator
@@ -140,6 +141,7 @@ class RequestOrchestrator:
         ai_config: dict[str, Any] | None = None,
         data_context: DataAccessContext | None = None,
         debug: bool = False,
+        trace_collector: TraceCollector | None = None,
     ):
         """Initialize the request orchestrator.
 
@@ -150,6 +152,8 @@ class RequestOrchestrator:
             ai_config: Optional AI configuration override
             data_context: DataAccessContext for repository access (preferred)
             debug: Enable verbose AI parse logging
+            trace_collector: Pipeline trace collector for debug instrumentation.
+                Defaults to NoOpTraceCollector (zero overhead) when None.
 
         Note:
             Either pb or data_context must be provided. Using pb directly is
@@ -187,6 +191,9 @@ class RequestOrchestrator:
 
         # Debug mode for verbose AI parse logging
         self.debug = debug
+
+        # Trace collector for pipeline debug instrumentation
+        self.trace_collector: TraceCollector = trace_collector if trace_collector is not None else NoOpTraceCollector()
 
         # Initialize components
         self._initialize_components()
