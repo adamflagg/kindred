@@ -1086,11 +1086,16 @@ class RequestOrchestrator:
             self.trace_collector.record_validation(
                 key=trace_key,
                 type_validation={"passed": pr.is_valid, "rejected": []},
-                temporal_conflicts={"filtered": conflict_filtered, "details": []},
+                temporal_conflicts={
+                    "batch_filtered": conflict_filtered,
+                    "details": [],
+                    "note": "batch-level aggregate, not per-request",
+                },
                 source_text_validation={
-                    "rejected": source_rejected,
+                    "batch_rejected": source_rejected,
                     "hallucinated_names": [],
                     "unit_names": [],
+                    "note": "batch-level aggregate, not per-request",
                 },
             )
 
@@ -1313,7 +1318,7 @@ class RequestOrchestrator:
                     intent_idx=intent_idx,
                     intent_trace=Phase3IntentTrace(
                         target_name=rr.target_name or "",
-                        ran=ran_phase3 and not rr.is_resolved,
+                        ran=ran_phase3,
                         candidates_sent=candidates_sent,
                         ai_reasoning=ai_reasoning,
                         confidence_before=confidence_before,

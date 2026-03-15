@@ -189,7 +189,11 @@ async def process_bunk_requests(
             logger.info("Dry run mode - not saving to database")
             result["dry_run"] = True
 
+        return result
+
+    finally:
         # Flush traces after processing (fire-and-forget on failure)
+        # In finally block so partial traces are preserved even if processing fails
         if trace_collector.enabled:
             try:
                 await trace_collector.flush(
@@ -203,11 +207,8 @@ async def process_bunk_requests(
                     },
                 )
             except Exception as e:
-                logger.warning(f"Failed to flush traces: {e}")
+                logger.warning("Failed to flush traces: %s", e, exc_info=True)
 
-        return result
-
-    finally:
         # Clean up resources (closes AI provider HTTP client)
         await orchestrator.close()
         # DataAccessContext cleanup

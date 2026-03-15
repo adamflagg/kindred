@@ -3,6 +3,8 @@ import type { TourId, TourDefinition } from './types'
 /** Map route patterns to tour IDs */
 const routeToTour: Record<string, TourId> = {
   '/summer/debug': 'debug',
+  '/summer/debug/pipeline': 'debug',
+  '/summer/debug/prompts': 'debug',
   '/metrics/retention': 'retention-overview',
   '/metrics/retention/flow': 'retention-flow',
   '/metrics/retention/bunks': 'retention-bunks',

@@ -1,8 +1,4 @@
-"""Debug Router - Debug tools for Phase 1 AI parse analysis.
-
-This router provides endpoints for analyzing and iterating on Phase 1
-AI intent parsing without running the full 3-phase pipeline.
-"""
+"""Debug Router - Debug tools for pipeline analysis, Phase 1 AI parse iteration, and on-demand phase execution."""
 
 from __future__ import annotations
 
@@ -73,6 +69,7 @@ from ..schemas.pipeline_debug import (
     PipelineTracesByCamperResponse,
     RunFromPhaseRequest,
     RunFullTraceRequest,
+    RunPhase1Request,
     RunPhase2Request,
     RunPhase3Request,
 )
@@ -1296,6 +1293,22 @@ def get_pipeline_run_summary(
     )
 
 
+@router.get("/pipeline-traces/by-camper/{cm_id}", response_model=PipelineTracesByCamperResponse)
+def get_traces_by_camper(
+    cm_id: int,
+    user: AuthUser = Depends(require_admin),
+) -> PipelineTracesByCamperResponse:
+    """Get all traces for a camper across all runs."""
+    records = pb.collection("debug_pipeline_traces").get_full_list(
+        query_params={
+            "filter": f"requester_cm_id = {cm_id}",
+            "sort": "-created",
+        }
+    )
+    items = [_pb_record_to_trace_item(r) for r in records]
+    return PipelineTracesByCamperResponse(items=items, total=len(items))
+
+
 @router.get("/pipeline-traces/{trace_id}", response_model=PipelineTraceResponse)
 def get_pipeline_trace(
     trace_id: str,
@@ -1311,22 +1324,6 @@ def get_pipeline_trace(
         raise
 
     return PipelineTraceResponse(trace=_pb_record_to_trace_item(record))
-
-
-@router.get("/pipeline-traces/by-camper/{cm_id}", response_model=PipelineTracesByCamperResponse)
-def get_traces_by_camper(
-    cm_id: int,
-    user: AuthUser = Depends(require_admin),
-) -> PipelineTracesByCamperResponse:
-    """Get all traces for a camper across all runs."""
-    records = pb.collection("debug_pipeline_traces").get_full_list(
-        query_params={
-            "filter": f"requester_cm_id = {cm_id}",
-            "sort": "-created",
-        }
-    )
-    items = [_pb_record_to_trace_item(r) for r in records]
-    return PipelineTracesByCamperResponse(items=items, total=len(items))
 
 
 # =============================================================================
@@ -1362,7 +1359,16 @@ VALID_PRE_P1_ACTIONS = {
     "socialize_direct_map",
 }
 
-VALID_CASCADE_PHASES = {"phase1", "phase2", "phase3"}
+VALID_CASCADE_PHASES = {
+    "pre_phase1",
+    "phase1",
+    "validation",
+    "phase2",
+    "expansion",
+    "historical",
+    "phase3",
+    "post_pipeline",
+}
 
 
 def _validate_run_id(run_id: str) -> None:
@@ -1425,6 +1431,40 @@ def _load_trace_data(trace_id: str) -> dict[str, Any]:
     return getattr(record, "trace_data", {}) or {}
 
 
+@router.post("/run-phase1", response_model=PhaseRunResponse)
+async def run_phase1(
+    body: RunPhase1Request,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run Phase 1 AI parsing on selected original_bunk_requests.
+
+    Delegates to Phase1DebugService.parse_selected_records() which handles
+    loading, parsing, and caching. Always dry-run — Phase 1 never writes
+    bunk_requests to production.
+    """
+    try:
+        debug_service = await get_phase1_debug_service()
+        results = await debug_service.parse_selected_records(body.original_request_ids)
+
+        return PhaseRunResponse(
+            success=True,
+            phase="phase1",
+            dry_run=True,
+            results={
+                "parsed_count": len(results),
+                "total_tokens": sum(r.get("token_count", 0) or 0 for r in results),
+            },
+        )
+    except Exception:
+        logger.exception("Phase 1 execution failed")
+        return PhaseRunResponse(
+            success=False,
+            phase="phase1",
+            dry_run=True,
+            error="Phase execution failed",
+        )
+
+
 @router.post("/run-phase2", response_model=PhaseRunResponse)
 async def run_phase2(
     body: RunPhase2Request,
@@ -1452,10 +1492,10 @@ async def run_phase2(
     except NotImplementedError:
         # PhaseRunner not wired yet — return structured error
         return PhaseRunResponse(
-            success=True,
+            success=False,
             phase="phase2",
             dry_run=True,
-            results={"trace_data_loaded": True, "trace_id": body.trace_id},
+            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Phase 2 execution failed")
@@ -1492,10 +1532,10 @@ async def run_phase3(
         )
     except NotImplementedError:
         return PhaseRunResponse(
-            success=True,
+            success=False,
             phase="phase3",
             dry_run=True,
-            results={"trace_data_loaded": True, "trace_id": body.trace_id},
+            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Phase 3 execution failed")
@@ -1543,10 +1583,10 @@ async def run_from_phase(
         )
     except NotImplementedError:
         return PhaseRunResponse(
-            success=True,
+            success=False,
             phase=phase,
             dry_run=body.dry_run,
-            results={"trace_data_loaded": True, "trace_id": body.trace_id},
+            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Phase execution failed for phase=%s", phase)
@@ -1569,9 +1609,7 @@ async def run_full_trace(
     """
     try:
         runner = _create_phase_runner()
-        # TODO: Convert original_request_ids to ParseRequest objects
-        # For now, pass as empty list — full wiring in a later chunk
-        result = await runner.run_full_trace([], dry_run=body.dry_run)
+        result = await runner.run_full_trace(body.original_request_ids, dry_run=body.dry_run)
         return PhaseRunResponse(
             success=True,
             phase="full",
@@ -1580,10 +1618,10 @@ async def run_full_trace(
         )
     except NotImplementedError:
         return PhaseRunResponse(
-            success=True,
+            success=False,
             phase="full",
             dry_run=body.dry_run,
-            results={"original_request_ids": body.original_request_ids},
+            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Full trace execution failed")

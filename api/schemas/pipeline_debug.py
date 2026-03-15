@@ -127,6 +127,13 @@ class PipelineTracesByCamperResponse(BaseModel):
 # =============================================================================
 
 
+class RunPhase1Request(BaseModel):
+    """Request to run Phase 1 parsing on selected original requests."""
+
+    original_request_ids: list[str] = Field(min_length=1, description="Original bunk request IDs to parse")
+    dry_run: bool = Field(default=True, description="Phase 1 is always read-only; included for API consistency")
+
+
 class RunPhase2Request(BaseModel):
     """Request to run Phase 2 in isolation."""
 
