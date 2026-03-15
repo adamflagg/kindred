@@ -6,8 +6,6 @@ This is the single source of truth for configuration structure.
 
 from __future__ import annotations
 
-from typing import Any
-
 from .types import ConfigKey, ConfigType
 
 # =============================================================================
@@ -412,19 +410,6 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
 }
 
 
-def get_schema_key(key: str) -> ConfigKey | None:
-    """
-    Get the schema definition for a config key.
-
-    Args:
-        key: The dot-notation config key
-
-    Returns:
-        ConfigKey if found, None if unknown
-    """
-    return CONFIG_SCHEMA.get(key)
-
-
 def get_all_required_keys() -> list[str]:
     """
     Get all required configuration keys.
@@ -433,20 +418,3 @@ def get_all_required_keys() -> list[str]:
         List of key names that must exist in database
     """
     return [key for key, schema in CONFIG_SCHEMA.items() if schema.required]
-
-
-def validate_key(key: str, value: Any) -> str | None:
-    """
-    Validate a value against its schema.
-
-    Args:
-        key: The config key
-        value: The value to validate
-
-    Returns:
-        None if valid, error message if invalid
-    """
-    schema = CONFIG_SCHEMA.get(key)
-    if schema is None:
-        return f"Unknown config key: {key}"
-    return schema.validate(value)
