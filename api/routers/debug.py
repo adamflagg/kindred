@@ -61,6 +61,16 @@ from ..schemas.debug import (
     PromptUpdateResponse,
     SourceFieldType,
 )
+from ..schemas.pipeline_debug import (
+    PinToggleResponse,
+    PipelineRunItem,
+    PipelineRunsResponse,
+    PipelineSummaryItem,
+    PipelineSummaryResponse,
+    PipelineTraceItem,
+    PipelineTraceResponse,
+    PipelineTracesByCamperResponse,
+)
 from ..settings import get_settings
 
 logger = get_logger(__name__)
@@ -1116,3 +1126,184 @@ async def get_production_requests(
         groups=dict(groups),
         total=len(records),
     )
+
+
+# =============================================================================
+# Pipeline Debug Endpoints — Runs, Traces, Summaries
+# =============================================================================
+
+
+def _parse_pb_datetime(value: Any) -> datetime | None:
+    """Parse a PocketBase datetime string to a datetime object."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _pb_record_to_run_item(record: Any) -> PipelineRunItem:
+    """Convert a PB debug_pipeline_runs record to a PipelineRunItem."""
+    return PipelineRunItem(
+        id=getattr(record, "id", ""),
+        run_id=getattr(record, "run_id", ""),
+        year=getattr(record, "year", 0),
+        session=getattr(record, "session", ""),
+        source_fields=getattr(record, "source_fields", []) or [],
+        limit_param=getattr(record, "limit_param", 0),
+        force=getattr(record, "force", False),
+        trace_count=getattr(record, "trace_count", 0),
+        status_breakdown=getattr(record, "status_breakdown", {}) or {},
+        pinned=getattr(record, "pinned", False),
+        created=_parse_pb_datetime(getattr(record, "created", None)),
+    )
+
+
+def _pb_record_to_summary_item(record: Any) -> PipelineSummaryItem:
+    """Convert a PB debug_pipeline_summary record to a PipelineSummaryItem."""
+    return PipelineSummaryItem(
+        id=getattr(record, "id", ""),
+        run_id=getattr(record, "run_id", ""),
+        trace_id=getattr(record, "trace", ""),
+        original_request_id=getattr(record, "original_request", ""),
+        bunk_request_id=getattr(record, "bunk_request", None) or None,
+        requester_cm_id=getattr(record, "requester_cm_id", 0),
+        requester_name=getattr(record, "requester_name", ""),
+        target_name=getattr(record, "target_name", ""),
+        source_field=getattr(record, "source_field", ""),
+        session_cm_id=getattr(record, "session_cm_id", 0),
+        request_type=getattr(record, "request_type", ""),
+        final_status=getattr(record, "final_status", ""),
+        final_confidence=getattr(record, "final_confidence", 0.0),
+        resolution_method=getattr(record, "resolution_method", ""),
+        phase3_triggered=getattr(record, "phase3_triggered", False),
+        ai_reasoning_summary=getattr(record, "ai_reasoning_summary", ""),
+        pre_p1_action=getattr(record, "pre_p1_action", ""),
+        year=getattr(record, "year", 0),
+    )
+
+
+def _pb_record_to_trace_item(record: Any) -> PipelineTraceItem:
+    """Convert a PB debug_pipeline_traces record to a PipelineTraceItem."""
+    return PipelineTraceItem(
+        id=getattr(record, "id", ""),
+        run_id=getattr(record, "run_id", ""),
+        original_request_id=getattr(record, "original_request", ""),
+        requester_cm_id=getattr(record, "requester_cm_id", 0),
+        year=getattr(record, "year", 0),
+        session_cm_id=getattr(record, "session_cm_id", 0),
+        source_field=getattr(record, "source_field", ""),
+        trace_data=getattr(record, "trace_data", {}) or {},
+        pinned=getattr(record, "pinned", False),
+        schema_version=getattr(record, "schema_version", 1),
+        created=_parse_pb_datetime(getattr(record, "created", None)),
+    )
+
+
+@router.get("/pipeline-runs", response_model=PipelineRunsResponse)
+def list_pipeline_runs(
+    user: AuthUser = Depends(require_admin),
+) -> PipelineRunsResponse:
+    """List all pipeline debug runs, newest first."""
+    records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"sort": "-created"})
+    items = [_pb_record_to_run_item(r) for r in records]
+    return PipelineRunsResponse(items=items, total=len(items))
+
+
+@router.post("/pipeline-runs/{run_id}/pin", response_model=PinToggleResponse)
+def toggle_pipeline_run_pin(
+    run_id: str,
+    user: AuthUser = Depends(require_admin),
+) -> PinToggleResponse:
+    """Toggle the pinned status of a pipeline run."""
+    # Find the run record by run_id
+    records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"filter": f'run_id = "{run_id}"'})
+    if not records:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    record = records[0]
+    current_pinned = getattr(record, "pinned", False)
+    new_pinned = not current_pinned
+
+    # Update the record
+    pb.collection("debug_pipeline_runs").update(record.id, {"pinned": new_pinned})
+
+    return PinToggleResponse(run_id=run_id, pinned=new_pinned)
+
+
+@router.get("/pipeline-runs/{run_id}/summary", response_model=PipelineSummaryResponse)
+def get_pipeline_run_summary(
+    run_id: str,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
+    final_status: str | None = Query(default=None),
+    resolution_method: str | None = Query(default=None),
+    source_field: str | None = Query(default=None),
+    phase3_triggered: bool | None = Query(default=None),
+    pre_p1_action: str | None = Query(default=None),
+    sort: str = Query(default="-final_confidence"),
+    user: AuthUser = Depends(require_admin),
+) -> PipelineSummaryResponse:
+    """Get summary rows for a run with PB-native filtering/sort/pagination."""
+    filter_parts = [f'run_id = "{run_id}"']
+
+    if final_status:
+        filter_parts.append(f'final_status = "{final_status}"')
+    if resolution_method:
+        filter_parts.append(f'resolution_method = "{resolution_method}"')
+    if source_field:
+        filter_parts.append(f'source_field = "{source_field}"')
+    if phase3_triggered is not None:
+        filter_parts.append(f"phase3_triggered = {str(phase3_triggered).lower()}")
+    if pre_p1_action:
+        filter_parts.append(f'pre_p1_action = "{pre_p1_action}"')
+
+    filter_str = " && ".join(filter_parts)
+
+    result = pb.collection("debug_pipeline_summary").get_list(
+        page=page,
+        per_page=per_page,
+        query_params={"filter": filter_str, "sort": sort},
+    )
+
+    items = [_pb_record_to_summary_item(r) for r in result.items]
+    return PipelineSummaryResponse(
+        items=items,
+        total=result.total_items,
+        page=result.page,
+        per_page=result.per_page,
+    )
+
+
+@router.get("/pipeline-traces/{trace_id}", response_model=PipelineTraceResponse)
+def get_pipeline_trace(
+    trace_id: str,
+    user: AuthUser = Depends(require_admin),
+) -> PipelineTraceResponse:
+    """Get full trace JSON for drill-down."""
+    try:
+        record = pb.collection("debug_pipeline_traces").get_one(trace_id)
+    except Exception as e:
+        # PocketBase raises ClientResponseError with status=404 for missing records
+        if getattr(e, "status", 0) == 404:
+            raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
+        raise
+
+    return PipelineTraceResponse(trace=_pb_record_to_trace_item(record))
+
+
+@router.get("/pipeline-traces/by-camper/{cm_id}", response_model=PipelineTracesByCamperResponse)
+def get_traces_by_camper(
+    cm_id: int,
+    user: AuthUser = Depends(require_admin),
+) -> PipelineTracesByCamperResponse:
+    """Get all traces for a camper across all runs."""
+    records = pb.collection("debug_pipeline_traces").get_full_list(
+        query_params={
+            "filter": f"requester_cm_id = {cm_id}",
+            "sort": "-created",
+        }
+    )
+    items = [_pb_record_to_trace_item(r) for r in records]
+    return PipelineTracesByCamperResponse(items=items, total=len(items))
