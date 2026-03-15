@@ -18,13 +18,11 @@ echo -e "${YELLOW}Full CampMinder Mirror Schema${NC}"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
-# Load environment variables from .env file if it exists
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    echo -e "${BLUE}Loading environment variables from .env${NC}"
-    set -a  # Export all variables
-    # shellcheck source=/dev/null
-    source "$PROJECT_ROOT/.env"
-    set +a
+# Load environment from best available provider (Infisical → Doppler → .env)
+# shellcheck source=./env-provider.sh
+source "$SCRIPT_DIR/env-provider.sh"
+if ! load_env "$PROJECT_ROOT"; then
+    exit 1
 fi
 
 # Port configuration (can be overridden via .env for worktrees)
