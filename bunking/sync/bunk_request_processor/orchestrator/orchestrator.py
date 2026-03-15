@@ -34,6 +34,13 @@ from ..data.repositories.request_repository import RequestRepository
 from ..data.repositories.session_repository import SessionRepository
 from ..data.repositories.source_link_repository import SourceLinkRepository
 from ..debug.trace_collector import NoOpTraceCollector, TraceCollector
+from ..debug.trace_models import (
+    FinalBunkRequestTrace,
+    Phase2FinalResult,
+    Phase2IntentTrace,
+    Phase3IntentTrace,
+    PostPipelineTrace,
+)
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator
@@ -72,6 +79,19 @@ logger = get_logger(__name__)
 
 # Reverse mapping: SourceField value -> PB field name (for _original_request_ids lookup)
 _SOURCE_FIELD_TO_PB_FIELD: dict[str, str] = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
+
+
+def _get_trace_key(parse_result: ParseResult) -> str:
+    """Extract the original_request_id trace key from a ParseResult.
+
+    Maps from SourceField value → PB field name → _original_request_ids lookup.
+    Returns empty string if mapping fails (e.g., CSV data without original_request_ids).
+    """
+    if parse_result.parse_request is None:
+        return ""
+    field_name = parse_result.parse_request.field_name
+    pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
+    return str(parse_result.parse_request.row_data.get("_original_request_ids", {}).get(pb_field, ""))
 
 
 def generate_unresolved_person_id(name_text: str) -> int:
@@ -994,6 +1014,32 @@ class RequestOrchestrator:
         if pre_parsed_results:
             logger.info(f"Pre-parsed {len(pre_parsed_results)} requests without AI (e.g., socialize preferences)")
 
+        # --- Trace: Phase 1 results ---
+        for pr in parse_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            ran = pr not in pre_parsed_results  # AI-parsed vs pre-parsed
+            parsed_intents = [
+                {
+                    "target_name": req.target_name or "",
+                    "request_type": req.request_type.value if req.request_type else "",
+                    "confidence": req.confidence,
+                    "keywords_found": req.metadata.get("keywords_found", []) if req.metadata else [],
+                    "reasoning": req.metadata.get("reasoning", "") if req.metadata else "",
+                    "parse_notes": req.metadata.get("parse_notes", "") if req.metadata else "",
+                    "csv_position": req.csv_position,
+                }
+                for req in pr.parsed_requests
+            ]
+            self.trace_collector.record_phase1(
+                key=trace_key,
+                ran=ran,
+                parsed_intents=parsed_intents,
+                is_valid=pr.is_valid,
+                parse_request={"field_name": pr.parse_request.field_name} if pr.parse_request else {},
+            )
+
         # This catches AI errors where wrong request type is returned for strict fields
         validated_count, rejected_count = self._validate_request_types(parse_results)
         if rejected_count > 0:
@@ -1012,6 +1058,22 @@ class RequestOrchestrator:
                 f"rejected {source_rejected} "
                 f"(hallucinated={self._stats.get('hallucination_rejected', 0)}, "
                 f"unit_names={self._stats.get('unit_name_rejected', 0)})"
+            )
+
+        # --- Trace: Validation results ---
+        for pr in parse_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            self.trace_collector.record_validation(
+                key=trace_key,
+                type_validation={"passed": pr.is_valid, "rejected": []},
+                temporal_conflicts={"filtered": conflict_filtered, "details": []},
+                source_text_validation={
+                    "rejected": source_rejected,
+                    "hallucinated_names": [],
+                    "unit_names": [],
+                },
             )
 
         # Initialize temporal name cache before Phase 2
@@ -1033,10 +1095,46 @@ class RequestOrchestrator:
         logger.info("=== Phase 2: Local Resolution ===")
         resolution_results = await self.phase2_service.batch_resolve(parse_results)
 
+        # --- Trace: Phase 2 results ---
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            for intent_idx, rr in enumerate(res_list):
+                self.trace_collector.record_phase2(
+                    key=trace_key,
+                    intent_idx=intent_idx,
+                    intent_trace=Phase2IntentTrace(
+                        target_name=rr.target_name or "",
+                        final_result=Phase2FinalResult(
+                            person_cm_id=rr.person.cm_id if rr.person else None,
+                            person_name=rr.person.full_name if rr.person else None,
+                            confidence=rr.confidence,
+                            method=rr.method,
+                            is_resolved=rr.is_resolved,
+                            is_ambiguous=rr.is_ambiguous,
+                        ),
+                    ),
+                )
+
         # Expand LAST_YEAR_BUNKMATES placeholders into individual bunk_with requests
         # This must happen after Phase 2 resolution and before Phase 3 disambiguation
         logger.info("=== Expanding LAST_YEAR_BUNKMATES Placeholders ===")
         resolution_results = await self.placeholder_expander.expand(resolution_results)
+
+        # --- Trace: Expansion results ---
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            # Detect if expansion happened by checking for placeholder-expanded requests
+            has_expansion = any(
+                getattr(req, "metadata", {}).get("expanded_from_placeholder") for req in pr.parsed_requests
+            )
+            self.trace_collector.record_expansion(
+                key=trace_key,
+                triggered=has_expansion,
+            )
 
         # Post-expansion conflict detection: catch conflicts that weren't visible before
         # SIBLING expansion (e.g., "not_bunk_with Pippi" vs "bunk_with SIBLING" → Pippi)
@@ -1049,6 +1147,19 @@ class RequestOrchestrator:
         # Boost confidence by +0.10 for verified groups (capped at 0.95)
         logger.info("=== Phase 2.5: Historical Group Verification ===")
         resolution_results = await self.historical_verification_service.verify(resolution_results)
+
+        # --- Trace: Historical verification results ---
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            # Check if any historical boost was applied
+            boost_applied = any(rr.metadata.get("historical_verified") if rr.metadata else False for rr in res_list)
+            self.trace_collector.record_historical(
+                key=trace_key,
+                ran=True,
+                boost_applied=boost_applied,
+            )
 
         # Count Phase 2 results (on expanded results)
         for _, resolution_list in resolution_results:
@@ -1104,6 +1215,26 @@ class RequestOrchestrator:
         # Store phase3_processed for later use
         self._phase3_indices = phase3_processed
 
+        # --- Trace: Phase 3 results ---
+        for idx, (pr, res_list) in enumerate(resolution_results):
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            ran_phase3 = idx in phase3_processed
+            for intent_idx, rr in enumerate(res_list):
+                self.trace_collector.record_phase3(
+                    key=trace_key,
+                    intent_idx=intent_idx,
+                    intent_trace=Phase3IntentTrace(
+                        target_name=rr.target_name or "",
+                        ran=ran_phase3 and not rr.is_resolved,
+                        result="resolved"
+                        if rr.is_resolved
+                        else ("not_needed" if not ran_phase3 else "still_ambiguous"),
+                        confidence_after=rr.confidence,
+                    ),
+                )
+
         # Convert to request format for conflict detection
         resolved_requests = self._prepare_for_conflict_detection(resolution_results)
 
@@ -1121,6 +1252,46 @@ class RequestOrchestrator:
         logger.info("=== Creating Bunk Requests ===")
         created_requests = await self._create_bunk_requests(resolved_requests)
         self._stats["requests_created"] = len(created_requests)
+
+        # --- Trace: Post-Pipeline results ---
+        # Build a map from (requester_cm_id, target_name) to created BunkRequest for trace linking
+        created_by_key: dict[tuple[int, str], Any] = {}
+        for req in created_requests:
+            req_key = (req.requester_cm_id, getattr(req, "requested_name", "") or "")
+            created_by_key[req_key] = req
+
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            requester_cm_id = pr.parse_request.requester_cm_id if pr.parse_request else 0
+            final_bunk_requests = []
+            for req_idx, (parsed_req, rr) in enumerate(zip(pr.parsed_requests, res_list, strict=False)):
+                # Find the matching created BunkRequest (if any)
+                target_name = parsed_req.target_name or ""
+                matched_br = created_by_key.get((requester_cm_id, target_name))
+                final_bunk_requests.append(
+                    FinalBunkRequestTrace(
+                        bunk_request_id=getattr(matched_br, "id", None) if matched_br else None,
+                        requester_cm_id=requester_cm_id,
+                        requested_cm_id=rr.person.cm_id if rr.person else None,
+                        requested_name=target_name,
+                        request_type=parsed_req.request_type.value if parsed_req.request_type else "",
+                        status="RESOLVED" if rr.is_resolved else "PENDING",
+                        confidence=rr.confidence,
+                        resolution_method=rr.method,
+                    )
+                )
+            self.trace_collector.record_post_pipeline(
+                key=trace_key,
+                post_trace=PostPipelineTrace(
+                    conflict_detection={
+                        "has_conflict": conflict_result.has_conflicts,
+                        "details": [],
+                    },
+                    final_bunk_requests=final_bunk_requests,
+                ),
+            )
 
         # Log final statistics
         logger.info(
