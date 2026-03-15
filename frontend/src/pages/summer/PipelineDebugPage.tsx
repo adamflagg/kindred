@@ -2,19 +2,38 @@
  * PipelineDebugPage - Full pipeline debug/trace tool
  *
  * Batch overview: run selector + summary table with PB-native filtering.
- * Drill-down: React Flow pipeline canvas with phase nodes and detail panels (future chunk).
+ * Drill-down: React Flow pipeline canvas with phase nodes and detail panels.
  *
  * Route: /summer/debug/pipeline (batch) or /summer/debug/pipeline/:traceId (drill-down)
  */
 
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { Bug, GitGraph } from 'lucide-react'
-import { PipelineRunSelector, PipelineBatchList } from '../../components/pipeline-debug'
+import { Bug, GitGraph, ArrowLeft, Loader2 } from 'lucide-react'
+import {
+  PipelineRunSelector,
+  PipelineBatchList,
+  PipelineCanvas,
+  PipelineDetailPanel,
+} from '../../components/pipeline-debug'
 import { QueryGuard } from '../../components/QueryGuard'
 import { usePipelineRuns, useToggleRunPin } from '../../hooks/usePipelineRuns'
 import { usePipelineSummary } from '../../hooks/usePipelineSummary'
-import type { PipelineSummaryFilters } from '../../components/pipeline-debug/types'
+import { usePipelineTrace } from '../../hooks/usePipelineTrace'
+import { useRunFromPhase } from '../../hooks/useRunPhase'
+import type { PipelineSummaryFilters, PipelinePhase } from '../../components/pipeline-debug/types'
+
+/** Pipeline phase ordering for computing stale downstream phases. */
+const PHASE_ORDER: PipelinePhase[] = [
+  'pre_phase1',
+  'phase1',
+  'validation',
+  'phase2',
+  'expansion',
+  'historical',
+  'phase3',
+  'post_pipeline',
+]
 
 export default function PipelineDebugPage() {
   const { traceId } = useParams<{ traceId?: string }>()
@@ -24,10 +43,16 @@ export default function PipelineDebugPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [filters, setFilters] = useState<PipelineSummaryFilters>({})
 
+  // Drill-down state
+  const [selectedNode, setSelectedNode] = useState<PipelinePhase | null>(null)
+  const [stalePhases, setStalePhases] = useState<Set<PipelinePhase>>(new Set())
+
   // Data fetching
   const runsQuery = usePipelineRuns()
   const togglePin = useToggleRunPin()
   const summaryQuery = usePipelineSummary(selectedRunId, filters)
+  const traceQuery = usePipelineTrace(traceId ?? null)
+  const runFromPhase = useRunFromPhase()
 
   const handleSelectRun = useCallback((runId: string | null) => {
     setSelectedRunId(runId)
@@ -48,7 +73,61 @@ export default function PipelineDebugPage() {
     [navigate]
   )
 
-  // Drill-down view (future: Chunk 6 will implement PipelineCanvas)
+  const handleNodeSelect = useCallback((phase: PipelinePhase) => {
+    setSelectedNode(phase)
+  }, [])
+
+  /** Run Again: re-run single phase (always dry-run). Mark downstream as stale. */
+  const handleRunAgain = useCallback(
+    (phase: PipelinePhase) => {
+      if (!traceId) return
+      // Mark all downstream phases as stale
+      const phaseIdx = PHASE_ORDER.indexOf(phase)
+      const downstream = new Set<PipelinePhase>(PHASE_ORDER.filter((_, idx) => idx > phaseIdx))
+      setStalePhases(downstream)
+
+      // Run the phase (dry-run, single phase via runFromPhase with same start/end)
+      runFromPhase.mutate(
+        {
+          phase,
+          request: { trace_id: traceId, write_to_production: false },
+        },
+        {
+          onSuccess: (result) => {
+            if (result.trace_id) {
+              void navigate(`/summer/debug/pipeline/${result.trace_id}`)
+            }
+          },
+        }
+      )
+    },
+    [traceId, runFromPhase, navigate]
+  )
+
+  /** Run From Here: cascade from phase through remaining phases. */
+  const handleRunFromHere = useCallback(
+    (phase: PipelinePhase, writeToProduction: boolean) => {
+      if (!traceId) return
+      setStalePhases(new Set()) // Clear stale since we're re-running everything downstream
+
+      runFromPhase.mutate(
+        {
+          phase,
+          request: { trace_id: traceId, write_to_production: writeToProduction },
+        },
+        {
+          onSuccess: (result) => {
+            if (result.trace_id) {
+              void navigate(`/summer/debug/pipeline/${result.trace_id}`)
+            }
+          },
+        }
+      )
+    },
+    [traceId, runFromPhase, navigate]
+  )
+
+  // Drill-down view
   if (traceId) {
     return (
       <div className="space-y-6">
@@ -59,23 +138,67 @@ export default function PipelineDebugPage() {
           </div>
           <div className="flex-1">
             <h1 className="font-display text-foreground text-2xl font-bold">Pipeline Debug</h1>
-            <p className="text-muted-foreground mt-1 text-sm">Trace drill-down: {traceId}</p>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Trace: <span className="font-mono text-xs">{traceId}</span>
+              {traceQuery.data && (
+                <span className="ml-2">
+                  {traceQuery.data.source_field} — requester #{traceQuery.data.requester_cm_id}
+                </span>
+              )}
+            </p>
           </div>
           <button
-            onClick={() => navigate('/summer/debug/pipeline')}
-            className="text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-sm transition-colors"
+            onClick={() => {
+              setSelectedNode(null)
+              setStalePhases(new Set())
+              void navigate('/summer/debug/pipeline')
+            }}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors"
           >
+            <ArrowLeft className="h-4 w-4" />
             Back to batch view
           </button>
         </div>
 
-        {/* Drill-down placeholder - Chunk 6 will replace this with PipelineCanvas */}
-        <div className="card-lodge flex flex-col items-center justify-center gap-4 p-12">
-          <GitGraph className="text-muted-foreground h-12 w-12" />
-          <p className="text-muted-foreground text-sm">
-            Pipeline canvas drill-down coming in next chunk.
-          </p>
-        </div>
+        {/* Canvas + Detail Panel */}
+        <QueryGuard
+          isLoading={traceQuery.isLoading}
+          error={traceQuery.error}
+          data={traceQuery.data}
+          label="pipeline trace"
+          emptyMessage="Trace not found."
+        >
+          {(trace) => (
+            <>
+              <PipelineCanvas
+                traceData={trace.trace_data}
+                selectedNode={selectedNode}
+                onNodeSelect={handleNodeSelect}
+                stalePhases={stalePhases}
+              />
+              <PipelineDetailPanel
+                selectedNode={selectedNode}
+                traceData={trace.trace_data}
+                onRunAgain={handleRunAgain}
+                onRunFromHere={handleRunFromHere}
+                isRunning={runFromPhase.isPending}
+              />
+              {!selectedNode && (
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  Click a pipeline phase node above to view its details.
+                </p>
+              )}
+            </>
+          )}
+        </QueryGuard>
+
+        {/* Running indicator */}
+        {runFromPhase.isPending && (
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Running phase...
+          </div>
+        )}
       </div>
     )
   }
