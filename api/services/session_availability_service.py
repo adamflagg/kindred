@@ -38,17 +38,19 @@ class SessionAvailabilityService:
         capacity: int | None,
         threshold_pct: int,
     ) -> str:
-        """Compute availability status for a session+gender.
+        """Compute availability status based on capacity only.
 
         Returns:
-            'waitlist' if any waitlisted campers exist,
+            'full' if enrollment >= 100% of capacity (includes overage),
             'limited' if enrollment >= threshold% of capacity,
-            'open' otherwise.
+            'open' otherwise (including when capacity is unknown).
         """
-        if waitlisted > 0:
-            return "waitlist"
-        if capacity and capacity > 0 and (enrolled / capacity * 100) >= threshold_pct:
-            return "limited"
+        if capacity and capacity > 0:
+            pct = enrolled / capacity * 100
+            if pct >= 100:
+                return "full"
+            if pct >= threshold_pct:
+                return "limited"
         return "open"
 
     _DEFAULT_SESSION_TYPES: ClassVar[list[str]] = ["main", "embedded", "ag", "quest"]

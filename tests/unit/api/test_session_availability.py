@@ -105,12 +105,12 @@ class TestComputeStatus:
         assert service.compute_status(enrolled=16, waitlisted=0, capacity=20, threshold_pct=80) == "limited"
 
     def test_waitlist_when_waitlisted_exist(self, service):
-        """Status is 'waitlist' when there are waitlisted campers."""
-        assert service.compute_status(enrolled=20, waitlisted=3, capacity=20, threshold_pct=80) == "waitlist"
+        """Status reflects capacity, not waitlist — full at 100%."""
+        assert service.compute_status(enrolled=20, waitlisted=3, capacity=20, threshold_pct=80) == "full"
 
     def test_waitlist_overrides_limited(self, service):
-        """Waitlist status takes priority over limited."""
-        assert service.compute_status(enrolled=10, waitlisted=1, capacity=20, threshold_pct=80) == "waitlist"
+        """Waitlist no longer overrides — status based on capacity only."""
+        assert service.compute_status(enrolled=10, waitlisted=1, capacity=20, threshold_pct=80) == "open"
 
     def test_open_when_no_capacity(self, service):
         """Status is 'open' when capacity is None (unknown)."""
@@ -119,6 +119,26 @@ class TestComputeStatus:
     def test_open_when_zero_capacity(self, service):
         """Status is 'open' when capacity is 0 (avoid division by zero)."""
         assert service.compute_status(enrolled=5, waitlisted=0, capacity=0, threshold_pct=80) == "open"
+
+    def test_full_when_at_100_percent_capacity(self, service):
+        """Status is 'full' when enrollment reaches 100% of capacity."""
+        assert service.compute_status(enrolled=20, waitlisted=0, capacity=20, threshold_pct=80) == "full"
+
+    def test_full_when_over_capacity(self, service):
+        """Status is 'full' when enrollment exceeds capacity (overage)."""
+        assert service.compute_status(enrolled=25, waitlisted=0, capacity=20, threshold_pct=80) == "full"
+
+    def test_full_takes_priority_when_threshold_is_100(self, service):
+        """When threshold=100, 'full' should still be returned (not 'limited')."""
+        assert service.compute_status(enrolled=20, waitlisted=0, capacity=20, threshold_pct=100) == "full"
+
+    def test_waitlisted_no_longer_affects_status(self, service):
+        """Waitlisted count should NOT affect status — only capacity matters."""
+        assert service.compute_status(enrolled=10, waitlisted=5, capacity=20, threshold_pct=80) == "open"
+
+    def test_waitlisted_with_full_capacity(self, service):
+        """Full capacity + waitlisted should still be 'full' (not 'waitlist')."""
+        assert service.compute_status(enrolled=20, waitlisted=10, capacity=20, threshold_pct=80) == "full"
 
 
 # ============================================================================
