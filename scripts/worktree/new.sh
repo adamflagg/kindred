@@ -129,11 +129,16 @@ cd "$WORKTREE_DIR"
 echo -e "${BLUE}Checking out files...${NC}"
 git checkout "$BRANCH_NAME"
 
-# Copy .env with port overrides
+# Configure environment — .env with port overrides (also serves as fallback
+# if the developer doesn't have Infisical/Doppler; the env-provider.sh in the
+# worktree's scripts/ will prefer a secrets manager if available, then .env)
 echo -e "${BLUE}Configuring environment...${NC}"
 if [ -f "$MAIN_REPO/.env" ]; then
     cp "$MAIN_REPO/.env" "$WORKTREE_DIR/.env"
-    cat >> "$WORKTREE_DIR/.env" << EOF
+fi
+# Always write worktree port overrides (even without .env, a secrets manager
+# won't know the worktree-specific ports)
+cat >> "$WORKTREE_DIR/.env" << EOF
 
 # === Worktree Configuration ===
 # Feature: $FEATURE_NAME
@@ -145,7 +150,6 @@ POCKETBASE_PORT=$POCKETBASE_PORT
 POCKETBASE_URL=http://127.0.0.1:$POCKETBASE_PORT
 WORKTREE_NAME=$FEATURE_NAME
 EOF
-fi
 
 # Install lefthook hooks in the worktree
 if command -v lefthook &> /dev/null; then
@@ -213,8 +217,11 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Load environment
-[ -f .env ] && { set -a; source .env; set +a; }
+# Load environment from best available provider (Infisical → Doppler → .env)
+source scripts/env-provider.sh
+if ! load_env "$(pwd)"; then
+    exit 1
+fi
 
 VITE_PORT="${VITE_PORT:-3000}"
 FASTAPI_PORT="${FASTAPI_PORT:-8000}"
