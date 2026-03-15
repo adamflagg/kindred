@@ -77,6 +77,8 @@ Full reference: `/docs/reference/cli-commands.md`
 
 > **Full reference:** `docs/architecture/sync-layer.md` — Read before adding/modifying sync jobs.
 
+> **Full reference:** `docs/architecture/bunk-request-pipeline.md` — Read before working on CSV upload, original_bunk_requests, bunk request processing, name resolution, or the AI parse/disambiguation pipeline.
+
 ## 🔐 Secrets, Privacy & Test Data
 
 ### Environment & Private Files

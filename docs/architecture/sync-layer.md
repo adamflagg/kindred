@@ -20,6 +20,8 @@ Python: bunk_request_processor/ (all 5 field types)
 bunk_requests table
 ```
 
+> **Deep dive:** See [`bunk-request-pipeline.md`](bunk-request-pipeline.md) for the complete end-to-end flow including delta detection, AI parsing, name resolution strategies, placeholder expansion, and all conditional branches.
+
 ## Go Sync Services (`pocketbase/sync/`)
 | File | Purpose |
 |------|---------|
