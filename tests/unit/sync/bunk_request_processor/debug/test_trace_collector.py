@@ -1,8 +1,5 @@
 """Tests for TraceCollector and NoOpTraceCollector."""
 
-import pytest
-from unittest.mock import MagicMock, patch
-
 from bunking.sync.bunk_request_processor.debug.trace_collector import (
     NoOpTraceCollector,
     TraceCollector,

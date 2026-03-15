@@ -21,7 +21,6 @@ from .trace_models import (
     PrePhase1Trace,
     RequesterInfo,
     TraceData,
-    ValidationTrace,
 )
 
 logger = get_logger(__name__)
@@ -278,7 +277,7 @@ class TraceCollector:
         except Exception as e:
             logger.warning("Retention cleanup failed: %s", e)
 
-        return run_record.id
+        return str(run_record.id)
 
     def _compute_status_breakdown(self) -> dict[str, int]:
         breakdown: dict[str, int] = {"resolved": 0, "pending": 0, "declined": 0, "skipped": 0}

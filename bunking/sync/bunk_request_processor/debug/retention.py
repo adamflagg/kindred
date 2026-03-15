@@ -44,7 +44,7 @@ def cleanup_old_runs(pb: Any) -> int:
         if not created_str:
             continue
         try:
-            created = datetime.fromisoformat(str(created_str).replace("Z", "+00:00"))
+            created = datetime.fromisoformat(str(created_str))
             if created.tzinfo is None:
                 created = created.replace(tzinfo=UTC)
             if created < cutoff:

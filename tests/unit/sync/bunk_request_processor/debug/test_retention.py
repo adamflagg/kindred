@@ -1,11 +1,9 @@
 """Tests for pipeline debug retention policy."""
 
-from datetime import datetime, timedelta, UTC
-from unittest.mock import MagicMock, call
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
-import pytest
-
-from bunking.sync.bunk_request_processor.debug.retention import cleanup_old_runs, MAX_RUNS, MAX_AGE_DAYS
+from bunking.sync.bunk_request_processor.debug.retention import MAX_AGE_DAYS, MAX_RUNS, cleanup_old_runs
 
 
 class TestRetentionPolicy:

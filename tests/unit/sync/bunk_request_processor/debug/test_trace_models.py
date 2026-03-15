@@ -1,14 +1,10 @@
 """Tests for pipeline debug trace data models."""
 
-import pytest
-
 from bunking.sync.bunk_request_processor.debug.trace_models import (
     SCHEMA_VERSION,
-    Phase1Trace,
-    Phase2IntentTrace,
-    Phase3IntentTrace,
-    PlaceholderExpansionTrace,
     HistoricalVerificationTrace,
+    Phase1Trace,
+    PlaceholderExpansionTrace,
     PostPipelineTrace,
     PrePhase1Trace,
     TraceData,
