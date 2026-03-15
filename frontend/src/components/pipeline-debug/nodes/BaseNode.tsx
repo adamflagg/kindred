@@ -19,7 +19,7 @@ interface BaseNodeProps {
   label: string
   state: NodeState
   metric?: string
-  isStale?: boolean
+  isStale?: boolean | undefined
   /** Whether to show left (input) handle */
   showInput?: boolean
   /** Whether to show right (output) handle */

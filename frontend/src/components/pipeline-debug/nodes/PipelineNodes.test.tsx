@@ -83,7 +83,7 @@ const phase1Warning: Phase1Trace = {
   ...phase1Success,
   parsed_intents: [
     {
-      ...phase1Success.parsed_intents[0],
+      ...phase1Success.parsed_intents[0]!,
       confidence: 0.45,
       needs_clarification: true,
     },
@@ -157,9 +157,9 @@ const phase2Success: Phase2IntentTrace[] = [
 
 const phase2Warning: Phase2IntentTrace[] = [
   {
-    ...phase2Success[0],
+    ...phase2Success[0]!,
     final_result: {
-      ...phase2Success[0].final_result,
+      ...phase2Success[0]!.final_result,
       confidence: 0.55,
       is_ambiguous: true,
       is_resolved: false,
@@ -169,7 +169,7 @@ const phase2Warning: Phase2IntentTrace[] = [
 
 const phase2Error: Phase2IntentTrace[] = [
   {
-    ...phase2Success[0],
+    ...phase2Success[0]!,
     final_result: {
       person_cm_id: null,
       person_name: null,
@@ -286,7 +286,7 @@ const postPipelineError: PostPipelineTrace = {
   ...postPipelineSuccess,
   final_bunk_requests: [
     {
-      ...postPipelineSuccess.final_bunk_requests[0],
+      ...postPipelineSuccess.final_bunk_requests[0]!,
       status: 'DECLINED',
       declined_reason: 'Duplicate request',
     },
@@ -294,17 +294,27 @@ const postPipelineError: PostPipelineTrace = {
 }
 
 // ---- Node prop helper ----
-function makeNodeProps<T>(data: T, isStale = false) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeNodeProps<T>(data: T, isStale = false): any {
   return {
     id: 'test-node',
     type: 'custom',
     data: { ...data, isStale },
     selected: false,
+    selectable: true,
+    deletable: false,
+    draggable: false,
     isConnectable: true,
     positionAbsoluteX: 0,
     positionAbsoluteY: 0,
     zIndex: 0,
     dragging: false,
+    width: 140,
+    height: 80,
+    sourcePosition: undefined,
+    targetPosition: undefined,
+    dragHandle: undefined,
+    parentId: undefined,
   }
 }
 

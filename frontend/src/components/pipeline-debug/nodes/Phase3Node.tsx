@@ -8,15 +8,11 @@
  * - skipped: not_needed or ran=false for all intents
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { Phase3IntentTrace } from '../types'
 
-interface Phase3NodeData {
-  phase3: Phase3IntentTrace[]
-  isStale?: boolean
-  [key: string]: unknown
-}
+type Phase3NodeType = Node<{ phase3: Phase3IntentTrace[]; isStale?: boolean }>
 
 function getState(intents: Phase3IntentTrace[]): NodeState {
   if (intents.length === 0) return 'skipped'
@@ -37,7 +33,7 @@ function getMetric(intents: Phase3IntentTrace[]): string {
   return `${resolved.length}/${ran.length} resolved`
 }
 
-export function Phase3Node({ data }: NodeProps<Phase3NodeData>) {
+export function Phase3Node({ data }: NodeProps<Phase3NodeType>) {
   const intents = data.phase3
   return (
     <BaseNode

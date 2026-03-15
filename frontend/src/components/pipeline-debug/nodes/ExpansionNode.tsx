@@ -6,15 +6,11 @@
  * - skipped: not triggered
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { PlaceholderExpansionTrace } from '../types'
 
-interface ExpansionNodeData {
-  expansion: PlaceholderExpansionTrace
-  isStale?: boolean
-  [key: string]: unknown
-}
+type ExpansionNodeType = Node<{ expansion: PlaceholderExpansionTrace; isStale?: boolean }>
 
 function getState(data: PlaceholderExpansionTrace): NodeState {
   if (!data.triggered) return 'skipped'
@@ -26,7 +22,7 @@ function getMetric(data: PlaceholderExpansionTrace): string {
   return `${data.expanded_count} expanded`
 }
 
-export function ExpansionNode({ data }: NodeProps<ExpansionNodeData>) {
+export function ExpansionNode({ data }: NodeProps<ExpansionNodeType>) {
   const trace = data.expansion
   return (
     <BaseNode

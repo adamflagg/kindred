@@ -13,7 +13,7 @@ interface PrePhase1DetailProps {
   data: PrePhase1Trace
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 export function PrePhase1Detail({

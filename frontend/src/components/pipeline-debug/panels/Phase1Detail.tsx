@@ -16,7 +16,7 @@ interface Phase1DetailProps {
   data: Phase1Trace
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 function confidenceColor(c: number): 'green' | 'amber' | 'red' {

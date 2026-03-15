@@ -15,7 +15,7 @@ interface Phase3DetailProps {
   data: Phase3IntentTrace[]
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 function resultColor(result: string): 'green' | 'amber' | 'red' | 'gray' {
@@ -150,7 +150,7 @@ export function Phase3Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         </div>
       )}
 
-      <IntentPanel intent={data[activeTab]} />
+      {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
 
       <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
     </div>

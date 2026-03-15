@@ -16,7 +16,7 @@ interface Phase2DetailProps {
   data: Phase2IntentTrace[]
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 function confidenceColor(c: number): 'green' | 'amber' | 'red' {
@@ -94,10 +94,10 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
               key={idx}
               className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300"
             >
-              <Badge label={String(s.strategy ?? 'unknown')} />
-              {s.confidence !== undefined && <span>conf: {String(s.confidence)}</span>}
-              {s.candidates_found !== undefined && (
-                <span>{String(s.candidates_found)} candidates</span>
+              <Badge label={String(s['strategy'] ?? 'unknown')} />
+              {s['confidence'] !== undefined && <span>conf: {String(s['confidence'])}</span>}
+              {s['candidates_found'] !== undefined && (
+                <span>{String(s['candidates_found'])} candidates</span>
               )}
             </div>
           ))}
@@ -220,7 +220,7 @@ export function Phase2Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         </div>
       )}
 
-      <IntentPanel intent={data[activeTab]} />
+      {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
 
       <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
     </div>

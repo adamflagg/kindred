@@ -8,15 +8,11 @@
  * - skipped: empty resolution array
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { Phase2IntentTrace } from '../types'
 
-interface Phase2NodeData {
-  phase2: Phase2IntentTrace[]
-  isStale?: boolean
-  [key: string]: unknown
-}
+type Phase2NodeType = Node<{ phase2: Phase2IntentTrace[]; isStale?: boolean }>
 
 function getState(intents: Phase2IntentTrace[]): NodeState {
   if (intents.length === 0) return 'skipped'
@@ -33,12 +29,12 @@ function getMetric(intents: Phase2IntentTrace[]): string {
   if (intents.length === 0) return 'no intents'
   const resolved = intents.filter((i) => i.final_result.is_resolved)
   if (resolved.length === intents.length && resolved.length === 1) {
-    return resolved[0].final_result.method
+    return resolved[0]!.final_result.method
   }
   return `${resolved.length}/${intents.length} resolved`
 }
 
-export function Phase2Node({ data }: NodeProps<Phase2NodeData>) {
+export function Phase2Node({ data }: NodeProps<Phase2NodeType>) {
   const intents = data.phase2
   return (
     <BaseNode

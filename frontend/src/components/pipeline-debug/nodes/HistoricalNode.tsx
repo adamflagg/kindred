@@ -6,15 +6,11 @@
  * - skipped: not ran
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { HistoricalVerificationTrace } from '../types'
 
-interface HistoricalNodeData {
-  historical: HistoricalVerificationTrace
-  isStale?: boolean
-  [key: string]: unknown
-}
+type HistoricalNodeType = Node<{ historical: HistoricalVerificationTrace; isStale?: boolean }>
 
 function getState(data: HistoricalVerificationTrace): NodeState {
   if (!data.ran) return 'skipped'
@@ -29,7 +25,7 @@ function getMetric(data: HistoricalVerificationTrace): string {
   return 'no boost needed'
 }
 
-export function HistoricalNode({ data }: NodeProps<HistoricalNodeData>) {
+export function HistoricalNode({ data }: NodeProps<HistoricalNodeType>) {
   const trace = data.historical
   return (
     <BaseNode

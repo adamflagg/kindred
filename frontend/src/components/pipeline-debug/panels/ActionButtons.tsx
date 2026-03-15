@@ -8,14 +8,14 @@
 import { useState } from 'react'
 import { Play, FastForward, AlertTriangle } from 'lucide-react'
 
-interface ActionButtonsProps {
+export interface ActionButtonsProps {
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
   /** Number of bunk_requests that would be written if production write is enabled */
   productionWriteCount?: number
   /** Number of original_requests that would be marked processed */
   processedCount?: number
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 export function ActionButtons({

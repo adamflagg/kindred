@@ -5,7 +5,7 @@
  * multi-intent tabs (P2, P3, Post), action buttons, and confirmation dialog.
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { PrePhase1Detail } from './PrePhase1Detail'

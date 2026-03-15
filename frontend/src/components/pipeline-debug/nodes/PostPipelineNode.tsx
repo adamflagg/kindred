@@ -8,15 +8,11 @@
  * - skipped: no final_bunk_requests
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { PostPipelineTrace } from '../types'
 
-interface PostPipelineNodeData {
-  postPipeline: PostPipelineTrace
-  isStale?: boolean
-  [key: string]: unknown
-}
+type PostPipelineNodeType = Node<{ postPipeline: PostPipelineTrace; isStale?: boolean }>
 
 function getState(data: PostPipelineTrace): NodeState {
   if (data.final_bunk_requests.length === 0) return 'skipped'
@@ -32,7 +28,7 @@ function getMetric(data: PostPipelineTrace): string {
   return `${count} request${count !== 1 ? 's' : ''}`
 }
 
-export function PostPipelineNode({ data }: NodeProps<PostPipelineNodeData>) {
+export function PostPipelineNode({ data }: NodeProps<PostPipelineNodeType>) {
   const trace = data.postPipeline
   return (
     <BaseNode

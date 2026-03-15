@@ -13,7 +13,7 @@ interface PostPipelineDetailProps {
   data: PostPipelineTrace
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 function statusColor(status: string): 'green' | 'amber' | 'red' | 'gray' {

@@ -12,7 +12,7 @@ interface ExpansionDetailProps {
   data: PlaceholderExpansionTrace
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 export function ExpansionDetail({
@@ -53,7 +53,7 @@ export function ExpansionDetail({
                 className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
               >
                 <span>
-                  {String((target as Record<string, unknown>).name ?? JSON.stringify(target))}
+                  {String((target as Record<string, unknown>)['name'] ?? JSON.stringify(target))}
                 </span>
               </div>
             ))}

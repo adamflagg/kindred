@@ -7,15 +7,11 @@
  * - error: type validation failed or source text rejections
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { ValidationTrace } from '../types'
 
-interface ValidationNodeData {
-  validation: ValidationTrace
-  isStale?: boolean
-  [key: string]: unknown
-}
+type ValidationNodeType = Node<{ validation: ValidationTrace; isStale?: boolean }>
 
 function getState(data: ValidationTrace): NodeState {
   const hasRejections = !data.type_validation.passed || data.source_text_validation.rejected > 0
@@ -35,7 +31,7 @@ function getMetric(data: ValidationTrace): string {
   return 'all passed'
 }
 
-export function ValidationNode({ data }: NodeProps<ValidationNodeData>) {
+export function ValidationNode({ data }: NodeProps<ValidationNodeType>) {
   const trace = data.validation
   return (
     <BaseNode

@@ -13,7 +13,7 @@ interface ValidationDetailProps {
   data: ValidationTrace
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
-  isRunning?: boolean
+  isRunning?: boolean | undefined
 }
 
 export function ValidationDetail({

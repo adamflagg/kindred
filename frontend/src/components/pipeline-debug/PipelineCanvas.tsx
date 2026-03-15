@@ -111,13 +111,16 @@ export function PipelineCanvas({
 
   const edges: Edge[] = useMemo(
     () =>
-      PHASE_ORDER.slice(0, -1).map((phase, idx) => ({
-        id: `e-${phase}-${PHASE_ORDER[idx + 1]}`,
-        source: phase,
-        target: PHASE_ORDER[idx + 1],
-        animated: false,
-        style: { stroke: '#94a3b8', strokeWidth: 2 },
-      })),
+      PHASE_ORDER.slice(0, -1).map((phase, idx) => {
+        const nextPhase = PHASE_ORDER[idx + 1]!
+        return {
+          id: `e-${phase}-${nextPhase}`,
+          source: phase,
+          target: nextPhase,
+          animated: false,
+          style: { stroke: '#94a3b8', strokeWidth: 2 },
+        }
+      }),
     []
   )
 

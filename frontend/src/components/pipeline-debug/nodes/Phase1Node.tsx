@@ -8,15 +8,11 @@
  * - skipped: ran = false
  */
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { Phase1Trace } from '../types'
 
-interface Phase1NodeData {
-  phase1: Phase1Trace
-  isStale?: boolean
-  [key: string]: unknown
-}
+type Phase1NodeType = Node<{ phase1: Phase1Trace; isStale?: boolean }>
 
 function getState(data: Phase1Trace): NodeState {
   if (!data.ran) return 'skipped'
@@ -34,7 +30,7 @@ function getMetric(data: Phase1Trace): string {
   return `${count} intent${count !== 1 ? 's' : ''}`
 }
 
-export function Phase1Node({ data }: NodeProps<Phase1NodeData>) {
+export function Phase1Node({ data }: NodeProps<Phase1NodeType>) {
   const trace = data.phase1
   return (
     <BaseNode
