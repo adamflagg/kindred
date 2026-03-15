@@ -66,21 +66,42 @@ function SessionRow({
   gender: 'girls' | 'boys'
 }) {
   const genderData = session[gender]
+  const hasWaitlist = genderData.waitlisted > 0
+
   return (
     <>
       {GRADES.map((grade) => {
         const status = statusForGrade(genderData, grade)
+        const wlCount = genderData.waitlisted_by_grade[grade] ?? 0
         return (
           <td key={grade} className={cellClass(status)}>
-            <CellContent status={status} />
+            {wlCount > 0 ? (
+              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
+                {wlCount}
+              </span>
+            ) : (
+              <CellContent status={status} />
+            )}
           </td>
         )
       })}
+      {/* WL pill column */}
+      <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
+        {hasWaitlist ? (
+          <span className="inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+            {genderData.waitlisted}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">&mdash;</span>
+        )}
+      </td>
     </>
   )
 }
 
 function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
+  const hasWaitlist = session.waitlisted > 0
+
   return (
     <>
       {GRADES.map((grade) => {
@@ -88,19 +109,36 @@ function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
           { min_grade: session.min_grade, max_grade: session.max_grade, status: session.status },
           grade
         )
+        const wlCount = session.waitlisted_by_grade[grade] ?? 0
         return (
           <td key={grade} className={cellClass(status)}>
-            <CellContent status={status} />
+            {wlCount > 0 ? (
+              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
+                {wlCount}
+              </span>
+            ) : (
+              <CellContent status={status} />
+            )}
           </td>
         )
       })}
+      {/* WL pill column */}
+      <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
+        {hasWaitlist ? (
+          <span className="inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+            {session.waitlisted}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">&mdash;</span>
+        )}
+      </td>
     </>
   )
 }
 
 function Legend() {
   return (
-    <div className="mt-4 flex items-center gap-3 text-xs">
+    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
       <span className="flex items-center gap-1">
         <span className="border-border/50 h-5 w-5 rounded border bg-emerald-100 dark:bg-emerald-900/40" />
         Open Space
@@ -116,6 +154,16 @@ function Legend() {
       <span className="flex items-center gap-1">
         <span className="border-border/50 h-5 w-5 rounded border bg-neutral-200 dark:bg-neutral-700" />
         N/A
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">4</span>
+        Waitlisted (grade)
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+          12
+        </span>
+        Waitlisted (total)
       </span>
     </div>
   )
@@ -134,14 +182,14 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
               Session
             </th>
             <th
-              colSpan={GRADES.length}
+              colSpan={GRADES.length + 1}
               className="border-border border-r border-b bg-pink-50 px-2 py-2 text-center font-medium dark:bg-pink-950/30"
             >
               Girls' Availability
             </th>
             <th rowSpan={2} className="w-3 border-b" aria-hidden="true" />
             <th
-              colSpan={GRADES.length}
+              colSpan={GRADES.length + 1}
               className="border-border border-b bg-blue-50 px-2 py-2 text-center font-medium dark:bg-blue-950/30"
             >
               Boys' Availability
@@ -156,6 +204,9 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
                 {gradeLabel(g)}
               </th>
             ))}
+            <th className="text-muted-foreground border-border border-r border-b bg-pink-50/50 px-2 py-2 text-center font-medium dark:bg-pink-950/20">
+              WL
+            </th>
             {GRADES.map((g) => (
               <th
                 key={`b-${g}`}
@@ -164,6 +215,9 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
                 {gradeLabel(g)}
               </th>
             ))}
+            <th className="text-muted-foreground border-border border-b bg-blue-50/50 px-2 py-2 text-center font-medium dark:bg-blue-950/20">
+              WL
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -260,6 +314,9 @@ export default function SessionAvailability() {
                           {gradeLabel(g)}
                         </th>
                       ))}
+                      <th className="text-muted-foreground border-border border-b bg-purple-50/50 px-2 py-2 text-center font-medium dark:bg-purple-950/20">
+                        WL
+                      </th>
                     </tr>
                   </thead>
                   <tbody>

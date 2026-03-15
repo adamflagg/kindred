@@ -313,4 +313,130 @@ describe('SessionAvailability', () => {
     const fetchUrl = mockFetch.mock.calls[0]![0] as string
     expect(fetchUrl).not.toContain('session_cm_id')
   })
+
+  it('renders per-grade waitlist counts inside cells', async () => {
+    const response = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 5,
+            capacity: 60,
+            status: 'full',
+            waitlisted_by_grade: { 4: 3, 6: 2 },
+            waitlisted_persons: [],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 48,
+            waitlisted: 0,
+            capacity: 60,
+            status: 'limited',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => response })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Per-grade waitlist count should appear (the "3" for 4th grade girls)
+    expect(screen.getByText('3')).toBeInTheDocument()
+    // WL column total
+    expect(screen.getByText('5')).toBeInTheDocument()
+  })
+
+  it('renders dash in WL column when no waitlist', async () => {
+    const response = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 20,
+            waitlisted: 0,
+            capacity: 60,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 18,
+            waitlisted: 0,
+            capacity: 60,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => response })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Should have dashes for empty WL columns
+    const dashes = screen.getAllByText('—')
+    expect(dashes.length).toBeGreaterThanOrEqual(2) // at least girls + boys WL columns
+  })
+
+  it('renders WL column headers in sessions table', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // WL column headers should appear
+    const wlHeaders = screen.getAllByText('WL')
+    expect(wlHeaders.length).toBeGreaterThanOrEqual(2) // girls + boys
+  })
+
+  it('renders waitlist legend items', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Waitlisted (grade)')).toBeInTheDocument()
+    expect(screen.getByText('Waitlisted (total)')).toBeInTheDocument()
+  })
 })
