@@ -8,7 +8,8 @@
  */
 
 import { useState } from 'react'
-import { Bug, FileCode, Sparkles, Trees } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { Bug, FileCode, Sparkles, Trees, ArrowRight } from 'lucide-react'
 import { ParseAnalysisTab, PromptEditorTab } from '../../components/debug'
 import { useTour } from '../../hooks/useTour'
 import { TourReplayButton } from '../../components/tour'
@@ -37,6 +38,7 @@ const TABS: Tab[] = [
 export default function PromptEditorPage() {
   const [activeTab, setActiveTab] = useState<TabId>('parse-analysis')
   const { tourId, replay } = useTour()
+  const navigate = useNavigate()
 
   return (
     <div className="relative space-y-6">
@@ -58,7 +60,16 @@ export default function PromptEditorPage() {
             Edit AI prompts and analyze Phase 1 intent parsing
           </p>
         </div>
-        <TourReplayButton tourId={tourId} onReplay={replay} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/summer/debug/pipeline')}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+          >
+            Pipeline Debug
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+          <TourReplayButton tourId={tourId} onReplay={replay} />
+        </div>
       </div>
 
       {/* Tabs */}
