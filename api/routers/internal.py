@@ -77,6 +77,7 @@ class ProcessRequestsRequest(BaseModel):
     force: bool = False
     debug: bool = False
     trace: bool = False
+    collect_traces: bool = False
 
 
 class ProcessRequestsResponse(BaseModel):
@@ -99,6 +100,7 @@ async def run_process_requests(
     force: bool,
     debug: bool,
     trace: bool,
+    collect_traces: bool = False,
 ) -> dict[str, Any]:
     """Run the bunk request processor. Extracted for testability."""
     # Configure logging level (same as process_requests.py CLI)
@@ -138,6 +140,7 @@ async def run_process_requests(
         force=force,
         source_fields=validated_fields,
         debug=debug,
+        collect_traces=collect_traces,
     )
 
 
@@ -163,6 +166,7 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
             force=body.force,
             debug=body.debug,
             trace=body.trace,
+            collect_traces=body.collect_traces,
         )
 
         stats = result.get("statistics", {})
