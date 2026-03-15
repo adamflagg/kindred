@@ -8,7 +8,7 @@
 #   load_env "$PROJECT_ROOT"
 #
 # Supported providers:
-#   - Infisical: Install CLI + configure scripts/vault.config (see vault.config.example)
+#   - Infisical: Install CLI + configure scripts/vault.config (see scripts/vault.config.example)
 #   - Doppler:   Install CLI + run `doppler setup` in project root
 #   - .env file: Copy .env.example → .env and fill in values (always works)
 #
@@ -64,7 +64,8 @@ load_env() {
         if [ -n "${INFISICAL_CLIENT_ID:-}" ] && [ -n "${INFISICAL_CLIENT_SECRET:-}" ]; then
             # Authenticate via REST API (same approach as the `vault` wrapper)
             local token
-            token=$(curl -sf -X POST "${INFISICAL_DOMAIN}/api/v1/auth/universal-auth/login" \
+            token=$(curl -sf --connect-timeout 5 --max-time 10 \
+                -X POST "${INFISICAL_DOMAIN}/api/v1/auth/universal-auth/login" \
                 -H "Content-Type: application/json" \
                 -d "{\"clientId\":\"${INFISICAL_CLIENT_ID}\",\"clientSecret\":\"${INFISICAL_CLIENT_SECRET}\"}" \
                 | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4)
@@ -98,7 +99,7 @@ load_env() {
     # ── 2. Doppler CLI ────────────────────────────────────────────────
     if { [ "$provider" = "auto" ] || [ "$provider" = "doppler" ]; } &&
        [ "$loaded" = false ] && command -v doppler &>/dev/null; then
-        if doppler configure get project --plain &>/dev/null 2>&1; then
+        if doppler configure get project --plain &>/dev/null; then
             local doppler_output
             if doppler_output=$(doppler secrets download --no-file --format=env-no-quotes 2>/dev/null) \
                && [ -n "$doppler_output" ]; then
