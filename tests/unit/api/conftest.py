@@ -85,6 +85,11 @@ def create_mock_attendee(
     enrollment_date: str | None = None,
     effective_date: str | None = None,
     session: MagicMock | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    preferred_name: str | None = None,
+    grade: int | None = None,
+    years_at_camp: int | None = None,
 ) -> MagicMock:
     """Create a mock PocketBase attendee record for API tests.
 
@@ -113,6 +118,11 @@ def create_mock_attendee(
         person = MagicMock()
         person.cm_id = person_id
         person.gender = gender
+        person.first_name = first_name or f"Person{person_id}"
+        person.last_name = last_name or "Test"
+        person.preferred_name = preferred_name
+        person.grade = grade
+        person.years_at_camp = years_at_camp or 0
         expand["person"] = person
 
     attendee.expand = expand

@@ -19,6 +19,7 @@ from api.schemas.session_availability import (
     GenderAvailability,
     SessionAvailability,
     SessionAvailabilityResponse,
+    WaitlistedPerson,
 )
 from api.utils.session_metrics import resolve_duration_sessions
 
@@ -93,6 +94,9 @@ class SessionAvailabilityService:
         # Build enrollment counts per session per gender
         enrollment = self._count_enrollment(sessions, attendees)
 
+        # Build per-grade waitlist data and top-5 person lists
+        waitlist_data = self._build_waitlist_data(sessions, attendees)
+
         # Build response
         result_sessions: list[SessionAvailability] = []
         result_ag: list[AGSessionAvailability] = []
@@ -126,6 +130,7 @@ class SessionAvailabilityService:
                 if ag_cap is None and ag_enrolled == 0 and ag_waitlisted == 0:
                     continue
 
+                wl = waitlist_data.get(cm_id, {})
                 result_ag.append(
                     AGSessionAvailability(
                         session_cm_id=cm_id,
@@ -137,6 +142,8 @@ class SessionAvailabilityService:
                         waitlisted=ag_waitlisted,
                         capacity=ag_cap,
                         status=self.compute_status(ag_enrolled, ag_waitlisted, ag_cap, threshold),
+                        waitlisted_by_grade=wl.get("by_grade_total", {}),
+                        waitlisted_persons=wl.get("persons_total", []),
                     )
                 )
             else:
@@ -151,6 +158,7 @@ class SessionAvailabilityService:
                 girls_enrolled = enrollment.get(cm_id, {}).get("enrolled_F", 0)
                 girls_waitlisted = enrollment.get(cm_id, {}).get("waitlisted_F", 0)
 
+                wl = waitlist_data.get(cm_id, {})
                 result_sessions.append(
                     SessionAvailability(
                         session_cm_id=cm_id,
@@ -164,6 +172,8 @@ class SessionAvailabilityService:
                             waitlisted=girls_waitlisted,
                             capacity=girls_cap,
                             status=self.compute_status(girls_enrolled, girls_waitlisted, girls_cap, threshold),
+                            waitlisted_by_grade=wl.get("by_grade_F", {}),
+                            waitlisted_persons=wl.get("persons_F", []),
                         ),
                         boys=GenderAvailability(
                             min_grade=cfg.get("min_grade"),
@@ -172,6 +182,8 @@ class SessionAvailabilityService:
                             waitlisted=boys_waitlisted,
                             capacity=boys_cap,
                             status=self.compute_status(boys_enrolled, boys_waitlisted, boys_cap, threshold),
+                            waitlisted_by_grade=wl.get("by_grade_M", {}),
+                            waitlisted_persons=wl.get("persons_M", []),
                         ),
                     )
                 )
@@ -338,5 +350,105 @@ class SessionAvailabilityService:
                 # Treat all other statuses as enrolled
                 counts[f"enrolled_{gender}"] = counts.get(f"enrolled_{gender}", 0) + 1
                 counts["enrolled_total"] = counts.get("enrolled_total", 0) + 1
+
+        return result
+
+    def _build_waitlist_data(
+        self,
+        sessions: dict[int, Any],
+        attendees: list[Any],
+    ) -> dict[int, dict[str, Any]]:
+        """Build per-grade waitlist counts and top-5 person lists per session.
+
+        Returns dict: {session_cm_id: {
+            'by_grade_F': {grade: count}, 'by_grade_M': {grade: count}, 'by_grade_total': {grade: count},
+            'persons_F': [WaitlistedPerson...], 'persons_M': [WaitlistedPerson...],
+            'persons_total': [WaitlistedPerson...],
+        }}
+        """
+        # Collect waitlisted attendee details grouped by session and gender
+        # Key: (session_cm_id, gender_key) where gender_key is "F", "M", or "total"
+        grouped: dict[int, dict[str, list[dict[str, Any]]]] = {}
+
+        for att in attendees:
+            status = getattr(att, "status", "enrolled")
+            if status != "waitlisted":
+                continue
+
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+
+            session_cm_id = int(getattr(session, "cm_id", 0))
+            if session_cm_id not in sessions:
+                continue
+
+            gender = getattr(person, "gender", "")
+            grade = getattr(person, "grade", None)
+            effective_date = getattr(att, "effective_date", "") or ""
+            enrollment_date = getattr(att, "enrollment_date", "") or ""
+
+            entry = {
+                "person_id": int(getattr(person, "cm_id", 0)),
+                "first_name": getattr(person, "first_name", ""),
+                "last_name": getattr(person, "last_name", ""),
+                "preferred_name": getattr(person, "preferred_name", None),
+                "grade": grade,
+                "effective_date": effective_date,
+                "enrollment_date": enrollment_date,
+            }
+
+            if session_cm_id not in grouped:
+                grouped[session_cm_id] = {}
+
+            session_groups = grouped[session_cm_id]
+
+            # Add to gender-specific group
+            if gender not in session_groups:
+                session_groups[gender] = []
+            session_groups[gender].append(entry)
+
+            # Add to "total" group (for AG sessions)
+            if "total" not in session_groups:
+                session_groups["total"] = []
+            session_groups["total"].append(entry)
+
+        # Build result: per-grade counts and top-5 person lists
+        result: dict[int, dict[str, Any]] = {}
+
+        for session_cm_id, session_groups in grouped.items():
+            session_result: dict[str, Any] = {}
+
+            for gender_key, entries in session_groups.items():
+                # Build per-grade counts
+                by_grade: dict[int, int] = {}
+                for entry in entries:
+                    grade = entry["grade"]
+                    if grade is not None:
+                        by_grade[grade] = by_grade.get(grade, 0) + 1
+
+                # Sort by (effective_date, enrollment_date) for position ordering
+                sorted_entries = sorted(entries, key=lambda e: (e["effective_date"], e["enrollment_date"]))
+
+                # Build top-5 WaitlistedPerson list
+                persons: list[WaitlistedPerson] = []
+                for idx, entry in enumerate(sorted_entries[:5]):
+                    persons.append(
+                        WaitlistedPerson(
+                            person_id=entry["person_id"],
+                            first_name=entry["first_name"],
+                            last_name=entry["last_name"],
+                            preferred_name=entry["preferred_name"],
+                            grade=entry["grade"],
+                            position=idx + 1,
+                        )
+                    )
+
+                session_result[f"by_grade_{gender_key}"] = by_grade
+                session_result[f"persons_{gender_key}"] = persons
+
+            result[session_cm_id] = session_result
 
         return result
