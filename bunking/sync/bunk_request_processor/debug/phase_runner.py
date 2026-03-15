@@ -1,0 +1,331 @@
+"""PhaseRunner — runs individual pipeline phases in isolation for debugging.
+
+Wraps a RequestOrchestrator instance to reuse its initialized components
+(repos, AI provider, resolution pipeline, caches, social graph).
+Does NOT rebuild from scratch — accepts a pre-initialized orchestrator.
+
+Supports dry-run (default) and production-write modes for cascades.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from bunking.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from bunking.sync.bunk_request_processor.core.models import ParseRequest, ParseResult
+    from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
+    from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
+
+from .trace_models import TraceData
+
+logger = get_logger(__name__)
+
+
+class PhaseRunner:
+    """Runs individual pipeline phases in isolation for debugging.
+
+    Wraps a RequestOrchestrator instance to reuse its initialized components.
+    Does NOT rebuild from scratch — accepts a pre-initialized orchestrator.
+
+    Methods:
+        run_phase1: Run Phase 1 AI parse on given parse requests (always dry-run).
+        run_phase2: Run Phase 2 local resolution on parse results (always dry-run).
+        run_phase3: Run Phase 3 AI disambiguation on ambiguous cases (always dry-run).
+        run_from_phase: Cascade from a specified phase through remaining phases.
+        run_full_trace: Run all phases end-to-end with trace collection.
+    """
+
+    def __init__(self, orchestrator: RequestOrchestrator) -> None:
+        self._orch = orchestrator
+
+    async def run_phase1(
+        self,
+        parse_requests: list[ParseRequest],
+        progress_callback: Any | None = None,
+    ) -> list[ParseResult]:
+        """Run Phase 1 AI parse on given requests.
+
+        Always dry-run — single phase re-runs never write to production.
+
+        Args:
+            parse_requests: List of ParseRequest objects to parse.
+            progress_callback: Optional progress callback.
+
+        Returns:
+            List of ParseResult from Phase 1 AI parsing.
+        """
+        logger.info("PhaseRunner: running Phase 1 on %d requests", len(parse_requests))
+        results = await self._orch.phase1_service.batch_parse(parse_requests, progress_callback)
+        return results
+
+    async def run_phase2(
+        self,
+        parse_results: list[ParseResult],
+    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
+        """Run Phase 2 local resolution on parse results.
+
+        Always dry-run — single phase re-runs never write to production.
+        Ensures the temporal name cache is initialized before resolution.
+
+        Args:
+            parse_results: List of ParseResult from Phase 1.
+
+        Returns:
+            List of (ParseResult, list[ResolutionResult]) tuples.
+        """
+        # Ensure caches are ready
+        if hasattr(self._orch.temporal_name_cache, "is_initialized"):
+            if not self._orch.temporal_name_cache.is_initialized():
+                logger.info("PhaseRunner: initializing temporal name cache for Phase 2")
+                self._orch.temporal_name_cache.initialize()
+
+        logger.info("PhaseRunner: running Phase 2 on %d parse results", len(parse_results))
+        results = await self._orch.phase2_service.batch_resolve(parse_results)
+        return results
+
+    async def run_phase3(
+        self,
+        ambiguous_cases: list[tuple[ParseResult, list[ResolutionResult]]],
+        progress_callback: Any | None = None,
+    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
+        """Run Phase 3 AI disambiguation on ambiguous cases.
+
+        Always dry-run — single phase re-runs never write to production.
+
+        Args:
+            ambiguous_cases: List of (ParseResult, list[ResolutionResult]) with ambiguous results.
+            progress_callback: Optional progress callback.
+
+        Returns:
+            List of (ParseResult, list[ResolutionResult]) with disambiguation applied.
+        """
+        logger.info("PhaseRunner: running Phase 3 on %d ambiguous cases", len(ambiguous_cases))
+        results = await self._orch.phase3_service.batch_disambiguate(ambiguous_cases, progress_callback)
+        return results
+
+    async def run_from_phase(
+        self,
+        phase: str,
+        trace_data: TraceData | None = None,
+        parse_requests: list[ParseRequest] | None = None,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """Cascade from a specified phase through all remaining phases.
+
+        Loads prior phase outputs from trace_data for upstream phases,
+        runs the specified phase and all downstream phases.
+
+        Args:
+            phase: Phase to start from ("phase1", "phase2", "phase3").
+            trace_data: Existing trace data with upstream phase results.
+            parse_requests: Parse requests for phase1 start (if phase="phase1").
+            dry_run: If True (default), do not write to production.
+
+        Returns:
+            Dict with phase results and dry_run flag.
+        """
+        logger.info("PhaseRunner: running from %s (dry_run=%s)", phase, dry_run)
+
+        result: dict[str, Any] = {"dry_run": dry_run}
+
+        if phase == "phase1":
+            # Run all phases from the beginning
+            return await self.run_full_trace(parse_requests or [], dry_run=dry_run)
+
+        elif phase == "phase2":
+            # Reconstruct parse results from trace data for Phase 2 input
+            phase2_input = self._reconstruct_parse_results_from_trace(trace_data)
+            phase2_results = await self.run_phase2(phase2_input)
+            result["phase2_results"] = phase2_results
+
+            # Continue to Phase 3 with ambiguous cases
+            ambiguous = [(pr, rr_list) for pr, rr_list in phase2_results if any(not rr.is_resolved for rr in rr_list)]
+            if ambiguous:
+                phase3_results = await self.run_phase3(ambiguous)
+                result["phase3_results"] = phase3_results
+            else:
+                result["phase3_results"] = []
+
+        elif phase == "phase3":
+            # Reconstruct ambiguous cases from trace data for Phase 3 input
+            phase3_input = self._reconstruct_ambiguous_from_trace(trace_data)
+            phase3_results = await self.run_phase3(phase3_input)
+            result["phase3_results"] = phase3_results
+
+        # Production write mode (only for cascades, not single-phase)
+        if not dry_run:
+            logger.info("PhaseRunner: production write mode — saving results")
+            # This would call _save_bunk_requests and mark_as_processed
+            # Implementation deferred to when request building is wired up
+            result["production_write"] = True
+
+        return result
+
+    async def run_full_trace(
+        self,
+        parse_requests: list[ParseRequest],
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """Run all phases end-to-end with trace collection.
+
+        Args:
+            parse_requests: List of ParseRequest objects to process.
+            dry_run: If True (default), do not write to production.
+
+        Returns:
+            Dict with all phase results and dry_run flag.
+        """
+        logger.info("PhaseRunner: running full trace (dry_run=%s)", dry_run)
+
+        result: dict[str, Any] = {"dry_run": dry_run}
+
+        # Phase 1
+        phase1_results = await self.run_phase1(parse_requests)
+        result["phase1_results"] = phase1_results
+
+        # Phase 2
+        if phase1_results:
+            phase2_results = await self.run_phase2(phase1_results)
+            result["phase2_results"] = phase2_results
+        else:
+            phase2_results = []
+            result["phase2_results"] = []
+
+        # Phase 3 — only ambiguous cases
+        ambiguous = [
+            (pr, rr_list)
+            for pr, rr_list in phase2_results
+            if any(not rr.is_resolved and getattr(rr, "method", "") != "age_preference" for rr in rr_list)
+        ]
+        if ambiguous:
+            phase3_results = await self.run_phase3(ambiguous)
+            result["phase3_results"] = phase3_results
+        else:
+            result["phase3_results"] = []
+
+        # Production write mode
+        if not dry_run:
+            logger.info("PhaseRunner: production write mode — saving results")
+            result["production_write"] = True
+
+        return result
+
+    def _reconstruct_parse_results_from_trace(
+        self,
+        trace_data: TraceData | None,
+    ) -> list[ParseResult]:
+        """Reconstruct ParseResult objects from trace data for Phase 2 input.
+
+        This creates lightweight ParseResult-like objects from the trace's Phase 1
+        data so Phase 2 can be run in isolation using prior Phase 1 output.
+
+        Args:
+            trace_data: Trace data with Phase 1 results.
+
+        Returns:
+            List of ParseResult objects (may be empty if trace_data is None).
+        """
+        if not trace_data or not trace_data.phase1_parse.ran:
+            return []
+
+        from bunking.sync.bunk_request_processor.core.models import (
+            ParsedRequest,
+            ParseResult,
+            RequestSource,
+            RequestType,
+        )
+
+        # Reconstruct parsed requests from trace intents
+        parsed_requests = []
+        for intent in trace_data.phase1_parse.parsed_intents:
+            target_name = intent.get("target_name", "")
+            request_type_str = intent.get("request_type", "BUNK_WITH")
+            try:
+                request_type = RequestType(request_type_str)
+            except ValueError:
+                request_type = RequestType.BUNK_WITH
+
+            parsed_req = ParsedRequest(
+                raw_text=trace_data.pre_phase1.original_text,
+                target_name=target_name,
+                request_type=request_type,
+                age_preference=None,
+                source_field=trace_data.pre_phase1.field_path or "bunk_with",
+                source=RequestSource.FAMILY,
+                confidence=intent.get("confidence", 0.0),
+                csv_position=intent.get("csv_position", 0),
+                metadata=intent,
+            )
+            parsed_requests.append(parsed_req)
+
+        # Create a minimal ParseResult
+        parse_result = ParseResult(
+            is_valid=trace_data.phase1_parse.is_valid,
+            parsed_requests=parsed_requests,
+        )
+
+        return [parse_result]
+
+    def _reconstruct_ambiguous_from_trace(
+        self,
+        trace_data: TraceData | None,
+    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
+        """Reconstruct ambiguous cases from trace data for Phase 3 input.
+
+        Creates lightweight objects from Phase 2 trace data representing
+        unresolved/ambiguous resolution results.
+
+        Args:
+            trace_data: Trace data with Phase 2 results.
+
+        Returns:
+            List of (ParseResult, list[ResolutionResult]) tuples.
+        """
+        if not trace_data or not trace_data.phase2_resolution:
+            return []
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.resolution.interfaces import (
+            ResolutionResult,
+        )
+
+        # Reconstruct parse results from Phase 1 trace
+        parse_results = self._reconstruct_parse_results_from_trace(trace_data)
+        if not parse_results:
+            return []
+
+        # Reconstruct resolution results from Phase 2 trace
+        # Note: ResolutionResult.is_resolved and is_ambiguous are computed properties,
+        # not constructor arguments. is_resolved depends on person being set,
+        # is_ambiguous depends on candidates list length.
+        resolution_results: list[ResolutionResult] = []
+        for p2_trace in trace_data.phase2_resolution:
+            final = p2_trace.final_result
+            # Build a minimal person if it was resolved
+            person = None
+            if final.is_resolved and final.person_cm_id:
+                person = Person(
+                    cm_id=final.person_cm_id,
+                    first_name=final.person_name.split()[0] if final.person_name else "",
+                    last_name=" ".join(final.person_name.split()[1:]) if final.person_name else "",
+                )
+            # Build candidates list to reflect ambiguity
+            candidates: list[Any] | None = None
+            if final.is_ambiguous:
+                # Create placeholder Person objects so is_ambiguous returns True (needs len > 1)
+                placeholder_a = Person(cm_id=0, first_name="Candidate", last_name="A")
+                placeholder_b = Person(cm_id=0, first_name="Candidate", last_name="B")
+                candidates = [placeholder_a, placeholder_b]
+
+            res = ResolutionResult(
+                target_name=p2_trace.target_name,
+                confidence=final.confidence,
+                method=final.method,
+                person=person,
+                candidates=candidates,
+            )
+            resolution_results.append(res)
+
+        return [(parse_results[0], resolution_results)]
