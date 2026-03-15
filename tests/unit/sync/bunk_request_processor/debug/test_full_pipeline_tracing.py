@@ -7,6 +7,7 @@ requiring a real PocketBase connection.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,7 +20,7 @@ def _make_raw_request(
     requester_cm_id: int = 12345,
     bunk_with: str = "Olivia Chen",
     original_request_ids: dict[str, str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Build a minimal raw request row for testing."""
     return {
         "requester_cm_id": requester_cm_id,
@@ -113,9 +114,9 @@ class TestFullPipelineTracing:
         orch.phase1_service.batch_parse = AsyncMock(return_value=[parse_result])
 
         # Mock validation methods (pass-through)
-        orch._validate_request_types = MagicMock(return_value=(1, 0))
-        orch._filter_temporal_conflicts = MagicMock(return_value=(1, 0))
-        orch._validate_target_names_in_source = MagicMock(return_value=(1, 0))
+        orch._validate_request_types = MagicMock(return_value=(1, 0))  # type: ignore[method-assign]
+        orch._filter_temporal_conflicts = MagicMock(return_value=(1, 0))  # type: ignore[method-assign]
+        orch._validate_target_names_in_source = MagicMock(return_value=(1, 0))  # type: ignore[method-assign]
 
         # After validation, parse_result still has parsed_requests
         # Mock temporal name cache
@@ -144,7 +145,7 @@ class TestFullPipelineTracing:
         orch.placeholder_expander.expand = AsyncMock(return_value=[(parse_result, [resolution_result])])
 
         # Mock post-expansion conflict filter
-        orch._filter_post_expansion_conflicts = MagicMock(return_value=([(parse_result, [resolution_result])], 1, 0))
+        orch._filter_post_expansion_conflicts = MagicMock(return_value=([(parse_result, [resolution_result])], 1, 0))  # type: ignore[method-assign]
 
         # Mock historical verification
         orch.historical_verification_service = MagicMock()
@@ -161,8 +162,8 @@ class TestFullPipelineTracing:
         orch.conflict_detector.detect_conflicts = MagicMock(return_value=conflict_result)
 
         # Mock request creation
-        orch._prepare_for_conflict_detection = MagicMock(return_value=[])
-        orch._create_bunk_requests = AsyncMock(return_value=[])
+        orch._prepare_for_conflict_detection = MagicMock(return_value=[])  # type: ignore[method-assign]
+        orch._create_bunk_requests = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
         # Mock cache monitor
         orch.cache_monitor = None

@@ -95,7 +95,7 @@ class TestPhaseRunnerRunPhase1:
         runner = PhaseRunner(orch)
 
         mock_requests = [MagicMock()]
-        await runner.run_phase1(mock_requests)
+        await runner.run_phase1(mock_requests)  # type: ignore[arg-type]
 
         orch.phase1_service.batch_parse.assert_called_once_with(mock_requests, None)
 
@@ -128,7 +128,7 @@ class TestPhaseRunnerRunPhase2:
         runner = PhaseRunner(orch)
 
         mock_parse_results = [MagicMock()]
-        await runner.run_phase2(mock_parse_results)
+        await runner.run_phase2(mock_parse_results)  # type: ignore[arg-type]
 
         orch.phase2_service.batch_resolve.assert_called_once_with(mock_parse_results)
 
@@ -170,7 +170,7 @@ class TestPhaseRunnerRunPhase3:
         runner = PhaseRunner(orch)
 
         mock_ambiguous = [(MagicMock(), [MagicMock()])]
-        await runner.run_phase3(mock_ambiguous)
+        await runner.run_phase3(mock_ambiguous)  # type: ignore[arg-type]
 
         orch.phase3_service.batch_disambiguate.assert_called_once_with(mock_ambiguous, None)
 
@@ -267,7 +267,7 @@ class TestPhaseRunnerRunFullTrace:
         runner = PhaseRunner(orch)
 
         mock_requests = [MagicMock()]
-        await runner.run_full_trace(mock_requests, dry_run=True)
+        await runner.run_full_trace(mock_requests, dry_run=True)  # type: ignore[arg-type]
 
         orch.phase1_service.batch_parse.assert_called_once()
         orch.phase2_service.batch_resolve.assert_called_once()

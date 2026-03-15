@@ -56,7 +56,7 @@ def _make_pb_run_record(
     limit_param: int = 0,
     force: bool = False,
     trace_count: int = 5,
-    status_breakdown: dict | None = None,
+    status_breakdown: dict[str, Any] | None = None,
     pinned: bool = False,
     created: str = "2025-06-15T10:00:00Z",
 ) -> MagicMock:
@@ -114,7 +114,7 @@ def _make_pb_trace_record(
     record_id: str = "rec_trace_1",
     run_id: str = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
     requester_cm_id: int = 12345,
-    trace_data: dict | None = None,
+    trace_data: dict[str, Any] | None = None,
 ) -> MagicMock:
     return _make_mock_pb_record(
         id=record_id,

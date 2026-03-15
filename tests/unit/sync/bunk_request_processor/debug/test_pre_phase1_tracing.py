@@ -6,6 +6,7 @@ decision point in _prepare_parse_requests with correct actions.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,7 +27,7 @@ def _make_row(
     internal_notes: str = "",
     socialize_with: str = "",
     original_request_ids: dict[str, str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Build a raw request row matching the orchestrator input format."""
     row = {
         "requester_cm_id": requester_cm_id,
