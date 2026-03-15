@@ -51,8 +51,8 @@ load_env() {
     fi
 
     # ── 1. Infisical CLI ──────────────────────────────────────────────
-    if [ "$provider" = "auto" ] || [ "$provider" = "infisical" ]; then
-    if command -v infisical &>/dev/null && [ -f "$project_root/scripts/vault.config" ]; then
+    if { [ "$provider" = "auto" ] || [ "$provider" = "infisical" ]; } &&
+       command -v infisical &>/dev/null && [ -f "$project_root/scripts/vault.config" ]; then
         # Allow env override: INFISICAL_ENV=staging ./scripts/start_dev.sh
         local env_override="${INFISICAL_ENV:-}"
         # shellcheck source=/dev/null
@@ -60,47 +60,48 @@ load_env() {
         # Restore override if caller set it before vault.config
         [ -n "$env_override" ] && INFISICAL_ENV="$env_override"
 
-        # Authenticate via REST API (same approach as the `vault` wrapper)
-        local token
-        token=$(curl -sf -X POST "${INFISICAL_DOMAIN}/api/v1/auth/universal-auth/login" \
-            -H "Content-Type: application/json" \
-            -d "{\"clientId\":\"${INFISICAL_CLIENT_ID}\",\"clientSecret\":\"${INFISICAL_CLIENT_SECRET}\"}" \
-            | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4)
+        # Skip network call if credentials are missing
+        if [ -n "${INFISICAL_CLIENT_ID:-}" ] && [ -n "${INFISICAL_CLIENT_SECRET:-}" ]; then
+            # Authenticate via REST API (same approach as the `vault` wrapper)
+            local token
+            token=$(curl -sf -X POST "${INFISICAL_DOMAIN}/api/v1/auth/universal-auth/login" \
+                -H "Content-Type: application/json" \
+                -d "{\"clientId\":\"${INFISICAL_CLIENT_ID}\",\"clientSecret\":\"${INFISICAL_CLIENT_SECRET}\"}" \
+                | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4)
 
-        if [ -n "$token" ]; then
-            local infisical_output
-            infisical_output=$(infisical export \
-                --token="$token" \
-                --env="${INFISICAL_ENV:-dev}" \
-                --projectId="${INFISICAL_PROJECT_ID:-}" \
-                --domain="${INFISICAL_DOMAIN:-}" \
-                --format=dotenv-export 2>/dev/null)
-
-            if [ $? -eq 0 ] && [ -n "$infisical_output" ]; then
-                echo -e "${_blue}Loading secrets from Infisical (${INFISICAL_ENV:-dev})${_nc}"
-                set -a
-                eval "$infisical_output"
-                set +a
-                loaded=true
-                _env_source="infisical"
-                echo -e "${_green}Secrets loaded from Infisical${_nc}"
+            if [ -n "$token" ]; then
+                local infisical_output
+                if infisical_output=$(infisical export \
+                    --token="$token" \
+                    --env="${INFISICAL_ENV:-dev}" \
+                    --projectId="${INFISICAL_PROJECT_ID:-}" \
+                    --domain="${INFISICAL_DOMAIN:-}" \
+                    --format=dotenv-export 2>/dev/null) && [ -n "$infisical_output" ]; then
+                    echo -e "${_blue}Loading secrets from Infisical (${INFISICAL_ENV:-dev})${_nc}"
+                    set -a
+                    eval "$infisical_output"
+                    set +a
+                    loaded=true
+                    _env_source="infisical"
+                    echo -e "${_green}Secrets loaded from Infisical${_nc}"
+                else
+                    echo -e "${_yellow}Infisical auth OK but export failed — falling back${_nc}"
+                fi
             else
-                echo -e "${_yellow}Infisical auth OK but export failed — falling back${_nc}"
+                echo -e "${_yellow}Infisical configured but auth failed — falling back${_nc}"
             fi
         else
-            echo -e "${_yellow}Infisical configured but auth failed — falling back${_nc}"
+            echo -e "${_yellow}Infisical vault.config missing credentials — skipping${_nc}"
         fi
-    fi
     fi
 
     # ── 2. Doppler CLI ────────────────────────────────────────────────
-    if [ "$provider" = "auto" ] || [ "$provider" = "doppler" ]; then
-    if [ "$loaded" = false ] && command -v doppler &>/dev/null; then
-        if doppler configure debug &>/dev/null 2>&1; then
+    if { [ "$provider" = "auto" ] || [ "$provider" = "doppler" ]; } &&
+       [ "$loaded" = false ] && command -v doppler &>/dev/null; then
+        if doppler configure get project --plain &>/dev/null 2>&1; then
             local doppler_output
-            doppler_output=$(doppler secrets download --no-file --format=env-no-quotes 2>/dev/null)
-
-            if [ $? -eq 0 ] && [ -n "$doppler_output" ]; then
+            if doppler_output=$(doppler secrets download --no-file --format=env-no-quotes 2>/dev/null) \
+               && [ -n "$doppler_output" ]; then
                 echo -e "${_blue}Loading secrets from Doppler${_nc}"
                 set -a
                 eval "$doppler_output"
@@ -112,7 +113,6 @@ load_env() {
                 echo -e "${_yellow}Doppler configured but export failed — falling back${_nc}"
             fi
         fi
-    fi
     fi
 
     # ── 2b. Explicit provider failed — don't silently fall back ─────
