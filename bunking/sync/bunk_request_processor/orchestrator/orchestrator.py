@@ -1231,6 +1231,13 @@ class RequestOrchestrator:
                 elif res_result.is_ambiguous:
                     self._stats["phase2_ambiguous"] += 1
 
+        # Snapshot confidence values before Phase 3 (after historical verification + expansion)
+        pre_phase3_confidences: dict[str, list[float]] = {}
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if trace_key:
+                pre_phase3_confidences[trace_key] = [rr.confidence for rr in res_list]
+
         # Phase 3: AI Disambiguation (for unresolved cases)
         unresolved_cases = []
         unresolved_indices = []
@@ -1283,7 +1290,7 @@ class RequestOrchestrator:
             if not trace_key:
                 continue
             ran_phase3 = idx in phase3_processed
-            pre_confs = pre_historical_confidences.get(trace_key, [])
+            pre_confs = pre_phase3_confidences.get(trace_key, [])
             for intent_idx, rr in enumerate(res_list):
                 rr_meta = rr.metadata or {}
                 # Build candidates sent to AI from the ResolutionResult's candidate list
