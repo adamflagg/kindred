@@ -107,7 +107,7 @@ export default function PipelineDebugPage() {
         }
       )
     },
-    [traceId, runFromPhase, navigate]
+    [traceId, traceQuery.data, runFromPhase, navigate]
   )
 
   /** Run From Here: cascade from phase through remaining phases. */
@@ -136,7 +136,7 @@ export default function PipelineDebugPage() {
         }
       )
     },
-    [traceId, runFromPhase, navigate]
+    [traceId, traceQuery.data, runFromPhase, navigate]
   )
 
   // Drill-down view
