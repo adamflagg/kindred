@@ -52,6 +52,7 @@ from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
     ALL_FIELD_TO_SOURCE_FIELD,
+    FIELD_TO_SOURCE_FIELD,
     FIELDS_TO_CHECK,
     UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
@@ -68,6 +69,9 @@ from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
 
 logger = get_logger(__name__)
+
+# Reverse mapping: SourceField value -> PB field name (for _original_request_ids lookup)
+_SOURCE_FIELD_TO_PB_FIELD: dict[str, str] = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
 
 
 def generate_unresolved_person_id(name_text: str) -> int:
@@ -1248,13 +1252,42 @@ class RequestOrchestrator:
             for field_key, field_name in FIELDS_TO_CHECK:
                 total_fields_checked += 1
                 request_text = row.get(field_key, "").strip()
+
+                # Resolve trace key: PB field name from _original_request_ids
+                pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
+                trace_key = row.get("_original_request_ids", {}).get(pb_field, "")
+
+                # Common trace params (extracted early so skip paths can use them)
+                requester_cm_id = int(row.get("requester_cm_id", row.get("PersonID", 0)))
+                first_name = row.get("first_name", row.get("First", ""))
+                last_name = row.get("last_name", row.get("Last", ""))
+                requester_name = f"{first_name} {last_name}".strip()
+                requester_grade = str(row.get("Grade", 0))
+
                 if not request_text:
                     skipped_no_text += 1
                     continue
 
+                # Track original text before any modifications
+                original_text = request_text
+                na_stripped = False
+
                 # Check for "no preference" indicators before processing
                 if self._is_no_preference(request_text):
                     self._stats["no_preference_skipped"] += 1
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_no_preference",
+                            original_text=original_text,
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="no_preference",
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Strip N/A prefix if present (e.g., "N/A; their grade" -> "their grade")
@@ -1263,9 +1296,23 @@ class RequestOrchestrator:
                     logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
                     self._stats["na_prefix_stripped"] += 1
                     request_text = stripped
+                    na_stripped = True
                 elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
                     # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
                     self._stats["no_preference_skipped"] += 1
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_na_only",
+                            original_text=original_text,
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="na_only",
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Extract staff signatures from bunking_notes before AI parsing
@@ -1286,19 +1333,21 @@ class RequestOrchestrator:
                         }
                     if not request_text:
                         # All content was in staff signatures, skip this field
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="skipped_staff_signatures_only",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=0,
+                                source_field=field_name,
+                                skip_reason="staff_signatures_only",
+                                staff_metadata=staff_metadata,
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
                         continue
-
-                # Handle both field formats
-                # CSV format: PersonID, First, Last, Grade
-                requester_cm_id = int(row.get("requester_cm_id", row.get("PersonID", 0)))
-
-                # Build name from available fields
-                first_name = row.get("first_name", row.get("First", ""))
-                last_name = row.get("last_name", row.get("Last", ""))
-                requester_name = f"{first_name} {last_name}".strip()
-
-                # For now, use 0 as placeholder if not provided
-                requester_grade = str(row.get("Grade", 0))
 
                 # Look up sessions from person_sessions mapping
                 person_sessions = self._person_sessions.get(requester_cm_id, [])
@@ -1306,6 +1355,22 @@ class RequestOrchestrator:
                     # Person not enrolled or not in filtered session
                     skipped_no_session += 1
                     logger.debug(f"Skipping request for person {requester_cm_id} - not enrolled")
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_no_session",
+                            original_text=original_text,
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="not_enrolled",
+                            cleaned_text=request_text,
+                            na_prefix_stripped=na_stripped,
+                            staff_metadata=staff_metadata,
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Use the first valid session for this person
@@ -1339,6 +1404,25 @@ class RequestOrchestrator:
                         )
                         pre_parsed_results.append(parse_result)
 
+                        # Trace: direct mapped (socialize dropdown)
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="direct_mapped",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=person_session_cm_id,
+                                source_field=field_name,
+                                field_path="socialize_direct_map",
+                                socialize_mapped_value=parsed_req.age_preference.value
+                                if parsed_req.age_preference
+                                else None,
+                                session_cm_ids=person_sessions,
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
+
                         # Skip adding to parse_requests - no AI needed
                         continue
 
@@ -1364,6 +1448,25 @@ class RequestOrchestrator:
                     )
 
                 parse_requests.append(parse_request)
+
+                # Trace: parsed (going to AI)
+                if trace_key:
+                    self.trace_collector.record_pre_phase1(
+                        key=trace_key,
+                        action="parsed",
+                        original_text=original_text,
+                        requester_cm_id=requester_cm_id,
+                        year=self.year,
+                        session_cm_id=person_session_cm_id,
+                        source_field=field_name,
+                        field_path="ai_parse",
+                        cleaned_text=request_text,
+                        na_prefix_stripped=na_stripped,
+                        staff_metadata=staff_metadata,
+                        session_cm_ids=person_sessions,
+                        requester_name=requester_name,
+                        requester_grade=requester_grade,
+                    )
 
         # Diagnostic: Log summary
         logger.info(
