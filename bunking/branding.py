@@ -80,47 +80,7 @@ def get_camp_name() -> str:
     return result
 
 
-def get_camp_name_short() -> str:
-    """Get short camp name (e.g., 'Camp' or local override)."""
-    result: str = get_branding().get("camp_name_short", "Camp")
-    return result
-
-
-def get_camp_description() -> str:
-    """Get camp description for prompts."""
-    result: str = get_branding().get(
-        "camp_description",
-        "a residential summer camp where campers live in overnight cabins",
-    )
-    return result
-
-
-def get_camp_tagline() -> str:
-    """Get camp tagline (e.g., 'summers at camp')."""
-    result: str = get_branding().get("camp_tagline", "summers at camp")
-    return result
-
-
 def get_sso_display_name() -> str:
     """Get SSO provider display name."""
     result: str = get_branding().get("sso_display_name", "Staff SSO")
     return result
-
-
-def get_logo_path(size: str = "large") -> str | None:
-    """
-    Get logo path for the specified size.
-
-    Args:
-        size: 'large' or 'nav'
-
-    Returns:
-        Logo path or None if not configured.
-    """
-    logos: dict[str, str | None] = get_branding().get("logo", {})
-    return logos.get(size)
-
-
-def clear_cache() -> None:
-    """Clear the branding cache. Useful for testing or reloading config."""
-    get_branding.cache_clear()

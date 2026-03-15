@@ -28,7 +28,7 @@ from .errors import (
     ValidationError,
 )
 from .loader import ConfigLoader
-from .schema import CONFIG_SCHEMA, get_all_required_keys, get_schema_key, validate_key
+from .schema import CONFIG_SCHEMA, get_all_required_keys
 from .types import ConfigKey, ConfigType
 
 __all__ = [
@@ -45,6 +45,4 @@ __all__ = [
     "UnknownKeyError",
     "ValidationError",
     "get_all_required_keys",
-    "get_schema_key",
-    "validate_key",
 ]

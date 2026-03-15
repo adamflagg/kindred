@@ -135,21 +135,3 @@ async def build_session_context(
         session_pb_id_filter=session_pb_id_filter,
         id_cache=IDLookupCache(pb_client, year),
     )
-
-
-async def batch_load_session_data(ctx: SessionContext, pb_client: PocketBase) -> None:
-    """
-    Pre-load ID caches for all persons and bunks in a session.
-
-    Call this before processing assignments or requests to minimize
-    individual database lookups.
-
-    Args:
-        ctx: The session context to load data for
-        pb_client: PocketBase client for database queries
-    """
-    # Load person and bunk mappings in parallel
-    await asyncio.gather(
-        ctx.id_cache.batch_load_persons(ctx.session_cm_id, ctx.year),
-        ctx.id_cache.batch_load_bunks(ctx.session_cm_id, ctx.year),
-    )

@@ -47,7 +47,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "PyYAML>=6.0",
     # Auth
-    "PyJWT[crypto]>=2.8.0",
+    "PyJWT[crypto]>=2.12.0",
     # CLI & utilities
     "typer>=0.12.0",
     "rich>=13.0.0",
