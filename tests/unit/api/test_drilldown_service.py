@@ -14,7 +14,14 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from api.services.drilldown_service import DrilldownService
-from tests.unit.api.conftest import create_mock_person, create_mock_session, create_mock_status_history
+from tests.unit.api.conftest import (
+    create_mock_attendee as create_mock_attendee_with_person,
+)
+from tests.unit.api.conftest import (
+    create_mock_person,
+    create_mock_session,
+    create_mock_status_history,
+)
 
 # ============================================================================
 # Test Data Factories
@@ -4231,3 +4238,112 @@ class TestDrilldownEffectiveDate:
         match = [r for r in result if r.person_id == 101]
         assert len(match) == 1
         assert match[0].effective_date is None
+
+
+# ============================================================================
+# Tests for waitlist_session_gender breakdown type
+# ============================================================================
+
+
+class TestWaitlistSessionGenderDrilldown:
+    """Test waitlist_session_gender drilldown filter."""
+
+    @pytest.mark.asyncio
+    async def test_returns_waitlisted_for_session_and_gender(self, drilldown_service, mock_repository):
+        """Should return only waitlisted girls for specified session."""
+        # Setup: sessions with cm_id 1001
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        # Only waitlisted attendees returned (repo filters by status_filter=["waitlisted"])
+        # Mix of genders to verify gender filtering
+        mock_repository.fetch_attendees_with_persons = AsyncMock(
+            return_value=[
+                create_mock_attendee_with_person(
+                    101,
+                    1001,
+                    gender="F",
+                    status="waitlisted",
+                    first_name="Emma",
+                    last_name="Johnson",
+                    grade=4,
+                    effective_date="2025-11-13",
+                    enrollment_date="2025-11-14T00:00:00Z",
+                ),
+                create_mock_attendee_with_person(
+                    102,
+                    1001,
+                    gender="F",
+                    status="waitlisted",
+                    first_name="Olivia",
+                    last_name="Chen",
+                    grade=3,
+                    effective_date="2025-11-12",
+                    enrollment_date="2025-11-13T00:00:00Z",
+                ),
+                create_mock_attendee_with_person(
+                    201,
+                    1001,
+                    gender="M",
+                    status="waitlisted",
+                    first_name="Liam",
+                    last_name="Garcia",
+                    grade=5,
+                    effective_date="2025-11-12",
+                    enrollment_date="2025-11-13T00:00:00Z",
+                ),
+            ]
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_session_gender",
+            breakdown_value="1001:F",
+        )
+
+        # Only waitlisted girls
+        assert len(result) == 2
+        assert all(a.gender == "F" for a in result)
+        assert all(a.status == "waitlisted" for a in result)
+
+        # Sorted by effective_date ASC, enrollment_date ASC
+        assert result[0].person_id == 102  # eff=2025-11-12 (earlier)
+        assert result[1].person_id == 101  # eff=2025-11-13
+
+    @pytest.mark.asyncio
+    async def test_combined_gender_for_ag(self, drilldown_service, mock_repository):
+        """When gender is omitted (AG/quest), return all genders."""
+        sessions = {2001: create_mock_session(2001, "AG Session", session_type="ag")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_persons = AsyncMock(
+            return_value=[
+                create_mock_attendee_with_person(
+                    101,
+                    2001,
+                    gender="F",
+                    status="waitlisted",
+                    first_name="Emma",
+                    last_name="Johnson",
+                    effective_date="2025-11-12",
+                    enrollment_date="2025-11-13T00:00:00Z",
+                ),
+                create_mock_attendee_with_person(
+                    201,
+                    2001,
+                    gender="M",
+                    status="waitlisted",
+                    first_name="Liam",
+                    last_name="Garcia",
+                    effective_date="2025-11-13",
+                    enrollment_date="2025-11-14T00:00:00Z",
+                ),
+            ]
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_session_gender",
+            breakdown_value="2001:",  # empty gender = all
+        )
+
+        assert len(result) == 2

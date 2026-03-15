@@ -43,6 +43,7 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "waitlist_accepted",
         "waitlist_declined",
         "waitlist_total",
+        "waitlist_session_gender",
         "cancellation_total",
         "cancellation_was_enrolled",
         "cancellation_was_waitlisted",
@@ -173,6 +174,16 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
+                duration_session_ids=duration_session_ids,
+            )
+
+        # Availability chart waitlist drilldown
+        if breakdown_type == "waitlist_session_gender":
+            return await self._handle_waitlist_session_gender(
+                year=year,
+                breakdown_value=breakdown_value,
+                sessions=sessions,
+                session_types=session_types,
                 duration_session_ids=duration_session_ids,
             )
 
@@ -982,6 +993,68 @@ class DrilldownService:
             person_attendee_groups=all_waitlisted_groups,
             enrolled_attendee_groups=enrolled_attendee_groups,
         )
+
+    async def _handle_waitlist_session_gender(
+        self,
+        year: int,
+        breakdown_value: str,
+        sessions: dict[int, Any],
+        session_types: list[str] | None,
+        duration_session_ids: set[int] | None,
+    ) -> list[DrilldownAttendee]:
+        """Handle waitlist drilldown filtered by session + gender.
+
+        breakdown_value format: "session_cm_id:gender" (e.g. "1001:F", "2001:" for AG)
+        """
+        # Parse "session_cm_id:gender" format
+        parts = breakdown_value.split(":", 1)
+        target_session = int(parts[0])
+        target_gender = parts[1] if len(parts) > 1 and parts[1] else None
+
+        # Fetch waitlisted attendees with person expansion
+        attendees = await self.repo.fetch_attendees_with_persons(year, status_filter=["waitlisted"])
+
+        results = []
+        for att in attendees:
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+
+            session_cm_id = int(getattr(session, "cm_id", 0))
+            if session_cm_id != target_session:
+                continue
+
+            gender = getattr(person, "gender", "")
+            if target_gender and gender != target_gender:
+                continue
+
+            results.append(
+                DrilldownAttendee(
+                    person_id=int(getattr(person, "cm_id", 0)),
+                    first_name=str(getattr(person, "first_name", "")),
+                    last_name=str(getattr(person, "last_name", "")),
+                    preferred_name=_get_str_attr(person, "preferred_name"),
+                    grade=getattr(person, "grade", None),
+                    gender=gender,
+                    age=getattr(person, "age", None),
+                    school=_get_str_attr(person, "normalized_school") or _get_str_attr(person, "school"),
+                    city=_get_str_attr(person, "normalized_city") or _get_str_attr(person, "address_city"),
+                    state=_get_str_attr(person, "address_state"),
+                    years_at_camp=getattr(person, "years_at_camp", None),
+                    session_cm_id=session_cm_id,
+                    session_name=str(getattr(session, "name", "Unknown")),
+                    status="waitlisted",
+                    is_returning=False,
+                    effective_date=_get_str_attr(att, "effective_date"),
+                    enrollment_date=_get_str_attr(att, "enrollment_date"),
+                )
+            )
+
+        # Sort by waitlist position: effective_date ASC, enrollment_date ASC
+        results.sort(key=lambda a: (a.effective_date or "", a.enrollment_date or ""))
+        return results
 
     async def _handle_waitlist_person_breakdown(
         self,
