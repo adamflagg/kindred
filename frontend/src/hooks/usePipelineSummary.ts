@@ -16,7 +16,7 @@ export function usePipelineSummary(runId: string | null, filters: PipelineSummar
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.pipelineSummary(runId ?? ''),
+    queryKey: queryKeys.pipelineSummary(runId ?? '', filters as Record<string, unknown>),
     queryFn: () => {
       if (!runId) throw new Error('Run ID is required')
       return pipelineDebugService.fetchPipelineSummary(runId, filters, fetchWithAuth)

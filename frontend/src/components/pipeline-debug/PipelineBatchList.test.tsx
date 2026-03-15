@@ -12,7 +12,7 @@
  * - Shows phase 3 triggered indicator
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PipelineBatchList } from './PipelineBatchList'
@@ -101,7 +101,7 @@ describe('PipelineBatchList', () => {
 
       // Check table headers exist in thead
       const thead = screen.getAllByRole('columnheader')
-      const headerTexts = thead.map((th) => th.textContent?.trim())
+      const headerTexts = thead.map((th) => String(th.textContent).trim())
       expect(headerTexts).toContain('Camper')
       expect(headerTexts).toContain('Target')
       expect(headerTexts).toContain('Source')

@@ -10,7 +10,7 @@
  * - Shows empty state when no runs available
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PipelineRunSelector } from './PipelineRunSelector'
@@ -112,7 +112,7 @@ describe('PipelineRunSelector', () => {
   it('highlights the selected run', () => {
     render(<PipelineRunSelector {...defaultProps} selectedRunId="run-abc-123" />)
 
-    const select = screen.getByRole('combobox') as HTMLSelectElement
+    const select = screen.getByRole<HTMLSelectElement>('combobox')
     expect(select.value).toBe('run-abc-123')
   })
 
