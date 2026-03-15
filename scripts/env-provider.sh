@@ -20,17 +20,13 @@
 # The function exports all loaded variables into the current shell.
 # Returns 0 on success, 1 if no provider found.
 
+# shellcheck source=./colors.sh
+source "$(dirname "${BASH_SOURCE[0]}")/colors.sh"
+
 load_env() {
     local project_root="${1:-.}"
     local loaded=false
     local _env_source=""
-
-    # Provider colors (safe if caller already defined these)
-    local _blue='\033[0;34m'
-    local _green='\033[0;32m'
-    local _yellow='\033[1;33m'
-    local _red='\033[0;31m'
-    local _nc='\033[0m'
 
     # Optional: force a specific provider (skips auto-detection)
     local provider="${SECRETS_PROVIDER:-auto}"
@@ -38,14 +34,14 @@ load_env() {
     # ── 0. Direct .env (skip all managers) ────────────────────────────
     if [ "$provider" = "dotenv" ]; then
         if [ -f "$project_root/.env" ]; then
-            echo -e "${_blue}Loading environment from .env (SECRETS_PROVIDER=dotenv)${_nc}"
+            echo -e "${BLUE}Loading environment from .env (SECRETS_PROVIDER=dotenv)${NC}"
             set -a
             # shellcheck source=/dev/null
             source "$project_root/.env"
             set +a
             return 0
         else
-            echo -e "${_red}SECRETS_PROVIDER=dotenv but no .env file found${_nc}"
+            echo -e "${RED}SECRETS_PROVIDER=dotenv but no .env file found${NC}"
             return 1
         fi
     fi
@@ -78,21 +74,21 @@ load_env() {
                     --projectId="${INFISICAL_PROJECT_ID:-}" \
                     --domain="${INFISICAL_DOMAIN:-}" \
                     --format=dotenv-export 2>/dev/null) && [ -n "$infisical_output" ]; then
-                    echo -e "${_blue}Loading secrets from Infisical (${INFISICAL_ENV:-dev})${_nc}"
+                    echo -e "${BLUE}Loading secrets from Infisical (${INFISICAL_ENV:-dev})${NC}"
                     set -a
                     eval "$infisical_output"
                     set +a
                     loaded=true
                     _env_source="infisical"
-                    echo -e "${_green}Secrets loaded from Infisical${_nc}"
+                    echo -e "${GREEN}Secrets loaded from Infisical${NC}"
                 else
-                    echo -e "${_yellow}Infisical auth OK but export failed — falling back${_nc}"
+                    echo -e "${YELLOW}Infisical auth OK but export failed — falling back${NC}"
                 fi
             else
-                echo -e "${_yellow}Infisical configured but auth failed — falling back${_nc}"
+                echo -e "${YELLOW}Infisical configured but auth failed — falling back${NC}"
             fi
         else
-            echo -e "${_yellow}Infisical vault.config missing credentials — skipping${_nc}"
+            echo -e "${YELLOW}Infisical vault.config missing credentials — skipping${NC}"
         fi
     fi
 
@@ -103,28 +99,28 @@ load_env() {
             local doppler_output
             if doppler_output=$(doppler secrets download --no-file --format=env-no-quotes 2>/dev/null) \
                && [ -n "$doppler_output" ]; then
-                echo -e "${_blue}Loading secrets from Doppler${_nc}"
+                echo -e "${BLUE}Loading secrets from Doppler${NC}"
                 set -a
                 eval "$doppler_output"
                 set +a
                 loaded=true
                 _env_source="doppler"
-                echo -e "${_green}Secrets loaded from Doppler${_nc}"
+                echo -e "${GREEN}Secrets loaded from Doppler${NC}"
             else
-                echo -e "${_yellow}Doppler configured but export failed — falling back${_nc}"
+                echo -e "${YELLOW}Doppler configured but export failed — falling back${NC}"
             fi
         fi
     fi
 
     # ── 2b. Explicit provider failed — don't silently fall back ─────
     if [ "$loaded" = false ] && [ "$provider" != "auto" ]; then
-        echo -e "${_red}SECRETS_PROVIDER=$provider requested but failed${_nc}"
+        echo -e "${RED}SECRETS_PROVIDER=$provider requested but failed${NC}"
         return 1
     fi
 
     # ── 3. .env file ─────────────────────────────────────────────────
     if [ "$loaded" = false ] && [ -f "$project_root/.env" ]; then
-        echo -e "${_blue}Loading environment from .env${_nc}"
+        echo -e "${BLUE}Loading environment from .env${NC}"
         set -a
         # shellcheck source=/dev/null
         source "$project_root/.env"
@@ -147,7 +143,7 @@ load_env() {
 
     # ── 4. Nothing found ─────────────────────────────────────────────
     if [ "$loaded" = false ]; then
-        echo -e "${_red}No secrets provider found.${_nc}"
+        echo -e "${RED}No secrets provider found.${NC}"
         echo -e "Options:"
         echo -e "  1. Copy .env.example to .env and fill in your values"
         echo -e "  2. Install Infisical CLI and configure scripts/vault.config"

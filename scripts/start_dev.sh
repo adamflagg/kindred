@@ -4,19 +4,19 @@
 
 set -e
 
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-echo -e "${GREEN}Starting Kindred Development Environment${NC}"
-echo -e "${YELLOW}Full CampMinder Mirror Schema${NC}"
-
 # Get the directory of this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+# Colors for output
+# shellcheck source=./colors.sh
+source "$SCRIPT_DIR/colors.sh"
+
+if [ -n "${WORKTREE_NAME:-}" ]; then
+    echo -e "${GREEN}Starting Kindred Development Environment${NC} (worktree: ${YELLOW}${WORKTREE_NAME}${NC})"
+else
+    echo -e "${GREEN}Starting Kindred Development Environment${NC}"
+fi
 
 # Load environment from best available provider (Infisical → Doppler → .env)
 # shellcheck source=./env-provider.sh
@@ -55,15 +55,28 @@ cd "$PROJECT_ROOT/pocketbase"
 ./pocketbase serve --http=0.0.0.0:$POCKETBASE_PORT &
 POCKETBASE_PID=$!
 
-# Wait for PocketBase to start
+# Wait for PocketBase to be ready
 echo "Waiting for PocketBase to start..."
-sleep 5
+PB_READY=false
+for i in {1..30}; do
+    if curl -s http://127.0.0.1:$POCKETBASE_PORT/api/health > /dev/null 2>&1; then
+        echo -e "${GREEN}PocketBase is ready${NC}"
+        PB_READY=true
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo -e "${RED}ERROR: PocketBase failed to start${NC}"
+        kill "$POCKETBASE_PID" 2>/dev/null || true
+        exit 1
+    fi
+    sleep 1
+done
 
 # Check if this is the first run (no .initialized marker)
 INITIALIZED_MARKER="$PROJECT_ROOT/pocketbase/pb_data/.initialized"
 if [ ! -f "$INITIALIZED_MARKER" ]; then
     echo -e "${BLUE}First run detected. Creating admin user...${NC}"
-    
+
     # Ensure required environment variables are set with defaults
     POCKETBASE_ADMIN_EMAIL="${POCKETBASE_ADMIN_EMAIL:-admin@camp.local}"
 
@@ -77,21 +90,7 @@ if [ ! -f "$INITIALIZED_MARKER" ]; then
     fi
 
     echo -e "${YELLOW}Using admin credentials: $POCKETBASE_ADMIN_EMAIL${NC}"
-    
-    # Wait a bit more to ensure PocketBase is fully ready
-    for i in {1..30}; do
-        if curl -s http://127.0.0.1:$POCKETBASE_PORT/api/health > /dev/null 2>&1; then
-            echo -e "${GREEN}PocketBase is ready${NC}"
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            echo -e "${RED}ERROR: PocketBase failed to start${NC}"
-            kill "$POCKETBASE_PID" 2>/dev/null || true
-            exit 1
-        fi
-        sleep 1
-    done
-    
+
     # Create admin user using superuser upsert command
     echo -e "${BLUE}Creating admin user...${NC}"
     cd "$PROJECT_ROOT/pocketbase"
@@ -126,24 +125,6 @@ uv sync --frozen || {
 }
 echo -e "${GREEN}Python dependencies installed${NC}"
 
-# Ensure PocketBase is fully ready before starting solver
-echo -e "${BLUE}Ensuring PocketBase is fully ready...${NC}"
-for i in {1..30}; do
-    if curl -s http://localhost:$POCKETBASE_PORT/api/health > /dev/null 2>&1; then
-        echo -e "${GREEN}PocketBase health check passed${NC}"
-        break
-    fi
-    if [ "$i" -eq 30 ]; then
-        echo -e "${RED}ERROR: PocketBase health check failed after 30 seconds${NC}"
-        kill "$POCKETBASE_PID" 2>/dev/null || true
-        exit 1
-    fi
-    sleep 1
-done
-
-# Additional wait to ensure PocketBase auth endpoints are ready
-sleep 2
-
 # Configure OAuth2 if environment variables are set
 echo -e "${BLUE}Configuring OAuth2 provider...${NC}"
 if [ -n "$OIDC_CLIENT_ID" ] && [ -n "$OIDC_CLIENT_SECRET" ]; then
@@ -168,17 +149,19 @@ API_PID=$!
 echo -e "${GREEN}API service started with PID: $API_PID${NC}"
 echo -e "${YELLOW}API logs: $API_LOG${NC}"
 
-# Wait for API service to start
+# Wait for API service to be ready
 echo "Waiting for API Service to start..."
-sleep 5
-
-# Check if API service is running
-if ! curl -s http://127.0.0.1:$FASTAPI_PORT/health > /dev/null 2>&1; then
-    echo -e "${RED}Warning: API service may not have started properly${NC}"
-    echo -e "${YELLOW}Check logs at: $API_LOG${NC}"
-else
-    echo -e "${GREEN}API service is healthy${NC}"
-fi
+for i in {1..30}; do
+    if curl -s http://127.0.0.1:$FASTAPI_PORT/health > /dev/null 2>&1; then
+        echo -e "${GREEN}API service is healthy${NC}"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo -e "${RED}Warning: API service may not have started properly${NC}"
+        echo -e "${YELLOW}Check logs at: $API_LOG${NC}"
+    fi
+    sleep 1
+done
 
 # Build frontend for nginx (development mode)
 # Set VITE_DISABLE_AUTH=true so the build includes admin credentials for bypass mode
@@ -212,8 +195,14 @@ caddy run --config Caddyfile --adapter caddyfile &
 CADDY_PID=$!
 echo -e "${GREEN}Caddy started with PID: $CADDY_PID${NC}"
 
-# Wait for Caddy to start
-sleep 2
+# Wait for Caddy to be ready
+for i in {1..15}; do
+    if curl -s http://127.0.0.1:$CADDY_PORT > /dev/null 2>&1; then
+        echo -e "${GREEN}Caddy is ready${NC}"
+        break
+    fi
+    sleep 1
+done
 
 # Clear Vite cache to prevent stale module HMR errors
 echo -e "${BLUE}Clearing Vite cache...${NC}"

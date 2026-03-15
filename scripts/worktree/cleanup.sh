@@ -9,14 +9,11 @@
 
 set -e
 
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
 # Dynamic paths
 MAIN_REPO="$(git rev-parse --show-toplevel)"
+
+# shellcheck source=../colors.sh
+source "$MAIN_REPO/scripts/colors.sh"
 REPO_NAME="$(basename "$MAIN_REPO")"
 REPO_PARENT="$(dirname "$MAIN_REPO")"
 WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"

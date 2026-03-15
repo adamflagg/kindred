@@ -14,15 +14,12 @@
 
 set -e
 
-# Colors
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
 # Dynamic path detection
 MAIN_REPO="$(git rev-parse --show-toplevel)"
+
+# Colors
+# shellcheck source=../colors.sh
+source "$MAIN_REPO/scripts/colors.sh"
 REPO_NAME="$(basename "$MAIN_REPO")"
 REPO_PARENT="$(dirname "$MAIN_REPO")"
 WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
@@ -160,11 +157,25 @@ fi
 
 # Install dependencies (fast with caching)
 echo -e "${BLUE}Installing dependencies...${NC}"
+PIDS=()
 uv sync --frozen &
+PIDS+=($!)
 npm ci --prefer-offline &  # Root deps (commitlint)
+PIDS+=($!)
 (cd frontend && npm ci --prefer-offline) &
+PIDS+=($!)
 (cd pocketbase && npm ci --prefer-offline) &  # PB migration/hook linting
-wait
+PIDS+=($!)
+INSTALL_FAILED=false
+for pid in "${PIDS[@]}"; do
+    if ! wait "$pid"; then
+        INSTALL_FAILED=true
+    fi
+done
+if [ "$INSTALL_FAILED" = true ]; then
+    echo -e "${RED}Dependency installation failed${NC}"
+    exit 1
+fi
 
 # Copy/link local config (branding, logos) if kindred-local exists
 # Files needed by Docker builds are COPIED (symlinks break Docker build context).
@@ -206,109 +217,6 @@ else
     echo -e "${YELLOW}No database in main to seed (will start fresh)${NC}"
 fi
 
-# Create start script
-cat > "$WORKTREE_DIR/start.sh" << 'SCRIPT'
-#!/bin/bash
-set -e
-cd "$(dirname "$0")"
-
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-# Load environment from best available provider (Infisical → Doppler → .env)
-source scripts/env-provider.sh
-if ! load_env "$(pwd)"; then
-    exit 1
-fi
-
-VITE_PORT="${VITE_PORT:-3000}"
-FASTAPI_PORT="${FASTAPI_PORT:-8000}"
-CADDY_PORT="${CADDY_PORT:-8080}"
-POCKETBASE_PORT="${POCKETBASE_PORT:-8090}"
-
-echo -e "${GREEN}Starting: ${WORKTREE_NAME:-worktree}${NC}"
-
-# Kill existing on our ports
-for port in $POCKETBASE_PORT $VITE_PORT $FASTAPI_PORT $CADDY_PORT; do
-    lsof -ti:$port 2>/dev/null | xargs kill -9 2>/dev/null || true
-done
-
-# Start PocketBase
-(cd pocketbase && ./pocketbase serve --http=0.0.0.0:$POCKETBASE_PORT) &
-PB_PID=$!
-sleep 3
-
-# Start FastAPI
-uv run uvicorn api.main:app --host 0.0.0.0 --port $FASTAPI_PORT &
-API_PID=$!
-sleep 2
-
-# Build frontend
-cd frontend
-VITE_DISABLE_AUTH=true npm run build
-cd ..
-mkdir -p pocketbase/pb_public
-rm -rf pocketbase/pb_public/*
-cp -r frontend/dist/* pocketbase/pb_public/
-[ -d local ] && cp -r local pocketbase/pb_public/
-
-# Start Caddy (inline config with our ports)
-cat > /tmp/Caddyfile.$$ << EOF
-:$CADDY_PORT {
-    @pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect
-    handle @pocketbase {
-        reverse_proxy 127.0.0.1:$POCKETBASE_PORT
-    }
-    handle /_/* {
-        reverse_proxy 127.0.0.1:$POCKETBASE_PORT
-    }
-    handle /health {
-        reverse_proxy 127.0.0.1:$FASTAPI_PORT
-    }
-    handle /api/* {
-        reverse_proxy 127.0.0.1:$FASTAPI_PORT
-    }
-    handle {
-        root * $(pwd)/pocketbase/pb_public
-        try_files {path} /index.html
-        file_server
-    }
-}
-EOF
-caddy run --config /tmp/Caddyfile.$$ --adapter caddyfile &
-CADDY_PID=$!
-
-# Start Vite
-cd frontend
-VITE_DISABLE_AUTH=true npm run dev -- --host --port $VITE_PORT --clearScreen false &
-VITE_PID=$!
-cd ..
-
-cleanup() {
-    echo -e "\n${YELLOW}Stopping...${NC}"
-    kill $PB_PID $API_PID $CADDY_PID $VITE_PID 2>/dev/null || true
-    rm -f /tmp/Caddyfile.$$
-}
-trap cleanup EXIT INT TERM
-
-echo -e "\n${GREEN}=== Running ===${NC}"
-echo -e "Vite:       http://localhost:$VITE_PORT"
-echo -e "Caddy:      http://localhost:$CADDY_PORT"
-echo -e "PocketBase: http://localhost:$POCKETBASE_PORT/_/"
-echo -e "API Docs:   http://localhost:$FASTAPI_PORT/docs"
-echo -e "\nCtrl+C to stop"
-wait
-SCRIPT
-chmod +x "$WORKTREE_DIR/start.sh"
-
-# Ensure worktree-specific files are gitignored
-if ! grep -q "^start.sh$" "$WORKTREE_DIR/.gitignore" 2>/dev/null; then
-    echo -e "\n# Worktree-specific files" >> "$WORKTREE_DIR/.gitignore"
-    echo "start.sh" >> "$WORKTREE_DIR/.gitignore"
-fi
-
 # Create logs directory for local dev
 mkdir -p "$WORKTREE_DIR/logs"
 
@@ -317,7 +225,7 @@ echo -e ""
 echo -e "${GREEN}=== Worktree Ready ===${NC}"
 echo -e ""
 echo -e "  cd $WORKTREE_DIR"
-echo -e "  ./start.sh"
+echo -e "  ./scripts/start_dev.sh"
 echo -e ""
 echo -e "Ports:"
 echo -e "  Vite:       http://localhost:$VITE_PORT"
