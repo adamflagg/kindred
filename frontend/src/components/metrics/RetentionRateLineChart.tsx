@@ -63,10 +63,10 @@ export function RetentionRateLineChart({
 
   // Handle activeDot click: map chart item back to original RetentionRateBarItem
   const handleDotClick = onDotClick
-    ? (props: { payload?: ChartItem }) => {
-        if (!props.payload) return
-        const payloadName = props.payload.name
-        const original = sorted.find((d) => d.name === payloadName)
+    ? (dotProps: Record<string, unknown>) => {
+        const payload = dotProps['payload'] as ChartItem | undefined
+        if (!payload) return
+        const original = sorted.find((d) => d.name === payload.name)
         if (original) onDotClick(original)
       }
     : undefined

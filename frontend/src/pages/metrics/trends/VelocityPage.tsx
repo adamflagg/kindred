@@ -617,7 +617,7 @@ export default function VelocityPage() {
                         </p>
                       )}
                       {validPayload.map((entry) => {
-                        const yearMatch = entry.name?.match(/\b(\d{4})\b/)
+                        const yearMatch = String(entry.name ?? '').match(/\b(\d{4})\b/)
                         const priorDate =
                           yearMatch && label != null
                             ? priorYearDateLabel(
@@ -874,7 +874,7 @@ export default function VelocityPage() {
                         Day {dayOffset + 1} (Week {weekNum})
                       </p>
                       {validPayload.map((entry) => {
-                        const yearMatch = entry.name?.match(/\b(\d{4})\b/)
+                        const yearMatch = String(entry.name ?? '').match(/\b(\d{4})\b/)
                         const priorDate = yearMatch
                           ? priorYearDailyDateLabel(
                               data.prior_year_season_starts,
