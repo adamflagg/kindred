@@ -236,7 +236,7 @@ export function formatDuration(seconds?: number): string {
 export interface ImpactBadgeProps {
   scaleType: ScaleType
   value: number
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> | null
 }
 
 export function ImpactBadge({ scaleType, value, metadata }: ImpactBadgeProps) {
@@ -255,7 +255,7 @@ export function ImpactBadge({ scaleType, value, metadata }: ImpactBadgeProps) {
 export interface ScaleContextBarProps {
   scaleType: ScaleType
   value: number
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> | null
 }
 
 export function ScaleContextBar({ scaleType, value, metadata }: ScaleContextBarProps) {
@@ -368,7 +368,7 @@ export function PortalTooltip({ children, content, className = 'w-64' }: PortalT
 export interface ScaleTooltipProps {
   scaleType: ScaleType
   value: number
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> | null
 }
 
 export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) {
