@@ -270,7 +270,7 @@ const baseConfig: UserConfig = {
       },
     },
   },
-  clearScreen: false // Also disable for build mode
+  clearScreen: false // Prevent Vite from clearing terminal output
 }
 
 // =============================================================================
