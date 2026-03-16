@@ -199,30 +199,40 @@ const baseConfig: UserConfig = {
     // Inject branding for frontend to use
     VITE_LOCAL_BRANDING: JSON.stringify(localBranding),
   },
+  resolve: {
+    tsconfigPaths: true,
+  },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        // Manual chunks as function for rolldown-vite compatibility
-        manualChunks(id: string) {
-          // Vendor chunks - split heavy libraries
-          if (id.includes('node_modules')) {
-            if (id.includes('react-dom') || id.includes('react-router-dom')) {
-              return 'vendor-react';
-            }
-            if (id.includes('@tanstack/react-query')) {
-              return 'vendor-query';
-            }
-            if (id.includes('@dnd-kit')) {
-              return 'vendor-dnd';
-            }
-            if (id.includes('cytoscape')) {
-              return 'vendor-graph';
-            }
-            if (id.includes('lucide-react')) {
-              return 'vendor-ui';
-            }
-          }
-          return undefined;
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor-react',
+              test: /node_modules[\\/](react-dom|react-router)/,
+              priority: 20,
+            },
+            {
+              name: 'vendor-query',
+              test: /node_modules[\\/]@tanstack[\\/]react-query/,
+              priority: 15,
+            },
+            {
+              name: 'vendor-dnd',
+              test: /node_modules[\\/]@dnd-kit/,
+              priority: 15,
+            },
+            {
+              name: 'vendor-graph',
+              test: /node_modules[\\/]cytoscape/,
+              priority: 15,
+            },
+            {
+              name: 'vendor-ui',
+              test: /node_modules[\\/]lucide-react/,
+              priority: 15,
+            },
+          ],
         },
       },
     },
@@ -232,6 +242,7 @@ const baseConfig: UserConfig = {
   server: {
     port: 3000,
     host: true, // Allow access from external hosts
+    forwardConsole: true,
     // Allow Vite to serve files from the local/ directory
     fs: {
       allow: ['..', '../local'],
