@@ -188,6 +188,15 @@ class OpenAIProvider(AIProvider):
             logger.error(f"Health check failed: {e}")
             return False
 
+    def _supports_reasoning(self) -> bool:
+        """Check if the configured model supports the reasoning parameter.
+
+        Only reasoning-capable models (o-series, GPT-5) support this.
+        GPT-4.1 and earlier models reject it with a 400 error.
+        """
+        model_lower = self.model.lower()
+        return any(model_lower.startswith(prefix) for prefix in ("o1", "o3", "o4", "gpt-5"))
+
     async def _call_with_structured_output(
         self,
         prompt: str,
@@ -200,21 +209,26 @@ class OpenAIProvider(AIProvider):
         The model is constrained to output valid schema-conforming JSON.
 
         Args:
-            reasoning_effort: Reasoning level for GPT-5 models.
+            reasoning_effort: Reasoning level for reasoning-capable models.
                 "low" for Phase 1 parsing, "medium" for Phase 3 disambiguation.
+                Ignored for models that don't support reasoning.
 
         Returns:
             Tuple of (parsed_result, reasoning_summary). The reasoning_summary
             is extracted from ResponseReasoningItem objects when reasoning is
             enabled, or None if no reasoning output is present.
         """
-        response = await self.client.responses.parse(
-            model=self.model,
-            input=prompt,
-            text_format=response_model,
-            instructions="You are an expert at parsing summer camp bunk requests.",
-            reasoning=Reasoning(effort=reasoning_effort),
-        )
+        # Only pass reasoning param for models that support it
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": prompt,
+            "text_format": response_model,
+            "instructions": "You are an expert at parsing summer camp bunk requests.",
+        }
+        if self._supports_reasoning():
+            kwargs["reasoning"] = Reasoning(effort=reasoning_effort)
+
+        response = await self.client.responses.parse(**kwargs)
 
         # Update token usage
         if hasattr(response, "usage") and response.usage:
