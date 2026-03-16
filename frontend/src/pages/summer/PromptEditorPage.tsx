@@ -1,15 +1,15 @@
 /**
- * DebugPage - Phase 1 AI parse analysis debug tool
+ * PromptEditorPage - AI prompt editing and Phase 1 parse analysis
  *
- * A tabbed interface for analyzing and iterating on Phase 1 AI intent parsing
- * without running the full 3-phase pipeline.
+ * Moved from the original DebugPage tabs. Provides prompt list/view/edit
+ * plus "Test This Prompt" and parse analysis tools.
  *
- * Design: Sierra Lodge aesthetic with warm, nature-inspired tones
- * that match the overall app theme while retaining developer focus.
+ * Route: /summer/debug/prompts
  */
 
 import { useState } from 'react'
-import { Bug, FileCode, Sparkles, Trees } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { Bug, FileCode, Sparkles, Trees, ArrowRight } from 'lucide-react'
 import { ParseAnalysisTab, PromptEditorTab } from '../../components/debug'
 import { useTour } from '../../hooks/useTour'
 import { TourReplayButton } from '../../components/tour'
@@ -20,7 +20,6 @@ interface Tab {
   id: TabId
   label: string
   icon: React.ReactNode
-  disabled?: boolean
 }
 
 const TABS: Tab[] = [
@@ -36,9 +35,10 @@ const TABS: Tab[] = [
   },
 ]
 
-export default function DebugPage() {
+export default function PromptEditorPage() {
   const [activeTab, setActiveTab] = useState<TabId>('parse-analysis')
   const { tourId, replay } = useTour()
+  const navigate = useNavigate()
 
   return (
     <div className="relative space-y-6">
@@ -53,37 +53,42 @@ export default function DebugPage() {
           <Bug className="text-forest-900 h-7 w-7" />
         </div>
         <div className="flex-1">
-          <h1 className="font-display text-foreground text-2xl font-bold">Debug Tools</h1>
+          <h1 className="font-display text-foreground text-2xl font-bold">
+            Prompts &amp; Parse Analysis
+          </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Analyze and iterate on Phase 1 AI intent parsing
+            Edit AI prompts and analyze Phase 1 intent parsing
           </p>
         </div>
-        <TourReplayButton tourId={tourId} onReplay={replay} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/summer/debug/pipeline')}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+          >
+            Pipeline Debug
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+          <TourReplayButton tourId={tourId} onReplay={replay} />
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="border-border/70 border-b" data-tour="debug-tabs">
-        <nav className="flex gap-1" aria-label="Debug tool tabs">
+        <nav className="flex gap-1" aria-label="Prompt editor tabs">
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => !tab.disabled && setActiveTab(tab.id)}
-              disabled={tab.disabled}
+              onClick={() => setActiveTab(tab.id)}
               className={`relative -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-5 py-3 text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.id
                   ? 'border-forest-500 text-forest-700 dark:text-forest-400 bg-forest-50/50 dark:bg-forest-900/20'
                   : 'text-muted-foreground hover:text-foreground hover:bg-parchment-200/50 dark:hover:bg-bark-800/30 border-transparent'
-              } ${tab.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} `}
+              } cursor-pointer`}
               aria-selected={activeTab === tab.id}
               role="tab"
             >
               {tab.icon}
               {tab.label}
-              {tab.disabled && (
-                <span className="ml-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-                  Soon
-                </span>
-              )}
             </button>
           ))}
         </nav>

@@ -18,11 +18,14 @@ from bunking.logging_config import get_logger
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
+from uuid import uuid4
+
 from pocketbase import PocketBase
 
 from .data.data_access_context import DataAccessContext
 from .data.pocketbase_wrapper import PocketBaseWrapper
 from .data.repositories import SessionRepository
+from .debug.trace_collector import NoOpTraceCollector, TraceCollector
 from .orchestrator import RequestOrchestrator
 from .shared.constants import ALL_PROCESSING_FIELDS, validate_source_fields
 
@@ -71,6 +74,7 @@ async def process_bunk_requests(
     source_fields: list[str] | None = None,
     force: bool = False,
     debug: bool = False,
+    collect_traces: bool = False,
 ) -> dict[str, Any]:
     """Process bunk requests from a data source.
 
@@ -84,10 +88,19 @@ async def process_bunk_requests(
         source_fields: Optional list of source fields to filter by
         force: If True, clear processed flags before fetching (enables reprocessing)
         debug: If True, enable verbose AI parse logging
+        collect_traces: If True, enable pipeline trace collection for debugging
 
     Returns:
         Processing results
     """
+    # Create trace collector based on flag
+    trace_collector: TraceCollector
+    if collect_traces:
+        run_id = uuid4().hex
+        trace_collector = TraceCollector(run_id=run_id)
+    else:
+        trace_collector = NoOpTraceCollector()
+
     # Create DataAccessContext - handles PocketBase connection and authentication
     # ConfigLoader (used by orchestrator) will load AI config from PocketBase
     data_context = DataAccessContext(year=year)
@@ -99,6 +112,7 @@ async def process_bunk_requests(
         session_cm_ids=session_cm_ids,
         data_context=data_context,
         debug=debug,
+        trace_collector=trace_collector,
     )
 
     # Get pb reference for database loading (DataAccessContext provides it)
@@ -178,6 +192,23 @@ async def process_bunk_requests(
         return result
 
     finally:
+        # Flush traces after processing (fire-and-forget on failure)
+        # In finally block so partial traces are preserved even if processing fails
+        if trace_collector.enabled:
+            try:
+                await trace_collector.flush(
+                    data_context.pb_client,
+                    run_metadata={
+                        "year": year,
+                        "session": ",".join(str(s) for s in session_cm_ids),
+                        "source_fields": source_fields or [],
+                        "limit": test_limit or 0,
+                        "force": force,
+                    },
+                )
+            except Exception as e:
+                logger.warning("Failed to flush traces: %s", e, exc_info=True)
+
         # Clean up resources (closes AI provider HTTP client)
         await orchestrator.close()
         # DataAccessContext cleanup

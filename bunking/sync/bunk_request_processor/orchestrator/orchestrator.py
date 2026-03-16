@@ -33,6 +33,15 @@ from ..data.cache.temporal_name_cache import TemporalNameCache
 from ..data.repositories.request_repository import RequestRepository
 from ..data.repositories.session_repository import SessionRepository
 from ..data.repositories.source_link_repository import SourceLinkRepository
+from ..debug.trace_collector import NoOpTraceCollector, TraceCollector
+from ..debug.trace_models import (
+    CandidateTrace,
+    FinalBunkRequestTrace,
+    Phase2FinalResult,
+    Phase2IntentTrace,
+    Phase3IntentTrace,
+    PostPipelineTrace,
+)
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator
@@ -51,6 +60,7 @@ from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
     ALL_FIELD_TO_SOURCE_FIELD,
+    FIELD_TO_SOURCE_FIELD,
     FIELDS_TO_CHECK,
     UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
@@ -67,6 +77,22 @@ from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
 
 logger = get_logger(__name__)
+
+# Reverse mapping: SourceField value -> PB field name (for _original_request_ids lookup)
+_SOURCE_FIELD_TO_PB_FIELD: dict[str, str] = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
+
+
+def _get_trace_key(parse_result: ParseResult) -> str:
+    """Extract the original_request_id trace key from a ParseResult.
+
+    Maps from SourceField value → PB field name → _original_request_ids lookup.
+    Returns empty string if mapping fails (e.g., CSV data without original_request_ids).
+    """
+    if parse_result.parse_request is None:
+        return ""
+    field_name = parse_result.parse_request.field_name
+    pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
+    return str(parse_result.parse_request.row_data.get("_original_request_ids", {}).get(pb_field, ""))
 
 
 def generate_unresolved_person_id(name_text: str) -> int:
@@ -140,6 +166,7 @@ class RequestOrchestrator:
         ai_config: dict[str, Any] | None = None,
         data_context: DataAccessContext | None = None,
         debug: bool = False,
+        trace_collector: TraceCollector | None = None,
     ):
         """Initialize the request orchestrator.
 
@@ -150,6 +177,8 @@ class RequestOrchestrator:
             ai_config: Optional AI configuration override
             data_context: DataAccessContext for repository access (preferred)
             debug: Enable verbose AI parse logging
+            trace_collector: Pipeline trace collector for debug instrumentation.
+                Defaults to NoOpTraceCollector (zero overhead) when None.
 
         Note:
             Either pb or data_context must be provided. Using pb directly is
@@ -187,6 +216,9 @@ class RequestOrchestrator:
 
         # Debug mode for verbose AI parse logging
         self.debug = debug
+
+        # Trace collector for pipeline debug instrumentation
+        self.trace_collector: TraceCollector = trace_collector if trace_collector is not None else NoOpTraceCollector()
 
         # Initialize components
         self._initialize_components()
@@ -983,6 +1015,50 @@ class RequestOrchestrator:
         if pre_parsed_results:
             logger.info(f"Pre-parsed {len(pre_parsed_results)} requests without AI (e.g., socialize preferences)")
 
+        # --- Trace: Phase 1 results ---
+        pre_parsed_ids = {id(r) for r in pre_parsed_results}
+        for pr in parse_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            ran = id(pr) not in pre_parsed_ids  # AI-parsed vs pre-parsed
+            parsed_intents = [
+                {
+                    "target_name": req.target_name or "",
+                    "request_type": req.request_type.value if req.request_type else "",
+                    "confidence": req.confidence,
+                    "keywords_found": req.metadata.get("keywords_found", []) if req.metadata else [],
+                    "reasoning": req.metadata.get("reasoning", "") if req.metadata else "",
+                    "parse_notes": req.metadata.get("parse_notes", "") if req.metadata else "",
+                    "csv_position": req.csv_position,
+                }
+                for req in pr.parsed_requests
+            ]
+            pr_meta = pr.metadata or {}
+            security_meta = pr_meta.get("security_metadata") or {}
+            sanitization_info = (
+                {
+                    "is_suspicious": security_meta.get("is_suspicious", False),
+                    "risk_level": security_meta.get("risk_level"),
+                    "confidence_penalty": security_meta.get("confidence_penalty", 0.0),
+                }
+                if security_meta
+                else None
+            )
+            self.trace_collector.record_phase1(
+                key=trace_key,
+                ran=ran,
+                parsed_intents=parsed_intents,
+                is_valid=pr.is_valid,
+                error_message=pr_meta.get("failure_reason"),
+                token_count=pr_meta.get("token_count"),
+                processing_time_ms=pr_meta.get("processing_time_ms"),
+                ai_raw_response=pr_meta.get("ai_raw_response"),
+                ai_reasoning_summary=pr_meta.get("ai_reasoning_summary"),
+                sanitization=sanitization_info,
+                parse_request={"field_name": pr.parse_request.field_name} if pr.parse_request else {},
+            )
+
         # This catches AI errors where wrong request type is returned for strict fields
         validated_count, rejected_count = self._validate_request_types(parse_results)
         if rejected_count > 0:
@@ -1001,6 +1077,27 @@ class RequestOrchestrator:
                 f"rejected {source_rejected} "
                 f"(hallucinated={self._stats.get('hallucination_rejected', 0)}, "
                 f"unit_names={self._stats.get('unit_name_rejected', 0)})"
+            )
+
+        # --- Trace: Validation results ---
+        for pr in parse_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            self.trace_collector.record_validation(
+                key=trace_key,
+                type_validation={"passed": pr.is_valid, "rejected": []},
+                temporal_conflicts={
+                    "batch_filtered": conflict_filtered,
+                    "details": [],
+                    "note": "batch-level aggregate, not per-request",
+                },
+                source_text_validation={
+                    "batch_rejected": source_rejected,
+                    "hallucinated_names": [],
+                    "unit_names": [],
+                    "note": "batch-level aggregate, not per-request",
+                },
             )
 
         # Initialize temporal name cache before Phase 2
@@ -1022,10 +1119,76 @@ class RequestOrchestrator:
         logger.info("=== Phase 2: Local Resolution ===")
         resolution_results = await self.phase2_service.batch_resolve(parse_results)
 
+        # --- Trace: Phase 2 results ---
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            for intent_idx, rr in enumerate(res_list):
+                rr_meta = rr.metadata or {}
+                candidates_trace = [
+                    CandidateTrace(
+                        person_cm_id=c.cm_id,
+                        name=c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                        session_cm_id=c.session_cm_id,
+                        grade=c.grade,
+                        school=c.school,
+                    )
+                    for c in (rr.candidates or [])
+                ]
+                self.trace_collector.record_phase2(
+                    key=trace_key,
+                    intent_idx=intent_idx,
+                    intent_trace=Phase2IntentTrace(
+                        target_name=rr.target_name or "",
+                        all_candidates=candidates_trace,
+                        staff_filtered=rr.method == "staff_filtered",
+                        hallucination_detected=bool(rr_meta.get("below_threshold")),
+                        final_result=Phase2FinalResult(
+                            person_cm_id=rr.person.cm_id if rr.person else None,
+                            person_name=rr.person.full_name if rr.person else None,
+                            confidence=rr.confidence,
+                            method=rr.method,
+                            is_resolved=rr.is_resolved,
+                            is_ambiguous=rr.is_ambiguous,
+                        ),
+                    ),
+                )
+
         # Expand LAST_YEAR_BUNKMATES placeholders into individual bunk_with requests
         # This must happen after Phase 2 resolution and before Phase 3 disambiguation
         logger.info("=== Expanding LAST_YEAR_BUNKMATES Placeholders ===")
         resolution_results = await self.placeholder_expander.expand(resolution_results)
+
+        # --- Trace: Expansion results ---
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            # Detect if expansion happened by checking for placeholder-expanded requests
+            expanded_reqs = [
+                req
+                for req in pr.parsed_requests
+                if (getattr(req, "metadata", None) or {}).get("expanded_from_placeholder")
+            ]
+            has_expansion = len(expanded_reqs) > 0
+            expansion_type = (
+                (expanded_reqs[0].metadata or {}).get("expanded_from_placeholder") if expanded_reqs else None
+            )
+            expanded_targets = [
+                {
+                    "target_name": req.target_name or "",
+                    "request_type": req.request_type.value if req.request_type else "",
+                }
+                for req in expanded_reqs
+            ]
+            self.trace_collector.record_expansion(
+                key=trace_key,
+                triggered=has_expansion,
+                expansion_type=str(expansion_type) if expansion_type else None,
+                expanded_count=len(expanded_reqs),
+                expanded_targets=expanded_targets,
+            )
 
         # Post-expansion conflict detection: catch conflicts that weren't visible before
         # SIBLING expansion (e.g., "not_bunk_with Pippi" vs "bunk_with SIBLING" → Pippi)
@@ -1037,7 +1200,34 @@ class RequestOrchestrator:
         # Verify that multiple targets for same historical year were actually in same bunk
         # Boost confidence by +0.10 for verified groups (capped at 0.95)
         logger.info("=== Phase 2.5: Historical Group Verification ===")
+
+        # Snapshot confidence values before historical verification for trace comparison
+        pre_historical_confidences: dict[str, list[float]] = {}
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if trace_key:
+                pre_historical_confidences[trace_key] = [rr.confidence for rr in res_list]
+
         resolution_results = await self.historical_verification_service.verify(resolution_results)
+
+        # --- Trace: Historical verification results ---
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            # Check if any historical boost was applied
+            boost_applied = any(rr.metadata.get("historical_verified") if rr.metadata else False for rr in res_list)
+            pre_confs = pre_historical_confidences.get(trace_key, [])
+            # Find the max confidence change to report as the boost
+            original_conf = max(pre_confs) if pre_confs else None
+            boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
+            self.trace_collector.record_historical(
+                key=trace_key,
+                ran=True,
+                boost_applied=boost_applied,
+                original_confidence=original_conf if boost_applied else None,
+                boosted_confidence=boosted_conf if boost_applied else None,
+            )
 
         # Count Phase 2 results (on expanded results)
         for _, resolution_list in resolution_results:
@@ -1046,6 +1236,13 @@ class RequestOrchestrator:
                     self._stats["phase2_resolved"] += 1
                 elif res_result.is_ambiguous:
                     self._stats["phase2_ambiguous"] += 1
+
+        # Snapshot confidence values before Phase 3 (after historical verification + expansion)
+        pre_phase3_confidences: dict[str, list[float]] = {}
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if trace_key:
+                pre_phase3_confidences[trace_key] = [rr.confidence for rr in res_list]
 
         # Phase 3: AI Disambiguation (for unresolved cases)
         unresolved_cases = []
@@ -1093,6 +1290,46 @@ class RequestOrchestrator:
         # Store phase3_processed for later use
         self._phase3_indices = phase3_processed
 
+        # --- Trace: Phase 3 results ---
+        for idx, (pr, res_list) in enumerate(resolution_results):
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            ran_phase3 = idx in phase3_processed
+            pre_confs = pre_phase3_confidences.get(trace_key, [])
+            for intent_idx, rr in enumerate(res_list):
+                rr_meta = rr.metadata or {}
+                # Build candidates sent to AI from the ResolutionResult's candidate list
+                candidates_sent = (
+                    [
+                        {
+                            "person_cm_id": c.cm_id,
+                            "name": c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                        }
+                        for c in (rr.candidates or [])
+                    ]
+                    if ran_phase3
+                    else []
+                )
+                # Phase 3 metadata: ai_confidence, reason, candidates_considered
+                ai_reasoning = rr_meta.get("reason")
+                confidence_before = pre_confs[intent_idx] if intent_idx < len(pre_confs) else None
+                self.trace_collector.record_phase3(
+                    key=trace_key,
+                    intent_idx=intent_idx,
+                    intent_trace=Phase3IntentTrace(
+                        target_name=rr.target_name or "",
+                        ran=ran_phase3,
+                        candidates_sent=candidates_sent,
+                        ai_reasoning=ai_reasoning,
+                        confidence_before=confidence_before,
+                        result="resolved"
+                        if rr.is_resolved
+                        else ("not_needed" if not ran_phase3 else "still_ambiguous"),
+                        confidence_after=rr.confidence,
+                    ),
+                )
+
         # Convert to request format for conflict detection
         resolved_requests = self._prepare_for_conflict_detection(resolution_results)
 
@@ -1110,6 +1347,87 @@ class RequestOrchestrator:
         logger.info("=== Creating Bunk Requests ===")
         created_requests = await self._create_bunk_requests(resolved_requests)
         self._stats["requests_created"] = len(created_requests)
+
+        # --- Trace: Post-Pipeline results ---
+        # Build a map from (requester_cm_id, target_name) to created BunkRequest for trace linking
+        created_by_key: dict[tuple[int, str], Any] = {}
+        for req in created_requests:
+            req_key = (req.requester_cm_id, getattr(req, "requested_name", "") or "")
+            created_by_key.setdefault(req_key, req)
+
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            requester_cm_id = pr.parse_request.requester_cm_id if pr.parse_request else 0
+            final_bunk_requests = []
+            # Track post-pipeline enrichments across all intents for this trace
+            any_self_ref = False
+            any_reciprocal = False
+            reciprocal_boost_amount: float | None = None
+            reciprocal_pair_cm_id: int | None = None
+            any_dedup = False
+            for req_idx, (parsed_req, rr) in enumerate(zip(pr.parsed_requests, res_list, strict=False)):
+                # Find the matching created BunkRequest (if any)
+                target_name = parsed_req.target_name or ""
+                matched_br = created_by_key.get((requester_cm_id, target_name))
+                br_meta = matched_br.metadata if matched_br and hasattr(matched_br, "metadata") else {}
+                br_meta = br_meta or {}
+
+                # Detect post-pipeline flags from BunkRequest metadata
+                if br_meta.get("self_referential"):
+                    any_self_ref = True
+                if br_meta.get("is_reciprocal"):
+                    any_reciprocal = True
+                    reciprocal_boost_amount = br_meta.get("reciprocal_boost")
+                    reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
+
+                # Determine final status from BunkRequest if available
+                final_status = "RESOLVED" if rr.is_resolved else "PENDING"
+                final_confidence = rr.confidence
+                if matched_br:
+                    if hasattr(matched_br, "status") and matched_br.status:
+                        final_status = (
+                            matched_br.status.value if hasattr(matched_br.status, "value") else str(matched_br.status)
+                        )
+                    if hasattr(matched_br, "confidence_score"):
+                        final_confidence = matched_br.confidence_score
+
+                final_bunk_requests.append(
+                    FinalBunkRequestTrace(
+                        bunk_request_id=getattr(matched_br, "id", None) if matched_br else None,
+                        requester_cm_id=requester_cm_id,
+                        requested_cm_id=rr.person.cm_id if rr.person else None,
+                        requested_name=target_name,
+                        request_type=parsed_req.request_type.value if parsed_req.request_type else "",
+                        status=final_status,
+                        confidence=final_confidence,
+                        priority=getattr(matched_br, "priority", 0) if matched_br else 0,
+                        resolution_method=rr.method,
+                        declined_reason=br_meta.get("declined_reason"),
+                    )
+                )
+            self.trace_collector.record_post_pipeline(
+                key=trace_key,
+                post_trace=PostPipelineTrace(
+                    conflict_detection={
+                        "has_conflict": conflict_result.has_conflicts,
+                        "details": [],
+                    },
+                    self_reference={"detected": any_self_ref},
+                    reciprocal={
+                        "detected": any_reciprocal,
+                        "boost_applied": any_reciprocal and reciprocal_boost_amount is not None,
+                        "boost_amount": reciprocal_boost_amount,
+                        "pair_cm_id": reciprocal_pair_cm_id,
+                    },
+                    deduplication={
+                        "was_duplicate": any_dedup,
+                        "kept_over": None,
+                    },
+                    final_bunk_requests=final_bunk_requests,
+                ),
+            )
 
         # Log final statistics
         logger.info(
@@ -1237,17 +1555,59 @@ class RequestOrchestrator:
         )
 
         for row in raw_requests:
+            # Common per-row params (hoisted out of inner loop — same for every field)
+            requester_cm_id = int(row.get("requester_cm_id", row.get("PersonID", 0)))
+            first_name = row.get("first_name", row.get("First", ""))
+            last_name = row.get("last_name", row.get("Last", ""))
+            requester_name = f"{first_name} {last_name}".strip()
+            requester_grade = str(row.get("Grade", 0))
+
             # Extract request texts from various fields (defined in constants.py)
             for field_key, field_name in FIELDS_TO_CHECK:
                 total_fields_checked += 1
                 request_text = row.get(field_key, "").strip()
+
+                # Resolve trace key: PB field name from _original_request_ids
+                pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
+                trace_key = row.get("_original_request_ids", {}).get(pb_field, "")
+
                 if not request_text:
                     skipped_no_text += 1
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_empty",
+                            original_text="",
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="empty_text",
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
+
+                # Track original text before any modifications
+                original_text = request_text
+                na_stripped = False
 
                 # Check for "no preference" indicators before processing
                 if self._is_no_preference(request_text):
                     self._stats["no_preference_skipped"] += 1
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_no_preference",
+                            original_text=original_text,
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="no_preference",
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Strip N/A prefix if present (e.g., "N/A; their grade" -> "their grade")
@@ -1256,9 +1616,23 @@ class RequestOrchestrator:
                     logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
                     self._stats["na_prefix_stripped"] += 1
                     request_text = stripped
+                    na_stripped = True
                 elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
                     # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
                     self._stats["no_preference_skipped"] += 1
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_na_only",
+                            original_text=original_text,
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="na_only",
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Extract staff signatures from bunking_notes before AI parsing
@@ -1279,19 +1653,21 @@ class RequestOrchestrator:
                         }
                     if not request_text:
                         # All content was in staff signatures, skip this field
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="skipped_staff_signatures_only",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=0,
+                                source_field=field_name,
+                                skip_reason="staff_signatures_only",
+                                staff_metadata=staff_metadata,
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
                         continue
-
-                # Handle both field formats
-                # CSV format: PersonID, First, Last, Grade
-                requester_cm_id = int(row.get("requester_cm_id", row.get("PersonID", 0)))
-
-                # Build name from available fields
-                first_name = row.get("first_name", row.get("First", ""))
-                last_name = row.get("last_name", row.get("Last", ""))
-                requester_name = f"{first_name} {last_name}".strip()
-
-                # For now, use 0 as placeholder if not provided
-                requester_grade = str(row.get("Grade", 0))
 
                 # Look up sessions from person_sessions mapping
                 person_sessions = self._person_sessions.get(requester_cm_id, [])
@@ -1299,6 +1675,22 @@ class RequestOrchestrator:
                     # Person not enrolled or not in filtered session
                     skipped_no_session += 1
                     logger.debug(f"Skipping request for person {requester_cm_id} - not enrolled")
+                    if trace_key:
+                        self.trace_collector.record_pre_phase1(
+                            key=trace_key,
+                            action="skipped_no_session",
+                            original_text=original_text,
+                            requester_cm_id=requester_cm_id,
+                            year=self.year,
+                            session_cm_id=0,
+                            source_field=field_name,
+                            skip_reason="not_enrolled",
+                            cleaned_text=request_text,
+                            na_prefix_stripped=na_stripped,
+                            staff_metadata=staff_metadata,
+                            requester_name=requester_name,
+                            requester_grade=requester_grade,
+                        )
                     continue
 
                 # Use the first valid session for this person
@@ -1332,6 +1724,25 @@ class RequestOrchestrator:
                         )
                         pre_parsed_results.append(parse_result)
 
+                        # Trace: direct mapped (socialize dropdown)
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="direct_mapped",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=person_session_cm_id,
+                                source_field=field_name,
+                                field_path="socialize_direct_map",
+                                socialize_mapped_value=parsed_req.age_preference.value
+                                if parsed_req.age_preference
+                                else None,
+                                session_cm_ids=person_sessions,
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
+
                         # Skip adding to parse_requests - no AI needed
                         continue
 
@@ -1357,6 +1768,25 @@ class RequestOrchestrator:
                     )
 
                 parse_requests.append(parse_request)
+
+                # Trace: parsed (going to AI)
+                if trace_key:
+                    self.trace_collector.record_pre_phase1(
+                        key=trace_key,
+                        action="parsed",
+                        original_text=original_text,
+                        requester_cm_id=requester_cm_id,
+                        year=self.year,
+                        session_cm_id=person_session_cm_id,
+                        source_field=field_name,
+                        field_path="ai_parse",
+                        cleaned_text=request_text,
+                        na_prefix_stripped=na_stripped,
+                        staff_metadata=staff_metadata,
+                        session_cm_ids=person_sessions,
+                        requester_name=requester_name,
+                        requester_grade=requester_grade,
+                    )
 
         # Diagnostic: Log summary
         logger.info(

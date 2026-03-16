@@ -13,6 +13,7 @@ export interface ProcessRequestOptionsState {
   sourceFields: string[]
   debug: boolean
   trace: boolean
+  collectTraces: boolean
 }
 
 interface ProcessRequestOptionsProps {
@@ -56,6 +57,7 @@ export default function ProcessRequestOptions({
   const [sourceFields, setSourceFields] = useState<string[]>([])
   const [debug, setDebug] = useState(false)
   const [trace, setTrace] = useState(false)
+  const [collectTraces, setCollectTraces] = useState(false)
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
 
   // Reset form when modal closes (render-time check to avoid setState in effect)
@@ -67,6 +69,7 @@ export default function ProcessRequestOptions({
     setSourceFields([])
     setDebug(false)
     setTrace(false)
+    setCollectTraces(false)
   } else if (isOpen !== prevIsOpen) {
     setPrevIsOpen(isOpen)
   }
@@ -131,6 +134,7 @@ export default function ProcessRequestOptions({
       sourceFields,
       debug,
       trace,
+      collectTraces,
     })
   }
 
@@ -250,6 +254,25 @@ export default function ProcessRequestOptions({
               </div>
             )}
           </div>
+
+          {/* Collect Traces Checkbox */}
+          <label className="group flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={collectTraces}
+              onChange={(e) => setCollectTraces(e.target.checked)}
+              disabled={isProcessing}
+              className="border-border text-primary focus:ring-primary/30 h-4 w-4 rounded focus:ring-offset-0 disabled:opacity-50"
+            />
+            <div>
+              <span className="group-hover:text-foreground text-sm font-medium transition-colors">
+                Collect pipeline traces
+              </span>
+              <p className="text-muted-foreground text-xs">
+                Capture detailed trace data at every phase for the Pipeline Debug tool
+              </p>
+            </div>
+          </label>
 
           {/* Debug/Trace Checkboxes */}
           <div className="space-y-3">

@@ -20,12 +20,13 @@ import (
 // 2. Collects stats for the sync status UI
 type RequestProcessor struct {
 	BaseSyncService
-	Session      string   // Session filter (e.g., "all", "1", "2a", "toc")
-	Limit        int      // Optional limit for testing (0 = no limit)
-	Force        bool     // Force reprocess — passed to Python API to clear processed flags
-	SourceFields []string // Optional source field filter (empty = all fields)
-	Debug        bool     // Enable debug logging in Python processor
-	Trace        bool     // Enable trace logging (very verbose) in Python processor
+	Session       string   // Session filter (e.g., "all", "1", "2a", "toc")
+	Limit         int      // Optional limit for testing (0 = no limit)
+	Force         bool     // Force reprocess — passed to Python API to clear processed flags
+	SourceFields  []string // Optional source field filter (empty = all fields)
+	Debug         bool     // Enable debug logging in Python processor
+	Trace         bool     // Enable trace logging (very verbose) in Python processor
+	CollectTraces bool     // Enable pipeline trace collection for debug tool
 }
 
 // NewRequestProcessor creates a new processor
@@ -79,6 +80,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		Force:         p.Force,
 		Debug:         p.Debug,
 		Trace:         p.Trace,
+		CollectTraces: p.CollectTraces,
 	})
 	if err != nil {
 		slog.Error("API processing failed", "error", err)
@@ -113,6 +115,7 @@ type apiProcessorRequest struct {
 	Force         bool     `json:"force"`
 	Debug         bool     `json:"debug"`
 	Trace         bool     `json:"trace"`
+	CollectTraces bool     `json:"collect_traces"`
 }
 
 // apiProcessorResponse is the JSON response from the process-requests API

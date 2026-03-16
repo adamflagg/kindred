@@ -1,8 +1,4 @@
-"""Debug Router - Debug tools for Phase 1 AI parse analysis.
-
-This router provides endpoints for analyzing and iterating on Phase 1
-AI intent parsing without running the full 3-phase pipeline.
-"""
+"""Debug Router - Debug tools for pipeline analysis, Phase 1 AI parse iteration, and on-demand phase execution."""
 
 from __future__ import annotations
 
@@ -60,6 +56,22 @@ from ..schemas.debug import (
     PromptUpdateRequest,
     PromptUpdateResponse,
     SourceFieldType,
+)
+from ..schemas.pipeline_debug import (
+    PhaseRunResponse,
+    PinToggleResponse,
+    PipelineRunItem,
+    PipelineRunsResponse,
+    PipelineSummaryItem,
+    PipelineSummaryResponse,
+    PipelineTraceItem,
+    PipelineTraceResponse,
+    PipelineTracesByCamperResponse,
+    RunFromPhaseRequest,
+    RunFullTraceRequest,
+    RunPhase1Request,
+    RunPhase2Request,
+    RunPhase3Request,
 )
 from ..settings import get_settings
 
@@ -293,15 +305,6 @@ async def list_parse_analysis(
             for intent in item.get("parsed_intents", [])
         ]
 
-        # Parse created timestamp
-        created_str = item.get("created")
-        created_dt = None
-        if created_str:
-            try:
-                created_dt = datetime.fromisoformat(created_str)
-            except (ValueError, TypeError):
-                pass
-
         response_items.append(
             ParseAnalysisItem(
                 id=item.get("id", ""),
@@ -316,7 +319,7 @@ async def list_parse_analysis(
                 token_count=item.get("token_count"),
                 processing_time_ms=item.get("processing_time_ms"),
                 prompt_version=item.get("prompt_version"),
-                created=created_dt,
+                created=_parse_pb_datetime(item.get("created")),
             )
         )
 
@@ -347,15 +350,6 @@ async def get_parse_analysis_detail(item_id: str, user: AuthUser = Depends(requi
         for intent in item.get("parsed_intents", [])
     ]
 
-    # Parse created timestamp
-    created_str = item.get("created")
-    created_dt = None
-    if created_str:
-        try:
-            created_dt = datetime.fromisoformat(created_str)
-        except (ValueError, TypeError):
-            pass
-
     return ParseAnalysisDetailItem(
         id=item.get("id", ""),
         original_request_id=item.get("original_request_id", ""),
@@ -369,7 +363,7 @@ async def get_parse_analysis_detail(item_id: str, user: AuthUser = Depends(requi
         token_count=item.get("token_count"),
         processing_time_ms=item.get("processing_time_ms"),
         prompt_version=item.get("prompt_version"),
-        created=created_dt,
+        created=_parse_pb_datetime(item.get("created")),
         ai_raw_response=item.get("ai_raw_response"),
     )
 
@@ -697,15 +691,6 @@ async def get_parse_results_batch(
             for intent in data.get("parsed_intents", [])
         ]
 
-        # Parse created timestamp if present
-        created_dt = None
-        created_str = data.get("created")
-        if created_str:
-            try:
-                created_dt = datetime.fromisoformat(str(created_str))
-            except (ValueError, TypeError):
-                pass
-
         responses.append(
             ParseResultWithSource(
                 source=data.get("source", "none"),
@@ -716,7 +701,7 @@ async def get_parse_results_batch(
                 token_count=data.get("token_count"),
                 processing_time_ms=data.get("processing_time_ms"),
                 prompt_version=data.get("prompt_version"),
-                created=created_dt,
+                created=_parse_pb_datetime(data.get("created")),
                 original_request_id=data.get("original_request_id", rid),
                 requester_name=data.get("requester_name", ""),
                 requester_cm_id=data.get("requester_cm_id"),
@@ -775,15 +760,6 @@ async def get_parse_results_batch_dual(
                 for intent in dr.get("parsed_intents", [])
             ]
 
-            # Parse created timestamp if present
-            created_dt = None
-            created_str = dr.get("created")
-            if created_str:
-                try:
-                    created_dt = datetime.fromisoformat(str(created_str))
-                except (ValueError, TypeError):
-                    pass
-
             debug_result_data = ParseResultData(
                 id=dr.get("id"),
                 parsed_intents=debug_intents,
@@ -792,7 +768,7 @@ async def get_parse_results_batch_dual(
                 token_count=dr.get("token_count"),
                 processing_time_ms=dr.get("processing_time_ms"),
                 prompt_version=dr.get("prompt_version"),
-                created=created_dt,
+                created=_parse_pb_datetime(dr.get("created")),
             )
 
         # Convert production_result if present
@@ -890,15 +866,6 @@ async def get_parse_result_with_fallback(
             for intent in debug_result.get("parsed_intents", [])
         ]
 
-        # Parse created timestamp
-        created_str = debug_result.get("created")
-        created_dt = None
-        if created_str:
-            try:
-                created_dt = datetime.fromisoformat(created_str)
-            except (ValueError, TypeError):
-                pass
-
         return ParseResultWithSource(
             source="debug",
             id=debug_result.get("id"),
@@ -908,7 +875,7 @@ async def get_parse_result_with_fallback(
             token_count=debug_result.get("token_count"),
             processing_time_ms=debug_result.get("processing_time_ms"),
             prompt_version=debug_result.get("prompt_version"),
-            created=created_dt,
+            created=_parse_pb_datetime(debug_result.get("created")),
             original_request_id=base_original_request_id,
             requester_name=base_requester_name,
             requester_cm_id=base_requester_cm_id,
@@ -1116,3 +1083,547 @@ async def get_production_requests(
         groups=dict(groups),
         total=len(records),
     )
+
+
+# =============================================================================
+# Pipeline Debug Endpoints — Runs, Traces, Summaries
+# =============================================================================
+
+
+def _parse_pb_datetime(value: Any) -> datetime | None:
+    """Parse a PocketBase datetime string to a datetime object."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _pb_record_to_run_item(record: Any) -> PipelineRunItem:
+    """Convert a PB debug_pipeline_runs record to a PipelineRunItem."""
+    return PipelineRunItem(
+        id=getattr(record, "id", ""),
+        run_id=getattr(record, "run_id", ""),
+        year=getattr(record, "year", 0),
+        session=getattr(record, "session", ""),
+        source_fields=getattr(record, "source_fields", []) or [],
+        limit_param=getattr(record, "limit_param", 0),
+        force=getattr(record, "force", False),
+        trace_count=getattr(record, "trace_count", 0),
+        status_breakdown=getattr(record, "status_breakdown", {}) or {},
+        pinned=getattr(record, "pinned", False),
+        created=_parse_pb_datetime(getattr(record, "created", None)),
+    )
+
+
+def _pb_record_to_summary_item(record: Any) -> PipelineSummaryItem:
+    """Convert a PB debug_pipeline_summary record to a PipelineSummaryItem."""
+    return PipelineSummaryItem(
+        id=getattr(record, "id", ""),
+        run_id=getattr(record, "run_id", ""),
+        trace_id=getattr(record, "trace", ""),
+        original_request_id=getattr(record, "original_request", ""),
+        bunk_request_id=getattr(record, "bunk_request", None) or None,
+        requester_cm_id=getattr(record, "requester_cm_id", 0),
+        requester_name=getattr(record, "requester_name", ""),
+        target_name=getattr(record, "target_name", ""),
+        source_field=getattr(record, "source_field", ""),
+        session_cm_id=getattr(record, "session_cm_id", 0),
+        request_type=getattr(record, "request_type", ""),
+        final_status=getattr(record, "final_status", ""),
+        final_confidence=getattr(record, "final_confidence", 0.0),
+        resolution_method=getattr(record, "resolution_method", ""),
+        phase3_triggered=getattr(record, "phase3_triggered", False),
+        ai_reasoning_summary=getattr(record, "ai_reasoning_summary", ""),
+        pre_p1_action=getattr(record, "pre_p1_action", ""),
+        year=getattr(record, "year", 0),
+    )
+
+
+def _pb_record_to_trace_item(record: Any) -> PipelineTraceItem:
+    """Convert a PB debug_pipeline_traces record to a PipelineTraceItem."""
+    return PipelineTraceItem(
+        id=getattr(record, "id", ""),
+        run_id=getattr(record, "run_id", ""),
+        original_request_id=getattr(record, "original_request", ""),
+        requester_cm_id=getattr(record, "requester_cm_id", 0),
+        year=getattr(record, "year", 0),
+        session_cm_id=getattr(record, "session_cm_id", 0),
+        source_field=getattr(record, "source_field", ""),
+        trace_data=getattr(record, "trace_data", {}) or {},
+        pinned=getattr(record, "pinned", False),
+        schema_version=getattr(record, "schema_version", 1),
+        created=_parse_pb_datetime(getattr(record, "created", None)),
+    )
+
+
+# Allowlists for PB filter injection prevention
+VALID_RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+VALID_FINAL_STATUSES = {"RESOLVED", "PENDING", "DECLINED"}
+VALID_RESOLUTION_METHODS = {
+    "exact_match",
+    "fuzzy_match",
+    "nickname",
+    "social_graph",
+    "ai_disambiguation",
+    "age_preference",
+    "placeholder",
+    "unresolved",
+}
+VALID_SOURCE_FIELDS = {
+    "bunk_with",
+    "not_bunk_with",
+    "bunking_notes",
+    "socialize_with",
+    "socialize_not_with",
+}
+VALID_PRE_P1_ACTIONS = {
+    "parsed",
+    "skipped_no_preference",
+    "skipped_no_session",
+    "skipped_already_processed",
+    "skipped_staff",
+    "socialize_direct_map",
+}
+VALID_CASCADE_PHASES = {
+    "pre_phase1",
+    "phase1",
+    "validation",
+    "phase2",
+    "expansion",
+    "historical",
+    "phase3",
+    "post_pipeline",
+}
+
+
+def _validate_run_id(run_id: str) -> None:
+    """Validate run_id matches expected UUID hex format to prevent PB filter injection."""
+    if not VALID_RUN_ID_PATTERN.match(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format")
+
+
+def _validate_allowlist(value: str, allowlist: set[str], field_name: str) -> None:
+    """Validate a string value against an allowlist to prevent PB filter injection."""
+    if value not in allowlist:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field_name} value: '{value}'",
+        )
+
+
+@router.get("/pipeline-runs", response_model=PipelineRunsResponse)
+def list_pipeline_runs(
+    user: AuthUser = Depends(require_admin),
+) -> PipelineRunsResponse:
+    """List all pipeline debug runs, newest first."""
+    records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"sort": "-created"})
+    items = [_pb_record_to_run_item(r) for r in records]
+    return PipelineRunsResponse(items=items, total=len(items))
+
+
+@router.post("/pipeline-runs/{run_id}/pin", response_model=PinToggleResponse)
+def toggle_pipeline_run_pin(
+    run_id: str,
+    user: AuthUser = Depends(require_admin),
+) -> PinToggleResponse:
+    """Toggle the pinned status of a pipeline run."""
+    _validate_run_id(run_id)
+    # Find the run record by run_id
+    records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"filter": f'run_id = "{run_id}"'})
+    if not records:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    record = records[0]
+    current_pinned = getattr(record, "pinned", False)
+    new_pinned = not current_pinned
+
+    # Update the record
+    pb.collection("debug_pipeline_runs").update(record.id, {"pinned": new_pinned})
+
+    return PinToggleResponse(run_id=run_id, pinned=new_pinned)
+
+
+@router.get("/pipeline-runs/{run_id}/summary", response_model=PipelineSummaryResponse)
+def get_pipeline_run_summary(
+    run_id: str,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
+    final_status: str | None = Query(default=None),
+    resolution_method: str | None = Query(default=None),
+    source_field: str | None = Query(default=None),
+    phase3_triggered: bool | None = Query(default=None),
+    pre_p1_action: str | None = Query(default=None),
+    session_cm_id: int | None = Query(default=None, ge=1),
+    min_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
+    max_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
+    sort: str = Query(default="-final_confidence"),
+    user: AuthUser = Depends(require_admin),
+) -> PipelineSummaryResponse:
+    """Get summary rows for a run with PB-native filtering/sort/pagination."""
+    _validate_run_id(run_id)
+    filter_parts = [f'run_id = "{run_id}"']
+
+    if final_status:
+        _validate_allowlist(final_status, VALID_FINAL_STATUSES, "final_status")
+        filter_parts.append(f'final_status = "{final_status}"')
+    if resolution_method:
+        _validate_allowlist(resolution_method, VALID_RESOLUTION_METHODS, "resolution_method")
+        filter_parts.append(f'resolution_method = "{resolution_method}"')
+    if source_field:
+        _validate_allowlist(source_field, VALID_SOURCE_FIELDS, "source_field")
+        filter_parts.append(f'source_field = "{source_field}"')
+    if phase3_triggered is not None:
+        filter_parts.append(f"phase3_triggered = {str(phase3_triggered).lower()}")
+    if pre_p1_action:
+        _validate_allowlist(pre_p1_action, VALID_PRE_P1_ACTIONS, "pre_p1_action")
+        filter_parts.append(f'pre_p1_action = "{pre_p1_action}"')
+    if session_cm_id is not None:
+        filter_parts.append(f"session_cm_id = {session_cm_id}")
+    if min_confidence is not None:
+        filter_parts.append(f"final_confidence >= {min_confidence}")
+    if max_confidence is not None:
+        filter_parts.append(f"final_confidence <= {max_confidence}")
+
+    filter_str = " && ".join(filter_parts)
+
+    result = pb.collection("debug_pipeline_summary").get_list(
+        page=page,
+        per_page=per_page,
+        query_params={"filter": filter_str, "sort": sort},
+    )
+
+    items = [_pb_record_to_summary_item(r) for r in result.items]
+    return PipelineSummaryResponse(
+        items=items,
+        total=result.total_items,
+        page=result.page,
+        per_page=result.per_page,
+    )
+
+
+@router.get("/pipeline-traces/by-camper/{cm_id}", response_model=PipelineTracesByCamperResponse)
+def get_traces_by_camper(
+    cm_id: int,
+    user: AuthUser = Depends(require_admin),
+) -> PipelineTracesByCamperResponse:
+    """Get all traces for a camper across all runs."""
+    records = pb.collection("debug_pipeline_traces").get_full_list(
+        query_params={
+            "filter": f"requester_cm_id = {cm_id}",
+            "sort": "-created",
+        }
+    )
+    items = [_pb_record_to_trace_item(r) for r in records]
+    return PipelineTracesByCamperResponse(items=items, total=len(items))
+
+
+@router.get("/pipeline-traces/{trace_id}", response_model=PipelineTraceResponse)
+def get_pipeline_trace(
+    trace_id: str,
+    user: AuthUser = Depends(require_admin),
+) -> PipelineTraceResponse:
+    """Get full trace JSON for drill-down."""
+    try:
+        record = pb.collection("debug_pipeline_traces").get_one(trace_id)
+    except Exception as e:
+        # PocketBase raises ClientResponseError with status=404 for missing records
+        if getattr(e, "status", 0) == 404:
+            raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
+        raise
+
+    return PipelineTraceResponse(trace=_pb_record_to_trace_item(record))
+
+
+# =============================================================================
+# Pipeline Debug Endpoints — On-Demand Phase Execution
+# =============================================================================
+
+
+def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = None) -> Any:
+    """Create a PhaseRunner backed by a real orchestrator.
+
+    This function is defined at module level so it can be patched in tests.
+    Initializes a DataAccessContext and RequestOrchestrator, then wraps
+    them in a PhaseRunner for on-demand phase execution.
+
+    Args:
+        year: Camp year for data context initialization.
+        session_cm_ids: Session CM IDs to scope the orchestrator to.
+
+    Returns:
+        PhaseRunner instance (or mock in tests).
+    """
+    from bunking.sync.bunk_request_processor.data.data_access_context import DataAccessContext
+    from bunking.sync.bunk_request_processor.debug.phase_runner import PhaseRunner
+    from bunking.sync.bunk_request_processor.orchestrator import RequestOrchestrator
+
+    data_context = DataAccessContext(year=year)
+    data_context.initialize_sync()
+    orchestrator = RequestOrchestrator(
+        year=year,
+        session_cm_ids=session_cm_ids or [],
+        data_context=data_context,
+    )
+    return PhaseRunner(orchestrator)
+
+
+def _load_trace_record(trace_id: str) -> Any:
+    """Load a full PB trace record by ID.
+
+    Args:
+        trace_id: PocketBase record ID for the trace.
+
+    Returns:
+        The PocketBase record object.
+
+    Raises:
+        HTTPException: If trace not found.
+    """
+    try:
+        return pb.collection("debug_pipeline_traces").get_one(trace_id)
+    except Exception as e:
+        if getattr(e, "status", 0) == 404:
+            raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
+        raise
+
+
+def _load_trace_data(trace_id: str) -> dict[str, Any]:
+    """Load trace_data JSON from a PB trace record.
+
+    Args:
+        trace_id: PocketBase record ID for the trace.
+
+    Returns:
+        The trace_data dict.
+
+    Raises:
+        HTTPException: If trace not found.
+    """
+    record = _load_trace_record(trace_id)
+    return getattr(record, "trace_data", {}) or {}
+
+
+@router.post("/run-phase1", response_model=PhaseRunResponse)
+async def run_phase1(
+    body: RunPhase1Request,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run Phase 1 AI parsing on selected original_bunk_requests.
+
+    Delegates to Phase1DebugService.parse_selected_records() which handles
+    loading, parsing, and caching. Always dry-run — Phase 1 never writes
+    bunk_requests to production.
+    """
+    try:
+        debug_service = await get_phase1_debug_service()
+        results = await debug_service.parse_selected_records(body.original_request_ids)
+
+        return PhaseRunResponse(
+            success=True,
+            phase="phase1",
+            dry_run=True,
+            results={
+                "parsed_count": len(results),
+                "total_tokens": sum(r.get("token_count", 0) or 0 for r in results),
+            },
+        )
+    except Exception:
+        logger.exception("Phase 1 execution failed")
+        return PhaseRunResponse(
+            success=False,
+            phase="phase1",
+            dry_run=True,
+            error="Phase execution failed",
+        )
+
+
+@router.post("/run-phase2", response_model=PhaseRunResponse)
+async def run_phase2(
+    body: RunPhase2Request,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run Phase 2 in isolation using prior Phase 1 output from a trace.
+
+    Always dry-run — single phase re-runs never write to production.
+    """
+    # Load full trace record for year/session context
+    trace_record = _load_trace_record(body.trace_id)
+    trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
+    year = getattr(trace_record, "year", 2025)
+    session_cm_id = getattr(trace_record, "session_cm_id", None)
+    session_cm_ids = [session_cm_id] if session_cm_id else []
+
+    try:
+        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+
+        trace_data = TraceData(**trace_data_dict)
+        runner = _create_phase_runner(year=year, session_cm_ids=session_cm_ids)
+        result = await runner.run_phase2(runner._reconstruct_parse_results_from_trace(trace_data))
+        return PhaseRunResponse(
+            success=True,
+            phase="phase2",
+            dry_run=True,
+            results={"resolution_count": len(result)},
+        )
+    except Exception:
+        logger.exception("Phase 2 execution failed")
+        return PhaseRunResponse(
+            success=False,
+            phase="phase2",
+            dry_run=True,
+            error="Phase execution failed",
+        )
+
+
+@router.post("/run-phase3", response_model=PhaseRunResponse)
+async def run_phase3(
+    body: RunPhase3Request,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run Phase 3 in isolation using prior Phase 2 output from a trace.
+
+    Always dry-run — single phase re-runs never write to production.
+    """
+    # Load full trace record for year/session context
+    trace_record = _load_trace_record(body.trace_id)
+    trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
+    year = getattr(trace_record, "year", 2025)
+    session_cm_id = getattr(trace_record, "session_cm_id", None)
+    session_cm_ids = [session_cm_id] if session_cm_id else []
+
+    try:
+        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+
+        trace_data = TraceData(**trace_data_dict)
+        runner = _create_phase_runner(year=year, session_cm_ids=session_cm_ids)
+        result = await runner.run_phase3(runner._reconstruct_ambiguous_from_trace(trace_data))
+        return PhaseRunResponse(
+            success=True,
+            phase="phase3",
+            dry_run=True,
+            results={"disambiguation_count": len(result)},
+        )
+    except Exception:
+        logger.exception("Phase 3 execution failed")
+        return PhaseRunResponse(
+            success=False,
+            phase="phase3",
+            dry_run=True,
+            error="Phase execution failed",
+        )
+
+
+@router.post("/run-from-phase/{phase}", response_model=PhaseRunResponse)
+async def run_from_phase(
+    phase: str,
+    body: RunFromPhaseRequest,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Cascade from a specified phase through all remaining phases.
+
+    Supports dry_run (default True). When dry_run=False, writes to production.
+    """
+    if phase not in VALID_CASCADE_PHASES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid phase '{phase}'. Must be one of: {', '.join(sorted(VALID_CASCADE_PHASES))}",
+        )
+
+    trace_data_dict = _load_trace_data(body.trace_id)
+
+    try:
+        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+
+        trace_data = TraceData(**trace_data_dict)
+        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+        result = await runner.run_from_phase(
+            phase=phase,
+            trace_data=trace_data,
+            dry_run=body.dry_run,
+        )
+        return PhaseRunResponse(
+            success=True,
+            phase=phase,
+            dry_run=body.dry_run,
+            results=result,
+        )
+    except Exception:
+        logger.exception("Phase execution failed for phase=%s", phase)
+        return PhaseRunResponse(
+            success=False,
+            phase=phase,
+            dry_run=body.dry_run,
+            error="Phase execution failed",
+        )
+
+
+@router.post("/run-full-trace", response_model=PhaseRunResponse)
+async def run_full_trace(
+    body: RunFullTraceRequest,
+    user: AuthUser = Depends(require_admin),
+) -> PhaseRunResponse:
+    """Run full pipeline for selected records with tracing enabled.
+
+    Loads original_bunk_requests by ID, converts to ParseRequest objects,
+    then runs the full Phase 1 -> 2 -> 3 pipeline via PhaseRunner.
+
+    Supports dry_run (default True). When dry_run=False, writes to production.
+    """
+    try:
+        from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
+
+        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+
+        # Load original requests and convert to ParseRequest objects
+        loader = OriginalRequestsLoader(pb, body.year, session_cm_ids=body.session_cm_ids)
+        loader.load_persons_cache()
+        original_records = loader.load_by_ids(body.original_request_ids)
+
+        if not original_records:
+            return PhaseRunResponse(
+                success=True,
+                phase="full",
+                dry_run=body.dry_run,
+                results={"parsed_count": 0, "message": "No original requests found for the given IDs"},
+            )
+
+        # Convert OriginalRequest objects to ParseRequest format
+        from bunking.sync.bunk_request_processor.core.models import ParseRequest
+
+        parse_requests: list[ParseRequest] = []
+        for orig in original_records:
+            first = orig.preferred_name or orig.first_name
+            requester_name = f"{first} {orig.last_name}".strip()
+            session_cm_id = loader.get_session_for_person(orig.requester_cm_id) or 0
+            session_name = f"Session {session_cm_id}" if session_cm_id else "Unknown"
+
+            parse_req = ParseRequest(
+                request_text=orig.content,
+                field_name=FIELD_TO_SOURCE_FIELD.get(orig.field, orig.field),
+                requester_name=requester_name,
+                requester_cm_id=orig.requester_cm_id,
+                requester_grade=str(orig.grade) if orig.grade else "",
+                session_cm_id=session_cm_id,
+                session_name=session_name,
+                year=orig.year,
+                row_data={"_original_request_id": orig.id},
+            )
+            parse_requests.append(parse_req)
+
+        result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run)
+        return PhaseRunResponse(
+            success=True,
+            phase="full",
+            dry_run=body.dry_run,
+            results=result,
+        )
+    except Exception:
+        logger.exception("Full trace execution failed")
+        return PhaseRunResponse(
+            success=False,
+            phase="full",
+            dry_run=body.dry_run,
+            error="Phase execution failed",
+        )

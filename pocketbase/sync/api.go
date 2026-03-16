@@ -200,6 +200,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			traceParam := e.Request.URL.Query().Get("trace")
 			trace := traceParam == boolTrueStr || traceParam == "1"
 
+			// Parse optional collect_traces parameter
+			collectTracesParam := e.Request.URL.Query().Get("collect_traces")
+			collectTraces := collectTracesParam == boolTrueStr || collectTracesParam == "1"
+
 			// Create processor with all options
 			processor := NewRequestProcessor(app)
 			processor.Session = session
@@ -208,6 +212,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			processor.SourceFields = sourceFields
 			processor.Debug = debug
 			processor.Trace = trace
+			processor.CollectTraces = collectTraces
 
 			// Run in background
 			go func() {
@@ -221,6 +226,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 					"force", force,
 					"debug", debug,
 					"trace", trace,
+					"collect_traces", collectTraces,
 				)
 				if err := processor.Sync(ctx); err != nil {
 					slog.Error("Process requests sync failed", "error", err)
