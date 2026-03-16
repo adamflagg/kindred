@@ -20,10 +20,10 @@ import (
 // 2. Collects stats for the sync status UI
 type RequestProcessor struct {
 	BaseSyncService
-	Session      string   // Session filter (e.g., "all", "1", "2a", "toc")
-	Limit        int      // Optional limit for testing (0 = no limit)
-	Force        bool     // Force reprocess — passed to Python API to clear processed flags
-	SourceFields []string // Optional source field filter (empty = all fields)
+	Session       string   // Session filter (e.g., "all", "1", "2a", "toc")
+	Limit         int      // Optional limit for testing (0 = no limit)
+	Force         bool     // Force reprocess — passed to Python API to clear processed flags
+	SourceFields  []string // Optional source field filter (empty = all fields)
 	Debug         bool     // Enable debug logging in Python processor
 	Trace         bool     // Enable trace logging (very verbose) in Python processor
 	CollectTraces bool     // Enable pipeline trace collection for debug tool

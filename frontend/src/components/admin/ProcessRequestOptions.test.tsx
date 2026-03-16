@@ -225,6 +225,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: [],
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
@@ -250,6 +251,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: [],
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
@@ -275,6 +277,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: [],
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
@@ -318,6 +321,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: [],
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
@@ -338,6 +342,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: [],
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
@@ -377,6 +382,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: expect.arrayContaining(['internal_notes', 'bunking_notes']),
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
@@ -416,6 +422,7 @@ describe('ProcessRequestOptions', () => {
       sourceFields: [],
       debug: false,
       trace: false,
+      collectTraces: false,
     })
   })
 
