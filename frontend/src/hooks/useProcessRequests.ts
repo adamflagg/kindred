@@ -51,6 +51,10 @@ export function useProcessRequests() {
         params.set('trace', 'true')
       }
 
+      if (options.collectTraces) {
+        params.set('collect_traces', 'true')
+      }
+
       const queryString = params.toString()
       const url = `/api/custom/sync/process-requests${queryString ? `?${queryString}` : ''}`
 
@@ -101,6 +105,10 @@ export function useProcessRequests() {
         parts.push('trace mode')
       } else if (options.debug) {
         parts.push('debug mode')
+      }
+
+      if (options.collectTraces) {
+        parts.push('collecting traces')
       }
 
       const description = parts.join(', ')
