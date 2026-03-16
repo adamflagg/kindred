@@ -1051,16 +1051,14 @@ class DrilldownService:
                 )
             )
 
-        # Build waitlisted sessions lookup: person_id -> list of waitlisted summer session names
+        # Build waitlisted sessions lookup: person_id -> ALL sessions they're waitlisted for
+        # (no type filter — "Waitlisted For" column shows all sessions, not just summer)
         waitlisted_by_person: dict[int, list[DrilldownSession]] = {}
         for att in waitlisted_attendees:
             expand = getattr(att, "expand", {}) or {}
             person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if not person or not session:
-                continue
-            scmid = int(getattr(session, "cm_id", 0))
-            if scmid not in summer_session_ids:
                 continue
             pid = int(getattr(person, "cm_id", 0))
             if pid not in waitlisted_by_person:
