@@ -120,13 +120,15 @@ type apiProcessorRequest struct {
 
 // apiProcessorResponse is the JSON response from the process-requests API
 type apiProcessorResponse struct {
-	Success          bool   `json:"success"`
-	Created          int    `json:"created"`
-	Updated          int    `json:"updated"`
-	Skipped          int    `json:"skipped"`
-	Errors           int    `json:"errors"`
-	AlreadyProcessed int    `json:"already_processed"`
-	Error            string `json:"error,omitempty"`
+	Success          bool     `json:"success"`
+	Created          int      `json:"created"`
+	Updated          int      `json:"updated"`
+	Skipped          int      `json:"skipped"`
+	Errors           int      `json:"errors"`
+	AlreadyProcessed int      `json:"already_processed"`
+	Error            string   `json:"error,omitempty"`
+	Warnings         []string `json:"warnings,omitempty"`
+	Phase1Failed     int      `json:"phase1_failed"`
 }
 
 // callAPIProcessor calls the FastAPI process-requests endpoint
@@ -168,6 +170,10 @@ func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorReques
 
 	if !result.Success {
 		slog.Warn("Process requests API reported failure", "error", result.Error)
+	}
+
+	for _, w := range result.Warnings {
+		slog.Warn("Process requests warning from Python", "warning", w)
 	}
 
 	return Stats{

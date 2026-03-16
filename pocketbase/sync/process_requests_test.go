@@ -107,6 +107,13 @@ func TestCallAPIProcessor(t *testing.T) {
 			wantErr:        true,
 			wantCreated:    0,
 		},
+		{
+			name:           "response with warnings logs them",
+			responseStatus: 200,
+			responseBody:   `{"success": true, "created": 0, "updated": 0, "skipped": 0, "errors": 15, "already_processed": 800, "warnings": ["15/15 AI parse requests failed: Unsupported parameter"], "phase1_failed": 15}`,
+			wantErr:        false,
+			wantCreated:    0,
+		},
 	}
 
 	for _, tt := range tests {
