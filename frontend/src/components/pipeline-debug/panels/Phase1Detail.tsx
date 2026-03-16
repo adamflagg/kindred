@@ -9,7 +9,8 @@
 
 import type { Phase1Trace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge, confidenceColor } from './DataRow'
+import { DataRow, Badge } from './DataRow'
+import { confidenceColor } from './panelUtils'
 import { CollapsibleSection } from './CollapsibleSection'
 
 interface Phase1DetailProps {
