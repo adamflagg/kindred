@@ -9,7 +9,8 @@
 
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { Bug, GitGraph, ArrowLeft, Loader2 } from 'lucide-react'
+import { Link } from 'react-router'
+import { Bug, GitGraph, ArrowLeft, Loader2, FileText } from 'lucide-react'
 import {
   PipelineRunSelector,
   PipelineBatchList,
@@ -221,6 +222,13 @@ export default function PipelineDebugPage() {
             Trace and debug the full bunk request processing pipeline
           </p>
         </div>
+        <Link
+          to="/summer/debug/prompts"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm transition-colors hover:border-gray-200 dark:hover:border-gray-700"
+        >
+          <FileText className="h-4 w-4" />
+          Prompt Editor
+        </Link>
       </div>
 
       {/* Run selector */}
