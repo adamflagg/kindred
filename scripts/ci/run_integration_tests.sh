@@ -16,13 +16,11 @@
 
 set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Colors
+# shellcheck source=../colors.sh
+source "$PROJECT_ROOT/scripts/colors.sh"
 cd "$PROJECT_ROOT"
 
 # Verify uv is available (manages Python environment)

@@ -6,10 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+# shellcheck source=../colors.sh
+source "$SCRIPT_DIR/../colors.sh"
 
 echo -e "${GREEN}Setting up cron jobs for sync schedules...${NC}"
 echo "Project root: $PROJECT_ROOT"

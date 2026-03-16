@@ -35,11 +35,9 @@ HOST_APPDATA="${APPDATA_DIR:-/root/appdata}"
 PROD_BUNKING_DIR="${HOST_APPDATA}/bunking"
 
 # Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./colors.sh
+source "$SCRIPT_DIR/colors.sh"
 
 echo -e "${BLUE}📁 Bunking File Sync from LXC to Host${NC}"
 echo "================================================"

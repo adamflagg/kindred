@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-POCKETBASE_URL = "http://localhost:8090"
+POCKETBASE_URL = os.getenv("POCKETBASE_URL", "http://localhost:8090")
 MAX_RETRIES = 30  # Wait up to 30 seconds for PocketBase to start
 
 # Admin credentials from environment
@@ -296,7 +296,7 @@ def main() -> int:
         return 1
 
     print("\n✅ OAuth2 configuration complete!")
-    print("You can now login with Pocket ID at http://localhost:8090")
+    print(f"You can now login with Pocket ID at {POCKETBASE_URL}")
     return 0
 
 

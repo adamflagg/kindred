@@ -304,6 +304,3 @@ scripts/vault.config
 frontend/vite.config.local.ts
 docs/camp
 docs/plans
-
-# Worktree-specific files
-start.sh
