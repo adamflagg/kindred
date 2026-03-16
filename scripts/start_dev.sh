@@ -142,7 +142,7 @@ cd "$PROJECT_ROOT"
 # Create a log file for API service
 API_LOG="$PROJECT_ROOT/solver_service.log"  # Keep same log name for compatibility
 echo "Starting API service at $(date)" > "$API_LOG"
-uv run uvicorn api.main:app --host 0.0.0.0 --port $FASTAPI_PORT >> "$API_LOG" 2>&1 &
+uv run uvicorn api.main:app --host 0.0.0.0 --port $FASTAPI_PORT > >(tee -a "$API_LOG") 2>&1 &
 API_PID=$!
 echo -e "${GREEN}API service started with PID: $API_PID${NC}"
 echo -e "${YELLOW}API logs: $API_LOG${NC}"

@@ -149,3 +149,83 @@ class TestProcessRequests:
             data = response.json()
             assert data["success"] is False
             assert "PocketBase auth failed" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_process_requests_includes_warnings_on_parse_failures(self, client):
+        """Should include warnings list with parse failure details when phase1_failed > 0."""
+        mock_result = {
+            "success": True,
+            "statistics": {
+                "requests_created": 0,
+                "phase2_ambiguous": 0,
+                "phase1_parsed": 0,
+                "phase1_failed": 15,
+                "phase1_successful": 0,
+                "phase1_first_error": "Unsupported parameter: reasoning.effort",
+            },
+            "already_processed": 0,
+        }
+
+        with patch("api.routers.internal.run_process_requests", new_callable=AsyncMock, return_value=mock_result):
+            response = await client.post(
+                "/api/internal/process-requests",
+                json={"year": 2025, "session": "all"},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["warnings"]) == 1
+            assert "15/15 AI parse requests failed" in data["warnings"][0]
+            assert data["phase1_failed"] == 15
+            assert data["errors"] == 0  # binary: success=True → errors=0
+
+    @pytest.mark.asyncio
+    async def test_process_requests_no_warnings_on_success(self, client):
+        """Should return empty warnings list when no phase1 failures occurred."""
+        mock_result = {
+            "success": True,
+            "statistics": {
+                "requests_created": 10,
+                "phase2_ambiguous": 0,
+                "phase1_parsed": 10,
+                "phase1_failed": 0,
+                "phase1_successful": 10,
+                "phase1_first_error": None,
+            },
+            "already_processed": 0,
+        }
+
+        with patch("api.routers.internal.run_process_requests", new_callable=AsyncMock, return_value=mock_result):
+            response = await client.post(
+                "/api/internal/process-requests",
+                json={"year": 2025, "session": "all"},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["warnings"] == []
+            assert data["phase1_failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_process_requests_partial_failure_warning(self, client):
+        """Should report partial failures with correct counts in warning message."""
+        mock_result = {
+            "success": True,
+            "statistics": {
+                "requests_created": 8,
+                "phase2_ambiguous": 0,
+                "phase1_parsed": 10,
+                "phase1_failed": 5,
+                "phase1_successful": 10,
+                "phase1_first_error": "Rate limit exceeded",
+            },
+            "already_processed": 0,
+        }
+
+        with patch("api.routers.internal.run_process_requests", new_callable=AsyncMock, return_value=mock_result):
+            response = await client.post(
+                "/api/internal/process-requests",
+                json={"year": 2025, "session": "all"},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["warnings"]) == 1
+            assert "5/15 AI parse requests failed" in data["warnings"][0]

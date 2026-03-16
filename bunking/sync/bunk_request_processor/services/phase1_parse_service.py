@@ -50,7 +50,7 @@ class Phase1ParseService:
         # Create sanitizer if not provided (security: protect AI inputs)
         self.sanitizer = sanitizer or create_secure_sanitizer()
 
-        self._stats = {
+        self._stats: dict[str, int] = {
             "total_parsed": 0,
             "successful_parses": 0,
             "failed_parses": 0,
@@ -58,6 +58,7 @@ class Phase1ParseService:
             "suspicious_inputs": 0,
             "high_risk_inputs": 0,
         }
+        self._first_failure_reason: str | None = None
 
     async def batch_parse(
         self, requests: list[ParseRequest], progress_callback: Callable[..., None] | None = None
@@ -222,14 +223,18 @@ class Phase1ParseService:
                 self._stats["failed_parses"] += 1
                 # Log failure reason for debugging
                 failure_reason = result.metadata.get("failure_reason", "Unknown reason")
+                if self._first_failure_reason is None:
+                    self._first_failure_reason = failure_reason
                 requester_info = ""
                 if result.parse_request:
                     requester_info = f" (requester: {result.parse_request.requester_name})"
                 logger.warning(f"Parse failed{requester_info}: {failure_reason}")
 
     def get_stats(self) -> dict[str, Any]:
-        """Get parsing statistics"""
-        return self._stats.copy()
+        """Get parsing statistics, including first_failure_reason."""
+        stats: dict[str, Any] = dict(self._stats)
+        stats["first_failure_reason"] = self._first_failure_reason
+        return stats
 
     def reset_stats(self) -> None:
         """Reset statistics"""
@@ -241,3 +246,4 @@ class Phase1ParseService:
             "suspicious_inputs": 0,
             "high_risk_inputs": 0,
         }
+        self._first_failure_reason = None
