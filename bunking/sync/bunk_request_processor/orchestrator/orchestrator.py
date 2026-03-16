@@ -1012,6 +1012,7 @@ class RequestOrchestrator:
         # Join phase1 service failure stats into orchestrator stats
         phase1_stats = self.phase1_service.get_stats()
         self._stats["phase1_failed"] = phase1_stats["failed_parses"]
+        self._stats["phase1_successful"] = phase1_stats["successful_parses"]
         self._phase1_first_error = phase1_stats.get("first_failure_reason")
 
         # Combine AI-parsed and pre-parsed results

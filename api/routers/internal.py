@@ -173,14 +173,14 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
 
         stats = result.get("statistics", {})
         phase1_failed = stats.get("phase1_failed", 0)
-        phase1_parsed = stats.get("phase1_parsed", 0)
+        phase1_successful = stats.get("phase1_successful", 0)
         phase1_first_error = stats.get("phase1_first_error")
 
-        # Build warnings for AI parse failures
+        # Build warnings for AI parse failures (denominator is AI-only, excludes pre-parsed)
         warnings: list[str] = []
         if phase1_failed > 0 and phase1_first_error:
-            total = phase1_failed + phase1_parsed
-            warnings.append(f"{phase1_failed}/{total} AI parse requests failed: {phase1_first_error}")
+            ai_total = phase1_failed + phase1_successful
+            warnings.append(f"{phase1_failed}/{ai_total} AI parse requests failed: {phase1_first_error}")
 
         return JSONResponse(
             status_code=200,
@@ -189,7 +189,7 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
                 "created": stats.get("requests_created", 0),
                 "updated": 0,
                 "skipped": stats.get("phase2_ambiguous", 0),
-                "errors": phase1_failed,
+                "errors": 0 if result.get("success") else 1,
                 "already_processed": result.get("already_processed", 0),
                 "warnings": warnings,
                 "phase1_failed": phase1_failed,

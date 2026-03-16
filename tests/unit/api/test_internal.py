@@ -160,6 +160,7 @@ class TestProcessRequests:
                 "phase2_ambiguous": 0,
                 "phase1_parsed": 0,
                 "phase1_failed": 15,
+                "phase1_successful": 0,
                 "phase1_first_error": "Unsupported parameter: reasoning.effort",
             },
             "already_processed": 0,
@@ -175,6 +176,7 @@ class TestProcessRequests:
             assert len(data["warnings"]) == 1
             assert "15/15 AI parse requests failed" in data["warnings"][0]
             assert data["phase1_failed"] == 15
+            assert data["errors"] == 0  # binary: success=True → errors=0
 
     @pytest.mark.asyncio
     async def test_process_requests_no_warnings_on_success(self, client):
@@ -186,6 +188,7 @@ class TestProcessRequests:
                 "phase2_ambiguous": 0,
                 "phase1_parsed": 10,
                 "phase1_failed": 0,
+                "phase1_successful": 10,
                 "phase1_first_error": None,
             },
             "already_processed": 0,
@@ -211,6 +214,7 @@ class TestProcessRequests:
                 "phase2_ambiguous": 0,
                 "phase1_parsed": 10,
                 "phase1_failed": 5,
+                "phase1_successful": 10,
                 "phase1_first_error": "Rate limit exceeded",
             },
             "already_processed": 0,
