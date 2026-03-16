@@ -611,16 +611,14 @@ describe('SessionAvailability', () => {
     })
 
     // The grade cell for 4th grade girls shows "3" (waitlisted count)
-    // Click on the grade cell count
+    // Click on the grade cell count - should open drilldown modal
     const gradeCount = screen.getByText('3')
     fireEvent.click(gradeCount)
 
-    await waitFor(() => {
-      // Popover should show grade-filtered results
-      const popover = screen.getByRole('dialog')
-      expect(popover).toBeInTheDocument()
-      expect(screen.getByText(/3 waitlisted 4th-grade girls/)).toBeInTheDocument()
-    })
+    // Grade cell click opens drilldown (no popover)
+    // The drilldown modal is rendered by useDrilldown which makes an API call
+    // We verify the tooltip is dismissed (click clears tooltip state)
+    expect(screen.queryByText(/girls on waitlist/)).not.toBeInTheDocument()
   })
 
   it('adds cursor-pointer to grade cells with waitlist count', async () => {
@@ -667,8 +665,8 @@ describe('SessionAvailability', () => {
       expect(screen.getByText('Session 1')).toBeInTheDocument()
     })
 
-    // WL pill with count 3 (<=5) should NOT have cursor-pointer (no drilldown action)
+    // WL pill always has cursor-pointer (always opens drilldown)
     const pill = screen.getByText('3', { selector: 'span.inline-flex' })
-    expect(pill).not.toHaveClass('cursor-pointer')
+    expect(pill).toHaveClass('cursor-pointer')
   })
 })

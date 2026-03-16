@@ -1002,23 +1002,68 @@ class DrilldownService:
         _session_types: list[str] | None,
         _duration_session_ids: set[int] | None,
     ) -> list[DrilldownAttendee]:
-        """Handle waitlist drilldown filtered by session + gender.
+        """Handle waitlist drilldown filtered by session + gender + optional grade.
 
-        breakdown_value format: "session_cm_id:gender" (e.g. "1001:F", "2001:" for AG)
+        breakdown_value format: "session_cm_id:gender[:grade]"
+        Examples: "1001:F", "2001:", "1001:F:6"
         """
-        # Parse "session_cm_id:gender" format
-        parts = breakdown_value.split(":", 1)
+        import asyncio
+
+        # Parse "session_cm_id:gender[:grade]" format
+        parts = breakdown_value.split(":")
         try:
             target_session = int(parts[0])
         except (ValueError, IndexError):
             return []
         target_gender = parts[1] if len(parts) > 1 and parts[1] else None
+        target_grade = int(parts[2]) if len(parts) > 2 and parts[2] else None
 
-        # Fetch waitlisted attendees with person expansion
-        attendees = await self.repo.fetch_attendees_with_persons(year, status_filter=["waitlisted"])
+        # Fetch waitlisted and enrolled attendees in parallel
+        waitlisted_attendees, enrolled_attendees = await asyncio.gather(
+            self.repo.fetch_attendees_with_persons(year, status_filter=["waitlisted"]),
+            self.repo.fetch_attendees_with_persons(year, status_filter=["enrolled"]),
+        )
 
+        # Build enrolled sessions lookup: person_id -> list of enrolled session names
+        enrolled_by_person: dict[int, list[DrilldownSession]] = {}
+        for att in enrolled_attendees:
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+            pid = int(getattr(person, "cm_id", 0))
+            if pid not in enrolled_by_person:
+                enrolled_by_person[pid] = []
+            enrolled_by_person[pid].append(
+                DrilldownSession(
+                    session_name=str(getattr(session, "name", "Unknown")),
+                    session_cm_id=int(getattr(session, "cm_id", 0)),
+                )
+            )
+
+        # Build waitlisted sessions lookup: person_id -> list of waitlisted session names
+        waitlisted_by_person: dict[int, list[DrilldownSession]] = {}
+        for att in waitlisted_attendees:
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+            pid = int(getattr(person, "cm_id", 0))
+            if pid not in waitlisted_by_person:
+                waitlisted_by_person[pid] = []
+            waitlisted_by_person[pid].append(
+                DrilldownSession(
+                    session_name=str(getattr(session, "name", "Unknown")),
+                    session_cm_id=int(getattr(session, "cm_id", 0)),
+                )
+            )
+
+        # Filter waitlisted attendees for target session/gender/grade
         results = []
-        for att in attendees:
+        seen_persons: set[int] = set()
+        for att in waitlisted_attendees:
             expand = getattr(att, "expand", {}) or {}
             person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
@@ -1033,9 +1078,19 @@ class DrilldownService:
             if target_gender and gender != target_gender:
                 continue
 
+            if target_grade is not None and getattr(person, "grade", None) != target_grade:
+                continue
+
+            pid = int(getattr(person, "cm_id", 0))
+            if pid in seen_persons:
+                continue
+            seen_persons.add(pid)
+
+            years_at_camp = getattr(person, "years_at_camp", None)
+
             results.append(
                 DrilldownAttendee(
-                    person_id=int(getattr(person, "cm_id", 0)),
+                    person_id=pid,
                     first_name=str(getattr(person, "first_name", "")),
                     last_name=str(getattr(person, "last_name", "")),
                     preferred_name=_get_str_attr(person, "preferred_name"),
@@ -1045,15 +1100,15 @@ class DrilldownService:
                     school=_get_str_attr(person, "normalized_school") or _get_str_attr(person, "school"),
                     city=_get_str_attr(person, "normalized_city") or _get_str_attr(person, "address_city"),
                     state=_get_str_attr(person, "address_state"),
-                    years_at_camp=getattr(person, "years_at_camp", None),
+                    years_at_camp=years_at_camp,
                     session_cm_id=session_cm_id,
                     session_name=str(getattr(session, "name", "Unknown")),
                     status="waitlisted",
-                    is_returning=bool(
-                        getattr(person, "years_at_camp", None) and getattr(person, "years_at_camp", 0) > 1
-                    ),
+                    is_returning=bool(years_at_camp and years_at_camp > 1),
                     effective_date=_get_str_attr(att, "effective_date"),
                     enrollment_date=_get_str_attr(att, "enrollment_date"),
+                    sessions=waitlisted_by_person.get(pid, []),
+                    enrolled_sessions=enrolled_by_person.get(pid, []),
                 )
             )
 
