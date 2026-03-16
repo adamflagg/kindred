@@ -226,6 +226,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 					"force", force,
 					"debug", debug,
 					"trace", trace,
+					"collect_traces", collectTraces,
 				)
 				if err := processor.Sync(ctx); err != nil {
 					slog.Error("Process requests sync failed", "error", err)
