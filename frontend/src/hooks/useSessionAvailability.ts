@@ -2,13 +2,24 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 
+export interface WaitlistedPerson {
+  person_id: number
+  first_name: string
+  last_name: string
+  preferred_name?: string | null
+  grade?: number | null
+  position: number
+}
+
 interface GenderAvailability {
   min_grade: number | null
   max_grade: number | null
   enrolled: number
   waitlisted: number
   capacity: number | null
-  status: 'open' | 'limited' | 'waitlist'
+  status: 'open' | 'limited' | 'full'
+  waitlisted_by_grade: Record<number, number>
+  waitlisted_persons: WaitlistedPerson[]
 }
 
 export interface SessionAvailabilityData {
@@ -29,7 +40,9 @@ export interface AGSessionAvailabilityData {
   enrolled: number
   waitlisted: number
   capacity: number | null
-  status: 'open' | 'limited' | 'waitlist'
+  status: 'open' | 'limited' | 'full'
+  waitlisted_by_grade: Record<number, number>
+  waitlisted_persons: WaitlistedPerson[]
 }
 
 export interface SessionAvailabilityResponse {

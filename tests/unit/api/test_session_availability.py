@@ -4,7 +4,7 @@ Unit tests for the session availability service.
 Tests verify the availability matrix computation:
 - Per-session, per-gender enrollment counting
 - Capacity calculation from bunk_plans (boys/girls/AG split)
-- Status logic: open / limited / waitlist
+- Status logic: open / limited / full
 - AG sessions handled separately
 - Config-based grade eligibility and capacity overrides
 """
@@ -105,12 +105,12 @@ class TestComputeStatus:
         assert service.compute_status(enrolled=16, waitlisted=0, capacity=20, threshold_pct=80) == "limited"
 
     def test_waitlist_when_waitlisted_exist(self, service):
-        """Status is 'waitlist' when there are waitlisted campers."""
-        assert service.compute_status(enrolled=20, waitlisted=3, capacity=20, threshold_pct=80) == "waitlist"
+        """Status reflects capacity, not waitlist — full at 100%."""
+        assert service.compute_status(enrolled=20, waitlisted=3, capacity=20, threshold_pct=80) == "full"
 
     def test_waitlist_overrides_limited(self, service):
-        """Waitlist status takes priority over limited."""
-        assert service.compute_status(enrolled=10, waitlisted=1, capacity=20, threshold_pct=80) == "waitlist"
+        """Waitlist no longer overrides — status based on capacity only."""
+        assert service.compute_status(enrolled=10, waitlisted=1, capacity=20, threshold_pct=80) == "open"
 
     def test_open_when_no_capacity(self, service):
         """Status is 'open' when capacity is None (unknown)."""
@@ -119,6 +119,26 @@ class TestComputeStatus:
     def test_open_when_zero_capacity(self, service):
         """Status is 'open' when capacity is 0 (avoid division by zero)."""
         assert service.compute_status(enrolled=5, waitlisted=0, capacity=0, threshold_pct=80) == "open"
+
+    def test_full_when_at_100_percent_capacity(self, service):
+        """Status is 'full' when enrollment reaches 100% of capacity."""
+        assert service.compute_status(enrolled=20, waitlisted=0, capacity=20, threshold_pct=80) == "full"
+
+    def test_full_when_over_capacity(self, service):
+        """Status is 'full' when enrollment exceeds capacity (overage)."""
+        assert service.compute_status(enrolled=25, waitlisted=0, capacity=20, threshold_pct=80) == "full"
+
+    def test_full_takes_priority_when_threshold_is_100(self, service):
+        """When threshold=100, 'full' should still be returned (not 'limited')."""
+        assert service.compute_status(enrolled=20, waitlisted=0, capacity=20, threshold_pct=100) == "full"
+
+    def test_waitlisted_no_longer_affects_status(self, service):
+        """Waitlisted count should NOT affect status — only capacity matters."""
+        assert service.compute_status(enrolled=10, waitlisted=5, capacity=20, threshold_pct=80) == "open"
+
+    def test_waitlisted_with_full_capacity(self, service):
+        """Full capacity + waitlisted should still be 'full' (not 'waitlist')."""
+        assert service.compute_status(enrolled=20, waitlisted=10, capacity=20, threshold_pct=80) == "full"
 
 
 # ============================================================================
@@ -634,3 +654,238 @@ class TestDefunctAGHiding:
         result = await service.calculate_availability(year=2026)
 
         assert len(result.ag_sessions) == 1
+
+
+# ============================================================================
+# WaitlistedPerson Schema Tests
+# ============================================================================
+
+
+class TestWaitlistedPersonSchema:
+    """Test WaitlistedPerson schema validation."""
+
+    def test_waitlisted_person_fields(self):
+        from api.schemas.session_availability import WaitlistedPerson
+
+        person = WaitlistedPerson(
+            person_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name="Em",
+            grade=4,
+            position=1,
+        )
+        assert person.person_id == 12345
+        assert person.preferred_name == "Em"
+        assert person.position == 1
+
+    def test_waitlisted_person_optional_fields(self):
+        from api.schemas.session_availability import WaitlistedPerson
+
+        person = WaitlistedPerson(
+            person_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            position=1,
+        )
+        assert person.preferred_name is None
+        assert person.grade is None
+
+
+# ============================================================================
+# Waitlist By Grade Tests
+# ============================================================================
+
+
+class TestWaitlistByGrade:
+    """Test per-grade waitlist counting and person detail collection."""
+
+    @pytest.mark.asyncio
+    async def test_waitlisted_by_grade_counts(self, service, mock_repository):
+        """Waitlisted campers should be counted per grade per gender."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = [
+            create_mock_attendee(
+                101,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=4,
+                first_name="Emma",
+                last_name="Johnson",
+                effective_date="2025-11-12",
+                enrollment_date="2025-11-13T23:37:50Z",
+            ),
+            create_mock_attendee(
+                102,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=4,
+                first_name="Olivia",
+                last_name="Chen",
+                effective_date="2025-11-13",
+                enrollment_date="2025-11-14T17:45:17Z",
+            ),
+            create_mock_attendee(
+                103,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=6,
+                first_name="Sophia",
+                last_name="Garcia",
+                effective_date="2025-11-14",
+                enrollment_date="2025-11-15T18:00:00Z",
+            ),
+            create_mock_attendee(
+                201,
+                1001,
+                gender="M",
+                status="waitlisted",
+                grade=5,
+                first_name="Liam",
+                last_name="Williams",
+                effective_date="2025-12-01",
+                enrollment_date="2025-12-02T10:00:00Z",
+            ),
+        ]
+
+        result = await service.calculate_availability(year=2026)
+        session = next(s for s in result.sessions if s.session_cm_id == 1001)
+
+        assert session.girls.waitlisted_by_grade == {4: 2, 6: 1}
+        assert session.boys.waitlisted_by_grade == {5: 1}
+
+    @pytest.mark.asyncio
+    async def test_waitlisted_persons_top5_sorted(self, service, mock_repository):
+        """Waitlisted persons should be sorted by effective_date, enrollment_date and capped at 5."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+
+        # Create 7 waitlisted girls with different dates
+        attendees = []
+        for i, (eff, enr) in enumerate(
+            [
+                ("2025-12-03", "2025-12-04T22:10:53Z"),  # #3
+                ("2025-11-12", "2025-11-13T23:37:50Z"),  # #1
+                ("2025-12-03", "2025-12-04T22:10:34Z"),  # #2 (same eff, earlier enr)
+                ("2025-12-19", "2025-12-22T23:58:09Z"),  # #4
+                ("2026-01-06", "2026-01-07T17:30:31Z"),  # #5
+                ("2026-01-28", "2026-01-28T17:55:15Z"),  # #6 (should be excluded from top 5)
+                ("2026-01-31", "2026-02-02T16:15:18Z"),  # #7 (should be excluded from top 5)
+            ]
+        ):
+            attendees.append(
+                create_mock_attendee(
+                    100 + i,
+                    1001,
+                    gender="F",
+                    status="waitlisted",
+                    grade=3 + (i % 3),
+                    first_name=["Emma", "Olivia", "Sophia", "Mia", "Ava", "Isabella", "Charlotte"][i],
+                    last_name=["Johnson", "Chen", "Garcia", "Williams", "Davis", "Martinez", "Brown"][i],
+                    effective_date=eff,
+                    enrollment_date=enr,
+                )
+            )
+        mock_repository.fetch_attendees_with_persons.return_value = attendees
+
+        result = await service.calculate_availability(year=2026)
+        session = next(s for s in result.sessions if s.session_cm_id == 1001)
+
+        # Should be capped at 5
+        assert len(session.girls.waitlisted_persons) == 5
+        # Positions should be 1-5
+        positions = [p.position for p in session.girls.waitlisted_persons]
+        assert positions == [1, 2, 3, 4, 5]
+        # First should be the earliest by effective_date
+        assert session.girls.waitlisted_persons[0].person_id == 101  # eff=2025-11-12
+
+    @pytest.mark.asyncio
+    async def test_waitlisted_persons_under_5_no_cap(self, service, mock_repository):
+        """When fewer than 5 waitlisted, return all with correct positions."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = [
+            create_mock_attendee(
+                101,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=3,
+                first_name="Emma",
+                last_name="Johnson",
+                effective_date="2025-11-12",
+                enrollment_date="2025-11-13T00:00:00Z",
+            ),
+            create_mock_attendee(
+                102,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=4,
+                first_name="Olivia",
+                last_name="Chen",
+                effective_date="2025-11-13",
+                enrollment_date="2025-11-14T00:00:00Z",
+            ),
+        ]
+
+        result = await service.calculate_availability(year=2026)
+        session = next(s for s in result.sessions if s.session_cm_id == 1001)
+
+        assert len(session.girls.waitlisted_persons) == 2
+        assert session.girls.waitlisted_persons[0].position == 1
+        assert session.girls.waitlisted_persons[1].position == 2
+
+    @pytest.mark.asyncio
+    async def test_ag_waitlisted_persons_combined_gender(self, service, mock_repository):
+        """AG sessions should have a single combined waitlist (not gender-split)."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "AG Session", session_type="ag", parent_id=1001),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_2001", "Mixed"),
+        ]
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = [
+            create_mock_attendee(
+                101,
+                2001,
+                gender="F",
+                status="waitlisted",
+                grade=5,
+                first_name="Emma",
+                last_name="Johnson",
+                effective_date="2025-11-12",
+                enrollment_date="2025-11-13T00:00:00Z",
+            ),
+            create_mock_attendee(
+                201,
+                2001,
+                gender="M",
+                status="waitlisted",
+                grade=6,
+                first_name="Liam",
+                last_name="Garcia",
+                effective_date="2025-11-13",
+                enrollment_date="2025-11-14T00:00:00Z",
+            ),
+        ]
+
+        result = await service.calculate_availability(year=2026)
+        ag = next(a for a in result.ag_sessions if a.session_cm_id == 2001)
+
+        # Both genders in one list
+        assert len(ag.waitlisted_persons) == 2
+        assert ag.waitlisted_by_grade == {5: 1, 6: 1}

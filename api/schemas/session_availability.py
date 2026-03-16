@@ -3,6 +3,17 @@
 from pydantic import BaseModel, Field
 
 
+class WaitlistedPerson(BaseModel):
+    """Lightweight person record for tooltip display. Uses CampMinder person_id."""
+
+    person_id: int
+    first_name: str
+    last_name: str
+    preferred_name: str | None = None
+    grade: int | None = None
+    position: int
+
+
 class GenderAvailability(BaseModel):
     """Availability data for one gender within a session."""
 
@@ -12,6 +23,8 @@ class GenderAvailability(BaseModel):
     waitlisted: int = 0
     capacity: int | None = None
     status: str = "open"
+    waitlisted_by_grade: dict[int, int] = Field(default_factory=dict)
+    waitlisted_persons: list[WaitlistedPerson] = Field(default_factory=list)
 
 
 class SessionAvailability(BaseModel):
@@ -37,6 +50,8 @@ class AGSessionAvailability(BaseModel):
     waitlisted: int = 0
     capacity: int | None = None
     status: str = "open"
+    waitlisted_by_grade: dict[int, int] = Field(default_factory=dict)
+    waitlisted_persons: list[WaitlistedPerson] = Field(default_factory=list)
 
 
 class SessionAvailabilityResponse(BaseModel):

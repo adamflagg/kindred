@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -61,6 +61,8 @@ const mockAvailabilityResponse = {
         waitlisted: 0,
         capacity: 36,
         status: 'open',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
       boys: {
         min_grade: 2,
@@ -69,6 +71,8 @@ const mockAvailabilityResponse = {
         waitlisted: 0,
         capacity: 36,
         status: 'open',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
     },
     {
@@ -82,7 +86,9 @@ const mockAvailabilityResponse = {
         enrolled: 50,
         waitlisted: 3,
         capacity: 60,
-        status: 'waitlist',
+        status: 'full',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
       boys: {
         min_grade: 2,
@@ -91,6 +97,8 @@ const mockAvailabilityResponse = {
         waitlisted: 0,
         capacity: 60,
         status: 'limited',
+        waitlisted_by_grade: {},
+        waitlisted_persons: [],
       },
     },
   ],
@@ -105,6 +113,8 @@ const mockAvailabilityResponse = {
       waitlisted: 0,
       capacity: 24,
       status: 'open',
+      waitlisted_by_grade: {},
+      waitlisted_persons: [],
     },
   ],
   limited_threshold: 80,
@@ -120,6 +130,8 @@ describe('SessionAvailability', () => {
     mockUseMetricsSession.mockReturnValue({
       selectedSessionCmId: null,
       sessionTypesParam: 'main,embedded,ag,quest',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+      durationParam: undefined,
     })
   })
 
@@ -192,7 +204,7 @@ describe('SessionAvailability', () => {
     expect(screen.getByText(/ag sessions/i)).toBeInTheDocument()
   })
 
-  it('shows WL text for waitlisted sessions', async () => {
+  it('renders full status cells', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => mockAvailabilityResponse,
@@ -204,9 +216,9 @@ describe('SessionAvailability', () => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
     })
 
-    // Session 2 girls has status=waitlist, should show WL cells
-    const wlCells = screen.getAllByText('WL')
-    expect(wlCells.length).toBeGreaterThan(0)
+    // Session 2 girls has status='full', should have sr-only "Full" text
+    const fullCells = screen.getAllByText('Full')
+    expect(fullCells.length).toBeGreaterThan(0)
   })
 
   it('renders page title', async () => {
@@ -237,8 +249,7 @@ describe('SessionAvailability', () => {
     // Legend items — use exact text unique to the legend
     expect(screen.getByText('Open Space')).toBeInTheDocument()
     expect(screen.getByText('Limited Space')).toBeInTheDocument()
-    // "WL" appears in legend and cells, "N/A" appears in legend and sr-only cells
-    expect(screen.getAllByText('WL').length).toBeGreaterThanOrEqual(2) // legend + cells
+    expect(screen.getAllByText('Full').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1)
   })
 
@@ -246,6 +257,8 @@ describe('SessionAvailability', () => {
     mockUseMetricsSession.mockReturnValue({
       selectedSessionCmId: null,
       sessionTypesParam: 'main,embedded,ag',
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      durationParam: undefined,
     })
 
     mockFetch.mockResolvedValueOnce({
@@ -267,6 +280,8 @@ describe('SessionAvailability', () => {
     mockUseMetricsSession.mockReturnValue({
       selectedSessionCmId: 1001,
       sessionTypesParam: 'main,embedded,ag,quest',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+      durationParam: undefined,
     })
 
     mockFetch.mockResolvedValueOnce({
@@ -288,6 +303,8 @@ describe('SessionAvailability', () => {
     mockUseMetricsSession.mockReturnValue({
       selectedSessionCmId: null,
       sessionTypesParam: 'main,embedded,ag,quest',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+      durationParam: undefined,
     })
 
     mockFetch.mockResolvedValueOnce({
@@ -303,5 +320,353 @@ describe('SessionAvailability', () => {
 
     const fetchUrl = mockFetch.mock.calls[0]![0] as string
     expect(fetchUrl).not.toContain('session_cm_id')
+  })
+
+  it('renders per-grade waitlist counts inside cells', async () => {
+    const response = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 5,
+            capacity: 60,
+            status: 'full',
+            waitlisted_by_grade: { 4: 3, 6: 2 },
+            waitlisted_persons: [],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 48,
+            waitlisted: 0,
+            capacity: 60,
+            status: 'limited',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => response })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Per-grade waitlist count should appear (the "3" for 4th grade girls)
+    expect(screen.getByText('3')).toBeInTheDocument()
+    // WL column total
+    expect(screen.getByText('5')).toBeInTheDocument()
+  })
+
+  it('renders dash in WL column when no waitlist', async () => {
+    const response = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 20,
+            waitlisted: 0,
+            capacity: 60,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 18,
+            waitlisted: 0,
+            capacity: 60,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => response })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Should have dashes for empty WL columns
+    const dashes = screen.getAllByText('—')
+    expect(dashes.length).toBeGreaterThanOrEqual(2) // at least girls + boys WL columns
+  })
+
+  it('renders WL column headers in sessions table', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // WL column headers should appear
+    const wlHeaders = screen.getAllByText('WL')
+    expect(wlHeaders.length).toBeGreaterThanOrEqual(2) // girls + boys
+  })
+
+  it('renders waitlist legend items', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Waitlisted (grade)')).toBeInTheDocument()
+    expect(screen.getByText('Waitlisted (total)')).toBeInTheDocument()
+  })
+
+  it('shows tooltip on WL pill hover', async () => {
+    const interactionResponse = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 8,
+            capacity: 50,
+            status: 'full',
+            waitlisted_by_grade: { 3: 3, 4: 3, 6: 2 },
+            waitlisted_persons: [
+              { person_id: 1, first_name: 'Emma', last_name: 'Johnson', position: 1, grade: 3 },
+              { person_id: 2, first_name: 'Olivia', last_name: 'Chen', position: 2, grade: 4 },
+              { person_id: 3, first_name: 'Sophia', last_name: 'Garcia', position: 3, grade: 4 },
+              { person_id: 4, first_name: 'Mia', last_name: 'Williams', position: 4, grade: 6 },
+              { person_id: 5, first_name: 'Ava', last_name: 'Davis', position: 5, grade: 4 },
+            ],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 40,
+            waitlisted: 0,
+            capacity: 50,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => interactionResponse })
+    renderWithProviders(<SessionAvailability />)
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Find the WL pill (shows "8")
+    const pill = screen.getByText('8')
+    fireEvent.mouseEnter(pill)
+
+    await waitFor(() => {
+      expect(screen.getByText(/8 girls waitlisted/)).toBeInTheDocument()
+      expect(screen.getByText(/Emma J\./)).toBeInTheDocument()
+      expect(screen.getByText(/\+ 3 more/)).toBeInTheDocument()
+    })
+  })
+
+  it('hides tooltip on mouse leave from WL pill', async () => {
+    const interactionResponse = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 3,
+            capacity: 50,
+            status: 'full',
+            waitlisted_by_grade: { 4: 2, 6: 1 },
+            waitlisted_persons: [
+              { person_id: 1, first_name: 'Emma', last_name: 'Johnson', position: 1, grade: 4 },
+              { person_id: 2, first_name: 'Olivia', last_name: 'Chen', position: 2, grade: 4 },
+              { person_id: 3, first_name: 'Sophia', last_name: 'Garcia', position: 3, grade: 6 },
+            ],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 40,
+            waitlisted: 0,
+            capacity: 50,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => interactionResponse })
+    renderWithProviders(<SessionAvailability />)
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Find the WL pill (shows "3" as the total count)
+    const pill = screen.getByText('3', { selector: 'span.inline-flex' })
+    fireEvent.mouseEnter(pill)
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 girls waitlisted/)).toBeInTheDocument()
+    })
+
+    fireEvent.mouseLeave(pill)
+
+    await waitFor(() => {
+      expect(screen.queryByText(/3 girls waitlisted/)).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows popover on grade cell click', async () => {
+    const interactionResponse = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 5,
+            capacity: 50,
+            status: 'full',
+            waitlisted_by_grade: { 4: 3, 6: 2 },
+            waitlisted_persons: [
+              { person_id: 1, first_name: 'Emma', last_name: 'Johnson', position: 1, grade: 4 },
+              { person_id: 2, first_name: 'Olivia', last_name: 'Chen', position: 2, grade: 4 },
+              { person_id: 3, first_name: 'Sophia', last_name: 'Garcia', position: 3, grade: 4 },
+              { person_id: 4, first_name: 'Mia', last_name: 'Williams', position: 4, grade: 6 },
+              { person_id: 5, first_name: 'Ava', last_name: 'Davis', position: 5, grade: 6 },
+            ],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 40,
+            waitlisted: 0,
+            capacity: 50,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => interactionResponse })
+    renderWithProviders(<SessionAvailability />)
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // The grade cell for 4th grade girls shows "3" (waitlisted count)
+    // Click on the grade cell count - should open drilldown modal
+    const gradeCount = screen.getByText('3')
+    fireEvent.click(gradeCount)
+
+    // Grade cell click opens drilldown (no popover)
+    // The drilldown modal is rendered by useDrilldown which makes an API call
+    // We verify the tooltip is dismissed (click clears tooltip state)
+    expect(screen.queryByText(/girls waitlisted/)).not.toBeInTheDocument()
+  })
+
+  it('adds cursor-pointer to grade cells with waitlist count', async () => {
+    const interactionResponse = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 3,
+            capacity: 50,
+            status: 'full',
+            waitlisted_by_grade: { 4: 3 },
+            waitlisted_persons: [
+              { person_id: 1, first_name: 'Emma', last_name: 'Johnson', position: 1, grade: 4 },
+              { person_id: 2, first_name: 'Olivia', last_name: 'Chen', position: 2, grade: 4 },
+              { person_id: 3, first_name: 'Sophia', last_name: 'Garcia', position: 3, grade: 4 },
+            ],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 40,
+            waitlisted: 0,
+            capacity: 50,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => interactionResponse })
+    renderWithProviders(<SessionAvailability />)
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // WL pill always has cursor-pointer (always opens drilldown)
+    const pill = screen.getByText('3', { selector: 'span.inline-flex' })
+    expect(pill).toHaveClass('cursor-pointer')
   })
 })

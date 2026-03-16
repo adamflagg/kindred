@@ -43,6 +43,7 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "waitlist_accepted",
         "waitlist_declined",
         "waitlist_total",
+        "waitlist_session_gender",
         "cancellation_total",
         "cancellation_was_enrolled",
         "cancellation_was_waitlisted",
@@ -174,6 +175,16 @@ class DrilldownService:
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
                 duration_session_ids=duration_session_ids,
+            )
+
+        # Availability chart waitlist drilldown
+        if breakdown_type == "waitlist_session_gender":
+            return await self._handle_waitlist_session_gender(
+                year=year,
+                breakdown_value=breakdown_value,
+                _sessions=sessions,
+                _session_types=session_types,
+                _duration_session_ids=duration_session_ids,
             )
 
         # Waitlist breakdown types need separate fetching logic
@@ -982,6 +993,140 @@ class DrilldownService:
             person_attendee_groups=all_waitlisted_groups,
             enrolled_attendee_groups=enrolled_attendee_groups,
         )
+
+    async def _handle_waitlist_session_gender(
+        self,
+        year: int,
+        breakdown_value: str,
+        _sessions: dict[int, Any],
+        _session_types: list[str] | None,
+        _duration_session_ids: set[int] | None,
+    ) -> list[DrilldownAttendee]:
+        """Handle waitlist drilldown filtered by session + gender + optional grade.
+
+        breakdown_value format: "session_cm_id:gender[:grade]"
+        Examples: "1001:F", "2001:", "1001:F:6"
+        """
+        import asyncio
+
+        # Parse "session_cm_id:gender[:grade]" format
+        parts = breakdown_value.split(":")
+        try:
+            target_session = int(parts[0])
+        except (ValueError, IndexError):
+            return []
+        target_gender = parts[1] if len(parts) > 1 and parts[1] else None
+        target_grade = int(parts[2]) if len(parts) > 2 and parts[2] else None
+
+        # Fetch waitlisted and enrolled attendees in parallel
+        waitlisted_attendees, enrolled_attendees = await asyncio.gather(
+            self.repo.fetch_attendees_with_persons(year, status_filter=["waitlisted"]),
+            self.repo.fetch_attendees_with_persons(year, status_filter=["enrolled"]),
+        )
+
+        # Build set of summer session cm_ids for filtering
+        from api.services.waitlist_service import SUMMER_SESSION_TYPES
+
+        summer_sessions = await self.repo.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
+        summer_session_ids = set(summer_sessions.keys())
+
+        # Build enrolled sessions lookup: person_id -> list of enrolled summer session names
+        enrolled_by_person: dict[int, list[DrilldownSession]] = {}
+        for att in enrolled_attendees:
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+            scmid = int(getattr(session, "cm_id", 0))
+            if scmid not in summer_session_ids:
+                continue
+            pid = int(getattr(person, "cm_id", 0))
+            if pid not in enrolled_by_person:
+                enrolled_by_person[pid] = []
+            enrolled_by_person[pid].append(
+                DrilldownSession(
+                    session_name=str(getattr(session, "name", "Unknown")),
+                    session_cm_id=scmid,
+                )
+            )
+
+        # Build waitlisted sessions lookup: person_id -> summer sessions they're waitlisted for
+        waitlisted_by_person: dict[int, list[DrilldownSession]] = {}
+        for att in waitlisted_attendees:
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+            scmid = int(getattr(session, "cm_id", 0))
+            if scmid not in summer_session_ids:
+                continue
+            pid = int(getattr(person, "cm_id", 0))
+            if pid not in waitlisted_by_person:
+                waitlisted_by_person[pid] = []
+            waitlisted_by_person[pid].append(
+                DrilldownSession(
+                    session_name=str(getattr(session, "name", "Unknown")),
+                    session_cm_id=int(getattr(session, "cm_id", 0)),
+                )
+            )
+
+        # Filter waitlisted attendees for target session/gender/grade
+        results = []
+        seen_persons: set[int] = set()
+        for att in waitlisted_attendees:
+            expand = getattr(att, "expand", {}) or {}
+            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not person or not session:
+                continue
+
+            session_cm_id = int(getattr(session, "cm_id", 0))
+            if session_cm_id != target_session:
+                continue
+
+            gender = getattr(person, "gender", "")
+            if target_gender and gender != target_gender:
+                continue
+
+            if target_grade is not None and getattr(person, "grade", None) != target_grade:
+                continue
+
+            pid = int(getattr(person, "cm_id", 0))
+            if pid in seen_persons:
+                continue
+            seen_persons.add(pid)
+
+            years_at_camp = getattr(person, "years_at_camp", None)
+
+            results.append(
+                DrilldownAttendee(
+                    person_id=pid,
+                    first_name=str(getattr(person, "first_name", "")),
+                    last_name=str(getattr(person, "last_name", "")),
+                    preferred_name=_get_str_attr(person, "preferred_name"),
+                    grade=getattr(person, "grade", None),
+                    gender=gender,
+                    age=getattr(person, "age", None),
+                    school=_get_str_attr(person, "normalized_school") or _get_str_attr(person, "school"),
+                    city=_get_str_attr(person, "normalized_city") or _get_str_attr(person, "address_city"),
+                    state=_get_str_attr(person, "address_state"),
+                    years_at_camp=years_at_camp,
+                    session_cm_id=session_cm_id,
+                    session_name=str(getattr(session, "name", "Unknown")),
+                    status="waitlisted",
+                    is_returning=bool(years_at_camp and years_at_camp > 1),
+                    effective_date=_get_str_attr(att, "effective_date"),
+                    enrollment_date=_get_str_attr(att, "enrollment_date"),
+                    sessions=waitlisted_by_person.get(pid, []),
+                    enrolled_sessions=enrolled_by_person.get(pid, []),
+                )
+            )
+
+        # Sort by waitlist position: effective_date ASC, enrollment_date ASC
+        results.sort(key=lambda a: (a.effective_date or "", a.enrollment_date or ""))
+        return results
 
     async def _handle_waitlist_person_breakdown(
         self,
