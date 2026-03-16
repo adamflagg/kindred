@@ -70,7 +70,7 @@ export function useResetSolverConfig() {
 
       // Reset each to default value if it exists in metadata
       const updates = configs.map((config) => {
-        const defaultValue = config.metadata['default_value']
+        const defaultValue = config.metadata?.['default_value']
         if (defaultValue !== undefined && defaultValue !== null) {
           return pb.collection<ConfigWithMetadata>('config').update(config.id, {
             value: defaultValue,

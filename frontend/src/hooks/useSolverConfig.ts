@@ -11,7 +11,7 @@ export interface ConfigWithMetadata extends ConfigRecord {
     section?: string
     display_order?: number
     [key: string]: unknown
-  }
+  } | null
 }
 
 export interface ConfigSection {
@@ -71,7 +71,7 @@ export function useSolverConfig() {
 
       // Add configs to their sections
       configs.forEach((config) => {
-        const sectionKey = config.metadata.section
+        const sectionKey = config.metadata?.section
         if (sectionKey && sectionMap.has(sectionKey)) {
           const section = sectionMap.get(sectionKey)
           if (section) {
@@ -100,8 +100,8 @@ export function useSolverConfig() {
       // Sort configs within each section by display_order
       sectionMap.forEach((section) => {
         section.configs.sort((a, b) => {
-          const orderA = a.metadata.display_order ?? 999
-          const orderB = b.metadata.display_order ?? 999
+          const orderA = a.metadata?.display_order ?? 999
+          const orderB = b.metadata?.display_order ?? 999
           return orderA - orderB
         })
       })

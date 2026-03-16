@@ -31,7 +31,7 @@ export function ConfigTab() {
       const configsByCategory: Record<string, typeof section.configs> = {}
 
       section.configs.forEach((config) => {
-        const businessCategory = (config.metadata['business_category'] as string) || 'solver'
+        const businessCategory = (config.metadata?.['business_category'] as string) || 'solver'
         configsByCategory[businessCategory] ??= []
         configsByCategory[businessCategory].push(config)
       })
@@ -61,7 +61,7 @@ export function ConfigTab() {
         ...section,
         configs: section.configs.filter(
           (config) =>
-            (config.metadata.friendly_name?.toLowerCase().includes(term) ?? false) ||
+            (config.metadata?.friendly_name?.toLowerCase().includes(term) ?? false) ||
             (config.description?.toLowerCase().includes(term) ?? false) ||
             config.config_key.toLowerCase().includes(term)
         ),

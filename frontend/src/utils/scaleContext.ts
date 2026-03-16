@@ -343,7 +343,7 @@ export const SCALE_DEFINITIONS: Record<ScaleType, ScaleDefinition> = {
 export function inferScaleType(
   configKey: string,
   value: number,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> | null
 ): ScaleType {
   const key = configKey.toLowerCase()
 
@@ -400,7 +400,7 @@ export function inferScaleType(
 export function getImpactLevel(
   scaleType: ScaleType,
   value: number,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> | null
 ): { label: string; color: string; bgColor: string } | null {
   const scale = SCALE_DEFINITIONS[scaleType]
   if (scale.levels.length === 0) return null
