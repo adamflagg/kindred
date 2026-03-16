@@ -37,8 +37,7 @@ class TestOrchestratorPhase1FailureStats:
         assert "phase1_failed" in orchestrator._stats
         assert orchestrator._stats["phase1_failed"] == 0
 
-    def test_phase1_first_error_initialized_in_stats(self):
-        """phase1_first_error should exist in _stats with initial value None."""
+    def test_phase1_first_error_initialized(self):
+        """_phase1_first_error should be initialized to None."""
         orchestrator = self._make_orchestrator()
-        assert "phase1_first_error" in orchestrator._stats
-        assert orchestrator._stats["phase1_first_error"] is None
+        assert orchestrator._phase1_first_error is None

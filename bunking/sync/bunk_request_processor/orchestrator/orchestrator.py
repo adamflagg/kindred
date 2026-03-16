@@ -250,8 +250,8 @@ class RequestOrchestrator:
             "ai_high_confidence": 0,
             "ai_manual_review": 0,
             "phase1_failed": 0,
-            "phase1_first_error": None,
         }
+        self._phase1_first_error: str | None = None
 
     def _load_ai_config(self) -> dict[str, Any]:
         """Load AI configuration via ConfigLoader with constant fallbacks.
@@ -1012,7 +1012,7 @@ class RequestOrchestrator:
         # Join phase1 service failure stats into orchestrator stats
         phase1_stats = self.phase1_service.get_stats()
         self._stats["phase1_failed"] = phase1_stats["failed_parses"]
-        self._stats["phase1_first_error"] = phase1_stats.get("first_failure_reason")
+        self._phase1_first_error = phase1_stats.get("first_failure_reason")
 
         # Combine AI-parsed and pre-parsed results
         parse_results = ai_parse_results + pre_parsed_results
@@ -1478,10 +1478,14 @@ class RequestOrchestrator:
             self.cache_monitor.log_statistics()
             self.cache_monitor.log_cache_recommendation()
 
+        # Merge phase1_first_error into stats (kept separate for type safety)
+        stats: dict[str, Any] = dict(self._stats)
+        stats["phase1_first_error"] = self._phase1_first_error
+
         return {
             "success": True,
             "requests_created": created_requests,
-            "statistics": self._stats,
+            "statistics": stats,
             "conflicts": conflict_result.conflicts if conflict_result.has_conflicts else [],
         }
 
