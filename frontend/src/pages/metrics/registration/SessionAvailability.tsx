@@ -471,6 +471,10 @@ export default function SessionAvailability() {
     setTooltipData(null)
   }, [])
 
+  const handlePopoverClose = useCallback(() => {
+    setPopoverData(null)
+  }, [])
+
   // Grade cell click -> popover
   const handleGradeClick = useCallback(
     (
@@ -631,7 +635,7 @@ export default function SessionAvailability() {
         totalGradeCount={popoverData?.totalGradeCount ?? 0}
         genderLabel={popoverData?.genderLabel ?? ''}
         persons={popoverData?.persons ?? []}
-        onClose={() => setPopoverData(null)}
+        onClose={handlePopoverClose}
       />
 
       <DrilldownModal />

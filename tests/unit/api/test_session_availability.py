@@ -4,7 +4,7 @@ Unit tests for the session availability service.
 Tests verify the availability matrix computation:
 - Per-session, per-gender enrollment counting
 - Capacity calculation from bunk_plans (boys/girls/AG split)
-- Status logic: open / limited / waitlist
+- Status logic: open / limited / full
 - AG sessions handled separately
 - Config-based grade eligibility and capacity overrides
 """
