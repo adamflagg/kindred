@@ -249,6 +249,8 @@ class RequestOrchestrator:
             "declined_other": 0,
             "ai_high_confidence": 0,
             "ai_manual_review": 0,
+            "phase1_failed": 0,
+            "phase1_first_error": None,
         }
 
     def _load_ai_config(self) -> dict[str, Any]:
@@ -1006,6 +1008,11 @@ class RequestOrchestrator:
         else:
             logger.info("=== Phase 1: Skipped (no AI parsing needed) ===")
             ai_parse_results = []
+
+        # Join phase1 service failure stats into orchestrator stats
+        phase1_stats = self.phase1_service.get_stats()
+        self._stats["phase1_failed"] = phase1_stats["failed_parses"]
+        self._stats["phase1_first_error"] = phase1_stats.get("first_failure_reason")
 
         # Combine AI-parsed and pre-parsed results
         parse_results = ai_parse_results + pre_parsed_results
