@@ -37,6 +37,8 @@ migrate((app) => {
       { type: "number", name: "trace_count", required: false },
       { type: "json", name: "status_breakdown", required: false, maxSize: 5000 },
       { type: "bool", name: "pinned", required: false },
+      { type: "autodate", name: "created", onCreate: true, onUpdate: false },
+      { type: "autodate", name: "updated", onCreate: true, onUpdate: true },
     ],
     indexes: [
       "CREATE UNIQUE INDEX idx_debug_runs_run_id ON debug_pipeline_runs (run_id)",
@@ -68,6 +70,8 @@ migrate((app) => {
       { type: "json", name: "trace_data", required: false, maxSize: 5000000 },
       { type: "bool", name: "pinned", required: false },
       { type: "number", name: "schema_version", required: false },
+      { type: "autodate", name: "created", onCreate: true, onUpdate: false },
+      { type: "autodate", name: "updated", onCreate: true, onUpdate: true },
     ],
     indexes: [
       "CREATE INDEX idx_debug_traces_run_id ON debug_pipeline_traces (run_id)",
@@ -116,6 +120,8 @@ migrate((app) => {
       { type: "text", name: "ai_reasoning_summary", required: false, max: 1000 },
       { type: "text", name: "pre_p1_action", required: false },
       { type: "number", name: "year", required: true },
+      { type: "autodate", name: "created", onCreate: true, onUpdate: false },
+      { type: "autodate", name: "updated", onCreate: true, onUpdate: true },
     ],
     indexes: [
       "CREATE INDEX idx_debug_summary_run_id ON debug_pipeline_summary (run_id)",
