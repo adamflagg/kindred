@@ -1341,27 +1341,52 @@ def get_pipeline_trace(
 # =============================================================================
 
 
-def _create_phase_runner() -> Any:
+def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = None) -> Any:
     """Create a PhaseRunner backed by a real orchestrator.
 
     This function is defined at module level so it can be patched in tests.
-    The actual orchestrator initialization requires DataAccessContext and
-    proper AI config — this is a factory that tests replace entirely.
+    Initializes a DataAccessContext and RequestOrchestrator, then wraps
+    them in a PhaseRunner for on-demand phase execution.
+
+    Args:
+        year: Camp year for data context initialization.
+        session_cm_ids: Session CM IDs to scope the orchestrator to.
 
     Returns:
         PhaseRunner instance (or mock in tests).
     """
-    # In production, this would create a real PhaseRunner via:
-    #   from bunking.sync.bunk_request_processor.debug.phase_runner import PhaseRunner
-    #   data_context = DataAccessContext(year=year)
-    #   data_context.initialize_sync()
-    #   orchestrator = RequestOrchestrator(...)
-    #   return PhaseRunner(orchestrator)
-    # For now, this is the stub that tests patch.
-    raise NotImplementedError(
-        "PhaseRunner factory not yet wired to real orchestrator. "
-        "Debug execution endpoints require a running pipeline environment."
+    from bunking.sync.bunk_request_processor.data.data_access_context import DataAccessContext
+    from bunking.sync.bunk_request_processor.debug.phase_runner import PhaseRunner
+    from bunking.sync.bunk_request_processor.orchestrator import RequestOrchestrator
+
+    data_context = DataAccessContext(year=year)
+    data_context.initialize_sync()
+    orchestrator = RequestOrchestrator(
+        year=year,
+        session_cm_ids=session_cm_ids or [],
+        data_context=data_context,
     )
+    return PhaseRunner(orchestrator)
+
+
+def _load_trace_record(trace_id: str) -> Any:
+    """Load a full PB trace record by ID.
+
+    Args:
+        trace_id: PocketBase record ID for the trace.
+
+    Returns:
+        The PocketBase record object.
+
+    Raises:
+        HTTPException: If trace not found.
+    """
+    try:
+        return pb.collection("debug_pipeline_traces").get_one(trace_id)
+    except Exception as e:
+        if getattr(e, "status", 0) == 404:
+            raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
+        raise
 
 
 def _load_trace_data(trace_id: str) -> dict[str, Any]:
@@ -1376,13 +1401,7 @@ def _load_trace_data(trace_id: str) -> dict[str, Any]:
     Raises:
         HTTPException: If trace not found.
     """
-    try:
-        record = pb.collection("debug_pipeline_traces").get_one(trace_id)
-    except Exception as e:
-        if getattr(e, "status", 0) == 404:
-            raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
-        raise
-
+    record = _load_trace_record(trace_id)
     return getattr(record, "trace_data", {}) or {}
 
 
@@ -1429,28 +1448,24 @@ async def run_phase2(
 
     Always dry-run — single phase re-runs never write to production.
     """
-    # Load trace data
-    trace_data_dict = _load_trace_data(body.trace_id)
+    # Load full trace record for year/session context
+    trace_record = _load_trace_record(body.trace_id)
+    trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
+    year = getattr(trace_record, "year", 2025)
+    session_cm_id = getattr(trace_record, "session_cm_id", None)
+    session_cm_ids = [session_cm_id] if session_cm_id else []
 
     try:
         from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
 
         trace_data = TraceData(**trace_data_dict)
-        runner = _create_phase_runner()
+        runner = _create_phase_runner(year=year, session_cm_ids=session_cm_ids)
         result = await runner.run_phase2(runner._reconstruct_parse_results_from_trace(trace_data))
         return PhaseRunResponse(
             success=True,
             phase="phase2",
             dry_run=True,
             results={"resolution_count": len(result)},
-        )
-    except NotImplementedError:
-        # PhaseRunner not wired yet — return structured error
-        return PhaseRunResponse(
-            success=False,
-            phase="phase2",
-            dry_run=True,
-            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Phase 2 execution failed")
@@ -1471,26 +1486,24 @@ async def run_phase3(
 
     Always dry-run — single phase re-runs never write to production.
     """
-    trace_data_dict = _load_trace_data(body.trace_id)
+    # Load full trace record for year/session context
+    trace_record = _load_trace_record(body.trace_id)
+    trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
+    year = getattr(trace_record, "year", 2025)
+    session_cm_id = getattr(trace_record, "session_cm_id", None)
+    session_cm_ids = [session_cm_id] if session_cm_id else []
 
     try:
         from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
 
         trace_data = TraceData(**trace_data_dict)
-        runner = _create_phase_runner()
+        runner = _create_phase_runner(year=year, session_cm_ids=session_cm_ids)
         result = await runner.run_phase3(runner._reconstruct_ambiguous_from_trace(trace_data))
         return PhaseRunResponse(
             success=True,
             phase="phase3",
             dry_run=True,
             results={"disambiguation_count": len(result)},
-        )
-    except NotImplementedError:
-        return PhaseRunResponse(
-            success=False,
-            phase="phase3",
-            dry_run=True,
-            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Phase 3 execution failed")
@@ -1524,7 +1537,7 @@ async def run_from_phase(
         from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
 
         trace_data = TraceData(**trace_data_dict)
-        runner = _create_phase_runner()
+        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
         result = await runner.run_from_phase(
             phase=phase,
             trace_data=trace_data,
@@ -1535,13 +1548,6 @@ async def run_from_phase(
             phase=phase,
             dry_run=body.dry_run,
             results=result,
-        )
-    except NotImplementedError:
-        return PhaseRunResponse(
-            success=False,
-            phase=phase,
-            dry_run=body.dry_run,
-            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Phase execution failed for phase=%s", phase)
@@ -1560,23 +1566,58 @@ async def run_full_trace(
 ) -> PhaseRunResponse:
     """Run full pipeline for selected records with tracing enabled.
 
+    Loads original_bunk_requests by ID, converts to ParseRequest objects,
+    then runs the full Phase 1 -> 2 -> 3 pipeline via PhaseRunner.
+
     Supports dry_run (default True). When dry_run=False, writes to production.
     """
     try:
-        runner = _create_phase_runner()
-        result = await runner.run_full_trace(body.original_request_ids, dry_run=body.dry_run)
+        from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
+
+        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+
+        # Load original requests and convert to ParseRequest objects
+        loader = OriginalRequestsLoader(pb, body.year, session_cm_ids=body.session_cm_ids)
+        loader.load_persons_cache()
+        original_records = loader.load_by_ids(body.original_request_ids)
+
+        if not original_records:
+            return PhaseRunResponse(
+                success=True,
+                phase="full",
+                dry_run=body.dry_run,
+                results={"parsed_count": 0, "message": "No original requests found for the given IDs"},
+            )
+
+        # Convert OriginalRequest objects to ParseRequest format
+        from bunking.sync.bunk_request_processor.core.models import ParseRequest
+
+        parse_requests: list[ParseRequest] = []
+        for orig in original_records:
+            first = orig.preferred_name or orig.first_name
+            requester_name = f"{first} {orig.last_name}".strip()
+            session_cm_id = loader.get_session_for_person(orig.requester_cm_id) or 0
+            session_name = f"Session {session_cm_id}" if session_cm_id else "Unknown"
+
+            parse_req = ParseRequest(
+                request_text=orig.content,
+                field_name=FIELD_TO_SOURCE_FIELD.get(orig.field, orig.field),
+                requester_name=requester_name,
+                requester_cm_id=orig.requester_cm_id,
+                requester_grade=str(orig.grade) if orig.grade else "",
+                session_cm_id=session_cm_id,
+                session_name=session_name,
+                year=orig.year,
+                row_data={"_original_request_id": orig.id},
+            )
+            parse_requests.append(parse_req)
+
+        result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run)
         return PhaseRunResponse(
             success=True,
             phase="full",
             dry_run=body.dry_run,
             results=result,
-        )
-    except NotImplementedError:
-        return PhaseRunResponse(
-            success=False,
-            phase="full",
-            dry_run=body.dry_run,
-            error="Phase execution not yet implemented",
         )
     except Exception:
         logger.exception("Full trace execution failed")
