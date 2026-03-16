@@ -147,7 +147,7 @@ class TestSupportsReasoning:
     """Test _supports_reasoning model prefix detection."""
 
     @pytest.mark.parametrize(
-        "model,expected",
+        ("model", "expected"),
         [
             ("gpt-5-nano", True),
             ("gpt-5", True),
@@ -165,6 +165,6 @@ class TestSupportsReasoning:
             ("gpt-4-turbo", False),
         ],
     )
-    def test_supports_reasoning(self, model: str, expected: bool):
+    def test_supports_reasoning(self, model: str, expected: bool) -> None:
         provider = OpenAIProvider(api_key="test-key", model=model)
         assert provider._supports_reasoning() == expected, f"Expected {expected} for model '{model}'"
