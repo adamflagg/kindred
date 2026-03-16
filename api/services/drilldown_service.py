@@ -1024,7 +1024,13 @@ class DrilldownService:
             self.repo.fetch_attendees_with_persons(year, status_filter=["enrolled"]),
         )
 
-        # Build enrolled sessions lookup: person_id -> list of enrolled session names
+        # Build set of summer session cm_ids for filtering
+        from api.services.waitlist_service import SUMMER_SESSION_TYPES
+
+        summer_sessions = await self.repo.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
+        summer_session_ids = set(summer_sessions.keys())
+
+        # Build enrolled sessions lookup: person_id -> list of enrolled summer session names
         enrolled_by_person: dict[int, list[DrilldownSession]] = {}
         for att in enrolled_attendees:
             expand = getattr(att, "expand", {}) or {}
@@ -1032,23 +1038,29 @@ class DrilldownService:
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if not person or not session:
                 continue
+            scmid = int(getattr(session, "cm_id", 0))
+            if scmid not in summer_session_ids:
+                continue
             pid = int(getattr(person, "cm_id", 0))
             if pid not in enrolled_by_person:
                 enrolled_by_person[pid] = []
             enrolled_by_person[pid].append(
                 DrilldownSession(
                     session_name=str(getattr(session, "name", "Unknown")),
-                    session_cm_id=int(getattr(session, "cm_id", 0)),
+                    session_cm_id=scmid,
                 )
             )
 
-        # Build waitlisted sessions lookup: person_id -> list of waitlisted session names
+        # Build waitlisted sessions lookup: person_id -> list of waitlisted summer session names
         waitlisted_by_person: dict[int, list[DrilldownSession]] = {}
         for att in waitlisted_attendees:
             expand = getattr(att, "expand", {}) or {}
             person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if not person or not session:
+                continue
+            scmid = int(getattr(session, "cm_id", 0))
+            if scmid not in summer_session_ids:
                 continue
             pid = int(getattr(person, "cm_id", 0))
             if pid not in waitlisted_by_person:
