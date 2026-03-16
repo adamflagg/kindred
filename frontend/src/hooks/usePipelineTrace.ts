@@ -4,7 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
-import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import { pipelineDebugService } from '../services/pipelineDebug'
 
 /**
@@ -20,7 +20,7 @@ export function usePipelineTrace(traceId: string | null) {
       return pipelineDebugService.fetchPipelineTrace(traceId, fetchWithAuth)
     },
     enabled: isAuthenticated && !!traceId,
-    ...userDataOptions,
+    ...syncDataOptions, // Traces are write-once, safe to cache long
   })
 }
 
@@ -37,6 +37,6 @@ export function usePipelineTracesByCamper(cmId: number | null) {
       return pipelineDebugService.fetchTracesByCamper(cmId, fetchWithAuth)
     },
     enabled: isAuthenticated && !!cmId,
-    ...userDataOptions,
+    ...syncDataOptions, // Traces are write-once, safe to cache long
   })
 }

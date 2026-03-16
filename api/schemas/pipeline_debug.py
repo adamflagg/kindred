@@ -138,16 +138,12 @@ class RunPhase2Request(BaseModel):
     """Request to run Phase 2 in isolation."""
 
     trace_id: str = Field(description="Trace ID to load Phase 1 output from")
-    year: int = Field(description="Camp year for resolution context")
-    session_cm_ids: list[int] = Field(description="Session CM IDs for resolution context")
 
 
 class RunPhase3Request(BaseModel):
     """Request to run Phase 3 in isolation."""
 
     trace_id: str = Field(description="Trace ID to load Phase 2 output from")
-    year: int = Field(description="Camp year for disambiguation context")
-    session_cm_ids: list[int] = Field(description="Session CM IDs for disambiguation context")
 
 
 class RunFromPhaseRequest(BaseModel):

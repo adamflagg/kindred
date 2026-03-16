@@ -4,7 +4,6 @@ from bunking.sync.bunk_request_processor.debug.trace_collector import (
     NoOpTraceCollector,
     TraceCollector,
 )
-from bunking.sync.bunk_request_processor.debug.trace_models import SCHEMA_VERSION
 
 
 class TestTraceCollector:
@@ -71,20 +70,6 @@ class TestTraceCollector:
     def test_enabled_flag(self):
         tc = TraceCollector(run_id="test123", enabled=True)
         assert tc.enabled is True
-
-    def test_schema_version_in_metadata(self):
-        tc = TraceCollector(run_id="test123")
-        tc.record_pre_phase1(
-            key="orig_abc",
-            action="parsed",
-            original_text="test",
-            requester_cm_id=1,
-            year=2025,
-            session_cm_id=1,
-            source_field="bunk_with",
-        )
-        meta = tc._get_trace_metadata("orig_abc")
-        assert meta["schema_version"] == SCHEMA_VERSION
 
 
 class TestNoOpTraceCollector:

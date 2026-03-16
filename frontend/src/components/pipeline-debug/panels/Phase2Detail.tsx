@@ -9,20 +9,15 @@
 import { useState } from 'react'
 import type { Phase2IntentTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
+import { DataRow, Badge, confidenceColor } from './DataRow'
 import { CollapsibleSection } from './CollapsibleSection'
+import { IntentTabs } from './IntentTabs'
 
 interface Phase2DetailProps {
   data: Phase2IntentTrace[]
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
   isRunning?: boolean | undefined
-}
-
-function confidenceColor(c: number): 'green' | 'amber' | 'red' {
-  if (c >= 0.8) return 'green'
-  if (c >= 0.5) return 'amber'
-  return 'red'
 }
 
 function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
@@ -198,27 +193,7 @@ export function Phase2Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         Phase 2 Resolution
       </h3>
 
-      {/* Tabs for multi-intent */}
-      {data.length > 1 && (
-        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-          {data.map((intent, idx) => (
-            <button
-              key={idx}
-              onClick={() => setActiveTab(idx)}
-              role="tab"
-              aria-label={intent.target_name}
-              aria-selected={activeTab === idx}
-              className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                activeTab === idx
-                  ? 'border-blue-500 text-blue-700 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
-              }`}
-            >
-              {intent.target_name}
-            </button>
-          ))}
-        </div>
-      )}
+      <IntentTabs items={data} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
 

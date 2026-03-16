@@ -41,10 +41,6 @@ class TraceCollector:
             self._traces[key] = TraceData()
         return self._traces[key]
 
-    def _get_trace_metadata(self, key: str) -> dict[str, Any]:
-        meta = self._trace_metadata.get(key, {})
-        return {**meta, "schema_version": SCHEMA_VERSION}
-
     def record_pre_phase1(
         self,
         key: str,
@@ -225,9 +221,11 @@ class TraceCollector:
         run_record = await asyncio.to_thread(_create_run)
         logger.info("Created debug pipeline run: %s (%d traces)", self.run_id, len(self._traces))
 
-        # 2. Create trace records (sync PB calls wrapped in to_thread)
-        trace_ids: dict[str, str] = {}
-        for key, trace_data in self._traces.items():
+        # 2. Create trace records in parallel (they're independent)
+        trace_keys = list(self._traces.keys())
+
+        async def _create_trace(key: str) -> tuple[str, str]:
+            trace_data = self._traces[key]
             meta = self._trace_metadata.get(key, {})
             data = {
                 "run_id": self.run_id,
@@ -241,9 +239,13 @@ class TraceCollector:
                 "schema_version": SCHEMA_VERSION,
             }
             record = await asyncio.to_thread(pb_client.collection("debug_pipeline_traces").create, data)
-            trace_ids[key] = record.id
+            return key, record.id
 
-        # 3. Create summary records (one per final_bunk_request per trace)
+        trace_results = await asyncio.gather(*[_create_trace(k) for k in trace_keys])
+        trace_ids: dict[str, str] = dict(trace_results)
+
+        # 3. Create summary records in parallel (they're independent)
+        summary_tasks = []
         for key, trace_data in self._traces.items():
             trace_id = trace_ids.get(key, "")
             meta = self._trace_metadata.get(key, {})
@@ -267,11 +269,34 @@ class TraceCollector:
                     "pre_p1_action": trace_data.pre_phase1.action,
                     "year": meta.get("year", 0),
                 }
-                await asyncio.to_thread(pb_client.collection("debug_pipeline_summary").create, summary_data)
+                summary_tasks.append(
+                    asyncio.to_thread(pb_client.collection("debug_pipeline_summary").create, summary_data)
+                )
+        if summary_tasks:
+            await asyncio.gather(*summary_tasks)
 
-        # 4. Run retention cleanup
+        # 4. Run retention cleanup (only if needed)
         try:
-            await asyncio.to_thread(cleanup_old_runs, pb_client)
+            from .retention import MAX_AGE_DAYS, MAX_RUNS
+
+            check = await asyncio.to_thread(
+                pb_client.collection("debug_pipeline_runs").get_list, 1, 1, {"sort": "created"}
+            )
+            needs_cleanup = check.total_items > MAX_RUNS
+            if not needs_cleanup and check.items:
+                from datetime import UTC, datetime, timedelta
+
+                oldest_str = getattr(check.items[0], "created", "")
+                if oldest_str:
+                    try:
+                        oldest = datetime.fromisoformat(str(oldest_str))
+                        if oldest.tzinfo is None:
+                            oldest = oldest.replace(tzinfo=UTC)
+                        needs_cleanup = oldest < datetime.now(UTC) - timedelta(days=MAX_AGE_DAYS)
+                    except (ValueError, TypeError):
+                        pass
+            if needs_cleanup:
+                await asyncio.to_thread(cleanup_old_runs, pb_client)
         except Exception as e:
             logger.warning("Retention cleanup failed: %s", e)
 

@@ -305,15 +305,6 @@ async def list_parse_analysis(
             for intent in item.get("parsed_intents", [])
         ]
 
-        # Parse created timestamp
-        created_str = item.get("created")
-        created_dt = None
-        if created_str:
-            try:
-                created_dt = datetime.fromisoformat(created_str)
-            except (ValueError, TypeError):
-                pass
-
         response_items.append(
             ParseAnalysisItem(
                 id=item.get("id", ""),
@@ -328,7 +319,7 @@ async def list_parse_analysis(
                 token_count=item.get("token_count"),
                 processing_time_ms=item.get("processing_time_ms"),
                 prompt_version=item.get("prompt_version"),
-                created=created_dt,
+                created=_parse_pb_datetime(item.get("created")),
             )
         )
 
@@ -359,15 +350,6 @@ async def get_parse_analysis_detail(item_id: str, user: AuthUser = Depends(requi
         for intent in item.get("parsed_intents", [])
     ]
 
-    # Parse created timestamp
-    created_str = item.get("created")
-    created_dt = None
-    if created_str:
-        try:
-            created_dt = datetime.fromisoformat(created_str)
-        except (ValueError, TypeError):
-            pass
-
     return ParseAnalysisDetailItem(
         id=item.get("id", ""),
         original_request_id=item.get("original_request_id", ""),
@@ -381,7 +363,7 @@ async def get_parse_analysis_detail(item_id: str, user: AuthUser = Depends(requi
         token_count=item.get("token_count"),
         processing_time_ms=item.get("processing_time_ms"),
         prompt_version=item.get("prompt_version"),
-        created=created_dt,
+        created=_parse_pb_datetime(item.get("created")),
         ai_raw_response=item.get("ai_raw_response"),
     )
 
@@ -709,15 +691,6 @@ async def get_parse_results_batch(
             for intent in data.get("parsed_intents", [])
         ]
 
-        # Parse created timestamp if present
-        created_dt = None
-        created_str = data.get("created")
-        if created_str:
-            try:
-                created_dt = datetime.fromisoformat(str(created_str))
-            except (ValueError, TypeError):
-                pass
-
         responses.append(
             ParseResultWithSource(
                 source=data.get("source", "none"),
@@ -728,7 +701,7 @@ async def get_parse_results_batch(
                 token_count=data.get("token_count"),
                 processing_time_ms=data.get("processing_time_ms"),
                 prompt_version=data.get("prompt_version"),
-                created=created_dt,
+                created=_parse_pb_datetime(data.get("created")),
                 original_request_id=data.get("original_request_id", rid),
                 requester_name=data.get("requester_name", ""),
                 requester_cm_id=data.get("requester_cm_id"),
@@ -787,15 +760,6 @@ async def get_parse_results_batch_dual(
                 for intent in dr.get("parsed_intents", [])
             ]
 
-            # Parse created timestamp if present
-            created_dt = None
-            created_str = dr.get("created")
-            if created_str:
-                try:
-                    created_dt = datetime.fromisoformat(str(created_str))
-                except (ValueError, TypeError):
-                    pass
-
             debug_result_data = ParseResultData(
                 id=dr.get("id"),
                 parsed_intents=debug_intents,
@@ -804,7 +768,7 @@ async def get_parse_results_batch_dual(
                 token_count=dr.get("token_count"),
                 processing_time_ms=dr.get("processing_time_ms"),
                 prompt_version=dr.get("prompt_version"),
-                created=created_dt,
+                created=_parse_pb_datetime(dr.get("created")),
             )
 
         # Convert production_result if present
@@ -902,15 +866,6 @@ async def get_parse_result_with_fallback(
             for intent in debug_result.get("parsed_intents", [])
         ]
 
-        # Parse created timestamp
-        created_str = debug_result.get("created")
-        created_dt = None
-        if created_str:
-            try:
-                created_dt = datetime.fromisoformat(created_str)
-            except (ValueError, TypeError):
-                pass
-
         return ParseResultWithSource(
             source="debug",
             id=debug_result.get("id"),
@@ -920,7 +875,7 @@ async def get_parse_result_with_fallback(
             token_count=debug_result.get("token_count"),
             processing_time_ms=debug_result.get("processing_time_ms"),
             prompt_version=debug_result.get("prompt_version"),
-            created=created_dt,
+            created=_parse_pb_datetime(debug_result.get("created")),
             original_request_id=base_original_request_id,
             requester_name=base_requester_name,
             requester_cm_id=base_requester_cm_id,
@@ -1203,6 +1158,61 @@ def _pb_record_to_trace_item(record: Any) -> PipelineTraceItem:
     )
 
 
+# Allowlists for PB filter injection prevention
+VALID_RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+VALID_FINAL_STATUSES = {"RESOLVED", "PENDING", "DECLINED"}
+VALID_RESOLUTION_METHODS = {
+    "exact_match",
+    "fuzzy_match",
+    "nickname",
+    "social_graph",
+    "ai_disambiguation",
+    "age_preference",
+    "placeholder",
+    "unresolved",
+}
+VALID_SOURCE_FIELDS = {
+    "bunk_with",
+    "not_bunk_with",
+    "bunking_notes",
+    "socialize_with",
+    "socialize_not_with",
+}
+VALID_PRE_P1_ACTIONS = {
+    "parsed",
+    "skipped_no_preference",
+    "skipped_no_session",
+    "skipped_already_processed",
+    "skipped_staff",
+    "socialize_direct_map",
+}
+VALID_CASCADE_PHASES = {
+    "pre_phase1",
+    "phase1",
+    "validation",
+    "phase2",
+    "expansion",
+    "historical",
+    "phase3",
+    "post_pipeline",
+}
+
+
+def _validate_run_id(run_id: str) -> None:
+    """Validate run_id matches expected UUID hex format to prevent PB filter injection."""
+    if not VALID_RUN_ID_PATTERN.match(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format")
+
+
+def _validate_allowlist(value: str, allowlist: set[str], field_name: str) -> None:
+    """Validate a string value against an allowlist to prevent PB filter injection."""
+    if value not in allowlist:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field_name} value: '{value}'",
+        )
+
+
 @router.get("/pipeline-runs", response_model=PipelineRunsResponse)
 def list_pipeline_runs(
     user: AuthUser = Depends(require_admin),
@@ -1329,61 +1339,6 @@ def get_pipeline_trace(
 # =============================================================================
 # Pipeline Debug Endpoints — On-Demand Phase Execution
 # =============================================================================
-
-# Allowlists for PB filter injection prevention
-VALID_RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
-VALID_FINAL_STATUSES = {"RESOLVED", "PENDING", "DECLINED"}
-VALID_RESOLUTION_METHODS = {
-    "exact_match",
-    "fuzzy_match",
-    "nickname",
-    "social_graph",
-    "ai_disambiguation",
-    "age_preference",
-    "placeholder",
-    "unresolved",
-}
-VALID_SOURCE_FIELDS = {
-    "bunk_with",
-    "not_bunk_with",
-    "bunking_notes",
-    "socialize_with",
-    "socialize_not_with",
-}
-VALID_PRE_P1_ACTIONS = {
-    "parsed",
-    "skipped_no_preference",
-    "skipped_no_session",
-    "skipped_already_processed",
-    "skipped_staff",
-    "socialize_direct_map",
-}
-
-VALID_CASCADE_PHASES = {
-    "pre_phase1",
-    "phase1",
-    "validation",
-    "phase2",
-    "expansion",
-    "historical",
-    "phase3",
-    "post_pipeline",
-}
-
-
-def _validate_run_id(run_id: str) -> None:
-    """Validate run_id matches expected UUID hex format to prevent PB filter injection."""
-    if not VALID_RUN_ID_PATTERN.match(run_id):
-        raise HTTPException(status_code=400, detail="Invalid run_id format")
-
-
-def _validate_allowlist(value: str, allowlist: set[str], field_name: str) -> None:
-    """Validate a string value against an allowlist to prevent PB filter injection."""
-    if value not in allowlist:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid {field_name} value: '{value}'",
-        )
 
 
 def _create_phase_runner() -> Any:

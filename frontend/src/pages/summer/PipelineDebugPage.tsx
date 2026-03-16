@@ -21,19 +21,11 @@ import { usePipelineRuns, useToggleRunPin } from '../../hooks/usePipelineRuns'
 import { usePipelineSummary } from '../../hooks/usePipelineSummary'
 import { usePipelineTrace } from '../../hooks/usePipelineTrace'
 import { useRunFromPhase } from '../../hooks/useRunPhase'
-import type { PipelineSummaryFilters, PipelinePhase } from '../../components/pipeline-debug/types'
-
-/** Pipeline phase ordering for computing stale downstream phases. */
-const PHASE_ORDER: PipelinePhase[] = [
-  'pre_phase1',
-  'phase1',
-  'validation',
-  'phase2',
-  'expansion',
-  'historical',
-  'phase3',
-  'post_pipeline',
-]
+import {
+  PHASE_ORDER,
+  type PipelineSummaryFilters,
+  type PipelinePhase,
+} from '../../components/pipeline-debug/types'
 
 export default function PipelineDebugPage() {
   const { traceId } = useParams<{ traceId?: string }>()

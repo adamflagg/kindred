@@ -24,7 +24,7 @@ import { ExpansionNode } from './nodes/ExpansionNode'
 import { HistoricalNode } from './nodes/HistoricalNode'
 import { Phase3Node } from './nodes/Phase3Node'
 import { PostPipelineNode } from './nodes/PostPipelineNode'
-import type { TraceData, PipelinePhase } from './types'
+import { PHASE_ORDER, type TraceData, type PipelinePhase } from './types'
 
 interface PipelineCanvasProps {
   traceData: TraceData
@@ -47,17 +47,6 @@ const NODE_TYPES = {
 /** Horizontal spacing between nodes */
 const X_SPACING = 200
 const Y_POS = 50
-
-const PHASE_ORDER: PipelinePhase[] = [
-  'pre_phase1',
-  'phase1',
-  'validation',
-  'phase2',
-  'expansion',
-  'historical',
-  'phase3',
-  'post_pipeline',
-]
 
 const PHASE_NODE_TYPES: Record<PipelinePhase, string> = {
   pre_phase1: 'prePhase1',

@@ -34,6 +34,13 @@ const badgeStyles = {
   gray: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 }
 
+/** Map a 0-1 confidence score to a badge color. */
+export function confidenceColor(c: number): 'green' | 'amber' | 'red' {
+  if (c >= 0.8) return 'green'
+  if (c >= 0.5) return 'amber'
+  return 'red'
+}
+
 export function Badge({ label, color = 'gray' }: BadgeProps) {
   return (
     <span

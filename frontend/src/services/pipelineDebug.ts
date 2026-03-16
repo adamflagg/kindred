@@ -12,7 +12,6 @@ import type {
   PipelineTrace,
   PipelineTracesResponse,
   PipelinePhase,
-  RunPhaseRequest,
   RunPhaseResponse,
   RunFromPhaseRequest,
   RunFullTraceRequest,
@@ -126,66 +125,6 @@ export const pipelineDebugService = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch traces for camper')
-    }
-    return response.json()
-  },
-
-  /**
-   * Run Phase 1 on selected original request IDs.
-   */
-  async runPhase1(
-    request: RunPhaseRequest,
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
-  ): Promise<RunPhaseResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/run-phase1`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail ?? 'Failed to run Phase 1')
-    }
-    return response.json()
-  },
-
-  /**
-   * Run Phase 2 in isolation with input from a trace or fresh Phase 1 output.
-   */
-  async runPhase2(
-    request: RunPhaseRequest,
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
-  ): Promise<RunPhaseResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/run-phase2`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail ?? 'Failed to run Phase 2')
-    }
-    return response.json()
-  },
-
-  /**
-   * Run Phase 3 in isolation with input from a trace or fresh Phase 2 output.
-   */
-  async runPhase3(
-    request: RunPhaseRequest,
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
-  ): Promise<RunPhaseResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/run-phase3`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail ?? 'Failed to run Phase 3')
     }
     return response.json()
   },

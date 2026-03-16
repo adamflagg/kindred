@@ -9,7 +9,7 @@
 
 import type { Phase1Trace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
+import { DataRow, Badge, confidenceColor } from './DataRow'
 import { CollapsibleSection } from './CollapsibleSection'
 
 interface Phase1DetailProps {
@@ -17,12 +17,6 @@ interface Phase1DetailProps {
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
   isRunning?: boolean | undefined
-}
-
-function confidenceColor(c: number): 'green' | 'amber' | 'red' {
-  if (c >= 0.8) return 'green'
-  if (c >= 0.5) return 'amber'
-  return 'red'
 }
 
 export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Phase1DetailProps) {

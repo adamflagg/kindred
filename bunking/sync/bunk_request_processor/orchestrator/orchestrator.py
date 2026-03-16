@@ -1016,11 +1016,12 @@ class RequestOrchestrator:
             logger.info(f"Pre-parsed {len(pre_parsed_results)} requests without AI (e.g., socialize preferences)")
 
         # --- Trace: Phase 1 results ---
+        pre_parsed_ids = {id(r) for r in pre_parsed_results}
         for pr in parse_results:
             trace_key = _get_trace_key(pr)
             if not trace_key:
                 continue
-            ran = pr not in pre_parsed_results  # AI-parsed vs pre-parsed
+            ran = id(pr) not in pre_parsed_ids  # AI-parsed vs pre-parsed
             parsed_intents = [
                 {
                     "target_name": req.target_name or "",
@@ -1554,6 +1555,13 @@ class RequestOrchestrator:
         )
 
         for row in raw_requests:
+            # Common per-row params (hoisted out of inner loop — same for every field)
+            requester_cm_id = int(row.get("requester_cm_id", row.get("PersonID", 0)))
+            first_name = row.get("first_name", row.get("First", ""))
+            last_name = row.get("last_name", row.get("Last", ""))
+            requester_name = f"{first_name} {last_name}".strip()
+            requester_grade = str(row.get("Grade", 0))
+
             # Extract request texts from various fields (defined in constants.py)
             for field_key, field_name in FIELDS_TO_CHECK:
                 total_fields_checked += 1
@@ -1562,13 +1570,6 @@ class RequestOrchestrator:
                 # Resolve trace key: PB field name from _original_request_ids
                 pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
                 trace_key = row.get("_original_request_ids", {}).get(pb_field, "")
-
-                # Common trace params (extracted early so skip paths can use them)
-                requester_cm_id = int(row.get("requester_cm_id", row.get("PersonID", 0)))
-                first_name = row.get("first_name", row.get("First", ""))
-                last_name = row.get("last_name", row.get("Last", ""))
-                requester_name = f"{first_name} {last_name}".strip()
-                requester_grade = str(row.get("Grade", 0))
 
                 if not request_text:
                     skipped_no_text += 1

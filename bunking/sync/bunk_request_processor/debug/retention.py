@@ -26,34 +26,29 @@ def cleanup_old_runs(pb: Any) -> int:
 
     Returns number of runs deleted.
     """
-    all_runs = pb.collection("debug_pipeline_runs").get_full_list(query_params={"sort": "-created"})
-
-    if not all_runs:
-        return 0
-
     cutoff = datetime.now(UTC) - timedelta(days=MAX_AGE_DAYS)
+    cutoff_iso = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+
     to_delete: list[Any] = []
 
-    # Separate pinned and unpinned
-    unpinned = [r for r in all_runs if not getattr(r, "pinned", False)]
-    pinned_count = len(all_runs) - len(unpinned)
+    # Time-based: fetch unpinned runs older than cutoff directly via PB filter
+    expired_runs = pb.collection("debug_pipeline_runs").get_full_list(
+        query_params={"filter": f'pinned = false && created < "{cutoff_iso}"', "sort": "-created"}
+    )
+    to_delete.extend(expired_runs)
+    expired_ids = {r.id for r in expired_runs}
 
-    # Time-based: delete unpinned runs older than cutoff
-    for run in unpinned:
-        created_str = getattr(run, "created", "")
-        if not created_str:
-            continue
-        try:
-            created = datetime.fromisoformat(str(created_str))
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=UTC)
-            if created < cutoff:
-                to_delete.append(run)
-        except (ValueError, TypeError):
-            continue
+    # Count-based: fetch all unpinned runs (sorted newest-first) and trim excess
+    unpinned = pb.collection("debug_pipeline_runs").get_full_list(
+        query_params={"filter": "pinned = false", "sort": "-created"}
+    )
+    pinned_count = 0
+    if unpinned:
+        # Estimate pinned count from the difference to avoid an extra query
+        total_check = pb.collection("debug_pipeline_runs").get_list(1, 1)
+        pinned_count = total_check.total_items - len(unpinned)
 
-    # Count-based: if unpinned count exceeds MAX_RUNS, delete oldest
-    remaining_unpinned = [r for r in unpinned if r not in to_delete]
+    remaining_unpinned = [r for r in unpinned if r.id not in expired_ids]
     if len(remaining_unpinned) > MAX_RUNS:
         # remaining_unpinned is sorted -created, so tail is oldest
         excess = remaining_unpinned[MAX_RUNS:]

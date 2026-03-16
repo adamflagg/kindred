@@ -102,6 +102,8 @@ export const queryKeys = {
   prompt: (name: string) => ['prompts', name] as const,
 
   // Pipeline Debug (Tier 2 - frequently updated during testing)
+  pipelineTracePrefix: ['pipeline-trace'] as const,
+  pipelineSummaryPrefix: ['pipeline-summary'] as const,
   pipelineRuns: () => ['pipeline-runs'] as const,
   pipelineSummary: (runId: string, filters?: Record<string, unknown>) =>
     filters

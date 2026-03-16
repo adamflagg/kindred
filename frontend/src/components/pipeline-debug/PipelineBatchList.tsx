@@ -144,9 +144,13 @@ export function PipelineBatchList({
             >
               <option value="">All</option>
               <option value="exact_match">Exact</option>
-              <option value="fuzzy">Fuzzy</option>
-              <option value="phonetic">Phonetic</option>
+              <option value="fuzzy_match">Fuzzy</option>
+              <option value="nickname">Nickname</option>
+              <option value="social_graph">Social Graph</option>
               <option value="ai_disambiguation">AI</option>
+              <option value="age_preference">Age Pref</option>
+              <option value="placeholder">Placeholder</option>
+              <option value="unresolved">Unresolved</option>
             </select>
           </div>
 

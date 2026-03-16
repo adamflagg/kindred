@@ -304,6 +304,18 @@ export type PipelinePhase =
   | 'phase3'
   | 'post_pipeline'
 
+/** Canonical ordering of pipeline phases, used by canvas and page. */
+export const PHASE_ORDER: PipelinePhase[] = [
+  'pre_phase1',
+  'phase1',
+  'validation',
+  'phase2',
+  'expansion',
+  'historical',
+  'phase3',
+  'post_pipeline',
+]
+
 export interface RunPhaseRequest {
   trace_id?: string
   original_request_ids?: string[]
