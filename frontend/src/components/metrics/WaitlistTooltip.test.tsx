@@ -19,7 +19,7 @@ describe('WaitlistTooltip', () => {
         persons={persons}
       />
     )
-    expect(screen.getByText('3 girls on waitlist')).toBeInTheDocument()
+    expect(screen.getByText('3 girls waitlisted')).toBeInTheDocument()
   })
 
   it('shows all names when 5 or fewer', () => {

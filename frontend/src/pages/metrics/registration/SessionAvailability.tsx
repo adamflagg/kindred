@@ -66,7 +66,8 @@ interface WaitlistHandlers {
     e: React.MouseEvent,
     totalCount: number,
     genderLabel: string,
-    persons: WaitlistedPerson[]
+    persons: WaitlistedPerson[],
+    gradeSuffix?: string
   ) => void
   onMove?: (e: React.MouseEvent) => void
   onLeave?: () => void
@@ -108,7 +109,7 @@ function SessionRow({
               .join(' ')}
             onMouseEnter={
               wlCount > 0
-                ? (e) => onHover?.(e, genderData.waitlisted, gender, genderData.waitlisted_persons)
+                ? (e) => onHover?.(e, wlCount, gender, [], `(${gradeLabel(g)})`)
                 : undefined
             }
             onMouseMove={wlCount > 0 ? (e) => onMove?.(e) : undefined}
@@ -193,9 +194,7 @@ function AGSessionRow({
               .filter(Boolean)
               .join(' ')}
             onMouseEnter={
-              wlCount > 0
-                ? (e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)
-                : undefined
+              wlCount > 0 ? (e) => onHover?.(e, wlCount, '', [], `(${gradeLabel(g)})`) : undefined
             }
             onMouseMove={wlCount > 0 ? (e) => onMove?.(e) : undefined}
             onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
@@ -373,6 +372,7 @@ export default function SessionAvailability() {
     totalCount: number
     genderLabel: string
     persons: WaitlistedPerson[]
+    gradeSuffix: string | undefined
   } | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
@@ -387,8 +387,14 @@ export default function SessionAvailability() {
 
   // Tooltip handlers
   const handleHover = useCallback(
-    (e: React.MouseEvent, totalCount: number, genderLabel: string, persons: WaitlistedPerson[]) => {
-      setTooltipData({ totalCount, genderLabel, persons })
+    (
+      e: React.MouseEvent,
+      totalCount: number,
+      genderLabel: string,
+      persons: WaitlistedPerson[],
+      gradeSuffix?: string
+    ) => {
+      setTooltipData({ totalCount, genderLabel, persons, gradeSuffix })
       setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
     },
     []
@@ -544,6 +550,7 @@ export default function SessionAvailability() {
         totalCount={tooltipData?.totalCount ?? 0}
         genderLabel={tooltipData?.genderLabel ?? ''}
         persons={tooltipData?.persons ?? []}
+        gradeSuffix={tooltipData?.gradeSuffix}
       />
 
       <DrilldownModal />

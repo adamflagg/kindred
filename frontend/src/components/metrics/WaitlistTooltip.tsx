@@ -8,6 +8,7 @@ interface WaitlistTooltipProps {
   totalCount: number
   genderLabel: string // "girls", "boys", or "" for AG
   persons: WaitlistedPerson[]
+  gradeSuffix?: string | undefined // e.g. "(4th)" for grade cells, undefined for WL pill
 }
 
 function gradeLabel(grade: number | null | undefined): string {
@@ -29,6 +30,7 @@ export function WaitlistTooltip({
   totalCount,
   genderLabel: gender,
   persons,
+  gradeSuffix,
 }: WaitlistTooltipProps) {
   const tooltipPosition = useMemo(() => {
     if (!isVisible || position.x <= 0 || position.y <= 0) {
@@ -58,7 +60,10 @@ export function WaitlistTooltip({
   if (!isVisible) return null
 
   const remaining = totalCount - persons.length
-  const headerText = gender ? `${totalCount} ${gender} on waitlist` : `${totalCount} on waitlist`
+  const suffix = gradeSuffix ? ` ${gradeSuffix}` : ''
+  const headerText = gender
+    ? `${totalCount} ${gender} waitlisted${suffix}`
+    : `${totalCount} waitlisted${suffix}`
 
   return createPortal(
     <div
@@ -69,23 +74,31 @@ export function WaitlistTooltip({
       }}
     >
       <div className="text-foreground mb-2 border-b pb-1.5 text-xs font-bold">{headerText}</div>
-      <div className="space-y-0.5 text-xs">
-        {persons.map((person) => (
-          <div key={person.person_id} className="flex items-baseline justify-between gap-2">
-            <span>
-              <span className="text-muted-foreground font-semibold">#{person.position}</span>{' '}
-              {abbreviateName(person)}
-            </span>
-            {person.grade != null && (
-              <span className="text-muted-foreground text-[10px]">{gradeLabel(person.grade)}</span>
-            )}
+      {persons.length > 0 ? (
+        <>
+          <div className="space-y-0.5 text-xs">
+            {persons.map((person) => (
+              <div key={person.person_id} className="flex items-baseline justify-between gap-2">
+                <span>
+                  <span className="text-muted-foreground font-semibold">#{person.position}</span>{' '}
+                  {abbreviateName(person)}
+                </span>
+                {person.grade != null && (
+                  <span className="text-muted-foreground text-[10px]">
+                    {gradeLabel(person.grade)}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {remaining > 0 && (
-        <div className="text-muted-foreground mt-2 border-t pt-1.5 text-center text-[10px]">
-          + {remaining} more
-        </div>
+          {remaining > 0 && (
+            <div className="text-muted-foreground mt-2 border-t pt-1.5 text-center text-[10px]">
+              + {remaining} more
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-muted-foreground text-[10px]">Click for details</div>
       )}
     </div>,
     document.body

@@ -499,7 +499,7 @@ describe('SessionAvailability', () => {
     fireEvent.mouseEnter(pill)
 
     await waitFor(() => {
-      expect(screen.getByText(/8 girls on waitlist/)).toBeInTheDocument()
+      expect(screen.getByText(/8 girls waitlisted/)).toBeInTheDocument()
       expect(screen.getByText(/Emma J\./)).toBeInTheDocument()
       expect(screen.getByText(/\+ 3 more/)).toBeInTheDocument()
     })
@@ -554,13 +554,13 @@ describe('SessionAvailability', () => {
     fireEvent.mouseEnter(pill)
 
     await waitFor(() => {
-      expect(screen.getByText(/3 girls on waitlist/)).toBeInTheDocument()
+      expect(screen.getByText(/3 girls waitlisted/)).toBeInTheDocument()
     })
 
     fireEvent.mouseLeave(pill)
 
     await waitFor(() => {
-      expect(screen.queryByText(/3 girls on waitlist/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/3 girls waitlisted/)).not.toBeInTheDocument()
     })
   })
 
@@ -618,7 +618,7 @@ describe('SessionAvailability', () => {
     // Grade cell click opens drilldown (no popover)
     // The drilldown modal is rendered by useDrilldown which makes an API call
     // We verify the tooltip is dismissed (click clears tooltip state)
-    expect(screen.queryByText(/girls on waitlist/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/girls waitlisted/)).not.toBeInTheDocument()
   })
 
   it('adds cursor-pointer to grade cells with waitlist count', async () => {
