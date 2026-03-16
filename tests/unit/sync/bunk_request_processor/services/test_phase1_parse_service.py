@@ -369,3 +369,105 @@ class TestPhase1ParseServiceStatistics:
 
         # Internal stats should be unchanged
         assert service.get_stats()["total_parsed"] == 0
+
+
+class TestPhase1FailureTracking:
+    """Tests for first_failure_reason tracking in stats"""
+
+    def test_first_failure_reason_captured(self):
+        """first_failure_reason is set from the first failed ParseResult"""
+        service = Phase1ParseService(
+            ai_service=Mock(),
+            context_builder=Mock(),
+        )
+
+        result = ParseResult(
+            parsed_requests=[],
+            needs_historical_context=False,
+            is_valid=False,
+            parse_request=_create_parse_request(),
+            metadata={"failure_reason": "some error"},
+        )
+
+        service._update_stats([result])
+
+        assert service.get_stats()["first_failure_reason"] == "some error"
+
+    def test_first_failure_reason_not_overwritten_by_later_failures(self):
+        """first_failure_reason retains the first failure, not subsequent ones"""
+        service = Phase1ParseService(
+            ai_service=Mock(),
+            context_builder=Mock(),
+        )
+
+        result1 = ParseResult(
+            parsed_requests=[],
+            needs_historical_context=False,
+            is_valid=False,
+            parse_request=_create_parse_request(),
+            metadata={"failure_reason": "first error"},
+        )
+        result2 = ParseResult(
+            parsed_requests=[],
+            needs_historical_context=False,
+            is_valid=False,
+            parse_request=_create_parse_request(),
+            metadata={"failure_reason": "second error"},
+        )
+
+        service._update_stats([result1, result2])
+
+        assert service.get_stats()["first_failure_reason"] == "first error"
+
+    def test_first_failure_reason_none_when_all_succeed(self):
+        """first_failure_reason is None when all results are successful"""
+        service = Phase1ParseService(
+            ai_service=Mock(),
+            context_builder=Mock(),
+        )
+
+        result = ParseResult(
+            parsed_requests=[
+                ParsedRequest(
+                    raw_text="I want to bunk with Sarah",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={},
+                )
+            ],
+            needs_historical_context=False,
+            is_valid=True,
+            parse_request=_create_parse_request(),
+            metadata={},
+        )
+
+        service._update_stats([result])
+
+        assert service.get_stats()["first_failure_reason"] is None
+
+    def test_reset_stats_clears_first_failure_reason(self):
+        """reset_stats sets first_failure_reason back to None"""
+        service = Phase1ParseService(
+            ai_service=Mock(),
+            context_builder=Mock(),
+        )
+
+        # Simulate a failure being recorded
+        result = ParseResult(
+            parsed_requests=[],
+            needs_historical_context=False,
+            is_valid=False,
+            parse_request=_create_parse_request(),
+            metadata={"failure_reason": "some error"},
+        )
+        service._update_stats([result])
+        assert service.get_stats()["first_failure_reason"] == "some error"
+
+        service.reset_stats()
+
+        assert service.get_stats()["first_failure_reason"] is None

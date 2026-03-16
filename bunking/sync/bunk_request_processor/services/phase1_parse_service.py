@@ -57,6 +57,7 @@ class Phase1ParseService:
             "needs_historical": 0,
             "suspicious_inputs": 0,
             "high_risk_inputs": 0,
+            "first_failure_reason": None,
         }
 
     async def batch_parse(
@@ -222,6 +223,8 @@ class Phase1ParseService:
                 self._stats["failed_parses"] += 1
                 # Log failure reason for debugging
                 failure_reason = result.metadata.get("failure_reason", "Unknown reason")
+                if self._stats["first_failure_reason"] is None:
+                    self._stats["first_failure_reason"] = failure_reason
                 requester_info = ""
                 if result.parse_request:
                     requester_info = f" (requester: {result.parse_request.requester_name})"
@@ -240,4 +243,5 @@ class Phase1ParseService:
             "needs_historical": 0,
             "suspicious_inputs": 0,
             "high_risk_inputs": 0,
+            "first_failure_reason": None,
         }
