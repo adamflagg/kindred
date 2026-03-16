@@ -132,7 +132,7 @@ def _make_pb_mock(
     runs_collection.get_list.return_value = list_result
 
     # Trace lookups for runs being deleted
-    def traces_full_list(query_params: dict | None = None, **kwargs: object) -> list[MagicMock]:
+    def traces_full_list(query_params: dict[str, str] | None = None, **kwargs: object) -> list[MagicMock]:
         if query_params and "filter" in query_params:
             filter_str = query_params["filter"]
             for run_id, traces in trace_results.items():
