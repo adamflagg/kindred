@@ -195,7 +195,7 @@ class OpenAIProvider(AIProvider):
         GPT-4.1 and earlier models reject it with a 400 error.
         """
         model_lower = self.model.lower()
-        return any(model_lower.startswith(prefix) for prefix in ("o1", "o3", "o4-mini", "gpt-5"))
+        return any(model_lower.startswith(prefix) for prefix in ("o1", "o3", "o4", "gpt-5"))
 
     async def _call_with_structured_output(
         self,

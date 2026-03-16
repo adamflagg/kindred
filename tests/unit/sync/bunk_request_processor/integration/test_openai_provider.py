@@ -11,6 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add the parent directory to the path
 test_dir = Path(__file__).resolve().parent
 project_root = test_dir.parent.parent.parent.parent
@@ -139,3 +141,30 @@ class TestSourceTypeMetadata:
         parsed_req = result.requests[0]
 
         assert parsed_req.metadata["source_type"] == "counselor"
+
+
+class TestSupportsReasoning:
+    """Test _supports_reasoning model prefix detection."""
+
+    @pytest.mark.parametrize(
+        "model,expected",
+        [
+            ("gpt-5-nano", True),
+            ("gpt-5", True),
+            ("gpt-5-mini", True),
+            ("o1", True),
+            ("o1-mini", True),
+            ("o3", True),
+            ("o3-mini", True),
+            ("o4-mini", True),
+            ("o4", True),
+            ("gpt-4.1-nano", False),
+            ("gpt-4.1-mini", False),
+            ("gpt-4o", False),
+            ("gpt-4o-mini", False),
+            ("gpt-4-turbo", False),
+        ],
+    )
+    def test_supports_reasoning(self, model: str, expected: bool):
+        provider = OpenAIProvider(api_key="test-key", model=model)
+        assert provider._supports_reasoning() == expected, f"Expected {expected} for model '{model}'"
