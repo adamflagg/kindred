@@ -62,7 +62,7 @@ class TestStopAtPhase:
         orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
 
         runner = PhaseRunner(orch)
-        result = await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase=None)
+        await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase=None)
 
         orch.phase1_service.batch_parse.assert_called_once()
         orch.phase2_service.batch_resolve.assert_called_once()
@@ -96,7 +96,7 @@ class TestStopAtPhase:
         orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
 
         runner = PhaseRunner(orch)
-        result = await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase="phase2")
+        await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase="phase2")
 
         orch.phase1_service.batch_parse.assert_called_once()
         orch.phase2_service.batch_resolve.assert_called_once()
@@ -149,7 +149,7 @@ class TestStopAtPhase:
             ),
         )
 
-        result = await runner.run_from_phase("phase2", trace_data=trace_data, dry_run=True, stop_at_phase="phase2")
+        await runner.run_from_phase("phase2", trace_data=trace_data, dry_run=True, stop_at_phase="phase2")
 
         orch.phase2_service.batch_resolve.assert_called_once()
         orch.phase3_service.batch_disambiguate.assert_not_called()
