@@ -1789,7 +1789,7 @@ async def run_full_trace(
                 session_cm_id=session_cm_id,
                 session_name=session_name,
                 year=orig.year,
-                row_data={"_original_request_id": orig.id},
+                row_data={"_original_request_ids": {orig.field: orig.id}},
             )
             parse_requests.append(parse_req)
 
