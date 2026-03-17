@@ -114,6 +114,13 @@ export const queryKeys = {
   searchPersons: (query: string, year: number) => ['search-persons', query, year] as const,
   originalRequestsByCamper: (cmId: number, year: number) =>
     ['original-requests-camper', cmId, year] as const,
+  browseOriginalRequests: (
+    year: number,
+    filters?: { session_cm_id?: number; source_field?: string }
+  ) =>
+    filters
+      ? (['browse-original-requests', year, filters.session_cm_id, filters.source_field] as const)
+      : (['browse-original-requests', year] as const),
 
   // Metrics (Tier 1 - sync data, historical analysis)
   retention: (

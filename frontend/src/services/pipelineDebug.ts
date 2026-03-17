@@ -178,6 +178,23 @@ export const pipelineDebugService = {
   },
 
   /**
+   * Fetch original bunk requests with optional filters (for Browse tab).
+   */
+  async fetchOriginalRequests(
+    year: number,
+    filters: { session_cm_id?: number; source_field?: string; limit?: number },
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<OriginalRequestsResponse> {
+    const params = new URLSearchParams({ year: String(year) })
+    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id))
+    if (filters.source_field) params.set('source_field', filters.source_field)
+    if (filters.limit) params.set('limit', String(filters.limit))
+    const response = await fetchWithAuth(`${API_BASE}/original-requests?${params}`)
+    if (!response.ok) throw new Error('Failed to fetch original requests')
+    return response.json()
+  },
+
+  /**
    * Search persons by name for the New Trace modal.
    */
   async searchPersons(

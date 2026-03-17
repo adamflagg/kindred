@@ -4,15 +4,19 @@
  * Three input tabs:
  * 1. Search by Name — type-ahead person search, loads their original requests
  * 2. Paste CM ID — enter comma-separated CampMinder IDs
- * 3. Browse Requests — placeholder for future batch browsing
+ * 3. Browse Requests — filterable table of all original_bunk_requests
  *
- * Bottom controls: stop-after phase dropdown and Run Trace / Cancel buttons.
+ * Bottom controls: session dropdown, stop-after phase dropdown, and Run Trace / Cancel buttons.
  */
 
 import { useState, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { X, Search, Loader2 } from 'lucide-react'
 import { useSearchPersons } from '../../hooks/useSearchPersons'
 import { useOriginalRequestsByCamper } from '../../hooks/useOriginalRequestsByCamper'
+import { useApiWithAuth } from '../../hooks/useApiWithAuth'
+import { pipelineDebugService } from '../../services/pipelineDebug'
+import { queryKeys } from '../../utils/queryKeys'
 import { PHASE_ORDER } from './types'
 import type { PipelinePhase, PersonSearchItem, OriginalRequestItem } from './types'
 
@@ -26,6 +30,7 @@ interface NewTraceModalProps {
   ) => void
   isRunning: boolean
   year: number
+  error?: string | null
 }
 
 const PHASE_LABELS: Record<PipelinePhase, string> = {
@@ -45,6 +50,7 @@ export function NewTraceModal({
   onRunTrace,
   isRunning,
   year,
+  error,
 }: NewTraceModalProps) {
   const [activeTab, setActiveTab] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -55,6 +61,16 @@ export function NewTraceModal({
   const [stopAtPhase, setStopAtPhase] = useState<string | null>(null)
   const [pastedCmIds, setPastedCmIds] = useState('')
   const [pastedCmId, setPastedCmId] = useState<number | null>(null)
+
+  // Browse tab filters
+  const [browseSessionFilter, setBrowseSessionFilter] = useState<number | null>(null)
+  const [browseFieldFilter, setBrowseFieldFilter] = useState<string>('')
+  const [browseProcessedFilter, setBrowseProcessedFilter] = useState<string>('all')
+
+  // Session dropdown for run controls
+  const [selectedSession, setSelectedSession] = useState<number | null>(null)
+
+  const { fetchWithAuth } = useApiWithAuth()
 
   // Debounce search query
   useEffect(() => {
@@ -101,6 +117,51 @@ export function NewTraceModal({
     return selectedPersonSessions
   }, [selectedPersonSessions])
 
+  // Browse tab: fetch original requests with filters.
+  // Build filter objects without undefined values to satisfy exactOptionalPropertyTypes.
+  const browseFilters = useMemo(() => {
+    const f: { session_cm_id?: number; source_field?: string; limit?: number } = { limit: 200 }
+    if (browseSessionFilter !== null) f.session_cm_id = browseSessionFilter
+    if (browseFieldFilter) f.source_field = browseFieldFilter
+    return f
+  }, [browseSessionFilter, browseFieldFilter])
+
+  const browseQueryKeyFilters = useMemo(() => {
+    const f: { session_cm_id?: number; source_field?: string } = {}
+    if (browseSessionFilter !== null) f.session_cm_id = browseSessionFilter
+    if (browseFieldFilter) f.source_field = browseFieldFilter
+    return f
+  }, [browseSessionFilter, browseFieldFilter])
+
+  const {
+    data: browseData,
+    isLoading: isBrowseLoading,
+    isError: isBrowseError,
+  } = useQuery({
+    queryKey: queryKeys.browseOriginalRequests(year, browseQueryKeyFilters),
+    queryFn: () => pipelineDebugService.fetchOriginalRequests(year, browseFilters, fetchWithAuth),
+    enabled: activeTab === 2,
+    staleTime: 30_000,
+  })
+
+  // Client-side processed filter for browse results
+  const filteredBrowseItems = useMemo(() => {
+    if (!browseData?.items) return []
+    if (browseProcessedFilter === 'all') return browseData.items
+    const isProcessed = browseProcessedFilter === 'processed'
+    return browseData.items.filter((item) => item.processed === isProcessed)
+  }, [browseData, browseProcessedFilter])
+
+  // Derive available sessions for the run controls session dropdown.
+  // Tab 1 (Search) gets sessions from the selected person; Tab 2/3 fall back to sessionCmIds.
+  // Original requests don't carry session_cm_id, so browse tab can't auto-populate sessions.
+  const availableSessions = useMemo(() => {
+    if (activeTab === 0 && selectedPersonSessions.length > 0) {
+      return selectedPersonSessions
+    }
+    return sessionCmIds
+  }, [activeTab, selectedPersonSessions, sessionCmIds])
+
   function handleSelectPerson(person: PersonSearchItem) {
     setSelectedPerson(person)
     setSelectedPersonSessions(person.sessions)
@@ -134,7 +195,22 @@ export function NewTraceModal({
 
   function handleRunTrace() {
     if (selectedRequestIds.size === 0) return
-    onRunTrace(Array.from(selectedRequestIds), sessionCmIds, stopAtPhase)
+    const sessions = selectedSession ? [selectedSession] : sessionCmIds
+    onRunTrace(Array.from(selectedRequestIds), sessions, stopAtPhase)
+  }
+
+  function handleToggleBrowseSelectAll() {
+    const allIds = filteredBrowseItems.map((item) => item.id)
+    const allSelected = allIds.every((id) => selectedRequestIds.has(id))
+    setSelectedRequestIds((prev) => {
+      const next = new Set(prev)
+      if (allSelected) {
+        allIds.forEach((id) => next.delete(id))
+      } else {
+        allIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
   }
 
   if (!isOpen) return null
@@ -272,34 +348,179 @@ export function NewTraceModal({
 
           {/* Tab 3: Browse */}
           {activeTab === 2 && (
-            <p className="text-bark-500 dark:text-bark-400 py-8 text-center text-sm">
-              Use the batch view to browse and select requests
-            </p>
+            <div className="space-y-3">
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="number"
+                  placeholder="Session CM ID"
+                  value={browseSessionFilter ?? ''}
+                  onChange={(e) =>
+                    setBrowseSessionFilter(e.target.value ? Number(e.target.value) : null)
+                  }
+                  aria-label="Session filter"
+                  className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 w-32 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
+                />
+                <select
+                  value={browseFieldFilter}
+                  onChange={(e) => setBrowseFieldFilter(e.target.value)}
+                  aria-label="Source field filter"
+                  className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
+                >
+                  <option value="">All fields</option>
+                  <option value="bunk_with">bunk_with</option>
+                  <option value="not_bunk_with">not_bunk_with</option>
+                  <option value="bunking_notes">bunking_notes</option>
+                  <option value="internal_notes">internal_notes</option>
+                  <option value="socialize_with">socialize_with</option>
+                </select>
+                <select
+                  value={browseProcessedFilter}
+                  onChange={(e) => setBrowseProcessedFilter(e.target.value)}
+                  aria-label="Processed status filter"
+                  className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="processed">Processed</option>
+                  <option value="unprocessed">Unprocessed</option>
+                </select>
+              </div>
+
+              {/* Loading / Error / Empty states */}
+              {isBrowseLoading && (
+                <div className="flex items-center gap-2 py-2 text-sm text-amber-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading requests...
+                </div>
+              )}
+
+              {isBrowseError && (
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  Failed to load requests. Please try again.
+                </p>
+              )}
+
+              {!isBrowseLoading && !isBrowseError && filteredBrowseItems.length === 0 && (
+                <p className="text-bark-500 dark:text-bark-400 py-4 text-center text-sm">
+                  No requests found matching the current filters.
+                </p>
+              )}
+
+              {/* Results table */}
+              {filteredBrowseItems.length > 0 && (
+                <div className="max-h-[300px] overflow-y-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-parchment-50 dark:bg-bark-800 sticky top-0">
+                      <tr className="border-b text-left text-xs font-medium text-gray-500">
+                        <th className="px-2 py-2">
+                          <input
+                            type="checkbox"
+                            checked={
+                              filteredBrowseItems.length > 0 &&
+                              filteredBrowseItems.every((item) => selectedRequestIds.has(item.id))
+                            }
+                            onChange={handleToggleBrowseSelectAll}
+                            className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                            aria-label="Select all"
+                          />
+                        </th>
+                        <th className="px-3 py-2">Requester</th>
+                        <th className="px-3 py-2">Field</th>
+                        <th className="px-3 py-2">Content</th>
+                        <th className="px-2 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-bark-100 dark:divide-bark-700 divide-y">
+                      {filteredBrowseItems.map((req) => (
+                        <tr
+                          key={req.id}
+                          className="hover:bg-parchment-50 dark:hover:bg-bark-800 transition-colors"
+                        >
+                          <td className="px-2 py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedRequestIds.has(req.id)}
+                              onChange={() => handleToggleRequest(req.id)}
+                              className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                            />
+                          </td>
+                          <td className="px-3 py-1.5">{req.requester_name}</td>
+                          <td className="text-bark-500 dark:text-bark-400 px-3 py-1.5 text-xs">
+                            {req.source_field}
+                          </td>
+                          <td className="max-w-[200px] truncate px-3 py-1.5">
+                            {req.original_text || <em className="text-bark-400">empty</em>}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                req.processed
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                              }`}
+                            >
+                              {req.processed ? 'Processed' : 'Unprocessed'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {browseData && (
+                <p className="text-bark-400 text-xs">
+                  Showing {filteredBrowseItems.length} of {browseData.total} requests
+                </p>
+              )}
+            </div>
           )}
         </div>
 
         {/* Run Controls */}
         <div className="border-bark-200 dark:border-bark-700 flex items-center justify-between border-t px-6 py-4">
-          <div className="flex items-center gap-2">
-            <label htmlFor="stop-after-phase" className="text-sm font-medium">
-              Stop after
-            </label>
-            <select
-              id="stop-after-phase"
-              value={stopAtPhase ?? ''}
-              onChange={(e) => setStopAtPhase(e.target.value || null)}
-              className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
-            >
-              <option value="">Full pipeline</option>
-              {PHASE_ORDER.map((phase) => (
-                <option key={phase} value={phase}>
-                  {PHASE_LABELS[phase]}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label htmlFor="session-select" className="text-sm font-medium">
+                Session
+              </label>
+              <select
+                id="session-select"
+                value={selectedSession ?? ''}
+                onChange={(e) => setSelectedSession(e.target.value ? Number(e.target.value) : null)}
+                className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
+              >
+                <option value="">All sessions</option>
+                {availableSessions.map((sid) => (
+                  <option key={sid} value={sid}>
+                    {sid}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="stop-after-phase" className="text-sm font-medium">
+                Stop after
+              </label>
+              <select
+                id="stop-after-phase"
+                value={stopAtPhase ?? ''}
+                onChange={(e) => setStopAtPhase(e.target.value || null)}
+                className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
+              >
+                <option value="">Full pipeline</option>
+                {PHASE_ORDER.map((phase) => (
+                  <option key={phase} value={phase}>
+                    {PHASE_LABELS[phase]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
             <button
               onClick={onClose}
               className="text-bark-600 hover:text-bark-800 dark:text-bark-400 dark:hover:text-bark-200 rounded-lg px-4 py-2 text-sm font-medium transition-colors"

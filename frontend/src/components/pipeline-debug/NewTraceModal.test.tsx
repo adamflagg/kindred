@@ -22,6 +22,13 @@ vi.mock('../../hooks/useSearchPersons', () => ({
 vi.mock('../../hooks/useOriginalRequestsByCamper', () => ({
   useOriginalRequestsByCamper: () => ({ data: undefined, isLoading: false }),
 }))
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: vi.fn(),
+    isAuthenticated: true,
+    isAuthLoading: false,
+  }),
+}))
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
@@ -74,5 +81,19 @@ describe('NewTraceModal', () => {
   it('run trace button is disabled when no requests selected', () => {
     renderModal()
     expect(screen.getByRole('button', { name: /run trace/i })).toBeDisabled()
+  })
+
+  it('renders session dropdown in run controls', () => {
+    renderModal()
+    expect(screen.getByLabelText(/session/i)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /all sessions/i })).toBeInTheDocument()
+  })
+
+  it('renders browse tab with filter dropdowns when selected', async () => {
+    renderModal()
+    const user = userEvent.setup()
+    await user.click(screen.getByText(/browse/i))
+    expect(screen.getByLabelText(/source field filter/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/processed status filter/i)).toBeInTheDocument()
   })
 })
