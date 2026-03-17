@@ -937,17 +937,15 @@ class DrilldownService:
             except ValueError:
                 pass
 
-        # Build waitlisted groups from ALL waitlisted attendees BEFORE session filtering.
-        # This ensures the "Waitlisted For" column shows all sessions a person is
-        # waitlisted for, not just the one clicked in the drilldown.
+        # Build waitlisted groups by person, then filter to summer/requested session types.
+        # The "Waitlisted For" column shows all matching sessions a person is waitlisted for,
+        # not just the one clicked in the drilldown, but limited to the active session types.
         all_waitlisted_groups: dict[int, list[Any]] = {}
         for att in waitlisted_attendees:
             pid = int(getattr(att, "person_id", 0))
             if pid:
                 all_waitlisted_groups.setdefault(pid, []).append(att)
 
-        # Filter waitlisted groups to only include summer/requested session types.
-        # This prevents non-summer sessions from appearing in the "Waitlisted For" column.
         valid_sessions = await self.repo.fetch_sessions(year, effective_types)
         valid_session_ids = set(valid_sessions.keys())
         for pid in all_waitlisted_groups:
@@ -1173,15 +1171,15 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Build waitlisted groups from ALL waitlisted attendees BEFORE session filtering
+        # Build waitlisted groups by person, then filter to summer/requested session types.
+        # The "Waitlisted For" column shows all matching sessions a person is waitlisted for,
+        # not just the one clicked, but limited to the active session types.
         all_waitlisted_groups: dict[int, list[Any]] = {}
         for att in waitlisted_attendees:
             pid = int(getattr(att, "person_id", 0))
             if pid:
                 all_waitlisted_groups.setdefault(pid, []).append(att)
 
-        # Filter waitlisted groups to only include summer/requested session types.
-        # This prevents non-summer sessions from appearing in the "Waitlisted For" column.
         valid_sessions = await self.repo.fetch_sessions(year, effective_types)
         valid_session_ids = set(valid_sessions.keys())
         for pid in all_waitlisted_groups:
