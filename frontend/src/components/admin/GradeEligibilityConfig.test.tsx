@@ -296,7 +296,7 @@ describe('GradeEligibilityConfig', () => {
 
     // Wait for the threshold input to show value 65
     await waitFor(() => {
-      const thresholdInput = screen.getByLabelText(/limited.*threshold/i) as HTMLInputElement
+      const thresholdInput = screen.getByLabelText<HTMLInputElement>(/limited.*threshold/i)
       expect(thresholdInput.value).toBe('65')
     })
 
@@ -318,8 +318,43 @@ describe('GradeEligibilityConfig', () => {
 
     // Threshold should reset to default (80), not stay at 65
     await waitFor(() => {
-      const thresholdInput = screen.getByLabelText(/limited.*threshold/i) as HTMLInputElement
+      const thresholdInput = screen.getByLabelText<HTMLInputElement>(/limited.*threshold/i)
       expect(thresholdInput.value).toBe('80')
+    })
+  })
+
+  it('calls create (not update) for threshold when no record exists', async () => {
+    const user = userEvent.setup()
+    // No threshold record for this year
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([]) // no threshold
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({ id: 'new-thr-1' })
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Change threshold to trigger save button
+    const thresholdInput = screen.getByLabelText(/limited.*threshold/i)
+    await user.clear(thresholdInput)
+    await user.type(thresholdInput, '90')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Threshold should have been created, not updated
+      const createCalls = mockCreate.mock.calls
+      const thresholdCreate = createCalls.find(
+        (call) => (call[0] as Record<string, unknown>)['config_key'] === 'limited_threshold'
+      )
+      expect(thresholdCreate).toBeDefined()
     })
   })
 })

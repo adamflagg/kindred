@@ -174,9 +174,14 @@ export function GradeEligibilityConfig() {
         await pb.collection('config').create(thresholdPayload)
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.gradeEligibilityConfig(currentYear),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gradeEligibilityConfig(currentYear),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['grade-eligibility-threshold', currentYear],
+        }),
+      ])
       toast.success('Session availability config saved')
     } catch (error) {
       toast.error(`Failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`)
