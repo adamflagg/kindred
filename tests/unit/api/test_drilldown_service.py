@@ -4457,7 +4457,7 @@ class TestWaitlistForSummerSessionFiltering:
             create_mock_attendee(101, summer_session, 2026, status="waitlisted"),
             create_mock_attendee(101, family_session, 2026, status="waitlisted"),
         ]
-        enrolled = []
+        enrolled: list[Mock] = []
 
         mock_repository.fetch_attendees = AsyncMock(
             side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
@@ -4497,7 +4497,7 @@ class TestWaitlistForSummerSessionFiltering:
             create_mock_attendee(101, summer_session, 2026, status="waitlisted"),
             create_mock_attendee(101, family_session, 2026, status="waitlisted"),
         ]
-        enrolled = []
+        enrolled: list[Mock] = []
 
         mock_repository.fetch_attendees = AsyncMock(
             side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
