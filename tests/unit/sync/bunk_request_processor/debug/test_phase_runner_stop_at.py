@@ -38,8 +38,8 @@ class TestStopAtPhase:
         orch = MagicMock()
         orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "success": True})
         runner = PhaseRunner(orch)
-        mock_requests = [MagicMock(), MagicMock()]
-        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase=None)
+        mock_requests: list[MagicMock] = [MagicMock(), MagicMock()]
+        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase=None)  # type: ignore[arg-type]
         orch.process_from_parse_requests.assert_called_once_with(
             parse_requests=mock_requests, stop_at_phase=None, dry_run=True
         )
@@ -58,8 +58,8 @@ class TestStopAtPhase:
         orch = MagicMock()
         orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "phase": "phase2"})
         runner = PhaseRunner(orch)
-        mock_requests = [MagicMock()]
-        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase="phase2")
+        mock_requests: list[MagicMock] = [MagicMock()]
+        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase="phase2")  # type: ignore[arg-type]
         orch.process_from_parse_requests.assert_called_once_with(
             parse_requests=mock_requests, stop_at_phase="phase2", dry_run=True
         )
