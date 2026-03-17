@@ -10,6 +10,7 @@ import type {
   CampSessionsResponse,
 } from '../types/pocketbase-types'
 import type { Camper } from '../types/app-types'
+import { normalizeGender } from './genderUtils'
 
 /**
  * Transform database responses to app-level Camper type
@@ -37,10 +38,7 @@ export function toAppCamper(
     age: typeof person.age === 'number' ? person.age : 0,
     birthdate: person.birthdate,
     grade: person.grade || 0,
-    gender:
-      person.gender === 'M' || person.gender === 'F' || person.gender === 'NB'
-        ? person.gender
-        : 'NB',
+    gender: normalizeGender(person.gender),
     session_cm_id: sessionCmId,
     ...(bunk?.id && { assigned_bunk: bunk.id }),
     ...(bunk?.cm_id !== undefined && { assigned_bunk_cm_id: bunk.cm_id }),

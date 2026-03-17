@@ -260,10 +260,9 @@ export function CssVerticalStackedBarChart({
               ) : (
                 <>
                   <p className="text-foreground mb-2 font-medium">
-                    {(() => {
-                      const lbl = ttItem['tooltipLabel']
-                      return typeof lbl === 'string' ? lbl : String(ttItem.name)
-                    })()}
+                    {typeof ttItem['tooltipLabel'] === 'string'
+                      ? ttItem['tooltipLabel']
+                      : String(ttItem.name)}
                   </p>
                   {segments
                     .filter((s) => {

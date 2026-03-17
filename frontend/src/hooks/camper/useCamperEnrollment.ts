@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
 import { queryKeys } from '../../utils/queryKeys'
+import { normalizeGender } from '../../utils/genderUtils'
 
 import { sortEnrolledFirst } from '../../utils/enrollmentSort'
 import type { Camper } from '../../types/app-types'
@@ -110,8 +111,7 @@ export function useCamperEnrollment(
         const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
 
         const displayName = `${expandedPerson.first_name} ${expandedPerson.last_name}`.trim() || ''
-        const g = expandedPerson.gender
-        const gender: 'M' | 'F' | 'NB' = g === 'M' || g === 'F' || g === 'NB' ? g : 'NB'
+        const gender = normalizeGender(expandedPerson.gender)
 
         return {
           id: `${attendee.person_id}:${expandedSession?.cm_id ?? 0}`,
