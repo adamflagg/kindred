@@ -29,6 +29,7 @@ import { HistoricalNode } from './nodes/HistoricalNode'
 import { Phase3Node } from './nodes/Phase3Node'
 import { PostPipelineNode } from './nodes/PostPipelineNode'
 import { PHASE_ORDER, type TraceData, type PipelinePhase } from './types'
+import { PHASE_DESCRIPTIONS } from './phaseDescriptions'
 
 interface PipelineCanvasProps {
   traceData: TraceData
@@ -137,7 +138,7 @@ const EDGE_DEFINITIONS: Array<{ source: PipelinePhase; target: PipelinePhase; ty
 
 function getNodeData(traceData: TraceData, phase: PipelinePhase, isStale: boolean) {
   const handles = NODE_HANDLE_POSITIONS[phase]
-  const base = { isStale, ...handles }
+  const base = { isStale, tooltip: PHASE_DESCRIPTIONS[phase], ...handles }
   switch (phase) {
     case 'pre_phase1':
       return { prePhase1: traceData.pre_phase1, ...base }

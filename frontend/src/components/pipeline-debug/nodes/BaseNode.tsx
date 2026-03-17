@@ -20,6 +20,8 @@ interface BaseNodeProps {
   state: NodeState
   metric?: string
   isStale?: boolean | undefined
+  /** Tooltip text shown on hover */
+  tooltip?: string | undefined
   /** Whether to show left (input) handle */
   showInput?: boolean | undefined
   /** Whether to show right (output) handle */
@@ -49,6 +51,7 @@ export function BaseNode({
   state,
   metric,
   isStale = false,
+  tooltip,
   showInput = true,
   showOutput = true,
   inputPosition = Position.Left,
@@ -57,6 +60,7 @@ export function BaseNode({
   return (
     <div
       className={`relative rounded-xl border-2 px-4 py-3 shadow-sm transition-all ${stateStyles[state]} min-w-[140px] cursor-pointer select-none`}
+      title={tooltip}
     >
       {showInput && <Handle type="target" position={inputPosition} className="!bg-gray-400" />}
       {showOutput && <Handle type="source" position={outputPosition} className="!bg-gray-400" />}

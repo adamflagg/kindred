@@ -15,6 +15,7 @@ import type { Phase2IntentTrace } from '../types'
 type Phase2NodeType = Node<{
   phase2: Phase2IntentTrace[]
   isStale?: boolean | undefined
+  tooltip?: string | undefined
   inputPosition?: Position | undefined
   outputPosition?: Position | undefined
   showInput?: boolean | undefined
@@ -49,6 +50,7 @@ export function Phase2Node({ data }: NodeProps<Phase2NodeType>) {
       state={getState(intents)}
       metric={getMetric(intents)}
       isStale={data.isStale}
+      tooltip={data.tooltip}
       showInput={data.showInput}
       showOutput={data.showOutput}
       inputPosition={data.inputPosition}

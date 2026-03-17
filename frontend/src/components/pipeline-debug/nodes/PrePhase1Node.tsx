@@ -14,6 +14,7 @@ import type { PrePhase1Trace } from '../types'
 type PrePhase1NodeType = Node<{
   prePhase1: PrePhase1Trace
   isStale?: boolean | undefined
+  tooltip?: string | undefined
   inputPosition?: Position | undefined
   outputPosition?: Position | undefined
   showInput?: boolean | undefined
@@ -37,6 +38,7 @@ export function PrePhase1Node({ data }: NodeProps<PrePhase1NodeType>) {
       state={getState(trace)}
       metric={getMetric(trace)}
       isStale={data.isStale}
+      tooltip={data.tooltip}
       showInput={data.showInput}
       showOutput={data.showOutput}
       inputPosition={data.inputPosition}

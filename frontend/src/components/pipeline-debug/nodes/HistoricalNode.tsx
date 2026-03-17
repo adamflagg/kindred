@@ -13,6 +13,7 @@ import type { HistoricalVerificationTrace } from '../types'
 type HistoricalNodeType = Node<{
   historical: HistoricalVerificationTrace
   isStale?: boolean | undefined
+  tooltip?: string | undefined
   inputPosition?: Position | undefined
   outputPosition?: Position | undefined
   showInput?: boolean | undefined
@@ -40,6 +41,7 @@ export function HistoricalNode({ data }: NodeProps<HistoricalNodeType>) {
       state={getState(trace)}
       metric={getMetric(trace)}
       isStale={data.isStale}
+      tooltip={data.tooltip}
       showInput={data.showInput}
       showOutput={data.showOutput}
       inputPosition={data.inputPosition}

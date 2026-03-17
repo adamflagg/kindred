@@ -16,6 +16,7 @@ type ValidationNodeType = Node<{
   validation: ValidationTrace
   phase1Ran?: boolean | undefined
   isStale?: boolean | undefined
+  tooltip?: string | undefined
   inputPosition?: Position | undefined
   outputPosition?: Position | undefined
   showInput?: boolean | undefined
@@ -50,6 +51,7 @@ export function ValidationNode({ data }: NodeProps<ValidationNodeType>) {
       state={getState(trace, data.phase1Ran)}
       metric={getMetric(trace, data.phase1Ran)}
       isStale={data.isStale}
+      tooltip={data.tooltip}
       showInput={data.showInput}
       showOutput={data.showOutput}
       inputPosition={data.inputPosition}

@@ -5,6 +5,7 @@
  */
 
 import type { TraceData, PipelinePhase } from './types'
+import { PHASE_DESCRIPTIONS } from './phaseDescriptions'
 import { PrePhase1Detail } from './panels/PrePhase1Detail'
 import { Phase1Detail } from './panels/Phase1Detail'
 import { ValidationDetail } from './panels/ValidationDetail'
@@ -39,6 +40,9 @@ export function PipelineDetailPanel({
 
   return (
     <div className="card-lodge mt-4 p-6">
+      {/* Phase description subtitle */}
+      <p className="text-muted-foreground mb-4 text-sm">{PHASE_DESCRIPTIONS[selectedNode]}</p>
+
       {selectedNode === 'pre_phase1' && (
         <PrePhase1Detail data={traceData.pre_phase1} {...sharedProps} />
       )}

@@ -15,6 +15,7 @@ import type { Phase1Trace } from '../types'
 type Phase1NodeType = Node<{
   phase1: Phase1Trace
   isStale?: boolean | undefined
+  tooltip?: string | undefined
   inputPosition?: Position | undefined
   outputPosition?: Position | undefined
   showInput?: boolean | undefined
@@ -45,6 +46,7 @@ export function Phase1Node({ data }: NodeProps<Phase1NodeType>) {
       state={getState(trace)}
       metric={getMetric(trace)}
       isStale={data.isStale}
+      tooltip={data.tooltip}
       showInput={data.showInput}
       showOutput={data.showOutput}
       inputPosition={data.inputPosition}

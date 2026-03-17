@@ -15,6 +15,7 @@ import type { PostPipelineTrace } from '../types'
 type PostPipelineNodeType = Node<{
   postPipeline: PostPipelineTrace
   isStale?: boolean | undefined
+  tooltip?: string | undefined
   inputPosition?: Position | undefined
   outputPosition?: Position | undefined
   showInput?: boolean | undefined
@@ -43,6 +44,7 @@ export function PostPipelineNode({ data }: NodeProps<PostPipelineNodeType>) {
       state={getState(trace)}
       metric={getMetric(trace)}
       isStale={data.isStale}
+      tooltip={data.tooltip}
       showInput={data.showInput}
       showOutput={data.showOutput}
       inputPosition={data.inputPosition}
