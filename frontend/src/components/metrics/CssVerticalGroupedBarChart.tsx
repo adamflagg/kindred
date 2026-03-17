@@ -103,8 +103,14 @@ export function CssVerticalGroupedBarChart({
   const { axisMax, ticks } = useMemo(() => {
     const dataMax =
       data.length > 0
-        ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-          Math.max(...data.flatMap((d) => series.map((s) => (d[s.key] as number) ?? 0)))
+        ? Math.max(
+            ...data.flatMap((d) =>
+              series.map((s) => {
+                const v = d[s.key]
+                return typeof v === 'number' ? v : 0
+              })
+            )
+          )
         : 0
     let max = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
     const t = getNiceTicks(max)
@@ -184,8 +190,8 @@ export function CssVerticalGroupedBarChart({
                     {/* Grouped bars side-by-side */}
                     <div className="flex w-full flex-row items-end justify-center gap-1">
                       {series.map((s) => {
-                        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
-                        const value = (item[s.key] as number) ?? 0
+                        const raw = item[s.key]
+                        const value = typeof raw === 'number' ? raw : 0
                         // Intentionally skip zero-value bars so remaining bars center
                         // naturally, rather than reserving a placeholder gap.
                         if (value === 0) return null
@@ -240,37 +246,42 @@ export function CssVerticalGroupedBarChart({
         />
 
         {/* Tooltip */}
-        {tooltip.item && (
-          <VerticalTooltipShell
-            visible={tooltip.visible}
-            x={tooltip.x}
-            y={tooltip.y}
-            tooltipRef={tooltipRef}
-          >
-            {renderTooltip ? (
-              renderTooltip(tooltip.item, series)
-            ) : (
-              <>
-                <p className="text-foreground mb-2 font-medium">
-                  {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- tooltip.item is guarded by parent conditional */}
-                  {String(tooltip.item?.['name'] ?? '')}
-                </p>
-                {series
-                  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
-                  .filter((s) => ((tooltip.item?.[s.key] as number) ?? 0) > 0)
-                  .map((s) => (
-                    <p key={s.key} className="text-muted-foreground text-sm">
-                      <span style={{ color: s.color }}>{s.label}:</span>{' '}
-                      <span className="text-foreground font-semibold">
-                        {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback */}
-                        {(tooltip.item?.[s.key] as number) ?? 0}
-                      </span>
-                    </p>
-                  ))}
-              </>
-            )}
-          </VerticalTooltipShell>
-        )}
+        {(() => {
+          const ttItem = tooltip.item
+          if (!ttItem) return null
+          return (
+            <VerticalTooltipShell
+              visible={tooltip.visible}
+              x={tooltip.x}
+              y={tooltip.y}
+              tooltipRef={tooltipRef}
+            >
+              {renderTooltip ? (
+                renderTooltip(ttItem, series)
+              ) : (
+                <>
+                  <p className="text-foreground mb-2 font-medium">{String(ttItem['name'] ?? '')}</p>
+                  {series
+                    .filter((s) => {
+                      const v = ttItem[s.key]
+                      return (typeof v === 'number' ? v : 0) > 0
+                    })
+                    .map((s) => {
+                      const v = ttItem[s.key]
+                      return (
+                        <p key={s.key} className="text-muted-foreground text-sm">
+                          <span style={{ color: s.color }}>{s.label}:</span>{' '}
+                          <span className="text-foreground font-semibold">
+                            {typeof v === 'number' ? v : 0}
+                          </span>
+                        </p>
+                      )
+                    })}
+                </>
+              )}
+            </VerticalTooltipShell>
+          )
+        })()}
       </div>
 
       <ChartLegend items={legendItems} className="mt-1" />

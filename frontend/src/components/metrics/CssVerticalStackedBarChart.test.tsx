@@ -599,8 +599,7 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
       <CssVerticalStackedBarChart data={dataWithZero} segments={segments} />
     )
     // Trigger tooltip by hovering over a column
-    const column = container.querySelector('.flex-1.flex-col.items-center') as HTMLElement
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- querySelector may return null at runtime
+    const column = container.querySelector('.flex-1.flex-col.items-center')
     if (column) {
       fireEvent.mouseEnter(column)
       fireEvent.mouseMove(column, { clientX: 100, clientY: 100 })
