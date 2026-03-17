@@ -34,8 +34,8 @@ export function usePermissions(): UsePermissionsResult {
     }
 
     const isAdmin = Boolean(user?.['is_admin'])
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as string[]` cast may be undefined at runtime
-    const permissions: string[] = (user?.['cached_permissions'] as string[]) ?? []
+    const raw = user?.['cached_permissions']
+    const permissions: string[] = Array.isArray(raw) ? raw : []
     const permSet = new Set(permissions)
 
     return {

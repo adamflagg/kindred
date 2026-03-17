@@ -109,6 +109,8 @@ export function useCamperEnrollment(
         const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
 
         const displayName = `${expandedPerson.first_name} ${expandedPerson.last_name}`.trim() || ''
+        const g = expandedPerson.gender
+        const gender: 'M' | 'F' | 'NB' = g === 'M' || g === 'F' || g === 'NB' ? g : 'NB'
 
         return {
           id: `${attendee.person_id}:${expandedSession?.cm_id ?? 0}`,
@@ -121,8 +123,7 @@ export function useCamperEnrollment(
           age: expandedPerson.age,
           birthdate: expandedPerson.birthdate,
           grade: expandedPerson.grade,
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: gender could be empty string
-          gender: (expandedPerson.gender as 'M' | 'F' | 'NB') || 'NB',
+          gender,
           session_cm_id: expandedSession?.cm_id ?? 0,
           assigned_bunk_cm_id: assignedBunk?.cm_id,
           assigned_bunk: assignedBunk?.id ?? '',
