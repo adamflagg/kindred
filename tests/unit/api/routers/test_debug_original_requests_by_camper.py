@@ -43,20 +43,25 @@ def _make_mock_pb_record(
     year: int = 2025,
     processed: str | None = None,
 ) -> MagicMock:
-    """Create a mock PocketBase record for original_bunk_requests with expand."""
+    """Create a mock PocketBase record for original_bunk_requests with expand.
+
+    expand is a dict (matching PocketBase SDK Record.expand: dict[str, Any]),
+    but expanded values are Record objects with attribute access, not dicts.
+    """
+    # Requester is a Record object — attributes, not dict keys
+    requester = MagicMock(spec=[])  # spec=[] removes default MagicMock methods like .get()
+    requester.first_name = first_name
+    requester.last_name = last_name
+    requester.preferred_name = preferred_name
+
     record = MagicMock()
     record.id = record_id
     record.field = field
     record.content = content
     record.year = year
     record.processed = processed
-    record.expand = {
-        "requester": {
-            "first_name": first_name,
-            "last_name": last_name,
-            "preferred_name": preferred_name,
-        }
-    }
+    # expand is a dict, but values are Record objects (not dicts)
+    record.expand = {"requester": requester}
     return record
 
 
@@ -86,7 +91,10 @@ def _make_mock_attendee(
     last_name: str = "Johnson",
     preferred_name: str | None = None,
 ) -> MagicMock:
-    """Create a mock PocketBase attendee record with expanded person."""
+    """Create a mock PocketBase attendee record with expanded person.
+
+    expand is a dict (matching PocketBase SDK), values are Record objects.
+    """
     person = MagicMock()
     person.id = person_id
     person.cm_id = person_cm_id
