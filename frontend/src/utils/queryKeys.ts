@@ -178,6 +178,7 @@ export const queryKeys = {
   // Registration Config (Tier 2 - user data)
   registrationDatesConfig: (year: number) => ['registration-dates-config', year] as const,
   gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,
+  gradeEligibilityThreshold: (year: number) => ['grade-eligibility-threshold', year] as const,
   sessionAvailability: (
     year: number,
     sessionTypes?: string,

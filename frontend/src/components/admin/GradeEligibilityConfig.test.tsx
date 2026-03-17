@@ -271,4 +271,90 @@ describe('GradeEligibilityConfig', () => {
       expect(screen.getByText(/limited.*threshold/i)).toBeInTheDocument()
     })
   })
+
+  it('resets threshold to default when no threshold record exists', async () => {
+    // First render: threshold record exists with value 65
+    const queryClient = createTestQueryClient()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockConfigRecords) // config records
+      .mockResolvedValueOnce([
+        {
+          id: 'thr1',
+          category: 'session_availability',
+          subcategory: '2026',
+          config_key: 'limited_threshold',
+          value: 65,
+        },
+      ]) // threshold
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <GradeEligibilityConfig />
+      </QueryClientProvider>
+    )
+
+    // Wait for the threshold input to show value 65
+    await waitFor(() => {
+      const thresholdInput = screen.getByLabelText<HTMLInputElement>(/limited.*threshold/i)
+      expect(thresholdInput.value).toBe('65')
+    })
+
+    // Second render: simulate year change where no threshold record exists
+    // Clear mock and set up new responses with empty threshold
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockConfigRecords) // config records
+      .mockResolvedValueOnce([]) // no threshold record for new year
+
+    // Invalidate queries to trigger refetch
+    await queryClient.invalidateQueries()
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <GradeEligibilityConfig />
+      </QueryClientProvider>
+    )
+
+    // Threshold should reset to default (80), not stay at 65
+    await waitFor(() => {
+      const thresholdInput = screen.getByLabelText<HTMLInputElement>(/limited.*threshold/i)
+      expect(thresholdInput.value).toBe('80')
+    })
+  })
+
+  it('calls create (not update) for threshold when no record exists', async () => {
+    const user = userEvent.setup()
+    // No threshold record for this year
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([]) // no threshold
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({ id: 'new-thr-1' })
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Change threshold to trigger save button
+    const thresholdInput = screen.getByLabelText(/limited.*threshold/i)
+    await user.clear(thresholdInput)
+    await user.type(thresholdInput, '90')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Threshold should have been created, not updated
+      const createCalls = mockCreate.mock.calls
+      const thresholdCreate = createCalls.find(
+        (call) => (call[0] as Record<string, unknown>)['config_key'] === 'limited_threshold'
+      )
+      expect(thresholdCreate).toBeDefined()
+    })
+  })
 })

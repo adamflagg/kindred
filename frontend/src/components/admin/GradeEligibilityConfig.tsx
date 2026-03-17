@@ -23,6 +23,8 @@ interface SessionRow {
   config: SessionConfig
 }
 
+const DEFAULT_THRESHOLD = 80
+
 const DEFAULT_CONFIG: SessionConfig = {
   min_grade: null,
   max_grade: null,
@@ -44,7 +46,7 @@ function useGradeEligibilityConfig(year: number) {
 
 function useThresholdConfig(year: number) {
   return useQuery({
-    queryKey: ['grade-eligibility-threshold', year],
+    queryKey: queryKeys.gradeEligibilityThreshold(year),
     ...userDataOptions,
     queryFn: async () => {
       return await pb.collection('config').getFullList<ConfigRecord>({
@@ -62,7 +64,7 @@ export function GradeEligibilityConfig() {
   const { data: thresholdRecords, isLoading: thresholdLoading } = useThresholdConfig(currentYear)
 
   const [rows, setRows] = useState<SessionRow[]>([])
-  const [threshold, setThreshold] = useState<number>(80)
+  const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD)
   const [thresholdId, setThresholdId] = useState<string | undefined>()
   const [isSaving, setIsSaving] = useState(false)
 
@@ -109,8 +111,11 @@ export function GradeEligibilityConfig() {
     const rec = thresholdRecords?.[0]
     if (rec) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
-      setThreshold((rec.value as number) ?? 80)
+      setThreshold((rec.value as number) ?? DEFAULT_THRESHOLD)
       setThresholdId(rec.id)
+    } else {
+      setThreshold(DEFAULT_THRESHOLD)
+      setThresholdId(undefined)
     }
   }, [thresholdRecords])
 
@@ -137,7 +142,7 @@ export function GradeEligibilityConfig() {
       return JSON.stringify(r.config) !== JSON.stringify(orig?.config)
     })
     const origThreshold = thresholdRecords?.[0]?.value as number | undefined
-    const thresholdChanged = threshold !== (origThreshold ?? 80)
+    const thresholdChanged = threshold !== (origThreshold ?? DEFAULT_THRESHOLD)
     return rowsChanged || thresholdChanged
   })()
 
@@ -171,9 +176,14 @@ export function GradeEligibilityConfig() {
         await pb.collection('config').create(thresholdPayload)
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.gradeEligibilityConfig(currentYear),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gradeEligibilityConfig(currentYear),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gradeEligibilityThreshold(currentYear),
+        }),
+      ])
       toast.success('Session availability config saved')
     } catch (error) {
       toast.error(`Failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`)
