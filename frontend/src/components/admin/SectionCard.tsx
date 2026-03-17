@@ -40,8 +40,9 @@ export function SectionCard({
     componentType ??= inferComponentType(item.value, item.config_key)
 
     // Merge component_config with metadata min/max
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: cast hides nullability from ESLint
-    const baseConfig = (item.metadata?.['component_config'] as Record<string, unknown>) || {}
+    const raw = item.metadata?.['component_config']
+    const baseConfig =
+      raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
     const componentConfig: Record<string, unknown> = {
       ...baseConfig,
       ...(item.metadata?.['min_value'] != null

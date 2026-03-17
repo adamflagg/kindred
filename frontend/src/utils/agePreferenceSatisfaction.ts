@@ -38,71 +38,72 @@ export function isAgePreferenceSatisfied(
   const minGrade = Math.min(...bunkmateGrades)
   const maxGrade = Math.max(...bunkmateGrades)
 
-  if (preference === 'older') {
-    const hasOlder = maxGrade > requesterGrade
-    const hasYounger = minGrade < requesterGrade
+  switch (preference) {
+    case 'older': {
+      const hasOlder = maxGrade > requesterGrade
+      const hasYounger = minGrade < requesterGrade
 
-    if (hasOlder) {
-      return {
-        satisfied: true,
-        detail: `Has older bunkmates (up to grade ${maxGrade})`,
-      }
-    } else if (!hasYounger) {
-      // All bunkmates are same grade or higher - acceptable
-      if (minGrade === maxGrade && minGrade === requesterGrade) {
+      if (hasOlder) {
         return {
           satisfied: true,
-          detail: `All bunkmates are same grade (${minGrade})`,
+          detail: `Has older bunkmates (up to grade ${maxGrade})`,
+        }
+      } else if (!hasYounger) {
+        // All bunkmates are same grade or higher - acceptable
+        if (minGrade === maxGrade && minGrade === requesterGrade) {
+          return {
+            satisfied: true,
+            detail: `All bunkmates are same grade (${minGrade})`,
+          }
+        } else {
+          // istanbul ignore next - mathematically unreachable: when !hasOlder && !hasYounger,
+          // all grades must equal requesterGrade, so the above condition is always true
+          return {
+            satisfied: true,
+            detail: `All bunkmates are same grade or older (grades ${minGrade}-${maxGrade})`,
+          }
         }
       } else {
-        // istanbul ignore next - mathematically unreachable: when !hasOlder && !hasYounger,
-        // all grades must equal requesterGrade, so the above condition is always true
         return {
-          satisfied: true,
-          detail: `All bunkmates are same grade or older (grades ${minGrade}-${maxGrade})`,
+          satisfied: false,
+          detail: `Has younger bunkmates (grade ${minGrade}) - conflicts with 'prefer older'`,
         }
       }
-    } else {
-      return {
-        satisfied: false,
-        detail: `Has younger bunkmates (grade ${minGrade}) - conflicts with 'prefer older'`,
-      }
     }
-  }
+    case 'younger': {
+      const hasYounger = minGrade < requesterGrade
+      const hasOlder = maxGrade > requesterGrade
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive: handles unexpected preference values at runtime
-  if (preference === 'younger') {
-    const hasYounger = minGrade < requesterGrade
-    const hasOlder = maxGrade > requesterGrade
-
-    if (hasYounger) {
-      return {
-        satisfied: true,
-        detail: `Has younger bunkmates (down to grade ${minGrade})`,
-      }
-    } else if (!hasOlder) {
-      // All bunkmates are same grade or lower - acceptable
-      if (minGrade === maxGrade && minGrade === requesterGrade) {
+      if (hasYounger) {
         return {
           satisfied: true,
-          detail: `All bunkmates are same grade (${minGrade})`,
+          detail: `Has younger bunkmates (down to grade ${minGrade})`,
+        }
+      } else if (!hasOlder) {
+        // All bunkmates are same grade or lower - acceptable
+        if (minGrade === maxGrade && minGrade === requesterGrade) {
+          return {
+            satisfied: true,
+            detail: `All bunkmates are same grade (${minGrade})`,
+          }
+        } else {
+          // istanbul ignore next - mathematically unreachable: when !hasYounger && !hasOlder,
+          // all grades must equal requesterGrade, so the above condition is always true
+          return {
+            satisfied: true,
+            detail: `All bunkmates are same grade or younger (grades ${minGrade}-${maxGrade})`,
+          }
         }
       } else {
-        // istanbul ignore next - mathematically unreachable: when !hasYounger && !hasOlder,
-        // all grades must equal requesterGrade, so the above condition is always true
         return {
-          satisfied: true,
-          detail: `All bunkmates are same grade or younger (grades ${minGrade}-${maxGrade})`,
+          satisfied: false,
+          detail: `Has older bunkmates (grade ${maxGrade}) - conflicts with 'prefer younger'`,
         }
       }
-    } else {
-      return {
-        satisfied: false,
-        detail: `Has older bunkmates (grade ${maxGrade}) - conflicts with 'prefer younger'`,
-      }
     }
+    default:
+      // Defensive fallback: handles unexpected preference values at runtime
+      // TypeScript prevents invalid preferences at compile time, but runtime could receive bad data
+      return { satisfied: false, detail: `Unknown preference: ${String(preference)}` }
   }
-
-  // TypeScript ensures this is unreachable, but just in case
-  return { satisfied: false, detail: `Unknown preference: ${String(preference)}` }
 }

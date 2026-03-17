@@ -48,9 +48,8 @@ export function mergeMultiSessionCampers(campers: Camper[], sessions: Session[])
   const result: MergedCamper[] = []
 
   for (const group of groups.values()) {
-    if (group.length === 1) {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      result.push(group[0]!)
+    if (group.length === 1 && group[0]) {
+      result.push(group[0])
       continue
     }
 
@@ -63,8 +62,8 @@ export function mergeMultiSessionCampers(campers: Camper[], sessions: Session[])
       return prioA - prioB
     })
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const primary = group[0]!
+    const primary = group[0]
+    if (!primary) continue
     const additionalSessions: AdditionalSession[] = group.slice(1).map((c) => {
       const session = sessionMap.get(c.session_cm_id)
       const bunk = c.expand?.assigned_bunk

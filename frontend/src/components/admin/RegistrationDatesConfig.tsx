@@ -62,8 +62,7 @@ export function RegistrationDatesConfig() {
       return {
         ...field,
         id: existing?.id,
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as string` cast may be undefined at runtime
-        value: (existing?.value as string) ?? '',
+        value: typeof existing?.value === 'string' ? existing.value : '',
       }
     })
   }, [])
@@ -129,8 +128,7 @@ export function RegistrationDatesConfig() {
 
   const hasChanges = dates.some((d) => {
     const original = configRecords?.find((r) => r.config_key === d.key)
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as string` cast may be undefined at runtime
-    const originalValue = (original?.value as string) ?? ''
+    const originalValue = typeof original?.value === 'string' ? original.value : ''
     return d.value !== originalValue
   })
 

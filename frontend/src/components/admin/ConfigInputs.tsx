@@ -221,8 +221,7 @@ export function StatusIcon({ status }: { status: SyncStatus['status'] | 'pending
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for duration formatting
-export function formatDuration(seconds?: number): string {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive: callers may pass null at runtime
+export function formatDuration(seconds?: number | null): string {
   if (seconds === null || seconds === undefined) return ''
   if (seconds === 0) return '< 1s'
   if (seconds < 60) return `${seconds}s`
@@ -262,10 +261,10 @@ export function ScaleContextBar({ scaleType, value, metadata }: ScaleContextBarP
   const scale = SCALE_DEFINITIONS[scaleType]
   if (scaleType === 'unknown') return null
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max
+  const rawMin = metadata?.['min_value']
+  const rawMax = metadata?.['max_value']
+  const minValue = typeof rawMin === 'number' ? rawMin : scale.min
+  const maxValue = typeof rawMax === 'number' ? rawMax : scale.max
 
   const normalizedValue = (value - minValue) / (maxValue - minValue)
   const position = Math.max(0, Math.min(100, normalizedValue * 100))
@@ -421,10 +420,10 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
 
   if (scaleType === 'unknown') return null
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max
+  const rawMin = metadata?.['min_value']
+  const rawMax = metadata?.['max_value']
+  const minValue = typeof rawMin === 'number' ? rawMin : scale.min
+  const maxValue = typeof rawMax === 'number' ? rawMax : scale.max
   const impactText = scale.impactExplainer(value, minValue, maxValue)
 
   const tooltipContent = (

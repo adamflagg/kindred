@@ -68,8 +68,8 @@ function buildGroupedChartData(
       const rawKey = item[labelKey]
       const key = rawKey != null ? String(rawKey) : ''
       if (!key) continue
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-      const count = (item['count'] as number) ?? 0
+      const rawCount = item['count']
+      const count = typeof rawCount === 'number' ? rawCount : 0
       categoryTotals.set(key, (categoryTotals.get(key) ?? 0) + count)
     }
   }
@@ -97,8 +97,8 @@ function buildGroupedChartData(
       const item: GroupedChartItem = { name: String(year) }
       topCategories.forEach((key, idx) => {
         const match = breakdown?.find((b) => String(b[labelKey]) === key)
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: array index and `as` cast may be undefined
-        item[categoryDisplayNames[idx] ?? ''] = (match?.['count'] as number) ?? 0
+        const rawCount = match?.['count']
+        item[categoryDisplayNames[idx] ?? ''] = typeof rawCount === 'number' ? rawCount : 0
       })
       return item
     })
@@ -117,7 +117,8 @@ function buildGroupedChartData(
     for (const yearData of data) {
       const breakdown = getBreakdown(yearData)
       const match = breakdown?.find((b) => String(b[labelKey]) === key)
-      item[String(yearData.year)] = (match?.['count'] as number) ?? 0 // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- runtime fallback
+      const rawCount = match?.['count']
+      item[String(yearData.year)] = typeof rawCount === 'number' ? rawCount : 0
     }
     return item
   })

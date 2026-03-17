@@ -341,8 +341,7 @@ export const AppLayout = () => {
                         {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
                       </div>
                       <div className="text-xs leading-tight text-white/70">
-                        {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: email may be null */}
-                        {(user['email'] as string) ?? 'Profile'}
+                        {typeof user['email'] === 'string' ? user['email'] : 'Profile'}
                       </div>
                     </div>
                     <ChevronDown
@@ -732,10 +731,10 @@ export const AppLayout = () => {
                 <YearSelector />
               </div>
               {activeProgram === 'summer' &&
-                // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves
+                // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves; defensive guard
                 (syncStatus?.bunk_assignments?.end_time ?? syncStatus?.bunk_requests?.end_time) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
+                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves; defensive guard */}
                     {syncStatus?.bunk_assignments?.end_time && (
                       <span
                         className="flex items-center gap-1.5"
@@ -748,7 +747,7 @@ export const AppLayout = () => {
                         })}
                       </span>
                     )}
-                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
+                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves; defensive guard */}
                     {syncStatus?.bunk_requests?.end_time && (
                       <span className="flex items-center gap-1.5" title="Last bunk requests sync">
                         <Clock className="h-3 w-3" />

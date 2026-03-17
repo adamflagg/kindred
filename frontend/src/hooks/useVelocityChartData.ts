@@ -310,7 +310,7 @@ export function useVelocityChartData(
     if (!data?.phase_markers) return []
     return (
       data.phase_markers
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- week_number may be null at runtime despite Required<> type
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- week_number may be null at runtime despite Required<> type; defensive guard
         .filter((marker) => marker.week_number != null)
         .map((marker) => ({
           ...marker,

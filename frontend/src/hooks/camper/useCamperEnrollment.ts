@@ -6,6 +6,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
+import { queryKeys } from '../../utils/queryKeys'
+import { normalizeGender } from '../../utils/genderUtils'
 
 import { sortEnrolledFirst } from '../../utils/enrollmentSort'
 import type { Camper } from '../../types/app-types'
@@ -45,7 +47,7 @@ export function useCamperEnrollment(
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['enrolled-campers', personCmId, currentYear],
+    queryKey: queryKeys.enrolledCampers(personCmId ?? 0, currentYear),
     queryFn: async () => {
       if (!personCmId) throw new Error('Invalid person ID')
 
@@ -109,6 +111,7 @@ export function useCamperEnrollment(
         const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
 
         const displayName = `${expandedPerson.first_name} ${expandedPerson.last_name}`.trim() || ''
+        const gender = normalizeGender(expandedPerson.gender)
 
         return {
           id: `${attendee.person_id}:${expandedSession?.cm_id ?? 0}`,
@@ -121,8 +124,7 @@ export function useCamperEnrollment(
           age: expandedPerson.age,
           birthdate: expandedPerson.birthdate,
           grade: expandedPerson.grade,
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: gender could be empty string
-          gender: (expandedPerson.gender as 'M' | 'F' | 'NB') || 'NB',
+          gender,
           session_cm_id: expandedSession?.cm_id ?? 0,
           assigned_bunk_cm_id: assignedBunk?.cm_id,
           assigned_bunk: assignedBunk?.id ?? '',

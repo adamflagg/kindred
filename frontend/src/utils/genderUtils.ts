@@ -2,6 +2,14 @@ import type { Camper } from '../types/app-types'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 /**
+ * Normalizes a sex code (from CampMinder) to the M/F/NB union.
+ * Handles empty strings and unexpected values by defaulting to 'NB'.
+ */
+export function normalizeGender(gender: string): 'M' | 'F' | 'NB' {
+  return gender === 'M' || gender === 'F' || gender === 'NB' ? gender : 'NB'
+}
+
+/**
  * Categorizes gender identity into one of three groups
  */
 export type GenderCategory = 'boys' | 'girls' | 'other'
