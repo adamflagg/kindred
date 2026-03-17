@@ -24,6 +24,10 @@ interface BaseNodeProps {
   showInput?: boolean
   /** Whether to show right (output) handle */
   showOutput?: boolean
+  /** Position of the input (target) handle. Defaults to Position.Left */
+  inputPosition?: Position
+  /** Position of the output (source) handle. Defaults to Position.Right */
+  outputPosition?: Position
 }
 
 const stateStyles: Record<NodeState, string> = {
@@ -47,13 +51,15 @@ export function BaseNode({
   isStale = false,
   showInput = true,
   showOutput = true,
+  inputPosition = Position.Left,
+  outputPosition = Position.Right,
 }: BaseNodeProps) {
   return (
     <div
       className={`relative rounded-xl border-2 px-4 py-3 shadow-sm transition-all ${stateStyles[state]} min-w-[140px] cursor-pointer select-none`}
     >
-      {showInput && <Handle type="target" position={Position.Left} className="!bg-gray-400" />}
-      {showOutput && <Handle type="source" position={Position.Right} className="!bg-gray-400" />}
+      {showInput && <Handle type="target" position={inputPosition} className="!bg-gray-400" />}
+      {showOutput && <Handle type="source" position={outputPosition} className="!bg-gray-400" />}
 
       {/* Stale badge */}
       {isStale && (
