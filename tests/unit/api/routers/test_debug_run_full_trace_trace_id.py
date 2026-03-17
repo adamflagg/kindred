@@ -309,13 +309,40 @@ class TestRunFromPhaseStopAtPhase:
         mock_runner = MagicMock()
         mock_runner.run_from_phase = AsyncMock(return_value={"phase2": {}, "phase3": {}})
 
-        # Mock _load_trace_data to return valid trace data
-        mock_trace_data = {"pre_phase1": {"action": "parsed"}, "phase1_parse": {"ran": True, "parsed_intents": []}}
+        # Mock _load_trace_record to return a record with trace_data and metadata
+        mock_record = MagicMock()
+        mock_record.trace_data = {
+            "pre_phase1": {
+                "action": "parsed",
+                "original_text": "bunk with Emma",
+                "requester_info": {"cm_id": 12345, "name": "Liam Garcia", "grade": "5"},
+            },
+            "phase1_parse": {"ran": True, "parsed_intents": []},
+        }
+        mock_record.requester_cm_id = 12345
+        mock_record.year = 2025
+        mock_record.session_cm_id = 1000001
+        mock_record.source_field = "bunk_with"
+        mock_record.original_request = "orig_req_123"
+
+        # Mock the trace record returned after flush
+        mock_trace_record = MagicMock()
+        mock_trace_record.id = "pb_trace_rec_from_phase"
 
         with (
             patch("api.routers.debug._create_phase_runner", return_value=mock_runner),
-            patch("api.routers.debug._load_trace_data", return_value=mock_trace_data),
+            patch("api.routers.debug._load_trace_record", return_value=mock_record),
+            patch("api.routers.debug.TraceCollector") as MockTraceCollector,
         ):
+            mock_collector_instance = MagicMock()
+            mock_collector_instance.run_id = "test_run_from_phase_id"
+            mock_collector_instance.enabled = True
+            mock_collector_instance.flush = AsyncMock(return_value="run_rec_id")
+            MockTraceCollector.return_value = mock_collector_instance
+
+            # Mock PB query for trace records after flush
+            mock_pb.collection.return_value.get_full_list.return_value = [mock_trace_record]
+
             response = client.post(
                 "/api/debug/run-from-phase/phase2",
                 json={
@@ -327,10 +354,13 @@ class TestRunFromPhaseStopAtPhase:
                 },
             )
 
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.json()}"
         data = response.json()
         assert data["success"] is True
+        assert data["trace_id"] == "pb_trace_rec_from_phase"
         # Verify stop_at_phase was passed
         mock_runner.run_from_phase.assert_called_once()
         call_kwargs = mock_runner.run_from_phase.call_args
         assert call_kwargs.kwargs.get("stop_at_phase") == "phase2"
+        # Verify pre_phase1 was recorded on the collector
+        mock_collector_instance.record_pre_phase1.assert_called_once()

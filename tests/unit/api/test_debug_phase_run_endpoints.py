@@ -180,10 +180,18 @@ class TestRunPhase3Endpoint:
 class TestRunFromPhaseEndpoint:
     """Test POST /api/debug/run-from-phase/{phase} endpoint."""
 
+    @staticmethod
+    def _setup_flush_mock(mock_pb: MagicMock) -> None:
+        """Configure mock PB to return a trace record with string id after flush."""
+        mock_flush_record = MagicMock()
+        mock_flush_record.id = "pb_trace_from_phase"
+        mock_pb.collection.return_value.get_full_list.return_value = [mock_flush_record]
+
     def test_run_from_phase2(self, client_with_mocks: tuple[TestClient, MagicMock, MagicMock]) -> None:
         client, mock_pb, mock_runner = client_with_mocks
 
         mock_pb.collection.return_value.get_one.return_value = _make_trace_record_with_data()
+        self._setup_flush_mock(mock_pb)
 
         response = client.post(
             "/api/debug/run-from-phase/phase2",
@@ -200,11 +208,13 @@ class TestRunFromPhaseEndpoint:
         assert data["success"] is True
         assert data["phase"] == "phase2"
         assert data["dry_run"] is True
+        assert data["trace_id"] is not None  # Now returns a trace_id
 
     def test_run_from_phase3(self, client_with_mocks: tuple[TestClient, MagicMock, MagicMock]) -> None:
         client, mock_pb, mock_runner = client_with_mocks
 
         mock_pb.collection.return_value.get_one.return_value = _make_trace_record_with_data()
+        self._setup_flush_mock(mock_pb)
 
         response = client.post(
             "/api/debug/run-from-phase/phase3",
@@ -240,6 +250,7 @@ class TestRunFromPhaseEndpoint:
         client, mock_pb, mock_runner = client_with_mocks
 
         mock_pb.collection.return_value.get_one.return_value = _make_trace_record_with_data()
+        self._setup_flush_mock(mock_pb)
 
         response = client.post(
             "/api/debug/run-from-phase/phase2",

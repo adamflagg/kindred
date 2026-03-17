@@ -1637,12 +1637,41 @@ async def run_from_phase(
             detail=f"Invalid phase '{phase}'. Must be one of: {', '.join(sorted(VALID_CASCADE_PHASES))}",
         )
 
-    trace_data_dict = _load_trace_data(body.trace_id)
+    trace_record = _load_trace_record(body.trace_id)
+    trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
 
     try:
+        from uuid import uuid4
+
         from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
 
         trace_data = TraceData(**trace_data_dict)
+
+        # Create trace collector for this run
+        trace_collector = TraceCollector(run_id=uuid4().hex)
+
+        # Record pre-phase1 from existing trace data so the collector has context
+        pre = trace_data.pre_phase1
+        req_info = pre.requester_info
+        trace_collector.record_pre_phase1(
+            key=getattr(trace_record, "original_request", "") or body.trace_id,
+            action=pre.action or "replayed",
+            original_text=pre.original_text,
+            requester_cm_id=req_info.cm_id or getattr(trace_record, "requester_cm_id", 0),
+            year=getattr(trace_record, "year", 0) or body.year,
+            session_cm_id=getattr(trace_record, "session_cm_id", 0),
+            source_field=getattr(trace_record, "source_field", ""),
+            cleaned_text=pre.cleaned_text,
+            na_prefix_stripped=pre.na_prefix_stripped,
+            staff_metadata=pre.staff_metadata,
+            field_path=pre.field_path,
+            socialize_mapped_value=pre.socialize_mapped_value,
+            session_cm_ids=pre.session_cm_ids,
+            requester_name=req_info.name,
+            requester_grade=req_info.grade,
+            skip_reason=pre.skip_reason,
+        )
+
         runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
         result = await runner.run_from_phase(
             phase=phase,
@@ -1650,12 +1679,39 @@ async def run_from_phase(
             dry_run=body.dry_run,
             stop_at_phase=body.stop_at_phase,
         )
+
+        # Flush traces and get trace_id
+        trace_id = None
+        if trace_collector.enabled:
+            try:
+                await trace_collector.flush(
+                    pb,
+                    run_metadata={
+                        "year": body.year,
+                        "session": str(body.session_cm_ids),
+                        "source_fields": [],
+                        "limit": 1,
+                        "force": False,
+                    },
+                )
+                traces = pb.collection("debug_pipeline_traces").get_full_list(
+                    query_params={"filter": f'run_id = "{trace_collector.run_id}"', "perPage": 1}
+                )
+                if traces:
+                    trace_id = traces[0].id
+            except Exception as e:
+                logger.warning("Failed to flush debug traces: %s", e)
+
         return PhaseRunResponse(
             success=True,
             phase=phase,
             dry_run=body.dry_run,
+            trace_id=trace_id,
             results=result,
         )
+    except ValueError as e:
+        # Invalid stop_at_phase ordering
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception:
         logger.exception("Phase execution failed for phase=%s", phase)
         return PhaseRunResponse(
