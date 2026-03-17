@@ -59,18 +59,14 @@ function transformCancelSessionData(
     const known =
       item.was_enrolled +
       item.was_waitlisted +
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       (item.was_applied ?? 0) +
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       (item.other_prior_status ?? 0)
     return {
       name: item.session_name,
       total: item.total_cancelled,
       was_enrolled: item.was_enrolled,
       was_waitlisted: item.was_waitlisted,
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       was_applied: item.was_applied ?? 0,
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- optional fields may be undefined at runtime
       other_prior_status: item.other_prior_status ?? 0,
       unknown: Math.max(0, item.total_cancelled - known),
     }
@@ -648,17 +644,17 @@ export default function CancellationAnalysis() {
                             {session.was_waitlisted}
                           </td>
                           <td className="px-4 py-2 text-right text-purple-600 dark:text-purple-400">
-                            {session.was_applied}
+                            {session.was_applied ?? 0}
                           </td>
                           <td className="text-muted-foreground px-4 py-2 text-right">
-                            {session.other_prior_status}
+                            {session.other_prior_status ?? 0}
                           </td>
                           <td className="text-muted-foreground px-4 py-2 text-right">
                             {session.total_cancelled -
                               session.was_enrolled -
                               session.was_waitlisted -
-                              session.was_applied -
-                              session.other_prior_status}
+                              (session.was_applied ?? 0) -
+                              (session.other_prior_status ?? 0)}
                           </td>
                           <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
                             {session.has_other_sessions}
