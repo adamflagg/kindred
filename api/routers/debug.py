@@ -78,6 +78,7 @@ from ..schemas.pipeline_debug import (
     RunPhase3Request,
 )
 from ..settings import get_settings
+from ..utils.pb_filters import pb_escape
 
 logger = get_logger(__name__)
 
@@ -584,8 +585,6 @@ async def search_persons(
     via PocketBase relation-path filters. Returns up to 20 unique persons
     with their enrolled session CM IDs.
     """
-    from api.utils.pb_filters import pb_escape
-
     safe_q = pb_escape(q)
 
     # Query attendees directly — enrollment is the source of truth
@@ -605,24 +604,20 @@ async def search_persons(
     # Group by person cm_id, collecting session CM IDs
     person_data: dict[int, PersonSearchItem] = {}
     for att in attendees:
-        expand = getattr(att, "expand", None)
-        if not expand or not isinstance(expand, dict):
-            continue
-        person = expand.get("person")
-        session = expand.get("session")
+        expand = getattr(att, "expand", {}) or {}
+        person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
         if not person:
             continue
 
         cm_id: int = getattr(person, "cm_id", 0)
+        session_cm_id = getattr(session, "cm_id", 0) if session else 0
         if cm_id in person_data:
-            # Add session to existing person
-            session_cm_id = getattr(session, "cm_id", 0) if session else 0
             if session_cm_id and session_cm_id not in person_data[cm_id].sessions:
                 person_data[cm_id].sessions.append(session_cm_id)
         else:
             if len(person_data) >= 20:
                 continue
-            session_cm_id = getattr(session, "cm_id", 0) if session else 0
             person_data[cm_id] = PersonSearchItem(
                 cm_id=cm_id,
                 first_name=getattr(person, "first_name", ""),
