@@ -44,7 +44,7 @@ function useGradeEligibilityConfig(year: number) {
 
 function useThresholdConfig(year: number) {
   return useQuery({
-    queryKey: ['grade-eligibility-threshold', year],
+    queryKey: queryKeys.gradeEligibilityThreshold(year),
     ...userDataOptions,
     queryFn: async () => {
       return await pb.collection('config').getFullList<ConfigRecord>({
@@ -179,7 +179,7 @@ export function GradeEligibilityConfig() {
           queryKey: queryKeys.gradeEligibilityConfig(currentYear),
         }),
         queryClient.invalidateQueries({
-          queryKey: ['grade-eligibility-threshold', currentYear],
+          queryKey: queryKeys.gradeEligibilityThreshold(currentYear),
         }),
       ])
       toast.success('Session availability config saved')

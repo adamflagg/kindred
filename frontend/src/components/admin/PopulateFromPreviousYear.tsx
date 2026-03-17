@@ -230,7 +230,7 @@ export function PopulateFromPreviousYear() {
           queryKey: queryKeys.sessionBudgetConfig(currentYear),
         }),
         queryClient.invalidateQueries({
-          queryKey: ['grade-eligibility-threshold', currentYear],
+          queryKey: queryKeys.gradeEligibilityThreshold(currentYear),
         }),
         // Invalidate our own queries so preview refreshes
         queryClient.invalidateQueries({
