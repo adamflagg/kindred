@@ -145,7 +145,12 @@ function getNodeData(traceData: TraceData, phase: PipelinePhase, isStale: boolea
     case 'phase1':
       return { phase1: traceData.phase1_parse, ...base }
     case 'validation':
-      return { validation: traceData.validation, phase1Ran: traceData.phase1_parse.ran, ...base }
+      return {
+        validation: traceData.validation,
+        phase1Ran: traceData.phase1_parse.ran,
+        phase1IntentCount: traceData.phase1_parse.parsed_intents.length,
+        ...base,
+      }
     case 'phase2':
       return { phase2: traceData.phase2_resolution, ...base }
     case 'expansion':
