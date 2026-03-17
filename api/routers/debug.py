@@ -593,9 +593,14 @@ async def search_persons(
         f"year = {year} && is_active = 1 && status_id = 2"
         f' && (person.first_name ~ "{safe_q}" || person.last_name ~ "{safe_q}")'
     )
-    attendees = pb.collection("attendees").get_full_list(
+    # Cap at 200 rows — enough for 20 unique persons × multiple sessions,
+    # while bounding network/memory for broad queries like q=a.
+    attendee_results = pb.collection("attendees").get_list(
+        1,
+        200,
         query_params={"filter": attendee_filter, "expand": "person,session"},
     )
+    attendees = attendee_results.items
 
     # Group by person cm_id, collecting session CM IDs
     person_data: dict[int, PersonSearchItem] = {}

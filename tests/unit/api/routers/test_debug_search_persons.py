@@ -85,7 +85,7 @@ class TestSearchPersons:
         client, mock_pb = client_with_mock_pb
 
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = []
+        mock_collection.get_list.return_value = MagicMock(items=[])
 
         client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
 
@@ -93,7 +93,7 @@ class TestSearchPersons:
         mock_pb.collection.assert_called_with("attendees")
 
         # Verify the filter includes enrollment criteria + name match + year
-        call_args = mock_collection.get_full_list.call_args
+        call_args = mock_collection.get_list.call_args
         query_params = call_args[1].get("query_params", {})
         filter_str = query_params.get("filter", "")
         assert "year = 2025" in filter_str
@@ -116,7 +116,7 @@ class TestSearchPersons:
             grade=5,
         )
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = [attendee]
+        mock_collection.get_list.return_value = MagicMock(items=[attendee])
 
         response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
 
@@ -134,7 +134,7 @@ class TestSearchPersons:
         client, mock_pb = client_with_mock_pb
 
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = []
+        mock_collection.get_list.return_value = MagicMock(items=[])
 
         response = client.get("/api/debug/search-persons", params={"q": "Zzzzz", "year": 2025})
 
@@ -154,7 +154,7 @@ class TestSearchPersons:
             person_cm_id=12345, first_name="Liam", last_name="Garcia", session_cm_id=1000002, grade=7
         )
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = [att1, att2]
+        mock_collection.get_list.return_value = MagicMock(items=[att1, att2])
 
         response = client.get("/api/debug/search-persons", params={"q": "Liam", "year": 2025})
 
@@ -174,7 +174,7 @@ class TestSearchPersons:
             person_cm_id=67890, first_name="Emma", last_name="Garcia", session_cm_id=1000001, grade=6
         )
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = [att1, att2]
+        mock_collection.get_list.return_value = MagicMock(items=[att1, att2])
 
         response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
 
@@ -194,7 +194,7 @@ class TestSearchPersons:
             person_cm_id=12345, first_name="Emma", last_name="Johnson", session_cm_id=1000001, grade=5
         )
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = [broken_attendee, good_attendee]
+        mock_collection.get_list.return_value = MagicMock(items=[broken_attendee, good_attendee])
 
         response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
 
@@ -224,15 +224,16 @@ class TestSearchPersons:
         client, mock_pb = client_with_mock_pb
 
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = []
+        mock_collection.get_list.return_value = MagicMock(items=[])
 
         response = client.get("/api/debug/search-persons", params={"q": 'O"Brien', "year": 2025})
 
         assert response.status_code == 200
         # Verify the filter used escaped quotes
-        call_args = mock_collection.get_full_list.call_args
+        call_args = mock_collection.get_list.call_args
         filter_str = call_args[1].get("query_params", {}).get("filter", "")
-        assert '\\"' not in filter_str or '"' in filter_str  # Just ensure no crash
+        # The raw double-quote in O"Brien must be escaped for the PB filter
+        assert 'O\\"Brien' in filter_str
 
     def test_limits_to_20_results(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
         """At most 20 unique persons are returned."""
@@ -245,7 +246,7 @@ class TestSearchPersons:
             for i in range(25)
         ]
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_full_list.return_value = attendees
+        mock_collection.get_list.return_value = MagicMock(items=attendees)
 
         response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
 
