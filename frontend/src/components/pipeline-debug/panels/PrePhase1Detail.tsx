@@ -25,7 +25,8 @@ export function PrePhase1Detail({
   onRunFromHere,
   isRunning,
 }: PrePhase1DetailProps) {
-  const actionStatus = data.action === 'parsed' ? 'ran' : 'skipped'
+  const actionStatus =
+    data.action === 'parsed' || data.action === 'direct_mapped' ? 'ran' : 'skipped'
 
   return (
     <div className="space-y-5">

@@ -1056,6 +1056,23 @@ class RequestOrchestrator:
         Returns:
             Dict with pipeline results and statistics.
         """
+        valid_stop_phases = {
+            None,
+            "pre_phase1",
+            "phase1",
+            "validation",
+            "phase2",
+            "expansion",
+            "historical",
+            "phase3",
+            "post_pipeline",
+        }
+        if stop_at_phase not in valid_stop_phases:
+            raise ValueError(f"Unknown stop_at_phase '{stop_at_phase}'")
+
+        if stop_at_phase == "pre_phase1":
+            return {"dry_run": dry_run, "phase": "pre_phase1"}
+
         # Phase 1: AI Parse-Only (skip if no requests need AI)
         if parse_requests:
             logger.info(f"=== Phase 1: AI Parse-Only ({len(parse_requests)} requests) ===")

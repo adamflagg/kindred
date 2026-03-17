@@ -24,7 +24,7 @@ export function HistoricalDetail({
   onRunFromHere,
   isRunning,
 }: HistoricalDetailProps) {
-  const status = !data.ran ? 'skipped' : data.boost_applied ? 'ran' : 'ran'
+  const status = data.ran ? 'ran' : 'skipped'
   const statusLabel = !data.ran ? 'skipped' : data.boost_applied ? 'boosted' : 'no boost'
 
   return (
