@@ -536,14 +536,21 @@ async def list_original_requests_by_camper(
 ) -> OriginalRequestsListResponse:
     """List original_bunk_requests for a specific camper by CampMinder ID.
 
-    Queries PocketBase directly for the camper's requests, avoiding loading all records.
-    Used by the pipeline debug tool to inspect a single camper's raw requests.
+    Looks up the camper via attendees (enrollment is the source of truth,
+    scoped by year) rather than persons directly. This ensures the correct
+    year's person PB record is used for the original_bunk_requests join.
     """
-    # Look up the person's PB record ID from their CM ID
-    persons = pb.collection("persons").get_list(1, 1, query_params={"filter": f"cm_id = {cm_id}"})
-    if not persons.items:
+    # Look up via attendees — enrollment is the source of truth (year-scoped)
+    attendee_filter = f"year = {year} && is_active = 1 && status_id = 2 && person.cm_id = {cm_id}"
+    attendees = pb.collection("attendees").get_list(1, 1, query_params={"filter": attendee_filter, "expand": "person"})
+    if not attendees.items:
         return OriginalRequestsListResponse(items=[], total=0)
-    person_pb_id = persons.items[0].id
+
+    expand = getattr(attendees.items[0], "expand", {}) or {}
+    person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+    if not person:
+        return OriginalRequestsListResponse(items=[], total=0)
+    person_pb_id = person.id
 
     # Query original_bunk_requests directly by requester relation + year
     pb_filter = f'requester = "{person_pb_id}" && year = {year}'
