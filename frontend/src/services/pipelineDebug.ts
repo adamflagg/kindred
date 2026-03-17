@@ -16,6 +16,8 @@ import type {
   RunFromPhaseRequest,
   RunFullTraceRequest,
   TogglePinResponse,
+  PersonSearchResponse,
+  OriginalRequestsResponse,
 } from '../components/pipeline-debug/types'
 
 const API_BASE = '/api/debug'
@@ -172,6 +174,52 @@ export const pipelineDebugService = {
       const error = await response.json().catch(() => ({}))
       throw new Error(error.detail ?? 'Failed to run full trace')
     }
+    return response.json()
+  },
+
+  /**
+   * Fetch original bunk requests with optional filters (for Browse tab).
+   */
+  async fetchOriginalRequests(
+    year: number,
+    filters: { session_cm_id?: number; source_field?: string; limit?: number },
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<OriginalRequestsResponse> {
+    const params = new URLSearchParams({ year: String(year) })
+    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id))
+    if (filters.source_field) params.set('source_field', filters.source_field)
+    if (filters.limit) params.set('limit', String(filters.limit))
+    const response = await fetchWithAuth(`${API_BASE}/original-requests?${params}`)
+    if (!response.ok) throw new Error('Failed to fetch original requests')
+    return response.json()
+  },
+
+  /**
+   * Search persons by name for the New Trace modal.
+   */
+  async searchPersons(
+    query: string,
+    year: number,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PersonSearchResponse> {
+    const params = new URLSearchParams({ q: query, year: String(year) })
+    const response = await fetchWithAuth(`${API_BASE}/search-persons?${params}`)
+    if (!response.ok) throw new Error('Failed to search persons')
+    return response.json()
+  },
+
+  /**
+   * Fetch original bunk requests for a specific camper by CampMinder ID.
+   */
+  async fetchOriginalRequestsByCamper(
+    cmId: number,
+    year: number,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<OriginalRequestsResponse> {
+    const response = await fetchWithAuth(
+      `${API_BASE}/original-requests/by-camper/${cmId}?year=${year}`
+    )
+    if (!response.ok) throw new Error('Failed to fetch original requests')
     return response.json()
   },
 }

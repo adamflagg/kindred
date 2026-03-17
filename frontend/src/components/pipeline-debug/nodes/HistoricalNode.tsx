@@ -8,9 +8,13 @@
 
 import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { HistoricalVerificationTrace } from '../types'
+import type { HistoricalVerificationTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type HistoricalNodeType = Node<{ historical: HistoricalVerificationTrace; isStale?: boolean }>
+interface HistoricalData extends BaseNodeData {
+  historical: HistoricalVerificationTrace
+}
+type HistoricalNodeType = Node<HistoricalData>
 
 function getState(data: HistoricalVerificationTrace): NodeState {
   if (!data.ran) return 'skipped'
@@ -32,7 +36,7 @@ export function HistoricalNode({ data }: NodeProps<HistoricalNodeType>) {
       label="P2.5 Historical"
       state={getState(trace)}
       metric={getMetric(trace)}
-      isStale={data.isStale}
+      {...baseNodeProps(data)}
     />
   )
 }

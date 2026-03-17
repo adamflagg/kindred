@@ -10,9 +10,13 @@
 
 import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { Phase3IntentTrace } from '../types'
+import type { Phase3IntentTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type Phase3NodeType = Node<{ phase3: Phase3IntentTrace[]; isStale?: boolean }>
+interface Phase3Data extends BaseNodeData {
+  phase3: Phase3IntentTrace[]
+}
+type Phase3NodeType = Node<Phase3Data>
 
 function getState(intents: Phase3IntentTrace[]): NodeState {
   if (intents.length === 0) return 'skipped'
@@ -40,7 +44,7 @@ export function Phase3Node({ data }: NodeProps<Phase3NodeType>) {
       label="Phase 3 Disambig"
       state={getState(intents)}
       metric={getMetric(intents)}
-      isStale={data.isStale}
+      {...baseNodeProps(data)}
     />
   )
 }

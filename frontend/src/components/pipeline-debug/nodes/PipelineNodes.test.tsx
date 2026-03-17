@@ -7,7 +7,8 @@
 
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { ReactFlowProvider } from '@xyflow/react'
+import { ReactFlowProvider, Position } from '@xyflow/react'
+import { BaseNode } from './BaseNode'
 import { PrePhase1Node } from './PrePhase1Node'
 import { Phase1Node } from './Phase1Node'
 import { ValidationNode } from './ValidationNode'
@@ -319,6 +320,62 @@ function makeNodeProps<T>(data: T, isStale = false): any {
 }
 
 // =============================================================================
+// BaseNode — Handle position props
+// =============================================================================
+describe('BaseNode handle position props', () => {
+  it('defaults to Left input and Right output handles', () => {
+    const { container } = renderNode(<BaseNode label="Test" state="success" />)
+    const targetHandle = container.querySelector('.react-flow__handle-left[data-handlepos="left"]')
+    const sourceHandle = container.querySelector(
+      '.react-flow__handle-right[data-handlepos="right"]'
+    )
+    expect(targetHandle).toBeInTheDocument()
+    expect(sourceHandle).toBeInTheDocument()
+  })
+
+  it('accepts inputPosition prop to change target handle position', () => {
+    const { container } = renderNode(
+      <BaseNode label="Test" state="success" inputPosition={Position.Top} />
+    )
+    const targetHandle = container.querySelector('.react-flow__handle-top[data-handlepos="top"]')
+    expect(targetHandle).toBeInTheDocument()
+    // Should NOT have the default left handle
+    const leftHandle = container.querySelector('.react-flow__handle-left[data-handlepos="left"]')
+    expect(leftHandle).not.toBeInTheDocument()
+  })
+
+  it('accepts outputPosition prop to change source handle position', () => {
+    const { container } = renderNode(
+      <BaseNode label="Test" state="success" outputPosition={Position.Bottom} />
+    )
+    const sourceHandle = container.querySelector(
+      '.react-flow__handle-bottom[data-handlepos="bottom"]'
+    )
+    expect(sourceHandle).toBeInTheDocument()
+    // Should NOT have the default right handle
+    const rightHandle = container.querySelector('.react-flow__handle-right[data-handlepos="right"]')
+    expect(rightHandle).not.toBeInTheDocument()
+  })
+
+  it('accepts both inputPosition and outputPosition together', () => {
+    const { container } = renderNode(
+      <BaseNode
+        label="Test"
+        state="success"
+        inputPosition={Position.Top}
+        outputPosition={Position.Bottom}
+      />
+    )
+    const targetHandle = container.querySelector('.react-flow__handle-top[data-handlepos="top"]')
+    const sourceHandle = container.querySelector(
+      '.react-flow__handle-bottom[data-handlepos="bottom"]'
+    )
+    expect(targetHandle).toBeInTheDocument()
+    expect(sourceHandle).toBeInTheDocument()
+  })
+})
+
+// =============================================================================
 // PrePhase1Node
 // =============================================================================
 describe('PrePhase1Node', () => {
@@ -380,6 +437,14 @@ describe('ValidationNode', () => {
   it('renders error state for failed validation', () => {
     renderNode(<ValidationNode {...makeNodeProps({ validation: validationError })} />)
     expect(screen.getByTestId('node-status-error')).toBeInTheDocument()
+  })
+
+  it('renders skipped when phase1 did not run', () => {
+    renderNode(
+      <ValidationNode {...makeNodeProps({ validation: validationSuccess, phase1Ran: false })} />
+    )
+    expect(screen.getByTestId('node-status-skipped')).toBeInTheDocument()
+    expect(screen.getByText('not run')).toBeInTheDocument()
   })
 })
 

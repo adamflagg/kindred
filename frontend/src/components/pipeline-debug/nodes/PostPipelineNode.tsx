@@ -10,9 +10,13 @@
 
 import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { PostPipelineTrace } from '../types'
+import type { PostPipelineTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type PostPipelineNodeType = Node<{ postPipeline: PostPipelineTrace; isStale?: boolean }>
+interface PostPipelineData extends BaseNodeData {
+  postPipeline: PostPipelineTrace
+}
+type PostPipelineNodeType = Node<PostPipelineData>
 
 function getState(data: PostPipelineTrace): NodeState {
   if (data.final_bunk_requests.length === 0) return 'skipped'
@@ -35,8 +39,7 @@ export function PostPipelineNode({ data }: NodeProps<PostPipelineNodeType>) {
       label="Post-Pipeline"
       state={getState(trace)}
       metric={getMetric(trace)}
-      isStale={data.isStale}
-      showOutput={false}
+      {...baseNodeProps(data)}
     />
   )
 }

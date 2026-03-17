@@ -10,9 +10,13 @@
 
 import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { Phase2IntentTrace } from '../types'
+import type { Phase2IntentTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type Phase2NodeType = Node<{ phase2: Phase2IntentTrace[]; isStale?: boolean }>
+interface Phase2Data extends BaseNodeData {
+  phase2: Phase2IntentTrace[]
+}
+type Phase2NodeType = Node<Phase2Data>
 
 function getState(intents: Phase2IntentTrace[]): NodeState {
   if (intents.length === 0) return 'skipped'
@@ -41,7 +45,7 @@ export function Phase2Node({ data }: NodeProps<Phase2NodeType>) {
       label="Phase 2 Resolution"
       state={getState(intents)}
       metric={getMetric(intents)}
-      isStale={data.isStale}
+      {...baseNodeProps(data)}
     />
   )
 }

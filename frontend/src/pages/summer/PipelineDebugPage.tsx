@@ -10,18 +10,20 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Link } from 'react-router'
-import { Bug, GitGraph, ArrowLeft, Loader2, FileText } from 'lucide-react'
+import { Bug, GitGraph, ArrowLeft, Loader2, FileText, Plus } from 'lucide-react'
+import { useYear } from '../../hooks/useCurrentYear'
 import {
   PipelineRunSelector,
   PipelineBatchList,
   PipelineCanvas,
   PipelineDetailPanel,
+  NewTraceModal,
 } from '../../components/pipeline-debug'
 import { QueryGuard } from '../../components/QueryGuard'
 import { usePipelineRuns, useToggleRunPin } from '../../hooks/usePipelineRuns'
 import { usePipelineSummary } from '../../hooks/usePipelineSummary'
 import { usePipelineTrace } from '../../hooks/usePipelineTrace'
-import { useRunFromPhase } from '../../hooks/useRunPhase'
+import { useRunFromPhase, useRunFullTrace } from '../../hooks/useRunPhase'
 import {
   PHASE_ORDER,
   type PipelineSummaryFilters,
@@ -31,10 +33,14 @@ import {
 export default function PipelineDebugPage() {
   const { traceId } = useParams<{ traceId?: string }>()
   const navigate = useNavigate()
+  const year = useYear()
 
   // Batch view state
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [filters, setFilters] = useState<PipelineSummaryFilters>({})
+
+  // New Trace modal state
+  const [isNewTraceOpen, setIsNewTraceOpen] = useState(false)
 
   // Drill-down state
   const [selectedNode, setSelectedNode] = useState<PipelinePhase | null>(null)
@@ -46,6 +52,7 @@ export default function PipelineDebugPage() {
   const summaryQuery = usePipelineSummary(selectedRunId, filters)
   const traceQuery = usePipelineTrace(traceId ?? null)
   const runFromPhase = useRunFromPhase()
+  const runFullTrace = useRunFullTrace()
 
   const handleSelectRun = useCallback((runId: string | null) => {
     setSelectedRunId(runId)
@@ -132,6 +139,30 @@ export default function PipelineDebugPage() {
     [traceId, traceQuery.data, runFromPhase, navigate]
   )
 
+  /** New Trace: run the full pipeline for selected original requests. */
+  const handleRunTrace = useCallback(
+    (originalRequestIds: string[], sessionCmIds: number[], stopAtPhase: string | null) => {
+      runFullTrace.mutate(
+        {
+          original_request_ids: originalRequestIds,
+          year,
+          session_cm_ids: sessionCmIds,
+          dry_run: true,
+          stop_at_phase: stopAtPhase,
+        },
+        {
+          onSuccess: (result) => {
+            setIsNewTraceOpen(false)
+            if (result.trace_id) {
+              void navigate(`/summer/debug/pipeline/${result.trace_id}`)
+            }
+          },
+        }
+      )
+    },
+    [runFullTrace, navigate, year]
+  )
+
   // Drill-down view
   if (traceId) {
     return (
@@ -152,6 +183,13 @@ export default function PipelineDebugPage() {
               )}
             </p>
           </div>
+          <button
+            onClick={() => setIsNewTraceOpen(true)}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm transition-colors hover:border-gray-200 dark:hover:border-gray-700"
+          >
+            <Plus className="h-4 w-4" />
+            New Trace
+          </button>
           <button
             onClick={() => {
               setSelectedNode(null)
@@ -204,6 +242,17 @@ export default function PipelineDebugPage() {
             Running phase...
           </div>
         )}
+
+        <NewTraceModal
+          isOpen={isNewTraceOpen}
+          onClose={() => setIsNewTraceOpen(false)}
+          onRunTrace={handleRunTrace}
+          isRunning={runFullTrace.isPending}
+          year={year}
+          error={
+            runFullTrace.isError ? (runFullTrace.error?.message ?? 'Trace execution failed') : null
+          }
+        />
       </div>
     )
   }
@@ -222,6 +271,13 @@ export default function PipelineDebugPage() {
             Trace and debug the full bunk request processing pipeline
           </p>
         </div>
+        <button
+          onClick={() => setIsNewTraceOpen(true)}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm transition-colors hover:border-gray-200 dark:hover:border-gray-700"
+        >
+          <Plus className="h-4 w-4" />
+          New Trace
+        </button>
         <Link
           to="/summer/debug/prompts"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm transition-colors hover:border-gray-200 dark:hover:border-gray-700"
@@ -281,6 +337,17 @@ export default function PipelineDebugPage() {
           </p>
         </div>
       )}
+
+      <NewTraceModal
+        isOpen={isNewTraceOpen}
+        onClose={() => setIsNewTraceOpen(false)}
+        onRunTrace={handleRunTrace}
+        isRunning={runFullTrace.isPending}
+        year={year}
+        error={
+          runFullTrace.isError ? (runFullTrace.error?.message ?? 'Trace execution failed') : null
+        }
+      />
     </div>
   )
 }

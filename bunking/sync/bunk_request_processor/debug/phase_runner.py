@@ -22,6 +22,18 @@ from .trace_models import TraceData
 
 logger = get_logger(__name__)
 
+# Canonical phase ordering used by stop_at_phase validation
+PHASE_ORDER: list[str] = [
+    "pre_phase1",
+    "phase1",
+    "validation",
+    "phase2",
+    "expansion",
+    "historical",
+    "phase3",
+    "post_pipeline",
+]
+
 
 class PhaseRunner:
     """Runs individual pipeline phases in isolation for debugging.
@@ -111,6 +123,7 @@ class PhaseRunner:
         trace_data: TraceData | None = None,
         parse_requests: list[ParseRequest] | None = None,
         dry_run: bool = True,
+        stop_at_phase: str | None = None,
     ) -> dict[str, Any]:
         """Cascade from a specified phase through all remaining phases.
 
@@ -122,23 +135,51 @@ class PhaseRunner:
             trace_data: Existing trace data with upstream phase results.
             parse_requests: Parse requests for phase1 start (if phase="phase1").
             dry_run: If True (default), do not write to production.
+            stop_at_phase: If set, stop after this phase completes. Must be at or
+                after the start phase in PHASE_ORDER. None runs all remaining phases.
 
         Returns:
             Dict with phase results and dry_run flag.
+
+        Raises:
+            ValueError: If stop_at_phase is before the start phase in PHASE_ORDER.
         """
-        logger.info("PhaseRunner: running from %s (dry_run=%s)", phase, dry_run)
+        # Validate stop_at_phase ordering
+        if stop_at_phase is not None:
+            if phase not in PHASE_ORDER:
+                msg = f"Unknown phase '{phase}'. Valid phases: {PHASE_ORDER}"
+                raise ValueError(msg)
+            if stop_at_phase not in PHASE_ORDER:
+                msg = f"Unknown stop_at_phase '{stop_at_phase}'. Valid phases: {PHASE_ORDER}"
+                raise ValueError(msg)
+            start_idx = PHASE_ORDER.index(phase)
+            stop_idx = PHASE_ORDER.index(stop_at_phase)
+            if stop_idx < start_idx:
+                msg = f"stop_at_phase '{stop_at_phase}' is before start phase '{phase}'"
+                raise ValueError(msg)
+
+        logger.info("PhaseRunner: running from %s (dry_run=%s, stop_at_phase=%s)", phase, dry_run, stop_at_phase)
 
         result: dict[str, Any] = {"dry_run": dry_run}
 
         if phase == "phase1":
             # Run all phases from the beginning
-            return await self.run_full_trace(parse_requests or [], dry_run=dry_run)
+            return await self.run_full_trace(parse_requests or [], dry_run=dry_run, stop_at_phase=stop_at_phase)
 
         elif phase == "phase2":
             # Reconstruct parse results from trace data for Phase 2 input
             phase2_input = self._reconstruct_parse_results_from_trace(trace_data)
             phase2_results = await self.run_phase2(phase2_input)
             result["phase2_results"] = phase2_results
+
+            if stop_at_phase == "phase2":
+                return result
+
+            if stop_at_phase == "expansion":
+                return result
+
+            if stop_at_phase == "historical":
+                return result
 
             # Continue to Phase 3 with ambiguous cases
             ambiguous = [(pr, rr_list) for pr, rr_list in phase2_results if any(not rr.is_resolved for rr in rr_list)]
@@ -147,6 +188,9 @@ class PhaseRunner:
                 result["phase3_results"] = phase3_results
             else:
                 result["phase3_results"] = []
+
+            if stop_at_phase == "phase3":
+                return result
 
         elif phase == "phase3":
             # Reconstruct ambiguous cases from trace data for Phase 3 input
@@ -167,23 +211,37 @@ class PhaseRunner:
         self,
         parse_requests: list[ParseRequest],
         dry_run: bool = True,
+        stop_at_phase: str | None = None,
     ) -> dict[str, Any]:
         """Run all phases end-to-end with trace collection.
 
         Args:
             parse_requests: List of ParseRequest objects to process.
             dry_run: If True (default), do not write to production.
+            stop_at_phase: If set, stop after this phase completes (e.g. "phase1", "phase2").
+                Downstream phases will not execute. None runs all phases.
 
         Returns:
             Dict with all phase results and dry_run flag.
         """
-        logger.info("PhaseRunner: running full trace (dry_run=%s)", dry_run)
+        logger.info("PhaseRunner: running full trace (dry_run=%s, stop_at_phase=%s)", dry_run, stop_at_phase)
 
         result: dict[str, Any] = {"dry_run": dry_run}
+
+        # Pre-Phase 1 prep (trace data already recorded by orchestrator)
+        if stop_at_phase == "pre_phase1":
+            return result
 
         # Phase 1
         phase1_results = await self.run_phase1(parse_requests)
         result["phase1_results"] = phase1_results
+
+        if stop_at_phase == "phase1":
+            return result
+
+        # Validation (currently part of phase1 output validation)
+        if stop_at_phase == "validation":
+            return result
 
         # Phase 2
         if phase1_results:
@@ -192,6 +250,17 @@ class PhaseRunner:
         else:
             phase2_results = []
             result["phase2_results"] = []
+
+        if stop_at_phase == "phase2":
+            return result
+
+        # Expansion (placeholder expansion runs as part of phase2 post-processing)
+        if stop_at_phase == "expansion":
+            return result
+
+        # Historical verification (runs after expansion)
+        if stop_at_phase == "historical":
+            return result
 
         # Phase 3 — only ambiguous cases
         ambiguous = [
@@ -205,7 +274,10 @@ class PhaseRunner:
         else:
             result["phase3_results"] = []
 
-        # Production write mode
+        if stop_at_phase == "phase3":
+            return result
+
+        # Post-pipeline (production write mode)
         if not dry_run:
             logger.info("PhaseRunner: production write mode — saving results")
             result["production_write"] = True

@@ -294,6 +294,35 @@ export interface PipelineSummaryFilters {
 // Phase Execution Types
 // =============================================================================
 
+// =============================================================================
+// Shared Node Data — common layout fields for all pipeline phase nodes
+// =============================================================================
+
+import type { Position } from '@xyflow/react'
+
+/** Layout fields shared by all pipeline node data types. */
+export interface BaseNodeData {
+  [key: string]: unknown
+  isStale?: boolean | undefined
+  tooltip?: string | undefined
+  inputPosition?: Position | undefined
+  outputPosition?: Position | undefined
+  showInput?: boolean | undefined
+  showOutput?: boolean | undefined
+}
+
+/** Extract BaseNode layout props from node data for spreading. */
+export function baseNodeProps(data: BaseNodeData) {
+  return {
+    isStale: data.isStale,
+    tooltip: data.tooltip,
+    showInput: data.showInput,
+    showOutput: data.showOutput,
+    inputPosition: data.inputPosition,
+    outputPosition: data.outputPosition,
+  }
+}
+
 export type PipelinePhase =
   | 'pre_phase1'
   | 'phase1'
@@ -337,6 +366,7 @@ export interface RunFromPhaseRequest {
   year: number
   session_cm_ids: number[]
   dry_run?: boolean
+  stop_at_phase?: string | null
 }
 
 export interface RunFullTraceRequest {
@@ -344,8 +374,45 @@ export interface RunFullTraceRequest {
   year: number
   session_cm_ids: number[]
   dry_run?: boolean
+  stop_at_phase?: string | null
 }
 
 export interface TogglePinResponse {
   pinned: boolean
+}
+
+// =============================================================================
+// Person Search Types (for New Trace modal)
+// =============================================================================
+
+export interface PersonSearchItem {
+  cm_id: number
+  first_name: string
+  last_name: string
+  grade: number | null
+  sessions: number[]
+}
+
+export interface PersonSearchResponse {
+  items: PersonSearchItem[]
+  total: number
+}
+
+// =============================================================================
+// Original Request Item (for New Trace modal, matches api/schemas/debug.py)
+// =============================================================================
+
+export interface OriginalRequestItem {
+  id: string
+  requester_name: string
+  requester_cm_id: number
+  source_field: string
+  original_text: string
+  year: number
+  processed: boolean
+}
+
+export interface OriginalRequestsResponse {
+  items: OriginalRequestItem[]
+  total: number
 }

@@ -19,6 +19,8 @@ from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repositor
 from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
     SessionRepository,
 )
+from bunking.sync.bunk_request_processor.debug.phase_runner import PHASE_ORDER
+from bunking.sync.bunk_request_processor.debug.trace_collector import TraceCollector
 from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
     OriginalRequestsLoader,
 )
@@ -58,6 +60,8 @@ from ..schemas.debug import (
     SourceFieldType,
 )
 from ..schemas.pipeline_debug import (
+    PersonSearchItem,
+    PersonSearchResponse,
     PhaseRunResponse,
     PinToggleResponse,
     PipelineRunItem,
@@ -521,6 +525,119 @@ async def list_original_requests(
         )
 
     return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+@router.get("/original-requests/by-camper/{cm_id}", response_model=OriginalRequestsListResponse)
+async def list_original_requests_by_camper(
+    cm_id: int,
+    year: int = Query(description="Camp year"),
+    user: AuthUser = Depends(require_admin),
+) -> OriginalRequestsListResponse:
+    """List original_bunk_requests for a specific camper by CampMinder ID.
+
+    Queries PocketBase directly for the camper's requests, avoiding loading all records.
+    Used by the pipeline debug tool to inspect a single camper's raw requests.
+    """
+    # Look up the person's PB record ID from their CM ID
+    persons = pb.collection("persons").get_list(1, 1, query_params={"filter": f"cm_id = {cm_id}"})
+    if not persons.items:
+        return OriginalRequestsListResponse(items=[], total=0)
+    person_pb_id = persons.items[0].id
+
+    # Query original_bunk_requests directly by requester relation + year
+    pb_filter = f'requester = "{person_pb_id}" && year = {year}'
+    records = pb.collection("original_bunk_requests").get_full_list(
+        query_params={"filter": pb_filter, "expand": "requester"}
+    )
+
+    items = []
+    for record in records:
+        expanded = getattr(record, "expand", {}).get("requester", {})
+        first = expanded.get("preferred_name") or expanded.get("first_name", "")
+        last = expanded.get("last_name", "")
+        requester_name = f"{first} {last}".strip()
+
+        items.append(
+            OriginalRequestItem(
+                id=record.id,
+                requester_name=requester_name,
+                requester_cm_id=cm_id,
+                source_field=getattr(record, "field", ""),
+                original_text=getattr(record, "content", ""),
+                year=getattr(record, "year", year),
+                processed=getattr(record, "processed", None) is not None,
+            )
+        )
+
+    return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+@router.get("/search-persons", response_model=PersonSearchResponse)
+async def search_persons(
+    q: str = Query(min_length=1, description="Search query for first or last name"),
+    year: int = Query(description="Camp year for enrollment filtering"),
+    user: AuthUser = Depends(require_admin),
+) -> PersonSearchResponse:
+    """Search persons by name with autocomplete support.
+
+    Queries the persons collection with case-insensitive name matching
+    and filters to only persons enrolled (with attendee records) for the given year.
+    Returns up to 20 results.
+    """
+    # Sanitize query for PocketBase filter
+    from api.utils.pb_filters import pb_escape
+
+    safe_q = pb_escape(q)
+
+    # Query persons with case-insensitive name matching
+    name_filter = f'first_name ~ "{safe_q}" || last_name ~ "{safe_q}"'
+    person_results = pb.collection("persons").get_list(
+        1,
+        100,
+        query_params={"filter": name_filter},
+    )
+
+    if not person_results.items:
+        return PersonSearchResponse(items=[], total=0)
+
+    # Get CM IDs from matching persons
+    person_cm_ids = [getattr(p, "cm_id", 0) for p in person_results.items]
+
+    # Query attendees for these persons in the given year
+    cm_id_list = " || ".join(f"person_id = {cid}" for cid in person_cm_ids)
+    attendee_filter = f"year = {year} && is_active = 1 && status_id = 2 && ({cm_id_list})"
+    attendees = pb.collection("attendees").get_full_list(
+        query_params={"filter": attendee_filter},
+    )
+
+    # Build person_id -> list of session CM IDs
+    person_sessions: dict[int, list[int]] = {}
+    for att in attendees:
+        pid: int = getattr(att, "person_id", 0)
+        sid: int = getattr(att, "session_cm_id", 0)
+        if pid not in person_sessions:
+            person_sessions[pid] = []
+        person_sessions[pid].append(sid)
+
+    # Only return persons who have attendee records (enrolled)
+    items = []
+    for person in person_results.items:
+        cm_id: int = getattr(person, "cm_id", 0)
+        if cm_id not in person_sessions:
+            continue
+        items.append(
+            PersonSearchItem(
+                cm_id=cm_id,
+                first_name=getattr(person, "first_name", ""),
+                last_name=getattr(person, "last_name", ""),
+                grade=getattr(person, "grade", None),
+                sessions=sorted(person_sessions[cm_id]),
+            )
+        )
+        if len(items) >= 20:
+            break
+
+    return PersonSearchResponse(items=items, total=len(items))
 
 
 @router.get("/original-requests-with-parse-status", response_model=OriginalRequestsWithParseResponse)
@@ -1186,16 +1303,7 @@ VALID_PRE_P1_ACTIONS = {
     "skipped_staff",
     "socialize_direct_map",
 }
-VALID_CASCADE_PHASES = {
-    "pre_phase1",
-    "phase1",
-    "validation",
-    "phase2",
-    "expansion",
-    "historical",
-    "phase3",
-    "post_pipeline",
-}
+VALID_CASCADE_PHASES = set(PHASE_ORDER)
 
 
 def _validate_run_id(run_id: str) -> None:
@@ -1341,7 +1449,11 @@ def get_pipeline_trace(
 # =============================================================================
 
 
-def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = None) -> Any:
+def _create_phase_runner(
+    year: int = 2025,
+    session_cm_ids: list[int] | None = None,
+    trace_collector: TraceCollector | None = None,
+) -> Any:
     """Create a PhaseRunner backed by a real orchestrator.
 
     This function is defined at module level so it can be patched in tests.
@@ -1351,6 +1463,7 @@ def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = No
     Args:
         year: Camp year for data context initialization.
         session_cm_ids: Session CM IDs to scope the orchestrator to.
+        trace_collector: Optional TraceCollector for debug instrumentation.
 
     Returns:
         PhaseRunner instance (or mock in tests).
@@ -1365,6 +1478,7 @@ def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = No
         year=year,
         session_cm_ids=session_cm_ids or [],
         data_context=data_context,
+        trace_collector=trace_collector,
     )
     return PhaseRunner(orchestrator)
 
@@ -1531,24 +1645,83 @@ async def run_from_phase(
             detail=f"Invalid phase '{phase}'. Must be one of: {', '.join(sorted(VALID_CASCADE_PHASES))}",
         )
 
-    trace_data_dict = _load_trace_data(body.trace_id)
+    trace_record = _load_trace_record(body.trace_id)
+    trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
 
     try:
+        from uuid import uuid4
+
         from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
 
         trace_data = TraceData(**trace_data_dict)
-        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+
+        # Create trace collector for this run
+        trace_collector = TraceCollector(run_id=uuid4().hex)
+
+        # Record pre-phase1 from existing trace data so the collector has context
+        pre = trace_data.pre_phase1
+        req_info = pre.requester_info
+        trace_collector.record_pre_phase1(
+            key=getattr(trace_record, "original_request", "") or body.trace_id,
+            action=pre.action or "replayed",
+            original_text=pre.original_text,
+            requester_cm_id=req_info.cm_id or getattr(trace_record, "requester_cm_id", 0),
+            year=getattr(trace_record, "year", 0) or body.year,
+            session_cm_id=getattr(trace_record, "session_cm_id", 0),
+            source_field=getattr(trace_record, "source_field", ""),
+            cleaned_text=pre.cleaned_text,
+            na_prefix_stripped=pre.na_prefix_stripped,
+            staff_metadata=pre.staff_metadata,
+            field_path=pre.field_path,
+            socialize_mapped_value=pre.socialize_mapped_value,
+            session_cm_ids=pre.session_cm_ids,
+            requester_name=req_info.name,
+            requester_grade=req_info.grade,
+            skip_reason=pre.skip_reason,
+        )
+
+        runner = _create_phase_runner(
+            year=body.year, session_cm_ids=body.session_cm_ids, trace_collector=trace_collector
+        )
         result = await runner.run_from_phase(
             phase=phase,
             trace_data=trace_data,
             dry_run=body.dry_run,
+            stop_at_phase=body.stop_at_phase,
         )
+
+        # Flush traces and get trace_id
+        trace_id = None
+        if trace_collector.enabled:
+            try:
+                await trace_collector.flush(
+                    pb,
+                    run_metadata={
+                        "year": body.year,
+                        "session": str(body.session_cm_ids),
+                        "source_fields": [],
+                        "limit": 1,
+                        "force": False,
+                    },
+                )
+                traces = pb.collection("debug_pipeline_traces").get_list(
+                    1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
+                )
+                if traces.items:
+                    trace_id = traces.items[0].id
+            except Exception as e:
+                logger.warning("Failed to flush debug traces: %s", e)
+
         return PhaseRunResponse(
             success=True,
             phase=phase,
             dry_run=body.dry_run,
+            trace_id=trace_id,
             results=result,
         )
+    except ValueError as e:
+        # Invalid stop_at_phase ordering
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception:
         logger.exception("Phase execution failed for phase=%s", phase)
         return PhaseRunResponse(
@@ -1572,9 +1745,16 @@ async def run_full_trace(
     Supports dry_run (default True). When dry_run=False, writes to production.
     """
     try:
+        from uuid import uuid4
+
         from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
 
-        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+        # Create trace collector for this run
+        trace_collector = TraceCollector(run_id=uuid4().hex)
+
+        runner = _create_phase_runner(
+            year=body.year, session_cm_ids=body.session_cm_ids, trace_collector=trace_collector
+        )
 
         # Load original requests and convert to ParseRequest objects
         loader = OriginalRequestsLoader(pb, body.year, session_cm_ids=body.session_cm_ids)
@@ -1612,11 +1792,50 @@ async def run_full_trace(
             )
             parse_requests.append(parse_req)
 
-        result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run)
+        # Record pre-phase1 traces for each original record
+        for orig, parse_req in zip(original_records, parse_requests, strict=True):
+            trace_collector.record_pre_phase1(
+                key=orig.id,
+                action="parsed",
+                original_text=orig.content,
+                requester_cm_id=orig.requester_cm_id,
+                year=orig.year,
+                session_cm_id=parse_req.session_cm_id,
+                source_field=parse_req.field_name,
+                requester_name=parse_req.requester_name,
+                requester_grade=parse_req.requester_grade,
+            )
+
+        result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run, stop_at_phase=body.stop_at_phase)
+
+        # Flush traces to PocketBase (only if collector is enabled)
+        trace_id = None
+        if trace_collector.enabled:
+            try:
+                await trace_collector.flush(
+                    pb,
+                    run_metadata={
+                        "year": body.year,
+                        "session": str(body.session_cm_ids),
+                        "source_fields": [],
+                        "limit": len(body.original_request_ids),
+                        "force": False,
+                    },
+                )
+                # Get the first trace record ID for navigation
+                traces = pb.collection("debug_pipeline_traces").get_list(
+                    1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
+                )
+                if traces.items:
+                    trace_id = traces.items[0].id
+            except Exception as e:
+                logger.warning("Failed to flush debug traces: %s", e)
+
         return PhaseRunResponse(
             success=True,
             phase="full",
             dry_run=body.dry_run,
+            trace_id=trace_id,
             results=result,
         )
     except Exception:

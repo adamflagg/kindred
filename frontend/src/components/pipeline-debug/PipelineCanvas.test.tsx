@@ -204,9 +204,9 @@ describe('PipelineCanvas', () => {
     expect(screen.getByTestId('flow-edge-e-phase3-post_pipeline')).toBeInTheDocument()
   })
 
-  it('renders minimap', () => {
+  it('does not render MiniMap', () => {
     render(<PipelineCanvas {...defaultProps} />)
-    expect(screen.getByTestId('minimap')).toBeInTheDocument()
+    expect(screen.queryByTestId('minimap')).not.toBeInTheDocument()
   })
 
   it('calls onNodeSelect when a node is clicked', async () => {

@@ -20,10 +20,16 @@ interface BaseNodeProps {
   state: NodeState
   metric?: string
   isStale?: boolean | undefined
+  /** Tooltip text shown on hover */
+  tooltip?: string | undefined
   /** Whether to show left (input) handle */
-  showInput?: boolean
+  showInput?: boolean | undefined
   /** Whether to show right (output) handle */
-  showOutput?: boolean
+  showOutput?: boolean | undefined
+  /** Position of the input (target) handle. Defaults to Position.Left */
+  inputPosition?: Position | undefined
+  /** Position of the output (source) handle. Defaults to Position.Right */
+  outputPosition?: Position | undefined
 }
 
 const stateStyles: Record<NodeState, string> = {
@@ -45,15 +51,19 @@ export function BaseNode({
   state,
   metric,
   isStale = false,
+  tooltip,
   showInput = true,
   showOutput = true,
+  inputPosition = Position.Left,
+  outputPosition = Position.Right,
 }: BaseNodeProps) {
   return (
     <div
       className={`relative rounded-xl border-2 px-4 py-3 shadow-sm transition-all ${stateStyles[state]} min-w-[140px] cursor-pointer select-none`}
+      title={tooltip}
     >
-      {showInput && <Handle type="target" position={Position.Left} className="!bg-gray-400" />}
-      {showOutput && <Handle type="source" position={Position.Right} className="!bg-gray-400" />}
+      {showInput && <Handle type="target" position={inputPosition} className="!bg-gray-400" />}
+      {showOutput && <Handle type="source" position={outputPosition} className="!bg-gray-400" />}
 
       {/* Stale badge */}
       {isStale && (
