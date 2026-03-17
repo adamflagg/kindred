@@ -337,6 +337,7 @@ export interface RunFromPhaseRequest {
   year: number
   session_cm_ids: number[]
   dry_run?: boolean
+  stop_at_phase?: string | null
 }
 
 export interface RunFullTraceRequest {
@@ -344,8 +345,45 @@ export interface RunFullTraceRequest {
   year: number
   session_cm_ids: number[]
   dry_run?: boolean
+  stop_at_phase?: string | null
 }
 
 export interface TogglePinResponse {
   pinned: boolean
+}
+
+// =============================================================================
+// Person Search Types (for New Trace modal)
+// =============================================================================
+
+export interface PersonSearchItem {
+  cm_id: number
+  first_name: string
+  last_name: string
+  grade: number | null
+  sessions: number[]
+}
+
+export interface PersonSearchResponse {
+  items: PersonSearchItem[]
+  total: number
+}
+
+// =============================================================================
+// Original Request Item (for New Trace modal, matches api/schemas/debug.py)
+// =============================================================================
+
+export interface OriginalRequestItem {
+  id: string
+  requester_name: string
+  requester_cm_id: number
+  source_field: string
+  original_text: string
+  year: number
+  processed: boolean
+}
+
+export interface OriginalRequestsResponse {
+  items: OriginalRequestItem[]
+  total: number
 }

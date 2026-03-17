@@ -111,6 +111,9 @@ export const queryKeys = {
       : (['pipeline-summary', runId] as const),
   pipelineTrace: (traceId: string) => ['pipeline-trace', traceId] as const,
   pipelineTracesByCamper: (cmId: number) => ['pipeline-traces-camper', cmId] as const,
+  searchPersons: (query: string, year: number) => ['search-persons', query, year] as const,
+  originalRequestsByCamper: (cmId: number, year: number) =>
+    ['original-requests-camper', cmId, year] as const,
 
   // Metrics (Tier 1 - sync data, historical analysis)
   retention: (

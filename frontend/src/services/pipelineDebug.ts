@@ -16,6 +16,8 @@ import type {
   RunFromPhaseRequest,
   RunFullTraceRequest,
   TogglePinResponse,
+  PersonSearchResponse,
+  OriginalRequestsResponse,
 } from '../components/pipeline-debug/types'
 
 const API_BASE = '/api/debug'
@@ -172,6 +174,35 @@ export const pipelineDebugService = {
       const error = await response.json().catch(() => ({}))
       throw new Error(error.detail ?? 'Failed to run full trace')
     }
+    return response.json()
+  },
+
+  /**
+   * Search persons by name for the New Trace modal.
+   */
+  async searchPersons(
+    query: string,
+    year: number,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PersonSearchResponse> {
+    const params = new URLSearchParams({ q: query, year: String(year) })
+    const response = await fetchWithAuth(`${API_BASE}/search-persons?${params}`)
+    if (!response.ok) throw new Error('Failed to search persons')
+    return response.json()
+  },
+
+  /**
+   * Fetch original bunk requests for a specific camper by CampMinder ID.
+   */
+  async fetchOriginalRequestsByCamper(
+    cmId: number,
+    year: number,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<OriginalRequestsResponse> {
+    const response = await fetchWithAuth(
+      `${API_BASE}/original-requests/by-camper/${cmId}?year=${year}`
+    )
+    if (!response.ok) throw new Error('Failed to fetch original requests')
     return response.json()
   },
 }
