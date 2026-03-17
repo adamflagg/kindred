@@ -19,6 +19,7 @@ from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repositor
 from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
     SessionRepository,
 )
+from bunking.sync.bunk_request_processor.debug.trace_collector import TraceCollector
 from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
     OriginalRequestsLoader,
 )
@@ -1645,6 +1646,7 @@ async def run_from_phase(
             phase=phase,
             trace_data=trace_data,
             dry_run=body.dry_run,
+            stop_at_phase=body.stop_at_phase,
         )
         return PhaseRunResponse(
             success=True,
@@ -1675,7 +1677,12 @@ async def run_full_trace(
     Supports dry_run (default True). When dry_run=False, writes to production.
     """
     try:
+        from uuid import uuid4
+
         from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
+
+        # Create trace collector for this run
+        trace_collector = TraceCollector(run_id=uuid4().hex)
 
         runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
 
@@ -1715,11 +1722,50 @@ async def run_full_trace(
             )
             parse_requests.append(parse_req)
 
-        result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run)
+        # Record pre-phase1 traces for each original record
+        for orig, parse_req in zip(original_records, parse_requests, strict=True):
+            trace_collector.record_pre_phase1(
+                key=orig.id,
+                action="parsed",
+                original_text=orig.content,
+                requester_cm_id=orig.requester_cm_id,
+                year=orig.year,
+                session_cm_id=parse_req.session_cm_id,
+                source_field=parse_req.field_name,
+                requester_name=parse_req.requester_name,
+                requester_grade=parse_req.requester_grade,
+            )
+
+        result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run, stop_at_phase=body.stop_at_phase)
+
+        # Flush traces to PocketBase (only if we recorded any)
+        trace_id = None
+        if trace_collector._traces:
+            try:
+                await trace_collector.flush(
+                    pb,
+                    run_metadata={
+                        "year": body.year,
+                        "session": str(body.session_cm_ids),
+                        "source_fields": [],
+                        "limit": len(body.original_request_ids),
+                        "force": False,
+                    },
+                )
+                # Get the first trace record ID for navigation
+                traces = pb.collection("debug_pipeline_traces").get_full_list(
+                    query_params={"filter": f'run_id = "{trace_collector.run_id}"', "perPage": 1}
+                )
+                if traces:
+                    trace_id = traces[0].id
+            except Exception as e:
+                logger.warning("Failed to flush debug traces: %s", e)
+
         return PhaseRunResponse(
             success=True,
             phase="full",
             dry_run=body.dry_run,
+            trace_id=trace_id,
             results=result,
         )
     except Exception:

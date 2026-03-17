@@ -153,6 +153,7 @@ class RunFromPhaseRequest(BaseModel):
     year: int = Field(description="Camp year")
     session_cm_ids: list[int] = Field(description="Session CM IDs")
     dry_run: bool = Field(default=True, description="If False, write to production")
+    stop_at_phase: str | None = Field(default=None, description="Stop after this phase (null = run all)")
 
 
 class RunFullTraceRequest(BaseModel):
@@ -162,6 +163,7 @@ class RunFullTraceRequest(BaseModel):
     year: int = Field(description="Camp year")
     session_cm_ids: list[int] = Field(description="Session CM IDs")
     dry_run: bool = Field(default=True, description="If False, write to production")
+    stop_at_phase: str | None = Field(default=None, description="Stop after this phase (null = run all)")
 
 
 class PhaseRunResponse(BaseModel):
