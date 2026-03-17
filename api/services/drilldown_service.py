@@ -182,9 +182,9 @@ class DrilldownService:
             return await self._handle_waitlist_session_gender(
                 year=year,
                 breakdown_value=breakdown_value,
-                _sessions=sessions,
-                _session_types=session_types,
-                _duration_session_ids=duration_session_ids,
+                sessions=sessions,
+                session_types=session_types,
+                duration_session_ids=duration_session_ids,
             )
 
         # Waitlist breakdown types need separate fetching logic
@@ -998,9 +998,9 @@ class DrilldownService:
         self,
         year: int,
         breakdown_value: str,
-        _sessions: dict[int, Any],
-        _session_types: list[str] | None,
-        _duration_session_ids: set[int] | None,
+        sessions: dict[int, Any],
+        session_types: list[str] | None,
+        duration_session_ids: set[int] | None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist drilldown filtered by session + gender + optional grade.
 
@@ -1024,10 +1024,11 @@ class DrilldownService:
             self.repo.fetch_attendees_with_persons(year, status_filter=["enrolled"]),
         )
 
-        # Build set of summer session cm_ids for filtering
+        # Build set of valid session cm_ids for filtering
         from api.services.waitlist_service import SUMMER_SESSION_TYPES
 
-        summer_sessions = await self.repo.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
+        effective_types = session_types or list(SUMMER_SESSION_TYPES)
+        summer_sessions = await self.repo.fetch_sessions(year, effective_types)
         summer_session_ids = set(summer_sessions.keys())
 
         # Build enrolled sessions lookup: person_id -> list of enrolled summer session names
