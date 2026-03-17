@@ -42,6 +42,22 @@ def _make_mock_pb_record(**kwargs: Any) -> MagicMock:
     return record
 
 
+def _make_attendee_with_expand(
+    person_cm_id: int,
+    first_name: str,
+    last_name: str,
+    session_cm_id: int,
+    grade: int | None = None,
+) -> MagicMock:
+    """Create a mock attendee record with expanded person and session."""
+    person = _make_mock_pb_record(cm_id=person_cm_id, first_name=first_name, last_name=last_name, grade=grade)
+    session = _make_mock_pb_record(cm_id=session_cm_id)
+    return _make_mock_pb_record(
+        person_id=person_cm_id,
+        expand={"person": person, "session": session},
+    )
+
+
 @pytest.fixture
 def mock_pb() -> MagicMock:
     """Create a mock PocketBase client."""
@@ -64,26 +80,43 @@ def client_with_mock_pb(mock_pb: MagicMock) -> Generator[tuple[TestClient, Magic
 class TestSearchPersons:
     """Test GET /api/debug/search-persons endpoint."""
 
-    def test_returns_matching_persons(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
-        """Persons matching the query who have attendee records are returned."""
+    def test_queries_attendees_not_persons(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Search must query enrolled attendees with person expand, not persons directly."""
         client, mock_pb = client_with_mock_pb
 
-        # Mock persons collection query
-        person_record = _make_mock_pb_record(
-            cm_id=12345,
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_full_list.return_value = []
+
+        client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
+
+        # Must call attendees collection (not persons)
+        mock_pb.collection.assert_called_with("attendees")
+
+        # Verify the filter includes enrollment criteria + name match + year
+        call_args = mock_collection.get_full_list.call_args
+        query_params = call_args[1].get("query_params", {})
+        filter_str = query_params.get("filter", "")
+        assert "year = 2025" in filter_str
+        assert "is_active = 1" in filter_str
+        assert "status_id = 2" in filter_str
+        assert "person.first_name" in filter_str or "person.last_name" in filter_str
+        # Must expand person and session to get names and session CM IDs
+        assert "person" in query_params.get("expand", "")
+        assert "session" in query_params.get("expand", "")
+
+    def test_returns_matching_persons(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Enrolled persons matching the query are returned with session CM IDs."""
+        client, mock_pb = client_with_mock_pb
+
+        attendee = _make_attendee_with_expand(
+            person_cm_id=12345,
             first_name="Emma",
             last_name="Johnson",
+            session_cm_id=1000001,
             grade=5,
         )
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[person_record])
-
-        # Mock attendees collection query - Emma is enrolled in session 1000001
-        attendee_record = _make_mock_pb_record(
-            person_id=12345,
-            session_cm_id=1000001,
-        )
-        mock_collection.get_full_list.return_value = [attendee_record]
+        mock_collection.get_full_list.return_value = [attendee]
 
         response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
 
@@ -97,11 +130,10 @@ class TestSearchPersons:
         assert data["items"][0]["sessions"] == [1000001]
 
     def test_returns_empty_when_no_match(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
-        """No results when no persons match the query."""
+        """No results when no attendees match the query."""
         client, mock_pb = client_with_mock_pb
 
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[])
         mock_collection.get_full_list.return_value = []
 
         response = client.get("/api/debug/search-persons", params={"q": "Zzzzz", "year": 2025})
@@ -111,40 +143,18 @@ class TestSearchPersons:
         assert data["total"] == 0
         assert data["items"] == []
 
-    def test_filters_out_persons_without_attendee_records(
-        self, client_with_mock_pb: tuple[TestClient, MagicMock]
-    ) -> None:
-        """Persons without attendee records for the year are excluded."""
+    def test_multiple_sessions_grouped_per_person(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Person enrolled in multiple sessions gets all session CM IDs in one result."""
         client, mock_pb = client_with_mock_pb
 
-        # Two persons match the name search
-        person1 = _make_mock_pb_record(cm_id=12345, first_name="Emma", last_name="Johnson", grade=5)
-        person2 = _make_mock_pb_record(cm_id=67890, first_name="Emma", last_name="Garcia", grade=6)
+        att1 = _make_attendee_with_expand(
+            person_cm_id=12345, first_name="Liam", last_name="Garcia", session_cm_id=1000001, grade=7
+        )
+        att2 = _make_attendee_with_expand(
+            person_cm_id=12345, first_name="Liam", last_name="Garcia", session_cm_id=1000002, grade=7
+        )
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[person1, person2])
-
-        # Only person1 has attendee records
-        attendee = _make_mock_pb_record(person_id=12345, session_cm_id=1000001)
-        mock_collection.get_full_list.return_value = [attendee]
-
-        response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 1
-        assert data["items"][0]["cm_id"] == 12345
-
-    def test_multiple_sessions_for_person(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
-        """Person enrolled in multiple sessions gets all session CM IDs."""
-        client, mock_pb = client_with_mock_pb
-
-        person = _make_mock_pb_record(cm_id=12345, first_name="Liam", last_name="Garcia", grade=7)
-        mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[person])
-
-        attendee1 = _make_mock_pb_record(person_id=12345, session_cm_id=1000001)
-        attendee2 = _make_mock_pb_record(person_id=12345, session_cm_id=1000002)
-        mock_collection.get_full_list.return_value = [attendee1, attendee2]
+        mock_collection.get_full_list.return_value = [att1, att2]
 
         response = client.get("/api/debug/search-persons", params={"q": "Liam", "year": 2025})
 
@@ -152,6 +162,46 @@ class TestSearchPersons:
         data = response.json()
         assert data["total"] == 1
         assert sorted(data["items"][0]["sessions"]) == [1000001, 1000002]
+
+    def test_multiple_persons_returned(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Multiple different persons matching the query are returned separately."""
+        client, mock_pb = client_with_mock_pb
+
+        att1 = _make_attendee_with_expand(
+            person_cm_id=12345, first_name="Emma", last_name="Johnson", session_cm_id=1000001, grade=5
+        )
+        att2 = _make_attendee_with_expand(
+            person_cm_id=67890, first_name="Emma", last_name="Garcia", session_cm_id=1000001, grade=6
+        )
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_full_list.return_value = [att1, att2]
+
+        response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        cm_ids = {item["cm_id"] for item in data["items"]}
+        assert cm_ids == {12345, 67890}
+
+    def test_skips_attendees_without_person_expand(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Attendees with missing person expand data are gracefully skipped."""
+        client, mock_pb = client_with_mock_pb
+
+        # Attendee with no expand data
+        broken_attendee = _make_mock_pb_record(person_id=99999, expand=None)
+        good_attendee = _make_attendee_with_expand(
+            person_cm_id=12345, first_name="Emma", last_name="Johnson", session_cm_id=1000001, grade=5
+        )
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_full_list.return_value = [broken_attendee, good_attendee]
+
+        response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["cm_id"] == 12345
 
     def test_query_param_required(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
         """Missing q param returns 422."""
@@ -169,56 +219,36 @@ class TestSearchPersons:
 
         assert response.status_code == 422
 
-    def test_persons_query_includes_year_filter(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
-        """Persons query must filter by year to avoid cross-year duplicates."""
-        client, mock_pb = client_with_mock_pb
-
-        mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[])
-        mock_collection.get_full_list.return_value = []
-
-        client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
-
-        # Verify the persons query includes year filtering
-        call_args = mock_collection.get_list.call_args
-        filter_str = call_args[1].get("query_params", {}).get("filter", "")
-        assert "year = 2025" in filter_str, f"Persons filter must include year: {filter_str}"
-
-    def test_no_duplicate_cm_ids_across_years(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
-        """Same person from multiple years must not produce duplicate results."""
-        client, mock_pb = client_with_mock_pb
-
-        # Same person appears twice (once per year) in persons results
-        person_2024 = _make_mock_pb_record(cm_id=3458569, first_name="Emma", last_name="Johnson", grade=5)
-        person_2025 = _make_mock_pb_record(cm_id=3458569, first_name="Emma", last_name="Johnson", grade=6)
-        mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[person_2024, person_2025])
-
-        # Attendee record for this person in 2025
-        attendee = _make_mock_pb_record(person_id=3458569, session_cm_id=1000001)
-        mock_collection.get_full_list.return_value = [attendee]
-
-        response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
-
-        assert response.status_code == 200
-        data = response.json()
-        # Must return exactly 1 result, not 2 duplicates
-        assert data["total"] == 1
-        cm_ids = [item["cm_id"] for item in data["items"]]
-        assert cm_ids == [3458569], f"Expected single result, got duplicates: {cm_ids}"
-
     def test_escapes_double_quotes_in_query(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
         """Double quotes in query string are escaped for PocketBase filter."""
         client, mock_pb = client_with_mock_pb
 
         mock_collection = mock_pb.collection.return_value
-        mock_collection.get_list.return_value = MagicMock(items=[])
         mock_collection.get_full_list.return_value = []
 
         response = client.get("/api/debug/search-persons", params={"q": 'O"Brien', "year": 2025})
 
         assert response.status_code == 200
         # Verify the filter used escaped quotes
-        call_args = mock_collection.get_list.call_args
+        call_args = mock_collection.get_full_list.call_args
         filter_str = call_args[1].get("query_params", {}).get("filter", "")
         assert '\\"' not in filter_str or '"' in filter_str  # Just ensure no crash
+
+    def test_limits_to_20_results(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """At most 20 unique persons are returned."""
+        client, mock_pb = client_with_mock_pb
+
+        attendees = [
+            _make_attendee_with_expand(
+                person_cm_id=10000 + i, first_name="Emma", last_name=f"Test{i}", session_cm_id=1000001
+            )
+            for i in range(25)
+        ]
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_full_list.return_value = attendees
+
+        response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 20

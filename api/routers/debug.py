@@ -580,64 +580,55 @@ async def search_persons(
 ) -> PersonSearchResponse:
     """Search persons by name with autocomplete support.
 
-    Queries the persons collection with case-insensitive name matching
-    and filters to only persons enrolled (with attendee records) for the given year.
-    Returns up to 20 results.
+    Queries enrolled attendees for the given year with person name matching
+    via PocketBase relation-path filters. Returns up to 20 unique persons
+    with their enrolled session CM IDs.
     """
-    # Sanitize query for PocketBase filter
     from api.utils.pb_filters import pb_escape
 
     safe_q = pb_escape(q)
 
-    # Query persons with case-insensitive name matching, scoped to year
-    name_filter = f'year = {year} && (first_name ~ "{safe_q}" || last_name ~ "{safe_q}")'
-    person_results = pb.collection("persons").get_list(
-        1,
-        100,
-        query_params={"filter": name_filter},
+    # Query attendees directly — enrollment is the source of truth
+    attendee_filter = (
+        f"year = {year} && is_active = 1 && status_id = 2"
+        f' && (person.first_name ~ "{safe_q}" || person.last_name ~ "{safe_q}")'
     )
-
-    if not person_results.items:
-        return PersonSearchResponse(items=[], total=0)
-
-    # Get CM IDs from matching persons
-    person_cm_ids = [getattr(p, "cm_id", 0) for p in person_results.items]
-
-    # Query attendees for these persons in the given year
-    cm_id_list = " || ".join(f"person_id = {cid}" for cid in person_cm_ids)
-    attendee_filter = f"year = {year} && is_active = 1 && status_id = 2 && ({cm_id_list})"
     attendees = pb.collection("attendees").get_full_list(
-        query_params={"filter": attendee_filter},
+        query_params={"filter": attendee_filter, "expand": "person,session"},
     )
 
-    # Build person_id -> list of session CM IDs
-    person_sessions: dict[int, list[int]] = {}
+    # Group by person cm_id, collecting session CM IDs
+    person_data: dict[int, PersonSearchItem] = {}
     for att in attendees:
-        pid: int = getattr(att, "person_id", 0)
-        sid: int = getattr(att, "session_cm_id", 0)
-        if pid not in person_sessions:
-            person_sessions[pid] = []
-        person_sessions[pid].append(sid)
-
-    # Only return persons who have attendee records (enrolled), deduplicated by cm_id
-    items = []
-    seen_cm_ids: set[int] = set()
-    for person in person_results.items:
-        cm_id: int = getattr(person, "cm_id", 0)
-        if cm_id not in person_sessions or cm_id in seen_cm_ids:
+        expand = getattr(att, "expand", None)
+        if not expand or not isinstance(expand, dict):
             continue
-        seen_cm_ids.add(cm_id)
-        items.append(
-            PersonSearchItem(
+        person = expand.get("person")
+        session = expand.get("session")
+        if not person:
+            continue
+
+        cm_id: int = getattr(person, "cm_id", 0)
+        if cm_id in person_data:
+            # Add session to existing person
+            session_cm_id = getattr(session, "cm_id", 0) if session else 0
+            if session_cm_id and session_cm_id not in person_data[cm_id].sessions:
+                person_data[cm_id].sessions.append(session_cm_id)
+        else:
+            if len(person_data) >= 20:
+                continue
+            session_cm_id = getattr(session, "cm_id", 0) if session else 0
+            person_data[cm_id] = PersonSearchItem(
                 cm_id=cm_id,
                 first_name=getattr(person, "first_name", ""),
                 last_name=getattr(person, "last_name", ""),
                 grade=getattr(person, "grade", None),
-                sessions=sorted(person_sessions[cm_id]),
+                sessions=[session_cm_id] if session_cm_id else [],
             )
-        )
-        if len(items) >= 20:
-            break
+
+    items = [item for item in person_data.values()]
+    for item in items:
+        item.sessions.sort()
 
     return PersonSearchResponse(items=items, total=len(items))
 
