@@ -603,3 +603,33 @@ The system has **two layers of delta detection**:
 |---|---|
 | `frontend/src/components/BunkRequestsUpload.tsx` | Upload UI component |
 | `frontend/src/services/sync.ts` | `uploadBunkRequestsCSV()` API call |
+
+---
+
+## Pipeline Debug Trace Reference
+
+The pipeline debug tool captures trace data at every phase when `collect_traces=true` is set on the process-requests API, or when using the Pipeline Debug page's "New Trace" flow. Traces are stored in the `debug_pipeline_traces` PocketBase collection as JSON.
+
+**Schema source:** `bunking/sync/bunk_request_processor/debug/trace_models.py`
+**TypeScript types:** `frontend/src/components/pipeline-debug/types.ts`
+
+### What Each Phase Captures
+
+| Phase | Key | What's Captured |
+|---|---|---|
+| **Pre-P1** | `pre_phase1` | Action taken (parsed/skipped/direct_mapped), skip reason, original vs cleaned text, staff metadata, requester info (name, CM ID, grade), session IDs, socialize mapped value, field path, N/A prefix stripped |
+| **P1 Parse** | `phase1_parse` | Per intent: target name, request type, confidence, keywords, AI reasoning + chain-of-thought, parse notes, needs_clarification, temporal info. Plus: ran flag, token count, processing time, sanitization (suspicious detection, risk level, confidence penalty), raw AI response, is_valid, error message |
+| **Validation** | `validation` | Type validation (passed flag + rejected list), temporal conflicts (filtered count + details), source text validation (rejected count, hallucinated names, unit/cabin names) |
+| **P2 Resolution** | `phase2_resolution[]` | Per intent: target name, fast paths tried + results, all candidates with score breakdowns (session match, grade proximity, social signal, spread filter), pipeline strategies tried in order with confidence/candidate counts, final result (person CM ID, name, confidence, method, resolved/ambiguous flags, confidence factors), staff filtered flag, hallucination detected, social graph details (enhanced, connection strength, shared friends, smart resolved, reranked), spread filter applied |
+| **Expansion** | `placeholder_expansion` | Triggered flag, expansion type (last_year_bunkmates/sibling), expanded count, expanded targets list with names and request types |
+| **P2.5 Historical** | `historical_verification` | Whether verification ran, boost applied flag, original confidence, boosted confidence (boost is +0.10, capped at 0.95) |
+| **P3 Disambiguation** | `phase3_disambiguation[]` | Per intent: target name, ran flag, candidates sent (top 5 with details), AI context, AI selection (person CM ID), AI reasoning + chain-of-thought, result status (not_needed/resolved/no_match/still_ambiguous), confidence before/after |
+| **Post-Pipeline** | `post_pipeline` | Conflict detection (has_conflict + details), self-reference detected, reciprocal (detected, boost applied, boost amount, pair CM ID), deduplication (was_duplicate, kept_over), final bunk requests list (requester/target CM IDs, names, request type, status, confidence, priority, resolution method, is_placeholder, declined reason) |
+
+### Debug Tool UI
+
+The Pipeline Debug page (`/summer/debug/pipeline`) provides:
+- **Batch overview**: Select a trace-enabled run → see summary table with PB-native filtering (status, confidence, resolution method, session, source field, Phase 3 triggered)
+- **Drill-down**: Click a row → React Flow canvas with 8 phase nodes. Click any node → detail panel showing all captured data for that phase
+- **New Trace**: Pick a specific camper → run their requests through the pipeline (optionally stop at any phase) → see results immediately
+- **Re-execution**: "Run Again" (single phase, dry-run) or "Run From Here →" (cascade through remaining phases)
