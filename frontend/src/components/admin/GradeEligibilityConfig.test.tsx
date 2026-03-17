@@ -271,4 +271,55 @@ describe('GradeEligibilityConfig', () => {
       expect(screen.getByText(/limited.*threshold/i)).toBeInTheDocument()
     })
   })
+
+  it('resets threshold to default when no threshold record exists', async () => {
+    // First render: threshold record exists with value 65
+    const queryClient = createTestQueryClient()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockConfigRecords) // config records
+      .mockResolvedValueOnce([
+        {
+          id: 'thr1',
+          category: 'session_availability',
+          subcategory: '2026',
+          config_key: 'limited_threshold',
+          value: 65,
+        },
+      ]) // threshold
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <GradeEligibilityConfig />
+      </QueryClientProvider>
+    )
+
+    // Wait for the threshold input to show value 65
+    await waitFor(() => {
+      const thresholdInput = screen.getByLabelText(/limited.*threshold/i) as HTMLInputElement
+      expect(thresholdInput.value).toBe('65')
+    })
+
+    // Second render: simulate year change where no threshold record exists
+    // Clear mock and set up new responses with empty threshold
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockConfigRecords) // config records
+      .mockResolvedValueOnce([]) // no threshold record for new year
+
+    // Invalidate queries to trigger refetch
+    await queryClient.invalidateQueries()
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <GradeEligibilityConfig />
+      </QueryClientProvider>
+    )
+
+    // Threshold should reset to default (80), not stay at 65
+    await waitFor(() => {
+      const thresholdInput = screen.getByLabelText(/limited.*threshold/i) as HTMLInputElement
+      expect(thresholdInput.value).toBe('80')
+    })
+  })
 })

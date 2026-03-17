@@ -111,6 +111,9 @@ export function GradeEligibilityConfig() {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined at runtime
       setThreshold((rec.value as number) ?? 80)
       setThresholdId(rec.id)
+    } else {
+      setThreshold(80)
+      setThresholdId(undefined)
     }
   }, [thresholdRecords])
 
