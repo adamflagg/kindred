@@ -957,3 +957,75 @@ class TestRouterErrorHandling:
 
         with pytest.raises(RuntimeError, match="secret db error"):
             await service.calculate_availability(year=2026)
+
+
+# ============================================================================
+# Merged Attendee Processing Tests
+# ============================================================================
+
+
+class TestProcessAttendees:
+    """Test the merged _process_attendees method."""
+
+    def test_enrolled_and_waitlisted_in_single_pass(self, service):
+        """Merged method returns both enrollment counts and waitlist data."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        attendees = [
+            create_mock_attendee(101, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(102, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(201, 1001, gender="F", status="enrolled"),
+            create_mock_attendee(
+                301,
+                1001,
+                gender="M",
+                status="waitlisted",
+                grade=5,
+                effective_date="2025-11-12",
+                enrollment_date="2025-11-13",
+            ),
+            create_mock_attendee(
+                302,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=6,
+                effective_date="2025-11-14",
+                enrollment_date="2025-11-15",
+            ),
+        ]
+
+        enrollment, waitlist_data = service._process_attendees(sessions, attendees)
+
+        # Enrollment counts
+        assert enrollment[1001]["enrolled_M"] == 2
+        assert enrollment[1001]["enrolled_F"] == 1
+        assert enrollment[1001]["enrolled_total"] == 3
+        assert enrollment[1001]["waitlisted_M"] == 1
+        assert enrollment[1001]["waitlisted_F"] == 1
+        assert enrollment[1001]["waitlisted_total"] == 2
+
+        # Waitlist data — by_grade and persons present
+        assert 1001 in waitlist_data
+        assert waitlist_data[1001]["by_grade_M"] == {5: 1}
+        assert waitlist_data[1001]["by_grade_F"] == {6: 1}
+        assert len(waitlist_data[1001]["persons_M"]) == 1
+        assert len(waitlist_data[1001]["persons_F"]) == 1
+
+    def test_non_waitlisted_counted_as_enrolled(self, service):
+        """Any status that isn't 'waitlisted' is counted as enrolled."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        attendees = [
+            create_mock_attendee(101, 1001, gender="M", status="applied"),
+        ]
+
+        enrollment, waitlist_data = service._process_attendees(sessions, attendees)
+
+        # 'applied' should be counted as enrolled, not waitlisted
+        assert enrollment[1001]["enrolled_M"] == 1
+        assert enrollment[1001].get("waitlisted_M", 0) == 0
+        # No waitlist data for non-waitlisted
+        assert 1001 not in waitlist_data
