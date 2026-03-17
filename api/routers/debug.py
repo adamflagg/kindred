@@ -1740,9 +1740,9 @@ async def run_full_trace(
 
         result = await runner.run_full_trace(parse_requests, dry_run=body.dry_run, stop_at_phase=body.stop_at_phase)
 
-        # Flush traces to PocketBase (only if we recorded any)
+        # Flush traces to PocketBase (only if collector is enabled)
         trace_id = None
-        if trace_collector._traces:
+        if trace_collector.enabled:
             try:
                 await trace_collector.flush(
                     pb,

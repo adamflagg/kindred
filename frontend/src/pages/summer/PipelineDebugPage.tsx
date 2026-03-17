@@ -11,6 +11,7 @@ import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Link } from 'react-router'
 import { Bug, GitGraph, ArrowLeft, Loader2, FileText, Plus } from 'lucide-react'
+import { useYear } from '../../hooks/useCurrentYear'
 import {
   PipelineRunSelector,
   PipelineBatchList,
@@ -32,6 +33,7 @@ import {
 export default function PipelineDebugPage() {
   const { traceId } = useParams<{ traceId?: string }>()
   const navigate = useNavigate()
+  const year = useYear()
 
   // Batch view state
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -143,7 +145,7 @@ export default function PipelineDebugPage() {
       runFullTrace.mutate(
         {
           original_request_ids: originalRequestIds,
-          year: new Date().getFullYear(),
+          year,
           session_cm_ids: sessionCmIds,
           dry_run: true,
           stop_at_phase: stopAtPhase,
@@ -158,7 +160,7 @@ export default function PipelineDebugPage() {
         }
       )
     },
-    [runFullTrace, navigate]
+    [runFullTrace, navigate, year]
   )
 
   // Drill-down view
@@ -246,7 +248,7 @@ export default function PipelineDebugPage() {
           onClose={() => setIsNewTraceOpen(false)}
           onRunTrace={handleRunTrace}
           isRunning={runFullTrace.isPending}
-          year={new Date().getFullYear()}
+          year={year}
         />
       </div>
     )

@@ -50,6 +50,7 @@ export function NewTraceModal({
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selectedPerson, setSelectedPerson] = useState<PersonSearchItem | null>(null)
+  const [selectedPersonSessions, setSelectedPersonSessions] = useState<number[]>([])
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set())
   const [stopAtPhase, setStopAtPhase] = useState<string | null>(null)
   const [pastedCmIds, setPastedCmIds] = useState('')
@@ -62,14 +63,19 @@ export function NewTraceModal({
   }, [searchQuery])
 
   // Person search hook
-  const { data: searchResults, isLoading: isSearching } = useSearchPersons(debouncedQuery, year)
+  const {
+    data: searchResults,
+    isLoading: isSearching,
+    isError: isSearchError,
+  } = useSearchPersons(debouncedQuery, year)
 
   // Load requests for selected person
   const selectedCmId = activeTab === 0 ? (selectedPerson?.cm_id ?? null) : pastedCmId
-  const { data: requestsData, isLoading: isLoadingRequests } = useOriginalRequestsByCamper(
-    selectedCmId,
-    year
-  )
+  const {
+    data: requestsData,
+    isLoading: isLoadingRequests,
+    isError: isRequestsError,
+  } = useOriginalRequestsByCamper(selectedCmId, year)
 
   // Auto-select all requests when they load
   useEffect(() => {
@@ -90,22 +96,14 @@ export function NewTraceModal({
     return map
   }, [requestsData])
 
-  // Extract unique session CM IDs from selected requests
+  // Extract unique session CM IDs from selected person's sessions
   const sessionCmIds = useMemo(() => {
-    if (!requestsData?.items) return []
-    const sessions = new Set<number>()
-    for (const req of requestsData.items) {
-      if (selectedRequestIds.has(req.id)) {
-        // Session CM IDs are not directly on OriginalRequestItem,
-        // so we pass an empty array and let the API resolve sessions
-        // from the original_request_ids
-      }
-    }
-    return Array.from(sessions)
-  }, [requestsData, selectedRequestIds])
+    return selectedPersonSessions
+  }, [selectedPersonSessions])
 
   function handleSelectPerson(person: PersonSearchItem) {
     setSelectedPerson(person)
+    setSelectedPersonSessions(person.sessions)
     setSelectedRequestIds(new Set())
   }
 
@@ -199,6 +197,12 @@ export function NewTraceModal({
                 </div>
               )}
 
+              {isSearchError && (
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  Search failed. Please try again.
+                </p>
+              )}
+
               {searchResults?.items && !selectedPerson && (
                 <ul className="divide-bark-200 dark:divide-bark-700 divide-y rounded-lg border">
                   {searchResults.items.map((person: PersonSearchItem) => (
@@ -249,7 +253,7 @@ export function NewTraceModal({
             <div className="space-y-3">
               <div className="flex gap-2">
                 <textarea
-                  placeholder="Enter comma-separated CM IDs (e.g. 12345, 67890)"
+                  placeholder="Enter a CampMinder ID (e.g. 12345)"
                   value={pastedCmIds}
                   onChange={(e) => setPastedCmIds(e.target.value)}
                   rows={2}
@@ -324,6 +328,14 @@ export function NewTraceModal({
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading requests...
         </div>
+      )
+    }
+
+    if (isRequestsError) {
+      return (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          Failed to load requests. Please try again.
+        </p>
       )
     }
 

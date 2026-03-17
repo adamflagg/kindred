@@ -23,7 +23,16 @@ from .trace_models import TraceData
 logger = get_logger(__name__)
 
 # Canonical phase ordering used by stop_at_phase validation
-PHASE_ORDER: list[str] = ["phase1", "phase2", "phase3"]
+PHASE_ORDER: list[str] = [
+    "pre_phase1",
+    "phase1",
+    "validation",
+    "phase2",
+    "expansion",
+    "historical",
+    "phase3",
+    "post_pipeline",
+]
 
 
 class PhaseRunner:
@@ -204,11 +213,19 @@ class PhaseRunner:
 
         result: dict[str, Any] = {"dry_run": dry_run}
 
+        # Pre-Phase 1 prep (trace data already recorded by orchestrator)
+        if stop_at_phase == "pre_phase1":
+            return result
+
         # Phase 1
         phase1_results = await self.run_phase1(parse_requests)
         result["phase1_results"] = phase1_results
 
         if stop_at_phase == "phase1":
+            return result
+
+        # Validation (currently part of phase1 output validation)
+        if stop_at_phase == "validation":
             return result
 
         # Phase 2
@@ -220,6 +237,14 @@ class PhaseRunner:
             result["phase2_results"] = []
 
         if stop_at_phase == "phase2":
+            return result
+
+        # Expansion (placeholder expansion runs as part of phase2 post-processing)
+        if stop_at_phase == "expansion":
+            return result
+
+        # Historical verification (runs after expansion)
+        if stop_at_phase == "historical":
             return result
 
         # Phase 3 — only ambiguous cases
@@ -234,7 +259,10 @@ class PhaseRunner:
         else:
             result["phase3_results"] = []
 
-        # Production write mode
+        if stop_at_phase == "phase3":
+            return result
+
+        # Post-pipeline (production write mode)
         if not dry_run:
             logger.info("PhaseRunner: production write mode — saving results")
             result["production_write"] = True
