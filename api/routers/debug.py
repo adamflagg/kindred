@@ -560,9 +560,10 @@ async def list_original_requests_by_camper(
 
     items = []
     for record in records:
-        expanded = getattr(record, "expand", {}).get("requester", {})
-        first = expanded.get("preferred_name") or expanded.get("first_name", "")
-        last = expanded.get("last_name", "")
+        expand = getattr(record, "expand", {})
+        expanded = expand.get("requester") if isinstance(expand, dict) else None
+        first = (getattr(expanded, "preferred_name", None) or getattr(expanded, "first_name", "")) if expanded else ""
+        last = getattr(expanded, "last_name", "") if expanded else ""
         requester_name = f"{first} {last}".strip()
 
         items.append(
