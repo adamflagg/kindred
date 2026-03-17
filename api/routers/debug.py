@@ -626,7 +626,7 @@ async def search_persons(
                 sessions=[session_cm_id] if session_cm_id else [],
             )
 
-    items = [item for item in person_data.values()]
+    items = list(person_data.values())
     for item in items:
         item.sessions.sort()
 
