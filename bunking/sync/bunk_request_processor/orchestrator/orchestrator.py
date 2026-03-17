@@ -1001,6 +1001,78 @@ class RequestOrchestrator:
         # Convert raw requests to ParseRequest objects
         parse_requests, pre_parsed_results = await self._prepare_parse_requests(raw_requests)
 
+        return await self._execute_pipeline(
+            parse_requests=parse_requests,
+            pre_parsed_results=pre_parsed_results,
+            progress_callback=progress_callback,
+        )
+
+    async def process_from_parse_requests(
+        self,
+        parse_requests: list[ParseRequest],
+        stop_at_phase: str | None = None,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """Run the pipeline from pre-prepared ParseRequest objects (debug use).
+
+        Called by PhaseRunner for full debug traces. Skips raw-request preparation
+        and database clearing; starts directly at Phase 1 parse.
+
+        Args:
+            parse_requests: Pre-prepared ParseRequest objects to run through the pipeline.
+            stop_at_phase: If set, stop after this phase (e.g. "phase1", "phase2").
+                Downstream phases will not execute. None runs all phases.
+            dry_run: If True (default), skip writing bunk requests to the database.
+
+        Returns:
+            Dict with pipeline results and dry_run flag.
+        """
+        return await self._execute_pipeline(
+            parse_requests=parse_requests,
+            pre_parsed_results=[],
+            stop_at_phase=stop_at_phase,
+            dry_run=dry_run,
+        )
+
+    async def _execute_pipeline(
+        self,
+        parse_requests: list[ParseRequest],
+        pre_parsed_results: list[ParseResult],
+        stop_at_phase: str | None = None,
+        dry_run: bool = False,
+        progress_callback: Callable[..., Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run all pipeline phases with trace recording.
+
+        Shared implementation for process_requests and process_from_parse_requests.
+
+        Args:
+            parse_requests: ParseRequest objects to process through Phase 1.
+            pre_parsed_results: ParseResult objects already parsed (skips Phase 1 AI).
+            stop_at_phase: If set, stop after this phase. None runs all phases.
+            dry_run: If True, skip writing bunk requests to the database.
+            progress_callback: Optional callback for progress updates.
+
+        Returns:
+            Dict with pipeline results and statistics.
+        """
+        valid_stop_phases = {
+            None,
+            "pre_phase1",
+            "phase1",
+            "validation",
+            "phase2",
+            "expansion",
+            "historical",
+            "phase3",
+            "post_pipeline",
+        }
+        if stop_at_phase not in valid_stop_phases:
+            raise ValueError(f"Unknown stop_at_phase '{stop_at_phase}'")
+
+        if stop_at_phase == "pre_phase1":
+            return {"dry_run": dry_run, "phase": "pre_phase1"}
+
         # Phase 1: AI Parse-Only (skip if no requests need AI)
         if parse_requests:
             logger.info(f"=== Phase 1: AI Parse-Only ({len(parse_requests)} requests) ===")
@@ -1067,6 +1139,9 @@ class RequestOrchestrator:
                 parse_request={"field_name": pr.parse_request.field_name} if pr.parse_request else {},
             )
 
+        if stop_at_phase == "phase1":
+            return {"dry_run": dry_run, "phase": "phase1"}
+
         # This catches AI errors where wrong request type is returned for strict fields
         validated_count, rejected_count = self._validate_request_types(parse_results)
         if rejected_count > 0:
@@ -1107,6 +1182,9 @@ class RequestOrchestrator:
                     "note": "batch-level aggregate, not per-request",
                 },
             )
+
+        if stop_at_phase == "validation":
+            return {"dry_run": dry_run, "phase": "validation"}
 
         # Initialize temporal name cache before Phase 2
 
@@ -1163,6 +1241,9 @@ class RequestOrchestrator:
                     ),
                 )
 
+        if stop_at_phase == "phase2":
+            return {"dry_run": dry_run, "phase": "phase2"}
+
         # Expand LAST_YEAR_BUNKMATES placeholders into individual bunk_with requests
         # This must happen after Phase 2 resolution and before Phase 3 disambiguation
         logger.info("=== Expanding LAST_YEAR_BUNKMATES Placeholders ===")
@@ -1197,6 +1278,9 @@ class RequestOrchestrator:
                 expanded_count=len(expanded_reqs),
                 expanded_targets=expanded_targets,
             )
+
+        if stop_at_phase == "expansion":
+            return {"dry_run": dry_run, "phase": "expansion"}
 
         # Post-expansion conflict detection: catch conflicts that weren't visible before
         # SIBLING expansion (e.g., "not_bunk_with Pippi" vs "bunk_with SIBLING" → Pippi)
@@ -1236,6 +1320,9 @@ class RequestOrchestrator:
                 original_confidence=original_conf if boost_applied else None,
                 boosted_confidence=boosted_conf if boost_applied else None,
             )
+
+        if stop_at_phase == "historical":
+            return {"dry_run": dry_run, "phase": "historical"}
 
         # Count Phase 2 results (on expanded results)
         for _, resolution_list in resolution_results:
@@ -1338,6 +1425,9 @@ class RequestOrchestrator:
                     ),
                 )
 
+        if stop_at_phase == "phase3":
+            return {"dry_run": dry_run, "phase": "phase3"}
+
         # Convert to request format for conflict detection
         resolved_requests = self._prepare_for_conflict_detection(resolution_results)
 
@@ -1351,9 +1441,13 @@ class RequestOrchestrator:
             # Apply conflict resolution
             resolved_requests = self.conflict_detector.apply_conflict_resolution(resolved_requests, conflict_result)
 
-        # Create bunk requests
-        logger.info("=== Creating Bunk Requests ===")
-        created_requests = await self._create_bunk_requests(resolved_requests)
+        # Create bunk requests (skipped in dry_run mode)
+        if dry_run:
+            logger.info("=== Skipping Bunk Request Creation (dry_run=True) ===")
+            created_requests: list[Any] = []
+        else:
+            logger.info("=== Creating Bunk Requests ===")
+            created_requests = await self._create_bunk_requests(resolved_requests)
         self._stats["requests_created"] = len(created_requests)
 
         # --- Trace: Post-Pipeline results ---

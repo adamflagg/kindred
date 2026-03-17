@@ -257,42 +257,47 @@ class TestPhaseRunnerRunFromPhase:
 
 class TestPhaseRunnerRunFullTrace:
     @pytest.mark.anyio
-    async def test_runs_all_phases(self):
-        """Run full trace should run Phase 1 and Phase 2 in order."""
+    async def test_delegates_to_process_from_parse_requests(self):
+        """run_full_trace should delegate to orchestrator.process_from_parse_requests."""
         orch = _make_mock_orchestrator()
-        # Phase 1 returns a non-empty result so Phase 2 gets called
-        mock_parse_result = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[mock_parse_result])
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True})
         runner = PhaseRunner(orch)
 
         mock_requests = [MagicMock()]
         await runner.run_full_trace(mock_requests, dry_run=True)  # type: ignore[arg-type]
 
-        orch.phase1_service.batch_parse.assert_called_once()
-        orch.phase2_service.batch_resolve.assert_called_once()
-        # Phase 3 called only if there are ambiguous results - with empty P2 results it's not called
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=mock_requests,
+            stop_at_phase=None,
+            dry_run=True,
+        )
 
     @pytest.mark.anyio
-    async def test_dry_run_does_not_save(self):
-        """Dry run full trace should not save to production."""
+    async def test_passes_stop_at_phase(self):
+        """run_full_trace should pass stop_at_phase to process_from_parse_requests."""
         orch = _make_mock_orchestrator()
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True})
         runner = PhaseRunner(orch)
 
-        await runner.run_full_trace([MagicMock()], dry_run=True)
+        await runner.run_full_trace([], stop_at_phase="phase1", dry_run=True)
 
-        orch._save_bunk_requests.assert_not_called()
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=[],
+            stop_at_phase="phase1",
+            dry_run=True,
+        )
 
     @pytest.mark.anyio
-    async def test_returns_trace_data(self):
-        """Run full trace should return a TraceCollector or trace data."""
+    async def test_dry_run_false_passed_through(self):
+        """run_full_trace dry_run=False should be forwarded."""
         orch = _make_mock_orchestrator()
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": False})
         runner = PhaseRunner(orch)
 
-        result = await runner.run_full_trace([MagicMock()], dry_run=True)
+        await runner.run_full_trace([], dry_run=False)
 
-        # Result should contain trace_data and phase results
-        assert "phase1_results" in result
-        assert "phase2_results" in result
-        assert "dry_run" in result
-        assert result["dry_run"] is True
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=[],
+            stop_at_phase=None,
+            dry_run=False,
+        )

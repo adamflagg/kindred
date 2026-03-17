@@ -43,3 +43,20 @@ export function Badge({ label, color = 'gray' }: BadgeProps) {
     </span>
   )
 }
+
+interface PanelSectionProps {
+  label: string
+  children: React.ReactNode
+}
+
+/** Labeled section divider for Input / Action / Output structure in detail panels. */
+export function PanelSection({ label, children }: PanelSectionProps) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-semibold tracking-widest text-gray-400 uppercase dark:text-gray-500">
+        {label}
+      </p>
+      <div className="space-y-1">{children}</div>
+    </div>
+  )
+}

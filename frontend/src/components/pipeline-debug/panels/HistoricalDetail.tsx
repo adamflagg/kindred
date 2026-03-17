@@ -1,12 +1,15 @@
 /**
  * HistoricalDetail - Detail panel for Phase 2.5 (Historical Verification).
  *
- * Shows: ran flag, boost applied, original confidence, boosted confidence.
+ * Input:   Multiple resolved targets from Phase 2
+ * Action:  Checks if targets were in the same bunk last year
+ * Output:  Confidence boost applied (or not)
  */
 
 import type { HistoricalVerificationTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
+import { DataRow, Badge, PanelSection } from './DataRow'
+import { PhaseHeader } from './PhaseHeader'
 
 interface HistoricalDetailProps {
   data: HistoricalVerificationTrace
@@ -21,13 +24,30 @@ export function HistoricalDetail({
   onRunFromHere,
   isRunning,
 }: HistoricalDetailProps) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-        P2.5 Historical Verification
-      </h3>
+  const status = data.ran ? 'ran' : 'skipped'
+  const statusLabel = !data.ran ? 'skipped' : data.boost_applied ? 'boosted' : 'no boost'
 
-      <div className="space-y-1">
+  return (
+    <div className="space-y-5">
+      <PhaseHeader
+        phase="historical"
+        status={status}
+        statusLabel={statusLabel}
+        metrics={
+          data.ran &&
+          data.boost_applied &&
+          data.original_confidence !== null &&
+          data.boosted_confidence !== null ? (
+            <DataRow
+              label="Boost"
+              value={`+${(data.boosted_confidence - data.original_confidence).toFixed(2)}`}
+            />
+          ) : null
+        }
+      />
+
+      {/* ACTION */}
+      <PanelSection label="Action">
         <DataRow
           label="Ran"
           value={<Badge label={data.ran ? 'Yes' : 'No'} color={data.ran ? 'green' : 'gray'} />}
@@ -36,33 +56,40 @@ export function HistoricalDetail({
           label="Boost Applied"
           value={
             <Badge
-              label={data.boost_applied ? 'Boost Applied' : 'No Boost'}
+              label={data.boost_applied ? 'Yes' : 'No'}
               color={data.boost_applied ? 'green' : 'gray'}
             />
           }
         />
-      </div>
+      </PanelSection>
 
-      {data.ran && (
-        <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
-          <DataRow
-            label="Original Confidence"
-            value={data.original_confidence !== null ? String(data.original_confidence) : '-'}
-          />
-          <DataRow
-            label="Boosted Confidence"
-            value={data.boosted_confidence !== null ? String(data.boosted_confidence) : '-'}
-          />
-          {data.boost_applied &&
-            data.original_confidence !== null &&
-            data.boosted_confidence !== null && (
-              <DataRow
-                label="Boost Amount"
-                value={`+${(data.boosted_confidence - data.original_confidence).toFixed(2)}`}
-              />
-            )}
-        </div>
-      )}
+      {/* OUTPUT */}
+      <PanelSection label="Output">
+        {!data.ran ? (
+          <p className="text-sm text-gray-400 italic dark:text-gray-500">
+            Historical check did not run
+          </p>
+        ) : (
+          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+            <DataRow
+              label="Original Confidence"
+              value={data.original_confidence !== null ? String(data.original_confidence) : '—'}
+            />
+            <DataRow
+              label="Boosted Confidence"
+              value={data.boosted_confidence !== null ? String(data.boosted_confidence) : '—'}
+            />
+            {data.boost_applied &&
+              data.original_confidence !== null &&
+              data.boosted_confidence !== null && (
+                <DataRow
+                  label="Boost Amount"
+                  value={`+${(data.boosted_confidence - data.original_confidence).toFixed(2)}`}
+                />
+              )}
+          </div>
+        )}
+      </PanelSection>
 
       <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
     </div>

@@ -215,74 +215,24 @@ class PhaseRunner:
     ) -> dict[str, Any]:
         """Run all phases end-to-end with trace collection.
 
+        Delegates to orchestrator.process_from_parse_requests, which runs the
+        full pipeline with trace recording at every phase.
+
         Args:
             parse_requests: List of ParseRequest objects to process.
             dry_run: If True (default), do not write to production.
-            stop_at_phase: If set, stop after this phase completes (e.g. "phase1", "phase2").
+            stop_at_phase: If set, stop after this phase completes.
                 Downstream phases will not execute. None runs all phases.
 
         Returns:
-            Dict with all phase results and dry_run flag.
+            Dict with pipeline results and dry_run flag.
         """
         logger.info("PhaseRunner: running full trace (dry_run=%s, stop_at_phase=%s)", dry_run, stop_at_phase)
-
-        result: dict[str, Any] = {"dry_run": dry_run}
-
-        # Pre-Phase 1 prep (trace data already recorded by orchestrator)
-        if stop_at_phase == "pre_phase1":
-            return result
-
-        # Phase 1
-        phase1_results = await self.run_phase1(parse_requests)
-        result["phase1_results"] = phase1_results
-
-        if stop_at_phase == "phase1":
-            return result
-
-        # Validation (currently part of phase1 output validation)
-        if stop_at_phase == "validation":
-            return result
-
-        # Phase 2
-        if phase1_results:
-            phase2_results = await self.run_phase2(phase1_results)
-            result["phase2_results"] = phase2_results
-        else:
-            phase2_results = []
-            result["phase2_results"] = []
-
-        if stop_at_phase == "phase2":
-            return result
-
-        # Expansion (placeholder expansion runs as part of phase2 post-processing)
-        if stop_at_phase == "expansion":
-            return result
-
-        # Historical verification (runs after expansion)
-        if stop_at_phase == "historical":
-            return result
-
-        # Phase 3 — only ambiguous cases
-        ambiguous = [
-            (pr, rr_list)
-            for pr, rr_list in phase2_results
-            if any(not rr.is_resolved and getattr(rr, "method", "") != "age_preference" for rr in rr_list)
-        ]
-        if ambiguous:
-            phase3_results = await self.run_phase3(ambiguous)
-            result["phase3_results"] = phase3_results
-        else:
-            result["phase3_results"] = []
-
-        if stop_at_phase == "phase3":
-            return result
-
-        # Post-pipeline (production write mode)
-        if not dry_run:
-            logger.info("PhaseRunner: production write mode — saving results")
-            result["production_write"] = True
-
-        return result
+        return await self._orch.process_from_parse_requests(
+            parse_requests=parse_requests,
+            stop_at_phase=stop_at_phase,
+            dry_run=dry_run,
+        )
 
     def _reconstruct_parse_results_from_trace(
         self,

@@ -1,17 +1,17 @@
 /**
  * Phase1Detail - Detail panel for Phase 1 (AI Parse).
  *
- * Shows: all parsed intents with target name, type, confidence, keywords,
- * reasoning, parse notes, needs_clarification, temporal info.
- * Plus: raw AI response (collapsible), token count, processing time,
- * sanitization, is_valid, error.
+ * Input:   Cleaned text from pre-phase1 + source field
+ * Action:  AI parsing — extracts person names and request types from free text
+ * Output:  Parsed intents (target names, types, confidence, keywords, reasoning)
  */
 
 import type { Phase1Trace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
-import { confidenceColor } from './panelUtils'
+import { DataRow, Badge, PanelSection } from './DataRow'
+import { PhaseHeader } from './PhaseHeader'
 import { CollapsibleSection } from './CollapsibleSection'
+import { confidenceColor } from './panelUtils'
 
 interface Phase1DetailProps {
   data: Phase1Trace
@@ -21,22 +21,28 @@ interface Phase1DetailProps {
 }
 
 export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Phase1DetailProps) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Phase 1 Parse</h3>
+  const status = !data.ran ? 'not_run' : data.is_valid ? 'ran' : 'error'
 
-      {/* Summary metrics */}
-      <div className="flex flex-wrap gap-4">
-        <DataRow
-          label="Valid"
-          value={
-            <Badge label={data.is_valid ? 'Yes' : 'No'} color={data.is_valid ? 'green' : 'red'} />
-          }
-        />
-        <DataRow label="Tokens" value={String(data.token_count ?? '-')} />
-        <DataRow label="Time" value={`${data.processing_time_ms ?? '-'}ms`} />
-        <DataRow label="Intents" value={String(data.parsed_intents.length)} />
-      </div>
+  return (
+    <div className="space-y-5">
+      <PhaseHeader
+        phase="phase1"
+        status={status}
+        statusLabel={!data.ran ? 'skipped' : data.is_valid ? 'valid' : 'invalid'}
+        metrics={
+          data.ran ? (
+            <>
+              <DataRow label="Intents" value={String(data.parsed_intents.length)} />
+              {data.token_count != null && (
+                <DataRow label="Tokens" value={String(data.token_count)} />
+              )}
+              {data.processing_time_ms != null && (
+                <DataRow label="Time" value={`${data.processing_time_ms}ms`} />
+              )}
+            </>
+          ) : null
+        }
+      />
 
       {data.error_message && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
@@ -44,60 +50,85 @@ export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         </div>
       )}
 
-      {/* Sanitization */}
-      {data.sanitization.is_suspicious && (
-        <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Suspicious Input</p>
-          <DataRow label="Risk Level" value={data.sanitization.risk_level ?? 'unknown'} />
-          <DataRow
-            label="Confidence Penalty"
-            value={String(data.sanitization.confidence_penalty)}
-          />
-        </div>
-      )}
-
-      {/* Parsed intents */}
-      {data.parsed_intents.map((intent, idx) => (
-        <div key={idx} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-              {intent.target_name}
-            </span>
-            <Badge label={intent.request_type} color="blue" />
-            <Badge label={String(intent.confidence)} color={confidenceColor(intent.confidence)} />
-            {intent.needs_clarification && <Badge label="needs clarification" color="amber" />}
+      {/* INPUT */}
+      <PanelSection label="Input">
+        <DataRow
+          label="Source Field"
+          value={
+            data.parse_request?.['field_name'] ? String(data.parse_request['field_name']) : '—'
+          }
+          mono
+        />
+        {data.sanitization?.is_suspicious && (
+          <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              ⚠ Suspicious input detected
+            </p>
+            <DataRow label="Risk Level" value={data.sanitization.risk_level ?? 'unknown'} />
+            <DataRow
+              label="Confidence Penalty"
+              value={String(data.sanitization.confidence_penalty)}
+            />
           </div>
-          <div className="space-y-1 text-sm">
-            <DataRow label="Keywords" value={intent.keywords_found.join(', ')} />
-            <DataRow label="Reasoning" value={intent.reasoning} />
-            {intent.ai_reasoning_summary && (
-              <DataRow label="AI Reasoning" value={intent.ai_reasoning_summary} />
-            )}
-            {intent.parse_notes && <DataRow label="Parse Notes" value={intent.parse_notes} />}
-            {intent.temporal_info && (
-              <>
-                <DataRow
-                  label="Temporal"
-                  value={intent.temporal_info.is_superseded ? 'Superseded' : 'Active'}
+        )}
+      </PanelSection>
+
+      {/* ACTION */}
+      <PanelSection label="Action">
+        <DataRow
+          label="AI Ran"
+          value={<Badge label={data.ran ? 'Yes' : 'No'} color={data.ran ? 'green' : 'gray'} />}
+        />
+        {data.ai_reasoning_summary && (
+          <DataRow label="AI Summary" value={data.ai_reasoning_summary} />
+        )}
+      </PanelSection>
+
+      {/* OUTPUT */}
+      <PanelSection label="Output">
+        {data.parsed_intents.length === 0 ? (
+          <p className="text-sm text-gray-400 italic dark:text-gray-500">No intents parsed</p>
+        ) : (
+          data.parsed_intents.map((intent, idx) => (
+            <div key={idx} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                  {intent.target_name || <em className="font-normal text-gray-400">unnamed</em>}
+                </span>
+                <Badge label={intent.request_type} color="blue" />
+                <Badge
+                  label={String(intent.confidence)}
+                  color={confidenceColor(intent.confidence)}
                 />
-                {intent.temporal_info.date && (
-                  <DataRow label="Date" value={intent.temporal_info.date} />
+                {intent.needs_clarification && <Badge label="needs clarification" color="amber" />}
+              </div>
+              <div className="space-y-1 text-sm">
+                {intent.keywords_found.length > 0 && (
+                  <DataRow label="Keywords" value={intent.keywords_found.join(', ')} />
                 )}
-              </>
-            )}
-            <DataRow label="CSV Position" value={String(intent.csv_position)} mono />
-          </div>
-        </div>
-      ))}
+                {intent.reasoning && <DataRow label="Reasoning" value={intent.reasoning} />}
+                {intent.ai_reasoning_summary && (
+                  <DataRow label="AI Reasoning" value={intent.ai_reasoning_summary} />
+                )}
+                {intent.parse_notes && <DataRow label="Notes" value={intent.parse_notes} />}
+                {intent.temporal_info && (
+                  <>
+                    <DataRow
+                      label="Temporal"
+                      value={intent.temporal_info.is_superseded ? 'Superseded' : 'Active'}
+                    />
+                    {intent.temporal_info.date && (
+                      <DataRow label="Date" value={intent.temporal_info.date} />
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </PanelSection>
 
-      {/* AI reasoning summary */}
-      {data.ai_reasoning_summary && (
-        <CollapsibleSection title="AI Reasoning Summary">
-          <p className="text-sm text-gray-700 dark:text-gray-300">{data.ai_reasoning_summary}</p>
-        </CollapsibleSection>
-      )}
-
-      {/* Raw AI response */}
+      {/* ADDITIONAL DATA */}
       <CollapsibleSection title="Raw AI Response">
         <pre className="max-h-64 overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
           {JSON.stringify(data.ai_raw_response, null, 2)}

@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Bug, FileCode, Sparkles, Trees, ArrowRight } from 'lucide-react'
+import { Bug, FileCode, Sparkles, Trees } from 'lucide-react'
 import { ParseAnalysisTab, PromptEditorTab } from '../../components/debug'
 import { useTour } from '../../hooks/useTour'
 import { TourReplayButton } from '../../components/tour'
@@ -63,10 +63,10 @@ export default function PromptEditorPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate('/summer/debug/pipeline')}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm transition-colors hover:border-gray-200 dark:hover:border-gray-700"
           >
+            <Bug className="h-4 w-4" />
             Pipeline Debug
-            <ArrowRight className="h-3.5 w-3.5" />
           </button>
           <TourReplayButton tourId={tourId} onReplay={replay} />
         </div>

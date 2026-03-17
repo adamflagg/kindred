@@ -12,60 +12,37 @@ from bunking.sync.bunk_request_processor.debug.phase_runner import PhaseRunner
 class TestStopAtPhase:
     @pytest.mark.anyio
     async def test_stop_at_phase1_skips_phase2(self):
-        """When stop_at_phase='phase1', Phase 2 should not execute."""
+        """run_full_trace delegates stop_at_phase='phase1' to process_from_parse_requests."""
         orch = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[])
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "phase": "phase1"})
         runner = PhaseRunner(orch)
         result = await runner.run_full_trace([], dry_run=True, stop_at_phase="phase1")
-
-        orch.phase1_service.batch_parse.assert_called_once()
-        orch.phase2_service.batch_resolve.assert_not_called()
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=[], stop_at_phase="phase1", dry_run=True
+        )
         assert result["dry_run"] is True
 
     @pytest.mark.anyio
     async def test_stop_at_none_runs_all_phases(self):
-        """When stop_at_phase is None, all phases execute."""
+        """run_full_trace delegates stop_at_phase=None to process_from_parse_requests."""
         orch = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[])
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
-        orch.phase3_service = MagicMock()
-        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
-        orch.temporal_name_cache = MagicMock()
-        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "success": True})
         runner = PhaseRunner(orch)
         result = await runner.run_full_trace([], dry_run=True, stop_at_phase=None)
-
-        orch.phase1_service.batch_parse.assert_called_once()
-        # Phase 2 not called because phase1 returned empty results
-        # This is existing behavior — empty phase1 means no phase2 input
+        orch.process_from_parse_requests.assert_called_once_with(parse_requests=[], stop_at_phase=None, dry_run=True)
         assert result["dry_run"] is True
 
     @pytest.mark.anyio
     async def test_stop_at_none_runs_all_phases_with_data(self):
-        """When stop_at_phase is None and there's data, all phases execute."""
+        """run_full_trace passes parse_requests through to process_from_parse_requests."""
         orch = MagicMock()
-        mock_parse_result = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[mock_parse_result])
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
-        orch.phase3_service = MagicMock()
-        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
-        orch.temporal_name_cache = MagicMock()
-        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "success": True})
         runner = PhaseRunner(orch)
-        await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase=None)
-
-        orch.phase1_service.batch_parse.assert_called_once()
-        orch.phase2_service.batch_resolve.assert_called_once()
+        mock_requests: list[MagicMock] = [MagicMock(), MagicMock()]
+        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase=None)  # type: ignore[arg-type]
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=mock_requests, stop_at_phase=None, dry_run=True
+        )
 
     @pytest.mark.anyio
     async def test_stop_at_phase_before_start_raises_error(self):
@@ -77,45 +54,25 @@ class TestStopAtPhase:
 
     @pytest.mark.anyio
     async def test_stop_at_phase2_runs_phase1_and_phase2(self):
-        """Phase 1 and 2 run, Phase 3 does not."""
+        """run_full_trace delegates stop_at_phase='phase2' to process_from_parse_requests."""
         orch = MagicMock()
-        mock_parse_result = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[mock_parse_result])
-
-        # Phase 2 returns an ambiguous result that would normally trigger Phase 3
-        mock_rr = MagicMock()
-        mock_rr.is_resolved = False
-        mock_rr.method = "local_resolution"
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[(mock_parse_result, [mock_rr])])
-
-        orch.phase3_service = MagicMock()
-        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
-        orch.temporal_name_cache = MagicMock()
-        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "phase": "phase2"})
         runner = PhaseRunner(orch)
-        await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase="phase2")
-
-        orch.phase1_service.batch_parse.assert_called_once()
-        orch.phase2_service.batch_resolve.assert_called_once()
-        orch.phase3_service.batch_disambiguate.assert_not_called()
+        mock_requests: list[MagicMock] = [MagicMock()]
+        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase="phase2")  # type: ignore[arg-type]
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=mock_requests, stop_at_phase="phase2", dry_run=True
+        )
 
     @pytest.mark.anyio
     async def test_stop_at_phase1_result_has_phase1_only(self):
-        """Stopping at phase1 should only include phase1_results in output."""
+        """run_full_trace returns whatever process_from_parse_requests returns."""
         orch = MagicMock()
-        mock_result = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[mock_result])
-
+        expected = {"dry_run": True, "phase": "phase1"}
+        orch.process_from_parse_requests = AsyncMock(return_value=expected)
         runner = PhaseRunner(orch)
         result = await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase="phase1")
-
-        assert "phase1_results" in result
-        assert "phase2_results" not in result
-        assert "phase3_results" not in result
+        assert result is expected
 
     @pytest.mark.anyio
     async def test_run_from_phase2_with_stop_at_phase2(self):
@@ -156,79 +113,50 @@ class TestStopAtPhase:
 
     @pytest.mark.anyio
     async def test_stop_at_pre_phase1_returns_immediately(self):
-        """When stop_at_phase='pre_phase1', no phases should execute."""
+        """run_full_trace delegates stop_at_phase='pre_phase1' to process_from_parse_requests."""
         orch = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[])
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True})
         runner = PhaseRunner(orch)
         result = await runner.run_full_trace([], dry_run=True, stop_at_phase="pre_phase1")
-
-        orch.phase1_service.batch_parse.assert_not_called()
-        orch.phase2_service.batch_resolve.assert_not_called()
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=[], stop_at_phase="pre_phase1", dry_run=True
+        )
         assert result["dry_run"] is True
-        assert "phase1_results" not in result
 
     @pytest.mark.anyio
     async def test_stop_at_validation_runs_phase1_only(self):
-        """When stop_at_phase='validation', Phase 1 runs but Phase 2 does not."""
+        """run_full_trace delegates stop_at_phase='validation' to process_from_parse_requests."""
         orch = MagicMock()
-        mock_parse_result = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[mock_parse_result])
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "phase": "validation"})
         runner = PhaseRunner(orch)
-        result = await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase="validation")
-
-        orch.phase1_service.batch_parse.assert_called_once()
-        orch.phase2_service.batch_resolve.assert_not_called()
-        assert "phase1_results" in result
-        assert "phase2_results" not in result
+        mock_requests = [MagicMock()]
+        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase="validation")  # type: ignore[arg-type]
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=mock_requests, stop_at_phase="validation", dry_run=True
+        )
 
     @pytest.mark.anyio
     async def test_stop_at_expansion_runs_phase1_and_phase2(self):
-        """When stop_at_phase='expansion', Phase 1 and 2 run but Phase 3 does not."""
+        """run_full_trace delegates stop_at_phase='expansion' to process_from_parse_requests."""
         orch = MagicMock()
-        mock_parse_result = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[mock_parse_result])
-
-        mock_rr = MagicMock()
-        mock_rr.is_resolved = False
-        mock_rr.method = "local_resolution"
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[(mock_parse_result, [mock_rr])])
-        orch.phase3_service = MagicMock()
-        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
-        orch.temporal_name_cache = MagicMock()
-        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "phase": "expansion"})
         runner = PhaseRunner(orch)
-        result = await runner.run_full_trace([MagicMock()], dry_run=True, stop_at_phase="expansion")
-
-        orch.phase1_service.batch_parse.assert_called_once()
-        orch.phase2_service.batch_resolve.assert_called_once()
-        orch.phase3_service.batch_disambiguate.assert_not_called()
-        assert "phase2_results" in result
-        assert "phase3_results" not in result
+        mock_requests = [MagicMock()]
+        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase="expansion")  # type: ignore[arg-type]
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=mock_requests, stop_at_phase="expansion", dry_run=True
+        )
 
     @pytest.mark.anyio
     async def test_stop_at_phase3_skips_production_write(self):
-        """When stop_at_phase='phase3', production write mode is not triggered."""
+        """run_full_trace delegates stop_at_phase='phase3' with dry_run=False through."""
         orch = MagicMock()
-        orch.phase1_service = MagicMock()
-        orch.phase1_service.batch_parse = AsyncMock(return_value=[])
-        orch.phase2_service = MagicMock()
-        orch.phase2_service.batch_resolve = AsyncMock(return_value=[])
-
+        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": False, "phase": "phase3"})
         runner = PhaseRunner(orch)
-        result = await runner.run_full_trace([], dry_run=False, stop_at_phase="phase3")
-
-        assert "production_write" not in result
+        await runner.run_full_trace([], dry_run=False, stop_at_phase="phase3")
+        orch.process_from_parse_requests.assert_called_once_with(
+            parse_requests=[], stop_at_phase="phase3", dry_run=False
+        )
 
     @pytest.mark.anyio
     async def test_stop_at_same_as_start_runs_only_that_phase(self):
