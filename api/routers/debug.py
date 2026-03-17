@@ -590,7 +590,7 @@ async def search_persons(
         return PersonSearchResponse(items=[], total=0)
 
     # Get CM IDs from matching persons
-    person_cm_ids = [p.cm_id for p in person_results.items]
+    person_cm_ids = [getattr(p, "cm_id", 0) for p in person_results.items]
 
     # Query attendees for these persons in the given year
     cm_id_list = " || ".join(f"person_id = {cid}" for cid in person_cm_ids)
@@ -602,23 +602,25 @@ async def search_persons(
     # Build person_id -> list of session CM IDs
     person_sessions: dict[int, list[int]] = {}
     for att in attendees:
-        pid = att.person_id
+        pid: int = getattr(att, "person_id", 0)
+        sid: int = getattr(att, "session_cm_id", 0)
         if pid not in person_sessions:
             person_sessions[pid] = []
-        person_sessions[pid].append(att.session_cm_id)
+        person_sessions[pid].append(sid)
 
     # Only return persons who have attendee records (enrolled)
     items = []
     for person in person_results.items:
-        if person.cm_id not in person_sessions:
+        cm_id: int = getattr(person, "cm_id", 0)
+        if cm_id not in person_sessions:
             continue
         items.append(
             PersonSearchItem(
-                cm_id=person.cm_id,
-                first_name=person.first_name,
-                last_name=person.last_name,
+                cm_id=cm_id,
+                first_name=getattr(person, "first_name", ""),
+                last_name=getattr(person, "last_name", ""),
                 grade=getattr(person, "grade", None),
-                sessions=sorted(person_sessions[person.cm_id]),
+                sessions=sorted(person_sessions[cm_id]),
             )
         )
         if len(items) >= 20:
