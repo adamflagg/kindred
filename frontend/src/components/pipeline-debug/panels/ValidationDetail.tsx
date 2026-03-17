@@ -1,13 +1,15 @@
 /**
  * ValidationDetail - Detail panel for the Validation stage.
  *
- * Shows: type validation pass/fail + rejected, temporal conflicts + details,
- * source text rejections + hallucinated/unit names.
+ * Input:   Parsed intents from Phase 1
+ * Action:  Enforces field→type rules, removes temporal conflicts, catches hallucinated names
+ * Output:  Validated intents — rejected items, filtered conflicts, flagged names
  */
 
 import type { ValidationTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
+import { DataRow, Badge, PanelSection } from './DataRow'
+import { PhaseHeader } from './PhaseHeader'
 
 interface ValidationDetailProps {
   data: ValidationTrace
@@ -22,92 +24,134 @@ export function ValidationDetail({
   onRunFromHere,
   isRunning,
 }: ValidationDetailProps) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Validation</h3>
+  const hasRejections =
+    !data.type_validation.passed ||
+    data.source_text_validation.rejected > 0 ||
+    data.temporal_conflicts.filtered > 0
 
-      {/* Type validation */}
-      <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-        <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Type Validation</p>
-        <DataRow
-          label="Status"
-          value={
+  const status = !data.type_validation.passed ? 'error' : 'ran'
+  const statusLabel = !data.type_validation.passed
+    ? 'invalid'
+    : hasRejections
+      ? 'filtered'
+      : 'clean'
+
+  const totalRejected =
+    data.type_validation.rejected.length +
+    data.source_text_validation.rejected +
+    data.temporal_conflicts.filtered
+
+  return (
+    <div className="space-y-5">
+      <PhaseHeader
+        phase="validation"
+        status={status}
+        statusLabel={statusLabel}
+        metrics={<DataRow label="Total Filtered" value={String(totalRejected)} />}
+      />
+
+      {/* ACTION */}
+      <PanelSection label="Action">
+        {/* Type validation */}
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+              Type Validation
+            </span>
             <Badge
               label={data.type_validation.passed ? 'Passed' : 'Failed'}
               color={data.type_validation.passed ? 'green' : 'red'}
             />
-          }
-        />
-        {data.type_validation.rejected.length > 0 && (
-          <div className="mt-2">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Rejected:</p>
+          </div>
+          {data.type_validation.rejected.length > 0 && (
             <ul className="mt-1 list-inside list-disc text-sm text-red-700 dark:text-red-300">
               {data.type_validation.rejected.map((item, idx) => (
                 <li key={idx}>{String(item)}</li>
               ))}
             </ul>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Temporal conflicts */}
-      <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-        <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-          Temporal Conflicts
-        </p>
-        <DataRow
-          label="Filtered"
-          value={
+        {/* Temporal conflicts */}
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+              Temporal Conflicts
+            </span>
             <Badge
               label={`${data.temporal_conflicts.filtered} filtered`}
               color={data.temporal_conflicts.filtered > 0 ? 'amber' : 'green'}
             />
-          }
-        />
-        {data.temporal_conflicts.details.length > 0 && (
-          <ul className="mt-2 list-inside list-disc text-sm text-gray-700 dark:text-gray-300">
-            {data.temporal_conflicts.details.map((detail, idx) => (
-              <li key={idx}>{String(detail)}</li>
-            ))}
-          </ul>
-        )}
-      </div>
+          </div>
+          {data.temporal_conflicts.details.length > 0 && (
+            <ul className="mt-1 list-inside list-disc text-sm text-gray-700 dark:text-gray-300">
+              {data.temporal_conflicts.details.map((detail, idx) => (
+                <li key={idx}>{String(detail)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-      {/* Source text validation */}
-      <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-        <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-          Source Text Validation
-        </p>
-        <DataRow
-          label="Rejected"
-          value={
+        {/* Source text validation */}
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+              Source Text Validation
+            </span>
             <Badge
-              label={String(data.source_text_validation.rejected)}
+              label={`${data.source_text_validation.rejected} rejected`}
               color={data.source_text_validation.rejected > 0 ? 'red' : 'green'}
             />
-          }
-        />
-        {data.source_text_validation.hallucinated_names.length > 0 && (
-          <div className="mt-2">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Hallucinated Names:</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {data.source_text_validation.hallucinated_names.map((name, idx) => (
-                <Badge key={idx} label={name} color="red" />
-              ))}
+          </div>
+          {data.source_text_validation.hallucinated_names.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Hallucinated Names:</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {data.source_text_validation.hallucinated_names.map((name, idx) => (
+                  <Badge key={idx} label={name} color="red" />
+                ))}
+              </div>
             </div>
+          )}
+          {data.source_text_validation.unit_names.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Unit Names:</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {data.source_text_validation.unit_names.map((name, idx) => (
+                  <Badge key={idx} label={name} color="amber" />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </PanelSection>
+
+      {/* OUTPUT */}
+      <PanelSection label="Output">
+        {totalRejected === 0 ? (
+          <p className="text-sm text-green-700 dark:text-green-400">
+            All intents passed validation
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {data.type_validation.rejected.length > 0 && (
+              <Badge label={`${data.type_validation.rejected.length} type-rejected`} color="red" />
+            )}
+            {data.temporal_conflicts.filtered > 0 && (
+              <Badge
+                label={`${data.temporal_conflicts.filtered} temporal-filtered`}
+                color="amber"
+              />
+            )}
+            {data.source_text_validation.rejected > 0 && (
+              <Badge
+                label={`${data.source_text_validation.rejected} source-rejected`}
+                color="red"
+              />
+            )}
           </div>
         )}
-        {data.source_text_validation.unit_names.length > 0 && (
-          <div className="mt-2">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Unit Names:</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {data.source_text_validation.unit_names.map((name, idx) => (
-                <Badge key={idx} label={name} color="amber" />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      </PanelSection>
 
       <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
     </div>

@@ -1,16 +1,18 @@
 /**
  * Phase3Detail - Detail panel for Phase 3 (AI Disambiguation).
  *
- * Tabbed per intent. Shows: candidates sent, AI context, AI selection,
- * AI reasoning, ai_reasoning_summary, result, confidence before/after.
+ * Input:   Ambiguous candidates from Phase 2 that couldn't be resolved locally
+ * Action:  AI picks the best match from the candidate list
+ * Output:  Selected match, confidence before/after, AI reasoning
  */
 
 import { useState } from 'react'
 import type { Phase3IntentTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
+import { DataRow, Badge, PanelSection } from './DataRow'
 import { CollapsibleSection } from './CollapsibleSection'
 import { IntentTabs } from './IntentTabs'
+import { PhaseHeader } from './PhaseHeader'
 
 interface Phase3DetailProps {
   data: Phase3IntentTrace[]
@@ -34,52 +36,62 @@ function resultColor(result: string): 'green' | 'amber' | 'red' | 'gray' {
 
 function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <Badge label={intent.result} color={resultColor(intent.result)} />
-        {intent.ran && <Badge label="Ran" color="blue" />}
-        {!intent.ran && <Badge label="Skipped" color="gray" />}
-      </div>
+    <div className="space-y-4">
+      {/* INPUT */}
+      <PanelSection label="Input">
+        <DataRow
+          label="Target"
+          value={intent.target_name || <em className="text-gray-400">unnamed</em>}
+        />
+        <DataRow label="Candidates Sent" value={String(intent.candidates_sent.length)} />
+      </PanelSection>
 
-      {intent.ran && (
-        <>
-          {/* Confidence */}
+      {/* ACTION */}
+      <PanelSection label="Action">
+        <DataRow
+          label="AI Ran"
+          value={
+            <Badge label={intent.ran ? 'Yes' : 'Skipped'} color={intent.ran ? 'green' : 'gray'} />
+          }
+        />
+        {intent.ran && intent.ai_selection !== null && (
+          <DataRow label="AI Selection" value={String(intent.ai_selection)} mono />
+        )}
+        {intent.ran && intent.ai_reasoning && (
+          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+              AI Reasoning
+            </p>
+            <p className="text-sm text-gray-800 dark:text-gray-200">{intent.ai_reasoning}</p>
+          </div>
+        )}
+        {intent.ran && intent.ai_reasoning_summary && (
+          <DataRow label="AI Summary" value={intent.ai_reasoning_summary} />
+        )}
+      </PanelSection>
+
+      {/* OUTPUT */}
+      <PanelSection label="Output">
+        <div className="flex flex-wrap gap-2">
+          <Badge label={intent.result} color={resultColor(intent.result)} />
+        </div>
+        {intent.ran && (
           <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
             <DataRow
               label="Confidence Before"
-              value={intent.confidence_before !== null ? String(intent.confidence_before) : '-'}
+              value={intent.confidence_before !== null ? String(intent.confidence_before) : '—'}
             />
             <DataRow
               label="Confidence After"
-              value={intent.confidence_after !== null ? String(intent.confidence_after) : '-'}
+              value={intent.confidence_after !== null ? String(intent.confidence_after) : '—'}
             />
-            {intent.ai_selection !== null && (
-              <DataRow label="AI Selection" value={String(intent.ai_selection)} mono />
-            )}
           </div>
+        )}
+      </PanelSection>
 
-          {/* AI reasoning */}
-          {intent.ai_reasoning && (
-            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-              <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                AI Reasoning
-              </p>
-              <p className="text-sm text-gray-800 dark:text-gray-200">{intent.ai_reasoning}</p>
-            </div>
-          )}
-
-          {intent.ai_reasoning_summary && (
-            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-              <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                AI Reasoning Summary
-              </p>
-              <p className="text-sm text-gray-800 dark:text-gray-200">
-                {intent.ai_reasoning_summary}
-              </p>
-            </div>
-          )}
-
-          {/* Candidates sent */}
+      {/* ADDITIONAL DATA */}
+      {intent.ran && (
+        <>
           <CollapsibleSection title={`Candidates Sent (${intent.candidates_sent.length})`}>
             {intent.candidates_sent.length === 0 ? (
               <p className="text-xs text-gray-400">No candidates</p>
@@ -90,7 +102,6 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
             )}
           </CollapsibleSection>
 
-          {/* AI context */}
           {Object.keys(intent.ai_context).length > 0 && (
             <CollapsibleSection title="AI Context">
               <pre className="max-h-48 overflow-auto text-xs text-gray-700 dark:text-gray-300">
@@ -107,31 +118,33 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
 export function Phase3Detail({ data, onRunAgain, onRunFromHere, isRunning }: Phase3DetailProps) {
   const [activeTab, setActiveTab] = useState(0)
 
-  if (data.length === 0) {
-    return (
-      <div className="space-y-4">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-          Phase 3 Disambiguation
-        </h3>
-        <p className="text-sm text-gray-500">No disambiguation data.</p>
-        <ActionButtons
-          onRunAgain={onRunAgain}
-          onRunFromHere={onRunFromHere}
-          isRunning={isRunning}
-        />
-      </div>
-    )
-  }
+  const ranCount = data.filter((i) => i.ran).length
+  const resolvedCount = data.filter((i) => i.result === 'resolved').length
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-        Phase 3 Disambiguation
-      </h3>
+    <div className="space-y-5">
+      <PhaseHeader
+        phase="phase3"
+        status={data.length === 0 ? 'not_run' : ranCount === 0 ? 'skipped' : 'ran'}
+        statusLabel={data.length === 0 ? 'not run' : ranCount === 0 ? 'skipped' : `${ranCount} ran`}
+        metrics={
+          data.length > 0 && ranCount > 0 ? (
+            <>
+              <DataRow label="Intents" value={String(data.length)} />
+              <DataRow label="Matched" value={`${resolvedCount}/${ranCount}`} />
+            </>
+          ) : null
+        }
+      />
 
-      <IntentTabs items={data} activeTab={activeTab} onTabChange={setActiveTab} />
-
-      {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
+      {data.length === 0 ? (
+        <p className="text-sm text-gray-500 italic dark:text-gray-400">No disambiguation data.</p>
+      ) : (
+        <>
+          <IntentTabs items={data} activeTab={activeTab} onTabChange={setActiveTab} />
+          {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
+        </>
+      )}
 
       <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
     </div>

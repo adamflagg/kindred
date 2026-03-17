@@ -1,12 +1,15 @@
 /**
  * ExpansionDetail - Detail panel for Placeholder Expansion.
  *
- * Shows: triggered flag, type, count, expanded targets list.
+ * Input:   Resolved requests containing placeholder types (bunkmates, sibling, etc.)
+ * Action:  Expands placeholders into individual named requests
+ * Output:  Expanded targets list
  */
 
 import type { PlaceholderExpansionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
-import { DataRow, Badge } from './DataRow'
+import { DataRow, Badge, PanelSection } from './DataRow'
+import { PhaseHeader } from './PhaseHeader'
 
 interface ExpansionDetailProps {
   data: PlaceholderExpansionTrace
@@ -21,13 +24,19 @@ export function ExpansionDetail({
   onRunFromHere,
   isRunning,
 }: ExpansionDetailProps) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-        Placeholder Expansion
-      </h3>
+  const status = data.triggered ? 'ran' : 'skipped'
 
-      <div className="space-y-1">
+  return (
+    <div className="space-y-5">
+      <PhaseHeader
+        phase="expansion"
+        status={status}
+        statusLabel={data.triggered ? 'expanded' : 'skipped'}
+        metrics={null}
+      />
+
+      {/* ACTION */}
+      <PanelSection label="Action">
         <DataRow
           label="Triggered"
           value={
@@ -37,29 +46,27 @@ export function ExpansionDetail({
             />
           }
         />
-        {data.type && <DataRow label="Type" value={data.type} />}
+        {data.type && <DataRow label="Placeholder Type" value={data.type} />}
         <DataRow label="Expanded Count" value={String(data.expanded_count)} />
-      </div>
+      </PanelSection>
 
-      {data.expanded_targets.length > 0 && (
-        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Expanded Targets
-          </p>
+      {/* OUTPUT */}
+      <PanelSection label="Output">
+        {data.expanded_targets.length === 0 ? (
+          <p className="text-sm text-gray-400 italic dark:text-gray-500">No expansion performed</p>
+        ) : (
           <div className="space-y-1">
             {data.expanded_targets.map((target, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+                className="rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-700 dark:bg-gray-800/50 dark:text-gray-300"
               >
-                <span>
-                  {String((target as Record<string, unknown>)['name'] ?? JSON.stringify(target))}
-                </span>
+                {String((target as Record<string, unknown>)['name'] ?? JSON.stringify(target))}
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </PanelSection>
 
       <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
     </div>
