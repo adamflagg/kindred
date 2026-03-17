@@ -599,11 +599,11 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
       <CssVerticalStackedBarChart data={dataWithZero} segments={segments} />
     )
     // Trigger tooltip by hovering over a column
-    const column = container.querySelector('.flex-1.flex-col.items-center')
-    if (column) {
-      fireEvent.mouseEnter(column)
-      fireEvent.mouseMove(column, { clientX: 100, clientY: 100 })
-    }
+    const column = container.querySelector('.flex-col.items-center.justify-end')
+    expect(column).not.toBeNull()
+    if (!column) throw new Error('Expected a chart column for tooltip hover test')
+    fireEvent.mouseEnter(column)
+    fireEvent.mouseMove(column, { clientX: 100, clientY: 100 })
     // If tooltip renders, Female segment (value 0) should not be shown
     // The tooltip should only show Male (value 10)
     const tooltipLabels = container.querySelectorAll<HTMLElement>('.text-muted-foreground.text-sm')

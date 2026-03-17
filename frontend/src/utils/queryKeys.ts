@@ -26,6 +26,10 @@ export const queryKeys = {
   bunksForSession: (sessionId: string, agSessions: string[]) =>
     ['bunks', sessionId, agSessions.sort()] as const,
 
+  // Enrollment (Tier 1 - sync data)
+  enrolledCampers: (personCmId: number, year: number) =>
+    ['enrolled-campers', personCmId, year] as const,
+
   // Historical data (Tier 1 - sync data)
   historicalBunking: (personCmId: number, year: number) =>
     ['historical-bunking', personCmId, year] as const,

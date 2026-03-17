@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
+import { queryKeys } from '../../utils/queryKeys'
 
 import { sortEnrolledFirst } from '../../utils/enrollmentSort'
 import type { Camper } from '../../types/app-types'
@@ -45,7 +46,7 @@ export function useCamperEnrollment(
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['enrolled-campers', personCmId, currentYear],
+    queryKey: queryKeys.enrolledCampers(personCmId ?? 0, currentYear),
     queryFn: async () => {
       if (!personCmId) throw new Error('Invalid person ID')
 

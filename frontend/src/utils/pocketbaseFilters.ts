@@ -62,14 +62,15 @@ export function buildFilter(
 ): string {
   if (!conditions || conditions.length === 0) return ''
 
-  // Format each condition and join with operator
-  const formatted = conditions
-    .filter((c) => c.trim())
-    .map((c) => formatFilter(c))
-    .join(` ${operator} `)
+  // Format each condition, filtering out blanks
+  const filtered = conditions.filter((c) => c.trim()).map((c) => formatFilter(c))
+
+  if (filtered.length === 0) return ''
+
+  const formatted = filtered.join(` ${operator} `)
 
   // Wrap in parentheses if multiple conditions
-  return conditions.length > 1 ? `(${formatted})` : formatted
+  return filtered.length > 1 ? `(${formatted})` : formatted
 }
 
 /**
