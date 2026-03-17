@@ -22,8 +22,9 @@ const priorityStyles = {
 const defaultStyle = priorityStyles[2]
 
 function getStyle(priority: number) {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback for invalid priority values
-  return priorityStyles[priority as keyof typeof priorityStyles] ?? defaultStyle
+  return priority in priorityStyles
+    ? priorityStyles[priority as keyof typeof priorityStyles]
+    : defaultStyle
 }
 
 // Memoized component - only re-renders when value or disabled changes

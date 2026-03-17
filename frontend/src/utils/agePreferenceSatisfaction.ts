@@ -68,10 +68,13 @@ export function isAgePreferenceSatisfied(
         detail: `Has younger bunkmates (grade ${minGrade}) - conflicts with 'prefer older'`,
       }
     }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive: handles unexpected preference values at runtime
-  if (preference === 'younger') {
+  } else {
+    if ((preference as string) !== 'younger') {
+      // Defensive fallback: handles unexpected preference values at runtime
+      // TypeScript prevents invalid preferences at compile time, but runtime could receive bad data
+      return { satisfied: false, detail: `Unknown preference: ${String(preference)}` }
+    }
+    // preference is 'younger'
     const hasYounger = minGrade < requesterGrade
     const hasOlder = maxGrade > requesterGrade
 
@@ -102,7 +105,4 @@ export function isAgePreferenceSatisfied(
       }
     }
   }
-
-  // TypeScript ensures this is unreachable, but just in case
-  return { satisfied: false, detail: `Unknown preference: ${String(preference)}` }
 }

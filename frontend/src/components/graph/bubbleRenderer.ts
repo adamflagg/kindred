@@ -53,15 +53,14 @@ export function drawBunkBubbles(
   cy.remove('.bunk-label')
 
   // Group nodes by bunk (excluding label nodes and parent compound nodes)
-  const bunkGroups: Record<number, NodeSingular[]> = {}
+  const bunkGroups: Record<number, NodeSingular[] | undefined> = {}
   cy.nodes()
     .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent'))
     .forEach((node) => {
       const bunkId = node.data('bunk_cm_id')
       if (bunkId) {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime: Record index access may be undefined
-        bunkGroups[bunkId] ??= []
-        bunkGroups[bunkId].push(node)
+        const group = (bunkGroups[bunkId] ??= [])
+        group.push(node)
       }
     })
 
@@ -79,7 +78,7 @@ export function drawBunkBubbles(
 
   // Add paths for each bunk
   Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
-    if (nodes.length === 0) return // Skip empty bunks
+    if (!nodes || nodes.length === 0) return // Skip empty bunks
 
     const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
     const bunkColor = getBunkColor(parseInt(bunkId))
@@ -161,7 +160,7 @@ export function drawBunkBubbles(
 
   // Add bunk labels using Popper
   Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
-    if (nodes.length === 0) return
+    if (!nodes || nodes.length === 0) return
 
     const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
     const bunkColor = getBunkColor(parseInt(bunkId))
