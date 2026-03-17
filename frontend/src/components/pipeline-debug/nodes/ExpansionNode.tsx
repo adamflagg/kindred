@@ -6,19 +6,15 @@
  * - skipped: not triggered
  */
 
-import type { Node, NodeProps, Position } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { PlaceholderExpansionTrace } from '../types'
+import type { PlaceholderExpansionTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type ExpansionNodeType = Node<{
+interface ExpansionData extends BaseNodeData {
   expansion: PlaceholderExpansionTrace
-  isStale?: boolean | undefined
-  tooltip?: string | undefined
-  inputPosition?: Position | undefined
-  outputPosition?: Position | undefined
-  showInput?: boolean | undefined
-  showOutput?: boolean | undefined
-}>
+}
+type ExpansionNodeType = Node<ExpansionData>
 
 function getState(data: PlaceholderExpansionTrace): NodeState {
   if (!data.triggered) return 'skipped'
@@ -37,12 +33,7 @@ export function ExpansionNode({ data }: NodeProps<ExpansionNodeType>) {
       label="Expansion"
       state={getState(trace)}
       metric={getMetric(trace)}
-      isStale={data.isStale}
-      tooltip={data.tooltip}
-      showInput={data.showInput}
-      showOutput={data.showOutput}
-      inputPosition={data.inputPosition}
-      outputPosition={data.outputPosition}
+      {...baseNodeProps(data)}
     />
   )
 }

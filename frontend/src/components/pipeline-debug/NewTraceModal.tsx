@@ -16,9 +16,10 @@ import { useSearchPersons } from '../../hooks/useSearchPersons'
 import { useOriginalRequestsByCamper } from '../../hooks/useOriginalRequestsByCamper'
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { pipelineDebugService } from '../../services/pipelineDebug'
-import { queryKeys } from '../../utils/queryKeys'
+import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import { PHASE_ORDER } from './types'
-import type { PipelinePhase, PersonSearchItem, OriginalRequestItem } from './types'
+import { PHASE_LABELS } from './phaseDescriptions'
+import type { PersonSearchItem, OriginalRequestItem } from './types'
 
 interface NewTraceModalProps {
   isOpen: boolean
@@ -31,17 +32,6 @@ interface NewTraceModalProps {
   isRunning: boolean
   year: number
   error?: string | null
-}
-
-const PHASE_LABELS: Record<PipelinePhase, string> = {
-  pre_phase1: 'Pre-Phase 1',
-  phase1: 'Phase 1 Parse',
-  validation: 'Validation',
-  phase2: 'Phase 2 Resolution',
-  expansion: 'Expansion',
-  historical: 'Phase 2.5 Historical',
-  phase3: 'Phase 3 Disambiguation',
-  post_pipeline: 'Post-Pipeline',
 }
 
 export function NewTraceModal({
@@ -112,20 +102,8 @@ export function NewTraceModal({
     return map
   }, [requestsData])
 
-  // Extract unique session CM IDs from selected person's sessions
-  const sessionCmIds = useMemo(() => {
-    return selectedPersonSessions
-  }, [selectedPersonSessions])
-
   // Browse tab: fetch original requests with filters.
-  // Build filter objects without undefined values to satisfy exactOptionalPropertyTypes.
-  const browseFilters = useMemo(() => {
-    const f: { session_cm_id?: number; source_field?: string; limit?: number } = { limit: 200 }
-    if (browseSessionFilter !== null) f.session_cm_id = browseSessionFilter
-    if (browseFieldFilter) f.source_field = browseFieldFilter
-    return f
-  }, [browseSessionFilter, browseFieldFilter])
-
+  // Build filter object without undefined values to satisfy exactOptionalPropertyTypes.
   const browseQueryKeyFilters = useMemo(() => {
     const f: { session_cm_id?: number; source_field?: string } = {}
     if (browseSessionFilter !== null) f.session_cm_id = browseSessionFilter
@@ -139,9 +117,14 @@ export function NewTraceModal({
     isError: isBrowseError,
   } = useQuery({
     queryKey: queryKeys.browseOriginalRequests(year, browseQueryKeyFilters),
-    queryFn: () => pipelineDebugService.fetchOriginalRequests(year, browseFilters, fetchWithAuth),
+    queryFn: () =>
+      pipelineDebugService.fetchOriginalRequests(
+        year,
+        { ...browseQueryKeyFilters, limit: 200 },
+        fetchWithAuth
+      ),
     enabled: activeTab === 2,
-    staleTime: 30_000,
+    ...userDataOptions,
   })
 
   // Client-side processed filter for browse results
@@ -153,14 +136,9 @@ export function NewTraceModal({
   }, [browseData, browseProcessedFilter])
 
   // Derive available sessions for the run controls session dropdown.
-  // Tab 1 (Search) gets sessions from the selected person; Tab 2/3 fall back to sessionCmIds.
-  // Original requests don't carry session_cm_id, so browse tab can't auto-populate sessions.
-  const availableSessions = useMemo(() => {
-    if (activeTab === 0 && selectedPersonSessions.length > 0) {
-      return selectedPersonSessions
-    }
-    return sessionCmIds
-  }, [activeTab, selectedPersonSessions, sessionCmIds])
+  // Tab 1 (Search) populates sessions from the selected person's enrollments.
+  // Tab 2/3 don't carry session info, so sessions remain from the last selection.
+  const availableSessions = selectedPersonSessions
 
   function handleSelectPerson(person: PersonSearchItem) {
     setSelectedPerson(person)
@@ -195,7 +173,7 @@ export function NewTraceModal({
 
   function handleRunTrace() {
     if (selectedRequestIds.size === 0) return
-    const sessions = selectedSession ? [selectedSession] : sessionCmIds
+    const sessions = selectedSession ? [selectedSession] : selectedPersonSessions
     onRunTrace(Array.from(selectedRequestIds), sessions, stopAtPhase)
   }
 

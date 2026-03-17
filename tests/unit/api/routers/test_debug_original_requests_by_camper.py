@@ -33,9 +33,8 @@ def _override_auth(app: FastAPI) -> None:
     app.dependency_overrides[get_current_user] = _mock_admin_user
 
 
-def _make_mock_original_request(
+def _make_mock_pb_record(
     record_id: str = "rec_orig_1",
-    requester_cm_id: int = 12345,
     first_name: str = "Emma",
     last_name: str = "Johnson",
     preferred_name: str | None = None,
@@ -44,18 +43,28 @@ def _make_mock_original_request(
     year: int = 2025,
     processed: str | None = None,
 ) -> MagicMock:
-    """Create a mock OriginalRequest object matching the loader's output."""
+    """Create a mock PocketBase record for original_bunk_requests with expand."""
     record = MagicMock()
     record.id = record_id
-    record.requester_cm_id = requester_cm_id
-    record.first_name = first_name
-    record.last_name = last_name
-    record.preferred_name = preferred_name
     record.field = field
     record.content = content
     record.year = year
     record.processed = processed
+    record.expand = {
+        "requester": {
+            "first_name": first_name,
+            "last_name": last_name,
+            "preferred_name": preferred_name,
+        }
+    }
     return record
+
+
+def _make_mock_person(person_id: str = "pb_person_1") -> MagicMock:
+    """Create a mock PocketBase person record."""
+    person = MagicMock()
+    person.id = person_id
+    return person
 
 
 @pytest.fixture
@@ -77,6 +86,21 @@ def client_with_mock_pb(mock_pb: MagicMock) -> Generator[tuple[TestClient, Magic
         yield TestClient(app), mock_pb
 
 
+def _setup_person_lookup(mock_pb: MagicMock, person_id: str = "pb_person_1") -> None:
+    """Set up mock PB to return a person record for cm_id lookup."""
+    person = _make_mock_person(person_id)
+    persons_result = MagicMock()
+    persons_result.items = [person]
+    mock_pb.collection.return_value.get_list.return_value = persons_result
+
+
+def _setup_no_person(mock_pb: MagicMock) -> None:
+    """Set up mock PB to return no person for cm_id lookup."""
+    persons_result = MagicMock()
+    persons_result.items = []
+    mock_pb.collection.return_value.get_list.return_value = persons_result
+
+
 class TestOriginalRequestsByCamper:
     """Test GET /api/debug/original-requests/by-camper/{cm_id} endpoint."""
 
@@ -84,18 +108,13 @@ class TestOriginalRequestsByCamper:
         """Returns original requests filtered to the specified camper's cm_id."""
         client, mock_pb = client_with_mock_pb
 
-        record1 = _make_mock_original_request(record_id="rec_1", requester_cm_id=12345)
-        record2 = _make_mock_original_request(
-            record_id="rec_2", requester_cm_id=12345, field="not_bunk_with", content="Not with Olivia Chen"
-        )
-        record_other = _make_mock_original_request(record_id="rec_3", requester_cm_id=99999)
+        record1 = _make_mock_pb_record(record_id="rec_1")
+        record2 = _make_mock_pb_record(record_id="rec_2", field="not_bunk_with", content="Not with Olivia Chen")
 
-        with patch("api.routers.debug.OriginalRequestsLoader") as MockLoader:
-            mock_loader = MagicMock()
-            MockLoader.return_value = mock_loader
-            mock_loader.load_by_filter.return_value = [record1, record2, record_other]
+        _setup_person_lookup(mock_pb)
+        mock_pb.collection.return_value.get_full_list.return_value = [record1, record2]
 
-            response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
+        response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
 
         assert response.status_code == 200
         data = response.json()
@@ -105,17 +124,12 @@ class TestOriginalRequestsByCamper:
         assert data["items"][1]["source_field"] == "not_bunk_with"
 
     def test_returns_empty_for_unknown_camper(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
-        """Returns empty list when no requests match the cm_id."""
+        """Returns empty list when person not found by cm_id."""
         client, mock_pb = client_with_mock_pb
 
-        record_other = _make_mock_original_request(record_id="rec_1", requester_cm_id=99999)
+        _setup_no_person(mock_pb)
 
-        with patch("api.routers.debug.OriginalRequestsLoader") as MockLoader:
-            mock_loader = MagicMock()
-            MockLoader.return_value = mock_loader
-            mock_loader.load_by_filter.return_value = [record_other]
-
-            response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
+        response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
 
         assert response.status_code == 200
         data = response.json()
@@ -134,20 +148,17 @@ class TestOriginalRequestsByCamper:
         """Uses preferred_name over first_name when available."""
         client, mock_pb = client_with_mock_pb
 
-        record = _make_mock_original_request(
+        record = _make_mock_pb_record(
             record_id="rec_1",
-            requester_cm_id=12345,
             first_name="Elizabeth",
             preferred_name="Liz",
             last_name="Johnson",
         )
 
-        with patch("api.routers.debug.OriginalRequestsLoader") as MockLoader:
-            mock_loader = MagicMock()
-            MockLoader.return_value = mock_loader
-            mock_loader.load_by_filter.return_value = [record]
+        _setup_person_lookup(mock_pb)
+        mock_pb.collection.return_value.get_full_list.return_value = [record]
 
-            response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
+        response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
 
         assert response.status_code == 200
         data = response.json()
@@ -157,17 +168,13 @@ class TestOriginalRequestsByCamper:
         """processed=None maps to False, non-None maps to True."""
         client, mock_pb = client_with_mock_pb
 
-        unprocessed = _make_mock_original_request(record_id="rec_1", requester_cm_id=12345, processed=None)
-        processed = _make_mock_original_request(
-            record_id="rec_2", requester_cm_id=12345, processed="2025-06-15T10:00:00Z"
-        )
+        unprocessed = _make_mock_pb_record(record_id="rec_1", processed=None)
+        processed = _make_mock_pb_record(record_id="rec_2", processed="2025-06-15T10:00:00Z")
 
-        with patch("api.routers.debug.OriginalRequestsLoader") as MockLoader:
-            mock_loader = MagicMock()
-            MockLoader.return_value = mock_loader
-            mock_loader.load_by_filter.return_value = [unprocessed, processed]
+        _setup_person_lookup(mock_pb)
+        mock_pb.collection.return_value.get_full_list.return_value = [unprocessed, processed]
 
-            response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
+        response = client.get("/api/debug/original-requests/by-camper/12345", params={"year": 2025})
 
         assert response.status_code == 200
         data = response.json()

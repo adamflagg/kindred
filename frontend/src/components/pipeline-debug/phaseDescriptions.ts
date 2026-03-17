@@ -1,5 +1,17 @@
 import type { PipelinePhase } from './types'
 
+/** Human-readable phase labels for UI display. */
+export const PHASE_LABELS: Record<PipelinePhase, string> = {
+  pre_phase1: 'Pre-Phase 1',
+  phase1: 'Phase 1 Parse',
+  validation: 'Validation',
+  phase2: 'Phase 2 Resolution',
+  expansion: 'Expansion',
+  historical: 'Phase 2.5 Historical',
+  phase3: 'Phase 3 Disambiguation',
+  post_pipeline: 'Post-Pipeline',
+}
+
 export const PHASE_DESCRIPTIONS: Record<PipelinePhase, string> = {
   pre_phase1: 'Prepares raw CSV text for parsing — filters empty, N/A, staff-only entries',
   phase1: 'AI extracts person names and request types from free text',

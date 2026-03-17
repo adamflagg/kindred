@@ -8,19 +8,15 @@
  * - skipped: empty resolution array
  */
 
-import type { Node, NodeProps, Position } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { Phase2IntentTrace } from '../types'
+import type { Phase2IntentTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type Phase2NodeType = Node<{
+interface Phase2Data extends BaseNodeData {
   phase2: Phase2IntentTrace[]
-  isStale?: boolean | undefined
-  tooltip?: string | undefined
-  inputPosition?: Position | undefined
-  outputPosition?: Position | undefined
-  showInput?: boolean | undefined
-  showOutput?: boolean | undefined
-}>
+}
+type Phase2NodeType = Node<Phase2Data>
 
 function getState(intents: Phase2IntentTrace[]): NodeState {
   if (intents.length === 0) return 'skipped'
@@ -49,12 +45,7 @@ export function Phase2Node({ data }: NodeProps<Phase2NodeType>) {
       label="Phase 2 Resolution"
       state={getState(intents)}
       metric={getMetric(intents)}
-      isStale={data.isStale}
-      tooltip={data.tooltip}
-      showInput={data.showInput}
-      showOutput={data.showOutput}
-      inputPosition={data.inputPosition}
-      outputPosition={data.outputPosition}
+      {...baseNodeProps(data)}
     />
   )
 }

@@ -8,21 +8,17 @@
  * - skipped: phase1 did not run (stop-at-phase stopped before validation)
  */
 
-import type { Node, NodeProps, Position } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { ValidationTrace } from '../types'
+import type { ValidationTrace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type ValidationNodeType = Node<{
+interface ValidationData extends BaseNodeData {
   validation: ValidationTrace
   phase1Ran?: boolean | undefined
   phase1IntentCount?: number | undefined
-  isStale?: boolean | undefined
-  tooltip?: string | undefined
-  inputPosition?: Position | undefined
-  outputPosition?: Position | undefined
-  showInput?: boolean | undefined
-  showOutput?: boolean | undefined
-}>
+}
+type ValidationNodeType = Node<ValidationData>
 
 function getState(
   data: ValidationTrace,
@@ -59,12 +55,7 @@ export function ValidationNode({ data }: NodeProps<ValidationNodeType>) {
       label="Validation"
       state={getState(trace, data.phase1Ran, data.phase1IntentCount)}
       metric={getMetric(trace, data.phase1Ran, data.phase1IntentCount)}
-      isStale={data.isStale}
-      tooltip={data.tooltip}
-      showInput={data.showInput}
-      showOutput={data.showOutput}
-      inputPosition={data.inputPosition}
-      outputPosition={data.outputPosition}
+      {...baseNodeProps(data)}
     />
   )
 }

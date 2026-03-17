@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
-import { queryKeys } from '../utils/queryKeys'
+import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { pipelineDebugService } from '../services/pipelineDebug'
 
 export function useOriginalRequestsByCamper(cmId: number | null, year: number) {
@@ -9,6 +9,6 @@ export function useOriginalRequestsByCamper(cmId: number | null, year: number) {
     queryKey: queryKeys.originalRequestsByCamper(cmId ?? 0, year),
     queryFn: () => pipelineDebugService.fetchOriginalRequestsByCamper(cmId!, year, fetchWithAuth),
     enabled: cmId !== null && cmId > 0,
-    staleTime: 30_000,
+    ...userDataOptions,
   })
 }

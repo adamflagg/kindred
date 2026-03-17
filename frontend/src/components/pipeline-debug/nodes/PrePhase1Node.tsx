@@ -7,19 +7,15 @@
  * - (no warning/error states for pre-phase 1)
  */
 
-import type { Node, NodeProps, Position } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
-import type { PrePhase1Trace } from '../types'
+import type { PrePhase1Trace, BaseNodeData } from '../types'
+import { baseNodeProps } from '../types'
 
-type PrePhase1NodeType = Node<{
+interface PrePhase1Data extends BaseNodeData {
   prePhase1: PrePhase1Trace
-  isStale?: boolean | undefined
-  tooltip?: string | undefined
-  inputPosition?: Position | undefined
-  outputPosition?: Position | undefined
-  showInput?: boolean | undefined
-  showOutput?: boolean | undefined
-}>
+}
+type PrePhase1NodeType = Node<PrePhase1Data>
 
 function getState(data: PrePhase1Trace): NodeState {
   if (data.action.startsWith('skipped_')) return 'skipped'
@@ -37,12 +33,7 @@ export function PrePhase1Node({ data }: NodeProps<PrePhase1NodeType>) {
       label="Pre-Phase 1"
       state={getState(trace)}
       metric={getMetric(trace)}
-      isStale={data.isStale}
-      tooltip={data.tooltip}
-      showInput={data.showInput}
-      showOutput={data.showOutput}
-      inputPosition={data.inputPosition}
-      outputPosition={data.outputPosition}
+      {...baseNodeProps(data)}
     />
   )
 }

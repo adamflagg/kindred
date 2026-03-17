@@ -19,6 +19,7 @@ from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repositor
 from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
     SessionRepository,
 )
+from bunking.sync.bunk_request_processor.debug.phase_runner import PHASE_ORDER
 from bunking.sync.bunk_request_processor.debug.trace_collector import TraceCollector
 from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
     OriginalRequestsLoader,
@@ -534,28 +535,37 @@ async def list_original_requests_by_camper(
 ) -> OriginalRequestsListResponse:
     """List original_bunk_requests for a specific camper by CampMinder ID.
 
-    Loads all original requests for the year and filters to the given cm_id.
+    Queries PocketBase directly for the camper's requests, avoiding loading all records.
     Used by the pipeline debug tool to inspect a single camper's raw requests.
     """
-    loader = OriginalRequestsLoader(pb, year)
+    # Look up the person's PB record ID from their CM ID
+    persons = pb.collection("persons").get_list(1, 1, query_params={"filter": f"cm_id = {cm_id}"})
+    if not persons.items:
+        return OriginalRequestsListResponse(items=[], total=0)
+    person_pb_id = persons.items[0].id
 
-    records = loader.load_by_filter(limit=500)
-    camper_records = [r for r in records if r.requester_cm_id == cm_id]
+    # Query original_bunk_requests directly by requester relation + year
+    pb_filter = f'requester = "{person_pb_id}" && year = {year}'
+    records = pb.collection("original_bunk_requests").get_full_list(
+        query_params={"filter": pb_filter, "expand": "requester"}
+    )
 
     items = []
-    for record in camper_records:
-        first = record.preferred_name or record.first_name
-        requester_name = f"{first} {record.last_name}".strip()
+    for record in records:
+        expanded = getattr(record, "expand", {}).get("requester", {})
+        first = expanded.get("preferred_name") or expanded.get("first_name", "")
+        last = expanded.get("last_name", "")
+        requester_name = f"{first} {last}".strip()
 
         items.append(
             OriginalRequestItem(
                 id=record.id,
                 requester_name=requester_name,
-                requester_cm_id=record.requester_cm_id,
-                source_field=record.field,
-                original_text=record.content,
-                year=record.year,
-                processed=record.processed is not None,
+                requester_cm_id=cm_id,
+                source_field=getattr(record, "field", ""),
+                original_text=getattr(record, "content", ""),
+                year=getattr(record, "year", year),
+                processed=getattr(record, "processed", None) is not None,
             )
         )
 
@@ -574,8 +584,10 @@ async def search_persons(
     and filters to only persons enrolled (with attendee records) for the given year.
     Returns up to 20 results.
     """
-    # Sanitize query: escape double quotes for PocketBase filter
-    safe_q = q.replace('"', '\\"')
+    # Sanitize query for PocketBase filter
+    from api.utils.pb_filters import pb_escape
+
+    safe_q = pb_escape(q)
 
     # Query persons with case-insensitive name matching
     name_filter = f'first_name ~ "{safe_q}" || last_name ~ "{safe_q}"'
@@ -1291,16 +1303,7 @@ VALID_PRE_P1_ACTIONS = {
     "skipped_staff",
     "socialize_direct_map",
 }
-VALID_CASCADE_PHASES = {
-    "pre_phase1",
-    "phase1",
-    "validation",
-    "phase2",
-    "expansion",
-    "historical",
-    "phase3",
-    "post_pipeline",
-}
+VALID_CASCADE_PHASES = set(PHASE_ORDER)
 
 
 def _validate_run_id(run_id: str) -> None:
