@@ -4424,3 +4424,95 @@ class TestWaitlistSessionGenderDrilldown:
             "enrolled_sessions should be empty when session_types=['quest'] — "
             "main session must not leak in via hardcoded SUMMER_SESSION_TYPES"
         )
+
+
+# ============================================================================
+# Tests for waitlist "Waitlisted For" summer session filtering
+# ============================================================================
+
+
+class TestWaitlistForSummerSessionFiltering:
+    """Waitlisted For column should only show summer sessions, not family camp etc."""
+
+    @pytest.mark.asyncio
+    async def test_enrollment_breakdown_excludes_non_summer_from_waitlisted_for(
+        self, drilldown_service, mock_repository
+    ):
+        """_handle_waitlist_enrollment_breakdown: sessions list excludes non-summer sessions."""
+        summer_session = create_mock_session(1001, "Session 1", session_type="main")
+        family_session = create_mock_session(5001, "Family Camp", session_type="family")
+        sessions = {1001: summer_session, 5001: family_session}
+
+        mock_repository.fetch_sessions = AsyncMock(
+            side_effect=lambda year, session_types=None: (
+                {1001: summer_session} if session_types and "family" not in session_types else sessions
+            )
+        )
+        mock_repository.fetch_persons.return_value = {
+            101: create_mock_person(101, "Emma", "Johnson", gender="F", grade=5),
+        }
+
+        # Emma waitlisted in both summer and family camp sessions
+        waitlisted = [
+            create_mock_attendee(101, summer_session, 2026, status="waitlisted"),
+            create_mock_attendee(101, family_session, 2026, status="waitlisted"),
+        ]
+        enrolled = []
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_no_enrollment",
+            breakdown_value="all",
+        )
+
+        # Emma should appear
+        assert len(result) == 1
+        # Her "Waitlisted For" sessions should only include summer, not family camp
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert 1001 in session_ids
+        assert 5001 not in session_ids
+
+    @pytest.mark.asyncio
+    async def test_person_breakdown_excludes_non_summer_from_waitlisted_for(self, drilldown_service, mock_repository):
+        """_handle_waitlist_person_breakdown: sessions list excludes non-summer sessions."""
+        summer_session = create_mock_session(1001, "Session 1", session_type="main")
+        family_session = create_mock_session(5001, "Family Camp", session_type="family")
+        sessions = {1001: summer_session, 5001: family_session}
+
+        mock_repository.fetch_sessions = AsyncMock(
+            side_effect=lambda year, session_types=None: (
+                {1001: summer_session} if session_types and "family" not in session_types else sessions
+            )
+        )
+        mock_repository.fetch_persons.return_value = {
+            101: create_mock_person(101, "Emma", "Johnson", gender="F", grade=5),
+        }
+
+        # Emma waitlisted in both summer and family camp sessions
+        waitlisted = [
+            create_mock_attendee(101, summer_session, 2026, status="waitlisted"),
+            create_mock_attendee(101, family_session, 2026, status="waitlisted"),
+        ]
+        enrolled = []
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+            status_filter=["waitlisted"],
+        )
+
+        # Emma should appear
+        assert len(result) == 1
+        # Her "Waitlisted For" sessions should only include summer, not family camp
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert 1001 in session_ids
+        assert 5001 not in session_ids

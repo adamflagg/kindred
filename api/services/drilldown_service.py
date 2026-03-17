@@ -946,6 +946,17 @@ class DrilldownService:
             if pid:
                 all_waitlisted_groups.setdefault(pid, []).append(att)
 
+        # Filter waitlisted groups to only include summer/requested session types.
+        # This prevents non-summer sessions from appearing in the "Waitlisted For" column.
+        valid_sessions = await self.repo.fetch_sessions(year, effective_types)
+        valid_session_ids = set(valid_sessions.keys())
+        for pid in all_waitlisted_groups:
+            all_waitlisted_groups[pid] = [
+                att
+                for att in all_waitlisted_groups[pid]
+                if int(getattr(get_session_from_expand(att), "cm_id", 0)) in valid_session_ids
+            ]
+
         # Filter waitlisted by session (controls which persons appear in results)
         waitlisted_attendees = filter_attendees_by_session(
             waitlisted_attendees,
@@ -1168,6 +1179,17 @@ class DrilldownService:
             pid = int(getattr(att, "person_id", 0))
             if pid:
                 all_waitlisted_groups.setdefault(pid, []).append(att)
+
+        # Filter waitlisted groups to only include summer/requested session types.
+        # This prevents non-summer sessions from appearing in the "Waitlisted For" column.
+        valid_sessions = await self.repo.fetch_sessions(year, effective_types)
+        valid_session_ids = set(valid_sessions.keys())
+        for pid in all_waitlisted_groups:
+            all_waitlisted_groups[pid] = [
+                att
+                for att in all_waitlisted_groups[pid]
+                if int(getattr(get_session_from_expand(att), "cm_id", 0)) in valid_session_ids
+            ]
 
         # Filter waitlisted by session (controls which persons appear)
         filtered_waitlisted = filter_attendees_by_session(
