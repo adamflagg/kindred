@@ -8,11 +8,18 @@
  * - skipped: no final_bunk_requests
  */
 
-import type { Node, NodeProps } from '@xyflow/react'
+import type { Node, NodeProps, Position } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { PostPipelineTrace } from '../types'
 
-type PostPipelineNodeType = Node<{ postPipeline: PostPipelineTrace; isStale?: boolean }>
+type PostPipelineNodeType = Node<{
+  postPipeline: PostPipelineTrace
+  isStale?: boolean | undefined
+  inputPosition?: Position | undefined
+  outputPosition?: Position | undefined
+  showInput?: boolean | undefined
+  showOutput?: boolean | undefined
+}>
 
 function getState(data: PostPipelineTrace): NodeState {
   if (data.final_bunk_requests.length === 0) return 'skipped'
@@ -36,7 +43,10 @@ export function PostPipelineNode({ data }: NodeProps<PostPipelineNodeType>) {
       state={getState(trace)}
       metric={getMetric(trace)}
       isStale={data.isStale}
-      showOutput={false}
+      showInput={data.showInput}
+      showOutput={data.showOutput}
+      inputPosition={data.inputPosition}
+      outputPosition={data.outputPosition}
     />
   )
 }

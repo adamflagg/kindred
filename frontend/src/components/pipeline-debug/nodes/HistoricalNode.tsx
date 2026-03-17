@@ -6,11 +6,18 @@
  * - skipped: not ran
  */
 
-import type { Node, NodeProps } from '@xyflow/react'
+import type { Node, NodeProps, Position } from '@xyflow/react'
 import { BaseNode, type NodeState } from './BaseNode'
 import type { HistoricalVerificationTrace } from '../types'
 
-type HistoricalNodeType = Node<{ historical: HistoricalVerificationTrace; isStale?: boolean }>
+type HistoricalNodeType = Node<{
+  historical: HistoricalVerificationTrace
+  isStale?: boolean | undefined
+  inputPosition?: Position | undefined
+  outputPosition?: Position | undefined
+  showInput?: boolean | undefined
+  showOutput?: boolean | undefined
+}>
 
 function getState(data: HistoricalVerificationTrace): NodeState {
   if (!data.ran) return 'skipped'
@@ -33,6 +40,10 @@ export function HistoricalNode({ data }: NodeProps<HistoricalNodeType>) {
       state={getState(trace)}
       metric={getMetric(trace)}
       isStale={data.isStale}
+      showInput={data.showInput}
+      showOutput={data.showOutput}
+      inputPosition={data.inputPosition}
+      outputPosition={data.outputPosition}
     />
   )
 }

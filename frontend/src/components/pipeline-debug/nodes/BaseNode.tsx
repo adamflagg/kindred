@@ -21,13 +21,13 @@ interface BaseNodeProps {
   metric?: string
   isStale?: boolean | undefined
   /** Whether to show left (input) handle */
-  showInput?: boolean
+  showInput?: boolean | undefined
   /** Whether to show right (output) handle */
-  showOutput?: boolean
+  showOutput?: boolean | undefined
   /** Position of the input (target) handle. Defaults to Position.Left */
-  inputPosition?: Position
+  inputPosition?: Position | undefined
   /** Position of the output (source) handle. Defaults to Position.Right */
-  outputPosition?: Position
+  outputPosition?: Position | undefined
 }
 
 const stateStyles: Record<NodeState, string> = {

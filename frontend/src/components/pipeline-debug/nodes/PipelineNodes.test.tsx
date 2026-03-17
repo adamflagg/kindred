@@ -438,6 +438,14 @@ describe('ValidationNode', () => {
     renderNode(<ValidationNode {...makeNodeProps({ validation: validationError })} />)
     expect(screen.getByTestId('node-status-error')).toBeInTheDocument()
   })
+
+  it('renders skipped when phase1 did not run', () => {
+    renderNode(
+      <ValidationNode {...makeNodeProps({ validation: validationSuccess, phase1Ran: false })} />
+    )
+    expect(screen.getByTestId('node-status-skipped')).toBeInTheDocument()
+    expect(screen.getByText('not run')).toBeInTheDocument()
+  })
 })
 
 // =============================================================================
