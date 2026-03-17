@@ -4347,3 +4347,172 @@ class TestWaitlistSessionGenderDrilldown:
         )
 
         assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_respects_session_types_filter(self, drilldown_service, mock_repository):
+        """When session_types is passed, summer_session_ids should only include matching sessions.
+
+        The internal fetch_sessions call (for summer session filtering) must use the passed
+        session_types, not hardcoded SUMMER_SESSION_TYPES. Otherwise, enrolled-in-main sessions
+        leak into the enrolled_sessions list when filtering by quest-only session_types.
+        """
+        quest_session = create_mock_session(3001, "Quest A", session_type="quest")
+        main_session = create_mock_session(1001, "Session 1", session_type="main")
+
+        # fetch_sessions returns different results based on session_types:
+        # - called with ["quest"] → only quest session (expected with fix)
+        # - called with SUMMER_SESSION_TYPES (all types) → both sessions (old broken behavior)
+        async def mock_fetch_sessions(year, session_types=None):
+            if session_types and "quest" in session_types and "main" not in session_types:
+                return {3001: quest_session}
+            # Old code path: SUMMER_SESSION_TYPES includes main, returns all sessions
+            return {3001: quest_session, 1001: main_session}
+
+        mock_repository.fetch_sessions = AsyncMock(side_effect=mock_fetch_sessions)
+
+        # Emma is waitlisted in quest session AND enrolled in a main session.
+        # With old code: main session 1001 is in summer_session_ids (SUMMER_SESSION_TYPES
+        # includes "main"), so Emma's main enrollment shows in enrolled_sessions.
+        # With fix: main session 1001 is NOT in summer_session_ids (filtered to quest only),
+        # so enrolled_sessions should be empty.
+        mock_repository.fetch_attendees_with_persons = AsyncMock(
+            side_effect=lambda year, status_filter=None: [
+                create_mock_attendee_with_person(
+                    101,
+                    3001,
+                    gender="F",
+                    status="waitlisted",
+                    first_name="Emma",
+                    last_name="Johnson",
+                    grade=5,
+                    effective_date="2025-11-12",
+                    enrollment_date="2025-11-13T00:00:00Z",
+                    session=quest_session,
+                ),
+            ]
+            if status_filter == ["waitlisted"]
+            else [
+                create_mock_attendee_with_person(
+                    101,
+                    1001,
+                    gender="F",
+                    status="enrolled",
+                    first_name="Emma",
+                    last_name="Johnson",
+                    session=main_session,
+                ),
+            ]
+            if status_filter == ["enrolled"]
+            else []
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_session_gender",
+            breakdown_value="3001:F",
+            session_types=["quest"],
+        )
+
+        # Should find Emma (waitlisted in quest session)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+        # With the fix, enrolled_sessions must NOT include the main session
+        # (main session 1001 is outside the quest-only session_types filter).
+        # With old code (hardcoded SUMMER_SESSION_TYPES), main session would appear here.
+        assert result[0].enrolled_sessions == [], (
+            "enrolled_sessions should be empty when session_types=['quest'] — "
+            "main session must not leak in via hardcoded SUMMER_SESSION_TYPES"
+        )
+
+
+# ============================================================================
+# Tests for waitlist "Waitlisted For" summer session filtering
+# ============================================================================
+
+
+class TestWaitlistForSummerSessionFiltering:
+    """Waitlisted For column should only show summer sessions, not family camp etc."""
+
+    @pytest.mark.asyncio
+    async def test_enrollment_breakdown_excludes_non_summer_from_waitlisted_for(
+        self, drilldown_service, mock_repository
+    ):
+        """_handle_waitlist_enrollment_breakdown: sessions list excludes non-summer sessions."""
+        summer_session = create_mock_session(1001, "Session 1", session_type="main")
+        family_session = create_mock_session(5001, "Family Camp", session_type="family")
+        sessions = {1001: summer_session, 5001: family_session}
+
+        mock_repository.fetch_sessions = AsyncMock(
+            side_effect=lambda year, session_types=None: (
+                {1001: summer_session} if session_types and "family" not in session_types else sessions
+            )
+        )
+        mock_repository.fetch_persons.return_value = {
+            101: create_mock_person(101, "Emma", "Johnson", gender="F", grade=5),
+        }
+
+        # Emma waitlisted in both summer and family camp sessions
+        waitlisted = [
+            create_mock_attendee(101, summer_session, 2026, status="waitlisted"),
+            create_mock_attendee(101, family_session, 2026, status="waitlisted"),
+        ]
+        enrolled: list[Mock] = []
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_no_enrollment",
+            breakdown_value="all",
+        )
+
+        # Emma should appear
+        assert len(result) == 1
+        # Her "Waitlisted For" sessions should only include summer, not family camp
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert 1001 in session_ids
+        assert 5001 not in session_ids
+
+    @pytest.mark.asyncio
+    async def test_person_breakdown_excludes_non_summer_from_waitlisted_for(self, drilldown_service, mock_repository):
+        """_handle_waitlist_person_breakdown: sessions list excludes non-summer sessions."""
+        summer_session = create_mock_session(1001, "Session 1", session_type="main")
+        family_session = create_mock_session(5001, "Family Camp", session_type="family")
+        sessions = {1001: summer_session, 5001: family_session}
+
+        mock_repository.fetch_sessions = AsyncMock(
+            side_effect=lambda year, session_types=None: (
+                {1001: summer_session} if session_types and "family" not in session_types else sessions
+            )
+        )
+        mock_repository.fetch_persons.return_value = {
+            101: create_mock_person(101, "Emma", "Johnson", gender="F", grade=5),
+        }
+
+        # Emma waitlisted in both summer and family camp sessions
+        waitlisted = [
+            create_mock_attendee(101, summer_session, 2026, status="waitlisted"),
+            create_mock_attendee(101, family_session, 2026, status="waitlisted"),
+        ]
+        enrolled: list[Mock] = []
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+            status_filter=["waitlisted"],
+        )
+
+        # Emma should appear
+        assert len(result) == 1
+        # Her "Waitlisted For" sessions should only include summer, not family camp
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert 1001 in session_ids
+        assert 5001 not in session_ids

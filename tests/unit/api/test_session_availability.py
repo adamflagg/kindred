@@ -889,3 +889,143 @@ class TestWaitlistByGrade:
         # Both genders in one list
         assert len(ag.waitlisted_persons) == 2
         assert ag.waitlisted_by_grade == {5: 1, 6: 1}
+
+
+# ============================================================================
+# Gender Normalization Tests
+# ============================================================================
+
+
+class TestNormalizeGenderKey:
+    """Test bunk gender normalization."""
+
+    def test_male_bunk(self, service):
+        assert service._normalize_gender_key("M") == "M"
+
+    def test_female_bunk(self, service):
+        assert service._normalize_gender_key("F") == "F"
+
+    def test_mixed_bunk(self, service):
+        assert service._normalize_gender_key("Mixed") == "mixed"
+
+    def test_empty_gender_returns_none(self, service):
+        """Empty gender (from Go sync for non-standard bunks) returns None."""
+        assert service._normalize_gender_key("") is None
+
+    def test_unknown_gender_returns_none(self, service):
+        """Unrecognized gender string returns None."""
+        assert service._normalize_gender_key("X") is None
+
+
+class TestCapacitySkipsUnknownGender:
+    """Test that bunks with empty/unknown gender are excluded from capacity."""
+
+    @pytest.mark.asyncio
+    async def test_empty_gender_bunk_excluded_from_capacity(self, service, mock_repository, sample_sessions):
+        """Bunk with empty gender should not contribute to any capacity bucket."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_1001", "M"),
+            create_mock_bunk_plan("pb_1001", "F"),
+            create_mock_bunk_plan("pb_1001", ""),  # empty gender — should be skipped
+        ]
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        result = await service.calculate_availability(year=2026)
+
+        session1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert session1.boys.capacity == 12  # 1 M bunk * 12
+        assert session1.girls.capacity == 12  # 1 F bunk * 12
+        # The empty-gender bunk should NOT inflate any capacity
+
+
+# ============================================================================
+# Router Error Handling Tests
+# ============================================================================
+
+
+class TestRouterErrorHandling:
+    """Test that the router delegates error handling to the global handler."""
+
+    @pytest.mark.asyncio
+    async def test_error_does_not_expose_details(self, service, mock_repository):
+        """When the service raises, error details must NOT appear in the response."""
+        mock_repository.fetch_sessions = AsyncMock(side_effect=RuntimeError("secret db error"))
+
+        with pytest.raises(RuntimeError, match="secret db error"):
+            await service.calculate_availability(year=2026)
+
+
+# ============================================================================
+# Merged Attendee Processing Tests
+# ============================================================================
+
+
+class TestProcessAttendees:
+    """Test the merged _process_attendees method."""
+
+    def test_enrolled_and_waitlisted_in_single_pass(self, service):
+        """Merged method returns both enrollment counts and waitlist data."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        attendees = [
+            create_mock_attendee(101, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(102, 1001, gender="M", status="enrolled"),
+            create_mock_attendee(201, 1001, gender="F", status="enrolled"),
+            create_mock_attendee(
+                301,
+                1001,
+                gender="M",
+                status="waitlisted",
+                grade=5,
+                effective_date="2025-11-12",
+                enrollment_date="2025-11-13",
+            ),
+            create_mock_attendee(
+                302,
+                1001,
+                gender="F",
+                status="waitlisted",
+                grade=6,
+                effective_date="2025-11-14",
+                enrollment_date="2025-11-15",
+            ),
+        ]
+
+        enrollment, waitlist_data = service._process_attendees(sessions, attendees)
+
+        # Enrollment counts
+        assert enrollment[1001]["enrolled_M"] == 2
+        assert enrollment[1001]["enrolled_F"] == 1
+        assert enrollment[1001]["enrolled_total"] == 3
+        assert enrollment[1001]["waitlisted_M"] == 1
+        assert enrollment[1001]["waitlisted_F"] == 1
+        assert enrollment[1001]["waitlisted_total"] == 2
+
+        # Waitlist data — by_grade and persons present
+        assert 1001 in waitlist_data
+        assert waitlist_data[1001]["by_grade_M"] == {5: 1}
+        assert waitlist_data[1001]["by_grade_F"] == {6: 1}
+        assert len(waitlist_data[1001]["persons_M"]) == 1
+        assert len(waitlist_data[1001]["persons_F"]) == 1
+
+    def test_non_waitlisted_counted_as_enrolled(self, service):
+        """Any status that isn't 'waitlisted' is counted as enrolled."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        attendees = [
+            create_mock_attendee(101, 1001, gender="M", status="applied"),
+        ]
+
+        enrollment, waitlist_data = service._process_attendees(sessions, attendees)
+
+        # 'applied' should be counted as enrolled, not waitlisted
+        assert enrollment[1001]["enrolled_M"] == 1
+        assert enrollment[1001].get("waitlisted_M", 0) == 0
+        # No waitlist data for non-waitlisted
+        assert 1001 not in waitlist_data
