@@ -173,3 +173,25 @@ class PhaseRunResponse(BaseModel):
     trace_id: str | None = Field(default=None, description="New trace ID if one was created")
     results: dict[str, Any] = Field(default_factory=dict, description="Phase execution results")
     error: str | None = Field(default=None, description="Error message if execution failed")
+
+
+# =============================================================================
+# Person Search (Autocomplete)
+# =============================================================================
+
+
+class PersonSearchItem(BaseModel):
+    """A person result from search."""
+
+    cm_id: int = Field(description="CampMinder person ID")
+    first_name: str = Field(description="First name")
+    last_name: str = Field(description="Last name")
+    grade: int | None = Field(default=None, description="Grade")
+    sessions: list[int] = Field(default_factory=list, description="Session CM IDs for given year")
+
+
+class PersonSearchResponse(BaseModel):
+    """Response for person search."""
+
+    items: list[PersonSearchItem] = Field(description="Matching persons")
+    total: int = Field(description="Total matches")

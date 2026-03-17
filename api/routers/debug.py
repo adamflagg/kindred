@@ -58,6 +58,8 @@ from ..schemas.debug import (
     SourceFieldType,
 )
 from ..schemas.pipeline_debug import (
+    PersonSearchItem,
+    PersonSearchResponse,
     PhaseRunResponse,
     PinToggleResponse,
     PipelineRunItem,
@@ -521,6 +523,107 @@ async def list_original_requests(
         )
 
     return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+@router.get("/original-requests/by-camper/{cm_id}", response_model=OriginalRequestsListResponse)
+async def list_original_requests_by_camper(
+    cm_id: int,
+    year: int = Query(description="Camp year"),
+    user: AuthUser = Depends(require_admin),
+) -> OriginalRequestsListResponse:
+    """List original_bunk_requests for a specific camper by CampMinder ID.
+
+    Loads all original requests for the year and filters to the given cm_id.
+    Used by the pipeline debug tool to inspect a single camper's raw requests.
+    """
+    loader = OriginalRequestsLoader(pb, year)
+    loader.load_persons_cache()
+
+    records = loader.load_by_filter(limit=500)
+    camper_records = [r for r in records if r.requester_cm_id == cm_id]
+
+    items = []
+    for record in camper_records:
+        first = record.preferred_name or record.first_name
+        requester_name = f"{first} {record.last_name}".strip()
+
+        items.append(
+            OriginalRequestItem(
+                id=record.id,
+                requester_name=requester_name,
+                requester_cm_id=record.requester_cm_id,
+                source_field=record.field,
+                original_text=record.content,
+                year=record.year,
+                processed=record.processed is not None,
+            )
+        )
+
+    return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+@router.get("/search-persons", response_model=PersonSearchResponse)
+async def search_persons(
+    q: str = Query(min_length=1, description="Search query for first or last name"),
+    year: int = Query(description="Camp year for enrollment filtering"),
+    user: AuthUser = Depends(require_admin),
+) -> PersonSearchResponse:
+    """Search persons by name with autocomplete support.
+
+    Queries the persons collection with case-insensitive name matching
+    and filters to only persons enrolled (with attendee records) for the given year.
+    Returns up to 20 results.
+    """
+    # Sanitize query: escape double quotes for PocketBase filter
+    safe_q = q.replace('"', '\\"')
+
+    # Query persons with case-insensitive name matching
+    name_filter = f'first_name ~ "{safe_q}" || last_name ~ "{safe_q}"'
+    person_results = pb.collection("persons").get_list(
+        1,
+        100,
+        query_params={"filter": name_filter},
+    )
+
+    if not person_results.items:
+        return PersonSearchResponse(items=[], total=0)
+
+    # Get CM IDs from matching persons
+    person_cm_ids = [p.cm_id for p in person_results.items]
+
+    # Query attendees for these persons in the given year
+    cm_id_list = " || ".join(f"person_id = {cid}" for cid in person_cm_ids)
+    attendee_filter = f"year = {year} && ({cm_id_list})"
+    attendees = pb.collection("attendees").get_full_list(
+        query_params={"filter": attendee_filter},
+    )
+
+    # Build person_id -> list of session CM IDs
+    person_sessions: dict[int, list[int]] = {}
+    for att in attendees:
+        pid = att.person_id
+        if pid not in person_sessions:
+            person_sessions[pid] = []
+        person_sessions[pid].append(att.session_cm_id)
+
+    # Only return persons who have attendee records (enrolled)
+    items = []
+    for person in person_results.items:
+        if person.cm_id not in person_sessions:
+            continue
+        items.append(
+            PersonSearchItem(
+                cm_id=person.cm_id,
+                first_name=person.first_name,
+                last_name=person.last_name,
+                grade=getattr(person, "grade", None),
+                sessions=sorted(person_sessions[person.cm_id]),
+            )
+        )
+        if len(items) >= 20:
+            break
+
+    return PersonSearchResponse(items=items, total=len(items))
 
 
 @router.get("/original-requests-with-parse-status", response_model=OriginalRequestsWithParseResponse)
