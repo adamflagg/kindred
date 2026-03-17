@@ -1,31 +1,63 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-14 (6 open issues, all verified against current code; #576 opened during review).
+Last updated: 2026-03-16 (14 open issues; Group 15 completed via PR #618).
 
 ---
 
-## Group 4: Metrics — Standalone Feature
+## Group 18: API Data Integrity Bugs
 
-**Priority: Low** — Standalone feature, no blockers
+**Priority: High** — Active bugs affecting data correctness
+
+| # | Title | Type |
+|---|-------|------|
+| 592 | `_normalize_gender_key` silently defaults unknown gender to "M" | bug |
+| 593 | List-based `status_filter` in MetricsRepository doesn't filter by `is_active` | bug |
+| 589 | Session availability router uses `HTTPException(500)` instead of global handler | bug |
+
+**Interplay:** All three are in the session availability / metrics API layer. #592 and #593 affect data correctness (gender miscounting, inactive attendees leaking through). #589 is a convention violation (leaks error details to client). All confirmed present in current code. Can be fixed in a single PR.
+
+---
+
+## Group 17: Waitlist API
+
+**Priority: Medium** — Bug + refactor + perf, all in waitlist drilldown
+
+| # | Title | Type |
+|---|-------|------|
+| 595 | Waitlist drilldown "Waitlisted For" column includes non-summer sessions | bug |
+| 596 | `waitlist_session_gender` drilldown ignores `session_types` parameter | refactor |
+| 597 | Consolidate `_count_enrollment` and `_build_waitlist_data` into single pass | perf |
+
+**Interplay:** #596 confirmed — `_handle_waitlist_session_gender()` accepts `_session_types` but hardcodes `SUMMER_SESSION_TYPES` instead. #597 confirmed — two separate passes over the same attendees list in `session_availability_service.py`. #595 may be stale — code has comments suggesting current behavior is intentional ("shows all sessions a person is waitlisted for, not just the one clicked"); needs re-evaluation before fixing.
+
+---
+
+## Group 4: Metrics — Standalone Features
+
+**Priority: Low** — Standalone features, no blockers
 
 | # | Title | Type |
 |---|-------|------|
 | 453 | Promote geo overrides to static canonical data | feature |
+| 604 | Leverage recharts 3.8 typed generics, `niceTicks`, and coordinate hooks | enhancement |
 
-**Interplay:** None remaining. (#445 closed.)
+**Interplay:** Independent items. #604 spawned from deps bump PR #601 (recharts 3.7→3.8). High-value item: `niceTicks` could replace custom `getNiceTicks()` in `cssChartUtils.ts`; typed generics add compile-time safety to chart components.
 
 ---
 
 ## Group 8: Frontend — Remaining Tech Debt
 
-**Priority: Low** — Blocked on external fork update
+**Priority: Low** — Mix of blocked and unblocked items
 
 | # | Title | Type |
 |---|-------|------|
 | 377 | Enable `erasableSyntaxOnly` in tsconfig after migrating enums | tech-debt |
+| 576 | Reset stale `thresholdId` when no threshold record exists for current year | tech-debt |
+| 594 | Migrate SessionAvailability to QueryGuard pattern | refactor |
+| 619 | Remove 4 remaining defensive eslint-disable comments | tech-debt |
 
-**Interplay:** Requires updating `pocketbase-typegen` fork to emit `as const` objects instead of enums (19 enums, 0 consumer code changes). Plan exists at `docs/plans/2026-03-13-enum-migration.md`.
+**Interplay:** #377 blocked on `pocketbase-typegen` fork update (also noted to fix `ExpandType` for 4 more eslint-disables). #576 confirmed — `GradeEligibilityConfig.tsx` never resets `thresholdId` when `thresholdRecords` is empty, causing stale updates to non-existent records on year switch. #594 confirmed — `SessionAvailability.tsx` still uses inline loading/error handling while all other metrics pages use `MetricsQueryGuard`. #619 spawned from #573 audit — 4 defensive eslint-disables (3 syncStatus, 1 week_number) removable with minor type fixes (~45 min). #576, #594, and #619 are unblocked quick wins.
 
 ---
 
@@ -39,18 +71,6 @@ Last updated: 2026-03-14 (6 open issues, all verified against current code; #576
 | 562 | Evaluate migrating all metrics hooks to full options objects | enhancement |
 
 **Interplay:** Both spawned from Group 3 (PR #566). #567 is a concrete fix — `MetricsFilterOptions` still allows both `sessionCmId` and `duration` with zero validation. #562: most hooks now use hybrid `(year, options)` pattern; `useComparisonMetrics` is the remaining outlier. Address #567 first, then evaluate #562.
-
----
-
-## Group 15: ESLint Follow-Up Tech Debt
-
-**Priority: Low** — No behavior change, cleanup from ESLint overhaul (PR #572)
-
-| # | Title | Type |
-|---|-------|------|
-| 573 | Audit 57 `eslint-disable` comments added in ESLint cleanup for proper type fixes | tech-debt |
-
-**Interplay:** Spawned from PR #572 (~320 ESLint warnings fixed). #571 resolved by PR #575 (all 58 design-decision warnings fixed). #573 remains: actual eslint-disable count is 111 (not 57 as originally estimated), with ~54 being `@typescript-eslint` rules — 76 audited and confirmed appropriate in PR #575, deeper type refactor needed to remove `as` cast patterns.
 
 ---
 
@@ -69,7 +89,11 @@ Last updated: 2026-03-14 (6 open issues, all verified against current code; #576
 11. ~~**Group 3**~~ — ✅ Complete (PR #566) — #437, #472; spawned #562, #567
 12. ~~**Group 10**~~ — ✅ Complete (PRs #564, #565, #568, #569, #570, #572) — All 8 issues closed; spawned #571, #573
 13. ~~**Group 15 (1/2)**~~ — ✅ Complete (PR #575) — #571 resolved (58 warnings); #573 remains (eslint-disable audit)
-14. **Groups 4, 8, 14, 15** — Independent items, sprinkle in anytime
+14. ~~**Group 16**~~ — ✅ Complete (PR #613) — #612 fixed; #609, #608 already verified; #610 upstream; #607, #606 not yet available
+15. ~~**Group 15 (2/2)**~~ — ✅ Complete (PR #618) — #573 resolved (46 removed, 16 kept); spawned #619
+16. **Group 18** — API data integrity bugs (#589, #592, #593) — highest priority, active bugs
+17. **Group 17** — Waitlist API (#595, #596, #597) — bug + refactor + perf
+18. **Groups 4, 8, 14** — Independent items, sprinkle in anytime
 
 ## Completed Groups
 
@@ -93,3 +117,7 @@ Last updated: 2026-03-14 (6 open issues, all verified against current code; #576
 | Group 3: Velocity frontend refactors (#437, #472) | #566 | 2026-03-14 | Spawned #562 (full-options eval), #567 (mutual exclusivity) |
 | Group 10: Tests & docs (#536, #528, #485, #442, #552, #435, #495, #421) | #564, #565, #568, #569, #570, #572 | 2026-03-14 | All 8 issues closed; ESLint cleanup (885 warnings fixed); spawned #571, #573 |
 | Group 15 (1/2): ESLint design decisions (#571) | #575 | 2026-03-14 | 58 warnings resolved with per-case design decisions; #573 remains; spawned #576 (GradeEligibility threshold bug) |
+| Scripts consolidation (#581-#586) | #605 | 2026-03-16 | All 6 issues closed |
+| Quest availability fix (#580) | #605 | 2026-03-16 | Gender-split rendering fix |
+| Group 16: Vite 8 follow-up (#606-#612) | #613 | 2026-03-16 | #612 fixed; #609, #608 already done; #610 upstream; #607, #606 not available yet |
+| Group 15 (2/2): ESLint-disable audit (#573) | #618 | 2026-03-16 | 46 removed, 16 kept (justified); spawned #619 (4 remaining defensive guards) |
