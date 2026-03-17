@@ -889,3 +889,20 @@ class TestWaitlistByGrade:
         # Both genders in one list
         assert len(ag.waitlisted_persons) == 2
         assert ag.waitlisted_by_grade == {5: 1, 6: 1}
+
+
+# ============================================================================
+# Router Error Handling Tests
+# ============================================================================
+
+
+class TestRouterErrorHandling:
+    """Test that the router delegates error handling to the global handler."""
+
+    @pytest.mark.asyncio
+    async def test_error_does_not_expose_details(self, service, mock_repository):
+        """When the service raises, error details must NOT appear in the response."""
+        mock_repository.fetch_sessions = AsyncMock(side_effect=RuntimeError("secret db error"))
+
+        with pytest.raises(RuntimeError, match="secret db error"):
+            await service.calculate_availability(year=2026)

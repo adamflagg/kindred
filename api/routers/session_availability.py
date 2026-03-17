@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
@@ -44,19 +44,12 @@ async def get_session_availability(
     from api.services.metrics_repository import MetricsRepository
     from api.services.session_availability_service import SessionAvailabilityService
 
-    try:
-        type_filter = session_types.split(",") if session_types else None
-        repository = MetricsRepository(pb)
-        service = SessionAvailabilityService(repository)
-        return await service.calculate_availability(
-            year=year,
-            session_types=type_filter,
-            session_cm_id=session_cm_id,
-            duration=duration,
-        )
-    except Exception as e:
-        logger.error(f"Error calculating session availability: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error calculating session availability: {e!s}",
-        )
+    type_filter = session_types.split(",") if session_types else None
+    repository = MetricsRepository(pb)
+    service = SessionAvailabilityService(repository)
+    return await service.calculate_availability(
+        year=year,
+        session_types=type_filter,
+        session_cm_id=session_cm_id,
+        duration=duration,
+    )
