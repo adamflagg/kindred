@@ -146,8 +146,14 @@ class PhaseRunner:
         """
         # Validate stop_at_phase ordering
         if stop_at_phase is not None:
-            start_idx = PHASE_ORDER.index(phase) if phase in PHASE_ORDER else 0
-            stop_idx = PHASE_ORDER.index(stop_at_phase) if stop_at_phase in PHASE_ORDER else 0
+            if phase not in PHASE_ORDER:
+                msg = f"Unknown phase '{phase}'. Valid phases: {PHASE_ORDER}"
+                raise ValueError(msg)
+            if stop_at_phase not in PHASE_ORDER:
+                msg = f"Unknown stop_at_phase '{stop_at_phase}'. Valid phases: {PHASE_ORDER}"
+                raise ValueError(msg)
+            start_idx = PHASE_ORDER.index(phase)
+            stop_idx = PHASE_ORDER.index(stop_at_phase)
             if stop_idx < start_idx:
                 msg = f"stop_at_phase '{stop_at_phase}' is before start phase '{phase}'"
                 raise ValueError(msg)
@@ -169,6 +175,12 @@ class PhaseRunner:
             if stop_at_phase == "phase2":
                 return result
 
+            if stop_at_phase == "expansion":
+                return result
+
+            if stop_at_phase == "historical":
+                return result
+
             # Continue to Phase 3 with ambiguous cases
             ambiguous = [(pr, rr_list) for pr, rr_list in phase2_results if any(not rr.is_resolved for rr in rr_list)]
             if ambiguous:
@@ -176,6 +188,9 @@ class PhaseRunner:
                 result["phase3_results"] = phase3_results
             else:
                 result["phase3_results"] = []
+
+            if stop_at_phase == "phase3":
+                return result
 
         elif phase == "phase3":
             # Reconstruct ambiguous cases from trace data for Phase 3 input

@@ -185,7 +185,7 @@ class TestRunFromPhaseEndpoint:
         """Configure mock PB to return a trace record with string id after flush."""
         mock_flush_record = MagicMock()
         mock_flush_record.id = "pb_trace_from_phase"
-        mock_pb.collection.return_value.get_full_list.return_value = [mock_flush_record]
+        mock_pb.collection.return_value.get_list.return_value.items = [mock_flush_record]
 
     def test_run_from_phase2(self, client_with_mocks: tuple[TestClient, MagicMock, MagicMock]) -> None:
         client, mock_pb, mock_runner = client_with_mocks

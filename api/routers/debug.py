@@ -538,7 +538,6 @@ async def list_original_requests_by_camper(
     Used by the pipeline debug tool to inspect a single camper's raw requests.
     """
     loader = OriginalRequestsLoader(pb, year)
-    loader.load_persons_cache()
 
     records = loader.load_by_filter(limit=500)
     camper_records = [r for r in records if r.requester_cm_id == cm_id]
@@ -594,7 +593,7 @@ async def search_persons(
 
     # Query attendees for these persons in the given year
     cm_id_list = " || ".join(f"person_id = {cid}" for cid in person_cm_ids)
-    attendee_filter = f"year = {year} && ({cm_id_list})"
+    attendee_filter = f"year = {year} && is_active = 1 && status_id = 2 && ({cm_id_list})"
     attendees = pb.collection("attendees").get_full_list(
         query_params={"filter": attendee_filter},
     )
@@ -1447,7 +1446,11 @@ def get_pipeline_trace(
 # =============================================================================
 
 
-def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = None) -> Any:
+def _create_phase_runner(
+    year: int = 2025,
+    session_cm_ids: list[int] | None = None,
+    trace_collector: TraceCollector | None = None,
+) -> Any:
     """Create a PhaseRunner backed by a real orchestrator.
 
     This function is defined at module level so it can be patched in tests.
@@ -1457,6 +1460,7 @@ def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = No
     Args:
         year: Camp year for data context initialization.
         session_cm_ids: Session CM IDs to scope the orchestrator to.
+        trace_collector: Optional TraceCollector for debug instrumentation.
 
     Returns:
         PhaseRunner instance (or mock in tests).
@@ -1471,6 +1475,7 @@ def _create_phase_runner(year: int = 2025, session_cm_ids: list[int] | None = No
         year=year,
         session_cm_ids=session_cm_ids or [],
         data_context=data_context,
+        trace_collector=trace_collector,
     )
     return PhaseRunner(orchestrator)
 
@@ -1672,7 +1677,9 @@ async def run_from_phase(
             skip_reason=pre.skip_reason,
         )
 
-        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+        runner = _create_phase_runner(
+            year=body.year, session_cm_ids=body.session_cm_ids, trace_collector=trace_collector
+        )
         result = await runner.run_from_phase(
             phase=phase,
             trace_data=trace_data,
@@ -1694,11 +1701,11 @@ async def run_from_phase(
                         "force": False,
                     },
                 )
-                traces = pb.collection("debug_pipeline_traces").get_full_list(
-                    query_params={"filter": f'run_id = "{trace_collector.run_id}"', "perPage": 1}
+                traces = pb.collection("debug_pipeline_traces").get_list(
+                    1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
                 )
-                if traces:
-                    trace_id = traces[0].id
+                if traces.items:
+                    trace_id = traces.items[0].id
             except Exception as e:
                 logger.warning("Failed to flush debug traces: %s", e)
 
@@ -1742,7 +1749,9 @@ async def run_full_trace(
         # Create trace collector for this run
         trace_collector = TraceCollector(run_id=uuid4().hex)
 
-        runner = _create_phase_runner(year=body.year, session_cm_ids=body.session_cm_ids)
+        runner = _create_phase_runner(
+            year=body.year, session_cm_ids=body.session_cm_ids, trace_collector=trace_collector
+        )
 
         # Load original requests and convert to ParseRequest objects
         loader = OriginalRequestsLoader(pb, body.year, session_cm_ids=body.session_cm_ids)
@@ -1811,11 +1820,11 @@ async def run_full_trace(
                     },
                 )
                 # Get the first trace record ID for navigation
-                traces = pb.collection("debug_pipeline_traces").get_full_list(
-                    query_params={"filter": f'run_id = "{trace_collector.run_id}"', "perPage": 1}
+                traces = pb.collection("debug_pipeline_traces").get_list(
+                    1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
                 )
-                if traces:
-                    trace_id = traces[0].id
+                if traces.items:
+                    trace_id = traces.items[0].id
             except Exception as e:
                 logger.warning("Failed to flush debug traces: %s", e)
 

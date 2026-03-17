@@ -117,7 +117,7 @@ class TestRunFullTraceTraceId:
             MockTraceCollector.return_value = mock_collector_instance
 
             # Mock PB query for trace records after flush
-            mock_pb.collection.return_value.get_full_list.return_value = [mock_trace_record]
+            mock_pb.collection.return_value.get_list.return_value.items = [mock_trace_record]
 
             response = client.post(
                 "/api/debug/run-full-trace",
@@ -192,7 +192,7 @@ class TestRunFullTraceTraceId:
             mock_collector_instance.flush = AsyncMock(return_value="run_rec_id")
             MockTraceCollector.return_value = mock_collector_instance
 
-            mock_pb.collection.return_value.get_full_list.return_value = []
+            mock_pb.collection.return_value.get_list.return_value.items = []
 
             response = client.post(
                 "/api/debug/run-full-trace",
@@ -236,7 +236,7 @@ class TestRunFullTraceTraceId:
             mock_collector_instance.flush = AsyncMock(return_value="run_rec_id")
             MockTraceCollector.return_value = mock_collector_instance
 
-            mock_pb.collection.return_value.get_full_list.return_value = []
+            mock_pb.collection.return_value.get_list.return_value.items = []
 
             response = client.post(
                 "/api/debug/run-full-trace",
@@ -341,7 +341,7 @@ class TestRunFromPhaseStopAtPhase:
             MockTraceCollector.return_value = mock_collector_instance
 
             # Mock PB query for trace records after flush
-            mock_pb.collection.return_value.get_full_list.return_value = [mock_trace_record]
+            mock_pb.collection.return_value.get_list.return_value.items = [mock_trace_record]
 
             response = client.post(
                 "/api/debug/run-from-phase/phase2",
