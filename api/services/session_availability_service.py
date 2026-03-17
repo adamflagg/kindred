@@ -274,6 +274,9 @@ class SessionAvailabilityService:
             gender = getattr(bunk, "gender", "")
             gender_key = self._normalize_gender_key(gender)
 
+            if gender_key is None:
+                continue
+
             if cm_id not in bunk_counts:
                 bunk_counts[cm_id] = {}
             bunk_counts[cm_id][gender_key] = bunk_counts[cm_id].get(gender_key, 0) + 1
@@ -299,16 +302,20 @@ class SessionAvailabilityService:
 
         return result
 
-    def _normalize_gender_key(self, gender: str) -> str:
-        """Normalize bunk gender to M, F, or mixed."""
+    def _normalize_gender_key(self, gender: str) -> str | None:
+        """Normalize bunk gender to M, F, or mixed. Returns None for unknown."""
         if not gender:
-            return "M"
+            logger.warning("Bunk with empty gender skipped in capacity calculation")
+            return None
         g = gender.lower()
         if g in ("mixed", "ag", "all-gender", "nb"):
             return "mixed"
         if g == "f":
             return "F"
-        return "M"
+        if g == "m":
+            return "M"
+        logger.warning("Bunk with unrecognized gender '%s' skipped in capacity calculation", gender)
+        return None
 
     def _count_enrollment(
         self,

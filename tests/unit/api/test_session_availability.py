@@ -892,6 +892,57 @@ class TestWaitlistByGrade:
 
 
 # ============================================================================
+# Gender Normalization Tests
+# ============================================================================
+
+
+class TestNormalizeGenderKey:
+    """Test bunk gender normalization."""
+
+    def test_male_bunk(self, service):
+        assert service._normalize_gender_key("M") == "M"
+
+    def test_female_bunk(self, service):
+        assert service._normalize_gender_key("F") == "F"
+
+    def test_mixed_bunk(self, service):
+        assert service._normalize_gender_key("Mixed") == "mixed"
+
+    def test_empty_gender_returns_none(self, service):
+        """Empty gender (from Go sync for non-standard bunks) returns None."""
+        assert service._normalize_gender_key("") is None
+
+    def test_unknown_gender_returns_none(self, service):
+        """Unrecognized gender string returns None."""
+        assert service._normalize_gender_key("X") is None
+
+
+class TestCapacitySkipsUnknownGender:
+    """Test that bunks with empty/unknown gender are excluded from capacity."""
+
+    @pytest.mark.asyncio
+    async def test_empty_gender_bunk_excluded_from_capacity(self, service, mock_repository, sample_sessions):
+        """Bunk with empty gender should not contribute to any capacity bucket."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_1001", "M"),
+            create_mock_bunk_plan("pb_1001", "F"),
+            create_mock_bunk_plan("pb_1001", ""),  # empty gender — should be skipped
+        ]
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        result = await service.calculate_availability(year=2026)
+
+        session1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert session1.boys.capacity == 12  # 1 M bunk * 12
+        assert session1.girls.capacity == 12  # 1 F bunk * 12
+        # The empty-gender bunk should NOT inflate any capacity
+
+
+# ============================================================================
 # Router Error Handling Tests
 # ============================================================================
 
