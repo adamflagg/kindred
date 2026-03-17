@@ -169,6 +169,44 @@ class TestSearchPersons:
 
         assert response.status_code == 422
 
+    def test_persons_query_includes_year_filter(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Persons query must filter by year to avoid cross-year duplicates."""
+        client, mock_pb = client_with_mock_pb
+
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_list.return_value = MagicMock(items=[])
+        mock_collection.get_full_list.return_value = []
+
+        client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
+
+        # Verify the persons query includes year filtering
+        call_args = mock_collection.get_list.call_args
+        filter_str = call_args[1].get("query_params", {}).get("filter", "")
+        assert "year = 2025" in filter_str, f"Persons filter must include year: {filter_str}"
+
+    def test_no_duplicate_cm_ids_across_years(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """Same person from multiple years must not produce duplicate results."""
+        client, mock_pb = client_with_mock_pb
+
+        # Same person appears twice (once per year) in persons results
+        person_2024 = _make_mock_pb_record(cm_id=3458569, first_name="Emma", last_name="Johnson", grade=5)
+        person_2025 = _make_mock_pb_record(cm_id=3458569, first_name="Emma", last_name="Johnson", grade=6)
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_list.return_value = MagicMock(items=[person_2024, person_2025])
+
+        # Attendee record for this person in 2025
+        attendee = _make_mock_pb_record(person_id=3458569, session_cm_id=1000001)
+        mock_collection.get_full_list.return_value = [attendee]
+
+        response = client.get("/api/debug/search-persons", params={"q": "Emma", "year": 2025})
+
+        assert response.status_code == 200
+        data = response.json()
+        # Must return exactly 1 result, not 2 duplicates
+        assert data["total"] == 1
+        cm_ids = [item["cm_id"] for item in data["items"]]
+        assert cm_ids == [3458569], f"Expected single result, got duplicates: {cm_ids}"
+
     def test_escapes_double_quotes_in_query(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
         """Double quotes in query string are escaped for PocketBase filter."""
         client, mock_pb = client_with_mock_pb

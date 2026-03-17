@@ -589,8 +589,8 @@ async def search_persons(
 
     safe_q = pb_escape(q)
 
-    # Query persons with case-insensitive name matching
-    name_filter = f'first_name ~ "{safe_q}" || last_name ~ "{safe_q}"'
+    # Query persons with case-insensitive name matching, scoped to year
+    name_filter = f'year = {year} && (first_name ~ "{safe_q}" || last_name ~ "{safe_q}")'
     person_results = pb.collection("persons").get_list(
         1,
         100,
@@ -619,12 +619,14 @@ async def search_persons(
             person_sessions[pid] = []
         person_sessions[pid].append(sid)
 
-    # Only return persons who have attendee records (enrolled)
+    # Only return persons who have attendee records (enrolled), deduplicated by cm_id
     items = []
+    seen_cm_ids: set[int] = set()
     for person in person_results.items:
         cm_id: int = getattr(person, "cm_id", 0)
-        if cm_id not in person_sessions:
+        if cm_id not in person_sessions or cm_id in seen_cm_ids:
             continue
+        seen_cm_ids.add(cm_id)
         items.append(
             PersonSearchItem(
                 cm_id=cm_id,
