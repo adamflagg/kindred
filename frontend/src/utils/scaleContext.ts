@@ -353,8 +353,8 @@ export function inferScaleType(
   }
 
   // Use metadata max_value for range checks
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-  const maxVal = (metadata?.['max_value'] as number) ?? value
+  const rawMaxVal = metadata?.['max_value']
+  const maxVal = typeof rawMaxVal === 'number' ? rawMaxVal : value
 
   // Infer from key name patterns (order matters - more specific checks first)
   if (key.includes('penalty') || key.includes('violation')) return 'penalty'
@@ -405,10 +405,10 @@ export function getImpactLevel(
   const scale = SCALE_DEFINITIONS[scaleType]
   if (scale.levels.length === 0) return null
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max
+  const rawMinValue = metadata?.['min_value']
+  const minValue = typeof rawMinValue === 'number' ? rawMinValue : scale.min
+  const rawMaxValue = metadata?.['max_value']
+  const maxValue = typeof rawMaxValue === 'number' ? rawMaxValue : scale.max
 
   const normalizedValue = (value - minValue) / (maxValue - minValue)
   const clampedValue = Math.max(0, Math.min(1, normalizedValue))

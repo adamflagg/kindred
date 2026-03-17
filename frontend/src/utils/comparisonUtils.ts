@@ -44,16 +44,22 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
   for (const item of primaryData) {
     const key = String(item[mk] ?? '')
     const displayName = String(item[nameKey] ?? '')
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-    primaryMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
+    const rawPrimaryValue = item['value']
+    primaryMap.set(key, {
+      displayName,
+      value: typeof rawPrimaryValue === 'number' ? rawPrimaryValue : 0,
+    })
   }
 
   for (const item of compareData) {
     let key = String(item[mk] ?? '')
     if (aliasMap) key = aliasMap[key] ?? key
     const displayName = String(item[nameKey] ?? '')
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: `as number` cast may be undefined
-    compareMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
+    const rawCompareValue = item['value']
+    compareMap.set(key, {
+      displayName,
+      value: typeof rawCompareValue === 'number' ? rawCompareValue : 0,
+    })
   }
 
   // Collect all unique match keys, primary first then compare-only

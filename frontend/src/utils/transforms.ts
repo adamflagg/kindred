@@ -34,12 +34,13 @@ export function toAppCamper(
     first_name: person.first_name || '',
     last_name: person.last_name || '',
     preferred_name: person.preferred_name || '',
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: age may be undefined despite Required<> type
-    age: person.age ?? 0,
+    age: typeof person.age === 'number' ? person.age : 0,
     birthdate: person.birthdate,
     grade: person.grade || 0,
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime fallback: gender could be empty string
-    gender: (person.gender as 'M' | 'F' | 'NB') || 'NB',
+    gender:
+      person.gender === 'M' || person.gender === 'F' || person.gender === 'NB'
+        ? person.gender
+        : 'NB',
     session_cm_id: sessionCmId,
     ...(bunk?.id && { assigned_bunk: bunk.id }),
     ...(bunk?.cm_id !== undefined && { assigned_bunk_cm_id: bunk.cm_id }),
@@ -102,12 +103,12 @@ export function buildCampersFromData(
 
   for (const attendee of attendees) {
     // Get person from expanded relation
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ExpandType<T> makes expand required but PB may omit it at runtime; fixing cascades to ~35 files (#573 audit)
     const person = attendee.expand?.person
     if (!person || !person.is_camper) continue
 
     // Get session from expanded relation
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ExpandType<T> makes expand required but PB may omit it at runtime; fixing cascades to ~35 files (#573 audit)
     const session = attendee.expand?.session ?? null
 
     // Get assignment and bunk using person CM ID
@@ -116,7 +117,7 @@ export function buildCampersFromData(
 
     if (assignment) {
       // Try to get bunk from assignment expand first
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ExpandType<T> makes expand required but PB may omit it at runtime; fixing cascades to ~35 files (#573 audit)
       if (assignment.expand?.bunk && typeof assignment.expand.bunk === 'object') {
         bunk = assignment.expand.bunk
       }
@@ -161,7 +162,7 @@ export function createLookupMaps(data: {
   if (data.assignments) {
     data.assignments.forEach((assignment) => {
       // Get person CM ID from the expanded relation
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- expand may be undefined at runtime
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ExpandType<T> makes expand required but PB may omit it at runtime; fixing cascades to ~35 files (#573 audit)
       const person = assignment.expand?.person
       if (person && 'cm_id' in person) {
         const personCmId = person.cm_id

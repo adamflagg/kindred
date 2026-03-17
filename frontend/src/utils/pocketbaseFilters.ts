@@ -56,8 +56,10 @@ export function formatFilter(filter: string): string {
  * buildFilter(['session_type = "main"', 'year = 2025'])
  * // Returns: 'session_type = "main" && year = 2025'
  */
-export function buildFilter(conditions: string[], operator: '&&' | '||' = '&&'): string {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive: callers may pass null/undefined at runtime
+export function buildFilter(
+  conditions: string[] | null | undefined,
+  operator: '&&' | '||' = '&&'
+): string {
   if (!conditions || conditions.length === 0) return ''
 
   // Format each condition and join with operator
