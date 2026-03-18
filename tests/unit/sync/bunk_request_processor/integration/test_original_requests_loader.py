@@ -773,3 +773,83 @@ class TestClearProcessedFlags:
         assert "bunking_notes" in filter_str
         assert "internal_notes" in filter_str
         assert "socialize_with" in filter_str
+
+    def test_respects_limit_with_many_session_ids(self):
+        """Limit must be respected even when session filtering happens in Python (>50 IDs).
+
+        Bug #642: When >50 valid requester IDs trigger Python-side session filtering,
+        clear_processed_flags fetched ALL records via get_full_list. The limit must
+        still be applied after Python-side filtering.
+        """
+        mock_pb, mock_collection = self._create_mock_pocketbase()
+
+        # Create 100 records (simulating many processed records)
+        all_records = [self._create_mock_record(f"rec{i}", cm_id=1000 + i) for i in range(100)]
+
+        # get_full_list returns all 100 records (with expand for session filtering)
+        mock_collection.get_full_list = Mock(return_value=all_records)
+        mock_collection.update = Mock()
+
+        with patch(
+            "bunking.sync.bunk_request_processor.integration.original_requests_loader.SessionRepository"
+        ) as mock_session_repo:
+            mock_session_repo.return_value.get_valid_bunking_session_ids.return_value = {9999}
+
+            loader = OriginalRequestsLoader(mock_pb, year=2025, session_cm_ids=[9999])
+            # Set up >50 valid persons to trigger Python-side filtering
+            loader._person_sessions = {1000 + i: [9999] for i in range(100)}
+            cleared = loader.clear_processed_flags(fields=["bunk_with"], limit=2)
+
+        # Must clear exactly 2, not 100
+        assert cleared == 2
+        assert mock_collection.update.call_count == 2
+
+    def test_no_double_fetch_with_session_filter(self):
+        """Should fetch once with expand when session filtering in Python, not twice.
+
+        Bug #642: The old code fetched ALL records without expand, then fetched
+        AGAIN with expand for session filtering. This is wasteful and confusing.
+        """
+        mock_pb, mock_collection = self._create_mock_pocketbase()
+
+        records = [self._create_mock_record(f"rec{i}", cm_id=1000 + i) for i in range(5)]
+        mock_collection.get_full_list = Mock(return_value=records)
+        mock_collection.update = Mock()
+
+        with patch(
+            "bunking.sync.bunk_request_processor.integration.original_requests_loader.SessionRepository"
+        ) as mock_session_repo:
+            mock_session_repo.return_value.get_valid_bunking_session_ids.return_value = {9999}
+
+            loader = OriginalRequestsLoader(mock_pb, year=2025, session_cm_ids=[9999])
+            loader._person_sessions = {1000 + i: [9999] for i in range(60)}
+            loader.clear_processed_flags(fields=["bunk_with"])
+
+        # Should call get_full_list exactly once (with expand), not twice
+        assert mock_collection.get_full_list.call_count == 1
+        # That one call should include expand=requester
+        call_args = mock_collection.get_full_list.call_args
+        assert call_args[1]["query_params"].get("expand") == "requester"
+
+    def test_limit_without_session_filter_uses_get_list(self):
+        """When no session filter and limit specified, should use get_list (efficient)."""
+        mock_pb, mock_collection = self._create_mock_pocketbase()
+
+        mock_records = [self._create_mock_record(f"rec{i}") for i in range(3)]
+        mock_list_result = Mock()
+        mock_list_result.items = mock_records
+        mock_collection.get_list = Mock(return_value=mock_list_result)
+        mock_collection.update = Mock()
+
+        with patch(
+            "bunking.sync.bunk_request_processor.integration.original_requests_loader.SessionRepository"
+        ) as mock_session_repo:
+            mock_session_repo.return_value.get_valid_bunking_session_ids.return_value = set()
+
+            loader = OriginalRequestsLoader(mock_pb, year=2025)
+            cleared = loader.clear_processed_flags(fields=["bunk_with"], limit=3)
+
+        assert cleared == 3
+        mock_collection.get_list.assert_called_once()
+        # get_full_list should NOT be called
+        mock_collection.get_full_list.assert_not_called()
