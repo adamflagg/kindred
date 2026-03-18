@@ -37,6 +37,7 @@ func TestPersonCustomFieldValuesSync_RateLimiterConfig(t *testing.T) {
 	rl := ratelimit.NewRateLimiter(cfg)
 	if rl == nil {
 		t.Fatal("NewRateLimiter returned nil")
+		return
 	}
 
 	// Verify config is accessible (tests that our config values are valid)

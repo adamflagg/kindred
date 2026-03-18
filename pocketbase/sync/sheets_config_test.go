@@ -175,6 +175,7 @@ func TestSheetsConfig_LoadConfig_ReadsExistingFile(t *testing.T) {
 	// Should have custom value
 	if config.Tables["persons"] == nil {
 		t.Fatal("Expected 'persons' table")
+		return
 	}
 	if config.Tables["persons"].SheetName != "custom-persons-name" {
 		t.Errorf("SheetName = %q, want %q", config.Tables["persons"].SheetName, "custom-persons-name")

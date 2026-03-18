@@ -176,6 +176,7 @@ func TestSetStatusFields_AllStatuses(t *testing.T) {
 			gotID, hasID := pbData["status_id"]
 			if !hasID {
 				t.Fatal("status_id missing from pbData")
+				return
 			}
 			if gotID != tt.wantID {
 				t.Errorf("status_id = %v, want %d", gotID, tt.wantID)
@@ -184,6 +185,7 @@ func TestSetStatusFields_AllStatuses(t *testing.T) {
 			gotStatus, hasStatus := pbData["status"]
 			if !hasStatus {
 				t.Fatal("status missing from pbData")
+				return
 			}
 			if gotStatus != tt.wantStatus {
 				t.Errorf("status = %v, want %q", gotStatus, tt.wantStatus)

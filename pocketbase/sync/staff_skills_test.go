@@ -500,6 +500,7 @@ func TestStaffSkillsRecordBuilding(t *testing.T) {
 	r1 := findStaffSkillRecord(records, 12345, 100)
 	if r1 == nil {
 		t.Fatal("record for person 12345, skill 100 not found")
+		return
 	}
 	if r1.SkillName != "Archery" {
 		t.Errorf("expected skill name 'Archery', got %q", r1.SkillName)
@@ -515,6 +516,7 @@ func TestStaffSkillsRecordBuilding(t *testing.T) {
 	r3 := findStaffSkillRecord(records, 12346, 100)
 	if r3 == nil {
 		t.Fatal("record for person 12346, skill 100 not found")
+		return
 	}
 	if !r3.IsCertified {
 		t.Error("expected certified=true")
@@ -579,6 +581,7 @@ func TestStaffSkillsNotesFieldHandling(t *testing.T) {
 	notesRecord := findStaffSkillRecord(records, 12345, 200)
 	if notesRecord == nil {
 		t.Fatal("notes record not found")
+		return
 	}
 
 	// Booleans should all be false for notes fields

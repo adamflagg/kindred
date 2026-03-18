@@ -41,6 +41,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotCMID, ok := pbData["cm_id"].(int)
 	if !ok {
 		t.Fatal("cm_id type assertion failed")
+		return
 	}
 	if gotCMID != 12345 {
 		t.Errorf("cm_id = %d, want %d", gotCMID, 12345)
@@ -48,6 +49,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotName, ok := pbData["name"].(string)
 	if !ok {
 		t.Fatal("name type assertion failed")
+		return
 	}
 	if gotName != "Dietary Restrictions" {
 		t.Errorf("name = %q, want %q", gotName, "Dietary Restrictions")
@@ -55,6 +57,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotDataType, ok := pbData["data_type"].(string)
 	if !ok {
 		t.Fatal("data_type type assertion failed")
+		return
 	}
 	if gotDataType != "String" {
 		t.Errorf("data_type = %q, want %q", gotDataType, "String")
@@ -63,6 +66,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotPartition, ok := pbData["partition"].([]string)
 	if !ok {
 		t.Fatal("partition type assertion failed")
+		return
 	}
 	if !reflect.DeepEqual(gotPartition, []string{"Camper"}) {
 		t.Errorf("partition = %v, want %v", gotPartition, []string{"Camper"})
@@ -70,6 +74,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotSeasonal, ok := pbData["is_seasonal"].(bool)
 	if !ok {
 		t.Fatal("is_seasonal type assertion failed")
+		return
 	}
 	if gotSeasonal != false {
 		t.Errorf("is_seasonal = %v, want %v", gotSeasonal, false)
@@ -77,6 +82,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotArray, ok := pbData["is_array"].(bool)
 	if !ok {
 		t.Fatal("is_array type assertion failed")
+		return
 	}
 	if gotArray != true {
 		t.Errorf("is_array = %v, want %v", gotArray, true)
@@ -84,6 +90,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	gotActive, ok := pbData["is_active"].(bool)
 	if !ok {
 		t.Fatal("is_active type assertion failed")
+		return
 	}
 	if gotActive != true {
 		t.Errorf("is_active = %v, want %v", gotActive, true)
@@ -113,6 +120,7 @@ func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
 	gotCMID2, ok := pbData["cm_id"].(int)
 	if !ok {
 		t.Fatal("cm_id type assertion failed")
+		return
 	}
 	if gotCMID2 != 12345 {
 		t.Errorf("cm_id = %d, want %d", gotCMID2, 12345)
@@ -120,6 +128,7 @@ func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
 	gotName2, ok := pbData["name"].(string)
 	if !ok {
 		t.Fatal("name type assertion failed")
+		return
 	}
 	if gotName2 != "Test Field" {
 		t.Errorf("name = %q, want %q", gotName2, "Test Field")

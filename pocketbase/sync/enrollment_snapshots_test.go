@@ -48,6 +48,7 @@ func TestCountByGender(t *testing.T) {
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 	defer app.Cleanup()
 
@@ -56,6 +57,7 @@ func TestCountByGender(t *testing.T) {
 	col.Fields.Add(&core.NumberField{Name: "person_id"})
 	if err := app.Save(col); err != nil {
 		t.Fatal(err)
+		return
 	}
 
 	makeRecord := func(personID int) *core.Record {
@@ -151,6 +153,7 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 	defer app.Cleanup()
 
@@ -162,6 +165,7 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 	err = app.Save(col)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 
 	// Create attendees with British spelling (as stored by attendees.go)
@@ -173,6 +177,7 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 		err = app.Save(r)
 		if err != nil {
 			t.Fatal(err)
+			return
 		}
 	}
 

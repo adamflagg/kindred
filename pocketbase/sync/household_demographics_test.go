@@ -164,6 +164,7 @@ func TestHouseholdDemographicsAggregation(t *testing.T) {
 	hh5001 := aggregated[5001]
 	if hh5001 == nil {
 		t.Fatal("household 5001 not found in aggregated data")
+		return
 	}
 	if hh5001["HH-Family Description"] != "LGBTQ" {
 		t.Errorf("household 5001 family description = %q, want %q", hh5001["HH-Family Description"], "LGBTQ")
@@ -179,6 +180,7 @@ func TestHouseholdDemographicsAggregation(t *testing.T) {
 	hh5002 := aggregated[5002]
 	if hh5002 == nil {
 		t.Fatal("household 5002 not found in aggregated data")
+		return
 	}
 	if hh5002["HH-Family Description"] != "Interfaith" {
 		t.Errorf("household 5002 family description = %q, want %q", hh5002["HH-Family Description"], "Interfaith")

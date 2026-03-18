@@ -390,12 +390,14 @@ func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
 	// Verify SubStats is populated
 	if stats.SubStats == nil {
 		t.Fatal("expected SubStats to be non-nil for combined sync")
+		return
 	}
 
 	// Verify households sub-stats
 	householdSubStats, exists := stats.SubStats["households"]
 	if !exists {
 		t.Fatal("expected 'households' key in SubStats")
+		return
 	}
 	if householdSubStats.Created != 3 {
 		t.Errorf("expected households.Created=3, got %d", householdSubStats.Created)
@@ -463,6 +465,7 @@ func TestPersonsSync_GetStats_PartialSubStats(t *testing.T) {
 	// Verify SubStats exists
 	if stats.SubStats == nil {
 		t.Fatal("expected SubStats to be non-nil")
+		return
 	}
 
 	// Verify households sub-stats present

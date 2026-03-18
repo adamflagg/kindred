@@ -44,6 +44,7 @@ func TestCamperHistoryDeduplicatesMultiSessionCampers(t *testing.T) {
 	pd, exists := personData[1001]
 	if !exists {
 		t.Fatal("person 1001 not found in aggregated data")
+		return
 	}
 
 	if len(pd.SessionNames) != 3 {
@@ -1277,6 +1278,7 @@ func TestCamperHistoryMultiSessionWithDifferentTypes(t *testing.T) {
 	pd, exists := personData[1001]
 	if !exists {
 		t.Fatal("person 1001 not found in aggregated data")
+		return
 	}
 
 	// Should have both session types

@@ -424,6 +424,7 @@ func TestMultiWorkbookExport_StructHasWorkbookManager(t *testing.T) {
 
 	if export == nil {
 		t.Fatal("NewMultiWorkbookExport() should return non-nil export")
+		return
 	}
 
 	// Verify it has the expected year
@@ -614,6 +615,7 @@ func TestSyncJobToCollections_PersonsMapsToMultipleCollections(t *testing.T) {
 	collections, ok := SyncJobToCollections["persons"]
 	if !ok {
 		t.Fatal("SyncJobToCollections missing 'persons' mapping")
+		return
 	}
 
 	hasPersons := false

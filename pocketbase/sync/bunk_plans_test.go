@@ -66,6 +66,7 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 			idFloat, ok := tt.planData["ID"].(float64)
 			if !ok {
 				t.Fatal("missing ID in test data")
+				return
 			}
 			recordData := map[string]interface{}{
 				"year":      2025,

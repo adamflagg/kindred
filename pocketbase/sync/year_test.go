@@ -20,6 +20,7 @@ func TestParseSeasonYear_Missing(t *testing.T) {
 	_, err := ParseSeasonYear()
 	if err == nil {
 		t.Fatal("expected error for missing env var")
+		return
 	}
 }
 
@@ -28,6 +29,7 @@ func TestParseSeasonYear_NonNumeric(t *testing.T) {
 	_, err := ParseSeasonYear()
 	if err == nil {
 		t.Fatal("expected error for non-numeric value")
+		return
 	}
 }
 
@@ -36,6 +38,7 @@ func TestParseSeasonYear_BelowRange(t *testing.T) {
 	_, err := ParseSeasonYear()
 	if err == nil {
 		t.Fatal("expected error for year below 2017")
+		return
 	}
 }
 
@@ -44,6 +47,7 @@ func TestParseSeasonYear_AboveRange(t *testing.T) {
 	_, err := ParseSeasonYear()
 	if err == nil {
 		t.Fatal("expected error for year above 2050")
+		return
 	}
 }
 

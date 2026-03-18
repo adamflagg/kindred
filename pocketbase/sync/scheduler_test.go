@@ -13,6 +13,7 @@ func TestSchedulerCreation(t *testing.T) {
 
 	if s == nil {
 		t.Fatal("NewScheduler returned nil")
+		return
 	}
 
 	if s.cron == nil {
@@ -176,11 +177,13 @@ func TestCustomValuesSyncRunsSequentially(t *testing.T) {
 
 	if personRec == nil || householdRec == nil {
 		t.Fatal("expected both services to have been executed")
+		return
 	}
 
 	// Ensure end times were recorded (syncs completed)
 	if personRec.end.IsZero() || householdRec.end.IsZero() {
 		t.Fatal("expected both services to have completed (end times recorded)")
+		return
 	}
 
 	// Check that there's no overlap - one must complete before the other starts

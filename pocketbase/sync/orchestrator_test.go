@@ -54,6 +54,7 @@ func TestOrchestratorCreation(t *testing.T) {
 
 	if o == nil {
 		t.Fatal("NewOrchestrator returned nil")
+		return
 	}
 
 	if o.services == nil {
@@ -160,6 +161,7 @@ func TestGetStatus(t *testing.T) {
 	status = o.GetStatus("sessions")
 	if status == nil {
 		t.Fatal("expected non-nil status")
+		return
 	}
 
 	if status.Status != statusCompleted {
@@ -576,6 +578,7 @@ func TestStatsWithSubStats(t *testing.T) {
 	// Verify SubStats exists and has correct values
 	if stats.SubStats == nil {
 		t.Fatal("expected SubStats to be non-nil")
+		return
 	}
 
 	if len(stats.SubStats) != 2 {
@@ -586,6 +589,7 @@ func TestStatsWithSubStats(t *testing.T) {
 	householdStats, exists := stats.SubStats["households"]
 	if !exists {
 		t.Fatal("expected 'households' key in SubStats")
+		return
 	}
 	if householdStats.Created != 3 {
 		t.Errorf("expected households.Created=3, got %d", householdStats.Created)
@@ -598,6 +602,7 @@ func TestStatsWithSubStats(t *testing.T) {
 	personTagStats, exists := stats.SubStats["person_tags"]
 	if !exists {
 		t.Fatal("expected 'person_tags' key in SubStats")
+		return
 	}
 	if personTagStats.Created != 15 {
 		t.Errorf("expected person_tags.Created=15, got %d", personTagStats.Created)
@@ -657,6 +662,7 @@ func TestMarkSyncRunning(t *testing.T) {
 	status := o.GetStatus("test")
 	if status == nil {
 		t.Fatal("expected non-nil status")
+		return
 	}
 	if status.Status != "running" {
 		t.Errorf("expected status 'running', got %q", status.Status)
@@ -695,6 +701,7 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 
 	if status == nil {
 		t.Fatal("expected status to be set")
+		return
 	}
 
 	if status.Type != "test" {
@@ -1019,6 +1026,7 @@ func TestRunSingleSyncContextDeadlineHandling(t *testing.T) {
 
 		if ctx == nil {
 			t.Fatal("service was never called with a context")
+			return
 		}
 
 		// When parent has generous deadline (>=30min), the sync context should
@@ -1070,6 +1078,7 @@ func TestRunSingleSyncContextDeadlineHandling(t *testing.T) {
 
 		if ctx == nil {
 			t.Fatal("service was never called with a context")
+			return
 		}
 
 		// When parent has short deadline (<30min), the sync should create
@@ -1119,6 +1128,7 @@ func TestRunSingleSyncContextDeadlineHandling(t *testing.T) {
 
 		if ctx == nil {
 			t.Fatal("service was never called with a context")
+			return
 		}
 
 		// When parent has no deadline, sync should create a generous timeout
@@ -1194,6 +1204,7 @@ func TestGetStatusWeeklySyncPending(t *testing.T) {
 	status := o.GetStatus("custom_field_defs")
 	if status == nil {
 		t.Fatal("expected non-nil status for queued weekly sync job")
+		return
 	}
 	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
@@ -1231,6 +1242,7 @@ func TestGetStatusWeeklySyncCompleted(t *testing.T) {
 	status := o.GetStatus("person_tag_defs")
 	if status == nil {
 		t.Fatal("expected non-nil status for completed weekly sync job")
+		return
 	}
 	if status.Status != statusCompleted {
 		t.Errorf("expected status 'completed', got %q", status.Status)
@@ -1240,6 +1252,7 @@ func TestGetStatusWeeklySyncCompleted(t *testing.T) {
 	status = o.GetStatus("custom_field_defs")
 	if status == nil {
 		t.Fatal("expected non-nil status for queued weekly sync job")
+		return
 	}
 	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
@@ -1261,6 +1274,7 @@ func TestGetStatusCustomValuesSyncPending(t *testing.T) {
 	status := o.GetStatus("household_custom_values")
 	if status == nil {
 		t.Fatal("expected non-nil status for queued custom values sync job")
+		return
 	}
 	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
@@ -1299,6 +1313,7 @@ func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
 	status := o.GetStatus("person_custom_values")
 	if status == nil {
 		t.Fatal("expected non-nil status for completed custom values sync job")
+		return
 	}
 	if status.Status != statusCompleted {
 		t.Errorf("expected status 'completed', got %q", status.Status)
@@ -1308,6 +1323,7 @@ func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
 	status = o.GetStatus("household_custom_values")
 	if status == nil {
 		t.Fatal("expected non-nil status for queued custom values sync job")
+		return
 	}
 	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
@@ -1400,6 +1416,7 @@ func TestEnqueueUnifiedSync(t *testing.T) {
 	}
 	if qs == nil {
 		t.Fatal("expected non-nil QueuedSync")
+		return
 	}
 	if qs.Year != 2025 {
 		t.Errorf("expected Year=2025, got %d", qs.Year)
@@ -1501,6 +1518,7 @@ func TestDequeueUnifiedSync(t *testing.T) {
 	dequeued := o.DequeueUnifiedSync()
 	if dequeued == nil {
 		t.Fatal("expected non-nil dequeued item")
+		return
 	}
 	if dequeued.ID != qs1.ID {
 		t.Errorf("expected dequeued ID=%s, got %s", qs1.ID, dequeued.ID)
@@ -1842,6 +1860,7 @@ func TestJobMeta_AllJobsHavePhase(t *testing.T) {
 
 	if len(meta) == 0 {
 		t.Fatal("expected syncJobMeta to contain jobs")
+		return
 	}
 
 	validPhases := map[Phase]bool{
@@ -2972,6 +2991,7 @@ func TestFinalizeSyncStatusSuccess(t *testing.T) {
 	}
 	if completed == nil {
 		t.Fatal("expected test to be in lastCompletedStatus")
+		return
 	}
 	if completed.Status != statusSuccess {
 		t.Errorf("expected status 'success', got %q", completed.Status)
@@ -3013,6 +3033,7 @@ func TestFinalizeSyncStatusError(t *testing.T) {
 	}
 	if completed == nil {
 		t.Fatal("expected test to be in lastCompletedStatus")
+		return
 	}
 	if completed.Status != statusFailed {
 		t.Errorf("expected status 'failed', got %q", completed.Status)
@@ -3065,6 +3086,7 @@ func TestFinalizeSyncStatusCalledFromPanicRecovery(t *testing.T) {
 	}
 	if completed == nil {
 		t.Fatal("expected test to be in lastCompletedStatus")
+		return
 	}
 	if completed.Status != statusFailed {
 		t.Errorf("expected status 'failed', got %q", completed.Status)
@@ -3155,6 +3177,7 @@ func TestRunSingleSyncAtomicStatusTransition(t *testing.T) {
 		select {
 		case <-deadline:
 			t.Fatal("timeout waiting for sync to complete")
+			return
 		default:
 			time.Sleep(1 * time.Millisecond)
 		}

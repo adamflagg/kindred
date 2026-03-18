@@ -321,6 +321,7 @@ func TestGetReadableYearExports(t *testing.T) {
 
 	if len(configs) == 0 {
 		t.Fatal("Expected at least one year-specific export config")
+		return
 	}
 
 	// Check attendees config exists
@@ -334,6 +335,7 @@ func TestGetReadableYearExports(t *testing.T) {
 
 	if attendeesConfig == nil {
 		t.Fatal("Expected 'attendees' export config")
+		return
 	}
 
 	if attendeesConfig.IsGlobal {
@@ -351,6 +353,7 @@ func TestGetReadableGlobalExports(t *testing.T) {
 
 	if len(configs) == 0 {
 		t.Fatal("Expected at least one global export config")
+		return
 	}
 
 	// All should be marked as global
@@ -795,6 +798,7 @@ func TestGetReadableYearExports_HasReadableNames(t *testing.T) {
 
 	if len(configs) == 0 {
 		t.Fatal("Expected at least one readable year export config")
+		return
 	}
 
 	// Check that none of the sheet names contain year placeholders
@@ -819,6 +823,7 @@ func TestGetReadableYearExports_AttendeesHasReadableName(t *testing.T) {
 
 	if attendeesConfig == nil {
 		t.Fatal("Expected 'attendees' export config")
+		return
 	}
 
 	if attendeesConfig.SheetName != "Attendees" {
@@ -860,6 +865,7 @@ func TestGetReadableGlobalExports_HasReadableNames(t *testing.T) {
 
 	if len(configs) == 0 {
 		t.Fatal("Expected at least one readable global export config")
+		return
 	}
 
 	// Check that none of the sheet names start with "g-"
@@ -884,6 +890,7 @@ func TestGetReadableGlobalExports_TagDefsHasReadableName(t *testing.T) {
 
 	if tagDefsConfig == nil {
 		t.Fatal("Expected 'person_tag_defs' export config")
+		return
 	}
 
 	if tagDefsConfig.SheetName != "Tag Definitions" {
