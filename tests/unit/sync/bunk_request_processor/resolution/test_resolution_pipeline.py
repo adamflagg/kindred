@@ -4,6 +4,7 @@ Tests the orchestration of multiple resolution strategies."""
 
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -687,18 +688,27 @@ class TestBatchResolvePreloadedPersonSessions:
 
         class AttendeeInfoCapturingStrategy(ResolutionStrategy):
             def __init__(self):
-                self.captured_attendee_info = None
+                self.captured_attendee_info: dict[int, dict[str, Any]] | None = None
 
             @property
-            def name(self):
+            def name(self) -> str:
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+            def resolve(
+                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
+            ) -> ResolutionResult:
                 return ResolutionResult()
 
             def resolve_with_context(
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
-            ):  # type: ignore[override]
+                self,
+                name: str,
+                requester_cm_id: int,
+                session_cm_id: int | None = None,
+                year: int | None = None,
+                candidates: list[Person] | None = None,
+                attendee_info: dict[int, dict[str, Any]] | None = None,
+                all_persons: list[Person] | None = None,
+            ) -> ResolutionResult:
                 self.captured_attendee_info = attendee_info
                 if candidates:
                     return ResolutionResult(person=candidates[0], confidence=0.90, method="test")
@@ -737,18 +747,27 @@ class TestBatchResolvePreloadedPersonSessions:
 
         class AttendeeInfoCapturingStrategy(ResolutionStrategy):
             def __init__(self):
-                self.captured_attendee_info = None
+                self.captured_attendee_info: dict[int, dict[str, Any]] | None = None
 
             @property
-            def name(self):
+            def name(self) -> str:
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+            def resolve(
+                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
+            ) -> ResolutionResult:
                 return ResolutionResult()
 
             def resolve_with_context(
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
-            ):  # type: ignore[override]
+                self,
+                name: str,
+                requester_cm_id: int,
+                session_cm_id: int | None = None,
+                year: int | None = None,
+                candidates: list[Person] | None = None,
+                attendee_info: dict[int, dict[str, Any]] | None = None,
+                all_persons: list[Person] | None = None,
+            ) -> ResolutionResult:
                 self.captured_attendee_info = attendee_info
                 return ResolutionResult(person=candidates[0] if candidates else None, confidence=0.90, method="test")
 
@@ -759,6 +778,7 @@ class TestBatchResolvePreloadedPersonSessions:
         pipeline.batch_resolve(requests)
 
         # Should use the first session (1000002), not the second
+        assert strategy.captured_attendee_info is not None
         assert strategy.captured_attendee_info[12345]["session_cm_id"] == 1000002
 
     def test_batch_resolve_falls_back_without_person_sessions(self, pipeline, mock_repositories):
@@ -778,18 +798,27 @@ class TestBatchResolvePreloadedPersonSessions:
 
         class AttendeeInfoCapturingStrategy(ResolutionStrategy):
             def __init__(self):
-                self.captured_attendee_info = None
+                self.captured_attendee_info: dict[int, dict[str, Any]] | None = None
 
             @property
-            def name(self):
+            def name(self) -> str:
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+            def resolve(
+                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
+            ) -> ResolutionResult:
                 return ResolutionResult()
 
             def resolve_with_context(
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
-            ):  # type: ignore[override]
+                self,
+                name: str,
+                requester_cm_id: int,
+                session_cm_id: int | None = None,
+                year: int | None = None,
+                candidates: list[Person] | None = None,
+                attendee_info: dict[int, dict[str, Any]] | None = None,
+                all_persons: list[Person] | None = None,
+            ) -> ResolutionResult:
                 self.captured_attendee_info = attendee_info
                 return ResolutionResult(person=candidates[0] if candidates else None, confidence=0.90, method="test")
 
@@ -827,18 +856,27 @@ class TestBatchResolvePreloadedPersonSessions:
 
         class SessionCapturingStrategy(ResolutionStrategy):
             def __init__(self):
-                self.captured_session_cm_id = None
+                self.captured_session_cm_id: int | None = None
 
             @property
-            def name(self):
+            def name(self) -> str:
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+            def resolve(
+                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
+            ) -> ResolutionResult:
                 return ResolutionResult()
 
             def resolve_with_context(
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
-            ):  # type: ignore[override]
+                self,
+                name: str,
+                requester_cm_id: int,
+                session_cm_id: int | None = None,
+                year: int | None = None,
+                candidates: list[Person] | None = None,
+                attendee_info: dict[int, dict[str, Any]] | None = None,
+                all_persons: list[Person] | None = None,
+            ) -> ResolutionResult:
                 self.captured_session_cm_id = session_cm_id
                 return ResolutionResult(person=candidates[0] if candidates else None, confidence=0.90, method="test")
 
