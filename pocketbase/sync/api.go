@@ -247,9 +247,6 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 				)
 				syncErr := processor.Sync(ctx)
 				orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), syncErr)
-
-				// Process queued syncs (matches handleIndividualSync pattern)
-				processQueuedSyncs(orchestrator)
 			}()
 
 			return e.JSON(http.StatusOK, map[string]any{
@@ -823,9 +820,22 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 					if markErr := orchestrator.MarkSyncRunning("process_requests"); markErr != nil {
 						slog.Warn("Could not mark process_requests running (may already be running)", "error", markErr)
 					} else {
+						// Fresh context — don't share the upload's shorter timeout
+						processCtx, processCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+						defer processCancel()
+
 						processor := NewRequestProcessor(scheduler.app)
+
+						// Panic recovery — matches /process-requests endpoint pattern
+						defer func() {
+							if r := recover(); r != nil {
+								slog.Error("process_requests panicked", "panic", r)
+								orchestrator.FinalizeSyncStatus("process_requests", Stats{}, fmt.Errorf("panic: %v", r))
+							}
+						}()
+
 						// Use defaults: all sessions, no force, no field filter
-						procErr := processor.Sync(ctx)
+						procErr := processor.Sync(processCtx)
 						orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), procErr)
 					}
 				}
