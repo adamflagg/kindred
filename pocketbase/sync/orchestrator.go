@@ -923,7 +923,7 @@ func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string) erro
 			if !o.IsRunning(syncType) {
 				// Check final status
 				o.mu.RLock()
-				status := o.runningJobs[syncType]
+				status := o.lastCompletedStatus[syncType]
 				o.mu.RUnlock()
 
 				if status != nil && status.Status == statusFailed {
