@@ -41,9 +41,47 @@ func buildLastLoginData() map[string]any {
 	}
 }
 
+// registerLastLoginHook registers a hook that sets last_login on every OAuth2 login.
+// This is separate from the OIDC admin sync so it works regardless of ADMIN_GROUP_NAME.
+func registerLastLoginHook(app *pocketbase.PocketBase) {
+	app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(e *core.RecordAuthWithOAuth2RequestEvent) error {
+		if e.OAuth2User == nil {
+			return e.Next()
+		}
+
+		// For new users: set last_login in CreateData
+		if e.IsNewRecord {
+			if e.CreateData == nil {
+				e.CreateData = map[string]any{}
+			}
+			e.CreateData["last_login"] = buildLastLoginData()["last_login"]
+		}
+
+		// For existing users: explicit Save() required because PocketBase only
+		// updates the external auth link during OAuth2 login, not the user record.
+		if e.Record != nil && !e.IsNewRecord {
+			e.Record.Set("last_login", buildLastLoginData()["last_login"])
+			if err := e.App.Save(e.Record); err != nil {
+				slog.Error("Failed to update last_login on login",
+					"user_id", e.Record.Id,
+					"error", err,
+				)
+			}
+		}
+
+		return e.Next()
+	})
+
+	slog.Info("Last login tracking hook registered")
+}
+
 // RegisterOIDCHooks registers the OAuth2 login hook that syncs is_admin
 // from OIDC group claims. Reads ADMIN_GROUP_NAME env var at call time.
+// Also registers the last_login tracking hook (always, regardless of admin group config).
 func RegisterOIDCHooks(app *pocketbase.PocketBase) {
+	// Always register last_login tracking — not gated on ADMIN_GROUP_NAME
+	registerLastLoginHook(app)
+
 	adminGroup := os.Getenv("ADMIN_GROUP_NAME")
 	if adminGroup == "" {
 		slog.Info("ADMIN_GROUP_NAME not set, skipping OIDC admin sync hook")
@@ -65,39 +103,28 @@ func RegisterOIDCHooks(app *pocketbase.PocketBase) {
 				e.CreateData = map[string]any{}
 			}
 			e.CreateData["is_admin"] = isAdmin
-			// Set last_login for new users
-			loginData := buildLastLoginData()
-			for k, v := range loginData {
-				e.CreateData[k] = v
-			}
 			slog.Info("OIDC new user admin sync",
 				"is_admin", isAdmin,
 			)
 		}
 
-		// Always update last_login for existing users.
-		// Note: the existing code only saved when is_admin changed. We now always
-		// save because last_login changes on every login. The admin sync log
-		// message stays inside a success branch to avoid logging on save failure.
+		// For existing users: explicit Save() required because PocketBase only
+		// updates the external auth link during OAuth2 login, not the user record.
 		if e.Record != nil && !e.IsNewRecord {
-			e.Record.Set("last_login", buildLastLoginData()["last_login"])
-
 			currentAdmin := e.Record.GetBool("is_admin")
-			adminChanged := currentAdmin != isAdmin
-			if adminChanged {
+			if currentAdmin != isAdmin {
 				e.Record.Set("is_admin", isAdmin)
-			}
-
-			if err := e.App.Save(e.Record); err != nil {
-				slog.Error("Failed to update user on login",
-					"user_id", e.Record.Id,
-					"error", err,
-				)
-			} else if adminChanged {
-				slog.Info("OIDC admin sync updated",
-					"user_id", e.Record.Id,
-					"is_admin", isAdmin,
-				)
+				if err := e.App.Save(e.Record); err != nil {
+					slog.Error("Failed to sync is_admin from OIDC groups",
+						"user_id", e.Record.Id,
+						"error", err,
+					)
+				} else {
+					slog.Info("OIDC admin sync updated",
+						"user_id", e.Record.Id,
+						"is_admin", isAdmin,
+					)
+				}
 			}
 		}
 

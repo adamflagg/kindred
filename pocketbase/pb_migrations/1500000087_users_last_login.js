@@ -11,7 +11,9 @@ migrate((app) => {
     type: "date",
     name: "last_login",
     required: false,
-    presentable: false
+    presentable: false,
+    min: "",
+    max: ""
   }))
 
   app.save(collection)
