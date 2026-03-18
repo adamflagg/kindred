@@ -32,6 +32,7 @@ class ResolutionPipeline:
         self.cache = None
         self.minimum_confidence = 0.0
         self.spread_filter: SpreadFilter | None = None
+        self._person_sessions: dict[int, list[int]] | None = None
 
     def add_strategy(self, strategy: ResolutionStrategy) -> None:
         """Add a resolution strategy to the pipeline"""
@@ -48,6 +49,14 @@ class ResolutionPipeline:
     def set_spread_filter(self, spread_filter: SpreadFilter | None) -> None:
         """Set spread filter for age/grade validation"""
         self.spread_filter = spread_filter
+
+    def set_person_sessions(self, person_sessions: dict[int, list[int]]) -> None:
+        """Set pre-loaded person-to-session mappings from orchestrator.
+
+        When set, batch_resolve() uses these instead of calling
+        bulk_get_sessions_for_persons() which fails at >150 person IDs.
+        """
+        self._person_sessions = person_sessions
 
     def resolve(
         self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
@@ -218,19 +227,29 @@ class ResolutionPipeline:
         # Keep backward-compatible tuple-keyed dict for internal use (session context lookup)
         attendee_info_by_person_year = {}
 
-        # Single loop: fetch sessions for each year and populate both data structures
-        for year in years:
-            if year not in session_cache:
-                session_cache[year] = self.attendee_repo.bulk_get_sessions_for_persons(all_person_ids, year)
+        # Load session data: use pre-loaded orchestrator data if available,
+        # otherwise fall back to bulk_get_sessions_for_persons (for tests, CLI tools)
+        if self._person_sessions is not None:
+            # Use pre-loaded session data from orchestrator (handles any scale)
+            for person_id in all_person_ids:
+                sessions = self._person_sessions.get(person_id)
+                if sessions:
+                    session_id = sessions[0]  # Primary bunking session
+                    for year in years:
+                        attendee_info_by_person_year[(person_id, year)] = session_id
+                    if person_id not in attendee_info:
+                        attendee_info[person_id] = {"session_cm_id": session_id}
+        else:
+            # Fallback for non-orchestrator callers (tests, CLI tools)
+            for year in years:
+                if year not in session_cache:
+                    session_cache[year] = self.attendee_repo.bulk_get_sessions_for_persons(all_person_ids, year)
 
-            person_sessions = session_cache[year]
-            for person_id, session_id in person_sessions.items():
-                # Populate tuple-keyed dict for session context lookup
-                attendee_info_by_person_year[(person_id, year)] = session_id
-
-                # Populate attendee_info (use first year's session for strategies)
-                if person_id not in attendee_info:
-                    attendee_info[person_id] = {"session_cm_id": session_id}
+                person_sessions_from_db = session_cache[year]
+                for person_id, session_id in person_sessions_from_db.items():
+                    attendee_info_by_person_year[(person_id, year)] = session_id
+                    if person_id not in attendee_info:
+                        attendee_info[person_id] = {"session_cm_id": session_id}
 
         # Add person details (school, grade, city, state) from loaded Person objects
         for cm_id, person in all_persons_by_cm_id.items():

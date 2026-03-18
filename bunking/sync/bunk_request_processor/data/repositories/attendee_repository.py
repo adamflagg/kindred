@@ -196,6 +196,8 @@ class AttendeeRepository:
         except Exception:
             return []
 
+    _BULK_CHUNK_SIZE = 100
+
     def bulk_get_sessions_for_persons(self, person_cm_ids: list[int], year: int) -> dict[int, int]:
         """Get bunking-relevant session assignments for multiple persons.
 
@@ -203,13 +205,28 @@ class AttendeeRepository:
         bunking-relevant session types (main, embedded, ag). Campers enrolled
         in family camp, quests, or other non-bunking sessions are excluded.
 
+        Chunks large requests to avoid PocketBase OR clause length limits
+        (~150 IDs). Each chunk is queried separately and results merged.
+        """
+        if not person_cm_ids:
+            return {}
+
+        # Chunk to avoid PocketBase OR clause length limits
+        sessions_dict: dict[int, int] = {}
+        for i in range(0, len(person_cm_ids), self._BULK_CHUNK_SIZE):
+            chunk = person_cm_ids[i : i + self._BULK_CHUNK_SIZE]
+            chunk_result = self._bulk_get_sessions_chunk(chunk, year)
+            sessions_dict.update(chunk_result)
+
+        return sessions_dict
+
+    def _bulk_get_sessions_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, int]:
+        """Get sessions for a single chunk of person IDs.
+
         Uses get_full_list to handle campers enrolled in multiple sessions
         (e.g., summer session + family camp) without per_page truncation.
         """
         from .session_repository import VALID_BUNKING_SESSION_TYPES
-
-        if not person_cm_ids:
-            return {}
 
         try:
             # Build OR clause instead of IN to avoid encoding issues

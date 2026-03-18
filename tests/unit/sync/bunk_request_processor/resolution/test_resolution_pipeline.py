@@ -645,5 +645,255 @@ class TestBatchResolveAttendeeInfoFormat:
         assert results[0].person.cm_id == 11111, "Should resolve to john_session1 (cm_id=11111) who is in same session"
 
 
+class TestBatchResolvePreloadedPersonSessions:
+    """Test that batch_resolve uses pre-loaded person sessions from orchestrator.
+
+    The orchestrator loads _person_sessions via build_person_session_mappings()
+    which works at any scale. When set via set_person_sessions(), batch_resolve()
+    should use this data instead of calling bulk_get_sessions_for_persons() which
+    fails at >~150 person IDs due to OR clause length limits.
+    """
+
+    @pytest.fixture
+    def mock_repositories(self):
+        """Create mock repositories"""
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def pipeline(self, mock_repositories):
+        """Create a ResolutionPipeline with mocked dependencies"""
+        person_repo, attendee_repo = mock_repositories
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return ResolutionPipeline(person_repo, attendee_repo)
+
+    def test_batch_resolve_uses_preloaded_person_sessions(self, pipeline, mock_repositories):
+        """When set_person_sessions() is called, batch_resolve() should use
+        the pre-loaded data and NOT call bulk_get_sessions_for_persons().
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        john_doe = Person(cm_id=12345, first_name="John", last_name="Doe")
+        person_repo.find_by_name.return_value = [john_doe]
+
+        # Pre-loaded session data from orchestrator
+        pipeline.set_person_sessions(
+            {
+                12345: [1000002],  # John is in session 1000002
+                99999: [1000002],  # Requester is in session 1000002
+            }
+        )
+
+        class AttendeeInfoCapturingStrategy(ResolutionStrategy):
+            def __init__(self):
+                self.captured_attendee_info = None
+
+            @property
+            def name(self):
+                return "capturing"
+
+            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+                return ResolutionResult()
+
+            def resolve_with_context(
+                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            ):  # type: ignore[override]
+                self.captured_attendee_info = attendee_info
+                if candidates:
+                    return ResolutionResult(person=candidates[0], confidence=0.90, method="test")
+                return ResolutionResult()
+
+        strategy = AttendeeInfoCapturingStrategy()
+        pipeline.add_strategy(strategy)
+
+        requests = [("John Doe", 99999, None, 2025)]
+        pipeline.batch_resolve(requests)
+
+        # bulk_get_sessions_for_persons should NOT be called
+        attendee_repo.bulk_get_sessions_for_persons.assert_not_called()
+
+        # attendee_info should still be populated correctly
+        assert strategy.captured_attendee_info is not None
+        assert 12345 in strategy.captured_attendee_info
+        assert strategy.captured_attendee_info[12345]["session_cm_id"] == 1000002
+
+    def test_batch_resolve_multi_session_uses_first(self, pipeline, mock_repositories):
+        """When a person is enrolled in multiple sessions, the first session
+        in the list should be used as the primary bunking session.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        john_doe = Person(cm_id=12345, first_name="John", last_name="Doe")
+        person_repo.find_by_name.return_value = [john_doe]
+
+        # Person has multiple sessions — first is primary
+        pipeline.set_person_sessions(
+            {
+                12345: [1000002, 1000003],  # Two sessions, first is primary
+                99999: [1000002],
+            }
+        )
+
+        class AttendeeInfoCapturingStrategy(ResolutionStrategy):
+            def __init__(self):
+                self.captured_attendee_info = None
+
+            @property
+            def name(self):
+                return "capturing"
+
+            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+                return ResolutionResult()
+
+            def resolve_with_context(
+                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            ):  # type: ignore[override]
+                self.captured_attendee_info = attendee_info
+                return ResolutionResult(person=candidates[0] if candidates else None, confidence=0.90, method="test")
+
+        strategy = AttendeeInfoCapturingStrategy()
+        pipeline.add_strategy(strategy)
+
+        requests = [("John Doe", 99999, None, 2025)]
+        pipeline.batch_resolve(requests)
+
+        # Should use the first session (1000002), not the second
+        assert strategy.captured_attendee_info[12345]["session_cm_id"] == 1000002
+
+    def test_batch_resolve_falls_back_without_person_sessions(self, pipeline, mock_repositories):
+        """When set_person_sessions() is NOT called, batch_resolve() should
+        fall back to calling bulk_get_sessions_for_persons() (existing behavior).
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        john_doe = Person(cm_id=12345, first_name="John", last_name="Doe")
+        person_repo.find_by_name.return_value = [john_doe]
+
+        # No set_person_sessions() call — should use fallback
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {
+            12345: 1000002,
+            99999: 1000002,
+        }
+
+        class AttendeeInfoCapturingStrategy(ResolutionStrategy):
+            def __init__(self):
+                self.captured_attendee_info = None
+
+            @property
+            def name(self):
+                return "capturing"
+
+            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+                return ResolutionResult()
+
+            def resolve_with_context(
+                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            ):  # type: ignore[override]
+                self.captured_attendee_info = attendee_info
+                return ResolutionResult(person=candidates[0] if candidates else None, confidence=0.90, method="test")
+
+        strategy = AttendeeInfoCapturingStrategy()
+        pipeline.add_strategy(strategy)
+
+        requests = [("John Doe", 99999, None, 2025)]
+        pipeline.batch_resolve(requests)
+
+        # bulk_get_sessions_for_persons SHOULD be called (fallback path)
+        attendee_repo.bulk_get_sessions_for_persons.assert_called_once()
+
+        # attendee_info should still work
+        assert strategy.captured_attendee_info is not None
+        assert 12345 in strategy.captured_attendee_info
+        assert strategy.captured_attendee_info[12345]["session_cm_id"] == 1000002
+
+    def test_batch_resolve_preloaded_session_context_for_requester(self, pipeline, mock_repositories):
+        """When session_cm_id is None in the request, batch_resolve should derive
+        session context from pre-loaded person_sessions for the requester.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        john_session1 = Person(cm_id=11111, first_name="John", last_name="Doe")
+        john_session2 = Person(cm_id=22222, first_name="John", last_name="Doe")
+        person_repo.find_by_name.return_value = [john_session1, john_session2]
+
+        pipeline.set_person_sessions(
+            {
+                11111: [1000002],
+                22222: [1000003],
+                99999: [1000002],  # Requester in session 1000002
+            }
+        )
+
+        class SessionCapturingStrategy(ResolutionStrategy):
+            def __init__(self):
+                self.captured_session_cm_id = None
+
+            @property
+            def name(self):
+                return "capturing"
+
+            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+                return ResolutionResult()
+
+            def resolve_with_context(
+                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            ):  # type: ignore[override]
+                self.captured_session_cm_id = session_cm_id
+                return ResolutionResult(person=candidates[0] if candidates else None, confidence=0.90, method="test")
+
+        strategy = SessionCapturingStrategy()
+        pipeline.add_strategy(strategy)
+
+        # session_cm_id is None — should be derived from pre-loaded data
+        requests = [("John Doe", 99999, None, 2025)]
+        pipeline.batch_resolve(requests)
+
+        # Strategy should receive session 1000002 (from requester's pre-loaded sessions)
+        assert strategy.captured_session_cm_id == 1000002
+
+
+class TestBulkGetSessionsChunking:
+    """Test that bulk_get_sessions_for_persons chunks large requests.
+
+    The OR clause in PocketBase silently fails at >~150 person IDs.
+    Chunking ensures the fallback path also works at scale.
+    """
+
+    def test_bulk_get_sessions_chunks_large_requests(self):
+        """Verify 200+ IDs are split into chunks and results merged."""
+        from bunking.sync.bunk_request_processor.data.repositories.attendee_repository import AttendeeRepository
+
+        mock_pb = Mock()
+
+        repo = AttendeeRepository(mock_pb)
+
+        # Generate 250 person IDs
+        person_ids = list(range(1, 251))
+
+        # Track calls to get_full_list to verify chunking
+        call_count = 0
+        received_filters = []
+
+        def mock_get_full_list(query_params=None):
+            nonlocal call_count
+            call_count += 1
+            if query_params:
+                received_filters.append(query_params.get("filter", ""))
+            return []  # Return empty for simplicity — we're testing chunking, not mapping
+
+        mock_pb.collection.return_value.get_full_list = mock_get_full_list
+
+        repo.bulk_get_sessions_for_persons(person_ids, 2025)
+
+        # Should have made multiple calls (250 / 100 = 3 chunks)
+        assert call_count >= 3, f"Expected at least 3 chunked calls for 250 IDs, got {call_count}"
+
+        # Each filter should have at most 100 person_id conditions
+        for filter_str in received_filters:
+            person_id_count = filter_str.count("person_id = ")
+            assert person_id_count <= 100, f"Chunk should have at most 100 person IDs, got {person_id_count}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

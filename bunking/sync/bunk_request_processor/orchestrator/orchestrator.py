@@ -686,8 +686,9 @@ class RequestOrchestrator:
         self._init_validation_components()
         self._init_extracted_services()
 
-        # Load person-session mapping
+        # Load person-session mapping and pass to resolution pipeline
         self._load_person_sessions()
+        self.resolution_pipeline.set_person_sessions(self._person_sessions)
 
         logger.info(
             f"Initialized RequestOrchestrator for year {self.year}, "
