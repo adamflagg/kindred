@@ -54,7 +54,8 @@ class ResolutionPipeline:
         """Set pre-loaded person-to-session mappings from orchestrator.
 
         When set, batch_resolve() uses these instead of calling
-        bulk_get_sessions_for_persons() which fails at >150 person IDs.
+        bulk_get_sessions_for_persons(), avoiding per-chunk DB round-trips.
+        An empty dict is treated as "not set" so the fallback path still runs.
         """
         self._person_sessions = person_sessions
 
@@ -220,16 +221,13 @@ class ResolutionPipeline:
         # - School disambiguation (school_disambiguation.py:433-437)
         attendee_info: dict[int, dict[str, Any]] = {}
 
-        # Cache session lookups to avoid duplicate bulk_get_sessions_for_persons calls
-        # This consolidates what was previously two separate loops
-        session_cache: dict[int, dict[int, int]] = {}  # year -> {person_id: session_id}
-
         # Keep backward-compatible tuple-keyed dict for internal use (session context lookup)
         attendee_info_by_person_year = {}
 
         # Load session data: use pre-loaded orchestrator data if available,
-        # otherwise fall back to bulk_get_sessions_for_persons (for tests, CLI tools)
-        if self._person_sessions is not None:
+        # otherwise fall back to bulk_get_sessions_for_persons (for tests, CLI tools).
+        # Empty dict is falsy, so a failed orchestrator load falls through to the DB path.
+        if self._person_sessions:
             # Use pre-loaded session data from orchestrator (handles any scale)
             for person_id in all_person_ids:
                 sessions = self._person_sessions.get(person_id)
@@ -240,7 +238,9 @@ class ResolutionPipeline:
                     if person_id not in attendee_info:
                         attendee_info[person_id] = {"session_cm_id": session_id}
         else:
-            # Fallback for non-orchestrator callers (tests, CLI tools)
+            # Fallback for non-orchestrator callers (tests, CLI tools).
+            # Cache session lookups to avoid duplicate bulk_get_sessions_for_persons calls.
+            session_cache: dict[int, dict[int, int]] = {}  # year -> {person_id: session_id}
             for year in years:
                 if year not in session_cache:
                     session_cache[year] = self.attendee_repo.bulk_get_sessions_for_persons(all_person_ids, year)
