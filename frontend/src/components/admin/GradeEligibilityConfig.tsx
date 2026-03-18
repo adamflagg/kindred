@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Grid2x2, Loader2, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -65,7 +65,6 @@ export function GradeEligibilityConfig() {
 
   const [rows, setRows] = useState<SessionRow[]>([])
   const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD)
-  const [thresholdId, setThresholdId] = useState<string | undefined>()
   const [isSaving, setIsSaving] = useState(false)
 
   const buildRows = useCallback(
@@ -109,13 +108,7 @@ export function GradeEligibilityConfig() {
 
   useEffect(() => {
     const rec = thresholdRecords?.[0]
-    if (rec) {
-      setThreshold(typeof rec.value === 'number' ? rec.value : DEFAULT_THRESHOLD)
-      setThresholdId(rec.id)
-    } else {
-      setThreshold(DEFAULT_THRESHOLD)
-      setThresholdId(undefined)
-    }
+    setThreshold(rec && typeof rec.value === 'number' ? rec.value : DEFAULT_THRESHOLD)
   }, [thresholdRecords])
 
   const handleChange = (cmId: number, field: keyof SessionConfig, value: string) => {
@@ -169,8 +162,9 @@ export function GradeEligibilityConfig() {
         config_key: 'limited_threshold',
         value: threshold,
       }
-      if (thresholdId) {
-        await pb.collection('config').update(thresholdId, thresholdPayload)
+      const existingThresholdId = thresholdRecords?.[0]?.id
+      if (existingThresholdId) {
+        await pb.collection('config').update(existingThresholdId, thresholdPayload)
       } else {
         await pb.collection('config').create(thresholdPayload)
       }
