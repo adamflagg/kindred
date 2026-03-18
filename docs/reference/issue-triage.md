@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-18 (20 open issues; Group 19 completed via PR #644).
+Last updated: 2026-03-18 (18 open issues; #616/#617 fixed by PR #652, spawned #654).
 
 ---
 
@@ -50,14 +50,13 @@ Last updated: 2026-03-18 (20 open issues; Group 19 completed via PR #644).
 |---|-------|------|
 | 594 | Migrate `SessionAvailability` to QueryGuard pattern | tech-debt |
 | 604 | Leverage recharts 3.8 typed generics, niceTicks, and coordinate hooks | enhancement |
-| 616 | Eliminate derived `thresholdId` state in GradeEligibilityConfig | tech-debt |
-| 617 | Memoize `hasChanges` in GradeEligibilityConfig | tech-debt |
 | 619 | Remove 4 remaining defensive eslint-disable comments | tech-debt |
 | 623 | Gate authenticated query hooks on auth loading state | enhancement |
 | 640 | Extract shared ProfileRow component in User.tsx | refactor |
 | 641 | Users list date columns need headers and consistent layout | ux |
+| 654 | Eliminate derived `configId` state in GradeEligibilityConfig rows | tech-debt |
 
-**Interplay:** #573 resolved by PR #618 (46 removed, 16 kept); #619 spawned from that audit — 4 defensive eslint-disables (3 syncStatus, 1 week_number) removable with minor type fixes. #594 is a standalone QueryGuard migration. #616 and #617 spawned from PR #614 review — #616 eliminates the derived-state anti-pattern that caused #576; #617 optimizes per-render `buildRows` calls. #604 depends on recharts 3.8 release. #623 gates query hooks to avoid premature API calls before auth resolves. #640 and #641 are both Users page improvements — #640 extracts a reusable ProfileRow, #641 fixes date column headers/layout.
+**Interplay:** #573 resolved by PR #618 (46 removed, 16 kept); #619 spawned from that audit — 4 defensive eslint-disables (3 syncStatus, 1 week_number) removable with minor type fixes. #594 is a standalone QueryGuard migration. #616 and #617 fixed by PR #652 — spawned #654 (same derived-state pattern for `configId` in rows). #604: recharts 3.8 now installed — no longer blocked, ready for implementation. #623: 11 hooks still ungated (camper detail/session views) — partially complete but not closeable. #640 and #641 are both Users page improvements — #640 extracts a reusable ProfileRow, #641 fixes date column headers/layout.
 
 ---
 
@@ -74,9 +73,8 @@ Last updated: 2026-03-18 (20 open issues; Group 19 completed via PR #644).
 | 628 | Add year parameter bounds validation across all API endpoints | enhancement |
 | 629 | Use collection name constants instead of string literals in API routers | enhancement |
 | 630 | Extract shared constant for active-enrolled attendee filter fragment | enhancement |
-| 645 | `runSyncAndWait` may read stale `lastCompletedStatus` from a prior run | tech-debt |
 
-**Interplay:** #620 spawned from Group 16 investigation (#593 closed as not-a-bug). #624 and #625 spawned from PR #622 simplify review. #626 spawned from PR #635 — debug.py has duplicated parsed-intent construction. #628, #629, #630 are all API hardening/consistency issues. #645 spawned from PR #644 code review — pre-existing polling window in `runSyncAndWait`, extremely narrow in practice. All are independent refactors. #625 is the largest (20+ locations) but mechanical. #630 and #620 overlap — both touch attendee filtering patterns.
+**Interplay:** #620 spawned from Group 16 investigation (#593 closed as not-a-bug). #624 and #625 spawned from PR #622 simplify review. #626 spawned from PR #635 — debug.py has duplicated parsed-intent construction (5+ identical loops). #628, #629, #630 are all API hardening/consistency issues. #645 closed — fixed in commit a0239fbc. #625 partially adopted (used in session_swap, waitlist_service, session_metrics) but drilldown_service still has hand-rolled extraction. #630 and #620 overlap — both touch attendee filtering patterns.
 
 ---
 
@@ -94,3 +92,4 @@ See git history for full completion log (Groups 1–16, scripts, Vite 8, etc.).
 | Group 16: Waitlist & session availability | #622 | 2026-03-17 | #593 closed (not-a-bug → #620); spawned #624, #625 |
 | Group 17: Solver pipeline optimization (#615) | #635 | 2026-03-18 | Phase skipping for direct-mapped socialize requests |
 | Group 19: Sync bugs (#639, #642) | #644 | 2026-03-18 | Mutex race + force+limit over-clear; spawned #645 |
+| Standalone: #648 duplicate React key | #651 | 2026-03-18 | TOC value '1'→'toc' + dedup in ProcessRequestOptions |
