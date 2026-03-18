@@ -358,6 +358,125 @@ describe('GradeEligibilityConfig', () => {
     })
   })
 
+  it('calls update (not create) for config row when record exists', async () => {
+    const user = userEvent.setup()
+    // Config record exists for session 1001 with id 'cfg1'
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords) // cfg1 for session 1001
+      .mockResolvedValueOnce([])
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Change min_grade for Taste of Camp (session 1001, has existing config 'cfg1')
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3') // change min_grade from 2 to 3
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Config for session 1001 should have been UPDATED with record ID 'cfg1'
+      const updateCalls = mockUpdate.mock.calls
+      const configUpdate = updateCalls.find((call) => call[0] === 'cfg1')
+      expect(configUpdate).toBeDefined()
+      expect((configUpdate![1] as Record<string, unknown>)['config_key']).toBe('1001')
+    })
+
+    // Verify create was NOT called for session 1001
+    const configCreate = mockCreate.mock.calls.find(
+      (call) => (call[0] as Record<string, unknown>)['config_key'] === '1001'
+    )
+    expect(configCreate).toBeUndefined()
+  })
+
+  it('looks up configId from query data at save time, not stale row state', async () => {
+    const user = userEvent.setup()
+    const queryClient = createTestQueryClient()
+
+    // Initial load: config record exists with id 'cfg1'
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([])
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <GradeEligibilityConfig />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Make a change to trigger save button
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3')
+
+    // Simulate config records refetch with a NEW record ID (as if record was recreated)
+    const updatedConfigRecords = [
+      {
+        id: 'cfg1-recreated',
+        category: 'session_availability',
+        subcategory: '2026',
+        config_key: '1001',
+        value: {
+          min_grade: 2,
+          max_grade: 6,
+          capacity_override: null,
+        },
+      },
+    ]
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(updatedConfigRecords)
+      .mockResolvedValueOnce([])
+
+    // Invalidate to trigger refetch with new config record ID
+    await queryClient.invalidateQueries()
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <GradeEligibilityConfig />
+      </QueryClientProvider>
+    )
+
+    // Wait for refetch to complete
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Re-make the change (rows were rebuilt from fresh data)
+    const selectsAfter = screen.getAllByRole('combobox')
+    await user.selectOptions(selectsAfter[0]!, '4')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Should use the NEW record ID 'cfg1-recreated' from fresh query data,
+      // not the old 'cfg1' that might be stuck in stale row state
+      const updateCalls = mockUpdate.mock.calls
+      const freshUpdate = updateCalls.find((call) => call[0] === 'cfg1-recreated')
+      expect(freshUpdate).toBeDefined()
+      expect((freshUpdate![1] as Record<string, unknown>)['config_key']).toBe('1001')
+    })
+
+    // Verify the stale ID was NOT used
+    const staleUpdate = mockUpdate.mock.calls.find((call) => call[0] === 'cfg1')
+    expect(staleUpdate).toBeUndefined()
+  })
+
   it('calls update (not create) for threshold when record exists', async () => {
     const user = userEvent.setup()
     // Threshold record exists with id 'thr1'
