@@ -23,7 +23,8 @@ interface ProcessRequestOptionsProps {
   isProcessing: boolean
 }
 
-// Regex patterns to extract friendly names from session names (matches Python backend)
+// Regex patterns to extract friendly names from session names
+// TOC returns 'toc' (backend sessionNameMap maps toc→1); numbered sessions return '2', '2a', etc.
 const SESSION_NAME_PATTERN = /Session\s+(\d+[a-z]?)/i
 const TOC_PATTERN = /Taste\s+of\s+Camp/i
 
