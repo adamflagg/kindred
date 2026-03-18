@@ -21,12 +21,12 @@ import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
 import ProgramLandingPage from './pages/ProgramLandingPage'
-const User = lazy(() => import('./components/User'))
-const Users = lazy(() => import('./components/Users'))
 import './styles/fonts.css'
 
 // Lazy-loaded components for code splitting
 // Heavy pages that benefit from separate chunks
+const User = lazy(() => import('./components/User'))
+const Users = lazy(() => import('./components/Users'))
 const SessionView = lazy(() => import('./components/SessionView'))
 const SessionList = lazy(() => import('./components/SessionList'))
 const AllCampersView = lazy(() => import('./components/AllCampersView'))

@@ -107,7 +107,7 @@ export default function User() {
                 </div>
               </div>
 
-              <div className="border-border border-t pt-4">
+              <div>
                 <div className="flex items-start gap-3">
                   <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
                     <Clock className="text-muted-foreground h-5 w-5" />
