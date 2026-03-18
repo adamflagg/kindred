@@ -254,7 +254,8 @@ class AttendeeRepository:
                     continue
 
                 # Filter by session type — only bunking-relevant sessions
-                session = getattr(item, "expand", {}).get("session") if hasattr(item, "expand") else None
+                expand = getattr(item, "expand", None)
+                session = expand.get("session") if expand else None
                 session_type = getattr(session, "session_type", None) if session else None
                 if session_type not in VALID_BUNKING_SESSION_TYPES:
                     continue
