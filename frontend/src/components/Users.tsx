@@ -213,6 +213,7 @@ export default function Users() {
                 const name = (user['name'] as string) || ''
                 const avatar = user['avatar'] as string | undefined
                 const created = (user['created'] as string) || ''
+                const lastLogin = (user['last_login'] as string) || ''
 
                 return (
                   <div key={user.id}>
@@ -278,29 +279,26 @@ export default function Users() {
 
                       {/* Last Login — admin/user-manager only */}
                       {canSeeLastLogin &&
-                        (() => {
-                          const lastLogin = user['last_login'] as string | undefined
-                          return lastLogin ? (
-                            <div
-                              data-testid={`last-login-${user.id}`}
-                              className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
-                              title={new Date(lastLogin).toLocaleString()}
-                            >
-                              <LogIn className="h-3.5 w-3.5" />
-                              <span>
-                                {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
-                              </span>
-                            </div>
-                          ) : (
-                            <div
-                              data-testid={`last-login-${user.id}`}
-                              className="text-muted-foreground/50 hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
-                            >
-                              <LogIn className="h-3.5 w-3.5" />
-                              <span>Never</span>
-                            </div>
-                          )
-                        })()}
+                        (lastLogin ? (
+                          <div
+                            data-testid={`last-login-${user.id}`}
+                            className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
+                            title={new Date(lastLogin).toLocaleString()}
+                          >
+                            <LogIn className="h-3.5 w-3.5" />
+                            <span>
+                              {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            data-testid={`last-login-${user.id}`}
+                            className="text-muted-foreground/50 hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
+                          >
+                            <LogIn className="h-3.5 w-3.5" />
+                            <span>Never</span>
+                          </div>
+                        ))}
                     </div>
 
                     {/* Inline UserRolesPanel */}

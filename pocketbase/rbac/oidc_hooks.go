@@ -34,11 +34,9 @@ func hasGroup(rawUser map[string]any, group string) bool {
 	return false
 }
 
-// buildLastLoginData returns a map with the current UTC time formatted for PocketBase.
-func buildLastLoginData() map[string]any {
-	return map[string]any{
-		"last_login": time.Now().UTC().Format("2006-01-02 15:04:05.000Z"),
-	}
+// buildLastLoginTimestamp returns the current UTC time formatted for PocketBase date fields.
+func buildLastLoginTimestamp() string {
+	return time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
 // registerLastLoginHook registers a hook that sets last_login on every OAuth2 login.
@@ -55,7 +53,7 @@ func registerLastLoginHook(app *pocketbase.PocketBase) {
 			if e.CreateData == nil {
 				e.CreateData = map[string]any{}
 			}
-			e.CreateData["last_login"] = buildLastLoginData()["last_login"]
+			e.CreateData["last_login"] = buildLastLoginTimestamp()
 		}
 
 		// For existing users: explicit Save() required because PocketBase only
@@ -63,7 +61,7 @@ func registerLastLoginHook(app *pocketbase.PocketBase) {
 		// This is the single Save() for all login-time field updates (last_login,
 		// is_admin) — the admin-sync hook sets fields but does not save.
 		if e.Record != nil && !e.IsNewRecord {
-			e.Record.Set("last_login", buildLastLoginData()["last_login"])
+			e.Record.Set("last_login", buildLastLoginTimestamp())
 			if err := e.App.Save(e.Record); err != nil {
 				slog.Error("Failed to update user on login",
 					"user_id", e.Record.Id,

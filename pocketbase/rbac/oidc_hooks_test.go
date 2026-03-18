@@ -5,16 +5,10 @@ import (
 	"time"
 )
 
-func TestBuildLastLoginData(t *testing.T) {
-	result := buildLastLoginData()
-
-	val, ok := result["last_login"]
-	if !ok {
-		t.Fatal("expected last_login key in result")
-	}
-	str, ok := val.(string)
-	if !ok || str == "" {
-		t.Fatal("expected non-empty last_login string")
+func TestBuildLastLoginTimestamp(t *testing.T) {
+	str := buildLastLoginTimestamp()
+	if str == "" {
+		t.Fatal("expected non-empty timestamp string")
 	}
 
 	// Verify the timestamp is valid and in expected PocketBase format
