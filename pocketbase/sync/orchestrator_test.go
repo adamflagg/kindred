@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2943,5 +2944,132 @@ func TestGetCurrentRunProgress_PriorityOrder(t *testing.T) {
 	// Daily should take priority (checked first in implementation)
 	if runType != runTypeDaily {
 		t.Errorf("expected %q to take priority, got %q", runTypeDaily, runType)
+	}
+}
+
+func TestFinalizeSyncStatusSuccess(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test", delay: 0}
+	o.RegisterService("test", mock)
+
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("MarkSyncRunning failed: %v", err)
+	}
+
+	time.Sleep(1010 * time.Millisecond)
+
+	stats := Stats{Created: 5, Updated: 3, Skipped: 2, Errors: 0}
+	o.FinalizeSyncStatus("test", stats, nil)
+
+	o.mu.RLock()
+	_, stillRunning := o.runningJobs["test"]
+	completed := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if stillRunning {
+		t.Error("expected test to be removed from runningJobs")
+	}
+	if completed == nil {
+		t.Fatal("expected test to be in lastCompletedStatus")
+	}
+	if completed.Status != statusSuccess {
+		t.Errorf("expected status 'success', got %q", completed.Status)
+	}
+	if completed.EndTime == nil {
+		t.Error("expected EndTime to be set")
+	}
+	if completed.Summary.Created != 5 {
+		t.Errorf("expected Created=5, got %d", completed.Summary.Created)
+	}
+	if completed.Summary.Duration <= 0 {
+		t.Error("expected Duration > 0")
+	}
+	if completed.Error != "" {
+		t.Errorf("expected no error, got %q", completed.Error)
+	}
+}
+
+func TestFinalizeSyncStatusError(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test", delay: 0}
+	o.RegisterService("test", mock)
+
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("MarkSyncRunning failed: %v", err)
+	}
+
+	syncErr := fmt.Errorf("api processing failed: connection refused")
+	o.FinalizeSyncStatus("test", Stats{Errors: 1}, syncErr)
+
+	o.mu.RLock()
+	_, stillRunning := o.runningJobs["test"]
+	completed := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if stillRunning {
+		t.Error("expected test to be removed from runningJobs")
+	}
+	if completed == nil {
+		t.Fatal("expected test to be in lastCompletedStatus")
+	}
+	if completed.Status != statusFailed {
+		t.Errorf("expected status 'failed', got %q", completed.Status)
+	}
+	if completed.Error != "api processing failed: connection refused" {
+		t.Errorf("unexpected error message: %q", completed.Error)
+	}
+}
+
+func TestFinalizeSyncStatusNoopWhenNotTracked(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test", delay: 0}
+	o.RegisterService("test", mock)
+
+	o.FinalizeSyncStatus("test", Stats{Created: 1}, nil)
+
+	o.mu.RLock()
+	_, inRunning := o.runningJobs["test"]
+	_, inCompleted := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if inRunning {
+		t.Error("should not be in runningJobs")
+	}
+	if inCompleted {
+		t.Error("should not be in lastCompletedStatus when never tracked")
+	}
+}
+
+func TestFinalizeSyncStatusCalledFromPanicRecovery(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test", delay: 0}
+	o.RegisterService("test", mock)
+
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("MarkSyncRunning failed: %v", err)
+	}
+
+	panicErr := fmt.Errorf("panic: runtime error: index out of range")
+	o.FinalizeSyncStatus("test", Stats{}, panicErr)
+
+	o.mu.RLock()
+	_, stillRunning := o.runningJobs["test"]
+	completed := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if stillRunning {
+		t.Error("expected test to be removed from runningJobs after panic recovery")
+	}
+	if completed == nil {
+		t.Fatal("expected test to be in lastCompletedStatus")
+	}
+	if completed.Status != statusFailed {
+		t.Errorf("expected status 'failed', got %q", completed.Status)
+	}
+	if !strings.Contains(completed.Error, "panic:") {
+		t.Errorf("expected error to contain 'panic:', got %q", completed.Error)
 	}
 }

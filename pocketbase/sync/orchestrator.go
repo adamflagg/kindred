@@ -23,6 +23,8 @@ const (
 	statusRunning = "running"
 	// statusPending indicates a sync job is queued
 	statusPending = "pending"
+	// statusSuccess indicates a sync job finished successfully
+	statusSuccess = "success"
 	// statusCompleted indicates a sync job has completed successfully
 	statusCompleted = "completed"
 
@@ -566,7 +568,7 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 				slog.Error("Sync failed", "syncType", syncType, "error", err)
 			}
 		} else {
-			status.Status = "success"
+			status.Status = statusSuccess
 			// Only log for current year syncs (historical syncs log in RunSyncWithOptions)
 			if status.Year == 0 {
 				slog.Info("Sync completed successfully", "syncType", syncType)
@@ -614,6 +616,41 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 	o.mu.Unlock()
 
 	return nil
+}
+
+// FinalizeSyncStatus updates a sync's status after completion.
+// Sets end time, stats, and status (success/failed), then moves from
+// runningJobs to lastCompletedStatus. No-ops if syncType is not tracked.
+// Used by handlers that manage their own Service instances (e.g., process_requests)
+// rather than routing through RunSingleSync.
+func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err error) {
+	o.mu.RLock()
+	status, exists := o.runningJobs[syncType]
+	o.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	endTime := time.Now()
+	status.EndTime = &endTime
+
+	stats.Duration = int(endTime.Sub(status.StartTime).Seconds())
+	status.Summary = stats
+
+	if err != nil {
+		status.Status = statusFailed
+		status.Error = err.Error()
+		slog.Error("Sync failed", "syncType", syncType, "error", err)
+	} else {
+		status.Status = statusSuccess
+		slog.Info("Sync completed successfully", "syncType", syncType)
+	}
+
+	o.mu.Lock()
+	o.lastCompletedStatus[syncType] = status
+	delete(o.runningJobs, syncType)
+	o.mu.Unlock()
 }
 
 // checkGlobalTablesEmpty checks if essential global tables have been synced.

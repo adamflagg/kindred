@@ -81,7 +81,7 @@ func TestStatusWithError(t *testing.T) {
 		Error:  "connection timeout",
 	}
 
-	if status.Status != "failed" {
+	if status.Status != statusFailed {
 		t.Errorf("expected status 'failed', got %q", status.Status)
 	}
 
