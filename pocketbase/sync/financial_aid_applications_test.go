@@ -358,6 +358,7 @@ func TestFADataAggregation(t *testing.T) {
 	app1 := apps["person1"]
 	if app1 == nil {
 		t.Fatal("expected application for person1")
+		return
 	}
 	if app1.ContactFirstName != "John" {
 		t.Errorf("expected contact_first_name 'John', got %q", app1.ContactFirstName)

@@ -209,6 +209,7 @@ func TestQuestRecordBuilding(t *testing.T) {
 	r1 := findQuestRecord(records, 12345, 2025)
 	if r1 == nil {
 		t.Fatal("record for person 12345, year 2025 not found")
+		return
 	}
 	if r1.ParentSignature != "John Smith" {
 		t.Errorf("expected parent_signature 'John Smith', got %q", r1.ParentSignature)

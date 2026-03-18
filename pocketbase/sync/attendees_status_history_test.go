@@ -340,6 +340,7 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 	enrollDate, ok := recordData["enrollment_date"].(string)
 	if !ok {
 		t.Fatal("enrollment_date type assertion failed")
+		return
 	}
 	if !strings.Contains(enrollDate, "2025-07-06") {
 		t.Errorf("enrollment_date should be PostDate (cancel date), got %v", enrollDate)
@@ -347,6 +348,7 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 	effDate, ok := recordData["effective_date"].(string)
 	if !ok {
 		t.Fatal("effective_date type assertion failed")
+		return
 	}
 	if !strings.Contains(effDate, "2024-11-18") {
 		t.Errorf("effective_date should be EffectiveDate (original reg date), got %v", effDate)
@@ -354,6 +356,7 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 	lastUpdated, ok := recordData["last_updated_utc"].(string)
 	if !ok {
 		t.Fatal("last_updated_utc type assertion failed")
+		return
 	}
 	if !strings.Contains(lastUpdated, "2025-07-06") {
 		t.Errorf("last_updated_utc should be LastUpdatedUTC, got %v", lastUpdated)

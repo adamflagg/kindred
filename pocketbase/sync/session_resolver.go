@@ -19,7 +19,7 @@ func NewSessionResolver(app core.App) *SessionResolver {
 }
 
 // sessionNameMap maps friendly session names to session numbers/types
-// This matches the Python session resolution logic and frontend extractFriendlyName()
+// Frontend sends 'toc' for Taste of Camp; Python uses '1' internally with a 'toc' alias
 var sessionNameMap = map[string]string{
 	"1":   "1",
 	"2":   "2",

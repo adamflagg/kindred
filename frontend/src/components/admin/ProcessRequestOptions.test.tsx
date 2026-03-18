@@ -478,6 +478,29 @@ describe('ProcessRequestOptions', () => {
     expect(screen.getByText(/process original bunk requests/i)).toBeInTheDocument()
   })
 
+  it('uses "toc" value for Taste of Camp instead of "1" to avoid key collisions', async () => {
+    render(<ProcessRequestOptions {...defaultProps} />, {
+      wrapper: createWrapper(),
+    })
+
+    // Wait for sessions to load
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /taste of camp/i })).toBeInTheDocument()
+    })
+
+    // Select Taste of Camp
+    const sessionSelect = screen.getByLabelText(/session/i)
+    await userEvent.selectOptions(sessionSelect, 'toc')
+
+    fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
+
+    expect(defaultProps.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: 'toc',
+      })
+    )
+  })
+
   it('resets form when closed and reopened', async () => {
     const { rerender } = render(<ProcessRequestOptions {...defaultProps} />, {
       wrapper: createWrapper(),
@@ -506,5 +529,48 @@ describe('ProcessRequestOptions', () => {
     expect(screen.getByLabelText(/session/i)).toHaveValue('all')
     expect(screen.getByLabelText(/limit/i)).toHaveValue(null)
     expect(screen.getByLabelText('Bunk With')).not.toBeChecked()
+  })
+
+  // This test overrides the module mock, so it must be last
+  it('deduplicates session options with the same friendly name', async () => {
+    const { pb } = await import('../../lib/pocketbase')
+    vi.mocked(pb.collection).mockReturnValue({
+      getFullList: vi.fn().mockResolvedValue([
+        {
+          id: '1',
+          name: 'Taste of Camp',
+          session_type: 'main',
+          year: 2025,
+          start_date: '2025-06-01',
+        },
+        {
+          id: '1b',
+          name: 'Taste of Camp Extended',
+          session_type: 'embedded',
+          year: 2025,
+          start_date: '2025-06-05',
+        },
+        {
+          id: '2',
+          name: 'Session 2',
+          session_type: 'main',
+          year: 2025,
+          start_date: '2025-06-15',
+        },
+      ]),
+    } as unknown as ReturnType<typeof pb.collection>)
+
+    render(<ProcessRequestOptions {...defaultProps} />, {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /taste of camp$/i })).toBeInTheDocument()
+    })
+
+    // Should only have one TOC option, not two
+    const allOptions = screen.getAllByRole('option')
+    const tocOptions = allOptions.filter((opt) => opt.textContent?.match(/taste of camp/i))
+    expect(tocOptions).toHaveLength(1)
   })
 })

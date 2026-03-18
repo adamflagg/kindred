@@ -44,6 +44,7 @@ func TestCamperHistoryDeduplicatesMultiSessionCampers(t *testing.T) {
 	pd, exists := personData[1001]
 	if !exists {
 		t.Fatal("person 1001 not found in aggregated data")
+		return
 	}
 
 	if len(pd.SessionNames) != 3 {
@@ -828,6 +829,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	data1 := aggregated[1001]
 	if data1 == nil {
 		t.Fatal("person 1001 not found in aggregated data")
+		return
 	}
 	if data1.earliestEnrollmentDate != "2024-11-15" {
 		t.Errorf("person 1001: enrollment_date = %q, want %q", data1.earliestEnrollmentDate, "2024-11-15")
@@ -840,6 +842,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	data2 := aggregated[1002]
 	if data2 == nil {
 		t.Fatal("person 1002 not found in aggregated data")
+		return
 	}
 	if data2.earliestEnrollmentDate != "2024-12-05" {
 		t.Errorf("person 1002: enrollment_date = %q, want %q", data2.earliestEnrollmentDate, "2024-12-05")
@@ -852,6 +855,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	data3 := aggregated[1003]
 	if data3 == nil {
 		t.Fatal("person 1003 not found in aggregated data")
+		return
 	}
 	if data3.earliestEnrollmentDate != "2025-01-15" {
 		t.Errorf("person 1003: enrollment_date = %q, want %q", data3.earliestEnrollmentDate, "2025-01-15")
@@ -1274,6 +1278,7 @@ func TestCamperHistoryMultiSessionWithDifferentTypes(t *testing.T) {
 	pd, exists := personData[1001]
 	if !exists {
 		t.Fatal("person 1001 not found in aggregated data")
+		return
 	}
 
 	// Should have both session types
@@ -1608,6 +1613,7 @@ func TestV2_BunkLookupBySession(t *testing.T) {
 	s1Record := findRecordBySession(records, 100)
 	if s1Record == nil {
 		t.Fatal("session 100 record not found")
+		return
 	}
 	if s1Record.BunkName != "B-12" {
 		t.Errorf("session 100: expected bunk B-12, got %q", s1Record.BunkName)
@@ -1620,6 +1626,7 @@ func TestV2_BunkLookupBySession(t *testing.T) {
 	s2Record := findRecordBySession(records, 101)
 	if s2Record == nil {
 		t.Fatal("session 101 record not found")
+		return
 	}
 	if s2Record.BunkName != "B-14" {
 		t.Errorf("session 101: expected bunk B-14, got %q", s2Record.BunkName)

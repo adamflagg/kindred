@@ -23,12 +23,13 @@ interface ProcessRequestOptionsProps {
   isProcessing: boolean
 }
 
-// Regex patterns to extract friendly names from session names (matches Python backend)
+// Regex patterns to extract friendly names from session names
+// TOC returns 'toc' (backend sessionNameMap maps toc→1); numbered sessions return '2', '2a', etc.
 const SESSION_NAME_PATTERN = /Session\s+(\d+[a-z]?)/i
 const TOC_PATTERN = /Taste\s+of\s+Camp/i
 
 function extractFriendlyName(name: string): string | null {
-  if (TOC_PATTERN.test(name)) return '1'
+  if (TOC_PATTERN.test(name)) return 'toc'
   const match = name.match(SESSION_NAME_PATTERN)
   const captured = match?.[1]
   return captured ? captured.toLowerCase() : null
@@ -95,20 +96,22 @@ export default function ProcessRequestOptions({
     ]
 
     if (sessions) {
-      // Sort logically: 1, 2, 2a, 2b, 3, 3a, 4
+      // Sort logically: toc (=1), 2, 2a, 2b, 3, 3a, 4
       const sorted = [...sessions].sort((a, b) => {
         const aName = extractFriendlyName(a.name) ?? ''
         const bName = extractFriendlyName(b.name) ?? ''
-        // Compare numeric part first, then alpha suffix
-        const aNum = parseInt(aName) || 0
-        const bNum = parseInt(bName) || 0
+        // TOC sorts as session 1
+        const aNum = aName === 'toc' ? 1 : parseInt(aName) || 0
+        const bNum = bName === 'toc' ? 1 : parseInt(bName) || 0
         if (aNum !== bNum) return aNum - bNum
         return aName.localeCompare(bName)
       })
 
+      const seen = new Set<string>()
       for (const s of sorted) {
         const friendly = extractFriendlyName(s.name)
-        if (friendly) {
+        if (friendly && !seen.has(friendly)) {
+          seen.add(friendly)
           options.push({ value: friendly, label: s.name })
         }
       }

@@ -73,6 +73,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 			idFloat, ok := tt.assignmentData["ID"].(float64)
 			if !ok {
 				t.Fatal("missing ID in test data")
+				return
 			}
 			assignmentCMID := int(idFloat)
 			recordData := map[string]interface{}{

@@ -1796,6 +1796,7 @@ func TestBuildNormalizationLookupCollectsContext(t *testing.T) {
 	oaklandCtx, ok := uniqueCities["Oakland"]
 	if !ok {
 		t.Fatal("missing Oakland in uniqueCities")
+		return
 	}
 	if oaklandCtx.State != "CA" {
 		t.Errorf("Oakland state = %q, want %q (first-seen)", oaklandCtx.State, "CA")
@@ -1808,6 +1809,7 @@ func TestBuildNormalizationLookupCollectsContext(t *testing.T) {
 	londonCtx, ok := uniqueCities["London"]
 	if !ok {
 		t.Fatal("missing London in uniqueCities")
+		return
 	}
 	if londonCtx.State != "" {
 		t.Errorf("London state = %q, want empty", londonCtx.State)
@@ -1959,9 +1961,11 @@ func TestBuildNormalizationLookupCompositeKeyDedup(t *testing.T) {
 	// The lookup should contain the normalized result
 	if lookup.city == nil {
 		t.Fatal("city lookup is nil")
+		return
 	}
 	if len(lookup.city) == 0 {
 		t.Fatal("city lookup is empty")
+		return
 	}
 }
 

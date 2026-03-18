@@ -92,6 +92,7 @@ func TestWorkbookManager_SaveWorkbookRecord(t *testing.T) {
 	}
 	if record == nil {
 		t.Fatal("Expected record to be returned")
+		return
 	}
 
 	// Verify we can retrieve it
@@ -101,6 +102,7 @@ func TestWorkbookManager_SaveWorkbookRecord(t *testing.T) {
 	}
 	if retrieved == nil {
 		t.Fatal("Expected to retrieve saved workbook")
+		return
 	}
 	if retrieved.SpreadsheetID != "test-spreadsheet-id" {
 		t.Errorf("SpreadsheetID = %q, want %q", retrieved.SpreadsheetID, "test-spreadsheet-id")
@@ -148,6 +150,7 @@ func TestWorkbookManager_SaveWorkbookRecord_YearWorkbook(t *testing.T) {
 	}
 	if retrieved == nil {
 		t.Fatal("Expected to retrieve saved workbook")
+		return
 	}
 	if retrieved.Year != 2025 {
 		t.Errorf("Year = %d, want %d", retrieved.Year, 2025)
@@ -405,6 +408,7 @@ func TestGetOrCreateGlobalsWorkbook_RecoverFromDrive(t *testing.T) {
 	}
 	if existing != nil {
 		t.Fatal("Expected no workbook to exist initially")
+		return
 	}
 
 	// GetOrCreateGlobalsWorkbook should find it in Drive and link it
@@ -430,6 +434,7 @@ func TestGetOrCreateGlobalsWorkbook_RecoverFromDrive(t *testing.T) {
 	}
 	if saved == nil {
 		t.Fatal("Expected workbook to be saved after recovery")
+		return
 	}
 	if saved.SpreadsheetID != "existing-drive-spreadsheet-id" {
 		t.Errorf("Saved SpreadsheetID = %q, want %q", saved.SpreadsheetID, "existing-drive-spreadsheet-id")
@@ -556,6 +561,7 @@ func TestGetOrCreateYearWorkbook_RecoverFromDrive(t *testing.T) {
 	}
 	if saved == nil {
 		t.Fatal("Expected workbook to be saved after recovery")
+		return
 	}
 	if saved.SpreadsheetID != "existing-2025-spreadsheet-id" {
 		t.Errorf("Saved SpreadsheetID = %q, want %q", saved.SpreadsheetID, "existing-2025-spreadsheet-id")

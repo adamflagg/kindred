@@ -169,6 +169,7 @@ func TestDietaryRecordBuilding(t *testing.T) {
 	r1 := findDietaryRecord(records, 12345, 2025)
 	if r1 == nil {
 		t.Fatal("record for person 12345, year 2025 not found")
+		return
 	}
 	if !r1.HasDietaryNeeds {
 		t.Error("expected has_dietary_needs = true")
@@ -187,6 +188,7 @@ func TestDietaryRecordBuilding(t *testing.T) {
 	r2 := findDietaryRecord(records, 12346, 2025)
 	if r2 == nil {
 		t.Fatal("record for person 12346, year 2025 not found")
+		return
 	}
 	if r2.HasDietaryNeeds {
 		t.Error("expected has_dietary_needs = false")

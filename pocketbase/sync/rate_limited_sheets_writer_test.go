@@ -311,6 +311,7 @@ func TestRateLimitedWriter_GivesUpAfterMaxRetries(t *testing.T) {
 	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return error after max retries")
+		return
 	}
 
 	// Should have been called: 1 initial + 3 retries = 4
@@ -338,6 +339,7 @@ func TestRateLimitedWriter_DoesNotRetryNon429Errors(t *testing.T) {
 	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return non-429 error immediately")
+		return
 	}
 	if !errors.Is(err, permErr) {
 		t.Errorf("Expected permission denied error, got: %v", err)
@@ -359,6 +361,7 @@ func TestRateLimitedWriter_DoesNotRetryGoogleAPINon429(t *testing.T) {
 	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return 403 error immediately")
+		return
 	}
 
 	if mock.writeCalls.Load() != 1 {
@@ -388,6 +391,7 @@ func TestRateLimitedWriter_RespectsContextCancellation(t *testing.T) {
 	err := writer.WriteToSheet(ctx, "s1", "tab", [][]interface{}{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return error when context is canceled")
+		return
 	}
 
 	// Should have been called fewer times than max retries because context was canceled
@@ -409,13 +413,16 @@ func TestRateLimitedWriter_UsesSeparateReadWriteLimiters(t *testing.T) {
 	rlw, ok := writer.(*RateLimitedSheetsWriter)
 	if !ok {
 		t.Fatal("NewRateLimitedSheetsWriter should return *RateLimitedSheetsWriter")
+		return
 	}
 
 	if rlw.readLimiter == nil {
 		t.Fatal("readLimiter should not be nil")
+		return
 	}
 	if rlw.writeLimiter == nil {
 		t.Fatal("writeLimiter should not be nil")
+		return
 	}
 	if rlw.readLimiter == rlw.writeLimiter {
 		t.Error("readLimiter and writeLimiter should be separate instances")
@@ -463,6 +470,7 @@ func TestRateLimitedWriter_NilConfigUsesDefaults(t *testing.T) {
 	rlw, ok := writer.(*RateLimitedSheetsWriter)
 	if !ok {
 		t.Fatal("NewRateLimitedSheetsWriter should return *RateLimitedSheetsWriter")
+		return
 	}
 
 	if rlw.config.MaxRetries != 5 {
