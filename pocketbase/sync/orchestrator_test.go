@@ -3073,3 +3073,94 @@ func TestFinalizeSyncStatusCalledFromPanicRecovery(t *testing.T) {
 		t.Errorf("expected error to contain 'panic:', got %q", completed.Error)
 	}
 }
+
+// TestFinalizeSyncStatusAtomicTransition tests that concurrent readers never see
+// a partially-written status during FinalizeSyncStatus.
+func TestFinalizeSyncStatusAtomicTransition(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test", delay: 0}
+	o.RegisterService("test", mock)
+
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("MarkSyncRunning failed: %v", err)
+	}
+
+	// Start concurrent readers that poll GetStatus
+	done := make(chan struct{})
+	var inconsistent int64
+	for range 5 {
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					status := o.GetStatus("test")
+					if status == nil {
+						continue
+					}
+					// If status is "success" or "failed", EndTime must be set
+					if (status.Status == statusSuccess || status.Status == statusFailed) && status.EndTime == nil {
+						atomic.AddInt64(&inconsistent, 1)
+					}
+				}
+			}
+		}()
+	}
+
+	// Finalize while readers are polling
+	time.Sleep(5 * time.Millisecond)
+	stats := Stats{Created: 10, Updated: 5}
+	o.FinalizeSyncStatus("test", stats, nil)
+
+	// Let readers observe the final state
+	time.Sleep(10 * time.Millisecond)
+	close(done)
+
+	if atomic.LoadInt64(&inconsistent) > 0 {
+		t.Errorf("detected %d inconsistent status reads", inconsistent)
+	}
+}
+
+// TestRunSingleSyncAtomicStatusTransition tests that RunSingleSync's goroutine
+// produces consistent status — no partial writes visible to concurrent readers.
+func TestRunSingleSyncAtomicStatusTransition(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test", delay: 10 * time.Millisecond}
+	o.RegisterService("test", mock)
+
+	err := o.RunSingleSync(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("RunSingleSync failed: %v", err)
+	}
+
+	// Poll until sync completes, checking for inconsistent state.
+	// NOTE: GetStatus returns non-nil even after completion (from lastCompletedStatus),
+	// so we break on success/failed status, not nil.
+	var inconsistent int64
+	deadline := time.After(5 * time.Second)
+	for {
+		status := o.GetStatus("test")
+		if status != nil && status.Status == statusSuccess {
+			if status.EndTime == nil {
+				atomic.AddInt64(&inconsistent, 1)
+			}
+			break
+		}
+		if status != nil && status.Status == statusFailed {
+			t.Fatalf("sync failed unexpectedly: %s", status.Error)
+		}
+
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for sync to complete")
+		default:
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
+
+	if atomic.LoadInt64(&inconsistent) > 0 {
+		t.Errorf("detected %d inconsistent status reads", inconsistent)
+	}
+}
