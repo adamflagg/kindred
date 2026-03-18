@@ -820,17 +820,13 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 				// Chain process_requests after bunk_requests completes
 				if runProcessRequests {
 					slog.Info("Chaining process_requests after bunk_requests sync")
-					processor := NewRequestProcessor(scheduler.app)
-					// Use defaults: all sessions, no force, no field filter
-					if err := processor.Sync(ctx); err != nil {
-						slog.Error("process_requests failed after upload", "error", err)
+					if markErr := orchestrator.MarkSyncRunning("process_requests"); markErr != nil {
+						slog.Warn("Could not mark process_requests running (may already be running)", "error", markErr)
 					} else {
-						stats := processor.GetStats()
-						slog.Info("process_requests completed after upload",
-							"created", stats.Created,
-							"skipped", stats.Skipped,
-							"errors", stats.Errors,
-						)
+						processor := NewRequestProcessor(scheduler.app)
+						// Use defaults: all sessions, no force, no field filter
+						procErr := processor.Sync(ctx)
+						orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), procErr)
 					}
 				}
 			}()
