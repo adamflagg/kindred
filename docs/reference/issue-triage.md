@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-18 (18 open issues; #616/#617 fixed by PR #652, spawned #654).
+Last updated: 2026-03-18 (17 open issues; #645 closed, #648 fixed by PR #651, #616/#617 fixed by PR #652, spawned #654).
 
 ---
 
