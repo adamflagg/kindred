@@ -127,7 +127,7 @@ export function GradeEligibilityConfig() {
     )
   }
 
-  const hasChanges = (() => {
+  const hasChanges = useMemo(() => {
     const origRows = buildRows(sessions, configRecords)
     const rowsChanged = rows.some((r) => {
       const orig = origRows.find((o) => o.cm_id === r.cm_id)
@@ -136,7 +136,7 @@ export function GradeEligibilityConfig() {
     const origThreshold = thresholdRecords?.[0]?.value as number | undefined
     const thresholdChanged = threshold !== (origThreshold ?? DEFAULT_THRESHOLD)
     return rowsChanged || thresholdChanged
-  })()
+  }, [buildRows, sessions, configRecords, rows, threshold, thresholdRecords])
 
   const handleSave = async () => {
     setIsSaving(true)
