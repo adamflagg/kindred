@@ -405,6 +405,8 @@ If no fast path resolved the name, try strategies in order. First confident matc
 | Multiple matches, still ambiguous | **0.50** |
 | All matches in different sessions | **0.0** (impossible) |
 
+**Session matching uses `bulk_get_sessions_for_persons()`** which queries attendee enrollments and returns `session_cm_id` values. This must filter to bunking-relevant session types only (`main`, `embedded`, `ag`) to avoid family camp / quest enrollments corrupting the session comparison. See `VALID_BUNKING_SESSION_TYPES` in `session_repository.py`.
+
 #### Strategy 2: Fuzzy Match (`resolution/strategies/fuzzy_match.py`)
 
 Four-step cascade:
@@ -453,12 +455,33 @@ For cases still ambiguous after the pipeline, if NetworkX analyzer is configured
 
 **File:** `confidence/confidence_scorer.py`
 
-Weighted scoring by request type:
+After Phase 2 resolution, the confidence scorer re-scores each resolved result using a weighted formula. The resolution pipeline's raw confidence (0.95, 0.85, etc.) is replaced by the scorer's output.
 
-**BUNK_WITH weights:** name_match=0.70, ai_parsing=0.15, context=0.10, reciprocal=0.05
-**NOT_BUNK_WITH weights:** name_match=0.75, ai_parsing=0.20, context=0.05
+**BUNK_WITH formula:**
+```
+score = 0.70 × name_score + 0.15 × ai_score + 0.10 × context_score + 0.05 × reciprocal_score
+```
 
-Context signals include: found_in_current_year, social graph distance, ego network membership, grade/age proximity.
+| Signal | Source | Values |
+|---|---|---|
+| `name_score` | `match_certainty` from `resolution_result.confidence > 0.9` | "exact"=1.0, "partial"=0.7, "ambiguous"=0.4, "none"=0.0 |
+| `ai_score` | Phase 1 AI parse confidence | Typically 0.85 |
+| `context_score` | Attendee enrollment lookup | found_in_current_year=0.8, previous_year_only=0.4, base=0.5. Social bonuses: in_ego_network +0.1, social_distance≤2 +0.1 |
+| `reciprocal_score` | Reciprocal pair detection | Hardcoded 0.0 in formula (not implemented). Reciprocal boost (+0.1) applied separately by `reciprocal_detector.py` after request building. |
+
+**NOT_BUNK_WITH formula:**
+```
+score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
+```
+
+**AGE_PREFERENCE:** Returns `ai_parse_confidence` directly (typically 1.0 for dropdown, 0.85 for AI-parsed).
+
+**Worked examples:**
+```
+Same-session exact match (correct):  0.70 × 1.0 + 0.15 × 0.85 + 0.10 × 0.8 = 0.9075 → RESOLVED
+Diff-session exact match:            0.70 × 0.7 + 0.15 × 0.85 + 0.10 × 0.8 = 0.6975 → PENDING
+With reciprocal boost (+0.1):        0.6975 + 0.10 = 0.7975 → still PENDING (below 0.85)
+```
 
 ---
 
@@ -524,6 +547,150 @@ The system has **two layers of delta detection**:
 | `internal_notes` | Staff notes | Yes | AI extracts names + context | BUNK_WITH or NOT_BUNK_WITH |
 | `socialize_with` | Parent dropdown | No | Direct mapping | AGE_PREFERENCE (OLDER/YOUNGER) |
 
+**Production data (2026, 1014 source records → 1908 output requests):**
+
+`bunk_with` dominates at 90% of source records. AI-parsed age preferences from `bunk_with` (63) outnumber the `socialize_with` dropdown (13) by 5:1. `bunk_with` also produces NOT_BUNK_WITH requests (4) when parents express negative preferences in the free text. `bunking_notes` generates both BUNK_WITH (30) and NOT_BUNK_WITH (32) from staff notes. The `not_bunk_with` field has only 1 source record — parents overwhelmingly express negative requests within `bunk_with` text rather than using the separate field.
+
+---
+
+## Deduplication Cross-Field Behavior
+
+**File:** `processing/deduplicator.py`
+
+The deduplicator removes duplicate `BunkRequest` objects within a batch using a key-based grouping system. The key varies by request type to enable cross-field deduplication where appropriate.
+
+| Request Type | Dedup Key | Cross-Field? | Rationale |
+|---|---|---|---|
+| AGE_PREFERENCE | `(requester, None, AGE_PREFERENCE, "", year, session)` | Yes — empty source_field | Same age preference from any source is one intent |
+| BUNK_WITH / NOT_BUNK_WITH | `(requester, target, type, "", year, session)` | Yes — empty source_field | Same requester→target pair from bunk_with and bunking_notes merges to one request |
+| Placeholders | `key = None` | N/A | Bypass dedup entirely |
+
+When duplicates share a key, the primary is chosen by `SOURCE_PRIORITY` (STAFF=2 > FAMILY=1) then confidence (descending). `_merge_metadata()` records all contributing sources in a `merged_sources` array for frontend display.
+
+**AGE_PREFERENCE cross-field dedup:** If `bunk_with` produces AGE_PREFERENCE OLDER (AI-parsed from "I want older kids") and `socialize_with` also produces AGE_PREFERENCE OLDER (dropdown), both hit the AGE_PREFERENCE branch first (type check precedes source_field check), get the same key, and deduplicate correctly.
+
+---
+
+## Session Types and Multi-Enrollment
+
+**File:** `data/repositories/session_repository.py`
+
+Campers may be enrolled in multiple sessions simultaneously (e.g., Session 2 + Family Camp + B'Mitzvah Program). Only bunking-relevant sessions matter for name resolution session matching.
+
+```python
+VALID_BUNKING_SESSION_TYPES = {"main", "embedded", "ag"}
+```
+
+| Type | Sessions (2026) | Examples |
+|---|---|---|
+| `main` | 4 | Session 2, Session 3, Session 4, Taste of Camp 1 |
+| `embedded` | 3 | Session 2a, Session 3a, Taste of Camp 2 |
+| `ag` | 3 | All-Gender Cabin sessions |
+
+Non-bunking types (35 sessions): `family`, `quest`, `bmitzvah`, `hebrew`, `teen`, `tli`, `training`, `adult`, `school`, `other`.
+
+**Multi-enrollment stats (2026):** 1643 campers in 1 session, 291 in 2, 63 in 3, 8 in 4.
+
+`bulk_get_sessions_for_persons()` in `AttendeeRepository` must use `get_full_list` (not `get_list`) to handle multi-enrolled campers, and filter results to `VALID_BUNKING_SESSION_TYPES` so that family camp enrollments don't corrupt session matching.
+
+---
+
+## Per-Stage Production Effectiveness
+
+Data from 864-trace production run (2026 season, 1014 source records → 1908 output requests).
+
+### Stages with production impact
+
+| Stage | Fires | Useful | Notes |
+|---|---|---|---|
+| No-preference detection | 50× | 50× | All in `bunk_with`. Correctly skips "n/a", "none", etc. |
+| NA prefix stripping | 7× | 7× | All in `bunk_with`. Preserves age preferences after "N/A;" prefix. |
+| Phase 1 text dedup | ~24× | ~24× | Saves ~24 AI calls (mostly sibling pairs). 50 of 66 "duplicates" are no-pref values skipped before AI. |
+| Type validation | All | Safety net | Enforces not_bunk_with → NOT_BUNK_WITH. Critical safety check. |
+| Reciprocal detection | 560× (280 pairs) | 560× | 29% of requests are reciprocal. Boost effective once base confidence is correct. |
+
+### Stages with low/zero production impact
+
+| Stage | Fires | Useful | Notes |
+|---|---|---|---|
+| Temporal conflict filter | 1500× | **0×** | Zero `is_superseded` or `temporal_date` in 2026 data. Only relevant for notes fields. |
+| Source text validation (unit names) | All | **0 rejections** | Unit names appear as person last names ("Chen-Carmel") but resolve correctly. Risk of false positive for camper named "Eilat". |
+| Phase 2.5 historical verification | 832× | **0×** | `historical_year` metadata never set in production code. 100% dormant feature. |
+| Placeholder expansion | All | **0 triggers** | 395 `prior_year_bunkmate` requests came from Phase 2's prior bunkmate shortcut, not placeholder expansion. |
+| Self-reference detection | All | **0 hits** | Free safety net, no production matches. |
+| Staff name detection | All rows | **1 hit** | Low value but cheap. Only reads notes fields. |
+
+### Phase 3 AI Disambiguation
+
+643 requests sent to Phase 3, only 51 resolved (**8% success rate**). 569 came back still pending. Low ROI — improving Phase 2 resolution (nickname matching, prefix matching) would be cheaper and more effective.
+
+### Unresolved Names (358 "unknown" method)
+
+68 names exist in the `persons` table but the resolution pipeline failed to match them. Known gaps:
+
+- **Nickname-to-full-name prefix matching**: "Liv Garcia" → Olivia Garcia exists but `preferred_name` is "Olivia" not "Liv". No prefix matching strategy.
+- **Parenthetical nicknames**: "Liam (Nickname)" — nickname in parentheses not stripped before matching.
+- **Single-letter spelling variations**: "Emma Kniffen" vs "Emma Kniffin" — close enough for fuzzy but not caught.
+- **Input normalization**: " Noah Johnson" (leading whitespace), "EMMA CHEN" (all-caps).
+- **AI misparses from notes**: "AG-identified campers", "ALL-GENDER CABIN" — staff shorthand parsed as person names.
+
+323 names don't match any person — misspellings, not-yet-enrolled, or non-camper references.
+
+---
+
+## Architectural Improvement Opportunities
+
+Identified from production data analysis (2026-03-18). Pending implementation.
+
+1. **Split socialize_with** out of the main pipeline. Fork early (after direct parse), merge before dedup. socialize_with currently rides through 10+ stages as a no-op passenger.
+2. **Lazy + concurrent cache init.** Temporal name cache and social graph initialize unconditionally. Guard on whether any AI-parsed results need name resolution. Run both concurrently (`asyncio.gather`).
+3. **Remove Phase 2.5** (dead code — `historical_year` never set in production).
+4. **Scope temporal conflict filter** to notes fields only (zero hits on other fields).
+5. **Scope NA stripping** to `bunk_with` only (zero hits on other fields).
+6. **Guard staff detection** on `source_fields` filter (no-op when processing non-notes fields).
+7. **Conditional post-expansion conflict filter** (only when expansion happened — 0 triggers in production).
+8. **Fix Phase 3 string contract.** Phase 3 exclusion uses `rr.method != "age_preference"` (fragile string). Use `RequestType.AGE_PREFERENCE` enum.
+9. **Improve Phase 2 resolution** with prefix matching (Liv→Olivia, Rob→Robert) to reduce Phase 3 load.
+10. **Expand conflict detection** with attendee enrollment data for auto-decline (cross-session BUNK_WITH) and auto-approve (cross-session NOT_BUNK_WITH).
+11. **Method-aware auto-resolve thresholds.** Exact match at 0.82 is more trustworthy than phonetic at 0.87.
+12. **SIBLING expansion enrollment check.** Current sibling lookup doesn't verify enrollment in the same session.
+
+### Proposed Conditional Gating Architecture
+
+One pipeline with conditional stages + late merge for socialize_with:
+
+```
+Input: original_bunk_requests rows
+  │
+  ├─ [if notes fields in scope]: Staff name detection (build global set)
+  │
+  ├─ Fork by parse type:
+  │   ├─ socialize_with ──→ direct parse ──→ HOLD
+  │   └─ AI fields ──→ Prepare parse requests (NA strip, no-pref)
+  │                      │
+  │                      ├─ Phase 1: AI Parse (with text dedup)
+  │                      ├─ Type validation
+  │                      ├─ [if notes fields]: Temporal conflict filter
+  │                      ├─ Source text validation
+  │                      │
+  │                      ├─ [lazy, concurrent]: Cache init (temporal + social graph)
+  │                      ├─ Phase 2: Local resolution
+  │                      ├─ [if placeholders found]: Expansion + post-expansion conflict
+  │                      ├─ [if unresolved]: Phase 3 AI disambiguation
+  │                      │
+  │                      ├─ Conflict detection (BUNK_WITH/NOT_BUNK_WITH only)
+  │                      └─ Request builder
+  │
+  ├─ MERGE POINT ◄── socialize_with results + AI-resolved results
+  │
+  ├─ Self-reference validation
+  ├─ Deduplication (cross-field — catches AGE_PREFERENCE overlap here)
+  ├─ Reciprocal detection
+  │
+  ├─ Save to bunk_requests
+  └─ Mark original_bunk_requests processed
+```
+
 ---
 
 ## Key Constants and Thresholds
@@ -586,8 +753,10 @@ The system has **two layers of delta detection**:
 | `bunk_request_processor/services/request_deduplication.py` | Remove duplicate requests |
 | `bunk_request_processor/services/staff_name_detector.py` | Detect staff/parent names to exclude |
 | `bunk_request_processor/processing/reciprocal_detector.py` | Detect A→B + B→A pairs for confidence boost |
+| `bunk_request_processor/processing/deduplicator.py` | Cross-field bunk request deduplication |
 | `bunk_request_processor/confidence/confidence_scorer.py` | Weighted confidence scoring with social signals |
 | `bunk_request_processor/conflict/conflict_detector.py` | Detect and resolve conflicting requests |
+| `bunk_request_processor/data/repositories/session_repository.py` | Session type classification, `VALID_BUNKING_SESSION_TYPES` |
 
 #### Data & Models
 | File | Purpose |
