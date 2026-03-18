@@ -214,10 +214,27 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			processor.Trace = trace
 			processor.CollectTraces = collectTraces
 
-			// Run in background
+			// Mark as running in orchestrator for frontend status tracking
+			orchestrator := scheduler.GetOrchestrator()
+			if err := orchestrator.MarkSyncRunning("process_requests"); err != nil {
+				return e.JSON(http.StatusConflict, map[string]any{
+					"error":    err.Error(),
+					"status":   "running",
+					"syncType": "process_requests",
+				})
+			}
+
+			// Run in background with panic recovery
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 				defer cancel()
+
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("process_requests panicked", "panic", r)
+						orchestrator.FinalizeSyncStatus("process_requests", Stats{}, fmt.Errorf("panic: %v", r))
+					}
+				}()
 
 				slog.Info("Starting process_requests sync",
 					"session", session,
@@ -228,12 +245,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 					"trace", trace,
 					"collect_traces", collectTraces,
 				)
-				if err := processor.Sync(ctx); err != nil {
-					slog.Error("Process requests sync failed", "error", err)
-				} else {
-					stats := processor.GetStats()
-					slog.Info("Process requests completed", "created", stats.Created, "skipped", stats.Skipped, "errors", stats.Errors)
-				}
+				syncErr := processor.Sync(ctx)
+				orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), syncErr)
+
+				// Process queued syncs (matches handleIndividualSync pattern)
+				processQueuedSyncs(orchestrator)
 			}()
 
 			return e.JSON(http.StatusOK, map[string]any{
