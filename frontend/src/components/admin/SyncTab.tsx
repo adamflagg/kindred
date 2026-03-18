@@ -237,7 +237,7 @@ export function SyncTab() {
                 )}
                 {(status.summary.already_processed ?? 0) > 0 && (
                   <span className="text-muted-foreground">
-                    {status.summary.already_processed} done
+                    {status.summary.already_processed} skip
                   </span>
                 )}
                 {(status.summary.skipped || 0) > 0 && (
