@@ -1611,6 +1611,7 @@ func TestV2_BunkLookupBySession(t *testing.T) {
 	s1Record := findRecordBySession(records, 100)
 	if s1Record == nil {
 		t.Fatal("session 100 record not found")
+		return
 	}
 	if s1Record.BunkName != "B-12" {
 		t.Errorf("session 100: expected bunk B-12, got %q", s1Record.BunkName)
@@ -1623,6 +1624,7 @@ func TestV2_BunkLookupBySession(t *testing.T) {
 	s2Record := findRecordBySession(records, 101)
 	if s2Record == nil {
 		t.Fatal("session 101 record not found")
+		return
 	}
 	if s2Record.BunkName != "B-14" {
 		t.Errorf("session 101: expected bunk B-14, got %q", s2Record.BunkName)

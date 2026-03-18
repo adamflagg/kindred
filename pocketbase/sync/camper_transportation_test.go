@@ -205,6 +205,7 @@ func TestTransportationRecordBuilding(t *testing.T) {
 	r1 := findTransportRecord(records, 12345, 1000001)
 	if r1 == nil {
 		t.Fatal("record for person 12345, session 1000001 not found")
+		return
 	}
 	if r1.ToCampMethod != "Bus-SF" {
 		t.Errorf("expected to_camp_method 'Bus-SF', got %q", r1.ToCampMethod)
