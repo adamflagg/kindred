@@ -365,18 +365,30 @@ class TestAttendeeRepository:
         assert 11111 not in cm_ids  # Excluded due to missing birth date
 
     def test_bulk_get_sessions_for_persons(self, repository, mock_pb_client):
-        """Test getting session info for multiple people at once"""
+        """Test getting session info for multiple people at once.
+
+        Uses get_full_list and filters to bunking-relevant session types only.
+        """
         mock_client, mock_attendees, _ = mock_pb_client
 
+        # Helper to create attendee mock with session_type
+        def make_attendee(person_id, session_cm_id, year, session_type="main"):
+            mock = Mock()
+            mock.person_id = person_id
+            mock.year = year
+            session_mock = Mock()
+            session_mock.cm_id = session_cm_id
+            session_mock.session_type = session_type
+            mock.expand = {"session": session_mock}
+            return mock
+
         # Mock response with multiple attendee records using expand pattern
-        mock_result = Mock()
-        mock_result.items = [
-            self._create_attendee_mock(12345, 1000002, 2025),
-            self._create_attendee_mock(67890, 1000003, 2025),
-            self._create_attendee_mock(11111, 1000002, 2025),
+        mock_attendees.get_full_list.return_value = [
+            make_attendee(12345, 1000002, 2025, session_type="main"),
+            make_attendee(67890, 1000003, 2025, session_type="main"),
+            make_attendee(11111, 1000002, 2025, session_type="main"),
             # 99999 not found
         ]
-        mock_attendees.get_list.return_value = mock_result
 
         # Test bulk lookup
         sessions = repository.bulk_get_sessions_for_persons([12345, 67890, 11111, 99999], 2025)
@@ -388,7 +400,7 @@ class TestAttendeeRepository:
         assert 99999 not in sessions
 
         # Verify query uses person_id (not person_cm_id) with OR clauses and expand
-        args = mock_attendees.get_list.call_args[1]
+        args = mock_attendees.get_full_list.call_args[1]
         filter_str = args["query_params"]["filter"]
         # Query uses OR clauses for person_id
         assert "person_id = 12345" in filter_str
@@ -396,6 +408,146 @@ class TestAttendeeRepository:
         assert "year = 2025" in filter_str
         # Should request expand for session
         assert args["query_params"]["expand"] == "session"
+
+
+class TestBulkGetSessionsFiltersBunkingSessions:
+    """Tests that bulk_get_sessions_for_persons only returns bunking-relevant sessions.
+
+    Bug: Campers enrolled in both summer camp (Session 2) and Family Camp get
+    their session incorrectly identified as Family Camp. This causes the
+    ExactMatchStrategy to see a "different session" match and return lower
+    confidence, preventing auto-resolution.
+
+    Root cause: No session_type filter + per_page too small + last-write-wins
+    on multi-enrolled campers.
+    """
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_attendees_collection = Mock()
+        mock_sessions_collection = Mock()
+        mock_persons_collection = Mock()
+
+        collections = {
+            "attendees": mock_attendees_collection,
+            "camp_sessions": mock_sessions_collection,
+            "persons": mock_persons_collection,
+        }
+
+        def collection_side_effect(name):
+            return collections.get(name, Mock())
+
+        mock_client.collection.side_effect = collection_side_effect
+        return mock_client, mock_attendees_collection, mock_sessions_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _, _ = mock_pb_client
+        return AttendeeRepository(mock_client)
+
+    def _create_attendee_mock(self, person_id, session_cm_id, year, session_type="main"):
+        mock = Mock()
+        mock.person_id = person_id
+        mock.year = year
+        session_mock = Mock()
+        session_mock.cm_id = session_cm_id
+        session_mock.session_type = session_type
+        mock.expand = {"session": session_mock}
+        return mock
+
+    def test_filters_out_family_camp_enrollment(self, repository, mock_pb_client):
+        """A camper in Session 2 + Family Camp should map to Session 2 only."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_attendee_mock(12345, 1235404, 2026, session_type="main"),
+            self._create_attendee_mock(12345, 1309517, 2026, session_type="family"),
+        ]
+        mock_attendees.get_full_list.return_value = mock_result.items
+
+        sessions = repository.bulk_get_sessions_for_persons([12345], 2026)
+
+        assert sessions[12345] == 1235404  # Session 2, not Family Camp
+
+    def test_filters_out_quest_enrollment(self, repository, mock_pb_client):
+        """A camper in Session 4 + Quest should map to Session 4 only."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_attendee_mock(67890, 1235406, 2026, session_type="main"),
+            self._create_attendee_mock(67890, 1236365, 2026, session_type="quest"),
+        ]
+        mock_attendees.get_full_list.return_value = mock_result.items
+
+        sessions = repository.bulk_get_sessions_for_persons([67890], 2026)
+
+        assert sessions[67890] == 1235406  # Session 4, not Quest
+
+    def test_includes_ag_and_embedded_sessions(self, repository, mock_pb_client):
+        """AG and embedded sessions are bunking-relevant and should be included."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_attendee_mock(11111, 1378704, 2026, session_type="ag"),
+            self._create_attendee_mock(22222, 1356533, 2026, session_type="embedded"),
+        ]
+        mock_attendees.get_full_list.return_value = mock_result.items
+
+        sessions = repository.bulk_get_sessions_for_persons([11111, 22222], 2026)
+
+        assert sessions[11111] == 1378704
+        assert sessions[22222] == 1356533
+
+    def test_handles_multi_enrolled_campers_with_many_persons(self, repository, mock_pb_client):
+        """With 200+ persons, all enrollments must be fetched (not truncated by per_page)."""
+        _, mock_attendees, _ = mock_pb_client
+
+        # 3 campers: one with 2 enrollments, two with 1
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_attendee_mock(100, 1235404, 2026, session_type="main"),
+            self._create_attendee_mock(100, 1309514, 2026, session_type="family"),
+            self._create_attendee_mock(200, 1235405, 2026, session_type="main"),
+            self._create_attendee_mock(300, 1235406, 2026, session_type="main"),
+        ]
+        mock_attendees.get_full_list.return_value = mock_result.items
+
+        sessions = repository.bulk_get_sessions_for_persons([100, 200, 300], 2026)
+
+        assert sessions[100] == 1235404  # Session 2, not Family Camp
+        assert sessions[200] == 1235405  # Session 3
+        assert sessions[300] == 1235406  # Session 4
+
+    def test_camper_only_in_non_bunking_sessions_excluded(self, repository, mock_pb_client):
+        """A camper only in Family Camp / Quest should not appear in results."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_attendee_mock(99999, 1309514, 2026, session_type="family"),
+        ]
+        mock_attendees.get_full_list.return_value = mock_result.items
+
+        sessions = repository.bulk_get_sessions_for_persons([99999], 2026)
+
+        assert 99999 not in sessions
+
+    def test_uses_get_full_list_not_get_list(self, repository, mock_pb_client):
+        """Must use get_full_list to avoid per_page truncation with multi-enrolled campers."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._create_attendee_mock(12345, 1235404, 2026, session_type="main"),
+        ]
+
+        repository.bulk_get_sessions_for_persons([12345], 2026)
+
+        mock_attendees.get_full_list.assert_called_once()
+        mock_attendees.get_list.assert_not_called()
 
 
 if __name__ == "__main__":
