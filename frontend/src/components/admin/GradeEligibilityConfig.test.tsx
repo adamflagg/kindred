@@ -357,4 +357,55 @@ describe('GradeEligibilityConfig', () => {
       expect(thresholdCreate).toBeDefined()
     })
   })
+
+  it('calls update (not create) for threshold when record exists', async () => {
+    const user = userEvent.setup()
+    // Threshold record exists with id 'thr1'
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([
+        {
+          id: 'thr1',
+          category: 'session_availability',
+          subcategory: '2026',
+          config_key: 'limited_threshold',
+          value: 80,
+        },
+      ])
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Change threshold to trigger save button
+    const thresholdInput = screen.getByLabelText(/limited.*threshold/i)
+    await user.clear(thresholdInput)
+    await user.type(thresholdInput, '90')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Threshold should have been updated with the correct record ID
+      const updateCalls = mockUpdate.mock.calls
+      const thresholdUpdate = updateCalls.find((call) => call[0] === 'thr1')
+      expect(thresholdUpdate).toBeDefined()
+      expect((thresholdUpdate![1] as Record<string, unknown>)['config_key']).toBe(
+        'limited_threshold'
+      )
+      expect((thresholdUpdate![1] as Record<string, unknown>)['value']).toBe(90)
+    })
+
+    // Verify create was NOT called for the threshold
+    const thresholdCreate = mockCreate.mock.calls.find(
+      (call) => (call[0] as Record<string, unknown>)['config_key'] === 'limited_threshold'
+    )
+    expect(thresholdCreate).toBeUndefined()
+  })
 })
