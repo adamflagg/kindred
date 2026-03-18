@@ -2973,7 +2973,7 @@ func TestFinalizeSyncStatusSuccess(t *testing.T) {
 	if completed == nil {
 		t.Fatal("expected test to be in lastCompletedStatus")
 	}
-	if completed.Status != "success" {
+	if completed.Status != statusSuccess {
 		t.Errorf("expected status 'success', got %q", completed.Status)
 	}
 	if completed.EndTime == nil {
@@ -3014,7 +3014,7 @@ func TestFinalizeSyncStatusError(t *testing.T) {
 	if completed == nil {
 		t.Fatal("expected test to be in lastCompletedStatus")
 	}
-	if completed.Status != "failed" {
+	if completed.Status != statusFailed {
 		t.Errorf("expected status 'failed', got %q", completed.Status)
 	}
 	if completed.Error != "api processing failed: connection refused" {
@@ -3066,7 +3066,7 @@ func TestFinalizeSyncStatusCalledFromPanicRecovery(t *testing.T) {
 	if completed == nil {
 		t.Fatal("expected test to be in lastCompletedStatus")
 	}
-	if completed.Status != "failed" {
+	if completed.Status != statusFailed {
 		t.Errorf("expected status 'failed', got %q", completed.Status)
 	}
 	if !strings.Contains(completed.Error, "panic:") {
