@@ -11,8 +11,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Bug, FileCode, Sparkles, Trees } from 'lucide-react'
 import { ParseAnalysisTab, PromptEditorTab } from '../../components/debug'
-import { useTour } from '../../hooks/useTour'
-import { TourReplayButton } from '../../components/tour'
 
 type TabId = 'parse-analysis' | 'prompt-editor'
 
@@ -37,7 +35,6 @@ const TABS: Tab[] = [
 
 export default function PromptEditorPage() {
   const [activeTab, setActiveTab] = useState<TabId>('parse-analysis')
-  const { tourId, replay } = useTour()
   const navigate = useNavigate()
 
   return (
@@ -68,7 +65,6 @@ export default function PromptEditorPage() {
             <Bug className="h-4 w-4" />
             Pipeline Debug
           </button>
-          <TourReplayButton tourId={tourId} onReplay={replay} />
         </div>
       </div>
 
