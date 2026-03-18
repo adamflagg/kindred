@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router'
 import { useAuth } from '../contexts/AuthContext'
-import { User as UserIcon, Mail, Activity, AlertTriangle, LogOut } from 'lucide-react'
+import { User as UserIcon, Mail, Activity, AlertTriangle, LogOut, Clock } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 import { pb } from '../lib/pocketbase'
 
 export default function User() {
@@ -94,7 +95,7 @@ export default function User() {
                 </div>
               </div>
 
-              <div>
+              <div className="border-border border-b pb-4">
                 <div className="flex items-start gap-3">
                   <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
                     <Activity className="text-muted-foreground h-5 w-5" />
@@ -102,6 +103,24 @@ export default function User() {
                   <div className="flex-1">
                     <p className="text-muted-foreground text-sm">Account Status</p>
                     <p className="text-primary font-medium">Active</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-border border-t pt-4">
+                <div className="flex items-start gap-3">
+                  <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
+                    <Clock className="text-muted-foreground h-5 w-5" />
+                  </div>
+                  <div className="flex-1" data-testid="profile-last-login">
+                    <p className="text-muted-foreground text-sm">Last Login</p>
+                    <p className="font-medium">
+                      {user['last_login']
+                        ? formatDistanceToNow(new Date(user['last_login'] as string), {
+                            addSuffix: true,
+                          })
+                        : 'Never'}
+                    </p>
                   </div>
                 </div>
               </div>
