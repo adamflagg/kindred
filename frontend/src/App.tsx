@@ -21,12 +21,12 @@ import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
 import ProgramLandingPage from './pages/ProgramLandingPage'
-import User from './components/User'
-import Users from './components/Users'
 import './styles/fonts.css'
 
 // Lazy-loaded components for code splitting
 // Heavy pages that benefit from separate chunks
+const User = lazy(() => import('./components/User'))
+const Users = lazy(() => import('./components/Users'))
 const SessionView = lazy(() => import('./components/SessionView'))
 const SessionList = lazy(() => import('./components/SessionList'))
 const AllCampersView = lazy(() => import('./components/AllCampersView'))
@@ -193,8 +193,26 @@ function App() {
                                 </ErrorBoundary>
                               }
                             />
-                            <Route path="/users" element={<Users />} />
-                            <Route path="/user" element={<User />} />
+                            <Route
+                              path="/users"
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <Users />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
+                            <Route
+                              path="/user"
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <User />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
                           </Route>
 
                           {/* Admin routes - nested tab navigation */}

@@ -32,6 +32,7 @@ const mockUsers = [
     email: 'emma@example.com',
     is_admin: false,
     created: '2026-01-01',
+    last_login: '2026-03-17 10:30:00.000Z',
   },
   {
     id: 'user-2',
@@ -39,6 +40,7 @@ const mockUsers = [
     email: 'liam@example.com',
     is_admin: false,
     created: '2026-01-02',
+    last_login: '2026-03-16 08:00:00.000Z',
   },
   {
     id: 'user-admin',
@@ -46,6 +48,7 @@ const mockUsers = [
     email: 'admin@example.com',
     is_admin: true,
     created: '2026-01-03',
+    last_login: '2026-03-17 12:00:00.000Z',
   },
 ]
 
@@ -121,5 +124,34 @@ describe('Users page access control', () => {
     // Admin user should NOT have cursor-pointer
     const adminRow = screen.getByText('Admin User').closest('[class*="flex items-center gap"]')
     expect(adminRow?.className).not.toContain('cursor-pointer')
+  })
+})
+
+describe('Users page last login visibility', () => {
+  beforeEach(() => {
+    mockHasPermission.mockReset()
+    mockIsAdmin = false
+    mockCurrentUserId = 'user-1'
+  })
+
+  it('shows last login column when user is admin', async () => {
+    mockIsAdmin = true
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    expect(screen.getByTestId('last-login-user-2')).toBeTruthy()
+  })
+
+  it('shows last login column when user has users.manage permission', async () => {
+    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    expect(screen.getByTestId('last-login-user-2')).toBeTruthy()
+  })
+
+  it('hides last login column for regular users', async () => {
+    mockHasPermission.mockReturnValue(false)
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    expect(screen.queryByTestId('last-login-user-2')).toBeNull()
   })
 })

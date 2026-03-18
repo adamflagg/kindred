@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
-import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck } from 'lucide-react'
+import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck, LogIn } from 'lucide-react'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
@@ -45,6 +45,7 @@ export default function Users() {
     if (user['is_admin']) return false // can't manage admins
     return isAdmin || hasPermission(Permission.USERS_MANAGE)
   }
+  const canSeeLastLogin = isAdmin || hasPermission(Permission.USERS_MANAGE)
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>('users')
   const [selectedUser, setSelectedUser] = useState<RecordModel | null>(null)
@@ -212,6 +213,7 @@ export default function Users() {
                 const name = (user['name'] as string) || ''
                 const avatar = user['avatar'] as string | undefined
                 const created = (user['created'] as string) || ''
+                const lastLogin = (user['last_login'] as string) || ''
 
                 return (
                   <div key={user.id}>
@@ -274,6 +276,29 @@ export default function Users() {
                           <span>{formatDistanceToNow(new Date(created), { addSuffix: true })}</span>
                         </div>
                       )}
+
+                      {/* Last Login — admin/user-manager only */}
+                      {canSeeLastLogin &&
+                        (lastLogin ? (
+                          <div
+                            data-testid={`last-login-${user.id}`}
+                            className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
+                            title={new Date(lastLogin).toLocaleString()}
+                          >
+                            <LogIn className="h-3.5 w-3.5" />
+                            <span>
+                              {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            data-testid={`last-login-${user.id}`}
+                            className="text-muted-foreground/50 hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
+                          >
+                            <LogIn className="h-3.5 w-3.5" />
+                            <span>Never</span>
+                          </div>
+                        ))}
                     </div>
 
                     {/* Inline UserRolesPanel */}

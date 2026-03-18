@@ -34,7 +34,13 @@ export function createMockAuthContext(overrides: {
 
 /** Creates a mock PocketBase user record with RBAC fields. */
 export function createMockUser(
-  overrides: { is_admin?: boolean; cached_permissions?: string[] } = {}
+  overrides: {
+    is_admin?: boolean
+    cached_permissions?: string[]
+    last_login?: string
+    name?: string
+    email?: string
+  } = {}
 ): RecordModel {
   return {
     id: 'user-1',
@@ -44,5 +50,8 @@ export function createMockUser(
     updated: '',
     is_admin: overrides.is_admin ?? false,
     cached_permissions: overrides.cached_permissions ?? [],
+    last_login: overrides.last_login ?? '',
+    name: overrides.name ?? 'Emma Johnson',
+    email: overrides.email ?? 'emma@example.com',
   }
 }

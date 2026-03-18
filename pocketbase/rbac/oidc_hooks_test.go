@@ -2,7 +2,21 @@ package rbac
 
 import (
 	"testing"
+	"time"
 )
+
+func TestBuildLastLoginTimestamp(t *testing.T) {
+	str := buildLastLoginTimestamp()
+	if str == "" {
+		t.Fatal("expected non-empty timestamp string")
+	}
+
+	// Verify the timestamp is valid and in expected PocketBase format
+	_, err := time.Parse("2006-01-02 15:04:05.000Z", str)
+	if err != nil {
+		t.Fatalf("last_login timestamp %q does not match PocketBase format: %v", str, err)
+	}
+}
 
 func TestHasGroup(t *testing.T) {
 	tests := []struct {
