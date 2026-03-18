@@ -197,9 +197,17 @@ class AttendeeRepository:
             return []
 
     def bulk_get_sessions_for_persons(self, person_cm_ids: list[int], year: int) -> dict[int, int]:
-        """Get session assignments for multiple persons in one query.
-        Returns dict mapping person_cm_id to session_cm_id.
+        """Get bunking-relevant session assignments for multiple persons.
+
+        Returns dict mapping person_cm_id to session_cm_id, considering only
+        bunking-relevant session types (main, embedded, ag). Campers enrolled
+        in family camp, quests, or other non-bunking sessions are excluded.
+
+        Uses get_full_list to handle campers enrolled in multiple sessions
+        (e.g., summer session + family camp) without per_page truncation.
         """
+        from .session_repository import VALID_BUNKING_SESSION_TYPES
+
         if not person_cm_ids:
             return {}
 
@@ -209,22 +217,32 @@ class AttendeeRepository:
             or_conditions = [f"person_id = {cm_id}" for cm_id in person_cm_ids]
             or_clause = " || ".join(or_conditions)
 
-            result = self.pb.collection("attendees").get_list(
-                page=1,
-                per_page=len(person_cm_ids),
+            # Use get_full_list to avoid per_page truncation when campers
+            # have multiple enrollments (summer + family camp + quests)
+            items = self.pb.collection("attendees").get_full_list(
                 query_params={
                     "filter": f"({or_clause}) && year = {year}",
                     "expand": "session",  # Need expand since session_id field deleted
                 },
             )
 
-            # Map to dictionary - person_id still exists, session via expand
+            # Map to dictionary, filtering to bunking-relevant sessions only.
+            # This prevents family camp / quest enrollments from overwriting
+            # the correct summer session assignment.
             sessions_dict: dict[int, int] = {}
-            for item in result.items:
+            for item in items:
                 person_cm_id = getattr(item, "person_id", None)
                 session_cm_id = self._get_session_cm_id(item)
-                if person_cm_id and session_cm_id:
-                    sessions_dict[person_cm_id] = session_cm_id
+                if not person_cm_id or not session_cm_id:
+                    continue
+
+                # Filter by session type — only bunking-relevant sessions
+                session = getattr(item, "expand", {}).get("session") if hasattr(item, "expand") else None
+                session_type = getattr(session, "session_type", None) if session else None
+                if session_type not in VALID_BUNKING_SESSION_TYPES:
+                    continue
+
+                sessions_dict[person_cm_id] = session_cm_id
 
             return sessions_dict
 
