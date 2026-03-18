@@ -518,10 +518,16 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("Sync panicked", "syncType", syncType, "panic", r)
-				status.Status = statusFailed
-				status.Error = fmt.Sprintf("panic: %v", r)
 				endTime := time.Now()
-				status.EndTime = &endTime
+				panicStatus := *status
+				panicStatus.Status = statusFailed
+				panicStatus.Error = fmt.Sprintf("panic: %v", r)
+				panicStatus.EndTime = &endTime
+
+				o.mu.Lock()
+				o.lastCompletedStatus[syncType] = &panicStatus
+				delete(o.runningJobs, syncType)
+				o.mu.Unlock()
 			}
 		}()
 
@@ -548,36 +554,32 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 		// Execute sync with the appropriately-configured context
 		err := service.Sync(syncCtx)
 
-		// Update status
+		// Build completed status as a copy — never mutate the shared pointer
 		endTime := time.Now()
-		status.EndTime = &endTime
+		completed := *status
+		completed.EndTime = &endTime
 
-		// Calculate duration in seconds
-		duration := int(endTime.Sub(status.StartTime).Seconds())
-
-		// Get stats from the service
+		duration := int(endTime.Sub(completed.StartTime).Seconds())
 		stats := service.GetStats()
 		stats.Duration = duration
-		status.Summary = stats
+		completed.Summary = stats
 
 		if err != nil {
-			status.Status = statusFailed
-			status.Error = err.Error()
-			// Only log for current year syncs (historical syncs log in RunSyncWithOptions)
-			if status.Year == 0 {
+			completed.Status = statusFailed
+			completed.Error = err.Error()
+			if completed.Year == 0 {
 				slog.Error("Sync failed", "syncType", syncType, "error", err)
 			}
 		} else {
-			status.Status = statusSuccess
-			// Only log for current year syncs (historical syncs log in RunSyncWithOptions)
-			if status.Year == 0 {
+			completed.Status = statusSuccess
+			if completed.Year == 0 {
 				slog.Info("Sync completed successfully", "syncType", syncType)
 			}
 		}
 
-		// Store completed status before removing from runningJobs
+		// Atomic swap: store completed copy before removing from running
 		o.mu.Lock()
-		o.lastCompletedStatus[syncType] = status
+		o.lastCompletedStatus[syncType] = &completed
 		delete(o.runningJobs, syncType)
 		o.mu.Unlock()
 	}()
@@ -624,33 +626,37 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 // Used by handlers that manage their own Service instances (e.g., process_requests)
 // rather than routing through RunSingleSync.
 func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err error) {
-	o.mu.RLock()
-	status, exists := o.runningJobs[syncType]
-	o.mu.RUnlock()
+	endTime := time.Now()
 
+	o.mu.Lock()
+	status, exists := o.runningJobs[syncType]
 	if !exists {
+		o.mu.Unlock()
 		return
 	}
 
-	endTime := time.Now()
-	status.EndTime = &endTime
-
-	stats.Duration = int(endTime.Sub(status.StartTime).Seconds())
-	status.Summary = stats
-
+	// Copy struct so readers of the old pointer see a consistent snapshot
+	completed := *status
+	completed.EndTime = &endTime
+	stats.Duration = int(endTime.Sub(completed.StartTime).Seconds())
+	completed.Summary = stats
 	if err != nil {
-		status.Status = statusFailed
-		status.Error = err.Error()
-		slog.Error("Sync failed", "syncType", syncType, "error", err)
+		completed.Status = statusFailed
+		completed.Error = err.Error()
 	} else {
-		status.Status = statusSuccess
-		slog.Info("Sync completed successfully", "syncType", syncType)
+		completed.Status = statusSuccess
+		completed.Error = ""
 	}
 
-	o.mu.Lock()
-	o.lastCompletedStatus[syncType] = status
+	o.lastCompletedStatus[syncType] = &completed
 	delete(o.runningJobs, syncType)
 	o.mu.Unlock()
+
+	if err != nil {
+		slog.Error("Sync failed", "syncType", syncType, "error", err)
+	} else {
+		slog.Info("Sync completed successfully", "syncType", syncType)
+	}
 }
 
 // checkGlobalTablesEmpty checks if essential global tables have been synced.
