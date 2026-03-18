@@ -549,6 +549,50 @@ class TestBulkGetSessionsFiltersBunkingSessions:
         mock_attendees.get_full_list.assert_called_once()
         mock_attendees.get_list.assert_not_called()
 
+    def test_handles_none_expand_in_session_type_filter(self, repository, mock_pb_client):
+        """item.expand = None on line 257 must not raise AttributeError.
+
+        Bug #658: In _bulk_get_sessions_chunk, line 257 uses an unsafe pattern:
+            getattr(item, "expand", {}).get("session")
+        If item.expand exists but is None, getattr returns None (not {}),
+        and .get("session") raises AttributeError. The broad except block then
+        returns {} — losing ALL results, not just the bad item.
+
+        This test patches _get_session_cm_id to return a valid value so the
+        early guard on line 253 doesn't skip the item, forcing execution to
+        reach the unsafe expand access on line 257.
+        """
+        from unittest.mock import patch
+
+        _, mock_attendees, _ = mock_pb_client
+
+        # Create an item where expand is explicitly None but person_id exists
+        mock_bad_item = Mock()
+        mock_bad_item.person_id = 12345
+        mock_bad_item.year = 2026
+        mock_bad_item.expand = None  # attribute exists but is None
+
+        # Create a valid item that should still be returned
+        mock_good_item = self._create_attendee_mock(67890, 1235404, 2026, session_type="main")
+
+        mock_attendees.get_full_list.return_value = [mock_bad_item, mock_good_item]
+
+        # Patch _get_session_cm_id so the None-expand item isn't skipped at line 253
+        original_get_session = repository._get_session_cm_id
+
+        def patched_get_session(item):
+            if getattr(item, "person_id", None) == 12345:
+                return 9999999  # Fake session CM ID to bypass early guard
+            return original_get_session(item)
+
+        with patch.object(repository, "_get_session_cm_id", side_effect=patched_get_session):
+            sessions = repository.bulk_get_sessions_for_persons([12345, 67890], 2026)
+
+        # The None-expand item should be skipped gracefully (no valid session type)
+        assert 12345 not in sessions
+        # The valid item MUST still be returned — not lost to a broad except
+        assert sessions[67890] == 1235404
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
