@@ -13,6 +13,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	if cfg == nil {
 		t.Fatal("DefaultConfig() returned nil")
+		return
 	}
 
 	if cfg.APIDelay != 200*time.Millisecond {
@@ -37,6 +38,7 @@ func TestNewRateLimiter_WithNilConfig(t *testing.T) {
 
 	if rl == nil {
 		t.Fatal("NewRateLimiter(nil) returned nil")
+		return
 	}
 
 	// Should use default config

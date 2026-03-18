@@ -828,6 +828,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	data1 := aggregated[1001]
 	if data1 == nil {
 		t.Fatal("person 1001 not found in aggregated data")
+		return
 	}
 	if data1.earliestEnrollmentDate != "2024-11-15" {
 		t.Errorf("person 1001: enrollment_date = %q, want %q", data1.earliestEnrollmentDate, "2024-11-15")
@@ -840,6 +841,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	data2 := aggregated[1002]
 	if data2 == nil {
 		t.Fatal("person 1002 not found in aggregated data")
+		return
 	}
 	if data2.earliestEnrollmentDate != "2024-12-05" {
 		t.Errorf("person 1002: enrollment_date = %q, want %q", data2.earliestEnrollmentDate, "2024-12-05")
@@ -852,6 +854,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	data3 := aggregated[1003]
 	if data3 == nil {
 		t.Fatal("person 1003 not found in aggregated data")
+		return
 	}
 	if data3.earliestEnrollmentDate != "2025-01-15" {
 		t.Errorf("person 1003: enrollment_date = %q, want %q", data3.earliestEnrollmentDate, "2025-01-15")
