@@ -14,13 +14,15 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 
-// Mock useAuth
+// Mock useAuth — default to authenticated, not loading
+const mockAuthState = {
+  user: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' } as Record<string, unknown>,
+  isAuthenticated: true,
+  isLoading: false,
+}
+
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' },
-    isAuthenticated: true,
-    isLoading: false,
-  }),
+  useAuth: () => mockAuthState,
 }))
 
 function renderModal(props: { isOpen: boolean; onClose: () => void }) {
@@ -39,6 +41,9 @@ describe('FeedbackModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockAuthState.isLoading = false
+    mockAuthState.isAuthenticated = true
+    mockAuthState.user = { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' }
   })
 
   it('renders nothing when closed', () => {
@@ -204,6 +209,24 @@ describe('FeedbackModal', () => {
     await waitFor(() => {
       expect(screen.getByText(/5MB/i)).toBeInTheDocument()
     })
+  })
+
+  it('disables submit while auth is loading', () => {
+    mockAuthState.isLoading = true
+
+    renderModal({ isOpen: true, onClose: mockOnClose })
+
+    // Select category and enter description
+    fireEvent.click(screen.getByText('Bug'))
+    const textarea = screen.getByPlaceholderText(/what happened/i)
+    fireEvent.change(textarea, { target: { value: 'The save button is broken' } })
+
+    // Submit should be disabled because auth is still loading
+    const submitButton = screen.getByRole('button', { name: /submit/i })
+    expect(submitButton).toBeDisabled()
+
+    // Restore default
+    mockAuthState.isLoading = false
   })
 
   it('preserves text on submission error', async () => {
