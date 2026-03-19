@@ -276,7 +276,7 @@ export function PipelineBatchList({
                       <th
                         key={col.field}
                         onClick={() => toggleSort(col.field)}
-                        className={`text-muted-foreground hover:text-foreground cursor-pointer px-3 py-2 text-left text-xs font-medium select-none ${col.hiddenClass ?? ''}`}
+                        className={`text-muted-foreground hover:text-foreground group cursor-pointer px-3 py-2 text-left text-xs font-medium select-none ${col.hiddenClass ?? ''}`}
                       >
                         <span className="inline-flex items-center gap-1">
                           {col.label}
