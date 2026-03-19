@@ -105,20 +105,16 @@ export default function WaitlistAnalysis() {
   const {
     selectedSessionCmId,
     sessions,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
-  const { primary, comparison } = useComparisonWaitlistData(currentYear, compareYear, {
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
-  })
+  const { primary, comparison } = useComparisonWaitlistData(currentYear, compareYear, filterOptions)
   const { data, isLoading, error } = primary
   const compData = comparison?.data
 

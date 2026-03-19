@@ -18,6 +18,7 @@ import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { useMetricsSessions } from '../hooks/useMetricsSessions'
+import { metricsFilter } from '../hooks/useMetrics'
 import { MetricsSessionContext, type MetricsSessionContextType } from '../hooks/useMetricsSession'
 import {
   CAMP_SESSION_TYPES,
@@ -134,6 +135,17 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
   // Duration param for API calls
   const durationParam = selectedDuration ?? undefined
 
+  // Pre-built filter options for metrics hooks
+  const filterOptions = useMemo(
+    () =>
+      metricsFilter({
+        sessionTypes: sessionTypesParam,
+        sessionCmId: selectedSessionCmId,
+        duration: durationParam,
+      }),
+    [sessionTypesParam, selectedSessionCmId, durationParam]
+  )
+
   // Set duration filter (clears session and view params)
   const setSelectedDuration = useCallback(
     (duration: DurationCategory | null) => {
@@ -240,6 +252,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       selectedDuration,
       setSelectedDuration,
       durationParam,
+      filterOptions,
       durationGroups,
       expandedRetention,
       setExpandedRetention,
@@ -263,6 +276,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       selectedDuration,
       setSelectedDuration,
       durationParam,
+      filterOptions,
       durationGroups,
       expandedRetention,
       compareYear,

@@ -131,8 +131,13 @@ function buildGroupedChartData(
 }
 
 export default function TrendsOverview() {
-  const { selectedSessionCmId, sessionTypesParam, expandedRetention, durationParam } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessionTypesParam,
+    expandedRetention,
+    durationParam,
+    filterOptions,
+  } = useMetricsSession()
   const { currentYear } = useCurrentYear()
 
   const numYearsDisplay = expandedRetention ? 5 : 3
@@ -144,10 +149,8 @@ export default function TrendsOverview() {
 
   // Historical trends (enrollment, new vs returning, gender lines)
   const { data, isLoading, error } = useHistoricalTrends({
+    ...filterOptions,
     years: yearsParam,
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
   })
 
   // Always fetch 5 years of retention trends for caching; slice when toggling

@@ -31,7 +31,7 @@ function buildComparator(
 
 export default function SessionFlowPage() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()
+  const { sessions, filterOptions } = useMetricsSession()
   const priorYear = currentYear - 1
 
   // Fetch prior year sessions for source-side ordering
@@ -46,11 +46,7 @@ export default function SessionFlowPage() {
     [sessions, priorSessions]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, {
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
-  })
+  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, filterOptions)
 
   return (
     <div className="space-y-4">

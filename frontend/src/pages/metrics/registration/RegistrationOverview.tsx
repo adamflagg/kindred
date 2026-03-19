@@ -131,11 +131,11 @@ export default function RegistrationOverview() {
   const {
     selectedSessionCmId,
     sessions,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
 
   // Always use enrolled status only
@@ -175,10 +175,8 @@ export default function RegistrationOverview() {
 
   // Fetch registration data with optional comparison year
   const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    sessionTypes: sessionTypesParam,
+    ...filterOptions,
     statuses: statusesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
   })
   const { data, isLoading, error } = primary
   const compData = comparison?.data

@@ -8,6 +8,7 @@ import { useContext, createContext } from 'react'
 import type { MetricsSession } from './useMetricsSessions'
 import type { MetricsViewMode } from '../constants/sessionTypes'
 import type { DurationCategory } from '../utils/sessionUtils'
+import type { MetricsFilterOptions } from './useMetrics'
 
 export interface MetricsSessionContextType {
   /** Currently selected session cm_id (null = all sessions) */
@@ -40,6 +41,8 @@ export interface MetricsSessionContextType {
   setSelectedDuration: (duration: DurationCategory | null) => void
   /** Duration param for API calls (e.g., '1-week') - undefined when not filtering by duration */
   durationParam: string | undefined
+  /** Pre-built filter options for metrics hooks (sessionTypes + sessionCmId/duration, mutually exclusive) */
+  filterOptions: MetricsFilterOptions
   /** Camp sessions grouped by duration, for the dropdown */
   durationGroups: Map<DurationCategory, MetricsSession[]>
   /** Whether expanded retention analysis is enabled (5 years instead of 3) */

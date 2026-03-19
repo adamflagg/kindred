@@ -14,19 +14,45 @@ import type {
   CancellationMetrics,
 } from '../types/metrics'
 
-/** Shared filter options for metrics hooks using the hybrid (required, options?) pattern. */
-export interface MetricsFilterOptions {
+/**
+ * Shared filter options for metrics hooks.
+ *
+ * sessionCmId and duration are mutually exclusive (#567):
+ * - sessionCmId: filter to a single session by CampMinder ID
+ * - duration: filter by session grouping (e.g., "1-week", "2-week", "at-camp", "quest")
+ * The backend rejects requests with both set (422), and the UI prevents it,
+ * but this type also enforces it at compile time.
+ */
+export type MetricsFilterOptions =
+  | { sessionTypes?: string | undefined; sessionCmId: number; duration?: undefined }
+  | { sessionTypes?: string | undefined; sessionCmId?: undefined; duration: string }
+  | { sessionTypes?: string | undefined; sessionCmId?: undefined; duration?: undefined }
+
+export type RegistrationFilterOptions = MetricsFilterOptions & { statuses?: string }
+
+export type HistoricalFilterOptions = MetricsFilterOptions & { years?: string }
+
+/**
+ * Build a properly-typed MetricsFilterOptions from loose params.
+ *
+ * Call sites typically have `sessionCmId: number | null` and `duration: string | undefined`
+ * from the MetricsSessionContext. This helper narrows those wide types into the
+ * discriminated union, enforcing mutual exclusivity at runtime.
+ *
+ * sessionCmId takes priority if both are somehow non-null (shouldn't happen — UI prevents it).
+ */
+export function metricsFilter(params: {
   sessionTypes?: string | undefined
-  sessionCmId?: number | undefined
-  duration?: string | undefined
-}
-
-export interface RegistrationFilterOptions extends MetricsFilterOptions {
-  statuses?: string | undefined
-}
-
-export interface HistoricalFilterOptions extends MetricsFilterOptions {
-  years?: string | undefined
+  sessionCmId?: number | null | undefined
+  duration?: string | null | undefined
+}): MetricsFilterOptions {
+  if (params.sessionCmId != null) {
+    return { sessionTypes: params.sessionTypes, sessionCmId: params.sessionCmId }
+  }
+  if (params.duration != null) {
+    return { sessionTypes: params.sessionTypes, duration: params.duration }
+  }
+  return { sessionTypes: params.sessionTypes }
 }
 
 /**
@@ -122,16 +148,28 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
 /**
  * Fetch comparison metrics between two years.
  */
-export function useComparisonMetrics(yearA: number, yearB: number) {
+export function useComparisonMetrics(yearA: number, yearB: number, options?: MetricsFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.comparison(yearA, yearB),
+    queryKey: queryKeys.comparison(
+      yearA,
+      yearB,
+      options?.sessionTypes,
+      options?.sessionCmId,
+      options?.duration
+    ),
     queryFn: async (): Promise<ComparisonMetrics> => {
       const params = new URLSearchParams({
         year_a: yearA.toString(),
         year_b: yearB.toString(),
       })
+      // Backend comparison endpoint only supports session_types today.
+      // sessionCmId/duration are accepted in the type for pattern consistency
+      // but not sent until the backend adds support.
+      if (options?.sessionTypes) {
+        params.set('session_types', options.sessionTypes)
+      }
 
       const response = await fetchWithAuth(`/api/metrics/comparison?${params}`)
       if (!response.ok) {

@@ -45,11 +45,11 @@ export default function GeoAnalysis() {
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const {
     selectedSessionCmId,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
 
   // Drilldown hook for modal functionality
@@ -63,10 +63,8 @@ export default function GeoAnalysis() {
 
   // Fetch registration data with geographic breakdowns + optional comparison
   const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    sessionTypes: sessionTypesParam,
+    ...filterOptions,
     statuses: 'enrolled',
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
   })
   const { data, isLoading, error } = primary
   const compData = comparison?.data

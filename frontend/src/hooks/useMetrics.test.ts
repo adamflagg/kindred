@@ -1,4 +1,15 @@
-import { describe, it, expect } from 'vitest'
+/**
+ * Tests for useMetrics hooks and MetricsFilterOptions type
+ *
+ * TDD: Tests for #567 (mutual exclusivity) and #562 (useComparisonMetrics options)
+ * written before implementation.
+ */
+import { describe, it, expect, assertType } from 'vitest'
+import type {
+  MetricsFilterOptions,
+  RegistrationFilterOptions,
+  HistoricalFilterOptions,
+} from './useMetrics'
 
 describe('useMetrics hooks', () => {
   it('should guard all queries with isAuthLoading', async () => {
@@ -32,5 +43,206 @@ describe('useMetrics hooks', () => {
     const funcBody = nextFunc > -1 ? source.slice(funcStart, nextFunc) : source.slice(funcStart)
 
     expect(funcBody).toContain('isAuthLoading')
+  })
+})
+
+describe('MetricsFilterOptions type (#567)', () => {
+  it('should allow sessionCmId without duration', () => {
+    const opts: MetricsFilterOptions = { sessionCmId: 1000 }
+    assertType<MetricsFilterOptions>(opts)
+    expect(opts.sessionCmId).toBe(1000)
+  })
+
+  it('should allow duration without sessionCmId', () => {
+    const opts: MetricsFilterOptions = { duration: '2-week' }
+    assertType<MetricsFilterOptions>(opts)
+    expect(opts.duration).toBe('2-week')
+  })
+
+  it('should allow sessionTypes alone', () => {
+    const opts: MetricsFilterOptions = { sessionTypes: 'main,embedded' }
+    assertType<MetricsFilterOptions>(opts)
+    expect(opts.sessionTypes).toBe('main,embedded')
+  })
+
+  it('should allow empty options', () => {
+    const opts: MetricsFilterOptions = {}
+    assertType<MetricsFilterOptions>(opts)
+    expect(opts).toEqual({})
+  })
+
+  it('should allow sessionCmId with explicit undefined duration', () => {
+    const opts: MetricsFilterOptions = { sessionCmId: 1000, duration: undefined }
+    assertType<MetricsFilterOptions>(opts)
+    expect(opts.sessionCmId).toBe(1000)
+  })
+
+  it('should allow duration with explicit undefined sessionCmId', () => {
+    const opts: MetricsFilterOptions = { sessionCmId: undefined, duration: '1-week' }
+    assertType<MetricsFilterOptions>(opts)
+    expect(opts.duration).toBe('1-week')
+  })
+
+  it('should reject both sessionCmId and duration set simultaneously', () => {
+    // @ts-expect-error - sessionCmId and duration are mutually exclusive
+    const _opts: MetricsFilterOptions = { sessionCmId: 1000, duration: '2-week' }
+    // This test validates at compile time — if the @ts-expect-error is unnecessary,
+    // TypeScript will error, meaning the type is NOT enforcing mutual exclusivity
+    expect(true).toBe(true)
+  })
+})
+
+describe('RegistrationFilterOptions', () => {
+  it('should extend MetricsFilterOptions with statuses', () => {
+    const opts: RegistrationFilterOptions = { sessionTypes: 'main', statuses: 'enrolled' }
+    assertType<RegistrationFilterOptions>(opts)
+    expect(opts.statuses).toBe('enrolled')
+  })
+
+  it('should still enforce mutual exclusivity', () => {
+    // @ts-expect-error - sessionCmId and duration are mutually exclusive
+    const _opts: RegistrationFilterOptions = {
+      sessionCmId: 1000,
+      duration: '2-week',
+      statuses: 'enrolled',
+    }
+    expect(true).toBe(true)
+  })
+})
+
+describe('HistoricalFilterOptions', () => {
+  it('should extend MetricsFilterOptions with years', () => {
+    const opts: HistoricalFilterOptions = { years: '2023,2024,2025' }
+    assertType<HistoricalFilterOptions>(opts)
+    expect(opts.years).toBe('2023,2024,2025')
+  })
+
+  it('should still enforce mutual exclusivity', () => {
+    // @ts-expect-error - sessionCmId and duration are mutually exclusive
+    const _opts: HistoricalFilterOptions = {
+      sessionCmId: 1000,
+      duration: '2-week',
+      years: '2023,2024',
+    }
+    expect(true).toBe(true)
+  })
+})
+
+describe('metricsFilter helper', () => {
+  it('should be exported from useMetrics', async () => {
+    const module = await import('./useMetrics')
+    expect(typeof module.metricsFilter).toBe('function')
+  })
+
+  it('should return sessionCmId filter when sessionCmId is provided', async () => {
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionTypes: 'main',
+      sessionCmId: 1000,
+    })
+    expect(result).toEqual({ sessionTypes: 'main', sessionCmId: 1000 })
+  })
+
+  it('should return duration filter when duration is provided', async () => {
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionTypes: 'main',
+      duration: '2-week',
+    })
+    expect(result).toEqual({ sessionTypes: 'main', duration: '2-week' })
+  })
+
+  it('should return base filter when neither is provided', async () => {
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionTypes: 'main',
+    })
+    expect(result).toEqual({ sessionTypes: 'main' })
+  })
+
+  it('should handle null sessionCmId as absent', async () => {
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionTypes: 'main',
+      sessionCmId: null,
+      duration: '1-week',
+    })
+    expect(result).toEqual({ sessionTypes: 'main', duration: '1-week' })
+  })
+
+  it('should handle null duration as absent', async () => {
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionTypes: 'main',
+      sessionCmId: 1000,
+      duration: null,
+    })
+    expect(result).toEqual({ sessionTypes: 'main', sessionCmId: 1000 })
+  })
+
+  it('should handle undefined values as absent', async () => {
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionTypes: 'main',
+      sessionCmId: undefined,
+      duration: undefined,
+    })
+    expect(result).toEqual({ sessionTypes: 'main' })
+  })
+
+  it('should prioritize sessionCmId over duration when both are non-null', async () => {
+    // This shouldn't happen in practice (UI prevents it), but the helper
+    // should deterministically pick one rather than sending both
+    const { metricsFilter } = await import('./useMetrics')
+    const result = metricsFilter({
+      sessionCmId: 1000,
+      duration: '2-week',
+    })
+    expect(result.sessionCmId).toBe(1000)
+    expect(result).not.toHaveProperty('duration')
+  })
+})
+
+describe('useComparisonMetrics options (#562)', () => {
+  it('should accept an optional third options parameter', async () => {
+    const sourceContent = await import('./useMetrics?raw')
+    const source = sourceContent.default
+
+    // useComparisonMetrics should accept options as third parameter
+    const funcMatch = source.match(/function useComparisonMetrics\([^)]+\)/)
+    expect(funcMatch).not.toBeNull()
+    expect(funcMatch![0]).toContain('options')
+  })
+
+  it('should pass sessionTypes to comparison API when provided', async () => {
+    const sourceContent = await import('./useMetrics?raw')
+    const source = sourceContent.default
+
+    const funcStart = source.indexOf('function useComparisonMetrics')
+    const nextFunc = source.indexOf('\nexport function', funcStart + 1)
+    const funcBody = nextFunc > -1 ? source.slice(funcStart, nextFunc) : source.slice(funcStart)
+
+    // Should set session_types param from options
+    expect(funcBody).toContain('session_types')
+    expect(funcBody).toContain('options')
+  })
+
+  it('should include filter params in comparison query key', async () => {
+    const { queryKeys } = await import('../utils/queryKeys')
+    const key = queryKeys.comparison(2025, 2026)
+    const keyWithTypes = queryKeys.comparison(2025, 2026, 'main,embedded')
+
+    // Without options, key should be base
+    expect(key).toEqual(['metrics', 'comparison', 2025, 2026, undefined, undefined, undefined])
+    // With sessionTypes, key should include it
+    expect(keyWithTypes).toEqual([
+      'metrics',
+      'comparison',
+      2025,
+      2026,
+      'main,embedded',
+      undefined,
+      undefined,
+    ])
   })
 })
