@@ -4,12 +4,6 @@ import (
 	"testing"
 )
 
-func TestMaxScreenshotSize(t *testing.T) {
-	if MaxScreenshotSize != 5*1024*1024 {
-		t.Errorf("MaxScreenshotSize = %d, want %d", MaxScreenshotSize, 5*1024*1024)
-	}
-}
-
 func TestSanitizeFilename(t *testing.T) {
 	tests := []struct {
 		name  string

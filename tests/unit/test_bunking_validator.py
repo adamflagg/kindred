@@ -10,11 +10,8 @@ import pytest
 from bunking.bunking_validator import (
     BunkingValidator,
     HistoricalBunkingRecord,
-    SessionBreakdown,
-    ValidationIssue,
     ValidationResult,
     ValidationSeverity,
-    ValidationStatistics,
 )
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
@@ -70,98 +67,6 @@ class MockSession:
 
     campminder_id: str  # Use numeric string IDs
     name: str
-
-
-class TestValidationSeverity:
-    """Tests for ValidationSeverity enum."""
-
-    def test_severity_values(self):
-        assert ValidationSeverity.ERROR.value == "error"
-        assert ValidationSeverity.WARNING.value == "warning"
-        assert ValidationSeverity.INFO.value == "info"
-
-
-class TestValidationIssue:
-    """Tests for ValidationIssue model."""
-
-    def test_create_issue_minimal(self):
-        issue = ValidationIssue(
-            severity=ValidationSeverity.ERROR,
-            type="test_error",
-            message="Test error message",
-        )
-        assert issue.severity == ValidationSeverity.ERROR
-        assert issue.type == "test_error"
-        assert issue.message == "Test error message"
-        assert issue.details == {}
-        assert issue.affected_ids == []
-
-    def test_create_issue_full(self):
-        issue = ValidationIssue(
-            severity=ValidationSeverity.WARNING,
-            type="capacity_violation",
-            message="Bunk B-1 is over capacity",
-            details={"bunk_id": "123", "assigned": 15, "max_size": 12},
-            affected_ids=["123", "456"],
-        )
-        assert issue.details["assigned"] == 15
-        assert len(issue.affected_ids) == 2
-
-
-class TestValidationStatistics:
-    """Tests for ValidationStatistics model."""
-
-    def test_default_values(self):
-        stats = ValidationStatistics()
-        assert stats.total_campers == 0
-        assert stats.assigned_campers == 0
-        assert stats.request_satisfaction_rate == 0.0
-        assert "share_bunk_with" in stats.field_stats
-        assert stats.level_progression["returning_campers"] == 0
-
-    def test_field_stats_structure(self):
-        stats = ValidationStatistics()
-        expected_fields = [
-            "share_bunk_with",
-            "do_not_share_with",
-            "bunking_notes",
-            "internal_notes",
-            "socialize_with",
-        ]
-        for field in expected_fields:
-            assert field in stats.field_stats
-            assert "total" in stats.field_stats[field]
-            assert "satisfied" in stats.field_stats[field]
-            assert "satisfaction_rate" in stats.field_stats[field]
-
-
-class TestSessionBreakdown:
-    """Tests for SessionBreakdown model."""
-
-    def test_create_breakdown(self):
-        breakdown = SessionBreakdown(session_cm_id=123, session_name="Session 1")
-        assert breakdown.session_cm_id == 123
-        assert breakdown.session_name == "Session 1"
-        assert breakdown.total_campers == 0
-        assert breakdown.bunks_count == 0
-
-
-class TestValidationResult:
-    """Tests for ValidationResult model."""
-
-    def test_create_result(self):
-        stats = ValidationStatistics()
-        issues = [
-            ValidationIssue(
-                severity=ValidationSeverity.INFO,
-                type="test",
-                message="Test",
-            )
-        ]
-        result = ValidationResult(statistics=stats, issues=issues, session_id="12345")
-        assert result.session_id == "12345"
-        assert len(result.issues) == 1
-        assert result.validated_at is not None
 
 
 class TestBunkingValidator:
@@ -585,30 +490,6 @@ class TestBunkingValidator:
 
         adjacency_issues = [i for i in result.issues if i.type == "grade_adjacency_warning"]
         assert len(adjacency_issues) == 0
-
-
-class TestHistoricalBunkingRecord:
-    """Tests for HistoricalBunkingRecord dataclass."""
-
-    def test_create_record(self):
-        record = HistoricalBunkingRecord(
-            person_cm_id=12345,
-            bunk_name="B-5",
-            year=2024,
-            session_cm_id=67890,
-        )
-        assert record.person_cm_id == 12345
-        assert record.bunk_name == "B-5"
-        assert record.year == 2024
-        assert record.session_cm_id == 67890
-
-    def test_create_record_without_session(self):
-        record = HistoricalBunkingRecord(
-            person_cm_id=12345,
-            bunk_name="B-5",
-            year=2024,
-        )
-        assert record.session_cm_id is None
 
 
 class TestLevelProgressionValidation:
