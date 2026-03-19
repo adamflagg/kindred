@@ -98,7 +98,7 @@ def _build_parsed_intent(intent: dict[str, Any]) -> ParsedIntent:
     """Build a ParsedIntent schema from a raw intent dict.
 
     Centralizes the repeated ParsedIntent construction pattern used
-    across 8+ endpoints in this module.
+    across 8 call sites in this module.
 
     Args:
         intent: Dictionary with intent fields from AI parse results.
