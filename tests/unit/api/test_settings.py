@@ -20,7 +20,10 @@ class TestAllowAuthBypass:
             ({"CI": "true"}, False),
             ({}, False),
             ({"ALLOW_AUTH_BYPASS": "true"}, True),
+            ({"ALLOW_AUTH_BYPASS": "1"}, True),
+            ({"ALLOW_AUTH_BYPASS": "yes"}, True),
             ({"ALLOW_AUTH_BYPASS": "false"}, False),
+            ({"CI": "yes", "GITHUB_ACTIONS": "1"}, False),
         ],
         ids=[
             "both_ci_signals",
@@ -28,7 +31,10 @@ class TestAllowAuthBypass:
             "missing_github_actions",
             "neither_signal",
             "allow_bypass_true",
+            "allow_bypass_1",
+            "allow_bypass_yes",
             "allow_bypass_false",
+            "ci_wrong_values",
         ],
     )
     def test_bypass_env_combinations(self, env, expected):

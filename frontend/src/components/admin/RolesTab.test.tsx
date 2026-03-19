@@ -78,7 +78,7 @@ describe('RolesTab', () => {
       expect(screen.getByText('Metrics Viewer')).toBeTruthy()
       // System badges
       const systemBadges = screen.getAllByText('System')
-      expect(systemBadges.length).toBeGreaterThan(0)
+      expect(systemBadges).toHaveLength(2)
       // Permission badges
       expect(screen.getByText('bunking.manage')).toBeTruthy()
       expect(screen.getByText('metrics.financial')).toBeTruthy()

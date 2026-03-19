@@ -610,3 +610,31 @@ describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
     expect(screen.getByText('Oranges')).toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Legend spacing (rotated vs straight labels)
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart legend spacing', () => {
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it.each([
+    { rotateLabels: true, expectedClass: 'mt-3', label: 'rotated labels' },
+    { rotateLabels: false, expectedClass: 'mt-1', label: 'straight labels' },
+  ])('uses $expectedClass on legend with $label', ({ rotateLabels, expectedClass }) => {
+    render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        rotateLabels={rotateLabels}
+      />
+    )
+    const femaleLabel = screen.getByText('Female')
+    const legendWrapper = femaleLabel.closest(`.${expectedClass}`)
+    expect(legendWrapper).toBeInTheDocument()
+  })
+})

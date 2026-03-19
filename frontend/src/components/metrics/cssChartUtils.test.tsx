@@ -476,7 +476,15 @@ describe('ColumnHoverOverlay', () => {
       <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
     )
     const overlay = container.firstChild as HTMLElement
-    for (const cls of ['absolute', 'pointer-events-none', 'bg-foreground/[0.06]']) {
+    // Vertical positioning (top/bottom) is via inline styles, not inset-y-0 class
+    for (const cls of [
+      'absolute',
+      'pointer-events-none',
+      'left-0',
+      'z-0',
+      'rounded',
+      'bg-foreground/[0.06]',
+    ]) {
       expect(overlay.className).toContain(cls)
     }
   })

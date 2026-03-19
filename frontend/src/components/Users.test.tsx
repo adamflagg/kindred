@@ -110,7 +110,8 @@ describe('Users page access control', () => {
   it.each([
     { description: 'own user row', name: 'Emma Johnson', userId: 'user-1' },
     { description: 'admin users', name: 'Admin User', userId: 'user-1' },
-  ])('blocks role management on $description', async ({ name }) => {
+  ])('blocks role management on $description', async ({ name, userId }) => {
+    mockCurrentUserId = userId
     mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
     renderUsers()
     expect(await screen.findByText(name)).toBeTruthy()
