@@ -1772,8 +1772,6 @@ async def run_full_trace(
     try:
         from uuid import uuid4
 
-        from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
-
         # Create trace collector for this run
         trace_collector = TraceCollector(run_id=uuid4().hex)
 
@@ -1806,7 +1804,7 @@ async def run_full_trace(
 
             parse_req = ParseRequest(
                 request_text=orig.content,
-                field_name=FIELD_TO_SOURCE_FIELD.get(orig.field, orig.field),
+                field_name=orig.field,  # V2: field IS the source field name
                 requester_name=requester_name,
                 requester_cm_id=orig.requester_cm_id,
                 requester_grade=str(orig.grade) if orig.grade else "",

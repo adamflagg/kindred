@@ -1,29 +1,26 @@
-"""Tests for source_field normalization in OpenAI provider.
+"""Tests for source_field passthrough in OpenAI provider (V2).
 
-Verifies that source_field values are normalized to canonical form
-via ALL_FIELD_TO_SOURCE_FIELD lookup, as defense-in-depth for the
-batch_processor normalization."""
+Verifies that source_field values are used as-is (V2: no normalization needed,
+source_field IS the canonical DB field name)."""
 
-from bunking.sync.bunk_request_processor.shared.constants import ALL_FIELD_TO_SOURCE_FIELD, SourceField
-
-
-def test_source_field_normalized_from_csv_key():
-    """Verify source_field is normalized to canonical form via ALL_FIELD_TO_SOURCE_FIELD."""
-    # Test the normalization logic directly
-    raw_field = "share_bunk_with"
-    normalized = ALL_FIELD_TO_SOURCE_FIELD.get(raw_field, raw_field)
-    assert normalized == SourceField.BUNK_WITH  # "Share Bunk With"
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
-def test_source_field_normalized_from_field_value():
-    """Field values (bunk_with) also normalize to canonical form."""
+def test_source_field_v2_identity():
+    """V2: source_field values are used directly, no mapping needed."""
+    # In V2, raw_field IS the canonical name
     raw_field = "bunk_with"
-    normalized = ALL_FIELD_TO_SOURCE_FIELD.get(raw_field, raw_field)
-    assert normalized == SourceField.BUNK_WITH
+    assert raw_field == SourceField.BUNK_WITH
+
+
+def test_source_field_v2_not_bunk_with():
+    """V2: not_bunk_with passes through directly."""
+    raw_field = "not_bunk_with"
+    assert raw_field == SourceField.NOT_BUNK_WITH
 
 
 def test_source_field_unknown_passes_through():
-    """Unknown field names pass through unchanged."""
+    """Unknown field names pass through unchanged (V2 identity)."""
     raw_field = "unknown_field"
-    normalized = ALL_FIELD_TO_SOURCE_FIELD.get(raw_field, raw_field)
-    assert normalized == "unknown_field"
+    # In V2, the raw_field is used directly
+    assert raw_field == "unknown_field"

@@ -17,8 +17,6 @@ from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
 from bunking.sync.bunk_request_processor.shared.constants import (
-    CSV_KEY_TO_SOURCE_FIELD,
-    FIELD_TO_SOURCE_FIELD,
     SOURCE_FIELD_TO_CONFIG_KEY,
     SourceField,
 )
@@ -43,15 +41,7 @@ for _src_val, _stats_key in _SOURCEFIELD_TO_STATS_KEY.items():
     _SOURCE_FIELD_NORMALIZE_LOOKUP[_src_val.lower()] = _stats_key
 # 2. Stats keys themselves (identity: "socialize_with" → "socialize_with")
 _SOURCE_FIELD_NORMALIZE_LOOKUP.update({k: k for k in _SOURCEFIELD_TO_STATS_KEY.values()})
-# 3. FIELD_TO_SOURCE_FIELD keys (e.g., "bunk_with" → "share_bunk_with")
-for _field_key, _src_val in FIELD_TO_SOURCE_FIELD.items():
-    if _src_val in _SOURCEFIELD_TO_STATS_KEY:
-        _SOURCE_FIELD_NORMALIZE_LOOKUP[_field_key] = _SOURCEFIELD_TO_STATS_KEY[_src_val]
-# 4. CSV column keys (e.g., "ret_parent_socialize_with_best" → "socialize_with")
-for _csv_key, _src_val in CSV_KEY_TO_SOURCE_FIELD.items():
-    if _src_val in _SOURCEFIELD_TO_STATS_KEY:
-        _SOURCE_FIELD_NORMALIZE_LOOKUP[_csv_key] = _SOURCEFIELD_TO_STATS_KEY[_src_val]
-# 5. Config key values (e.g., "socialize_preference" → "socialize_with")
+# 3. Config key values (e.g., "socialize_preference" → "socialize_with")
 for _src_val, _config_key in SOURCE_FIELD_TO_CONFIG_KEY.items():
     if _src_val in _SOURCEFIELD_TO_STATS_KEY:
         _SOURCE_FIELD_NORMALIZE_LOOKUP[_config_key] = _SOURCEFIELD_TO_STATS_KEY[_src_val]

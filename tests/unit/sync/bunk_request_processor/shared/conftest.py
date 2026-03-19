@@ -13,10 +13,10 @@ import pytest
 @pytest.fixture(autouse=True)
 def mock_provider_factory():
     """No-op override of parent fixture — constants tests don't need provider mocking."""
-    yield None
+    return None
 
 
 @pytest.fixture(autouse=True)
 def mock_config_loader():
     """No-op override of parent fixture — constants tests don't need config mocking."""
-    yield None
+    return None

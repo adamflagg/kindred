@@ -20,7 +20,6 @@ from ..core.models import (
     RequestType,
 )
 from ..prompts import format_prompt
-from ..shared.constants import ALL_FIELD_TO_SOURCE_FIELD
 from ..utils.date_parser import parse_temporal_date
 from .ai_schemas import (
     AIBunkRequestItem,
@@ -364,7 +363,7 @@ class OpenAIProvider(AIProvider):
                 request_type=request_type,
                 target_name=ai_req.target_name,
                 age_preference=None,
-                source_field=ALL_FIELD_TO_SOURCE_FIELD.get(raw_field, raw_field),
+                source_field=raw_field,
                 source=self._map_source_type(ai_req.source_type),
                 confidence=self._calculate_confidence(ai_req),
                 csv_position=ai_req.list_position + 1,  # Convert 0-based to 1-based

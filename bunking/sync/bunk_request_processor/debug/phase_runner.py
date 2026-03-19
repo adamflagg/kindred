@@ -288,14 +288,8 @@ class PhaseRunner:
 
         # Build a ParseRequest with enough context for _get_trace_key to resolve
         # the original_request_id. _get_trace_key reads:
-        #   parse_request.field_name -> maps to PB field -> looks up in row_data._original_request_ids
+        #   parse_request.field_name -> looks up in row_data._original_request_ids
         source_field = trace_data.pre_phase1.field_path or "bunk_with"
-
-        from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
-
-        # Build reverse map: source_field value -> PB field name
-        source_to_pb_field = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
-        pb_field_name = source_to_pb_field.get(source_field, source_field)
 
         parse_request = ParseRequest(
             request_text=trace_data.pre_phase1.original_text,
@@ -306,7 +300,7 @@ class PhaseRunner:
             session_cm_id=trace_data.pre_phase1.session_cm_ids[0] if trace_data.pre_phase1.session_cm_ids else 0,
             session_name="",
             year=0,
-            row_data={"_original_request_ids": {pb_field_name: original_request_id}},
+            row_data={"_original_request_ids": {source_field: original_request_id}},
         )
 
         # Create a minimal ParseResult with parse_request for trace key resolution
