@@ -97,16 +97,36 @@ export function PipelineRunSelector({
         <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 p-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
             {/* Status breakdown */}
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+            <div
+              className="flex items-center gap-2"
+              title="Per-trace counts (one per original request). Table below shows per-intent rows — a single trace may produce multiple intents."
+            >
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                title="Resolved traces"
+              >
                 {selectedRun.status_breakdown.resolved}
               </span>
-              <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                title="Pending traces"
+              >
                 {selectedRun.status_breakdown.pending}
               </span>
-              <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-400">
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-400"
+                title="Declined traces"
+              >
                 {selectedRun.status_breakdown.declined}
               </span>
+              {selectedRun.status_breakdown.skipped > 0 && (
+                <span
+                  className="bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold"
+                  title="Skipped traces (no preference, not enrolled, etc.)"
+                >
+                  {selectedRun.status_breakdown.skipped}
+                </span>
+              )}
             </div>
 
             {/* Source fields */}

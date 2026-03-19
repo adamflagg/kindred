@@ -204,12 +204,20 @@ export function PipelineBatchList({
               className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 rounded-md border px-2 py-1 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
             >
               <option value="">All</option>
-              <option value="exact_match">Exact</option>
-              <option value="fuzzy_match">Fuzzy</option>
-              <option value="nickname">Nickname</option>
-              <option value="social_graph">Social Graph</option>
-              <option value="ai_disambiguation">AI</option>
-              <option value="age_preference">Age Pref</option>
+              <option value="exact_match">Exact Match</option>
+              <option value="fuzzy_match">Fuzzy Match</option>
+              <option value="phonetic_match">Phonetic Match</option>
+              <option value="school_disambiguation">School</option>
+              <option value="prior_bunkmate_exact">Prior Bunkmate (exact)</option>
+              <option value="prior_bunkmate_first_name">Prior Bunkmate (first)</option>
+              <option value="prior_year_bunkmate">Prior Year Bunkmate</option>
+              <option value="sibling_household_lookup">Sibling Lookup</option>
+              <option value="ai_id_validated">AI ID Validated</option>
+              <option value="ai_candidate_disambiguated">AI Candidate</option>
+              <option value="ai_disambiguation">AI Disambiguation</option>
+              <option value="social_graph_auto">Social Graph</option>
+              <option value="age_preference">Age Preference</option>
+              <option value="staff_filtered">Staff Filtered</option>
               <option value="placeholder">Placeholder</option>
               <option value="unresolved">Unresolved</option>
             </select>

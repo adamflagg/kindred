@@ -1280,13 +1280,37 @@ def _pb_record_to_trace_item(record: Any) -> PipelineTraceItem:
 VALID_RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 VALID_FINAL_STATUSES = {"RESOLVED", "PENDING", "DECLINED"}
 VALID_RESOLUTION_METHODS = {
+    # Resolution pipeline strategies
     "exact_match",
     "fuzzy_match",
-    "nickname",
-    "social_graph",
+    "phonetic_match",
+    "school_disambiguation",
+    # Phase 2 fast paths
+    "prior_bunkmate_exact",
+    "prior_bunkmate_first_name",
+    "ai_id_validated",
+    "ai_id_validated_normalized",
+    "ai_id_partial_match",
+    "ai_candidate_disambiguated",
+    "staff_filtered",
+    # Phase 3
     "ai_disambiguation",
+    # Social graph
+    "social_graph_auto",
+    # Direct parse / special
     "age_preference",
     "placeholder",
+    # Placeholder expansion
+    "prior_year_bunkmate",
+    "sibling_household_lookup",
+    # Edge cases (can appear when resolution fails or is skipped)
+    "age_preference_missing",
+    "no_target_name",
+    "no_resolution_needed",
+    "no_resolution",
+    "resolution_incomplete",
+    "invalid_parse",
+    "placeholder_expansion_failed",
     "unresolved",
 }
 VALID_SOURCE_FIELDS = {
