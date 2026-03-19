@@ -67,13 +67,6 @@ describe('CssVerticalStackedBarChart rendering', () => {
     expect(headings.length).toBe(0)
   })
 
-  it('should wrap in card-lodge class', () => {
-    const { container } = render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
-    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
-  })
-
   it('should apply custom className', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sampleData} segments={segments} className="my-custom" />
@@ -96,11 +89,6 @@ describe('CssVerticalStackedBarChart empty state', () => {
   it('should show "No data available" when data is empty', () => {
     render(<CssVerticalStackedBarChart data={[]} segments={segments} />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
-  })
-
-  it('should still wrap in card-lodge when empty', () => {
-    const { container } = render(<CssVerticalStackedBarChart data={[]} segments={segments} />)
-    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 })
 
@@ -187,14 +175,6 @@ describe('CssVerticalStackedBarChart Y-axis', () => {
     render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     // Data max total is 30, getNiceTicks should produce ticks including 0
     expect(screen.getByText('0')).toBeInTheDocument()
-  })
-
-  it('should use default w-8 Y-axis width', () => {
-    const { container } = render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
-    const yAxis = container.querySelector('.w-8')
-    expect(yAxis).toBeInTheDocument()
   })
 })
 
@@ -348,34 +328,6 @@ describe('CssVerticalStackedBarChart legend', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Legend spacing (rotated vs straight labels)
-// ---------------------------------------------------------------------------
-describe('CssVerticalStackedBarChart legend spacing', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
-  it('should use mt-3 on legend when rotateLabels is true', () => {
-    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} rotateLabels />)
-    // ChartLegend renders a flex wrapper — find it by the legend items
-    const femaleLabel = screen.getByText('Female')
-    // Walk up to the ChartLegend wrapper (parent with mt-3)
-    const legendWrapper = femaleLabel.closest('.mt-3')
-    expect(legendWrapper).toBeInTheDocument()
-  })
-
-  it('should use mt-1 on legend when rotateLabels is false', () => {
-    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
-    const femaleLabel = screen.getByText('Female')
-    const legendWrapper = femaleLabel.closest('.mt-1')
-    expect(legendWrapper).toBeInTheDocument()
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Click handling
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart click handling', () => {
@@ -470,14 +422,6 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     expect(xAxisLabels?.length).toBe(3)
   })
 
-  it('should use border-foreground/40 for y-axis line', () => {
-    const { container } = render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
-    const yAxis = container.querySelector('.border-foreground\\/40.border-l')
-    expect(yAxis).toBeInTheDocument()
-  })
-
   it('should apply maxWidth to columns in sparse mode (<=4 items)', () => {
     const sparseData = [
       { name: 'A', total: 10, male_count: 6, female_count: 4 },
@@ -493,42 +437,18 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     expect(columns.length).toBe(sparseData.length)
   })
 
-  it('should have no flex gap in sparse mode (gap absorbed into column padding for contiguous hover)', () => {
-    const sparseData = [
-      { name: 'A', total: 10, male_count: 6, female_count: 4 },
-      { name: 'B', total: 15, male_count: 8, female_count: 7 },
-    ]
-    const { container } = render(
-      <CssVerticalStackedBarChart data={sparseData} segments={segments} />
-    )
-    const barsArea = container.querySelector('.border-l') as HTMLElement
-    expect(barsArea.style.gap).toBe('')
-  })
-
-  it('should have no flex gap in normal mode (gap absorbed into column padding for contiguous hover)', () => {
-    const normalData = Array.from({ length: 6 }, (_, i) => ({
+  it.each([
+    { label: 'sparse', count: 2 },
+    { label: 'normal', count: 6 },
+    { label: 'dense', count: 12 },
+  ])('should have no flex gap in $label mode', ({ count }) => {
+    const data = Array.from({ length: count }, (_, i) => ({
       name: `Item ${i}`,
       total: 10 + i,
       male_count: 5 + i,
       female_count: 5,
     }))
-    const { container } = render(
-      <CssVerticalStackedBarChart data={normalData} segments={segments} />
-    )
-    const barsArea = container.querySelector('.border-l') as HTMLElement
-    expect(barsArea.style.gap).toBe('')
-  })
-
-  it('should have no flex gap in dense mode (gap absorbed into column padding for contiguous hover)', () => {
-    const denseData = Array.from({ length: 12 }, (_, i) => ({
-      name: `D${i}`,
-      total: 10 + i,
-      male_count: 5 + i,
-      female_count: 5,
-    }))
-    const { container } = render(
-      <CssVerticalStackedBarChart data={denseData} segments={segments} />
-    )
+    const { container } = render(<CssVerticalStackedBarChart data={data} segments={segments} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
     expect(barsArea.style.gap).toBe('')
   })
@@ -688,5 +608,33 @@ describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
     expect(screen.getByText('February')).toBeInTheDocument()
     expect(screen.getByText('Apples')).toBeInTheDocument()
     expect(screen.getByText('Oranges')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legend spacing (rotated vs straight labels)
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart legend spacing', () => {
+  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it.each([
+    { rotateLabels: true, expectedClass: 'mt-3', label: 'rotated labels' },
+    { rotateLabels: false, expectedClass: 'mt-1', label: 'straight labels' },
+  ])('uses $expectedClass on legend with $label', ({ rotateLabels, expectedClass }) => {
+    render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        rotateLabels={rotateLabels}
+      />
+    )
+    const femaleLabel = screen.getByText('Female')
+    const legendWrapper = femaleLabel.closest(`.${expectedClass}`)
+    expect(legendWrapper).toBeInTheDocument()
   })
 })

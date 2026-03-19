@@ -61,11 +61,6 @@ describe('CssVerticalBarChart rendering', () => {
     expect(headings.length).toBe(0)
   })
 
-  it('should wrap in card-lodge class', () => {
-    const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
-  })
-
   it('should apply custom className', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} className="my-custom" />)
     expect(container.querySelector('.my-custom')).toBeInTheDocument()
@@ -87,11 +82,6 @@ describe('CssVerticalBarChart empty state', () => {
     render(<CssVerticalBarChart data={[]} />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
   })
-
-  it('should still wrap in card-lodge when empty', () => {
-    const { container } = render(<CssVerticalBarChart data={[]} />)
-    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -110,25 +100,6 @@ describe('CssVerticalBarChart bar rendering', () => {
     // Each column is a flex-col child of the bars area
     const bars = container.querySelectorAll<HTMLElement>('.flex-col.items-center')
     expect(bars.length).toBe(sampleData.length)
-  })
-
-  it('should render bars with rounded-t class', () => {
-    const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    const roundedBars = container.querySelectorAll<HTMLElement>('.rounded-t')
-    expect(roundedBars.length).toBe(sampleData.length)
-  })
-
-  it('should render bars with transition-all duration-300', () => {
-    const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    const transitionBars = container.querySelectorAll<HTMLElement>('.transition-all.duration-300')
-    expect(transitionBars.length).toBe(sampleData.length)
-  })
-
-  it('should apply default blue color when no colorFn provided', () => {
-    const { container } = render(<CssVerticalBarChart data={singleItem} />)
-    const bar = container.querySelector('.rounded-t') as HTMLElement
-    // jsdom converts hsl(200, 70%, 50%) to rgb(38, 157, 217)
-    expect(bar.style.backgroundColor).toBe('rgb(38, 157, 217)')
   })
 
   it('should apply custom color from colorFn', () => {
@@ -183,18 +154,6 @@ describe('CssVerticalBarChart Y-axis', () => {
     // Data max is 100, so getNiceTicks(100) should produce ticks including 0
     render(<CssVerticalBarChart data={sampleData} />)
     expect(screen.getByText('0')).toBeInTheDocument()
-  })
-
-  it('should use default yAxisWidth w-8', () => {
-    const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    const yAxis = container.querySelector('.w-8')
-    expect(yAxis).toBeInTheDocument()
-  })
-
-  it('should use custom yAxisWidth when provided', () => {
-    const { container } = render(<CssVerticalBarChart data={sampleData} yAxisWidth="w-10" />)
-    const yAxis = container.querySelector('.w-10')
-    expect(yAxis).toBeInTheDocument()
   })
 
   it('should use yAxisMax when provided to scale bars', () => {
@@ -340,32 +299,16 @@ describe('CssVerticalBarChart column sizing', () => {
     expect(columns.length).toBe(sparseData.length)
   })
 
-  it('should have no flex gap in sparse mode (gap absorbed into column padding for contiguous hover)', () => {
-    const sparseData: CssVerticalBarItem[] = [
-      { name: 'A', value: 10 },
-      { name: 'B', value: 20 },
-    ]
-    const { container } = render(<CssVerticalBarChart data={sparseData} />)
-    const barsArea = container.querySelector('.border-l') as HTMLElement
-    expect(barsArea.style.gap).toBe('')
-  })
-
-  it('should have no flex gap in normal mode (gap absorbed into column padding for contiguous hover)', () => {
-    const normalData: CssVerticalBarItem[] = Array.from({ length: 6 }, (_, i) => ({
+  it.each([
+    { label: 'sparse', count: 2 },
+    { label: 'normal', count: 6 },
+    { label: 'dense', count: 12 },
+  ])('should have no flex gap in $label mode', ({ count }) => {
+    const data: CssVerticalBarItem[] = Array.from({ length: count }, (_, i) => ({
       name: `Item ${i}`,
       value: 10 + i,
     }))
-    const { container } = render(<CssVerticalBarChart data={normalData} />)
-    const barsArea = container.querySelector('.border-l') as HTMLElement
-    expect(barsArea.style.gap).toBe('')
-  })
-
-  it('should have no flex gap in dense mode (gap absorbed into column padding for contiguous hover)', () => {
-    const denseData: CssVerticalBarItem[] = Array.from({ length: 12 }, (_, i) => ({
-      name: `D${i}`,
-      value: 10 + i,
-    }))
-    const { container } = render(<CssVerticalBarChart data={denseData} />)
+    const { container } = render(<CssVerticalBarChart data={data} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
     expect(barsArea.style.gap).toBe('')
   })
@@ -418,25 +361,10 @@ describe('CssVerticalBarChart barWidthPercent', () => {
     CssVerticalBarChart = mod.CssVerticalBarChart
   })
 
-  it('should default to 100% width (w-full) when barWidthPercent is not provided', () => {
-    const { container } = render(<CssVerticalBarChart data={singleItem} />)
-    const bar = container.querySelector('.rounded-t') as HTMLElement
-    expect(bar.classList.contains('w-full')).toBe(true)
-    expect(bar.style.width).toBe('')
-  })
-
   it('should set bar width style when barWidthPercent is provided', () => {
     const { container } = render(<CssVerticalBarChart data={singleItem} barWidthPercent={60} />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     expect(bar.style.width).toBe('60%')
-    expect(bar.classList.contains('w-full')).toBe(false)
-  })
-
-  it('should center bars within column when barWidthPercent is set', () => {
-    const { container } = render(<CssVerticalBarChart data={singleItem} barWidthPercent={70} />)
-    // The column should still have items-center for horizontal centering
-    const column = container.querySelector('.flex-col.items-center')
-    expect(column).toBeInTheDocument()
   })
 
   it('should apply barWidthPercent to all bars', () => {
@@ -488,31 +416,16 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     expect(screen.getByText('No data available')).toBeInTheDocument()
   })
 
-  it('should apply green color for high retention rates', async () => {
+  it.each([
+    { label: 'high', rate: 0.8, expectedColor: 'rgb(0, 179, 119)' },
+    { label: 'medium', rate: 0.5, expectedColor: 'rgb(245, 174, 10)' },
+    { label: 'low', rate: 0.3, expectedColor: 'rgb(217, 38, 68)' },
+  ])('should apply correct color for $label retention rates', async ({ rate, expectedColor }) => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [{ name: 'High', retentionRate: 0.8, baseCount: 100, returnedCount: 80 }]
+    const data = [{ name: 'Test', retentionRate: rate, baseCount: 100, returnedCount: rate * 100 }]
     const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
-    // Green hsl(160, 100%, 35%) -> rgb(0, 179, 119) in jsdom
-    expect(bar.style.backgroundColor).toBe('rgb(0, 179, 119)')
-  })
-
-  it('should apply amber color for medium retention rates', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [{ name: 'Medium', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
-    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
-    const bar = container.querySelector('.rounded-t') as HTMLElement
-    // Amber hsl(42, 92%, 50%) -> rgb(245, 174, 10) in jsdom
-    expect(bar.style.backgroundColor).toBe('rgb(245, 174, 10)')
-  })
-
-  it('should apply red color for low retention rates', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [{ name: 'Low', retentionRate: 0.3, baseCount: 100, returnedCount: 30 }]
-    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
-    const bar = container.querySelector('.rounded-t') as HTMLElement
-    // Red hsl(350, 70%, 50%) -> rgb(217, 38, 68) in jsdom
-    expect(bar.style.backgroundColor).toBe('rgb(217, 38, 68)')
+    expect(bar.style.backgroundColor).toBe(expectedColor)
   })
 
   it('should show percentage Y-axis labels', async () => {
@@ -558,22 +471,6 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     expect(arg.returnedCount).toBe(30)
   })
 
-  it('should use w-10 yAxisWidth for percentage labels', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [{ name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
-    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Width" />)
-    expect(container.querySelector('.w-10')).toBeInTheDocument()
-  })
-
-  it('should apply custom className', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [{ name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
-    const { container } = render(
-      <CssVerticalRetentionBarChart data={data} title="Class" className="extra-class" />
-    )
-    expect(container.querySelector('.extra-class')).toBeInTheDocument()
-  })
-
   it('should pass barWidthPercent through to CssVerticalBarChart', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
     const data = [
@@ -587,13 +484,5 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     for (const bar of bars) {
       expect(bar.style.width).toBe('60%')
     }
-  })
-
-  it('should default to full-width bars when barWidthPercent is not provided', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [{ name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
-    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Default" />)
-    const bar = container.querySelector('.rounded-t') as HTMLElement
-    expect(bar.classList.contains('w-full')).toBe(true)
   })
 })

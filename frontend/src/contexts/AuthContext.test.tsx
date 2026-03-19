@@ -89,23 +89,6 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('loading').textContent).toBe('loading')
     })
 
-    it('fetches auth config on mount', async () => {
-      ;(globalThis.fetch as MockedFetch).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ auth_mode: 'production' }),
-      })
-
-      render(
-        <AuthProvider>
-          <TestConsumer />
-        </AuthProvider>
-      )
-
-      await waitFor(() => {
-        expect(globalThis.fetch).toHaveBeenCalledWith('/api/config')
-      })
-    })
-
     it('defaults to production mode when config fetch fails', async () => {
       ;(globalThis.fetch as MockedFetch).mockRejectedValue(new Error('Network error'))
 

@@ -18,33 +18,23 @@ import type { Camper } from '../types/app-types'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 describe('getGenderCategory', () => {
-  it('should return "boys" for boy/man identity', () => {
-    expect(getGenderCategory('boy/man')).toBe('boys')
-    expect(getGenderCategory('Boy/Man')).toBe('boys')
-    expect(getGenderCategory('BOY/MAN')).toBe('boys')
-  })
-
-  it('should return "girls" for girl/woman identity', () => {
-    expect(getGenderCategory('girl/woman')).toBe('girls')
-    expect(getGenderCategory('Girl/Woman')).toBe('girls')
-    expect(getGenderCategory('GIRL/WOMAN')).toBe('girls')
-  })
-
-  it('should return "other" for non-binary identities', () => {
-    expect(getGenderCategory('non-binary')).toBe('other')
-    expect(getGenderCategory('transgender')).toBe('other')
-    expect(getGenderCategory('agender')).toBe('other')
-    expect(getGenderCategory('prefer not to answer')).toBe('other')
-  })
-
-  it('should return "other" for undefined or empty', () => {
-    expect(getGenderCategory(undefined)).toBe('other')
-    expect(getGenderCategory('')).toBe('other')
-  })
-
-  it('should handle whitespace', () => {
-    expect(getGenderCategory('  boy/man  ')).toBe('boys')
-    expect(getGenderCategory('  girl/woman  ')).toBe('girls')
+  it.each([
+    ['boy/man', 'boys'],
+    ['Boy/Man', 'boys'],
+    ['BOY/MAN', 'boys'],
+    ['girl/woman', 'girls'],
+    ['Girl/Woman', 'girls'],
+    ['GIRL/WOMAN', 'girls'],
+    ['non-binary', 'other'],
+    ['transgender', 'other'],
+    ['agender', 'other'],
+    ['prefer not to answer', 'other'],
+    [undefined, 'other'],
+    ['', 'other'],
+    ['  boy/man  ', 'boys'],
+    ['  girl/woman  ', 'girls'],
+  ])('returns correct category for %s', (input, expected) => {
+    expect(getGenderCategory(input as any)).toBe(expected)
   })
 })
 
@@ -71,42 +61,22 @@ describe('getGenderIdentityDisplay', () => {
 })
 
 describe('getGenderColorClasses', () => {
-  it('should return blue classes for boys', () => {
-    const classes = getGenderColorClasses('boys')
-    expect(classes).toContain('bg-blue-100')
-    expect(classes).toContain('border-blue-300')
-  })
-
-  it('should return pink classes for girls', () => {
-    const classes = getGenderColorClasses('girls')
-    expect(classes).toContain('bg-pink-100')
-    expect(classes).toContain('border-pink-300')
-  })
-
-  it('should return purple classes for other', () => {
-    const classes = getGenderColorClasses('other')
-    expect(classes).toContain('bg-purple-100')
-    expect(classes).toContain('border-purple-300')
+  it.each([
+    ['boys', 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'],
+    ['girls', 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'],
+    ['other', 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'],
+  ])('returns correct classes for %s', (category, expected) => {
+    expect(getGenderColorClasses(category as any)).toBe(expected)
   })
 })
 
 describe('getGenderBadgeClasses', () => {
-  it('should return blue badge classes for boys', () => {
-    const classes = getGenderBadgeClasses('boys')
-    expect(classes).toContain('bg-blue-100')
-    expect(classes).toContain('text-blue-800')
-  })
-
-  it('should return pink badge classes for girls', () => {
-    const classes = getGenderBadgeClasses('girls')
-    expect(classes).toContain('bg-pink-100')
-    expect(classes).toContain('text-pink-800')
-  })
-
-  it('should return purple badge classes for other', () => {
-    const classes = getGenderBadgeClasses('other')
-    expect(classes).toContain('bg-purple-100')
-    expect(classes).toContain('text-purple-800')
+  it.each([
+    ['boys', 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'],
+    ['girls', 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'],
+    ['other', 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'],
+  ])('returns correct badge classes for %s', (category, expected) => {
+    expect(getGenderBadgeClasses(category as any)).toBe(expected)
   })
 })
 
@@ -197,75 +167,48 @@ describe('getPronouns', () => {
 })
 
 describe('getPronounCategory', () => {
-  it('should return "she_her" for she/her pronouns', () => {
-    expect(getPronounCategory('she/her')).toBe('she_her')
-    expect(getPronounCategory('She/Her')).toBe('she_her')
-    expect(getPronounCategory('she / her')).toBe('she_her')
-  })
-
-  it('should return "he_him" for he/him pronouns', () => {
-    expect(getPronounCategory('he/him')).toBe('he_him')
-    expect(getPronounCategory('He/Him')).toBe('he_him')
-    expect(getPronounCategory('he / him')).toBe('he_him')
-  })
-
-  it('should return "non_binary" for they/them and other pronouns', () => {
-    expect(getPronounCategory('they/them')).toBe('non_binary')
-    expect(getPronounCategory('she/they')).toBe('non_binary')
-    expect(getPronounCategory('he/they')).toBe('non_binary')
-  })
-
-  it('should return "prefer_not_answer" for prefer not to answer', () => {
-    expect(getPronounCategory('prefer not to answer')).toBe('prefer_not_answer')
-    expect(getPronounCategory('Prefer Not to Answer')).toBe('prefer_not_answer')
-  })
-
-  it('should return "prefer_not_answer" for empty', () => {
-    expect(getPronounCategory('')).toBe('prefer_not_answer')
+  it.each([
+    ['she/her', 'she_her'],
+    ['She/Her', 'she_her'],
+    ['she / her', 'she_her'],
+    ['he/him', 'he_him'],
+    ['He/Him', 'he_him'],
+    ['he / him', 'he_him'],
+    ['they/them', 'non_binary'],
+    ['she/they', 'non_binary'],
+    ['he/they', 'non_binary'],
+    ['prefer not to answer', 'prefer_not_answer'],
+    ['Prefer Not to Answer', 'prefer_not_answer'],
+    ['', 'prefer_not_answer'],
+  ])('returns correct category for %s', (input, expected) => {
+    expect(getPronounCategory(input)).toBe(expected)
   })
 })
 
 describe('getPronounColorClasses', () => {
-  it('should return blue classes for he_him', () => {
-    const classes = getPronounColorClasses('he_him')
-    expect(classes).toContain('bg-blue-100')
-    expect(classes).toContain('border-blue-300')
-  })
-
-  it('should return pink classes for she_her', () => {
-    const classes = getPronounColorClasses('she_her')
-    expect(classes).toContain('bg-pink-100')
-    expect(classes).toContain('border-pink-300')
-  })
-
-  it('should return purple classes for non_binary', () => {
-    const classes = getPronounColorClasses('non_binary')
-    expect(classes).toContain('bg-purple-100')
-    expect(classes).toContain('border-purple-300')
-  })
-
-  it('should return purple classes for prefer_not_answer', () => {
-    const classes = getPronounColorClasses('prefer_not_answer')
-    expect(classes).toContain('bg-purple-100')
-    expect(classes).toContain('border-purple-300')
+  it.each([
+    ['he_him', 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'],
+    ['she_her', 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'],
+    ['non_binary', 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'],
+    [
+      'prefer_not_answer',
+      'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700',
+    ],
+  ])('returns correct classes for %s', (category, expected) => {
+    expect(getPronounColorClasses(category as any)).toBe(expected)
   })
 })
 
 describe('getPronounBadgeClasses', () => {
-  it('should return blue badge classes for he_him', () => {
-    const classes = getPronounBadgeClasses('he_him')
-    expect(classes).toContain('bg-blue-100')
-    expect(classes).toContain('text-blue-800')
-  })
-
-  it('should return pink badge classes for she_her', () => {
-    const classes = getPronounBadgeClasses('she_her')
-    expect(classes).toContain('bg-pink-100')
-    expect(classes).toContain('text-pink-800')
-  })
-
-  it('should return purple badge classes for non_binary and prefer_not_answer', () => {
-    expect(getPronounBadgeClasses('non_binary')).toContain('bg-purple-100')
-    expect(getPronounBadgeClasses('prefer_not_answer')).toContain('bg-purple-100')
+  it.each([
+    ['he_him', 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'],
+    ['she_her', 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'],
+    ['non_binary', 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'],
+    [
+      'prefer_not_answer',
+      'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+    ],
+  ])('returns correct badge classes for %s', (category, expected) => {
+    expect(getPronounBadgeClasses(category as any)).toBe(expected)
   })
 })

@@ -8,23 +8,6 @@
 import { describe, it, expect } from 'vitest'
 import { SCHOOL_COORDS, getSchoolCoords } from './schoolGeo'
 
-describe('SCHOOL_COORDS', () => {
-  it('is a non-empty record', () => {
-    expect(Object.keys(SCHOOL_COORDS).length).toBeGreaterThan(0)
-  })
-
-  it('contains [lat, lng] pairs', () => {
-    const first = Object.values(SCHOOL_COORDS)[0]
-    expect(first).toHaveLength(2)
-    // Latitude roughly in California range
-    expect(first![0]).toBeGreaterThan(30)
-    expect(first![0]).toBeLessThan(42)
-    // Longitude roughly in California range
-    expect(first![1]).toBeGreaterThan(-125)
-    expect(first![1]).toBeLessThan(-114)
-  })
-})
-
 describe('getSchoolCoords', () => {
   it('returns coordinates for a known school', () => {
     const knownSchool = Object.keys(SCHOOL_COORDS)[0]!

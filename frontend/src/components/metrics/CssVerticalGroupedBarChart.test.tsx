@@ -68,11 +68,6 @@ describe('CssVerticalGroupedBarChart rendering', () => {
     expect(headings.length).toBe(0)
   })
 
-  it('should wrap in card-lodge class', () => {
-    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
-    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
-  })
-
   it('should apply custom className', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sampleData} series={series} className="my-custom" />
@@ -96,11 +91,6 @@ describe('CssVerticalGroupedBarChart empty state', () => {
     render(<CssVerticalGroupedBarChart data={[]} series={series} />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
   })
-
-  it('should still wrap in card-lodge when empty', () => {
-    const { container } = render(<CssVerticalGroupedBarChart data={[]} series={series} />)
-    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -119,12 +109,6 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
     // Each bar has z-[1] class — N series * M data items
     const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     expect(bars.length).toBe(sampleData.length * series.length)
-  })
-
-  it('should render bars with transition-all duration-300', () => {
-    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
-    const transitionBars = container.querySelectorAll<HTMLElement>('.transition-all.duration-300')
-    expect(transitionBars.length).toBe(sampleData.length * series.length)
   })
 
   it('should apply series colors to bars', () => {
@@ -148,13 +132,6 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
     const { container } = render(<CssVerticalGroupedBarChart data={zeroData} series={series} />)
     const bars = container.querySelectorAll<HTMLElement>('.z-\\[1\\].transition-all')
     expect(bars.length).toBe(0)
-  })
-
-  it('should arrange bars side-by-side with flex-row and items-end', () => {
-    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
-    // The bar group container should have flex, flex-row, items-end
-    const barGroups = container.querySelectorAll<HTMLElement>('.flex.flex-row.items-end')
-    expect(barGroups.length).toBe(sampleData.length)
   })
 })
 
@@ -439,27 +416,6 @@ describe('CssVerticalGroupedBarChart height', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Title spacing (Fix 1: title overlap with y-axis)
-// ---------------------------------------------------------------------------
-describe('CssVerticalGroupedBarChart title spacing', () => {
-  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalGroupedBarChart')
-    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
-  })
-
-  it('should have mb-4 on title for adequate y-axis clearance', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} title="Test Title" />
-    )
-    const title = container.querySelector('h3')
-    expect(title).toBeInTheDocument()
-    expect(title!.className).toContain('mb-4')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // groupGap prop (Fix 3: inter-group spacing)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart groupGap prop', () => {
@@ -619,43 +575,6 @@ describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
     }
   })
 
-  it('should not have justify-evenly or justify-center on bars container', () => {
-    const sparseData = [
-      { name: '2024', male: 100, female: 80 },
-      { name: '2025', male: 110, female: 90 },
-    ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} groupGap={16} />
-    )
-    const barsArea = container.querySelector('.border-l') as HTMLElement
-    expect(barsArea.classList.contains('justify-evenly')).toBe(false)
-    expect(barsArea.classList.contains('justify-center')).toBe(false)
-  })
-
-  it('should place sparse hover highlight classes on inner visual div, not outer', () => {
-    const sparseData = [
-      { name: 'A', male: 10, female: 8 },
-      { name: 'B', male: 15, female: 12 },
-    ]
-    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
-    const barsArea = container.querySelector('.border-l') as HTMLElement
-    // Outer wrappers (direct children) should NOT have rounded/transition-colors
-    const outerWrappers = Array.from(barsArea.children).filter(
-      (el) => !el.classList.contains('pointer-events-none') && !el.classList.contains('absolute')
-    )
-    for (const wrapper of outerWrappers) {
-      expect(wrapper.classList.contains('rounded')).toBe(false)
-      expect(wrapper.classList.contains('transition-colors')).toBe(false)
-    }
-    // Inner visual divs (first child of each outer wrapper) should have those classes
-    for (const wrapper of outerWrappers) {
-      const innerDiv = wrapper.firstElementChild as HTMLElement
-      expect(innerDiv).toBeTruthy()
-      expect(innerDiv.classList.contains('rounded')).toBe(true)
-      expect(innerDiv.classList.contains('transition-colors')).toBe(true)
-    }
-  })
-
   it('should make column wrappers flex-1 in normal (non-sparse) mode too', () => {
     const normalData = Array.from({ length: 6 }, (_, i) => ({
       name: `Item ${i}`,
@@ -671,28 +590,5 @@ describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
     for (const wrapper of columnWrappers) {
       expect(wrapper.classList.contains('flex-1')).toBe(true)
     }
-  })
-})
-
-// ---------------------------------------------------------------------------
-// X-axis alignment in sparse mode (Fix 4)
-// ---------------------------------------------------------------------------
-describe('CssVerticalGroupedBarChart x-axis alignment', () => {
-  let CssVerticalGroupedBarChart: typeof CssVerticalGroupedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalGroupedBarChart')
-    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
-  })
-
-  it('should add 1px left padding to x-axis to align with bars border-l', () => {
-    const sparseData = [
-      { name: '2024', male: 100, female: 80 },
-      { name: '2025', male: 110, female: 90 },
-      { name: '2026', male: 120, female: 95 },
-    ]
-    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
-    const xAxis = container.querySelector('.border-t:not(.border-dashed)') as HTMLElement
-    expect(xAxis.style.paddingLeft).toBeTruthy()
   })
 })

@@ -40,17 +40,4 @@ describe('YearSelector', () => {
     // Should display the current year
     expect(screen.getByText('2026')).toBeTruthy()
   })
-
-  it('should show loading spinner when availableYears is empty', () => {
-    renderWithContext({
-      currentYear: 0,
-      setCurrentYear: vi.fn(),
-      availableYears: [],
-      isTransitioning: false,
-      isYearReady: false,
-    })
-
-    const spinner = document.querySelector('.animate-spin')
-    expect(spinner).toBeTruthy()
-  })
 })

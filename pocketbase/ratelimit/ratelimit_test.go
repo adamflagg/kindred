@@ -329,111 +329,81 @@ func TestRateLimiter_ExecuteWithRetry_Success(t *testing.T) {
 	cfg := &Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
-		MaxDelay:          1 * time.Second,
-		MaxAttempts:       3,
-	}
-
-	rl := NewRateLimiter(cfg)
-	ctx := context.Background()
-
-	callCount := 0
-	fn := func() error {
-		callCount++
-		return nil // Success on first try
-	}
-
-	err := rl.ExecuteWithRetry(ctx, fn)
-	if err != nil {
-		t.Errorf("ExecuteWithRetry() returned error: %v", err)
-	}
-
-	if callCount != 1 {
-		t.Errorf("Function called %d times, want 1", callCount)
-	}
-}
-
-func TestRateLimiter_ExecuteWithRetry_EventualSuccess(t *testing.T) {
-	cfg := &Config{
-		APIDelay:          10 * time.Millisecond,
-		BackoffMultiplier: 2.0,
 		MaxDelay:          100 * time.Millisecond,
 		MaxAttempts:       5,
 	}
 
-	rl := NewRateLimiter(cfg)
-	ctx := context.Background()
-
-	callCount := 0
-	fn := func() error {
-		callCount++
-		if callCount < 3 {
-			return errors.New("429 rate limit")
+	t.Run("immediate success", func(t *testing.T) {
+		rl := NewRateLimiter(cfg)
+		callCount := 0
+		err := rl.ExecuteWithRetry(context.Background(), func() error {
+			callCount++
+			return nil
+		})
+		if err != nil {
+			t.Errorf("ExecuteWithRetry() returned error: %v", err)
 		}
-		return nil // Success on third try
-	}
+		if callCount != 1 {
+			t.Errorf("Function called %d times, want 1", callCount)
+		}
+	})
 
-	err := rl.ExecuteWithRetry(ctx, fn)
-	if err != nil {
-		t.Errorf("ExecuteWithRetry() returned error: %v", err)
-	}
-
-	if callCount != 3 {
-		t.Errorf("Function called %d times, want 3", callCount)
-	}
+	t.Run("eventual success after retries", func(t *testing.T) {
+		rl := NewRateLimiter(cfg)
+		callCount := 0
+		err := rl.ExecuteWithRetry(context.Background(), func() error {
+			callCount++
+			if callCount < 3 {
+				return errors.New("429 rate limit")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Errorf("ExecuteWithRetry() returned error: %v", err)
+		}
+		if callCount != 3 {
+			t.Errorf("Function called %d times, want 3", callCount)
+		}
+	})
 }
 
-func TestRateLimiter_ExecuteWithRetry_NonRetryableError(t *testing.T) {
-	cfg := &Config{
-		APIDelay:          10 * time.Millisecond,
-		BackoffMultiplier: 2.0,
-		MaxDelay:          100 * time.Millisecond,
-		MaxAttempts:       5,
-	}
+func TestRateLimiter_ExecuteWithRetry_Failure(t *testing.T) {
+	t.Run("non-retryable error stops immediately", func(t *testing.T) {
+		rl := NewRateLimiter(&Config{
+			APIDelay: 10 * time.Millisecond, BackoffMultiplier: 2.0,
+			MaxDelay: 100 * time.Millisecond, MaxAttempts: 5,
+		})
+		callCount := 0
+		err := rl.ExecuteWithRetry(context.Background(), func() error {
+			callCount++
+			return errors.New("connection refused")
+		})
+		if err == nil {
+			t.Error("ExecuteWithRetry() should return error for non-retryable error")
+		}
+		if callCount != 1 {
+			t.Errorf("Function called %d times, want 1", callCount)
+		}
+	})
 
-	rl := NewRateLimiter(cfg)
-	ctx := context.Background()
-
-	callCount := 0
-	fn := func() error {
-		callCount++
-		return errors.New("connection refused") // Not a rate limit error
-	}
-
-	err := rl.ExecuteWithRetry(ctx, fn)
-	if err == nil {
-		t.Error("ExecuteWithRetry() should return error for non-retryable error")
-	}
-
-	if callCount != 1 {
-		t.Errorf("Function called %d times, want 1 (non-retryable)", callCount)
-	}
-}
-
-func TestRateLimiter_ExecuteWithRetry_MaxRetriesExceeded(t *testing.T) {
-	cfg := &Config{
-		APIDelay:          10 * time.Millisecond,
-		BackoffMultiplier: 2.0,
-		MaxDelay:          50 * time.Millisecond,
-		MaxAttempts:       3,
-	}
-
-	rl := NewRateLimiter(cfg)
-	ctx := context.Background()
-
-	callCount := 0
-	fn := func() error {
-		callCount++
-		return errors.New("429 rate limit") // Always fail with rate limit
-	}
-
-	err := rl.ExecuteWithRetry(ctx, fn)
-	if err == nil {
-		t.Error("ExecuteWithRetry() should return error when max retries exceeded")
-	}
-
-	if callCount != cfg.MaxAttempts {
-		t.Errorf("Function called %d times, want %d", callCount, cfg.MaxAttempts)
-	}
+	t.Run("max retries exceeded", func(t *testing.T) {
+		cfg := &Config{
+			APIDelay: 10 * time.Millisecond, BackoffMultiplier: 2.0,
+			MaxDelay: 50 * time.Millisecond, MaxAttempts: 3,
+		}
+		rl := NewRateLimiter(cfg)
+		callCount := 0
+		err := rl.ExecuteWithRetry(context.Background(), func() error {
+			callCount++
+			return errors.New("429 rate limit")
+		})
+		if err == nil {
+			t.Error("ExecuteWithRetry() should return error when max retries exceeded")
+		}
+		if callCount != cfg.MaxAttempts {
+			t.Errorf("Function called %d times, want %d", callCount, cfg.MaxAttempts)
+		}
+	})
 }
 
 func TestRateLimiter_ExecuteWithRetry_ContextCancellation(t *testing.T) {

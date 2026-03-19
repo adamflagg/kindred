@@ -107,23 +107,16 @@ describe('Users page access control', () => {
     expect(liamRow?.className).toContain('cursor-pointer')
   })
 
-  it('blocks role management on own user row', async () => {
-    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
-    mockCurrentUserId = 'user-1'
-    renderUsers()
-    expect(await screen.findByText('Emma Johnson')).toBeTruthy()
-    // Emma (self) should NOT have cursor-pointer
-    const emmaRow = screen.getByText('Emma Johnson').closest('[class*="flex items-center gap"]')
-    expect(emmaRow?.className).not.toContain('cursor-pointer')
-  })
-
-  it('blocks role management on admin users', async () => {
+  it.each([
+    { description: 'own user row', name: 'Emma Johnson', userId: 'user-1' },
+    { description: 'admin users', name: 'Admin User', userId: 'user-1' },
+  ])('blocks role management on $description', async ({ name, userId }) => {
+    mockCurrentUserId = userId
     mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
     renderUsers()
-    expect(await screen.findByText('Admin User')).toBeTruthy()
-    // Admin user should NOT have cursor-pointer
-    const adminRow = screen.getByText('Admin User').closest('[class*="flex items-center gap"]')
-    expect(adminRow?.className).not.toContain('cursor-pointer')
+    expect(await screen.findByText(name)).toBeTruthy()
+    const row = screen.getByText(name).closest('[class*="flex items-center gap"]')
+    expect(row?.className).not.toContain('cursor-pointer')
   })
 })
 

@@ -59,7 +59,7 @@ function renderWithProviders(
 }
 
 describe('RolesTab', () => {
-  it('renders roles list', async () => {
+  it('renders roles with system badges and permission badges', async () => {
     const user: RecordModel = {
       id: 'u1',
       collectionId: 'users',
@@ -73,44 +73,13 @@ describe('RolesTab', () => {
     renderWithProviders(createElement(RolesTab), { user })
 
     await waitFor(() => {
+      // Role names
       expect(screen.getByText('Bunking Manager')).toBeTruthy()
       expect(screen.getByText('Metrics Viewer')).toBeTruthy()
-    })
-  })
-
-  it('shows system badge on system roles', async () => {
-    const user: RecordModel = {
-      id: 'u1',
-      collectionId: 'users',
-      collectionName: 'users',
-      created: '',
-      updated: '',
-      is_admin: true,
-      cached_permissions: [],
-    }
-
-    renderWithProviders(createElement(RolesTab), { user })
-
-    await waitFor(() => {
+      // System badges
       const systemBadges = screen.getAllByText('System')
-      expect(systemBadges.length).toBeGreaterThan(0)
-    })
-  })
-
-  it('shows permission badges on roles', async () => {
-    const user: RecordModel = {
-      id: 'u1',
-      collectionId: 'users',
-      collectionName: 'users',
-      created: '',
-      updated: '',
-      is_admin: true,
-      cached_permissions: [],
-    }
-
-    renderWithProviders(createElement(RolesTab), { user })
-
-    await waitFor(() => {
+      expect(systemBadges).toHaveLength(2)
+      // Permission badges
       expect(screen.getByText('bunking.manage')).toBeTruthy()
       expect(screen.getByText('metrics.financial')).toBeTruthy()
     })
