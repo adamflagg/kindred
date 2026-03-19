@@ -8,7 +8,7 @@ import { FeedbackModal } from './FeedbackModal'
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     authStore: {
-      record: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' },
+      record: { id: 'user-1', name: 'Emma Johnson', email: 'emma@example.com' },
     },
     send: vi.fn(),
   },
@@ -16,7 +16,10 @@ vi.mock('../lib/pocketbase', () => ({
 
 // Mock useAuth — default to authenticated, not loading
 const mockAuthState = {
-  user: { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' } as Record<string, unknown>,
+  user: { id: 'user-1', name: 'Emma Johnson', email: 'emma@example.com' } as Record<
+    string,
+    unknown
+  >,
   isAuthenticated: true,
   isLoading: false,
 }
@@ -43,7 +46,7 @@ describe('FeedbackModal', () => {
     vi.clearAllMocks()
     mockAuthState.isLoading = false
     mockAuthState.isAuthenticated = true
-    mockAuthState.user = { id: 'user-1', name: 'Jane Smith', email: 'jane@example.com' }
+    mockAuthState.user = { id: 'user-1', name: 'Emma Johnson', email: 'emma@example.com' }
   })
 
   it('renders nothing when closed', () => {
