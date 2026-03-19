@@ -13,6 +13,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { Globe } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
+import { metricsFilter } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import {
@@ -63,10 +64,12 @@ export default function GeoAnalysis() {
 
   // Fetch registration data with geographic breakdowns + optional comparison
   const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    sessionTypes: sessionTypesParam,
+    ...metricsFilter({
+      sessionTypes: sessionTypesParam,
+      sessionCmId: selectedSessionCmId,
+      duration: durationParam,
+    }),
     statuses: 'enrolled',
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
   })
   const { data, isLoading, error } = primary
   const compData = comparison?.data

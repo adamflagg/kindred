@@ -7,7 +7,7 @@
 
 import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { useRetentionMetrics } from '../../../hooks/useMetrics'
+import { useRetentionMetrics, metricsFilter } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useMetricsSessions } from '../../../hooks/useMetricsSessions'
 import { sessionFlowToSankeyData } from '../../../utils/retentionTransforms'
@@ -46,11 +46,15 @@ export default function SessionFlowPage() {
     [sessions, priorSessions]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, {
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
-  })
+  const { data, isLoading, error } = useRetentionMetrics(
+    priorYear,
+    currentYear,
+    metricsFilter({
+      sessionTypes: sessionTypesParam,
+      sessionCmId: selectedSessionCmId,
+      duration: durationParam,
+    })
+  )
 
   return (
     <div className="space-y-4">

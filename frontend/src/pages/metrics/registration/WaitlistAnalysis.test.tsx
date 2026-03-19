@@ -51,13 +51,17 @@ const mockWaitlistData = {
 
 // Mock hooks
 const mockUseWaitlistMetrics = vi.fn()
-vi.mock('../../../hooks/useMetrics', () => ({
-  useRegistrationMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
-  useRetentionMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
-  useComparisonMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
-  useHistoricalTrends: vi.fn(() => ({ data: null, isLoading: false, error: null })),
-  useWaitlistMetrics: (...args: unknown[]) => mockUseWaitlistMetrics(...args),
-}))
+vi.mock('../../../hooks/useMetrics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../hooks/useMetrics')>()
+  return {
+    ...actual,
+    useRegistrationMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
+    useRetentionMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
+    useComparisonMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
+    useHistoricalTrends: vi.fn(() => ({ data: null, isLoading: false, error: null })),
+    useWaitlistMetrics: (...args: unknown[]) => mockUseWaitlistMetrics(...args),
+  }
+})
 
 vi.mock('../../../hooks/useCurrentYear', () => ({
   useCurrentYear: vi.fn(() => ({ currentYear: 2026 })),

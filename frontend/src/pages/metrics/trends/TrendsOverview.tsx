@@ -13,7 +13,7 @@
  */
 
 import { useMemo } from 'react'
-import { useHistoricalTrends } from '../../../hooks/useMetrics'
+import { useHistoricalTrends, metricsFilter } from '../../../hooks/useMetrics'
 import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -144,10 +144,12 @@ export default function TrendsOverview() {
 
   // Historical trends (enrollment, new vs returning, gender lines)
   const { data, isLoading, error } = useHistoricalTrends({
+    ...metricsFilter({
+      sessionTypes: sessionTypesParam,
+      sessionCmId: selectedSessionCmId,
+      duration: durationParam,
+    }),
     years: yearsParam,
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
   })
 
   // Always fetch 5 years of retention trends for caching; slice when toggling

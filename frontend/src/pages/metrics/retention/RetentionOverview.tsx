@@ -9,7 +9,7 @@
 
 import { useMemo, useCallback } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { useRetentionMetrics } from '../../../hooks/useMetrics'
+import { useRetentionMetrics, metricsFilter } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
@@ -71,11 +71,15 @@ export default function RetentionOverview() {
     [priorYear, currentYear]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, {
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
-  })
+  const { data, isLoading, error } = useRetentionMetrics(
+    priorYear,
+    currentYear,
+    metricsFilter({
+      sessionTypes: sessionTypesParam,
+      sessionCmId: selectedSessionCmId,
+      duration: durationParam,
+    })
+  )
 
   // Build date lookup from API response (prior year sessions have start_date)
   const priorSessionDateLookup = useMemo(() => {

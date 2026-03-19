@@ -143,7 +143,13 @@ export const queryKeys = {
     sessionCmId?: number,
     duration?: string
   ) => ['metrics', 'registration', year, sessionTypes, statuses, sessionCmId, duration] as const,
-  comparison: (yearA: number, yearB: number) => ['metrics', 'comparison', yearA, yearB] as const,
+  comparison: (
+    yearA: number,
+    yearB: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+    duration?: string
+  ) => ['metrics', 'comparison', yearA, yearB, sessionTypes, sessionCmId, duration] as const,
   historical: (years?: string, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'historical', years, sessionTypes, sessionCmId, duration] as const,
   retentionTrends: (
