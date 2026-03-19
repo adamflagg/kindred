@@ -164,14 +164,11 @@ export function useComparisonMetrics(yearA: number, yearB: number, options?: Met
         year_a: yearA.toString(),
         year_b: yearB.toString(),
       })
+      // Backend comparison endpoint only supports session_types today.
+      // sessionCmId/duration are accepted in the type for pattern consistency
+      // but not sent until the backend adds support.
       if (options?.sessionTypes) {
         params.set('session_types', options.sessionTypes)
-      }
-      if (options?.sessionCmId !== undefined) {
-        params.set('session_cm_id', options.sessionCmId.toString())
-      }
-      if (options?.duration) {
-        params.set('duration', options.duration)
       }
 
       const response = await fetchWithAuth(`/api/metrics/comparison?${params}`)
