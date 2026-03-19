@@ -19,7 +19,7 @@ interface PostPipelineDetailProps {
 }
 
 function statusColor(status: string): 'green' | 'amber' | 'red' | 'gray' {
-  switch (status) {
+  switch (status.toUpperCase()) {
     case 'RESOLVED':
       return 'green'
     case 'PENDING':

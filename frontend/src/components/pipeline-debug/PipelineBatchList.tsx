@@ -47,7 +47,7 @@ interface PipelineBatchListProps {
 
 /** Get Tailwind classes for status badge color coding. */
 function getStatusClasses(status: string): string {
-  switch (status) {
+  switch (status.toUpperCase()) {
     case 'RESOLVED':
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
     case 'PENDING':
