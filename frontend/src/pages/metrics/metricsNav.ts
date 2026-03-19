@@ -15,6 +15,7 @@ import {
   XCircle,
   CalendarCheck,
 } from 'lucide-react'
+import { Permission } from '../../constants/permissions'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 
 /** Sub-nav items for retention section */
@@ -42,6 +43,7 @@ export const RETENTION_SUB_NAV: SubNavItem[] = [
     label: 'Staff Analysis',
     icon: Users,
     path: '/metrics/retention/staff',
+    permission: Permission.STAFF_HIRING,
   },
 ]
 

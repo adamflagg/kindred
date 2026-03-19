@@ -517,11 +517,13 @@ function App() {
                               <Route
                                 path="retention/staff"
                                 element={
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <StaffCabinAnalysisPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
+                                  <RequirePermission permission={Permission.STAFF_HIRING}>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <StaffCabinAnalysisPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </RequirePermission>
                                 }
                               />
                               {/* Redirect old retention sub-routes */}

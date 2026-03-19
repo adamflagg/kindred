@@ -16,6 +16,7 @@ class TestPermissionConstants:
             "metrics.geo",
             "registration.manage",
             "sheets.export",
+            "staff.hiring",
             "users.manage",
         }
         assert expected == ALL_PERMISSIONS
@@ -26,6 +27,7 @@ class TestPermissionConstants:
         assert Permission.METRICS_GEO == "metrics.geo"
         assert Permission.REGISTRATION_MANAGE == "registration.manage"
         assert Permission.SHEETS_EXPORT == "sheets.export"
+        assert Permission.STAFF_HIRING == "staff.hiring"
         assert Permission.USERS_MANAGE == "users.manage"
 
     def test_no_duplicate_values(self):

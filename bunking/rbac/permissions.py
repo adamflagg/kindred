@@ -15,6 +15,7 @@ class Permission:
     METRICS_GEO = "metrics.geo"
     REGISTRATION_MANAGE = "registration.manage"
     SHEETS_EXPORT = "sheets.export"
+    STAFF_HIRING = "staff.hiring"
     USERS_MANAGE = "users.manage"
 
 
@@ -26,5 +27,6 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.METRICS_GEO: "View and manage geographic data",
     Permission.REGISTRATION_MANAGE: "Edit registration dates, budgets, and grade eligibility",
     Permission.SHEETS_EXPORT: "Trigger and view Google Sheets exports",
+    Permission.STAFF_HIRING: "View staff cabin retention analysis",
     Permission.USERS_MANAGE: "Assign and revoke roles on other users",
 }
