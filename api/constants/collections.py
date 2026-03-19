@@ -25,7 +25,6 @@ ATTENDEE_STATUS_HISTORY = "attendee_status_history"
 CONFIG = "config"
 
 # Geo
-SESSIONS = "sessions"
 NORMALIZED_MAPPINGS = "normalized_mappings"
 GEO_OVERRIDES = "geo_overrides"
 

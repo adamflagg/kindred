@@ -20,10 +20,11 @@ import httpx
 
 from api.constants.collections import (
     ATTENDEES,
+    CAMP_SESSIONS,
     GEO_OVERRIDES,
     NORMALIZED_MAPPINGS,
-    SESSIONS,
 )
+from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.schemas.geo import (
     CanonicalEntry,
     CanonicalSearchResponse,
@@ -214,8 +215,6 @@ class GeoService:
             if now - cached_at < 60.0:
                 return result
 
-        from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
         att_filter = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         if session_cm_id is not None:
             att_filter += f" && session.cm_id = {session_cm_id}"
@@ -226,7 +225,7 @@ class GeoService:
         # Apply duration filter by resolving to matching session cm_ids
         if duration:
             sessions_raw: list[Any] = await asyncio.to_thread(
-                self.pb.collection(SESSIONS).get_full_list,
+                self.pb.collection(CAMP_SESSIONS).get_full_list,
                 query_params={"filter": f"year = {year}"},
             )
             sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
@@ -277,7 +276,7 @@ class GeoService:
                 return result
 
         sessions_raw: list[Any] = await asyncio.to_thread(
-            self.pb.collection(SESSIONS).get_full_list,
+            self.pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={"filter": f"year = {year}"},
         )
         sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}

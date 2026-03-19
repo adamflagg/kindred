@@ -56,7 +56,7 @@ class TestMetricsRepositoryFetchAttendees:
         assert "filter" in call_args.kwargs.get("query_params", {})
         filter_str = call_args.kwargs["query_params"]["filter"]
         assert "year = 2025" in filter_str
-        assert "status_id = 2" in filter_str
+        assert "is_active" not in filter_str
         assert "status_id = 2" in filter_str
 
         # Verify results
@@ -345,7 +345,7 @@ class TestMetricsRepositoryFetchAttendeesWithPersons:
 
         call_args = mock_collection.get_full_list.call_args
         filter_str = call_args.kwargs["query_params"]["filter"]
-        assert "status_id = 2" in filter_str
+        assert "is_active" not in filter_str
         assert "status_id = 2" in filter_str
 
     @pytest.mark.asyncio

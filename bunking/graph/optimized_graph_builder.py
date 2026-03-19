@@ -41,7 +41,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         # Get all attendees for the session (attendees uses session relation)
         try:
             attendees = self.pb.collection("attendees").get_full_list(
-                query_params={"filter": f"session.cm_id = {session_cm_id} && year = {year} && is_active = true"}
+                query_params={"filter": f"session.cm_id = {session_cm_id} && year = {year} && status_id = 2"}
             )
             logger.info(f"Found {len(attendees)} active attendees for session {session_cm_id}")
         except Exception as e:

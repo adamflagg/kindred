@@ -445,6 +445,8 @@ async def get_drilldown_attendees(
         None,
         description="Compare year for retention drilldowns. When set, is_returning reflects "
         "whether camper returned to the compare year instead of years_at_camp > 1.",
+        ge=2000,
+        le=2100,
     ),
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"

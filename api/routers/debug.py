@@ -39,6 +39,7 @@ from ..constants.collections import (
     DEBUG_PIPELINE_TRACES,
     ORIGINAL_BUNK_REQUESTS,
 )
+from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas.debug import (
     CamperGroupedRequests,
@@ -538,8 +539,6 @@ async def list_original_requests_by_camper(
     year's person PB record is used for the original_bunk_requests join.
     """
     # Look up via attendees — enrollment is the source of truth (year-scoped)
-    from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
     attendee_filter = f"year = {year} && {ACTIVE_ENROLLED_FILTER} && person.cm_id = {cm_id}"
     attendees = pb.collection(ATTENDEES).get_list(1, 1, query_params={"filter": attendee_filter, "expand": "person"})
     if not attendees.items:
@@ -592,8 +591,6 @@ async def search_persons(
     via PocketBase relation-path filters. Returns up to 20 unique persons
     with their enrolled session CM IDs.
     """
-    from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
     safe_q = pb_escape(q)
 
     # Query attendees directly — enrollment is the source of truth

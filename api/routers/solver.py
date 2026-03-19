@@ -39,6 +39,7 @@ from ..constants.collections import (
     PERSONS,
     SOLVER_RUNS,
 )
+from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb, solver_runs
 from ..schemas import (
     ClearAssignmentsRequest,
@@ -151,8 +152,6 @@ async def pre_validate_solver(
         session_id_filter = ctx.session_id_filter
 
         # Get all active, enrolled attendees for all related sessions
-        from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
         attendees = await asyncio.to_thread(
             pb.collection(ATTENDEES).get_full_list,
             query_params={

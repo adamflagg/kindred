@@ -21,6 +21,7 @@ from api.constants.collections import (
     HOUSEHOLD_CUSTOM_VALUES,
     PERSONS,
 )
+from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.reconstruction import parse_date_only
 from bunking.logging_config import get_logger
 
@@ -66,8 +67,6 @@ class MetricsRepository:
         Returns:
             List of attendee records with session expansion.
         """
-        from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
         if status_filter is None:
             # Default: active enrolled
             filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
@@ -247,8 +246,6 @@ class MetricsRepository:
         Returns:
             List of attendee records with person expansion.
         """
-        from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
         # Build status filter
         if status_filter is None or status_filter == "enrolled":
             filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"

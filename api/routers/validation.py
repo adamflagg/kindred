@@ -39,6 +39,7 @@ from ..constants.collections import (
     CAMP_SESSIONS,
     PERSONS,
 )
+from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
 from ..services.session_context import build_session_context
@@ -159,8 +160,6 @@ async def validate_bunking(
             bunks.append(bunk)
 
         # Fetch active enrolled attendees for all related sessions
-        from api.constants.filters import ACTIVE_ENROLLED_FILTER
-
         attendees_data = await asyncio.to_thread(
             pb.collection(ATTENDEES).get_full_list,
             query_params={
