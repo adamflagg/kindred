@@ -1,7 +1,7 @@
 /**
  * Tests that authenticated query hooks gate on auth loading state (#623).
  *
- * TDD: Written FIRST — hooks currently gate only on `!!user`, not `!isLoading`.
+ * Verifies that authenticated query hooks gate on auth loading state.
  * Pattern matches useBunkStaff.test.ts auth gating verification.
  */
 import { describe, it, expect } from 'vitest'

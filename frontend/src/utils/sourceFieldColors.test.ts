@@ -1,7 +1,7 @@
 /**
  * Tests for shared source field color utility (#682).
  *
- * TDD: Written FIRST — utility module does not exist yet.
+ * Verifies known source-field mappings and fallback classes.
  */
 import { describe, it, expect } from 'vitest'
 import { getSourceFieldClasses } from './sourceFieldColors'
