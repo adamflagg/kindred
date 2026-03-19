@@ -20,6 +20,7 @@ from api.services.reconstruction import (
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
+    get_person_from_expand,
     get_session_from_expand,
     resolve_duration_sessions,
 )
@@ -314,8 +315,7 @@ class ForecastService:
             att_cm_id = getattr(session, "cm_id", None)
             if att_cm_id == session_cm_id or att_cm_id in ag_children:
                 count += 1
-                expand = getattr(a, "expand", {}) or {}
-                person = expand.get("person") if isinstance(expand, dict) else None
+                person = get_person_from_expand(a)
                 gender = getattr(person, "gender", None) if person else None
                 if gender is not None:
                     has_gender = True

@@ -31,7 +31,12 @@ from api.services.reconstruction import (
     parse_date_only,
     reconstruct_daily,
 )
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
+from api.utils.session_metrics import (
+    build_ag_parent_map,
+    get_person_from_expand,
+    get_session_from_expand,
+    resolve_duration_sessions,
+)
 from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
@@ -1286,8 +1291,7 @@ class VelocityService:
         total_cancellation_count = 0
 
         for att in attendees:
-            expand = getattr(att, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else None
+            session = get_session_from_expand(att)
             if not session:
                 continue
 
@@ -1454,8 +1458,7 @@ class VelocityService:
         )
 
         for att in attendees:
-            expand = getattr(att, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else None
+            session = get_session_from_expand(att)
             if not session:
                 continue
 
@@ -1466,7 +1469,7 @@ class VelocityService:
             raw_sid = int(session.cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
 
-            person = expand.get("person") if isinstance(expand, dict) else None
+            person = get_person_from_expand(att)
             gender = extract_gender(person) if person else "Unknown"
             if gender not in ("M", "F"):
                 continue
@@ -1826,8 +1829,7 @@ class VelocityService:
         total_count = 0
 
         for cancel in cancellations:
-            expand = getattr(cancel, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else None
+            session = get_session_from_expand(cancel)
             if not session:
                 continue
             raw_sid = int(session.cm_id)
@@ -1946,8 +1948,7 @@ class VelocityService:
         session_gender_totals: dict[int, dict[str, int]] = defaultdict(lambda: {"M": 0, "F": 0})
 
         for cancel in cancellations:
-            expand = getattr(cancel, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else None
+            session = get_session_from_expand(cancel)
             if not session:
                 continue
 
@@ -1958,7 +1959,7 @@ class VelocityService:
             if session_cm_id is not None and effective_sid != session_cm_id:
                 continue
 
-            person = expand.get("person") if isinstance(expand, dict) else None
+            person = get_person_from_expand(cancel)
             gender = extract_gender(person) if person else "Unknown"
             if gender not in ("M", "F"):
                 continue

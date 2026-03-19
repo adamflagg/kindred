@@ -15,6 +15,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     PERSONS,
 )
+from api.utils.session_metrics import get_person_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -148,8 +149,8 @@ class IDLookupCache:
                 query_params={"filter": f"session_cm_id = {session_cm_id} && year = {year}", "expand": "person"},
             )
             for attendee in attendees:
-                if hasattr(attendee, "expand") and attendee.expand and "person" in attendee.expand:
-                    person = attendee.expand["person"]
+                person = get_person_from_expand(attendee)
+                if person:
                     self._person_cm_to_pb[person.cm_id] = person.id
                     self._person_pb_to_cm[person.id] = person.cm_id
             logger.info(f"Batch loaded {len(self._person_cm_to_pb)} person mappings for session {session_cm_id}")

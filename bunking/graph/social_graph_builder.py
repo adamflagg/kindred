@@ -14,6 +14,7 @@ import community as community_louvain
 import networkx as nx
 
 from api.constants.collections import ATTENDEES, BUNK_ASSIGNMENTS, BUNK_REQUESTS, BUNKS, CAMP_SESSIONS, PERSONS
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -120,8 +121,7 @@ class SocialGraphBuilder:
             )
             # Extract person cm_ids from expanded relation
             for a in assignments:
-                expand = getattr(a, "expand", {}) or {}
-                person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+                person_data = get_person_from_expand(a)
                 if person_data and hasattr(person_data, "cm_id"):
                     bunk_members.append(person_data.cm_id)
             logger.info(f"Found {len(bunk_members)} members in bunk {bunk_cm_id} for session {session_cm_id}")
@@ -153,10 +153,7 @@ class SocialGraphBuilder:
                     # Group by session to find which session has assignments
                     session_counts: dict[int, int] = {}
                     for assignment in all_assignments:
-                        expand = getattr(assignment, "expand", {}) or {}
-                        session_data = (
-                            expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                        )
+                        session_data = get_session_from_expand(assignment)
                         sess_id = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
                         if sess_id:
                             session_counts[sess_id] = session_counts.get(sess_id, 0) + 1
@@ -169,13 +166,8 @@ class SocialGraphBuilder:
 
                         # Get assignments from the best session and extract person cm_ids
                         for a in all_assignments:
-                            expand = getattr(a, "expand", {}) or {}
-                            session_data = (
-                                expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                            )
-                            person_data = (
-                                expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-                            )
+                            session_data = get_session_from_expand(a)
+                            person_data = get_person_from_expand(a)
                             sess_id = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
                             if sess_id == best_session[0] and person_data and hasattr(person_data, "cm_id"):
                                 bunk_members.append(person_data.cm_id)
@@ -204,7 +196,7 @@ class SocialGraphBuilder:
                     )
                     # Access expanded data safely
                     expand = getattr(historical, "expand", {}) or {}
-                    session_data = expand.get("session")
+                    session_data = get_session_from_expand(historical)
                     bunk_data = expand.get("bunk")
 
                     # Only include if it's a valid session type

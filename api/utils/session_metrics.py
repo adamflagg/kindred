@@ -276,8 +276,7 @@ def compute_summer_metrics(
             continue
 
         # Filter to summer session types
-        expand = getattr(record, "expand", {}) or {}
-        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        session = get_session_from_expand(record)
         if not session:
             continue
 
@@ -304,8 +303,7 @@ def compute_summer_metrics(
                 continue
 
             # Fall back to session start_date
-            expand = getattr(r, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(r)
             if session:
                 start_date = getattr(session, "start_date", None)
                 if start_date:

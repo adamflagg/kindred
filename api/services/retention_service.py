@@ -27,6 +27,8 @@ from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
     compute_summer_metrics,
+    get_person_from_expand,
+    get_session_from_expand,
     resolve_duration_sessions,
 )
 
@@ -310,8 +312,7 @@ class RetentionService:
                 continue
 
             # Get session from expand
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
 
             # Filter by session type if specified
@@ -575,8 +576,7 @@ class RetentionService:
             if pid is None or pid in _aged_out:
                 continue
 
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if not session:
                 continue
 
@@ -763,17 +763,15 @@ class RetentionService:
         session_bunk_stats: dict[tuple[str, str], dict[str, int]] = {}
 
         for record in bunk_assignments:
-            expand = getattr(record, "expand", {}) or {}
-
             # Extract person cm_id
-            person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            person_data = get_person_from_expand(record)
             pid = getattr(person_data, "cm_id", None) if person_data else None
             if pid is None or int(pid) not in person_ids:
                 continue
             pid = int(pid)
 
             # Extract session info
-            session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session_data = get_session_from_expand(record)
             if not session_data:
                 continue
             session_name = getattr(session_data, "name", "") or ""
@@ -792,6 +790,7 @@ class RetentionService:
                         session_name = getattr(parent_session, "name", session_name)
 
             # Extract bunk name
+            expand = getattr(record, "expand", {}) or {}
             bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
             bunk_name = getattr(bunk_data, "name", "") if bunk_data else ""
 

@@ -18,6 +18,8 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
+
 if TYPE_CHECKING:
     from api.schemas.velocity import DailyDataPoint
     from api.services.metrics_repository import MetricsRepository
@@ -71,8 +73,7 @@ def _reconstruct_core(
     session_has_gender: set[int] = set()
 
     for att in attendees:
-        expand = getattr(att, "expand", {}) or {}
-        session = expand.get("session") if isinstance(expand, dict) else None
+        session = get_session_from_expand(att)
         if not session:
             continue
 
@@ -84,7 +85,7 @@ def _reconstruct_core(
         effective_sid = ag_parent_map.get(raw_sid, raw_sid) if ag_parent_map is not None else raw_sid
 
         # Get gender from person expand (may be absent)
-        person = expand.get("person") if isinstance(expand, dict) else None
+        person = get_person_from_expand(att)
         gender = getattr(person, "gender", None) if person else None
         if gender is not None:
             session_has_gender.add(effective_sid)
@@ -210,9 +211,7 @@ def reconstruct_daily(
     sessions_with_gender: set[int] = set()
 
     for att in attendees:
-        # Access session via expand dict — matches _reconstruct_core pattern
-        expand = getattr(att, "expand", {}) or {}
-        session = expand.get("session") if isinstance(expand, dict) else None
+        session = get_session_from_expand(att)
         if not session:
             continue
         sid = int(session.cm_id)
@@ -233,8 +232,8 @@ def reconstruct_daily(
         if sid not in sessions:
             continue
 
-        # Gender — access via expand dict, matching _reconstruct_core
-        person = expand.get("person") if isinstance(expand, dict) else None
+        # Gender
+        person = get_person_from_expand(att)
         gender = getattr(person, "gender", None) if person else None
         if gender is not None:
             sessions_with_gender.add(sid)

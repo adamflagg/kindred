@@ -33,6 +33,7 @@ from api.utils.session_metrics import (
     compute_summer_metrics,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
+    get_session_from_expand,
     get_session_length_category,
     resolve_duration_sessions,
 )
@@ -252,8 +253,7 @@ class RegistrationService:
         """
         session_counts: dict[int, int] = {}
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
             if attendee_session_cm_id:
                 sid_int = int(attendee_session_cm_id)
@@ -421,8 +421,7 @@ class RegistrationService:
         """Compute session length breakdown."""
         length_counts: dict[str, int] = {}
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if session:
                 start_date = getattr(session, "start_date", "") or ""
                 end_date = getattr(session, "end_date", "") or ""
@@ -556,8 +555,7 @@ class RegistrationService:
         # Step 1: Count attendees by session (same as _compute_session_breakdown)
         session_counts: dict[int, int] = {}
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if not session:
                 continue
             session_cm_id = getattr(session, "cm_id", None)
@@ -663,8 +661,7 @@ class RegistrationService:
         # Collect unique person IDs per length category
         length_persons: dict[str, set[int]] = {}
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if not session:
                 continue
 

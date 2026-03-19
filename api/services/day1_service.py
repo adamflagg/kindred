@@ -19,6 +19,7 @@ from api.schemas.day1 import (
 from api.services.camp_calendar import REGISTRATION_TIERS, day1_window
 from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
+from api.utils.session_metrics import get_session_from_expand
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -94,8 +95,7 @@ class Day1Service:
             eff_date_str = parse_date_only(eff_str)
 
             # Determine session type once per attendee
-            expand = getattr(att, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else None
+            session = get_session_from_expand(att)
             sid = int(session.cm_id) if session else 0
             stype = session_type_map.get(sid, "")
 

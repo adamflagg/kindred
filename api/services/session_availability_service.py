@@ -22,7 +22,7 @@ from api.schemas.session_availability import (
     SessionAvailabilityResponse,
     WaitlistedPerson,
 )
-from api.utils.session_metrics import resolve_duration_sessions
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand, resolve_duration_sessions
 
 logger = get_logger(__name__)
 
@@ -332,9 +332,8 @@ class SessionAvailabilityService:
         waitlist_grouped: dict[int, dict[str, list[dict[str, Any]]]] = {}
 
         for att in attendees:
-            expand = getattr(att, "expand", {}) or {}
-            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            person = get_person_from_expand(att)
+            session = get_session_from_expand(att)
             if not person or not session:
                 continue
 

@@ -15,6 +15,7 @@ from api.utils.session_metrics import (
     compute_summer_metrics,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
+    get_person_from_expand,
     get_session_from_expand,
     get_session_length_category,
     resolve_duration_sessions,
@@ -329,8 +330,7 @@ class DrilldownService:
         """
         if not session_types:
             return True
-        expand = getattr(attendee, "expand", {}) or {}
-        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        session = get_session_from_expand(attendee)
         if not session:
             return False
         return getattr(session, "session_type", None) in session_types
@@ -370,8 +370,7 @@ class DrilldownService:
             person_id = getattr(a, "person_id", None)
             person = persons.get(person_id) if person_id else None
 
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
 
             if breakdown_type == "gender":
                 if person and getattr(person, "gender", None) == breakdown_value:
@@ -528,8 +527,7 @@ class DrilldownService:
             returned_person_ids.add(pid_int)
             if self._matches_session_types(a, session_types):
                 enrolled_attendee_groups.setdefault(pid_int, []).append(a)
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if session:
                 sid = getattr(session, "cm_id", None)
                 if sid is not None and int(sid) == target_session_cm_id:
@@ -680,8 +678,7 @@ class DrilldownService:
             if not person:
                 continue
 
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if not session:
                 continue
 
@@ -702,10 +699,7 @@ class DrilldownService:
             sessions_list: list[DrilldownSession] = []
             if person_attendee_groups and person_id in person_attendee_groups:
                 for group_a in person_attendee_groups[person_id]:
-                    g_expand = getattr(group_a, "expand", {}) or {}
-                    g_session = (
-                        g_expand.get("session") if isinstance(g_expand, dict) else getattr(g_expand, "session", None)
-                    )
+                    g_session = get_session_from_expand(group_a)
                     if g_session:
                         sessions_list.append(
                             DrilldownSession(
@@ -720,10 +714,7 @@ class DrilldownService:
             enrolled_sessions_list: list[DrilldownSession] = []
             if enrolled_attendee_groups and person_id in enrolled_attendee_groups:
                 for enrolled_a in enrolled_attendee_groups[person_id]:
-                    e_expand = getattr(enrolled_a, "expand", {}) or {}
-                    e_session = (
-                        e_expand.get("session") if isinstance(e_expand, dict) else getattr(e_expand, "session", None)
-                    )
+                    e_session = get_session_from_expand(enrolled_a)
                     if e_session:
                         enrolled_sessions_list.append(
                             DrilldownSession(
@@ -880,10 +871,7 @@ class DrilldownService:
             # Build enrolled_sessions for this person
             enrolled_sessions_list: list[DrilldownSession] = []
             for enrolled_a in enrolled_attendee_groups.get(pid, []):
-                e_expand = getattr(enrolled_a, "expand", {}) or {}
-                e_session = (
-                    e_expand.get("session") if isinstance(e_expand, dict) else getattr(e_expand, "session", None)
-                )
+                e_session = get_session_from_expand(enrolled_a)
                 if e_session:
                     enrolled_sessions_list.append(
                         DrilldownSession(
@@ -1051,9 +1039,8 @@ class DrilldownService:
         # Build enrolled sessions lookup: person_id -> list of enrolled summer session names
         enrolled_by_person: dict[int, list[DrilldownSession]] = {}
         for att in enrolled_attendees:
-            expand = getattr(att, "expand", {}) or {}
-            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            person = get_person_from_expand(att)
+            session = get_session_from_expand(att)
             if not person or not session:
                 continue
             scmid = int(getattr(session, "cm_id", 0))
@@ -1072,9 +1059,8 @@ class DrilldownService:
         # Build waitlisted sessions lookup: person_id -> summer sessions they're waitlisted for
         waitlisted_by_person: dict[int, list[DrilldownSession]] = {}
         for att in waitlisted_attendees:
-            expand = getattr(att, "expand", {}) or {}
-            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            person = get_person_from_expand(att)
+            session = get_session_from_expand(att)
             if not person or not session:
                 continue
             scmid = int(getattr(session, "cm_id", 0))
@@ -1094,9 +1080,8 @@ class DrilldownService:
         results = []
         seen_persons: set[int] = set()
         for att in waitlisted_attendees:
-            expand = getattr(att, "expand", {}) or {}
-            person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            person = get_person_from_expand(att)
+            session = get_session_from_expand(att)
             if not person or not session:
                 continue
 

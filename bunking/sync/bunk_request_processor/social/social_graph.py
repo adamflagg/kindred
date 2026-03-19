@@ -11,6 +11,7 @@ from typing import Any
 
 import networkx as nx
 
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -186,14 +187,12 @@ class SocialGraph:
 
             for attendee in attendees:
                 # Filter by session CM ID (check expanded session)
-                if not hasattr(attendee, "expand") or not attendee.expand:
-                    continue
-                session = attendee.expand.get("session")
+                session = get_session_from_expand(attendee)
                 if not session or session.cm_id != session_cm_id:
                     continue
 
                 # Get person CM ID from expanded person
-                person = attendee.expand.get("person")
+                person = get_person_from_expand(attendee)
                 if not person:
                     continue
                 person_cm_id = person.cm_id
@@ -290,7 +289,7 @@ class SocialGraph:
             year_bunk_members: dict[tuple[int, str], set[int]] = {}
             for assignment in all_assignments:
                 expand = getattr(assignment, "expand", {}) or {}
-                person_data = expand.get("person")
+                person_data = get_person_from_expand(assignment)
                 bunk_data = expand.get("bunk")
 
                 if not person_data or not bunk_data:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 
 from ...core.models import Person
@@ -157,9 +158,8 @@ class TemporalNameCache:
 
                 # Get session CM ID from expanded relation or direct field
                 session_cm_id = None
-                expand = getattr(attendee, "expand", None) or {}
-                if expand and "session" in expand:
-                    session_data = expand["session"]
+                session_data = get_session_from_expand(attendee)
+                if session_data:
                     session_cm_id = getattr(session_data, "cm_id", None) or getattr(session_data, "campminder_id", None)
                 if not session_cm_id:
                     session_cm_id = getattr(attendee, "session_cm_id", None)
@@ -212,9 +212,9 @@ class TemporalNameCache:
 
             for assignment in assignments:
                 expand = getattr(assignment, "expand", {}) or {}
-                person_data = expand.get("person")
+                person_data = get_person_from_expand(assignment)
                 bunk_data = expand.get("bunk")
-                session_data = expand.get("session")
+                session_data = get_session_from_expand(assignment)
 
                 if not person_data:
                     continue
