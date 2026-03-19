@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 
 export function useSavedScenarios(sessionCmId?: number, year?: number) {
-  const { user, isLoading } = useAuth()
+  const { isLoading } = useAuth()
   return useQuery<SavedScenario[]>({
     queryKey: queryKeys.savedScenarios(sessionCmId ?? 0, year),
     queryFn: async () => {
@@ -29,6 +29,6 @@ export function useSavedScenarios(sessionCmId?: number, year?: number) {
       return scenarios
     },
     ...userDataOptions,
-    enabled: !!user && !isLoading,
+    enabled: !isLoading,
   })
 }

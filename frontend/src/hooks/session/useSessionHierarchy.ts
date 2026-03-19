@@ -132,7 +132,7 @@ export function useSessionHierarchy(
   const { sessionId, tabPath, enableRedirects = true } = options
   const navigate = useNavigate()
   const currentYear = useYear()
-  const { user } = useAuth()
+  const { isLoading } = useAuth()
   const [selectedSession, setSelectedSession] = useState<string>('')
   const [prevResolvedSessionId, setPrevResolvedSessionId] = useState<number | null>(null)
 
@@ -147,7 +147,7 @@ export function useSessionHierarchy(
       })
       return sessions
     },
-    enabled: !!user,
+    enabled: !isLoading,
   })
 
   // Resolve session from URL (could be friendly URL or numeric ID)

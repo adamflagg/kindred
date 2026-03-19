@@ -11,7 +11,7 @@ export interface AdminSetting extends RecordModel {
 }
 
 export function useAdminSettings() {
-  const { user, isLoading } = useAuth()
+  const { isLoading } = useAuth()
   return useQuery<AdminSetting[]>({
     queryKey: queryKeys.adminSettings(),
     queryFn: async () => {
@@ -22,6 +22,6 @@ export function useAdminSettings() {
       return settings
     },
     ...userDataOptions,
-    enabled: !!user && !isLoading,
+    enabled: !isLoading,
   })
 }
