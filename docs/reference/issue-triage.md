@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-19 (4 open issues; 14 issues closed since last triage).
+Last updated: 2026-03-19 (5 open issues).
 
 ---
 
@@ -42,10 +42,23 @@ Last updated: 2026-03-19 (4 open issues; 14 issues closed since last triage).
 
 ---
 
+## Group 20: Velocity Service Bug
+
+**Priority: Medium** — Correctness bug in metrics calculation
+
+| # | Title | Type |
+|---|-------|------|
+| 708 | `_merge_hybrid_daily` applied globally instead of per-session in velocity service | bug |
+
+**Interplay:** None. Standalone bug in velocity daily-merge logic.
+
+---
+
 ## Suggested Attack Order
 
 1–20. ~~**Groups 1–19**~~ — All complete (see git history)
-21. **Groups 4, 15, 18** — All low priority, independent items, sprinkle in anytime
+21. **Group 20** — Medium priority velocity bug
+22. **Groups 4, 15, 18** — All low priority, independent items, sprinkle in anytime
 
 ## Completed Groups (recent)
 

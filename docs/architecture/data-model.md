@@ -57,7 +57,7 @@ Key Fields:
 - `person_type`: Enum (Camper, Staff, Family Member)
 - `gender`: For bunking constraints
 - `years_at_camp`: Array of attended years
-- `is_active`: Soft delete flag
+- `is_active`: Deprecated — previously derived from status_id; no longer set by sync
 
 ### Sessions
 **Purpose**: Camp session periods

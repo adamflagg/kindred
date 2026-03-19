@@ -544,8 +544,8 @@ class TestStatusMetrics:
         assert len(cancelled) == 1
 
     def test_active_enrolled_filter(self, mixed_status_attendees: list[Mock]) -> None:
-        """Test filtering for active enrolled campers (is_active AND status_id=2)."""
-        active_enrolled = [a for a in mixed_status_attendees if a.is_active and a.status_id == 2]
+        """Test filtering for enrolled campers (status_id=2 only)."""
+        active_enrolled = [a for a in mixed_status_attendees if a.status_id == 2]
         assert len(active_enrolled) == 3
 
 
