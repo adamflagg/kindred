@@ -51,24 +51,24 @@ func TestParseSeasonYear_AboveRange(t *testing.T) {
 	}
 }
 
-func TestParseSeasonYear_BoundaryLow(t *testing.T) {
+func TestParseSeasonYear_Boundaries(t *testing.T) {
+	// Low boundary (2017)
 	t.Setenv("CAMPMINDER_SEASON_ID", "2017")
 	year, err := ParseSeasonYear()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("low boundary: unexpected error: %v", err)
 	}
 	if year != 2017 {
-		t.Fatalf("expected 2017, got %d", year)
+		t.Fatalf("low boundary: expected 2017, got %d", year)
 	}
-}
 
-func TestParseSeasonYear_BoundaryHigh(t *testing.T) {
+	// High boundary (2050)
 	t.Setenv("CAMPMINDER_SEASON_ID", "2050")
-	year, err := ParseSeasonYear()
+	year, err = ParseSeasonYear()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("high boundary: unexpected error: %v", err)
 	}
 	if year != 2050 {
-		t.Fatalf("expected 2050, got %d", year)
+		t.Fatalf("high boundary: expected 2050, got %d", year)
 	}
 }
