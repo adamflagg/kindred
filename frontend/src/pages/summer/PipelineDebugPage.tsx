@@ -323,6 +323,7 @@ export default function PipelineDebugPage() {
               onFiltersChange={setFilters}
               onRowClick={handleRowClick}
               isLoading={false}
+              error={summaryQuery.error}
             />
           )}
         </QueryGuard>

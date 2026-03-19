@@ -4,17 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock pocketbase client
-const mockGetFullList = vi.fn()
-const mockUpdate = vi.fn()
-const mockCreate = vi.fn()
+const { mockGetFullList, mockUpdate, mockCreate, mockCollection } = vi.hoisted(() => ({
+  mockGetFullList: vi.fn(),
+  mockUpdate: vi.fn(),
+  mockCreate: vi.fn(),
+  mockCollection: vi.fn(),
+}))
 vi.mock('../../lib/pocketbase', () => ({
-  pb: {
-    collection: () => ({
-      getFullList: mockGetFullList,
-      update: mockUpdate,
-      create: mockCreate,
-    }),
-  },
+  pb: { collection: mockCollection },
 }))
 
 // Mock useCurrentYear
@@ -100,6 +97,11 @@ const mockBudgetConfigRecords = [
 describe('SessionBudgetConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCollection.mockReturnValue({
+      getFullList: mockGetFullList,
+      update: mockUpdate,
+      create: mockCreate,
+    })
   })
 
   // Lazy import to ensure mocks are in place
@@ -130,6 +132,9 @@ describe('SessionBudgetConfig', () => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
       expect(screen.getByText('Session 2a')).toBeInTheDocument()
     })
+
+    // Validate collection name argument
+    expect(mockCollection).toHaveBeenCalledWith('config')
   })
 
   it('inputs start empty by default when no config exists', async () => {

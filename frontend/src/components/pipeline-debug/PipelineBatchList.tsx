@@ -9,7 +9,7 @@
  * to drill-down.
  */
 
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 import { formatSourceField } from '../../utils/formatSourceField'
 
@@ -44,6 +44,7 @@ interface PipelineBatchListProps {
   onFiltersChange: (filters: PipelineSummaryFilters) => void
   onRowClick: (traceId: string) => void
   isLoading: boolean
+  error?: Error | null
 }
 
 /** Get Tailwind classes for status badge color coding. */
@@ -96,6 +97,7 @@ export function PipelineBatchList({
   onFiltersChange,
   onRowClick,
   isLoading,
+  error,
 }: PipelineBatchListProps) {
   /** Update a single filter value and notify parent. */
   function updateFilter<K extends keyof PipelineSummaryFilters>(
@@ -128,6 +130,15 @@ export function PipelineBatchList({
           <Loader2 className="text-forest-600 h-6 w-6 animate-spin" />
           <span className="text-muted-foreground text-sm">Loading summary data...</span>
         </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 flex h-48 flex-col items-center justify-center gap-3">
+        <AlertCircle className="h-8 w-8 text-red-500" />
+        <p className="text-sm text-red-700 dark:text-red-300">Failed to load pipeline data</p>
       </div>
     )
   }
@@ -291,8 +302,22 @@ export function PipelineBatchList({
                     return (
                       <th
                         key={col.field}
+                        tabIndex={0}
+                        aria-sort={
+                          currentSort?.field === col.field
+                            ? currentSort.desc
+                              ? 'descending'
+                              : 'ascending'
+                            : undefined
+                        }
                         onClick={() => toggleSort(col.field)}
-                        className={`text-muted-foreground hover:text-foreground group cursor-pointer px-3 py-2 text-left text-xs font-medium select-none ${col.hiddenClass ?? ''}`}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            toggleSort(col.field)
+                          }
+                        }}
+                        className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
                       >
                         <span className="inline-flex items-center gap-1">
                           {col.label}
@@ -315,8 +340,16 @@ export function PipelineBatchList({
                 {items.map((item) => (
                   <tr
                     key={item.id}
+                    tabIndex={0}
+                    role="button"
                     onClick={() => onRowClick(item.trace_id)}
-                    className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 cursor-pointer transition-colors"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onRowClick(item.trace_id)
+                      }
+                    }}
+                    className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                   >
                     <td className="text-foreground px-3 py-2 font-medium">{item.requester_name}</td>
                     <td className="text-foreground px-3 py-2">{item.target_name}</td>

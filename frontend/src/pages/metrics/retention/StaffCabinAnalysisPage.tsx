@@ -9,12 +9,13 @@
  */
 
 import { useState, useMemo, useCallback } from 'react'
-import { Users, ArrowUp, ArrowDown } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useStaffRetentionData } from '../../../hooks/useStaffRetentionData'
 import type { StaffRetentionRow } from '../../../hooks/useStaffRetentionData'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { SortIcon } from '../../../components/metrics/SortIcon'
 import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
 import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
@@ -136,15 +137,6 @@ export default function StaffCabinAnalysisPage() {
     }
   }, [hoveredCell, staffRows, bunkStaff])
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null
-    return sortDir === 'asc' ? (
-      <ArrowUp className="inline h-3 w-3" />
-    ) : (
-      <ArrowDown className="inline h-3 w-3" />
-    )
-  }
-
   // Wrap data for MetricsQueryGuard: it needs a truthy data object
   const guardData = staffRows.length > 0 ? { staffRows, sessions } : undefined
 
@@ -182,7 +174,13 @@ export default function StaffCabinAnalysisPage() {
                       onClick={() => handleSort('name')}
                       data-tour="retention-staff-sort-name"
                     >
-                      Staff <SortIcon field="name" />
+                      Staff{' '}
+                      <SortIcon
+                        field="name"
+                        activeField={sortField}
+                        direction={sortDir}
+                        className="inline h-3 w-3"
+                      />
                     </th>
                     {sortedSessions.map((session) => (
                       <th
@@ -199,7 +197,13 @@ export default function StaffCabinAnalysisPage() {
                       onClick={() => handleSort('overall')}
                       data-tour="retention-staff-sort-overall"
                     >
-                      Overall <SortIcon field="overall" />
+                      Overall{' '}
+                      <SortIcon
+                        field="overall"
+                        activeField={sortField}
+                        direction={sortDir}
+                        className="inline h-3 w-3"
+                      />
                     </th>
                   </tr>
                 </thead>

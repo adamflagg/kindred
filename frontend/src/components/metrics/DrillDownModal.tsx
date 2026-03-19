@@ -10,7 +10,8 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router'
-import { X, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react'
+import { X, Download, Search, ArrowUpDown, Loader2 } from 'lucide-react'
+import { SortIcon } from './SortIcon'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import { shortenSessionName } from '../../utils/sessionDisplay'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
@@ -370,17 +371,6 @@ export function DrillDownModal({
     URL.revokeObjectURL(url)
   }
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="h-3 w-3 opacity-50" />
-    }
-    return sortDirection === 'asc' ? (
-      <ArrowUp className="h-3 w-3" />
-    ) : (
-      <ArrowDown className="h-3 w-3" />
-    )
-  }
-
   if (!filter) return null
 
   return (
@@ -451,7 +441,14 @@ export function DrillDownModal({
                   className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                 >
                   <div className="flex items-center gap-1">
-                    Name <SortIcon field="name" />
+                    Name{' '}
+                    <SortIcon
+                      field="name"
+                      activeField={sortField}
+                      direction={sortDirection}
+                      inactiveIcon={ArrowUpDown}
+                      inactiveClassName="h-3 w-3 opacity-50"
+                    />
                   </div>
                 </th>
                 <th
@@ -459,7 +456,14 @@ export function DrillDownModal({
                   className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Grade <SortIcon field="grade" />
+                    Grade{' '}
+                    <SortIcon
+                      field="grade"
+                      activeField={sortField}
+                      direction={sortDirection}
+                      inactiveIcon={ArrowUpDown}
+                      inactiveClassName="h-3 w-3 opacity-50"
+                    />
                   </div>
                 </th>
                 <th
@@ -467,7 +471,14 @@ export function DrillDownModal({
                   className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Gender <SortIcon field="gender" />
+                    Gender{' '}
+                    <SortIcon
+                      field="gender"
+                      activeField={sortField}
+                      direction={sortDirection}
+                      inactiveIcon={ArrowUpDown}
+                      inactiveClassName="h-3 w-3 opacity-50"
+                    />
                   </div>
                 </th>
                 {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
@@ -476,7 +487,14 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      School <SortIcon field="school" />
+                      School{' '}
+                      <SortIcon
+                        field="school"
+                        activeField={sortField}
+                        direction={sortDirection}
+                        inactiveIcon={ArrowUpDown}
+                        inactiveClassName="h-3 w-3 opacity-50"
+                      />
                     </div>
                   </th>
                 )}
@@ -485,7 +503,14 @@ export function DrillDownModal({
                   className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                 >
                   <div className="flex items-center gap-1">
-                    City <SortIcon field="city" />
+                    City{' '}
+                    <SortIcon
+                      field="city"
+                      activeField={sortField}
+                      direction={sortDirection}
+                      inactiveIcon={ArrowUpDown}
+                      inactiveClassName="h-3 w-3 opacity-50"
+                    />
                   </div>
                 </th>
                 <th
@@ -500,7 +525,13 @@ export function DrillDownModal({
                         : isCancellationSpecial
                           ? 'Cancelled Session'
                           : 'Session'}{' '}
-                    <SortIcon field="session" />
+                    <SortIcon
+                      field="session"
+                      activeField={sortField}
+                      direction={sortDirection}
+                      inactiveIcon={ArrowUpDown}
+                      inactiveClassName="h-3 w-3 opacity-50"
+                    />
                   </div>
                 </th>
                 {isWaitlistDrilldown && (
@@ -509,7 +540,14 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Enrolled In <SortIcon field="enrolled" />
+                      Enrolled In{' '}
+                      <SortIcon
+                        field="enrolled"
+                        activeField={sortField}
+                        direction={sortDirection}
+                        inactiveIcon={ArrowUpDown}
+                        inactiveClassName="h-3 w-3 opacity-50"
+                      />
                     </div>
                   </th>
                 )}
@@ -519,7 +557,14 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Applied <SortIcon field="registration" />
+                      Applied{' '}
+                      <SortIcon
+                        field="registration"
+                        activeField={sortField}
+                        direction={sortDirection}
+                        inactiveIcon={ArrowUpDown}
+                        inactiveClassName="h-3 w-3 opacity-50"
+                      />
                     </div>
                   </th>
                 )}
@@ -529,7 +574,14 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Session <SortIcon field="enrolled_current" />
+                      Session{' '}
+                      <SortIcon
+                        field="enrolled_current"
+                        activeField={sortField}
+                        direction={sortDirection}
+                        inactiveIcon={ArrowUpDown}
+                        inactiveClassName="h-3 w-3 opacity-50"
+                      />
                     </div>
                   </th>
                 )}
@@ -540,7 +592,14 @@ export function DrillDownModal({
                       className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                     >
                       <div className="flex items-center gap-1">
-                        Current Session <SortIcon field="enrolled" />
+                        Current Session{' '}
+                        <SortIcon
+                          field="enrolled"
+                          activeField={sortField}
+                          direction={sortDirection}
+                          inactiveIcon={ArrowUpDown}
+                          inactiveClassName="h-3 w-3 opacity-50"
+                        />
                       </div>
                     </th>
                     <th
@@ -548,7 +607,14 @@ export function DrillDownModal({
                       className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                     >
                       <div className="flex items-center gap-1">
-                        Registered <SortIcon field="registration" />
+                        Registered{' '}
+                        <SortIcon
+                          field="registration"
+                          activeField={sortField}
+                          direction={sortDirection}
+                          inactiveIcon={ArrowUpDown}
+                          inactiveClassName="h-3 w-3 opacity-50"
+                        />
                       </div>
                     </th>
                     <th
@@ -556,7 +622,14 @@ export function DrillDownModal({
                       className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                     >
                       <div className="flex items-center gap-1">
-                        Cancelled <SortIcon field="cancelled" />
+                        Cancelled{' '}
+                        <SortIcon
+                          field="cancelled"
+                          activeField={sortField}
+                          direction={sortDirection}
+                          inactiveIcon={ArrowUpDown}
+                          inactiveClassName="h-3 w-3 opacity-50"
+                        />
                       </div>
                     </th>
                   </>
@@ -567,7 +640,14 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Registered <SortIcon field="registration" />
+                      Registered{' '}
+                      <SortIcon
+                        field="registration"
+                        activeField={sortField}
+                        direction={sortDirection}
+                        inactiveIcon={ArrowUpDown}
+                        inactiveClassName="h-3 w-3 opacity-50"
+                      />
                     </div>
                   </th>
                 )}
@@ -576,7 +656,14 @@ export function DrillDownModal({
                   className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Years <SortIcon field="years" />
+                    Years{' '}
+                    <SortIcon
+                      field="years"
+                      activeField={sortField}
+                      direction={sortDirection}
+                      inactiveIcon={ArrowUpDown}
+                      inactiveClassName="h-3 w-3 opacity-50"
+                    />
                   </div>
                 </th>
               </tr>

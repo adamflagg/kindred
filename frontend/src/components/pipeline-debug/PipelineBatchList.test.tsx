@@ -286,6 +286,18 @@ describe('PipelineBatchList', () => {
 
       expect(screen.getByText(/no results/i)).toBeInTheDocument()
     })
+
+    it('renders error state when error prop is provided', () => {
+      render(<PipelineBatchList {...defaultProps} error={new Error('Network failure')} />)
+      expect(screen.getByText(/failed to load pipeline data/i)).toBeInTheDocument()
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    })
+
+    it('does not render error state when error is null', () => {
+      render(<PipelineBatchList {...defaultProps} error={null} />)
+      expect(screen.queryByText(/failed to load pipeline data/i)).not.toBeInTheDocument()
+      expect(screen.getByRole('table')).toBeInTheDocument()
+    })
   })
 
   describe('Total count', () => {
@@ -293,6 +305,50 @@ describe('PipelineBatchList', () => {
       render(<PipelineBatchList {...defaultProps} total={42} />)
 
       expect(screen.getByText(/42/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Keyboard accessibility', () => {
+    it('rows are keyboard-focusable with role=button', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const rows = document.querySelectorAll('tbody tr')
+      expect(rows.length).toBeGreaterThan(0)
+      rows.forEach((row) => {
+        expect(row).toHaveAttribute('tabindex', '0')
+        expect(row).toHaveAttribute('role', 'button')
+      })
+    })
+
+    it('triggers row click on Enter key', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const firstRow = document.querySelector('tbody tr') as HTMLElement
+      firstRow.focus()
+      await userEvent.keyboard('{Enter}')
+      expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
+    })
+
+    it('triggers row click on Space key', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const firstRow = document.querySelector('tbody tr') as HTMLElement
+      firstRow.focus()
+      await userEvent.keyboard(' ')
+      expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
+    })
+
+    it('triggers sort on Enter key on sortable header', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
+      sortableHeader.focus()
+      await userEvent.keyboard('{Enter}')
+      expect(defaultProps.onFiltersChange).toHaveBeenCalled()
+    })
+
+    it('triggers sort on Space key on sortable header', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
+      sortableHeader.focus()
+      await userEvent.keyboard(' ')
+      expect(defaultProps.onFiltersChange).toHaveBeenCalled()
     })
   })
 })

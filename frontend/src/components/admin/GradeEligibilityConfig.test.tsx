@@ -5,17 +5,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GradeEligibilityConfig } from './GradeEligibilityConfig'
 
 // Mock pocketbase client
-const mockGetFullList = vi.fn()
-const mockUpdate = vi.fn()
-const mockCreate = vi.fn()
+const { mockGetFullList, mockUpdate, mockCreate, mockCollection } = vi.hoisted(() => ({
+  mockGetFullList: vi.fn(),
+  mockUpdate: vi.fn(),
+  mockCreate: vi.fn(),
+  mockCollection: vi.fn(),
+}))
 vi.mock('../../lib/pocketbase', () => ({
-  pb: {
-    collection: () => ({
-      getFullList: mockGetFullList,
-      update: mockUpdate,
-      create: mockCreate,
-    }),
-  },
+  pb: { collection: mockCollection },
 }))
 
 // Mock useCurrentYear
@@ -94,6 +91,11 @@ const mockConfigRecords = [
 describe('GradeEligibilityConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCollection.mockReturnValue({
+      getFullList: mockGetFullList,
+      update: mockUpdate,
+      create: mockCreate,
+    })
   })
 
   it('renders loading state initially', () => {
@@ -118,6 +120,9 @@ describe('GradeEligibilityConfig', () => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
       expect(screen.getByText('Session 2a')).toBeInTheDocument()
     })
+
+    // Validate collection name argument
+    expect(mockCollection).toHaveBeenCalledWith('config')
   })
 
   it('renders AG sessions in a separate section', async () => {
