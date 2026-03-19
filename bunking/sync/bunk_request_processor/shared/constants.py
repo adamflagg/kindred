@@ -71,17 +71,6 @@ SOURCE_FIELD_TO_CONFIG_KEY: dict[str, str] = {
     SourceField.SOCIALIZE_WITH: "socialize_preference",
 }
 
-# Ordered list of V2 field names for iteration
-# Used in _prepare_parse_requests to check fields in consistent order
-FIELDS_TO_CHECK: list[str] = [
-    SourceField.BUNK_WITH,
-    SourceField.NOT_BUNK_WITH,
-    SourceField.BUNKING_NOTES,
-    SourceField.INTERNAL_NOTES,
-    SourceField.SOCIALIZE_WITH,
-]
-
-
 # =============================================================================
 # Field Groupings
 # =============================================================================

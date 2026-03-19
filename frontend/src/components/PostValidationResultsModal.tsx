@@ -256,9 +256,6 @@ export function getIssueTypeLabel(type: string): string {
   return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
-// Format field names using shared utility
-const formatFieldName = formatSourceField
-
 // Satisfaction ring component - the visual centerpiece
 function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number }) {
   const percentage = Math.round(rate * 100)
@@ -745,7 +742,7 @@ export default function PostValidationResultsModal({
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-foreground text-sm font-medium">
-                        {formatFieldName(fieldName)}
+                        {formatSourceField(fieldName)}
                       </span>
                       <span className="text-muted-foreground text-xs">
                         {stats.satisfied}/{stats.total}

@@ -6,18 +6,6 @@ import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import { formatSourceField } from '../../utils/formatSourceField'
 
-// Source field normalization - maps CSV column names to normalized keys
-const normalizeSourceField = (field: string): string => {
-  const normalized = field.toLowerCase().trim()
-  if (normalized.includes('share bunk with') && !normalized.includes('do not')) return 'bunk_with'
-  if (normalized.includes('do not share') || normalized.includes('not_bunk')) return 'not_bunk_with'
-  if (normalized.includes('bunkingnotes') || normalized.includes('bunking_notes'))
-    return 'bunking_notes'
-  if (normalized.includes('internal')) return 'internal_notes'
-  if (normalized.includes('socialize')) return 'socialize_with'
-  return field // Return original if no match
-}
-
 // Source field colors (matches debug page style)
 const SOURCE_FIELD_COLORS: Record<string, string> = {
   bunk_with: 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400',
@@ -223,10 +211,9 @@ function ConfidenceBadge({ score }: { score: number }) {
 function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) {
   if (!sourceField) return null
 
-  const normalized = normalizeSourceField(sourceField)
-  const label = formatSourceField(normalized)
+  const label = formatSourceField(sourceField)
   const colorClass =
-    SOURCE_FIELD_COLORS[normalized] ??
+    SOURCE_FIELD_COLORS[sourceField] ??
     'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
 
   return (
