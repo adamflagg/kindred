@@ -31,6 +31,15 @@ from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
     Phase1DebugService,
 )
 
+from ..constants.collections import (
+    ATTENDEES,
+    BUNK_REQUESTS,
+    DEBUG_PIPELINE_RUNS,
+    DEBUG_PIPELINE_SUMMARY,
+    DEBUG_PIPELINE_TRACES,
+    ORIGINAL_BUNK_REQUESTS,
+)
+from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas.debug import (
     CamperGroupedRequests,
@@ -83,6 +92,31 @@ from ..utils.pb_filters import pb_escape
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
+
+
+def _build_parsed_intent(intent: dict[str, Any]) -> ParsedIntent:
+    """Build a ParsedIntent schema from a raw intent dict.
+
+    Centralizes the repeated ParsedIntent construction pattern used
+    across 8 call sites in this module.
+
+    Args:
+        intent: Dictionary with intent fields from AI parse results.
+
+    Returns:
+        ParsedIntent schema instance with defaults for missing fields.
+    """
+    return ParsedIntent(
+        request_type=intent.get("request_type", "unknown"),
+        target_name=intent.get("target_name"),
+        keywords_found=intent.get("keywords_found", []),
+        parse_notes=intent.get("parse_notes", ""),
+        reasoning=intent.get("reasoning", ""),
+        list_position=intent.get("list_position", 0),
+        needs_clarification=intent.get("needs_clarification", False),
+        temporal_info=intent.get("temporal_info"),
+    )
+
 
 # Prompts directory - relative to project root
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "config" / "prompts"
@@ -140,7 +174,7 @@ class BunkRequestsRepository:
         filter_str = " && ".join(filter_parts)
 
         try:
-            result = self.pb.collection("bunk_requests").get_full_list(
+            result = self.pb.collection(BUNK_REQUESTS).get_full_list(
                 query_params={"filter": filter_str, "sort": "source_field,created"}
             )
 
@@ -296,19 +330,7 @@ async def list_parse_analysis(
     response_items = []
     for item in items:
         # Convert parsed_intents to proper model
-        parsed_intents = [
-            ParsedIntent(
-                request_type=intent.get("request_type", "unknown"),
-                target_name=intent.get("target_name"),
-                keywords_found=intent.get("keywords_found", []),
-                parse_notes=intent.get("parse_notes", ""),
-                reasoning=intent.get("reasoning", ""),
-                list_position=intent.get("list_position", 0),
-                needs_clarification=intent.get("needs_clarification", False),
-                temporal_info=intent.get("temporal_info"),
-            )
-            for intent in item.get("parsed_intents", [])
-        ]
+        parsed_intents = [_build_parsed_intent(intent) for intent in item.get("parsed_intents", [])]
 
         response_items.append(
             ParseAnalysisItem(
@@ -341,19 +363,7 @@ async def get_parse_analysis_detail(item_id: str, user: AuthUser = Depends(requi
         raise HTTPException(status_code=404, detail="Parse analysis result not found")
 
     # Convert parsed_intents
-    parsed_intents = [
-        ParsedIntent(
-            request_type=intent.get("request_type", "unknown"),
-            target_name=intent.get("target_name"),
-            keywords_found=intent.get("keywords_found", []),
-            parse_notes=intent.get("parse_notes", ""),
-            reasoning=intent.get("reasoning", ""),
-            list_position=intent.get("list_position", 0),
-            needs_clarification=intent.get("needs_clarification", False),
-            temporal_info=intent.get("temporal_info"),
-        )
-        for intent in item.get("parsed_intents", [])
-    ]
+    parsed_intents = [_build_parsed_intent(intent) for intent in item.get("parsed_intents", [])]
 
     return ParseAnalysisDetailItem(
         id=item.get("id", ""),
@@ -398,19 +408,7 @@ async def parse_phase1_only(request: Phase1OnlyRequest, user: AuthUser = Depends
     # Convert to response model
     response_items = []
     for item in results:
-        parsed_intents = [
-            ParsedIntent(
-                request_type=intent.get("request_type", "unknown"),
-                target_name=intent.get("target_name"),
-                keywords_found=intent.get("keywords_found", []),
-                parse_notes=intent.get("parse_notes", ""),
-                reasoning=intent.get("reasoning", ""),
-                list_position=intent.get("list_position", 0),
-                needs_clarification=intent.get("needs_clarification", False),
-                temporal_info=intent.get("temporal_info"),
-            )
-            for intent in item.get("parsed_intents", [])
-        ]
+        parsed_intents = [_build_parsed_intent(intent) for intent in item.get("parsed_intents", [])]
 
         response_items.append(
             ParseAnalysisItem(
@@ -487,7 +485,7 @@ async def clear_parse_analysis(
 
 @router.get("/original-requests", response_model=OriginalRequestsListResponse)
 async def list_original_requests(
-    year: int = Query(description="Year to filter by (required)"),
+    year: int = Query(description="Year to filter by (required)", ge=2000, le=2100),
     session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=50, ge=1, le=500, description="Maximum results"),
@@ -531,7 +529,7 @@ async def list_original_requests(
 @router.get("/original-requests/by-camper/{cm_id}", response_model=OriginalRequestsListResponse)
 async def list_original_requests_by_camper(
     cm_id: int,
-    year: int = Query(description="Camp year"),
+    year: int = Query(description="Camp year", ge=2000, le=2100),
     user: AuthUser = Depends(require_admin),
 ) -> OriginalRequestsListResponse:
     """List original_bunk_requests for a specific camper by CampMinder ID.
@@ -541,8 +539,8 @@ async def list_original_requests_by_camper(
     year's person PB record is used for the original_bunk_requests join.
     """
     # Look up via attendees — enrollment is the source of truth (year-scoped)
-    attendee_filter = f"year = {year} && is_active = 1 && status_id = 2 && person.cm_id = {cm_id}"
-    attendees = pb.collection("attendees").get_list(1, 1, query_params={"filter": attendee_filter, "expand": "person"})
+    attendee_filter = f"year = {year} && {ACTIVE_ENROLLED_FILTER} && person.cm_id = {cm_id}"
+    attendees = pb.collection(ATTENDEES).get_list(1, 1, query_params={"filter": attendee_filter, "expand": "person"})
     if not attendees.items:
         return OriginalRequestsListResponse(items=[], total=0)
 
@@ -554,7 +552,7 @@ async def list_original_requests_by_camper(
 
     # Query original_bunk_requests directly by requester relation + year
     pb_filter = f'requester = "{person_pb_id}" && year = {year}'
-    records = pb.collection("original_bunk_requests").get_full_list(
+    records = pb.collection(ORIGINAL_BUNK_REQUESTS).get_full_list(
         query_params={"filter": pb_filter, "expand": "requester"}
     )
 
@@ -584,7 +582,7 @@ async def list_original_requests_by_camper(
 @router.get("/search-persons", response_model=PersonSearchResponse)
 async def search_persons(
     q: str = Query(min_length=1, description="Search query for first or last name"),
-    year: int = Query(description="Camp year for enrollment filtering"),
+    year: int = Query(description="Camp year for enrollment filtering", ge=2000, le=2100),
     user: AuthUser = Depends(require_admin),
 ) -> PersonSearchResponse:
     """Search persons by name with autocomplete support.
@@ -597,12 +595,12 @@ async def search_persons(
 
     # Query attendees directly — enrollment is the source of truth
     attendee_filter = (
-        f"year = {year} && is_active = 1 && status_id = 2"
+        f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         f' && (person.first_name ~ "{safe_q}" || person.last_name ~ "{safe_q}")'
     )
     # Cap at 200 rows — enough for 20 unique persons × multiple sessions,
     # while bounding network/memory for broad queries like q=a.
-    attendee_results = pb.collection("attendees").get_list(
+    attendee_results = pb.collection(ATTENDEES).get_list(
         1,
         200,
         query_params={"filter": attendee_filter, "expand": "person,session"},
@@ -643,7 +641,7 @@ async def search_persons(
 
 @router.get("/original-requests-with-parse-status", response_model=OriginalRequestsWithParseResponse)
 async def list_original_requests_with_parse_status(
-    year: int = Query(description="Year to filter by (required)"),
+    year: int = Query(description="Year to filter by (required)", ge=2000, le=2100),
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=100, ge=1, le=500, description="Maximum results"),
@@ -703,7 +701,7 @@ AI_PARSED_FIELDS = {"bunk_with", "not_bunk_with", "bunking_notes", "internal_not
 
 @router.get("/original-requests-grouped", response_model=GroupedRequestsResponse)
 async def list_original_requests_grouped(
-    year: int = Query(description="Year to filter by (required)"),
+    year: int = Query(description="Year to filter by (required)", ge=2000, le=2100),
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=5000, ge=1, description="Maximum campers to return"),
@@ -795,19 +793,7 @@ async def get_parse_results_batch(
         data = results_map.get(rid, {})
 
         # Convert parsed_intents to proper model
-        parsed_intents = [
-            ParsedIntent(
-                request_type=intent.get("request_type", "unknown"),
-                target_name=intent.get("target_name"),
-                keywords_found=intent.get("keywords_found", []),
-                parse_notes=intent.get("parse_notes", ""),
-                reasoning=intent.get("reasoning", ""),
-                list_position=intent.get("list_position", 0),
-                needs_clarification=intent.get("needs_clarification", False),
-                temporal_info=intent.get("temporal_info"),
-            )
-            for intent in data.get("parsed_intents", [])
-        ]
+        parsed_intents = [_build_parsed_intent(intent) for intent in data.get("parsed_intents", [])]
 
         responses.append(
             ParseResultWithSource(
@@ -864,19 +850,7 @@ async def get_parse_results_batch_dual(
         if data.get("debug_result"):
             dr = data["debug_result"]
             # Convert parsed_intents
-            debug_intents = [
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
-                for intent in dr.get("parsed_intents", [])
-            ]
+            debug_intents = [_build_parsed_intent(intent) for intent in dr.get("parsed_intents", [])]
 
             debug_result_data = ParseResultData(
                 id=dr.get("id"),
@@ -894,19 +868,7 @@ async def get_parse_results_batch_dual(
         if data.get("production_result"):
             pr = data["production_result"]
             # Convert parsed_intents
-            prod_intents = [
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
-                for intent in pr.get("parsed_intents", [])
-            ]
+            prod_intents = [_build_parsed_intent(intent) for intent in pr.get("parsed_intents", [])]
 
             prod_result_data = ParseResultData(
                 parsed_intents=prod_intents,
@@ -970,19 +932,7 @@ async def get_parse_result_with_fallback(
     debug_result = debug_repo.get_by_original_request(original_request_id)
     if debug_result:
         # Convert parsed_intents to proper model
-        parsed_intents = [
-            ParsedIntent(
-                request_type=intent.get("request_type", "unknown"),
-                target_name=intent.get("target_name"),
-                keywords_found=intent.get("keywords_found", []),
-                parse_notes=intent.get("parse_notes", ""),
-                reasoning=intent.get("reasoning", ""),
-                list_position=intent.get("list_position", 0),
-                needs_clarification=intent.get("needs_clarification", False),
-                temporal_info=intent.get("temporal_info"),
-            )
-            for intent in debug_result.get("parsed_intents", [])
-        ]
+        parsed_intents = [_build_parsed_intent(intent) for intent in debug_result.get("parsed_intents", [])]
 
         return ParseResultWithSource(
             source="debug",
@@ -1005,20 +955,7 @@ async def get_parse_result_with_fallback(
     production_result = debug_repo.get_production_fallback(original_request_id)
     if production_result:
         # Convert parsed_intents to proper model
-        parsed_intents = []
-        for intent in production_result.get("parsed_intents", []):
-            parsed_intents.append(
-                ParsedIntent(
-                    request_type=intent.get("request_type", "unknown"),
-                    target_name=intent.get("target_name"),
-                    keywords_found=intent.get("keywords_found", []),
-                    parse_notes=intent.get("parse_notes", ""),
-                    reasoning=intent.get("reasoning", ""),
-                    list_position=intent.get("list_position", 0),
-                    needs_clarification=intent.get("needs_clarification", False),
-                    temporal_info=intent.get("temporal_info"),
-                )
-            )
+        parsed_intents = [_build_parsed_intent(intent) for intent in production_result.get("parsed_intents", [])]
 
         return ParseResultWithSource(
             source="production",
@@ -1148,7 +1085,7 @@ async def update_prompt(
 @router.get("/production-requests/{camper_cm_id}", response_model=ProductionRequestsResponse)
 async def get_production_requests(
     camper_cm_id: int,
-    year: int = Query(description="Year to filter by (required)"),
+    year: int = Query(description="Year to filter by (required)", ge=2000, le=2100),
     session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
     user: AuthUser = Depends(require_admin),
 ) -> ProductionRequestsResponse:
@@ -1327,7 +1264,7 @@ def list_pipeline_runs(
     user: AuthUser = Depends(require_admin),
 ) -> PipelineRunsResponse:
     """List all pipeline debug runs, newest first."""
-    records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"sort": "-created"})
+    records = pb.collection(DEBUG_PIPELINE_RUNS).get_full_list(query_params={"sort": "-created"})
     items = [_pb_record_to_run_item(r) for r in records]
     return PipelineRunsResponse(items=items, total=len(items))
 
@@ -1340,7 +1277,7 @@ def toggle_pipeline_run_pin(
     """Toggle the pinned status of a pipeline run."""
     _validate_run_id(run_id)
     # Find the run record by run_id
-    records = pb.collection("debug_pipeline_runs").get_full_list(query_params={"filter": f'run_id = "{run_id}"'})
+    records = pb.collection(DEBUG_PIPELINE_RUNS).get_full_list(query_params={"filter": f'run_id = "{run_id}"'})
     if not records:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
 
@@ -1349,7 +1286,7 @@ def toggle_pipeline_run_pin(
     new_pinned = not current_pinned
 
     # Update the record
-    pb.collection("debug_pipeline_runs").update(record.id, {"pinned": new_pinned})
+    pb.collection(DEBUG_PIPELINE_RUNS).update(record.id, {"pinned": new_pinned})
 
     return PinToggleResponse(run_id=run_id, pinned=new_pinned)
 
@@ -1397,7 +1334,7 @@ def get_pipeline_run_summary(
 
     filter_str = " && ".join(filter_parts)
 
-    result = pb.collection("debug_pipeline_summary").get_list(
+    result = pb.collection(DEBUG_PIPELINE_SUMMARY).get_list(
         page=page,
         per_page=per_page,
         query_params={"filter": filter_str, "sort": sort},
@@ -1418,7 +1355,7 @@ def get_traces_by_camper(
     user: AuthUser = Depends(require_admin),
 ) -> PipelineTracesByCamperResponse:
     """Get all traces for a camper across all runs."""
-    records = pb.collection("debug_pipeline_traces").get_full_list(
+    records = pb.collection(DEBUG_PIPELINE_TRACES).get_full_list(
         query_params={
             "filter": f"requester_cm_id = {cm_id}",
             "sort": "-created",
@@ -1435,7 +1372,7 @@ def get_pipeline_trace(
 ) -> PipelineTraceResponse:
     """Get full trace JSON for drill-down."""
     try:
-        record = pb.collection("debug_pipeline_traces").get_one(trace_id)
+        record = pb.collection(DEBUG_PIPELINE_TRACES).get_one(trace_id)
     except Exception as e:
         # PocketBase raises ClientResponseError with status=404 for missing records
         if getattr(e, "status", 0) == 404:
@@ -1497,7 +1434,7 @@ def _load_trace_record(trace_id: str) -> Any:
         HTTPException: If trace not found.
     """
     try:
-        return pb.collection("debug_pipeline_traces").get_one(trace_id)
+        return pb.collection(DEBUG_PIPELINE_TRACES).get_one(trace_id)
     except Exception as e:
         if getattr(e, "status", 0) == 404:
             raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
@@ -1705,7 +1642,7 @@ async def run_from_phase(
                         "force": False,
                     },
                 )
-                traces = pb.collection("debug_pipeline_traces").get_list(
+                traces = pb.collection(DEBUG_PIPELINE_TRACES).get_list(
                     1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
                 )
                 if traces.items:
@@ -1824,7 +1761,7 @@ async def run_full_trace(
                     },
                 )
                 # Get the first trace record ID for navigation
-                traces = pb.collection("debug_pipeline_traces").get_list(
+                traces = pb.collection(DEBUG_PIPELINE_TRACES).get_list(
                     1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
                 )
                 if traces.items:

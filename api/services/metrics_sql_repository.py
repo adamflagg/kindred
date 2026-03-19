@@ -116,7 +116,7 @@ class MetricsSQLRepository:
         params: list[Any] = [year]
 
         if status_filter is None or status_filter == "enrolled":
-            base += " AND a.is_active = 1 AND a.status_id = 2"
+            base += " AND a.status_id = 2"
         elif isinstance(status_filter, list):
             placeholders = ",".join("?" for _ in status_filter)
             base += f" AND a.status IN ({placeholders})"
@@ -457,7 +457,7 @@ class MetricsSQLRepository:
         params: list[Any] = [year]
 
         if status_filter is None or status_filter == "enrolled":
-            sql += " AND a.is_active = 1 AND a.status_id = 2"
+            sql += " AND a.status_id = 2"
         elif isinstance(status_filter, list):
             placeholders = ",".join("?" for _ in status_filter)
             sql += f" AND a.status IN ({placeholders})"

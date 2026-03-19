@@ -31,6 +31,15 @@ from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 from bunking.solver.objective_evaluator import evaluate_objective
 
+from ..constants.collections import (
+    BUNK_ASSIGNMENTS,
+    BUNK_ASSIGNMENTS_DRAFT,
+    BUNK_PLANS,
+    BUNK_REQUESTS,
+    BUNKS,
+    PERSONS,
+    SAVED_SCENARIOS,
+)
 from ..dependencies import pb, solver_runs
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
@@ -65,7 +74,7 @@ async def create_scenario(
             "is_active": True,
         }
 
-        scenario = await asyncio.to_thread(pb.collection("saved_scenarios").create, scenario_data)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).create, scenario_data)
 
         # Use pre-built filter from SessionContext
         session_filter_relation = ctx.session_relation_filter
@@ -76,7 +85,7 @@ async def create_scenario(
         if request.copy_from_scenario:
             logger.info(f"Copying assignments from scenario: {request.copy_from_scenario}")
             copy_source_assignments = await asyncio.to_thread(
-                pb.collection("bunk_assignments_draft").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
                 query_params={
                     "filter": f'scenario = "{request.copy_from_scenario}" && ({session_filter_relation}) && year = {ctx.year}',
                     "expand": "person,session,bunk,bunk_plan",
@@ -85,7 +94,7 @@ async def create_scenario(
         elif request.should_copy_from_production:
             logger.info("Copying assignments from production for all related sessions")
             copy_source_assignments = await asyncio.to_thread(
-                pb.collection("bunk_assignments").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS).get_full_list,
                 query_params={
                     "filter": f"({session_filter_relation}) && year = {ctx.year}",
                     "expand": "person,session,bunk",
@@ -97,7 +106,7 @@ async def create_scenario(
             bunk_plan_map = {}
             if request.should_copy_from_production and not request.copy_from_scenario:
                 bunk_plans = await asyncio.to_thread(
-                    pb.collection("bunk_plans").get_full_list,
+                    pb.collection(BUNK_PLANS).get_full_list,
                     query_params={
                         "filter": f"({session_filter_relation}) && year = {ctx.year}",
                         "expand": "bunk,session",
@@ -178,7 +187,7 @@ async def create_scenario(
                         "assignment_locked": getattr(assignment, "assignment_locked", False),
                     }
 
-                await asyncio.to_thread(pb.collection("bunk_assignments_draft").create, draft_data)
+                await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).create, draft_data)
 
         return SavedScenario(
             id=scenario.id,
@@ -217,7 +226,7 @@ async def list_scenarios(
             filter_str += " && is_active = true"
 
         scenarios = await asyncio.to_thread(
-            pb.collection("saved_scenarios").get_full_list, query_params={"filter": filter_str}
+            pb.collection(SAVED_SCENARIOS).get_full_list, query_params={"filter": filter_str}
         )
 
         return [
@@ -265,7 +274,7 @@ async def evaluate_score(
 
         # Fetch bunk requests for the session
         requests_raw = await asyncio.to_thread(
-            pb.collection("bunk_requests").get_full_list,
+            pb.collection(BUNK_REQUESTS).get_full_list,
             query_params={
                 "filter": f"({session_id_filter}) && year = {year}",
             },
@@ -289,7 +298,7 @@ async def evaluate_score(
         # Fetch assignments - from draft if scenario specified, else production
         if scenario_id:
             assignments_raw = await asyncio.to_thread(
-                pb.collection("bunk_assignments_draft").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
                 query_params={
                     "filter": f'scenario = "{scenario_id}" && ({session_filter}) && year = {year}',
                     "expand": "person,bunk",
@@ -297,7 +306,7 @@ async def evaluate_score(
             )
         else:
             assignments_raw = await asyncio.to_thread(
-                pb.collection("bunk_assignments").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS).get_full_list,
                 query_params={
                     "filter": f"({session_filter}) && year = {year}",
                     "expand": "person,bunk",
@@ -319,7 +328,7 @@ async def evaluate_score(
 
         # Fetch persons with session info (needed for age/grade flow)
         persons_raw = await asyncio.to_thread(
-            pb.collection("persons").get_full_list,
+            pb.collection(PERSONS).get_full_list,
             query_params={"filter": f"year = {year}"},
         )
         persons = [
@@ -335,7 +344,7 @@ async def evaluate_score(
 
         # Fetch bunks with session info
         bunks_raw = await asyncio.to_thread(
-            pb.collection("bunks").get_full_list,
+            pb.collection(BUNKS).get_full_list,
             query_params={"filter": f"year = {year}"},
         )
         bunks = [
@@ -385,7 +394,7 @@ async def get_scenario(
 ) -> SavedScenario | dict[str, Any]:
     """Get a specific scenario with optional assignments."""
     try:
-        scenario = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, scenario_id)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
 
         # Include year in response (required field now)
         scenario_result = SavedScenario(
@@ -406,7 +415,7 @@ async def get_scenario(
                 filter_str += f" && year = {scenario_year}"
 
             assignments = await asyncio.to_thread(
-                pb.collection("bunk_assignments_draft").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
                 query_params={"filter": filter_str, "expand": "person,session,bunk,bunk_plan"},
             )
 
@@ -444,7 +453,7 @@ async def update_scenario(
 
         update_data["updated"] = datetime.now(UTC).isoformat()
 
-        scenario = await asyncio.to_thread(pb.collection("saved_scenarios").update, scenario_id, update_data)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).update, scenario_id, update_data)
 
         return SavedScenario(
             id=scenario.id,
@@ -471,19 +480,19 @@ async def delete_scenario(
 ) -> dict[str, str]:
     """Delete a scenario and all its data."""
     try:
-        scenario = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, scenario_id)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
 
         # Delete all related draft assignments first
         draft_assignments = await asyncio.to_thread(
-            pb.collection("bunk_assignments_draft").get_full_list,
+            pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
             query_params={"filter": f'scenario = "{scenario_id}"'},
         )
 
         for assignment in draft_assignments:
-            await asyncio.to_thread(pb.collection("bunk_assignments_draft").delete, assignment.id)
+            await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).delete, assignment.id)
 
         # Delete the scenario
-        await asyncio.to_thread(pb.collection("saved_scenarios").delete, scenario_id)
+        await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).delete, scenario_id)
 
         return {"message": f"Scenario '{getattr(scenario, 'name', scenario_id)}' deleted successfully"}
 
@@ -517,7 +526,7 @@ async def update_scenario_assignment(
         # Build session context from the update request (validates session/year)
         ctx = await build_session_context(update.session_cm_id, update.year, pb)
 
-        scenario = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, scenario_id, {"expand": "session"})
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
         logger.debug(f"Found scenario: id={scenario.id}, session={getattr(scenario, 'session', None)}")
 
         session_pb_id = ctx.session_pb_id
@@ -526,7 +535,7 @@ async def update_scenario_assignment(
 
         # Look up person PocketBase ID from CampMinder ID (with year filter)
         persons = await asyncio.to_thread(
-            pb.collection("persons").get_full_list,
+            pb.collection(PERSONS).get_full_list,
             query_params={"filter": f"cm_id = {update.person_id} && year = {ctx.year}"},
         )
         if not persons:
@@ -537,14 +546,14 @@ async def update_scenario_assignment(
 
         # Check if assignment exists
         existing = await asyncio.to_thread(
-            pb.collection("bunk_assignments_draft").get_full_list,
+            pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
             query_params={"filter": f'scenario = "{scenario_id}" && person = "{person_pb_id}" && year = {ctx.year}'},
         )
 
         if update.bunk_id is None:
             # Remove assignment
             if existing:
-                await asyncio.to_thread(pb.collection("bunk_assignments_draft").delete, existing[0].id)
+                await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).delete, existing[0].id)
                 return {"message": "Assignment removed", "person_id": update.person_id, "changed": True}
             else:
                 return {"message": "No change needed", "person_id": update.person_id, "changed": False}
@@ -552,7 +561,7 @@ async def update_scenario_assignment(
         else:
             # Look up bunk PocketBase ID from CampMinder ID (with year filter)
             bunks = await asyncio.to_thread(
-                pb.collection("bunks").get_full_list,
+                pb.collection(BUNKS).get_full_list,
                 query_params={"filter": f"cm_id = {update.bunk_id} && year = {ctx.year}"},
             )
             if not bunks:
@@ -571,9 +580,7 @@ async def update_scenario_assignment(
                 if update.locked is not None:
                     update_assignment_data["assignment_locked"] = update.locked
 
-                await asyncio.to_thread(
-                    pb.collection("bunk_assignments_draft").update, record_id, update_assignment_data
-                )
+                await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).update, record_id, update_assignment_data)
 
                 return {
                     "message": "Assignment updated successfully",
@@ -589,7 +596,7 @@ async def update_scenario_assignment(
                 )
                 logger.debug(f"Looking up bunk_plan with filter: {bunk_plan_filter}")
                 bunk_plans = await asyncio.to_thread(
-                    pb.collection("bunk_plans").get_full_list, query_params={"filter": bunk_plan_filter}
+                    pb.collection(BUNK_PLANS).get_full_list, query_params={"filter": bunk_plan_filter}
                 )
 
                 if not bunk_plans:
@@ -615,7 +622,7 @@ async def update_scenario_assignment(
 
                 logger.info(f"Creating draft assignment: {new_assignment}")
                 try:
-                    await asyncio.to_thread(pb.collection("bunk_assignments_draft").create, new_assignment)
+                    await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).create, new_assignment)
                 except ClientResponseError as create_error:
                     logger.error(
                         f"Failed to create draft assignment: status={create_error.status}, data={getattr(create_error, 'data', None)}"
@@ -677,7 +684,7 @@ async def solve_scenario(
     and produces optimized assignments for the scenario.
     """
     try:
-        scenario = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, scenario_id)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
 
         session_cm_id: int = getattr(scenario, "session_cm_id", 0)
         scenario_year: int = getattr(scenario, "year", 0)
@@ -724,18 +731,18 @@ async def clear_scenario(
     """Clear all assignments in a scenario."""
     try:
         # Verify scenario exists (raises 404 if not found)
-        await asyncio.to_thread(pb.collection("saved_scenarios").get_one, scenario_id)
+        await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
 
         # Use year from request for scoping (required field now)
         filter_str = f'scenario = "{scenario_id}" && year = {request.year}'
 
         assignments = await asyncio.to_thread(
-            pb.collection("bunk_assignments_draft").get_full_list, query_params={"filter": filter_str}
+            pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list, query_params={"filter": filter_str}
         )
 
         deleted_count = 0
         for assignment in assignments:
-            await asyncio.to_thread(pb.collection("bunk_assignments_draft").delete, assignment.id)
+            await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).delete, assignment.id)
             deleted_count += 1
 
         return {

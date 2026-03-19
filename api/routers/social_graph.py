@@ -23,6 +23,7 @@ from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
+from ..constants.collections import BUNK_REQUESTS, BUNKS, PERSONS
 from ..dependencies import graph_cache, pb
 from ..schemas import (
     BunkGraphMetrics,
@@ -87,7 +88,7 @@ async def get_session_social_graph(
             # Check if session has any bunk requests first (bunk_requests uses session_id field)
             try:
                 requests_check = await asyncio.to_thread(
-                    pb.collection("bunk_requests").get_list,
+                    pb.collection(BUNK_REQUESTS).get_list,
                     1,
                     1,  # Just check if any exist
                     query_params={"filter": f"year = {year} && session_id = {session_cm_id}"},
@@ -133,7 +134,7 @@ async def get_session_social_graph(
             # Get person details - must filter by year to get correct grade
             try:
                 person = await asyncio.to_thread(
-                    pb.collection("persons").get_first_list_item, f"cm_id = {node_id} && year = {year}"
+                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
                 )
                 name = f"{person.first_name} {person.last_name}"
                 grade = getattr(person, "grade", None)
@@ -325,7 +326,7 @@ async def get_bunk_social_graph(
 
         # Get bunk details first
         try:
-            bunk = await asyncio.to_thread(pb.collection("bunks").get_first_list_item, f"cm_id = {bunk_cm_id}")
+            bunk = await asyncio.to_thread(pb.collection(BUNKS).get_first_list_item, f"cm_id = {bunk_cm_id}")
             bunk_name = bunk.name
         except Exception:
             bunk_name = f"Bunk {bunk_cm_id}"
@@ -375,7 +376,7 @@ async def get_bunk_social_graph(
             # Get person details - must filter by year to get correct grade
             try:
                 person = await asyncio.to_thread(
-                    pb.collection("persons").get_first_list_item, f"cm_id = {node_id} && year = {year}"
+                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
                 )
                 name = f"{person.first_name} {person.last_name}"
                 grade = getattr(person, "grade", None)
@@ -625,7 +626,7 @@ async def get_person_ego_network(
         # Get center person details - must filter by year to get correct grade
         try:
             person = await asyncio.to_thread(
-                pb.collection("persons").get_first_list_item, f"cm_id = {person_cm_id} && year = {year}"
+                pb.collection(PERSONS).get_first_list_item, f"cm_id = {person_cm_id} && year = {year}"
             )
             center_name = f"{person.first_name} {person.last_name}"
             center_grade = getattr(person, "grade", None)
@@ -651,7 +652,7 @@ async def get_person_ego_network(
             # Get person details - must filter by year to get correct grade
             try:
                 person = await asyncio.to_thread(
-                    pb.collection("persons").get_first_list_item, f"cm_id = {node_id} && year = {year}"
+                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
                 )
                 name = f"{person.first_name} {person.last_name}"
                 grade = getattr(person, "grade", None)

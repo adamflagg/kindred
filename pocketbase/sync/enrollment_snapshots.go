@@ -161,8 +161,8 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			continue
 		}
 
-		// Count enrolled: is_active = 1 AND status_id = 2
-		enrolledFilter := fmt.Sprintf("year = %d && session = '%s' && is_active = 1 && status_id = 2", year, sessionPBID)
+		// Count enrolled: status_id = 2
+		enrolledFilter := fmt.Sprintf("year = %d && session = '%s' && status_id = 2", year, sessionPBID)
 		enrolledRecords, err := s.App.FindRecordsByFilter("attendees", enrolledFilter, "", 0, 0)
 		if err != nil {
 			slog.Error("Error counting enrolled attendees", "session", sessionCMID, "error", err)

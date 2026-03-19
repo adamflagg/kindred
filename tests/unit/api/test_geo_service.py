@@ -1531,7 +1531,7 @@ class TestDurationFilteringWithoutActiveOnly:
                 {
                     "normalized_mappings": mappings,
                     "geo_overrides": [],
-                    "sessions": sessions,
+                    "camp_sessions": sessions,
                     "attendees": attendees,
                 }
             )
@@ -1578,7 +1578,7 @@ class TestDurationFilteringWithoutActiveOnly:
                 {
                     "normalized_mappings": mappings,
                     "geo_overrides": [],
-                    "sessions": sessions,
+                    "camp_sessions": sessions,
                     "attendees": attendees,
                 }
             )
@@ -1645,7 +1645,7 @@ class TestDurationFilteringWithoutActiveOnly:
                 {
                     "normalized_mappings": mappings,
                     "geo_overrides": [],
-                    "sessions": sessions,
+                    "camp_sessions": sessions,
                     "attendees": [],
                 }
             )
@@ -1718,7 +1718,7 @@ class TestDurationFilteringRespectsSessionTypes:
 
         def collection_router(name: str) -> MagicMock:
             mock_coll = MagicMock()
-            if name == "sessions":
+            if name == "camp_sessions":
                 mock_coll.get_full_list.return_value = sessions
             elif name == "attendees":
 
@@ -1755,7 +1755,7 @@ class TestDurationFilteringRespectsSessionTypes:
 
         def collection_router(name: str) -> MagicMock:
             mock_coll = MagicMock()
-            if name == "sessions":
+            if name == "camp_sessions":
                 mock_coll.get_full_list.return_value = sessions
             elif name == "attendees":
 
@@ -1790,7 +1790,7 @@ class TestDurationFilteringRespectsSessionTypes:
 
         def collection_router(name: str) -> MagicMock:
             mock_coll = MagicMock()
-            if name == "sessions":
+            if name == "camp_sessions":
                 mock_coll.get_full_list.return_value = sessions
             elif name == "attendees":
 

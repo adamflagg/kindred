@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
 @router.get("/session-availability", response_model=SessionAvailabilityResponse)
 async def get_session_availability(
-    year: int = Query(..., description="Year to get availability for"),
+    year: int = Query(..., description="Year to get availability for", ge=2000, le=2100),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",

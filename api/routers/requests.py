@@ -27,6 +27,7 @@ from bunking.sync.bunk_request_processor.data.repositories.source_link_repositor
 )
 from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
 
+from ..constants.collections import ORIGINAL_BUNK_REQUESTS, PERSONS
 from ..dependencies import pb
 
 # Reverse mapping: source_field ("Share Bunk With") -> field enum ("bunk_with")
@@ -89,7 +90,7 @@ def ensure_source_link_exists(
 
     try:
         # Find the person record by cm_id
-        person_result = pb.collection("persons").get_list(
+        person_result = pb.collection(PERSONS).get_list(
             query_params={
                 "filter": f"cm_id = {requester_cm_id} && year = {year}",
                 "perPage": 1,
@@ -104,7 +105,7 @@ def ensure_source_link_exists(
         # Find the original_bunk_request
         # Note: session field on original_bunk_requests may not be populated,
         # so we match by requester + field only
-        orig_result = pb.collection("original_bunk_requests").get_list(
+        orig_result = pb.collection(ORIGINAL_BUNK_REQUESTS).get_list(
             query_params={
                 "filter": f'requester = "{person_id}" && field = "{db_field}"',
                 "perPage": 1,

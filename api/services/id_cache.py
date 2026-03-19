@@ -8,6 +8,13 @@ from __future__ import annotations
 
 import asyncio
 
+from api.constants.collections import (
+    ATTENDEES,
+    BUNK_PLANS,
+    BUNKS,
+    CAMP_SESSIONS,
+    PERSONS,
+)
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -40,7 +47,7 @@ class IDLookupCache:
             return self._person_cm_to_pb[cm_id]
 
         persons = await asyncio.to_thread(
-            self.pb.collection("persons").get_full_list,
+            self.pb.collection(PERSONS).get_full_list,
             query_params={"filter": f"cm_id = {cm_id} && year = {self.year}"},
         )
         if persons:
@@ -56,7 +63,7 @@ class IDLookupCache:
             return self._bunk_cm_to_pb[cm_id]
 
         bunks = await asyncio.to_thread(
-            self.pb.collection("bunks").get_full_list,
+            self.pb.collection(BUNKS).get_full_list,
             query_params={"filter": f"cm_id = {cm_id} && year = {self.year}"},
         )
         if bunks:
@@ -72,7 +79,7 @@ class IDLookupCache:
             return self._session_cm_to_pb[cm_id]
 
         sessions = await asyncio.to_thread(
-            self.pb.collection("camp_sessions").get_full_list,
+            self.pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={"filter": f"cm_id = {cm_id} && year = {self.year}"},
         )
         if sessions:
@@ -88,7 +95,7 @@ class IDLookupCache:
             return self._person_pb_to_cm[pb_id]
 
         try:
-            person = await asyncio.to_thread(self.pb.collection("persons").get_one, pb_id)
+            person = await asyncio.to_thread(self.pb.collection(PERSONS).get_one, pb_id)
             cm_id_val = getattr(person, "cm_id", None)
             if cm_id_val is None:
                 return None
@@ -105,7 +112,7 @@ class IDLookupCache:
             return self._bunk_pb_to_cm[pb_id]
 
         try:
-            bunk = await asyncio.to_thread(self.pb.collection("bunks").get_one, pb_id)
+            bunk = await asyncio.to_thread(self.pb.collection(BUNKS).get_one, pb_id)
             cm_id_val = getattr(bunk, "cm_id", None)
             if cm_id_val is None:
                 return None
@@ -122,7 +129,7 @@ class IDLookupCache:
             return self._session_pb_to_cm[pb_id]
 
         try:
-            session = await asyncio.to_thread(self.pb.collection("camp_sessions").get_one, pb_id)
+            session = await asyncio.to_thread(self.pb.collection(CAMP_SESSIONS).get_one, pb_id)
             cm_id_val = getattr(session, "cm_id", None)
             if cm_id_val is None:
                 return None
@@ -137,7 +144,7 @@ class IDLookupCache:
         """Pre-load person mappings for all attendees in a session."""
         try:
             attendees = await asyncio.to_thread(
-                self.pb.collection("attendees").get_full_list,
+                self.pb.collection(ATTENDEES).get_full_list,
                 query_params={"filter": f"session_cm_id = {session_cm_id} && year = {year}", "expand": "person"},
             )
             for attendee in attendees:
@@ -153,7 +160,7 @@ class IDLookupCache:
         """Pre-load bunk mappings for all bunks in a session's bunk plans."""
         try:
             bunk_plans = await asyncio.to_thread(
-                self.pb.collection("bunk_plans").get_full_list,
+                self.pb.collection(BUNK_PLANS).get_full_list,
                 query_params={"filter": f"session_cm_id = {session_cm_id} && year = {year}", "expand": "bunk"},
             )
             for plan in bunk_plans:
@@ -190,7 +197,7 @@ class IDLookupCache:
         # Look up the bunk_plan using PB IDs
         try:
             plans = await asyncio.to_thread(
-                self.pb.collection("bunk_plans").get_full_list,
+                self.pb.collection(BUNK_PLANS).get_full_list,
                 query_params={"filter": f'bunk = "{bunk_pb_id}" && session = "{session_pb_id}" && year = {year}'},
             )
             if plans:

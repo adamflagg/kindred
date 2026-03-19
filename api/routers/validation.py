@@ -29,6 +29,17 @@ from bunking.models import (
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
+from ..constants.collections import (
+    ATTENDEES,
+    BUNK_ASSIGNMENTS,
+    BUNK_ASSIGNMENTS_DRAFT,
+    BUNK_PLANS,
+    BUNK_REQUESTS,
+    BUNKS,
+    CAMP_SESSIONS,
+    PERSONS,
+)
+from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
 from ..services.session_context import build_session_context
@@ -109,7 +120,7 @@ async def validate_bunking(
 
         # Fetch bunk plans for all related sessions (expand bunk relation)
         bunk_plans_data = await asyncio.to_thread(
-            pb.collection("bunk_plans").get_full_list,
+            pb.collection(BUNK_PLANS).get_full_list,
             query_params={"filter": f"({session_relation_filter}) && year = {ctx.year}", "expand": "bunk"},
         )
 
@@ -127,7 +138,7 @@ async def validate_bunking(
         if bunk_cm_ids:
             bunk_filter = " || ".join(f"cm_id = {cm_id}" for cm_id in bunk_cm_ids)
             bunks_data = await asyncio.to_thread(
-                pb.collection("bunks").get_full_list,
+                pb.collection(BUNKS).get_full_list,
                 query_params={"filter": f"({bunk_filter}) && year = {ctx.year}"},
             )
 
@@ -149,12 +160,10 @@ async def validate_bunking(
             bunks.append(bunk)
 
         # Fetch active enrolled attendees for all related sessions
-        # Filter: is_active = 1 AND status_id = 2 (enrolled status)
-        # See CLAUDE.md "Attendee Active Status Filtering"
         attendees_data = await asyncio.to_thread(
-            pb.collection("attendees").get_full_list,
+            pb.collection(ATTENDEES).get_full_list,
             query_params={
-                "filter": f"({session_relation_filter}) && year = {ctx.year} && is_active = 1 && status_id = 2",
+                "filter": f"({session_relation_filter}) && year = {ctx.year} && {ACTIVE_ENROLLED_FILTER}",
                 "expand": "session",
             },
         )
@@ -177,7 +186,7 @@ async def validate_bunking(
             async def fetch_person_chunk(chunk_ids: list[int]) -> list[Any]:
                 person_filter = " || ".join(f"cm_id = {cm_id}" for cm_id in chunk_ids)
                 return await asyncio.to_thread(
-                    pb.collection("persons").get_full_list,
+                    pb.collection(PERSONS).get_full_list,
                     query_params={"filter": f"({person_filter}) && year = {ctx.year}"},
                 )
 
@@ -222,14 +231,14 @@ async def validate_bunking(
             # Query draft assignments for the specific scenario
             filter_str = f'scenario = "{request.scenario}" && ({session_relation_filter}) && year = {ctx.year}'
             assignments_data = await asyncio.to_thread(
-                pb.collection("bunk_assignments_draft").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
                 query_params={"filter": filter_str, "expand": "person,session,bunk"},
             )
         else:
             # Query main assignments
             filter_str = f"({session_relation_filter}) && year = {ctx.year}"
             assignments_data = await asyncio.to_thread(
-                pb.collection("bunk_assignments").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS).get_full_list,
                 query_params={"filter": filter_str, "expand": "person,session,bunk"},
             )
 
@@ -263,7 +272,7 @@ async def validate_bunking(
 
         # Fetch bunk requests for all related sessions (use pre-built filter from ctx)
         requests_data = await asyncio.to_thread(
-            pb.collection("bunk_requests").get_full_list,
+            pb.collection(BUNK_REQUESTS).get_full_list,
             query_params={"filter": f'({ctx.session_id_filter}) && year = {ctx.year} && status != "declined"'},
         )
 
@@ -289,7 +298,7 @@ async def validate_bunking(
 
         # Get all related sessions for breakdown (filter by year to avoid cross-year contamination)
         all_sessions_data = await asyncio.to_thread(
-            pb.collection("camp_sessions").get_full_list,
+            pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
                 "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
             },
@@ -336,7 +345,7 @@ async def validate_bunking(
         prior_year = ctx.year - 1
         try:
             historical_data = await asyncio.to_thread(
-                pb.collection("bunk_assignments").get_full_list,
+                pb.collection(BUNK_ASSIGNMENTS).get_full_list,
                 query_params={
                     "filter": f"year = {prior_year}",
                     "expand": "bunk,person,session",

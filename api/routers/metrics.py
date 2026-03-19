@@ -66,8 +66,8 @@ def _create_repository() -> Any:
 
 @router.get("/retention", response_model=RetentionMetricsResponse)
 async def get_retention_metrics(
-    base_year: int = Query(..., description="Base year (e.g., 2025)"),
-    compare_year: int = Query(..., description="Comparison year (e.g., 2026)"),
+    base_year: int = Query(..., description="Base year (e.g., 2025)", ge=2000, le=2100),
+    compare_year: int = Query(..., description="Comparison year (e.g., 2026)", ge=2000, le=2100),
     session_types: str | None = Query(
         None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
     ),
@@ -116,7 +116,7 @@ async def get_retention_metrics(
 
 @router.get("/registration", response_model=RegistrationMetricsResponse)
 async def get_registration_metrics(
-    year: int = Query(..., description="Year to get registration metrics for"),
+    year: int = Query(..., description="Year to get registration metrics for", ge=2000, le=2100),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
@@ -172,8 +172,8 @@ async def get_registration_metrics(
 
 @router.get("/comparison", response_model=ComparisonMetricsResponse)
 async def get_comparison_metrics(
-    year_a: int = Query(..., description="First year to compare"),
-    year_b: int = Query(..., description="Second year to compare"),
+    year_a: int = Query(..., description="First year to compare", ge=2000, le=2100),
+    year_b: int = Query(..., description="Second year to compare", ge=2000, le=2100),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
@@ -262,7 +262,7 @@ async def get_historical_trends(
 
 @router.get("/retention-trends", response_model=RetentionTrendsResponse)
 async def get_retention_trends(
-    current_year: int = Query(..., description="Current year (e.g., 2026)"),
+    current_year: int = Query(..., description="Current year (e.g., 2026)", ge=2000, le=2100),
     num_years: int = Query(3, description="Number of year-to-year transitions (default: 3)"),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
@@ -322,7 +322,7 @@ async def get_retention_trends(
 
 @router.get("/waitlist", response_model=WaitlistMetricsResponse)
 async def get_waitlist_metrics(
-    year: int = Query(..., description="Year to analyze"),
+    year: int = Query(..., description="Year to analyze", ge=2000, le=2100),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
@@ -371,7 +371,7 @@ async def get_waitlist_metrics(
 
 @router.get("/cancellations", response_model=CancellationMetricsResponse)
 async def get_cancellation_metrics(
-    year: int = Query(..., description="Year to analyze"),
+    year: int = Query(..., description="Year to analyze", ge=2000, le=2100),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
@@ -419,7 +419,7 @@ async def get_cancellation_metrics(
 
 @router.get("/drilldown", response_model=list[DrilldownAttendee])
 async def get_drilldown_attendees(
-    year: int = Query(..., description="Year to get attendees for"),
+    year: int = Query(..., description="Year to get attendees for", ge=2000, le=2100),
     breakdown_type: str = Query(
         ...,
         description="Type of breakdown: session, gender, grade, school, years_at_camp, status, "
@@ -445,6 +445,8 @@ async def get_drilldown_attendees(
         None,
         description="Compare year for retention drilldowns. When set, is_returning reflects "
         "whether camper returned to the compare year instead of years_at_camp > 1.",
+        ge=2000,
+        le=2100,
     ),
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
@@ -483,7 +485,7 @@ async def get_drilldown_attendees(
 
 @router.get("/velocity", response_model=VelocityResponse)
 async def get_velocity(
-    year: int = Query(..., description="Year to analyze"),
+    year: int = Query(..., description="Year to analyze", ge=2000, le=2100),
     compare_years: str | None = Query(None, description="Comma-separated prior years to overlay"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
@@ -534,7 +536,7 @@ async def get_velocity(
 
 @router.get("/forecast/week-options")
 async def get_forecast_week_options(
-    year: int = Query(..., description="Year to get week options for"),
+    year: int = Query(..., description="Year to get week options for", ge=2000, le=2100),
     user: AuthUser = Depends(get_current_user),
 ) -> list[WeekOption]:
     """Return week options from Week 0 (priority reg) through today."""
@@ -545,7 +547,7 @@ async def get_forecast_week_options(
 
 @router.get("/forecast", response_model=ForecastResponse)
 async def get_forecast(
-    year: int = Query(..., description="Year to forecast"),
+    year: int = Query(..., description="Year to forecast", ge=2000, le=2100),
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     day_offset: int | None = Query(None, ge=0, description="Days since registration anchor (week-relative mode)"),
@@ -589,7 +591,7 @@ async def get_forecast(
 
 @router.get("/registration/day1", response_model=Day1Response)
 async def get_day1(
-    year: int = Query(description="Camp year"),
+    year: int = Query(description="Camp year", ge=2000, le=2100),
     user: AuthUser = Depends(get_current_user),
 ) -> Day1Response:
     """Get Day 1 first-24h registration counts by tier."""

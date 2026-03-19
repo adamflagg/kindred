@@ -92,6 +92,30 @@ def _get_str_attr(obj: Any, attr: str) -> str | None:
     return val if isinstance(val, str) and val else None
 
 
+def _group_enrolled_by_person(
+    enrolled_attendees: list[Any],
+    effective_types: tuple[str, ...] | list[str],
+) -> dict[int, list[Any]]:
+    """Group enrolled attendees by person_id, filtering by session type.
+
+    Args:
+        enrolled_attendees: List of attendee records with session expand.
+        effective_types: Session types to include (e.g., ("main", "embedded", "ag", "quest")).
+
+    Returns:
+        Dictionary mapping person_id (int) to list of matching attendee records.
+    """
+    groups: dict[int, list[Any]] = {}
+    for att in enrolled_attendees:
+        pid = getattr(att, "person_id", None)
+        session_info = get_session_from_expand(att)
+        if pid is not None and session_info:
+            session_type = getattr(session_info, "session_type", None)
+            if session_type in effective_types:
+                groups.setdefault(int(pid), []).append(att)
+    return groups
+
+
 class DrilldownService:
     """Business logic for drilldown - fully testable with mocked repository."""
 
@@ -820,14 +844,7 @@ class DrilldownService:
                     effective_date_lookup[pid_int] = eff_date
 
         # Build enrolled groups for enrolled_sessions population
-        enrolled_attendee_groups: dict[int, list[Any]] = {}
-        for att in enrolled_attendees:
-            pid = getattr(att, "person_id", None)
-            session_info = get_session_from_expand(att)
-            if pid is not None and session_info:
-                session_type = getattr(session_info, "session_type", None)
-                if session_type in effective_types:
-                    enrolled_attendee_groups.setdefault(int(pid), []).append(att)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
 
         # Deduplicate by person, build DrilldownAttendee from history + persons
         seen_persons: set[int] = set()
@@ -965,17 +982,8 @@ class DrilldownService:
         )
 
         # Build enrolled person groups: person_id -> list of enrolled attendee records
-        enrolled_person_ids: set[int] = set()
-        enrolled_attendee_groups: dict[int, list[Any]] = {}
-        for att in enrolled_attendees:
-            enrolled_pid = getattr(att, "person_id", None)
-            session_info = get_session_from_expand(att)
-            if enrolled_pid is not None and session_info:
-                session_type = getattr(session_info, "session_type", None)
-                if session_type in effective_types:
-                    pid_int = int(enrolled_pid)
-                    enrolled_person_ids.add(pid_int)
-                    enrolled_attendee_groups.setdefault(pid_int, []).append(att)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
+        enrolled_person_ids = set(enrolled_attendee_groups.keys())
 
         # Partition and deduplicate by person
         seen_persons: set[int] = set()
@@ -1213,14 +1221,7 @@ class DrilldownService:
                 deduped.append(att)
 
         # Build enrolled groups from enrolled attendees
-        enrolled_attendee_groups: dict[int, list[Any]] = {}
-        for att in enrolled_attendees:
-            enrolled_pid = getattr(att, "person_id", None)
-            session_info = get_session_from_expand(att)
-            if enrolled_pid is not None and session_info:
-                session_type = getattr(session_info, "session_type", None)
-                if session_type in effective_types:
-                    enrolled_attendee_groups.setdefault(int(enrolled_pid), []).append(att)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
 
         return self._build_response(
             deduped,
@@ -1281,17 +1282,8 @@ class DrilldownService:
         )
 
         # Build enrolled person set
-        enrolled_person_ids: set[int] = set()
-        enrolled_attendee_groups: dict[int, list[Any]] = {}
-        for att in enrolled_attendees:
-            pid = getattr(att, "person_id", None)
-            session_info = get_session_from_expand(att)
-            if pid is not None and session_info:
-                session_type = getattr(session_info, "session_type", None)
-                if session_type in effective_types:
-                    pid_int = int(pid)
-                    enrolled_person_ids.add(pid_int)
-                    enrolled_attendee_groups.setdefault(pid_int, []).append(att)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
+        enrolled_person_ids = set(enrolled_attendee_groups.keys())
 
         # Build was_enrolled / was_waitlisted person sets from status history
         enrolled_to_cancelled, waitlisted_to_cancelled = await asyncio.gather(
