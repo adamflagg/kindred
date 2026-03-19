@@ -227,9 +227,6 @@ describe('FeedbackModal', () => {
     // Submit should be disabled because auth is still loading
     const submitButton = screen.getByRole('button', { name: /submit/i })
     expect(submitButton).toBeDisabled()
-
-    // Restore default
-    mockAuthState.isLoading = false
   })
 
   it('preserves text on submission error', async () => {
