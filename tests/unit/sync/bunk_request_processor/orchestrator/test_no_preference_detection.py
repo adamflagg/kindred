@@ -182,11 +182,11 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "none",  # Should be skipped
-                "do_not_share_bunk_with": "",
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "none",  # Should be skipped
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 
@@ -214,27 +214,27 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "John Smith",  # Valid - should create ParseRequest
-                "do_not_share_bunk_with": "n/a",  # Should be skipped
-                "bunking_notes_notes": "no preference",  # Should be skipped
-                "internal_bunk_notes": "Keep with Sarah",  # Valid - should create ParseRequest
-                "ret_parent_socialize_with_best": "",  # Empty - naturally skipped
+                "bunk_with": "John Smith",  # Valid - should create ParseRequest
+                "not_bunk_with": "n/a",  # Should be skipped
+                "bunking_notes": "no preference",  # Should be skipped
+                "internal_notes": "Keep with Sarah",  # Valid - should create ParseRequest
+                "socialize_with": "",  # Empty - naturally skipped
             }
         ]
 
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
-        # Should have exactly 2 ParseRequests (share_bunk_with and internal_bunk_notes)
+        # Should have exactly 2 ParseRequests (bunk_with and internal_notes)
         assert len(parse_requests) == 2
 
-        # Verify the correct fields were included
+        # Verify the correct fields were included (V2 field names)
         field_names = {pr.field_name for pr in parse_requests}
-        assert "Share Bunk With" in field_names
-        assert "Internal Bunk Notes" in field_names
+        assert "bunk_with" in field_names
+        assert "internal_notes" in field_names
 
         # Verify skipped fields are NOT present
-        assert "Do Not Share Bunk With" not in field_names
-        assert "BunkingNotes Notes" not in field_names
+        assert "not_bunk_with" not in field_names
+        assert "bunking_notes" not in field_names
 
     @pytest.mark.asyncio
     async def test_stat_tracking_for_skipped_no_preference(self):
@@ -254,11 +254,11 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "none",
-                "do_not_share_bunk_with": "n/a",
-                "bunking_notes_notes": "no preference",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "none",
+                "not_bunk_with": "n/a",
+                "bunking_notes": "no preference",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 
@@ -370,11 +370,11 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "N/A; their own grade/younger",
-                "do_not_share_bunk_with": "",
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "N/A; their own grade/younger",
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 
@@ -399,11 +399,11 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "N/A- same age or older",
-                "do_not_share_bunk_with": "",
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "N/A- same age or older",
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 
@@ -428,11 +428,11 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "N/A -   ",
-                "do_not_share_bunk_with": "",
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "N/A -   ",
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 
@@ -457,11 +457,11 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "Sarah Chen",
-                "do_not_share_bunk_with": "",
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "Sarah Chen",
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 
@@ -486,11 +486,11 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "share_bunk_with": "N/A; their own grade",
-                "do_not_share_bunk_with": "N/A- same age",
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "",
-                "ret_parent_socialize_with_best": "",
+                "bunk_with": "N/A; their own grade",
+                "not_bunk_with": "N/A- same age",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
             }
         ]
 

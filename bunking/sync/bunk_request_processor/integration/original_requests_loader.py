@@ -31,7 +31,6 @@ from ..data.repositories.session_repository import SessionRepository
 from ..shared.constants import (
     AI_PROCESSING_FIELDS,
     ALL_PROCESSING_FIELDS,
-    FIELD_TO_SOURCE_FIELD,
 )
 
 logger = get_logger(__name__)
@@ -59,8 +58,8 @@ class OriginalRequest:
 
     @property
     def source_field(self) -> str:
-        """Get the source field name for the orchestrator"""
-        return FIELD_TO_SOURCE_FIELD.get(self.field, self.field)
+        """Source field name — same as self.field (V2 internal name)."""
+        return self.field
 
     @property
     def needs_processing(self) -> bool:
@@ -85,22 +84,11 @@ class OriginalRequest:
             "preferred_name": self.preferred_name,
             "Grade": self.grade or 0,
             "year": self.year,
-            self._get_field_key(): self.content,
+            self.field: self.content,
             # Additional metadata
             "_original_request_id": self.id,
             "_field": self.field,
         }
-
-    def _get_field_key(self) -> str:
-        """Get the dict key for the content based on field type"""
-        field_keys = {
-            "bunk_with": "share_bunk_with",
-            "not_bunk_with": "do_not_share_bunk_with",
-            "bunking_notes": "bunking_notes_notes",
-            "internal_notes": "internal_bunk_notes",
-            "socialize_with": "ret_parent_socialize_with_best",
-        }
-        return field_keys.get(self.field, self.field)
 
 
 class OriginalRequestsLoader:
@@ -494,8 +482,7 @@ class OriginalRequestsLoader:
 
             # Add each field's content
             for req in person_requests:
-                field_key = req._get_field_key()
-                row[field_key] = req.content
+                row[req.field] = req.content
                 row["_original_request_ids"][req.field] = req.id
 
             result.append(row)

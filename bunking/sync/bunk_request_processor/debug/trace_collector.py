@@ -10,7 +10,6 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
-from ..shared.constants import FIELD_TO_SOURCE_FIELD
 from .trace_models import (
     SCHEMA_VERSION,
     HistoricalVerificationTrace,
@@ -27,14 +26,10 @@ from .trace_models import (
 
 logger = get_logger(__name__)
 
-# Inverted mapping: canonical SourceField strings -> internal field names.
-# Built from the existing FIELD_TO_SOURCE_FIELD to avoid a second source of truth.
-_CANONICAL_TO_INTERNAL: dict[str, str] = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
-
 
 def _canonical_to_internal_field(source_field: str) -> str:
-    """Convert canonical SourceField string to internal field name for debug data."""
-    return _CANONICAL_TO_INTERNAL.get(source_field, source_field)
+    """Return source field name for debug data (V2: identity, no mapping needed)."""
+    return source_field
 
 
 class TraceCollector:

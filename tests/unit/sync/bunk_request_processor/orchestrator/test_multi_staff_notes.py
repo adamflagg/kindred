@@ -134,7 +134,7 @@ class TestPrepareParseRequestsStaffNotes:
                 "requester_cm_id": 12345,
                 "first_name": "Test",
                 "last_name": "Camper",
-                "bunking_notes_notes": (
+                "bunking_notes": (
                     "Bunk with John Smith JORDAN RIVERS (May 1 2025 1:00PM)\n"
                     "Also wants Sarah Jones MORGAN CHEN (May 2 2025 2:00PM)"
                 ),
@@ -144,7 +144,7 @@ class TestPrepareParseRequestsStaffNotes:
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
         # Find the bunking_notes parse request
-        bunking_reqs = [r for r in parse_requests if "BunkingNotes" in r.field_name]
+        bunking_reqs = [r for r in parse_requests if r.field_name == "bunking_notes"]
 
         assert len(bunking_reqs) == 1
         # Content should have staff signatures removed and be joined
@@ -165,14 +165,14 @@ class TestPrepareParseRequestsStaffNotes:
                 "requester_cm_id": 12345,
                 "first_name": "Test",
                 "last_name": "Camper",
-                "internal_bunk_notes": "Needs bottom bunk. Must be with twin.",
+                "internal_notes": "Needs bottom bunk. Must be with twin.",
             }
         ]
 
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
         # Find the internal notes parse request
-        internal_reqs = [r for r in parse_requests if "Internal" in r.field_name]
+        internal_reqs = [r for r in parse_requests if r.field_name == "internal_notes"]
 
         assert len(internal_reqs) == 1
         # Content should be unchanged (no staff patterns to extract)
