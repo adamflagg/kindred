@@ -731,11 +731,10 @@ export const AppLayout = () => {
                 <YearSelector />
               </div>
               {activeProgram === 'summer' &&
-                // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves; defensive guard
-                (syncStatus?.bunk_assignments?.end_time ?? syncStatus?.bunk_requests?.end_time) && (
+                syncStatus &&
+                (syncStatus.bunk_assignments.end_time ?? syncStatus.bunk_requests.end_time) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves; defensive guard */}
-                    {syncStatus?.bunk_assignments?.end_time && (
+                    {syncStatus.bunk_assignments.end_time && (
                       <span
                         className="flex items-center gap-1.5"
                         title="Last bunk assignments sync"
@@ -747,8 +746,7 @@ export const AppLayout = () => {
                         })}
                       </span>
                     )}
-                    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- syncStatus may be undefined before query resolves; defensive guard */}
-                    {syncStatus?.bunk_requests?.end_time && (
+                    {syncStatus.bunk_requests.end_time && (
                       <span className="flex items-center gap-1.5" title="Last bunk requests sync">
                         <Clock className="h-3 w-3" />
                         Requests{' '}

@@ -19,7 +19,6 @@ interface SessionRow {
   cm_id: number
   name: string
   session_type: string
-  configId: string | undefined
   config: SessionConfig
 }
 
@@ -86,7 +85,6 @@ export function GradeEligibilityConfig() {
           cm_id: cmId,
           name,
           session_type: sType,
-          configId: existing?.id,
           config: val
             ? {
                 min_grade: val.min_grade ?? null,
@@ -142,14 +140,15 @@ export function GradeEligibilityConfig() {
     setIsSaving(true)
     try {
       for (const row of rows) {
+        const existingConfig = configRecords?.find((r) => r.config_key === String(row.cm_id))
         const payload = {
           category: 'session_availability',
           subcategory: String(currentYear),
           config_key: String(row.cm_id),
           value: row.config,
         }
-        if (row.configId) {
-          await pb.collection('config').update(row.configId, payload)
+        if (existingConfig?.id) {
+          await pb.collection('config').update(existingConfig.id, payload)
         } else {
           await pb.collection('config').create(payload)
         }
