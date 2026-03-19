@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 
 /**
@@ -15,7 +16,7 @@ export function useCancelQueuedSync() {
       })
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
       toast.success('Queued sync canceled', { duration: 3000 })
     },
     onError: (error) => {

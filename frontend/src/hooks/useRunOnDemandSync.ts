@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 import { SYNC_TYPE_NAMES } from './useRunIndividualSync'
 
@@ -60,7 +61,7 @@ export function useRunOnDemandSync() {
       }
 
       // Invalidate sync status to show it's running
-      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
     onError: (error, { syncType }) => {
       const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
