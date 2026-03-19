@@ -91,48 +91,19 @@ describe('Modal', () => {
   })
 
   describe('size variants', () => {
-    it('applies sm size class', () => {
+    it.each([
+      ['sm', 'max-w-md'],
+      ['md', 'max-w-lg'],
+      ['lg', 'max-w-2xl'],
+      ['xl', 'max-w-4xl'],
+    ] as const)('applies %s size class', (size, expectedClass) => {
       render(
-        <Modal isOpen={true} onClose={() => {}} size="sm">
-          <p>Small modal</p>
+        <Modal isOpen={true} onClose={() => {}} size={size === 'md' ? undefined : size}>
+          <p>Content</p>
         </Modal>
       )
-
       const modalContent = screen.getByTestId('modal-content')
-      expect(modalContent).toHaveClass('max-w-md')
-    })
-
-    it('applies md size class (default)', () => {
-      render(
-        <Modal isOpen={true} onClose={() => {}}>
-          <p>Medium modal</p>
-        </Modal>
-      )
-
-      const modalContent = screen.getByTestId('modal-content')
-      expect(modalContent).toHaveClass('max-w-lg')
-    })
-
-    it('applies lg size class', () => {
-      render(
-        <Modal isOpen={true} onClose={() => {}} size="lg">
-          <p>Large modal</p>
-        </Modal>
-      )
-
-      const modalContent = screen.getByTestId('modal-content')
-      expect(modalContent).toHaveClass('max-w-2xl')
-    })
-
-    it('applies xl size class', () => {
-      render(
-        <Modal isOpen={true} onClose={() => {}} size="xl">
-          <p>Extra large modal</p>
-        </Modal>
-      )
-
-      const modalContent = screen.getByTestId('modal-content')
-      expect(modalContent).toHaveClass('max-w-4xl')
+      expect(modalContent).toHaveClass(expectedClass)
     })
   })
 
