@@ -16,7 +16,7 @@ export interface DailyDataPoint {
   gross_enrolled_girls: number | null
   enrolled_boys: number | null
   enrolled_girls: number | null
-  data_source: 'snapshot' | 'reconstructed'
+  data_source: 'snapshot' | 'reconstructed' | 'mixed'
 }
 
 export interface WeeklyDataPoint {

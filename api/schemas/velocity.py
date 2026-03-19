@@ -21,7 +21,7 @@ class DailyDataPoint(BaseModel):
     gross_enrolled_girls: int | None = Field(None)
     enrolled_boys: int | None = Field(None)
     enrolled_girls: int | None = Field(None)
-    data_source: str = Field(description="'snapshot' or 'reconstructed'")
+    data_source: str = Field(description="'snapshot', 'reconstructed', or 'mixed'")
 
 
 class WeeklyDataPoint(BaseModel):

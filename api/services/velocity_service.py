@@ -960,6 +960,7 @@ class VelocityService:
                         total_gross += lk.gross_enrolled
                         total_enrolled += lk.enrolled
                         total_cancelled += lk.cancelled
+                        sources.add(lk.data_source)
 
             daily_new = total_gross - prev_gross
             daily_cancelled = total_cancelled - prev_cancelled
