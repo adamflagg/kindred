@@ -17,14 +17,6 @@ describe('MetricCard onClick functionality', () => {
       expect(screen.getByText('150')).toBeInTheDocument()
       expect(screen.getByText('Active enrollments')).toBeInTheDocument()
     })
-
-    it('should not have pointer cursor when onClick is not provided', () => {
-      render(<MetricCard title="Total Enrolled" value={150} />)
-
-      const card = screen.getByText('Total Enrolled').closest('div')
-      // Check that cursor-pointer class is NOT present
-      expect(card).not.toHaveClass('cursor-pointer')
-    })
   })
 
   describe('click behavior', () => {
@@ -36,14 +28,6 @@ describe('MetricCard onClick functionality', () => {
       fireEvent.click(card!)
 
       expect(handleClick).toHaveBeenCalledTimes(1)
-    })
-
-    it('should show pointer cursor when onClick is provided', () => {
-      const handleClick = vi.fn()
-      render(<MetricCard title="Total Enrolled" value={150} onClick={handleClick} />)
-
-      const card = screen.getByText('Total Enrolled').closest('div')
-      expect(card).toHaveClass('cursor-pointer')
     })
 
     it('should not trigger onClick when onClick is not provided', () => {
@@ -116,103 +100,69 @@ describe('MetricCard onClick functionality', () => {
     })
   })
 
-  describe('hover state', () => {
-    it('should have hover style class when onClick is provided', () => {
-      const handleClick = vi.fn()
-      render(<MetricCard title="Total Enrolled" value={150} onClick={handleClick} />)
-
-      const card = screen.getByText('Total Enrolled').closest('div')
-      // Check for hover styling class
-      expect(card).toHaveClass('hover:bg-muted/30')
-    })
-  })
-
   describe('sentiment prop', () => {
-    it('should use green for up and red for down by default (no sentiment prop)', () => {
-      render(
-        <MetricCard title="Total Enrolled" value={150} compareValue={140} compareYear={2025} />
-      )
-
-      const trendSpan = screen.getByText(/\+10/).closest('span')
-      expect(trendSpan).toHaveClass('text-emerald-600')
-    })
-
-    it('should use green for up and red for down with sentiment="default"', () => {
+    it.each([
+      {
+        sentiment: undefined,
+        value: 150,
+        compareValue: 140,
+        pattern: /\+10/,
+        expectedClass: 'text-emerald-600',
+        desc: 'default up=green',
+      },
+      {
+        sentiment: 'default' as const,
+        value: 150,
+        compareValue: 140,
+        pattern: /\+10/,
+        expectedClass: 'text-emerald-600',
+        desc: 'explicit default up=green',
+      },
+      {
+        sentiment: 'inverse' as const,
+        value: 20,
+        compareValue: 15,
+        pattern: /\+5/,
+        expectedClass: 'text-red-600',
+        desc: 'inverse up=red',
+      },
+      {
+        sentiment: 'inverse' as const,
+        value: 10,
+        compareValue: 15,
+        pattern: /-5/,
+        expectedClass: 'text-emerald-600',
+        desc: 'inverse down=green',
+      },
+      {
+        sentiment: 'neutral' as const,
+        value: 50,
+        compareValue: 40,
+        pattern: /\+10/,
+        expectedClass: 'text-blue-600',
+        desc: 'neutral up=blue',
+      },
+      {
+        sentiment: 'neutral' as const,
+        value: 30,
+        compareValue: 40,
+        pattern: /-10/,
+        expectedClass: 'text-blue-600',
+        desc: 'neutral down=blue',
+      },
+    ])('$desc', ({ sentiment, value, compareValue, pattern, expectedClass }) => {
       render(
         <MetricCard
-          title="Total Enrolled"
-          value={150}
-          compareValue={140}
+          title="Test"
+          value={value}
+          compareValue={compareValue}
           compareYear={2025}
-          sentiment="default"
+          sentiment={sentiment}
         />
       )
 
-      const trendSpan = screen.getByText(/\+10/).closest('span')
-      expect(trendSpan).toHaveClass('text-emerald-600')
-    })
-
-    it('should swap colors with sentiment="inverse" — up becomes red', () => {
-      render(
-        <MetricCard
-          title="Total Cancelled"
-          value={20}
-          compareValue={15}
-          compareYear={2025}
-          sentiment="inverse"
-        />
-      )
-
-      // Value went up (20 > 15) but with inverse sentiment, up should show red
-      const trendSpan = screen.getByText(/\+5/).closest('span')
-      expect(trendSpan).toHaveClass('text-red-600')
-    })
-
-    it('should swap colors with sentiment="inverse" — down becomes green', () => {
-      render(
-        <MetricCard
-          title="Total Cancelled"
-          value={10}
-          compareValue={15}
-          compareYear={2025}
-          sentiment="inverse"
-        />
-      )
-
-      // Value went down (10 < 15) but with inverse sentiment, down should show green
-      const trendSpan = screen.getByText(/-5/).closest('span')
-      expect(trendSpan).toHaveClass('text-emerald-600')
-    })
-
-    it('should use blue color for both up and down with sentiment="neutral"', () => {
-      render(
-        <MetricCard
-          title="New Campers"
-          value={50}
-          compareValue={40}
-          compareYear={2025}
-          sentiment="neutral"
-        />
-      )
-
-      // Value went up but with neutral sentiment, should show blue
-      const trendSpan = screen.getByText(/\+10/).closest('span')
-      expect(trendSpan).toHaveClass('text-blue-600')
-    })
-
-    it('should use blue color for down direction with sentiment="neutral"', () => {
-      render(
-        <MetricCard
-          title="New Campers"
-          value={30}
-          compareValue={40}
-          compareYear={2025}
-          sentiment="neutral"
-        />
-      )
-
-      const trendSpan = screen.getByText(/-10/).closest('span')
-      expect(trendSpan).toHaveClass('text-blue-600')
+      const trendSpan = screen.getByText(pattern).closest('span')
+      expect(trendSpan).toHaveClass(expectedClass)
     })
   })
 

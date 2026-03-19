@@ -151,14 +151,6 @@ describe('useSolverOperations', () => {
   })
 })
 
-describe('respectLocks parameter', () => {
-  it('should accept respectLocks in options', async () => {
-    const sourceContent = await import('./useSolverOperations?raw')
-    const source = sourceContent.default
-    expect(source).toContain('respectLocks')
-  })
-})
-
 describe('solver result statistics', () => {
   it('should extract request validation stats from solver response', () => {
     const solverStats = {

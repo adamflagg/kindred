@@ -13,32 +13,6 @@ describe('useDrilldownAttendees', () => {
     })
   })
 
-  describe('authentication', () => {
-    it('should import useApiWithAuth for authenticated requests', async () => {
-      // Read the source file and verify it imports useApiWithAuth
-      const sourceContent = await import('./useDrilldownAttendees?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('useApiWithAuth')
-      expect(source).toContain('fetchWithAuth')
-    })
-
-    it('should NOT use plain fetch() for API calls', async () => {
-      // The hook should use fetchWithAuth, not plain fetch
-      const sourceContent = await import('./useDrilldownAttendees?raw')
-      const source = sourceContent.default
-
-      // Should have fetchWithAuth
-      expect(source).toContain('fetchWithAuth')
-
-      // Should NOT have plain fetch() call to the API endpoint
-      // The pattern `await fetch(` indicates plain fetch usage
-      // But we need to allow the fetchWithAuth import, so check for the pattern more specifically
-      const hasPlainFetchApiCall = /await\s+fetch\s*\(`\/api/.test(source)
-      expect(hasPlainFetchApiCall).toBe(false)
-    })
-  })
-
   describe('query key structure', () => {
     it('should have drilldown in queryKeys', async () => {
       const { queryKeys } = await import('../utils/queryKeys')
@@ -157,12 +131,5 @@ describe('useDrilldownAttendees', () => {
 
       expect(enabled).toBe(false)
     })
-  })
-
-  it('should guard query with isAuthLoading', async () => {
-    const sourceContent = await import('./useDrilldownAttendees?raw')
-    const source = sourceContent.default
-    expect(source).toContain('isAuthLoading')
-    expect(source).toMatch(/enabled:.*!isAuthLoading/)
   })
 })

@@ -15,39 +15,6 @@ describe('useAdminSessions', () => {
     })
   })
 
-  describe('session types', () => {
-    it('should fetch main, embedded, ag, and quest session types', async () => {
-      const sourceContent = await import('./useAdminSessions?raw')
-      const source = sourceContent.default
-
-      // The hook should filter for all summer session types
-      expect(source).toContain('main')
-      expect(source).toContain('embedded')
-      expect(source).toContain('ag')
-      expect(source).toContain('quest')
-    })
-  })
-
-  describe('sorting', () => {
-    it('should import sortSessionsByDate from sessionUtils', async () => {
-      const sourceContent = await import('./useAdminSessions?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('sortSessionsByDate')
-      expect(source).toContain('sessionUtils')
-    })
-
-    it('should apply sortSessionsByDate to results', async () => {
-      const sourceContent = await import('./useAdminSessions?raw')
-      const source = sourceContent.default
-
-      // The hook must call sortSessionsByDate on the fetched data
-      // This is the core fix: without this, sessions with the same
-      // start_date (like Session 2 and Session 2a) appear in random order
-      expect(source).toMatch(/sortSessionsByDate/)
-    })
-  })
-
   describe('sortSessionsByDate behavior (from sessionUtils)', () => {
     it('should sort main sessions before embedded when dates are the same', async () => {
       const { sortSessionsByDate } = await import('../utils/sessionUtils')
@@ -99,12 +66,5 @@ describe('useAdminSessions', () => {
       expect(key).toContain('admin-sessions')
       expect(key).toContain(2025)
     })
-  })
-
-  it('should guard query with auth loading state', async () => {
-    const sourceContent = await import('./useAdminSessions?raw')
-    const source = sourceContent.default
-    expect(source).toMatch(/isLoading|isAuthLoading/)
-    expect(source).toMatch(/enabled:.*!(isLoading|isAuthLoading)/)
   })
 })

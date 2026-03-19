@@ -122,15 +122,24 @@ class TestReturningStatusBreakdown:
     """Tests for filtering by returning_status (new/returning)."""
 
     @pytest.mark.asyncio
-    async def test_filter_by_returning_status_new(
+    @pytest.mark.parametrize(
+        ("breakdown_value", "expected_person_ids"),
+        [
+            ("new", {101, 102}),
+            ("returning", {103, 104, 105}),
+        ],
+    )
+    async def test_filter_by_returning_status(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
+        breakdown_value: str,
+        expected_person_ids: set[int],
     ) -> None:
-        """Filter for new campers (years_at_camp == 1)."""
+        """Filter by returning_status returns correct campers."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees.return_value = sample_attendees
@@ -138,38 +147,11 @@ class TestReturningStatusBreakdown:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="returning_status",
-            breakdown_value="new",
+            breakdown_value=breakdown_value,
         )
 
-        # Should return Emma (101) and Liam (102) who have years_at_camp = 1
-        assert len(result) == 2
         person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102}
-
-    @pytest.mark.asyncio
-    async def test_filter_by_returning_status_returning(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        sample_persons: dict[int, Mock],
-        sample_attendees: list[Mock],
-    ) -> None:
-        """Filter for returning campers (years_at_camp > 1)."""
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = sample_persons
-        mock_repository.fetch_attendees.return_value = sample_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="returning_status",
-            breakdown_value="returning",
-        )
-
-        # Should return Olivia (103), Noah (104), Ava (105) who have years_at_camp > 1
-        assert len(result) == 3
-        person_ids = {r.person_id for r in result}
-        assert person_ids == {103, 104, 105}
+        assert person_ids == expected_person_ids
 
 
 # ============================================================================
@@ -181,15 +163,26 @@ class TestSessionLengthBreakdown:
     """Tests for filtering by session_length."""
 
     @pytest.mark.asyncio
-    async def test_filter_by_session_length_1_week(
+    @pytest.mark.parametrize(
+        ("breakdown_value", "expected_person_ids"),
+        [
+            ("1-week", {101}),
+            ("2-week", {102}),
+            ("3-week", {103, 105}),
+            ("4-week+", {104}),
+        ],
+    )
+    async def test_filter_by_session_length(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
+        breakdown_value: str,
+        expected_person_ids: set[int],
     ) -> None:
-        """Filter for 1-week sessions."""
+        """Filter by session_length returns correct campers."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees.return_value = sample_attendees
@@ -197,85 +190,11 @@ class TestSessionLengthBreakdown:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="session_length",
-            breakdown_value="1-week",
+            breakdown_value=breakdown_value,
         )
 
-        # Should return Emma (101) who is in the 1-week session (Taste of Camp)
-        assert len(result) == 1
-        assert result[0].person_id == 101
-
-    @pytest.mark.asyncio
-    async def test_filter_by_session_length_2_week(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        sample_persons: dict[int, Mock],
-        sample_attendees: list[Mock],
-    ) -> None:
-        """Filter for 2-week sessions."""
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = sample_persons
-        mock_repository.fetch_attendees.return_value = sample_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="session_length",
-            breakdown_value="2-week",
-        )
-
-        # Should return Liam (102) who is in the 2-week session (Session 2a)
-        assert len(result) == 1
-        assert result[0].person_id == 102
-
-    @pytest.mark.asyncio
-    async def test_filter_by_session_length_3_week(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        sample_persons: dict[int, Mock],
-        sample_attendees: list[Mock],
-    ) -> None:
-        """Filter for 3-week sessions."""
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = sample_persons
-        mock_repository.fetch_attendees.return_value = sample_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="session_length",
-            breakdown_value="3-week",
-        )
-
-        # Should return Olivia (103) and Ava (105) who are in the 3-week session
-        assert len(result) == 2
         person_ids = {r.person_id for r in result}
-        assert person_ids == {103, 105}
-
-    @pytest.mark.asyncio
-    async def test_filter_by_session_length_4_week_plus(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        sample_persons: dict[int, Mock],
-        sample_attendees: list[Mock],
-    ) -> None:
-        """Filter for 4-week+ sessions."""
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = sample_persons
-        mock_repository.fetch_attendees.return_value = sample_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="session_length",
-            breakdown_value="4-week+",
-        )
-
-        # Should return Noah (104) who is in the 4-week+ session
-        assert len(result) == 1
-        assert result[0].person_id == 104
+        assert person_ids == expected_person_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_session_length_resolves_ag_to_parent(
@@ -583,18 +502,24 @@ class TestCityBreakdown:
         }
 
     @pytest.mark.asyncio
-    async def test_filter_by_city_uses_normalized_field(
+    @pytest.mark.parametrize(
+        ("breakdown_value", "expected_person_ids"),
+        [
+            ("San Francisco", {101, 102}),
+            ("Oakland", {103, 105}),
+            ("Los Angeles", set()),
+        ],
+    )
+    async def test_filter_by_city(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         persons_with_cities: dict[int, Mock],
+        breakdown_value: str,
+        expected_person_ids: set[int],
     ) -> None:
-        """Filter for campers from a specific city using person.normalized_city.
-
-        Raw values like "san francisco" and "SF, CA" both have
-        normalized_city="San Francisco" on the person record.
-        """
+        """Filter by city using normalized_city returns correct campers."""
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
             create_mock_attendee(102, sample_sessions[1002], 2026),
@@ -609,73 +534,11 @@ class TestCityBreakdown:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="city",
-            breakdown_value="San Francisco",
+            breakdown_value=breakdown_value,
         )
 
-        # Should return Emma (101) and Liam (102) - both normalized to "San Francisco"
-        assert len(result) == 2
         person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102}
-
-    @pytest.mark.asyncio
-    async def test_filter_by_city_oakland_with_typo_normalization(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        persons_with_cities: dict[int, Mock],
-    ) -> None:
-        """Filter for Oakland includes campers with typos normalized to Oakland.
-
-        Ava (105) has raw address "Oaklnad" (typo) but normalized_city="Oakland",
-        so she should appear in Oakland drilldown results.
-        """
-        attendees = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-            create_mock_attendee(102, sample_sessions[1002], 2026),
-            create_mock_attendee(103, sample_sessions[1003], 2026),
-            create_mock_attendee(104, sample_sessions[1004], 2026),
-            create_mock_attendee(105, sample_sessions[1003], 2026),
-        ]
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_cities
-        mock_repository.fetch_attendees.return_value = attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="city",
-            breakdown_value="Oakland",
-        )
-
-        # Should return Olivia (103) and Ava (105) - both normalized to "Oakland"
-        assert len(result) == 2
-        person_ids = {r.person_id for r in result}
-        assert person_ids == {103, 105}
-
-    @pytest.mark.asyncio
-    async def test_filter_by_city_no_match(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        persons_with_cities: dict[int, Mock],
-    ) -> None:
-        """Filter for city with no campers returns empty list."""
-        attendees = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-        ]
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_cities
-        mock_repository.fetch_attendees.return_value = attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="city",
-            breakdown_value="Los Angeles",
-        )
-
-        # No one has normalized_city="Los Angeles"
-        assert len(result) == 0
+        assert person_ids == expected_person_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_city_person_without_normalized_city(
@@ -789,14 +652,23 @@ class TestSynagogueBreakdown:
         }
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("breakdown_value", "expected_person_ids"),
+        [
+            ("Congregation Beth Israel", {101, 102, 104}),
+            ("Temple Sinai", {103, 105}),
+        ],
+    )
     async def test_filter_by_synagogue(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         persons_with_congregations: dict[int, Mock],
+        breakdown_value: str,
+        expected_person_ids: set[int],
     ) -> None:
-        """Filter for campers from a specific synagogue."""
+        """Filter by synagogue returns correct campers."""
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
             create_mock_attendee(102, sample_sessions[1002], 2026),
@@ -811,44 +683,11 @@ class TestSynagogueBreakdown:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="synagogue",
-            breakdown_value="Congregation Beth Israel",
+            breakdown_value=breakdown_value,
         )
 
-        # Should return Emma (101), Liam (102), and Noah (104)
-        assert len(result) == 3
         person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102, 104}
-
-    @pytest.mark.asyncio
-    async def test_filter_by_synagogue_temple_sinai(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        persons_with_congregations: dict[int, Mock],
-    ) -> None:
-        """Filter for campers from Temple Sinai."""
-        attendees = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-            create_mock_attendee(102, sample_sessions[1002], 2026),
-            create_mock_attendee(103, sample_sessions[1003], 2026),
-            create_mock_attendee(104, sample_sessions[1004], 2026),
-            create_mock_attendee(105, sample_sessions[1003], 2026),
-        ]
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_congregations
-        mock_repository.fetch_attendees.return_value = attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="synagogue",
-            breakdown_value="Temple Sinai",
-        )
-
-        # Should return Olivia (103) and Ava (105) from Temple Sinai
-        assert len(result) == 2
-        person_ids = {r.person_id for r in result}
-        assert person_ids == {103, 105}
+        assert person_ids == expected_person_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_synagogue_no_match(
@@ -913,19 +752,23 @@ class TestSchoolBreakdownNormalized:
         return persons
 
     @pytest.mark.asyncio
-    async def test_school_drilldown_uses_normalized_value(
+    @pytest.mark.parametrize(
+        ("breakdown_value", "expected_person_ids"),
+        [
+            ("Park Day School", {101, 102}),
+            ("Mark Day School", {103}),
+        ],
+    )
+    async def test_school_drilldown_normalized(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         persons_with_schools: dict[int, Mock],
+        breakdown_value: str,
+        expected_person_ids: set[int],
     ) -> None:
-        """School drilldown matches on normalized_school, not raw person.school.
-
-        When user clicks "Park Day School" in GeoDetailList, the drilldown
-        should return all persons whose normalized_school is "Park Day School",
-        even if their raw school value is different.
-        """
+        """School drilldown matches on normalized_school, not raw person.school."""
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
             create_mock_attendee(102, sample_sessions[1002], 2026),
@@ -939,43 +782,11 @@ class TestSchoolBreakdownNormalized:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="school",
-            breakdown_value="Park Day School",
+            breakdown_value=breakdown_value,
         )
 
-        # Should return Emma (101) and Liam (102) - both normalized to "Park Day School"
-        # even though raw school values are "park day school" and "Park Day"
-        assert len(result) == 2
         person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102}
-
-    @pytest.mark.asyncio
-    async def test_school_drilldown_mark_day_separate(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-        persons_with_schools: dict[int, Mock],
-    ) -> None:
-        """Mark Day School drilldown only returns Mark Day campers, not Park Day."""
-        attendees = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-            create_mock_attendee(102, sample_sessions[1002], 2026),
-            create_mock_attendee(103, sample_sessions[1003], 2026),
-            create_mock_attendee(104, sample_sessions[1004], 2026),
-        ]
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_schools
-        mock_repository.fetch_attendees.return_value = attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="school",
-            breakdown_value="Mark Day School",
-        )
-
-        # Should return only Olivia (103)
-        assert len(result) == 1
-        assert result[0].person_id == 103
+        assert person_ids == expected_person_ids
 
     @pytest.mark.asyncio
     async def test_school_drilldown_no_normalized_not_matched(
@@ -1113,23 +924,25 @@ class TestNormalizedDisplayValues:
     """
 
     @pytest.mark.asyncio
-    async def test_response_uses_normalized_school_for_display(
+    @pytest.mark.parametrize(
+        ("school", "normalized_school", "expected_school"),
+        [
+            ("park day", "Park Day School", "Park Day School"),
+            ("Hillcrest High", None, "Hillcrest High"),
+        ],
+    )
+    async def test_response_school_display(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
+        school: str,
+        normalized_school: str | None,
+        expected_school: str,
     ) -> None:
-        """DrilldownAttendee.school should prefer normalized_school over raw school."""
+        """DrilldownAttendee.school prefers normalized_school, falls back to raw."""
         persons = {
-            101: create_mock_person(
-                101,
-                "Emma",
-                "Johnson",
-                "F",
-                5,
-                school="park day",
-                normalized_school="Park Day School",
-            ),
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, school=school, normalized_school=normalized_school),
         }
         attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
         mock_repository.fetch_sessions.return_value = sample_sessions
@@ -1142,27 +955,30 @@ class TestNormalizedDisplayValues:
             breakdown_value="returning",
         )
 
-        # Use returning_status=returning to match years_at_camp=2 default
         assert len(result) == 1
-        assert result[0].school == "Park Day School"
+        assert result[0].school == expected_school
 
     @pytest.mark.asyncio
-    async def test_response_uses_normalized_city_for_display(
+    @pytest.mark.parametrize(
+        ("address_city", "normalized_city", "expected_city"),
+        [
+            ("san francisco", "San Francisco", "San Francisco"),
+            ("Springfield", None, "Springfield"),
+        ],
+    )
+    async def test_response_city_display(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
+        address_city: str,
+        normalized_city: str | None,
+        expected_city: str,
     ) -> None:
-        """DrilldownAttendee.city should prefer normalized_city over raw address_city."""
+        """DrilldownAttendee.city prefers normalized_city, falls back to raw."""
         persons = {
             101: create_mock_person(
-                101,
-                "Emma",
-                "Johnson",
-                "F",
-                5,
-                address_city="san francisco",
-                normalized_city="San Francisco",
+                101, "Emma", "Johnson", "F", 5, address_city=address_city, normalized_city=normalized_city
             ),
         }
         attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
@@ -1177,73 +993,7 @@ class TestNormalizedDisplayValues:
         )
 
         assert len(result) == 1
-        assert result[0].city == "San Francisco"
-
-    @pytest.mark.asyncio
-    async def test_response_falls_back_to_raw_school_when_no_normalized(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-    ) -> None:
-        """DrilldownAttendee.school falls back to raw school when normalized_school is None."""
-        persons = {
-            101: create_mock_person(
-                101,
-                "Emma",
-                "Johnson",
-                "F",
-                5,
-                school="Hillcrest High",
-                normalized_school=None,
-            ),
-        }
-        attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons
-        mock_repository.fetch_attendees.return_value = attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="returning_status",
-            breakdown_value="returning",
-        )
-
-        assert len(result) == 1
-        assert result[0].school == "Hillcrest High"
-
-    @pytest.mark.asyncio
-    async def test_response_falls_back_to_raw_city_when_no_normalized(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        sample_sessions: dict[int, Mock],
-    ) -> None:
-        """DrilldownAttendee.city falls back to raw address_city when normalized_city is None."""
-        persons = {
-            101: create_mock_person(
-                101,
-                "Emma",
-                "Johnson",
-                "F",
-                5,
-                address_city="Springfield",
-                normalized_city=None,
-            ),
-        }
-        attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
-        mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons
-        mock_repository.fetch_attendees.return_value = attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="returning_status",
-            breakdown_value="returning",
-        )
-
-        assert len(result) == 1
-        assert result[0].city == "Springfield"
+        assert result[0].city == expected_city
 
 
 # ============================================================================
@@ -1289,80 +1039,46 @@ class TestPersonLevelDeduplication:
         ]
 
     @pytest.mark.asyncio
-    async def test_gender_dedup(
+    @pytest.mark.parametrize(
+        ("breakdown_type", "breakdown_value", "expected_person_ids", "check_multi_sessions"),
+        [
+            ("gender", "F", {101}, True),
+            ("grade", "5", {101}, False),
+            ("status", "enrolled", {101, 102}, False),
+            ("session_length", "2-week", {101}, True),
+        ],
+    )
+    async def test_person_level_dedup(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         multi_session_sessions: dict[int, Mock],
         multi_session_persons: dict[int, Mock],
         multi_session_attendees: list[Mock],
+        breakdown_type: str,
+        breakdown_value: str,
+        expected_person_ids: set[int],
+        check_multi_sessions: bool,
     ) -> None:
-        """Gender breakdown deduplicates: Emma appears once despite 2 sessions."""
+        """Person-level breakdowns deduplicate: one result per person with sessions list."""
         mock_repository.fetch_sessions.return_value = multi_session_sessions
         mock_repository.fetch_persons.return_value = multi_session_persons
         mock_repository.fetch_attendees.return_value = multi_session_attendees
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
-            breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_type=breakdown_type,
+            breakdown_value=breakdown_value,
         )
 
-        # Emma is F and in 2 sessions, but gender is person-level => 1 result
-        assert len(result) == 1
-        assert result[0].person_id == 101
-        assert len(result[0].sessions) == 2
-        session_names = {s.session_name for s in result[0].sessions}
-        assert session_names == {"Session 2a", "Session 3a"}
-
-    @pytest.mark.asyncio
-    async def test_grade_dedup(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        multi_session_sessions: dict[int, Mock],
-        multi_session_persons: dict[int, Mock],
-        multi_session_attendees: list[Mock],
-    ) -> None:
-        """Grade breakdown deduplicates: person in 2 sessions returns 1 result."""
-        mock_repository.fetch_sessions.return_value = multi_session_sessions
-        mock_repository.fetch_persons.return_value = multi_session_persons
-        mock_repository.fetch_attendees.return_value = multi_session_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="grade",
-            breakdown_value="5",
-        )
-
-        # Emma (grade 5) is in 2 sessions => 1 deduped result
-        assert len(result) == 1
-        assert result[0].person_id == 101
-
-    @pytest.mark.asyncio
-    async def test_status_dedup(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        multi_session_sessions: dict[int, Mock],
-        multi_session_persons: dict[int, Mock],
-        multi_session_attendees: list[Mock],
-    ) -> None:
-        """Status breakdown deduplicates: enrolled person in 2 sessions => 1 result."""
-        mock_repository.fetch_sessions.return_value = multi_session_sessions
-        mock_repository.fetch_persons.return_value = multi_session_persons
-        mock_repository.fetch_attendees.return_value = multi_session_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="status",
-            breakdown_value="enrolled",
-        )
-
-        # Both Emma and Liam are enrolled, but Emma deduped => 2 unique persons
-        assert len(result) == 2
         person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102}
+        assert person_ids == expected_person_ids
+
+        if check_multi_sessions:
+            emma = next(r for r in result if r.person_id == 101)
+            assert len(emma.sessions) == 2
+            session_names = {s.session_name for s in emma.sessions}
+            assert session_names == {"Session 2a", "Session 3a"}
 
     @pytest.mark.asyncio
     async def test_session_no_dedup(
@@ -1388,38 +1104,6 @@ class TestPersonLevelDeduplication:
         assert len(result) == 1
         assert result[0].person_id == 101
         assert result[0].session_cm_id == 1002
-
-    @pytest.mark.asyncio
-    async def test_session_length_dedup(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        multi_session_sessions: dict[int, Mock],
-        multi_session_persons: dict[int, Mock],
-        multi_session_attendees: list[Mock],
-    ) -> None:
-        """Session length breakdown deduplicates: one row per person with all sessions listed.
-
-        Emma is in Session 2a (2-week) and Session 3a (2-week). She should appear
-        once in the drilldown with both sessions in her sessions list.
-        """
-        mock_repository.fetch_sessions.return_value = multi_session_sessions
-        mock_repository.fetch_persons.return_value = multi_session_persons
-        mock_repository.fetch_attendees.return_value = multi_session_attendees
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2026,
-            breakdown_type="session_length",
-            breakdown_value="2-week",
-        )
-
-        # Emma (101) is in two 2-week sessions but should be deduped to one row
-        # Liam (102) is in Session 2 (3-week), so not included
-        emma_results = [r for r in result if r.person_id == 101]
-        assert len(emma_results) == 1
-        assert len(emma_results[0].sessions) == 2
-        session_names = {s.session_name for s in emma_results[0].sessions}
-        assert session_names == {"Session 2a", "Session 3a"}
 
     @pytest.mark.asyncio
     async def test_returning_null_years(
@@ -2948,15 +2632,26 @@ class TestRetentionCardBreakdown:
         mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
 
     @pytest.mark.asyncio
-    async def test_retention_all_returns_all_base_year_campers(
+    @pytest.mark.parametrize(
+        ("breakdown_type", "expected_person_ids", "expected_is_returning"),
+        [
+            ("retention_all", {101, 102, 103, 104}, None),
+            ("retention_returned", {101, 102}, True),
+            ("retention_not_returned", {103, 104}, False),
+        ],
+    )
+    async def test_retention_card_filter(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         base_year_sessions: dict[int, Mock],
         compare_year_sessions: dict[int, Mock],
         retention_persons: dict[int, Mock],
+        breakdown_type: str,
+        expected_person_ids: set[int],
+        expected_is_returning: bool | None,
     ) -> None:
-        """retention_all returns all base year campers, deduped by person."""
+        """Retention card breakdowns filter base year campers by return status."""
         base_attendees = [
             create_mock_attendee(101, base_year_sessions[1001], 2025),
             create_mock_attendee(102, base_year_sessions[1002], 2025),
@@ -2979,14 +2674,17 @@ class TestRetentionCardBreakdown:
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
-            breakdown_type="retention_all",
+            breakdown_type=breakdown_type,
             breakdown_value="all",
             compare_year=2026,
         )
 
-        assert len(result) == 4
         person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102, 103, 104}
+        assert person_ids == expected_person_ids
+
+        if expected_is_returning is not None:
+            for r in result:
+                assert r.is_returning is expected_is_returning
 
     @pytest.mark.asyncio
     async def test_retention_all_marks_is_returning_correctly(
@@ -3026,94 +2724,6 @@ class TestRetentionCardBreakdown:
         result_map = {r.person_id: r.is_returning for r in result}
         assert result_map[101] is True
         assert result_map[103] is False
-
-    @pytest.mark.asyncio
-    async def test_retention_returned_filters_to_returnees(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        base_year_sessions: dict[int, Mock],
-        compare_year_sessions: dict[int, Mock],
-        retention_persons: dict[int, Mock],
-    ) -> None:
-        """retention_returned returns only campers who enrolled in compare year."""
-        base_attendees = [
-            create_mock_attendee(101, base_year_sessions[1001], 2025),
-            create_mock_attendee(102, base_year_sessions[1002], 2025),
-            create_mock_attendee(103, base_year_sessions[1001], 2025),
-            create_mock_attendee(104, base_year_sessions[1002], 2025),
-        ]
-        compare_attendees = [
-            create_mock_attendee(101, compare_year_sessions[2001], 2026),
-            create_mock_attendee(102, compare_year_sessions[2002], 2026),
-        ]
-
-        self._setup_retention_mocks(
-            mock_repository,
-            base_year_sessions,
-            compare_year_sessions,
-            retention_persons,
-            base_attendees,
-            compare_attendees,
-        )
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2025,
-            breakdown_type="retention_returned",
-            breakdown_value="all",
-            compare_year=2026,
-        )
-
-        assert len(result) == 2
-        person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102}
-        # All returned campers should have is_returning=True
-        for r in result:
-            assert r.is_returning is True
-
-    @pytest.mark.asyncio
-    async def test_retention_not_returned_filters_to_non_returnees(
-        self,
-        drilldown_service: DrilldownService,
-        mock_repository: Mock,
-        base_year_sessions: dict[int, Mock],
-        compare_year_sessions: dict[int, Mock],
-        retention_persons: dict[int, Mock],
-    ) -> None:
-        """retention_not_returned returns only campers who did NOT enroll in compare year."""
-        base_attendees = [
-            create_mock_attendee(101, base_year_sessions[1001], 2025),
-            create_mock_attendee(102, base_year_sessions[1002], 2025),
-            create_mock_attendee(103, base_year_sessions[1001], 2025),
-            create_mock_attendee(104, base_year_sessions[1002], 2025),
-        ]
-        compare_attendees = [
-            create_mock_attendee(101, compare_year_sessions[2001], 2026),
-            create_mock_attendee(102, compare_year_sessions[2002], 2026),
-        ]
-
-        self._setup_retention_mocks(
-            mock_repository,
-            base_year_sessions,
-            compare_year_sessions,
-            retention_persons,
-            base_attendees,
-            compare_attendees,
-        )
-
-        result = await drilldown_service.get_attendees_for_breakdown(
-            year=2025,
-            breakdown_type="retention_not_returned",
-            breakdown_value="all",
-            compare_year=2026,
-        )
-
-        assert len(result) == 2
-        person_ids = {r.person_id for r in result}
-        assert person_ids == {103, 104}
-        # All non-returned campers should have is_returning=False
-        for r in result:
-            assert r.is_returning is False
 
     @pytest.mark.asyncio
     async def test_retention_all_populates_enrolled_sessions(

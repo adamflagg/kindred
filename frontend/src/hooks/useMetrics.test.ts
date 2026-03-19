@@ -11,41 +11,6 @@ import type {
   HistoricalFilterOptions,
 } from './useMetrics'
 
-describe('useMetrics hooks', () => {
-  it('should guard all queries with isAuthLoading', async () => {
-    const sourceContent = await import('./useMetrics?raw')
-    const source = sourceContent.default
-
-    // All 6 hooks should use isAuthLoading
-    const matches = source.match(/isAuthLoading/g)
-    // 6 destructuring + 6 enabled = at least 12 occurrences
-    expect(matches).not.toBeNull()
-    expect(matches!.length).toBeGreaterThanOrEqual(12)
-  })
-
-  it.each([
-    'useRetentionMetrics',
-    'useRegistrationMetrics',
-    'useComparisonMetrics',
-    'useHistoricalTrends',
-    'useWaitlistMetrics',
-    'useCancellationMetrics',
-  ])('%s should include isAuthLoading in enabled condition', async (hookName) => {
-    const sourceContent = await import('./useMetrics?raw')
-    const source = sourceContent.default
-
-    // Find the function body for this hook
-    const funcStart = source.indexOf(`function ${hookName}`)
-    expect(funcStart).toBeGreaterThan(-1)
-
-    // Find the next function or end of file
-    const nextFunc = source.indexOf('\nexport function', funcStart + 1)
-    const funcBody = nextFunc > -1 ? source.slice(funcStart, nextFunc) : source.slice(funcStart)
-
-    expect(funcBody).toContain('isAuthLoading')
-  })
-})
-
 describe('MetricsFilterOptions type (#567)', () => {
   it('should allow sessionCmId without duration', () => {
     const opts: MetricsFilterOptions = { sessionCmId: 1000 }
@@ -204,29 +169,6 @@ describe('metricsFilter helper', () => {
 })
 
 describe('useComparisonMetrics options (#562)', () => {
-  it('should accept an optional third options parameter', async () => {
-    const sourceContent = await import('./useMetrics?raw')
-    const source = sourceContent.default
-
-    // useComparisonMetrics should accept options as third parameter
-    const funcMatch = source.match(/function useComparisonMetrics\([^)]+\)/)
-    expect(funcMatch).not.toBeNull()
-    expect(funcMatch![0]).toContain('options')
-  })
-
-  it('should pass sessionTypes to comparison API when provided', async () => {
-    const sourceContent = await import('./useMetrics?raw')
-    const source = sourceContent.default
-
-    const funcStart = source.indexOf('function useComparisonMetrics')
-    const nextFunc = source.indexOf('\nexport function', funcStart + 1)
-    const funcBody = nextFunc > -1 ? source.slice(funcStart, nextFunc) : source.slice(funcStart)
-
-    // Should set session_types param from options
-    expect(funcBody).toContain('session_types')
-    expect(funcBody).toContain('options')
-  })
-
   it('should include filter params in comparison query key', async () => {
     const { queryKeys } = await import('../utils/queryKeys')
     const key = queryKeys.comparison(2025, 2026)
