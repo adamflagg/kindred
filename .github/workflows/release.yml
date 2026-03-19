@@ -156,21 +156,49 @@ jobs:
         HEAD_SHA=$(git rev-parse HEAD)
         SHA_TAG="sha-$(echo "$HEAD_SHA" | cut -c1-7)"
         echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
-        echo "Waiting for CD to complete for $HEAD_SHA (need :${SHA_TAG} images)..."
+        echo "Checking CD for $HEAD_SHA (need :${SHA_TAG} images)..."
 
-        # Poll for up to 15 minutes (45 attempts x 20s)
+        # Phase 1: Check if CD already completed successfully for this commit
+        EXISTING=$(gh run list \
+          --workflow cd.yml \
+          --branch main \
+          --limit 20 \
+          --json headSha,status,conclusion \
+          --jq "[.[] | select(.headSha == \"$HEAD_SHA\" and .status == \"completed\" and .conclusion == \"success\")] | length" 2>/dev/null || echo "0")
+
+        if [ "$EXISTING" != "0" ]; then
+          echo "CD already passed for this commit"
+          exit 0
+        fi
+
+        # Phase 2: Check if CD is already running on main, dispatch if not
+        # We check any CD on main (not just this commit) to avoid cancelling
+        # an in-progress run via the concurrency group (cd-$ref, cancel-in-progress).
+        CD_IN_PROGRESS=$(gh run list --workflow cd.yml --branch main --status in_progress --json databaseId --jq 'length' 2>/dev/null || echo "0")
+        CD_QUEUED=$(gh run list --workflow cd.yml --branch main --status queued --json databaseId --jq 'length' 2>/dev/null || echo "0")
+
+        if [ "$CD_IN_PROGRESS" = "0" ] && [ "$CD_QUEUED" = "0" ]; then
+          # No CD running — dispatch one
+          echo "No CD running on main, dispatching CD..."
+          gh workflow run cd.yml --ref main
+        else
+          echo "CD already running on main (in_progress: $CD_IN_PROGRESS, queued: $CD_QUEUED), waiting..."
+        fi
+
+        # Phase 3: Poll for a completed CD run for this commit (up to ~15 min)
         for i in {1..45}; do
+          sleep 20
+
           # Find CD runs for this exact commit on main
           RUN_INFO=$(gh run list \
             --workflow cd.yml \
             --branch main \
-            --limit 5 \
+            --limit 20 \
             --json headSha,status,conclusion,databaseId \
-            --jq ".[] | select(.headSha == \"$HEAD_SHA\")" | head -1 2>/dev/null || echo "")
+            --jq ".[] | select(.headSha == \"$HEAD_SHA\")" 2>/dev/null | head -1 || echo "")
 
           if [ -z "$RUN_INFO" ]; then
             echo "  Attempt $i/45: No CD run found for this commit yet, waiting..."
-            sleep 20
             continue
           fi
 
@@ -190,7 +218,6 @@ jobs:
           fi
 
           echo "  Attempt $i/45: CD run $RUN_ID is $STATUS, waiting..."
-          sleep 20
         done
 
         echo "::error::CD did not complete within 15 minutes"
