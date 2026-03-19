@@ -31,7 +31,7 @@ export interface SolverConfigData {
 }
 
 export function useSolverConfig() {
-  const { user } = useAuth()
+  const { isLoading } = useAuth()
 
   return useQuery<SolverConfigData>({
     queryKey: queryKeys.solverConfig(),
@@ -126,7 +126,7 @@ export function useSolverConfig() {
         flat: flat,
       }
     },
-    enabled: !!user, // Only run query if user is authenticated
+    enabled: !isLoading,
   })
 }
 

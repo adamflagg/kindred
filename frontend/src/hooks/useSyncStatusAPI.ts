@@ -99,7 +99,7 @@ export interface SyncStatusResponse {
 }
 
 export function useSyncStatusAPI() {
-  const { user } = useAuth()
+  const { isLoading } = useAuth()
 
   return useQuery({
     queryKey: ['sync-status-api'],
@@ -139,6 +139,6 @@ export function useSyncStatusAPI() {
     },
     // Always refetch on window focus to get latest status
     refetchOnWindowFocus: true,
-    enabled: !!user,
+    enabled: !isLoading,
   })
 }

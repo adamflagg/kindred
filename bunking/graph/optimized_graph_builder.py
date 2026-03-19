@@ -13,6 +13,7 @@ from typing import Any
 
 import networkx as nx
 
+from api.constants.collections import ATTENDEES, BUNK_ASSIGNMENTS, BUNK_REQUESTS, BUNKS, PERSONS
 from bunking.logging_config import get_logger
 
 from .social_graph_builder import SocialGraphBuilder
@@ -40,7 +41,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
         # Get all attendees for the session (attendees uses session relation)
         try:
-            attendees = self.pb.collection("attendees").get_full_list(
+            attendees = self.pb.collection(ATTENDEES).get_full_list(
                 query_params={"filter": f"session.cm_id = {session_cm_id} && year = {year} && status_id = 2"}
             )
             logger.info(f"Found {len(attendees)} active attendees for session {session_cm_id}")
@@ -90,7 +91,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
             # Get bunk assignment (bunk_assignments uses person/session/bunk relations)
             bunk_cm_id = None
             try:
-                assignment = self.pb.collection("bunk_assignments").get_first_list_item(
+                assignment = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
                     f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} && year = {year}",
                     query_params={"expand": "bunk"},
                 )
@@ -193,7 +194,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
             filter_str = " || ".join([f"cm_id = {pid}" for pid in batch_ids])
 
             try:
-                persons = self.pb.collection("persons").get_full_list(query_params={"filter": filter_str})
+                persons = self.pb.collection(PERSONS).get_full_list(query_params={"filter": filter_str})
                 for person in persons:
                     cm_id = getattr(person, "cm_id", None)
                     if cm_id is not None:
@@ -218,7 +219,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
             filter_str = f'({person_filter}) && session_id = {session_cm_id} && year = {year} && status = "resolved"'
 
             try:
-                requests = self.pb.collection("bunk_requests").get_full_list(query_params={"filter": filter_str})
+                requests = self.pb.collection(BUNK_REQUESTS).get_full_list(query_params={"filter": filter_str})
                 all_requests.extend(requests)
             except Exception as e:
                 logger.error(f"Error fetching requests batch: {e}")
@@ -318,13 +319,13 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
         # Update database (optional - could be done by caller)
         try:
-            assignment = self.pb.collection("bunk_assignments").get_first_list_item(
+            assignment = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
                 f"person.cm_id = {person_cm_id} && session.cm_id = {session_cm_id} && year = {year}",
                 query_params={"expand": "bunk"},
             )
             # Need to find the bunk record ID for the new bunk_cm_id to update the relation
-            new_bunk = self.pb.collection("bunks").get_first_list_item(f"cm_id = {new_bunk_cm_id}")
-            self.pb.collection("bunk_assignments").update(assignment.id, {"bunk": new_bunk.id})
+            new_bunk = self.pb.collection(BUNKS).get_first_list_item(f"cm_id = {new_bunk_cm_id}")
+            self.pb.collection(BUNK_ASSIGNMENTS).update(assignment.id, {"bunk": new_bunk.id})
         except Exception as e:
             logger.warning(f"Could not update database assignment: {e}")
 

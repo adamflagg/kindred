@@ -131,13 +131,7 @@ function buildGroupedChartData(
 }
 
 export default function TrendsOverview() {
-  const {
-    selectedSessionCmId,
-    sessionTypesParam,
-    expandedRetention,
-    durationParam,
-    filterOptions,
-  } = useMetricsSession()
+  const { expandedRetention, filterOptions } = useMetricsSession()
   const { currentYear } = useCurrentYear()
 
   const numYearsDisplay = expandedRetention ? 5 : 3
@@ -160,9 +154,7 @@ export default function TrendsOverview() {
     error: trendsError,
   } = useRetentionTrends(currentYear, {
     numYears: 5,
-    sessionTypes: sessionTypesParam,
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
+    ...filterOptions,
   })
 
   // Slice enrollment data based on expanded toggle (3 or 5 years)

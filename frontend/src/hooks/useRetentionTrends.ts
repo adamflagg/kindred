@@ -8,16 +8,12 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import type { RetentionTrendsResponse } from '../types/metrics'
+import type { MetricsFilterOptions } from './useMetrics'
 
-export interface UseRetentionTrendsOptions {
+/** Extends MetricsFilterOptions with retention-specific numYears field (#674). */
+export type UseRetentionTrendsOptions = MetricsFilterOptions & {
   /** Number of years to include (default: 3) */
   numYears?: number | undefined
-  /** Comma-separated session types to filter */
-  sessionTypes?: string | undefined
-  /** Filter to specific session by CampMinder ID */
-  sessionCmId?: number | undefined
-  /** Filter by session duration category */
-  duration?: string | undefined
 }
 
 /**
