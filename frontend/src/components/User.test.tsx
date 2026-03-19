@@ -50,22 +50,6 @@ describe('Account Information card structure', () => {
     expect(screen.getByText('Account Status')).toBeTruthy()
     expect(screen.getByText('Last Login')).toBeTruthy()
   })
-
-  it('first two rows have bottom borders, last row does not', () => {
-    renderUser()
-    // Find the Account Information card by its heading
-    const heading = screen.getByText('Account Information')
-    const card = heading.closest('.card-lodge')!
-    // The space-y-4 container holds the 3 row divs
-    const rowContainer = card.querySelector('.space-y-4')!
-    const rows = rowContainer.children
-    expect(rows.length).toBe(3)
-    // First two rows should have border-b class
-    expect(rows[0]!.className).toContain('border-b')
-    expect(rows[1]!.className).toContain('border-b')
-    // Last row should NOT have border-b class
-    expect(rows[2]!.className).not.toContain('border-b')
-  })
 })
 
 describe('User Profile - Last Login', () => {

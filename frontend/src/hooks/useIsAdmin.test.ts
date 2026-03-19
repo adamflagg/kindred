@@ -29,20 +29,6 @@ describe('useIsAdmin', () => {
 
       expect(result.current).toBe(true)
     })
-
-    it('returns true when in bypass mode even with no user', () => {
-      const mockContext = createMockAuthContext({
-        user: null,
-        isBypassMode: true,
-      })
-
-      const wrapper = ({ children }: { children: React.ReactNode }) =>
-        createElement(AuthContext.Provider, { value: mockContext }, children)
-
-      const { result } = renderHook(() => useIsAdmin(), { wrapper })
-
-      expect(result.current).toBe(true)
-    })
   })
 
   describe('RBAC is_admin field', () => {

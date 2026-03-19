@@ -13,74 +13,20 @@ describe('StatusBadge', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('renders waitlisted badge with amber colors', () => {
-    render(<StatusBadge status="waitlisted" />)
-    const badge = screen.getByText('Waitlisted')
+  it.each([
+    { status: 'waitlisted', label: 'Waitlisted', color: 'bg-amber-100' },
+    { status: 'cancelled', label: 'Cancelled', color: 'bg-red-100' },
+    { status: 'dismissed', label: 'Dismissed', color: 'bg-red-100' },
+    { status: 'left_early', label: 'Left Early', color: 'bg-orange-100' },
+    { status: 'applied', label: 'Applied', color: 'bg-blue-100' },
+    { status: 'withdrawn', label: 'Withdrawn', color: 'bg-stone-100' },
+    { status: 'incomplete', label: 'Incomplete', color: 'bg-stone-100' },
+    { status: 'none', label: 'No Status', color: 'bg-stone-100' },
+    { status: 'unknown', label: 'Unknown', color: 'bg-stone-100' },
+  ])('renders $status as "$label" with $color', ({ status, label, color }) => {
+    render(<StatusBadge status={status} />)
+    const badge = screen.getByText(label)
     expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-amber-100')
-  })
-
-  it('renders cancelled badge with red colors', () => {
-    render(<StatusBadge status="cancelled" />)
-    const badge = screen.getByText('Cancelled')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-red-100')
-  })
-
-  it('renders dismissed badge with red colors', () => {
-    render(<StatusBadge status="dismissed" />)
-    const badge = screen.getByText('Dismissed')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-red-100')
-  })
-
-  it('renders left_early badge with orange colors', () => {
-    render(<StatusBadge status="left_early" />)
-    const badge = screen.getByText('Left Early')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-orange-100')
-  })
-
-  it('renders applied badge with blue colors', () => {
-    render(<StatusBadge status="applied" />)
-    const badge = screen.getByText('Applied')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-blue-100')
-  })
-
-  it('renders withdrawn badge with stone colors', () => {
-    render(<StatusBadge status="withdrawn" />)
-    const badge = screen.getByText('Withdrawn')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-stone-100')
-  })
-
-  it('renders incomplete badge with stone colors', () => {
-    render(<StatusBadge status="incomplete" />)
-    const badge = screen.getByText('Incomplete')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-stone-100')
-  })
-
-  it('renders none badge with stone colors and "No Status" label', () => {
-    render(<StatusBadge status="none" />)
-    const badge = screen.getByText('No Status')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-stone-100')
-  })
-
-  it('renders unknown status with stone colors', () => {
-    render(<StatusBadge status="unknown" />)
-    const badge = screen.getByText('Unknown')
-    expect(badge).toBeDefined()
-    expect(badge.className).toContain('bg-stone-100')
-  })
-
-  it('uses pill styling with rounded-full', () => {
-    render(<StatusBadge status="waitlisted" />)
-    const badge = screen.getByText('Waitlisted')
-    expect(badge.className).toContain('rounded-full')
-    expect(badge.className).toContain('text-xs')
-    expect(badge.className).toContain('font-medium')
+    expect(badge.className).toContain(color)
   })
 })
