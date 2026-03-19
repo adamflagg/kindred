@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 
 interface UnifiedSyncParams {
@@ -51,7 +52,7 @@ export function useUnifiedSync() {
       })
     },
     onSuccess: (data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
 
       // Check if sync was queued (202 response)
       if (data.status === 'queued') {
@@ -63,7 +64,10 @@ export function useUnifiedSync() {
       }
 
       // Also invalidate after delay for quick syncs
-      setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000)
+      setTimeout(
+        () => void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() }),
+        2000
+      )
     },
     onError: (error, variables) => {
       const serviceDisplay = variables.service === 'all' ? 'all services' : variables.service

@@ -98,7 +98,7 @@ class MetricsSQLRepository:
         expand_person: bool = False,
     ) -> list[Any]:
         """Fetch attendees with session expansion."""
-        columns = """a.person_id, a.year, a.status, a.status_id, a.is_active,
+        columns = """a.person_id, a.year, a.status, a.status_id,
                        a.enrollment_date, a.effective_date,
                        cs.cm_id AS _session_cm_id, cs.name AS _session_name,
                        cs.session_type AS _session_type, cs.parent_id AS _session_parent_id,
@@ -132,7 +132,6 @@ class MetricsSQLRepository:
                 year=r["year"],
                 status=r["status"],
                 status_id=r["status_id"],
-                is_active=r["is_active"],
                 enrollment_date=r["enrollment_date"],
                 effective_date=r["effective_date"],
                 expand={
@@ -431,7 +430,7 @@ class MetricsSQLRepository:
     ) -> list[Any]:
         """Fetch attendees with both person and session expansion."""
         sql = """SELECT a.person_id, a.year, a.status, a.status_id,
-                        a.is_active, a.enrollment_date,
+                        a.enrollment_date,
                         cs.cm_id AS _session_cm_id, cs.name AS _session_name,
                         cs.session_type AS _session_type,
                         cs.parent_id AS _session_parent_id,
@@ -473,7 +472,6 @@ class MetricsSQLRepository:
                 year=r["year"],
                 status=r["status"],
                 status_id=r["status_id"],
-                is_active=r["is_active"],
                 enrollment_date=r["enrollment_date"],
                 expand={
                     "session": self._session_ns(r),
@@ -607,7 +605,7 @@ class MetricsSQLRepository:
         """Fetch attendees with enrollment dates for velocity reconstruction."""
         if expand_person:
             sql = """SELECT a.person_id, a.year, a.status, a.status_id,
-                            a.is_active, a.enrollment_date, a.effective_date,
+                            a.enrollment_date, a.effective_date,
                             cs.cm_id AS _session_cm_id, cs.name AS _session_name,
                             cs.session_type AS _session_type,
                             cs.parent_id AS _session_parent_id,
@@ -626,7 +624,7 @@ class MetricsSQLRepository:
                             OR a.effective_date IS NOT NULL AND a.effective_date != '')"""
         else:
             sql = """SELECT a.person_id, a.year, a.status, a.status_id,
-                            a.is_active, a.enrollment_date, a.effective_date,
+                            a.enrollment_date, a.effective_date,
                             cs.cm_id AS _session_cm_id, cs.name AS _session_name,
                             cs.session_type AS _session_type,
                             cs.parent_id AS _session_parent_id,
@@ -652,7 +650,6 @@ class MetricsSQLRepository:
                     year=r["year"],
                     status=r["status"],
                     status_id=r["status_id"],
-                    is_active=r["is_active"],
                     enrollment_date=r["enrollment_date"],
                     effective_date=r["effective_date"],
                     expand=expand,

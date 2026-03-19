@@ -197,7 +197,7 @@ Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
 14. **IPv4 in production** - Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
 15. **React auth guards** - Check `isLoading` from `useAuth()` before authenticated API calls
 16. **React Query keys** - Use centralized keys from `frontend/src/utils/queryKeys.ts`
-17. **Attendee filtering** - Solver uses `is_active = 1 AND status_id = 2` for active enrollees
+17. **Attendee filtering** - Solver uses `status_id = 2` for active enrolled attendees
 18. **Git hooks** - Run `./scripts/setup-git-hooks.sh` once to install lefthook; config in `.lefthook.yml`
 19. **Python line length** - 120 chars (configured in `ruff.toml`), enforced by ruff format
 20. **Frontend tests** - Vitest (not Jest); `npm run test` for watch mode, `npx vitest run` for one-shot

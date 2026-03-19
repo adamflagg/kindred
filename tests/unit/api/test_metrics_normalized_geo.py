@@ -475,25 +475,25 @@ class TestNormalizedMappingsDataIntegrity:
         assert len(duplicates) == 0, f"Found duplicate mappings: {duplicates}"
 
     def test_enrolled_only_in_normalized_mappings(self) -> None:
-        """Only enrolled attendees (status_id=2, is_active=1) should be in mappings.
+        """Only enrolled attendees (status_id=2) should be in mappings.
 
-        Waitlisted, cancelled, and inactive attendees should not appear.
+        Waitlisted, cancelled, and other non-enrolled attendees should not appear.
         """
-        # Simulate attendee data
+        # Simulate attendee data — status_id is the sole enrollment filter
         attendees = [
-            {"person_id": 101, "status_id": 2, "is_active": True},  # Enrolled - INCLUDE
-            {"person_id": 102, "status_id": 2, "is_active": True},  # Enrolled - INCLUDE
-            {"person_id": 103, "status_id": 3, "is_active": True},  # Waitlisted - EXCLUDE
-            {"person_id": 104, "status_id": 4, "is_active": True},  # Cancelled - EXCLUDE
-            {"person_id": 105, "status_id": 2, "is_active": False},  # Inactive - EXCLUDE
+            {"person_id": 101, "status_id": 2},  # Enrolled - INCLUDE
+            {"person_id": 102, "status_id": 2},  # Enrolled - INCLUDE
+            {"person_id": 103, "status_id": 3},  # Waitlisted - EXCLUDE
+            {"person_id": 104, "status_id": 4},  # Cancelled - EXCLUDE
+            {"person_id": 105, "status_id": 8},  # WaitList - EXCLUDE
         ]
 
-        # Filter to enrolled only
-        enrolled = [a for a in attendees if a["status_id"] == 2 and a["is_active"]]
+        # Filter to enrolled only (status_id = 2)
+        enrolled = [a for a in attendees if a["status_id"] == 2]
 
         enrolled_person_ids = {a["person_id"] for a in enrolled}
 
         assert enrolled_person_ids == {101, 102}
         assert 103 not in enrolled_person_ids  # Waitlisted
         assert 104 not in enrolled_person_ids  # Cancelled
-        assert 105 not in enrolled_person_ids  # Inactive
+        assert 105 not in enrolled_person_ids  # WaitList

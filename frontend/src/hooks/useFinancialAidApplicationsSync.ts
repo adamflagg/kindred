@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 
 /**
@@ -28,7 +29,7 @@ export function useFinancialAidApplicationsSync() {
         })
       }
       // Invalidate sync status to show it's running
-      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
     onError: (error) => {
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'
