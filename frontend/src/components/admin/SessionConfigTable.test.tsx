@@ -808,6 +808,74 @@ describe('SessionConfigTable', () => {
     expect(staleUpdate).toBeUndefined()
   })
 
+  describe('accessibility: aria-labels on form controls', () => {
+    beforeEach(() => {
+      mockGetFullList
+        .mockResolvedValueOnce(mockSessions)
+        .mockResolvedValueOnce(mockGradeConfigRecords)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(mockBudgetConfigRecords)
+    })
+
+    it('column headers have id attributes', async () => {
+      renderWithProviders(<SessionConfigTable />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+      })
+
+      expect(document.getElementById('col-min-grade')).toHaveTextContent('Min Grade')
+      expect(document.getElementById('col-max-grade')).toHaveTextContent('Max Grade')
+      expect(document.getElementById('col-cap-override')).toHaveTextContent('Cap. Override')
+      expect(document.getElementById('col-participant-goal')).toHaveTextContent('Participant Goal')
+      expect(document.getElementById('col-session-fee')).toHaveTextContent('Session Fee')
+    })
+
+    it('session name cells are row headers with id attributes', async () => {
+      renderWithProviders(<SessionConfigTable />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+      })
+
+      const rowHeaders = screen.getAllByRole('rowheader')
+      expect(rowHeaders.length).toBeGreaterThanOrEqual(5) // all 5 sessions
+
+      // Check that each session name cell has an id
+      const tasteHeader = rowHeaders.find((h) => h.textContent === 'Taste of Camp')
+      expect(tasteHeader).toBeDefined()
+      expect(tasteHeader!.id).toBe('session-1001')
+    })
+
+    it('selects have aria-labelledby referencing row and column headers', async () => {
+      renderWithProviders(<SessionConfigTable />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+      })
+
+      const selects = screen.getAllByRole('combobox')
+      // First two selects belong to first session (Taste of Camp, cm_id=1001)
+      expect(selects[0]).toHaveAttribute('aria-labelledby', 'session-1001 col-min-grade')
+      expect(selects[1]).toHaveAttribute('aria-labelledby', 'session-1001 col-max-grade')
+    })
+
+    it('number inputs have aria-labelledby referencing row and column headers', async () => {
+      renderWithProviders(<SessionConfigTable />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+      })
+
+      const inputs = screen.getAllByRole('spinbutton')
+      // inputs[0] = threshold (has its own label), then per row: cap override, participant goal, session fee
+      // First row (Taste of Camp, cm_id=1001): inputs[1], inputs[2], inputs[3]
+      expect(inputs[1]).toHaveAttribute('aria-labelledby', 'session-1001 col-cap-override')
+      expect(inputs[2]).toHaveAttribute('aria-labelledby', 'session-1001 col-participant-goal')
+      expect(inputs[3]).toHaveAttribute('aria-labelledby', 'session-1001 col-session-fee')
+    })
+  })
+
   it('renders error state when a query fails', async () => {
     mockGetFullList
       .mockResolvedValueOnce(mockSessions)
