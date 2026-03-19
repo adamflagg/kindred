@@ -319,4 +319,127 @@ describe('SessionBudgetConfig', () => {
       expect(screen.getByText('Session Fee')).toBeInTheDocument()
     })
   })
+
+  it('calls update (not create) for session with existing config record', async () => {
+    const user = userEvent.setup()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockBudgetConfigRecords) // budget config with budget1 for session_1001
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    const SessionBudgetConfig = await getComponent()
+    renderWithProviders(<SessionBudgetConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Change participant goal for first session (session 1001, has existing config 'budget1')
+    const inputs = screen.getAllByRole('spinbutton')
+    await user.clear(inputs[0]!)
+    await user.type(inputs[0]!, '175')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Config for session 1001 should have been UPDATED with record ID 'budget1'
+      const updateCalls = mockUpdate.mock.calls
+      const configUpdate = updateCalls.find((call) => call[0] === 'budget1')
+      expect(configUpdate).toBeDefined()
+      expect((configUpdate![1] as Record<string, unknown>)['config_key']).toBe('session_1001')
+    })
+
+    // Verify create was NOT called for session_1001
+    const configCreate = mockCreate.mock.calls.find(
+      (call) => (call[0] as Record<string, unknown>)['config_key'] === 'session_1001'
+    )
+    expect(configCreate).toBeUndefined()
+  })
+
+  it('looks up configId from query data at save time, not stale row state', async () => {
+    const user = userEvent.setup()
+    const queryClient = createTestQueryClient()
+
+    // Initial load: config record exists with id 'budget1'
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockBudgetConfigRecords) // budget config
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    const SessionBudgetConfig = await getComponent()
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <SessionBudgetConfig />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Make a change to trigger save button
+    const inputs = screen.getAllByRole('spinbutton')
+    await user.clear(inputs[0]!)
+    await user.type(inputs[0]!, '175')
+
+    // Simulate config records refetch with a NEW record ID (as if record was recreated)
+    const updatedBudgetConfigRecords = [
+      {
+        id: 'budget1-recreated',
+        category: 'budget',
+        subcategory: '2026',
+        config_key: 'session_1001',
+        value: { participant_goal: 150, session_fee: 3500.0 },
+      },
+      {
+        id: 'budget2',
+        category: 'budget',
+        subcategory: '2026',
+        config_key: 'session_1002',
+        value: { participant_goal: 200, session_fee: 7000.0 },
+      },
+    ]
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions refetch
+      .mockResolvedValueOnce(updatedBudgetConfigRecords) // budget config refetch with new ID
+
+    // Invalidate to trigger refetch with new config record ID
+    await queryClient.invalidateQueries()
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <SessionBudgetConfig />
+      </QueryClientProvider>
+    )
+
+    // Wait for refetch to complete
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Re-make the change (rows were rebuilt from fresh data)
+    const inputsAfter = screen.getAllByRole('spinbutton')
+    await user.clear(inputsAfter[0]!)
+    await user.type(inputsAfter[0]!, '180')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Should use the NEW record ID 'budget1-recreated' from fresh query data,
+      // not the old 'budget1' that might be stuck in stale row state
+      const updateCalls = mockUpdate.mock.calls
+      const freshUpdate = updateCalls.find((call) => call[0] === 'budget1-recreated')
+      expect(freshUpdate).toBeDefined()
+      expect((freshUpdate![1] as Record<string, unknown>)['config_key']).toBe('session_1001')
+    })
+
+    // Verify the stale ID was NOT used
+    const staleUpdate = mockUpdate.mock.calls.find((call) => call[0] === 'budget1')
+    expect(staleUpdate).toBeUndefined()
+  })
 })
