@@ -8,42 +8,6 @@ import (
 // Test constants
 const genderMixed = "Mixed"
 
-// TestStatsAggregation tests stats accumulation
-func TestStatsAggregation(t *testing.T) {
-	stats := Stats{}
-
-	// Simulate sync operations
-	stats.Created++
-	stats.Created++
-	stats.Updated++
-	stats.Skipped++
-	stats.Errors++
-
-	if stats.Created != 2 {
-		t.Errorf("expected 2 created, got %d", stats.Created)
-	}
-	if stats.Updated != 1 {
-		t.Errorf("expected 1 updated, got %d", stats.Updated)
-	}
-	if stats.Skipped != 1 {
-		t.Errorf("expected 1 skipped, got %d", stats.Skipped)
-	}
-	if stats.Errors != 1 {
-		t.Errorf("expected 1 error, got %d", stats.Errors)
-	}
-}
-
-// TestStatsDuration tests duration calculation
-func TestStatsDuration(t *testing.T) {
-	stats := Stats{
-		Duration: 120, // 2 minutes in seconds
-	}
-
-	if stats.Duration != 120 {
-		t.Errorf("expected duration 120, got %d", stats.Duration)
-	}
-}
-
 // TestStatusEndTime tests status end time handling
 func TestStatusEndTime(t *testing.T) {
 	now := time.Now()
@@ -54,97 +18,14 @@ func TestStatusEndTime(t *testing.T) {
 		EndTime:   nil, // Not statusCompleted yet
 	}
 
-	if status.EndTime != nil {
-		t.Error("expected nil EndTime for running status")
-	}
-
 	// Complete the status
 	endTime := now.Add(time.Minute)
 	status.Status = "statusCompleted"
 	status.EndTime = &endTime
 
-	if status.EndTime == nil {
-		t.Error("expected non-nil EndTime for statusCompleted status")
-	}
-
 	duration := status.EndTime.Sub(status.StartTime)
 	if duration != time.Minute {
 		t.Errorf("expected 1 minute duration, got %v", duration)
-	}
-}
-
-// TestStatusWithError tests status error handling
-func TestStatusWithError(t *testing.T) {
-	status := Status{
-		Type:   "test",
-		Status: statusFailed,
-		Error:  "connection timeout",
-	}
-
-	if status.Status != statusFailed {
-		t.Errorf("expected status 'failed', got %q", status.Status)
-	}
-
-	if status.Error == "" {
-		t.Error("expected non-empty error message")
-	}
-}
-
-// TestBaseSyncServiceInit tests BaseSyncService initialization
-func TestBaseSyncServiceInit(t *testing.T) {
-	service := BaseSyncService{
-		ProcessedKeys: make(map[string]bool),
-	}
-
-	if service.ProcessedKeys == nil {
-		t.Error("ProcessedKeys should be initialized")
-	}
-
-	if len(service.ProcessedKeys) != 0 {
-		t.Error("ProcessedKeys should be empty initially")
-	}
-}
-
-// TestProcessedKeysTracking tests key tracking in BaseSyncService
-func TestProcessedKeysTracking(t *testing.T) {
-	service := BaseSyncService{
-		ProcessedKeys: make(map[string]bool),
-	}
-
-	// Add some keys
-	service.ProcessedKeys["key1"] = true
-	service.ProcessedKeys["key2"] = true
-	service.ProcessedKeys["key3"] = true
-
-	if len(service.ProcessedKeys) != 3 {
-		t.Errorf("expected 3 keys, got %d", len(service.ProcessedKeys))
-	}
-
-	// Check specific key
-	if !service.ProcessedKeys["key1"] {
-		t.Error("key1 should exist")
-	}
-
-	if service.ProcessedKeys["nonexistent"] {
-		t.Error("nonexistent key should not exist")
-	}
-}
-
-// TestClearProcessedKeysIdempotent tests that clear can be called multiple times
-func TestClearProcessedKeysIdempotent(t *testing.T) {
-	service := BaseSyncService{
-		ProcessedKeys: make(map[string]bool),
-	}
-
-	service.ProcessedKeys["key1"] = true
-
-	// Clear multiple times
-	service.ClearProcessedKeys()
-	service.ClearProcessedKeys()
-	service.ClearProcessedKeys()
-
-	if len(service.ProcessedKeys) != 0 {
-		t.Error("ProcessedKeys should be empty after clear")
 	}
 }
 

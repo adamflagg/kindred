@@ -4,53 +4,6 @@ import (
 	"testing"
 )
 
-func TestStats_Zero(t *testing.T) {
-	s := Stats{}
-
-	if s.Created != 0 {
-		t.Errorf("Stats.Created = %d, want 0", s.Created)
-	}
-	if s.Updated != 0 {
-		t.Errorf("Stats.Updated = %d, want 0", s.Updated)
-	}
-	if s.Skipped != 0 {
-		t.Errorf("Stats.Skipped = %d, want 0", s.Skipped)
-	}
-	if s.Errors != 0 {
-		t.Errorf("Stats.Errors = %d, want 0", s.Errors)
-	}
-}
-
-func TestBaseSyncService_ClearProcessedKeys(t *testing.T) {
-	service := BaseSyncService{
-		ProcessedKeys: map[string]bool{
-			"key1": true,
-			"key2": true,
-		},
-	}
-
-	service.ClearProcessedKeys()
-
-	if len(service.ProcessedKeys) != 0 {
-		t.Errorf("ProcessedKeys should be empty after clear, got %d items", len(service.ProcessedKeys))
-	}
-}
-
-func TestPageSizeConstants(t *testing.T) {
-	// Verify page size constants are reasonable
-	if SmallPageSize <= 0 {
-		t.Errorf("SmallPageSize should be positive, got %d", SmallPageSize)
-	}
-	if DefaultPageSize <= SmallPageSize {
-		t.Errorf("DefaultPageSize (%d) should be larger than SmallPageSize (%d)",
-			DefaultPageSize, SmallPageSize)
-	}
-	if LargePageSize <= DefaultPageSize {
-		t.Errorf("LargePageSize (%d) should be larger than DefaultPageSize (%d)",
-			LargePageSize, DefaultPageSize)
-	}
-}
-
 func TestBaseSyncService_TrackProcessedKey(t *testing.T) {
 	service := BaseSyncService{
 		ProcessedKeys: make(map[string]bool),

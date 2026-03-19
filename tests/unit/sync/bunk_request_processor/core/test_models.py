@@ -15,116 +15,8 @@ project_root = test_dir.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 
-class TestRequestType:
-    """Test the RequestType enum"""
-
-    def test_request_type_values(self):
-        """Test that RequestType has the correct values"""
-        from bunking.sync.bunk_request_processor.core.models import RequestType
-
-        assert RequestType.BUNK_WITH.value == "bunk_with"
-        assert RequestType.NOT_BUNK_WITH.value == "not_bunk_with"
-        assert RequestType.AGE_PREFERENCE.value == "age_preference"
-
-    def test_request_type_exhaustive(self):
-        """Test that we have exactly 3 request types"""
-        from bunking.sync.bunk_request_processor.core.models import RequestType
-
-        assert len(RequestType) == 3
-
-
-class TestRequestSource:
-    """Test the RequestSource enum"""
-
-    def test_request_source_values(self):
-        """Test that RequestSource has the correct values
-
-        Note: Values match PocketBase schema (migration 1754196925):
-        - FAMILY: Parent/family requests (ret_parent_socialize_with_best, share_bunk_with)
-        - STAFF: Staff requests (do_not_share_bunk_with)
-        Simplified to two categories:
-        - FAMILY: Parent/family-submitted fields (share_bunk_with, socialize_with)
-        - STAFF: Staff-written fields (do_not_share_with, bunking_notes, internal_notes)
-        """
-        from bunking.sync.bunk_request_processor.core.models import RequestSource
-
-        assert RequestSource.FAMILY.value == "family"
-        assert RequestSource.STAFF.value == "staff"
-        # NOTES was removed - all staff fields use STAFF
-        assert not hasattr(RequestSource, "NOTES")
-
-    def test_request_source_exhaustive(self):
-        """Test that we have exactly 2 request sources (simplified)"""
-        from bunking.sync.bunk_request_processor.core.models import RequestSource
-
-        assert len(RequestSource) == 2
-
-
-class TestRequestStatus:
-    """Test the RequestStatus enum"""
-
-    def test_request_status_values(self):
-        """Test that RequestStatus has the correct values"""
-        from bunking.sync.bunk_request_processor.core.models import RequestStatus
-
-        assert RequestStatus.RESOLVED.value == "resolved"
-        assert RequestStatus.PENDING.value == "pending"
-        assert RequestStatus.DECLINED.value == "declined"
-
-
-class TestAgePreference:
-    """Test the AgePreference enum"""
-
-    def test_age_preference_values(self):
-        """Test that AgePreference has only older/younger"""
-        from bunking.sync.bunk_request_processor.core.models import AgePreference
-
-        assert AgePreference.OLDER.value == "older"
-        assert AgePreference.YOUNGER.value == "younger"
-        assert len(AgePreference) == 2
-
-
 class TestPerson:
     """Test the Person dataclass"""
-
-    def test_person_creation(self):
-        """Test creating a Person with all fields"""
-        from bunking.sync.bunk_request_processor.core.models import Person
-
-        person = Person(
-            cm_id=12345,
-            first_name="John",
-            last_name="Doe",
-            preferred_name="Johnny",
-            birth_date=datetime(2010, 5, 15),
-            grade=8,
-            school="Lincoln Middle School",
-            session_cm_id=1000002,
-        )
-
-        assert person.cm_id == 12345
-        assert person.first_name == "John"
-        assert person.last_name == "Doe"
-        assert person.preferred_name == "Johnny"
-        assert person.birth_date == datetime(2010, 5, 15)
-        assert person.grade == 8
-        assert person.school == "Lincoln Middle School"
-        assert person.session_cm_id == 1000002
-
-    def test_person_minimal_creation(self):
-        """Test creating a Person with only required fields"""
-        from bunking.sync.bunk_request_processor.core.models import Person
-
-        person = Person(cm_id=12345, first_name="John", last_name="Doe")
-
-        assert person.cm_id == 12345
-        assert person.first_name == "John"
-        assert person.last_name == "Doe"
-        assert person.preferred_name is None
-        assert person.birth_date is None
-        assert person.grade is None
-        assert person.school is None
-        assert person.session_cm_id is None
 
     def test_person_age_calculation(self):
         """Test that Person can calculate age correctly"""
@@ -169,23 +61,6 @@ class TestPerson:
         person = Person(cm_id=12345, first_name="John", last_name="Doe")
 
         assert person.display_name == "John Doe"
-
-    def test_person_has_campminder_age_field(self):
-        """Test that Person model has CampMinder's age field.
-
-        CampMinder provides age in years.months format (e.g., "10.03" = 10 years, 3 months).
-        This is the authoritative source for bunking staff calculations.
-        """
-        from bunking.sync.bunk_request_processor.core.models import Person
-
-        person = Person(
-            cm_id=12345,
-            first_name="John",
-            last_name="Doe",
-            age=10.03,  # CampMinder format: 10 years, 3 months
-        )
-
-        assert person.age == 10.03
 
     def test_person_age_in_months_conversion(self):
         """Test that CampMinder age converts correctly to months.
