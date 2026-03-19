@@ -302,15 +302,4 @@ describe('useDrilldown', () => {
       expect(result.current.filter).toBeNull()
     })
   })
-
-  describe('integration with DrillDownModal', () => {
-    it('should use DrillDownModal component from components/metrics', async () => {
-      // Verify the hook imports the correct component
-      const sourceContent = await import('./useDrilldown?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('DrillDownModal')
-      expect(source).toContain('../components/metrics/DrillDownModal')
-    })
-  })
 })

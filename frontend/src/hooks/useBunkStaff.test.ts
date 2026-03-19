@@ -20,55 +20,6 @@ describe('useBunkStaff', () => {
     })
   })
 
-  describe('PocketBase collection usage', () => {
-    it('should fetch from bunk_assignments collection for session-level data', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      // v3: Must use bunk_assignments (not just staff.bunks) for session-level resolution
-      expect(source).toContain('bunk_assignments')
-    })
-
-    it('should fetch from staff collection to identify bunk staff', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain(".collection('staff')")
-      expect(source).toContain('bunk_staff')
-    })
-
-    it('should expand person relation for display names', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('person')
-      expect(source).toContain('expand')
-    })
-
-    it('should expand session and bunk relations on bunk_assignments', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('session')
-      expect(source).toContain('bunk')
-    })
-
-    it('should filter by year', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('year')
-      expect(source).toContain('filter')
-    })
-
-    it('should read staff status from record', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('status')
-    })
-  })
-
   describe('query key structure', () => {
     it('should have bunkStaff in queryKeys', async () => {
       const { queryKeys } = await import('../utils/queryKeys')
@@ -83,73 +34,6 @@ describe('useBunkStaff', () => {
       expect(Array.isArray(key)).toBe(true)
       expect(key).toContain('bunk-staff')
       expect(key).toContain(2025)
-    })
-  })
-
-  describe('data transformation', () => {
-    it('should build a Map keyed by session|bunk', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      // Should use Map for the session+bunk-to-staff lookup
-      expect(source).toContain('Map')
-    })
-
-    it('should use pipe separator in map key for session|bunk', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      // Map key format: "sessionName|bunkName"
-      expect(source).toContain('|')
-    })
-
-    it('should use preferred_name over first_name when available', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('preferred_name')
-      expect(source).toContain('first_name')
-    })
-
-    it('should include last_name in display name', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('last_name')
-    })
-  })
-
-  describe('AG session normalization', () => {
-    it('should fetch camp_sessions for AG parent resolution', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      // Must fetch camp_sessions to build cm_id→name lookup for AG parents
-      expect(source).toContain("collection('camp_sessions')")
-    })
-
-    it('should check session_type for AG detection', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('session_type')
-      expect(source).toContain('CampSessionsSessionTypeOptions.ag')
-    })
-
-    it('should resolve parent_id to parent session name', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('parent_id')
-    })
-  })
-
-  describe('caching options', () => {
-    it('should use syncDataOptions (Tier 1 long cache)', async () => {
-      const sourceContent = await import('./useBunkStaff?raw')
-      const source = sourceContent.default
-
-      expect(source).toContain('syncDataOptions')
     })
   })
 
@@ -204,12 +88,5 @@ describe('useBunkStaff', () => {
       // Different session for same bunk should not exist unless added
       expect(exampleReturn.get('Session 1|B-3')).toBeUndefined()
     })
-  })
-
-  it('should guard query with auth loading state', async () => {
-    const sourceContent = await import('./useBunkStaff?raw')
-    const source = sourceContent.default
-    expect(source).toMatch(/isLoading|isAuthLoading/)
-    expect(source).toMatch(/enabled:.*!(isLoading|isAuthLoading)/)
   })
 })

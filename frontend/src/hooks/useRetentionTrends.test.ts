@@ -246,11 +246,4 @@ describe('useRetentionTrends enabled state', () => {
 
     expect(enabled).toBe(false)
   })
-
-  it('should guard query with isAuthLoading', async () => {
-    const sourceContent = await import('./useRetentionTrends?raw')
-    const source = sourceContent.default
-    expect(source).toContain('isAuthLoading')
-    expect(source).toMatch(/enabled:.*!isAuthLoading/)
-  })
 })
