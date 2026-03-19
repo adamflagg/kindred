@@ -286,6 +286,18 @@ describe('PipelineBatchList', () => {
 
       expect(screen.getByText(/no results/i)).toBeInTheDocument()
     })
+
+    it('renders error state when error prop is provided', () => {
+      render(<PipelineBatchList {...defaultProps} error={new Error('Network failure')} />)
+      expect(screen.getByText(/failed to load pipeline data/i)).toBeInTheDocument()
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    })
+
+    it('does not render error state when error is null', () => {
+      render(<PipelineBatchList {...defaultProps} error={null} />)
+      expect(screen.queryByText(/failed to load pipeline data/i)).not.toBeInTheDocument()
+      expect(screen.getByRole('table')).toBeInTheDocument()
+    })
   })
 
   describe('Total count', () => {
