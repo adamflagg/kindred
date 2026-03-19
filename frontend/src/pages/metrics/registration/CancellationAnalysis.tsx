@@ -23,7 +23,6 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useComparisonCancellationData } from '../../../hooks/useComparisonCancellationData'
-import { metricsFilter } from '../../../hooks/useMetrics'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { CancellationGenderChart } from '../../../components/metrics/CancellationGenderChart'
 import {
@@ -108,11 +107,11 @@ export default function CancellationAnalysis() {
   const {
     selectedSessionCmId,
     sessions,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
@@ -120,11 +119,7 @@ export default function CancellationAnalysis() {
   const { primary, comparison } = useComparisonCancellationData(
     currentYear,
     compareYear,
-    metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    })
+    filterOptions
   )
   const { data, isLoading, error } = primary
   const compData = comparison?.data

@@ -7,7 +7,7 @@
 
 import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { useRetentionMetrics, metricsFilter } from '../../../hooks/useMetrics'
+import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useMetricsSessions } from '../../../hooks/useMetricsSessions'
 import { sessionFlowToSankeyData } from '../../../utils/retentionTransforms'
@@ -31,7 +31,7 @@ function buildComparator(
 
 export default function SessionFlowPage() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam, sessions, durationParam } = useMetricsSession()
+  const { sessions, filterOptions } = useMetricsSession()
   const priorYear = currentYear - 1
 
   // Fetch prior year sessions for source-side ordering
@@ -46,15 +46,7 @@ export default function SessionFlowPage() {
     [sessions, priorSessions]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(
-    priorYear,
-    currentYear,
-    metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    })
-  )
+  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, filterOptions)
 
   return (
     <div className="space-y-4">

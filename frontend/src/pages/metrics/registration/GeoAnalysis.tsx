@@ -13,7 +13,6 @@ import { useState, useMemo, useCallback } from 'react'
 import { Globe } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
-import { metricsFilter } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import {
@@ -46,11 +45,11 @@ export default function GeoAnalysis() {
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const {
     selectedSessionCmId,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
 
   // Drilldown hook for modal functionality
@@ -64,11 +63,7 @@ export default function GeoAnalysis() {
 
   // Fetch registration data with geographic breakdowns + optional comparison
   const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    ...metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    }),
+    ...filterOptions,
     statuses: 'enrolled',
   })
   const { data, isLoading, error } = primary

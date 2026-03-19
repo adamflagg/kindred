@@ -17,7 +17,6 @@
 import { useCallback, useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
-import { metricsFilter } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -132,11 +131,11 @@ export default function RegistrationOverview() {
   const {
     selectedSessionCmId,
     sessions,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
 
   // Always use enrolled status only
@@ -176,11 +175,7 @@ export default function RegistrationOverview() {
 
   // Fetch registration data with optional comparison year
   const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    ...metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    }),
+    ...filterOptions,
     statuses: statusesParam,
   })
   const { data, isLoading, error } = primary

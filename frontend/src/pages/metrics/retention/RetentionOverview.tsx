@@ -9,7 +9,7 @@
 
 import { useMemo, useCallback } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { useRetentionMetrics, metricsFilter } from '../../../hooks/useMetrics'
+import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
@@ -42,7 +42,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes, durationParam } =
+  const { selectedSessionCmId, sessions, activeSessionTypes, durationParam, filterOptions } =
     useMetricsSession()
   const priorYear = currentYear - 1
 
@@ -71,15 +71,7 @@ export default function RetentionOverview() {
     [priorYear, currentYear]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(
-    priorYear,
-    currentYear,
-    metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    })
-  )
+  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, filterOptions)
 
   // Build date lookup from API response (prior year sessions have start_date)
   const priorSessionDateLookup = useMemo(() => {

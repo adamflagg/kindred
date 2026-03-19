@@ -14,7 +14,6 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useComparisonWaitlistData } from '../../../hooks/useComparisonWaitlistData'
-import { metricsFilter } from '../../../hooks/useMetrics'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { WaitlistGenderChart } from '../../../components/metrics/WaitlistGenderChart'
 import {
@@ -106,24 +105,16 @@ export default function WaitlistAnalysis() {
   const {
     selectedSessionCmId,
     sessions,
-    sessionTypesParam,
     activeSessionTypes,
     compareYear,
     isComparing,
     durationParam,
+    filterOptions,
   } = useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
-  const { primary, comparison } = useComparisonWaitlistData(
-    currentYear,
-    compareYear,
-    metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    })
-  )
+  const { primary, comparison } = useComparisonWaitlistData(currentYear, compareYear, filterOptions)
   const { data, isLoading, error } = primary
   const compData = comparison?.data
 

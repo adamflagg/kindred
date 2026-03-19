@@ -13,7 +13,7 @@
  */
 
 import { useMemo } from 'react'
-import { useHistoricalTrends, metricsFilter } from '../../../hooks/useMetrics'
+import { useHistoricalTrends } from '../../../hooks/useMetrics'
 import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -131,8 +131,13 @@ function buildGroupedChartData(
 }
 
 export default function TrendsOverview() {
-  const { selectedSessionCmId, sessionTypesParam, expandedRetention, durationParam } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessionTypesParam,
+    expandedRetention,
+    durationParam,
+    filterOptions,
+  } = useMetricsSession()
   const { currentYear } = useCurrentYear()
 
   const numYearsDisplay = expandedRetention ? 5 : 3
@@ -144,11 +149,7 @@ export default function TrendsOverview() {
 
   // Historical trends (enrollment, new vs returning, gender lines)
   const { data, isLoading, error } = useHistoricalTrends({
-    ...metricsFilter({
-      sessionTypes: sessionTypesParam,
-      sessionCmId: selectedSessionCmId,
-      duration: durationParam,
-    }),
+    ...filterOptions,
     years: yearsParam,
   })
 
