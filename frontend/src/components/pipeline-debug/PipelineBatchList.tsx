@@ -13,7 +13,11 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 
 /** Column definitions for sortable headers. */
-const SORTABLE_COLUMNS: Array<{ label: string; field: string; hiddenClass?: string }> = [
+const SORTABLE_COLUMNS: Array<{
+  label: string
+  field: keyof PipelineSummaryItem
+  hiddenClass?: string
+}> = [
   { label: 'Camper', field: 'requester_name' },
   { label: 'Target', field: 'target_name' },
   { label: 'Source', field: 'source_field' },
