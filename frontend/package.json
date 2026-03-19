@@ -70,7 +70,8 @@
     },
     "@tailwindcss/vite": {
       "vite": "^8.0.0"
-    }
+    },
+    "flatted": ">=3.4.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -84,7 +85,7 @@
     "@typescript-eslint/eslint-plugin": "^8.57.0",
     "@typescript-eslint/parser": "^8.57.0",
     "@vitest/coverage-v8": "^4.1.0",
-    "@vitest/ui": "^4.0.16",
+    "@vitest/ui": "^4.1.0",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-react-hooks": "^7.0.0",

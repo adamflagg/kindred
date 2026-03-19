@@ -1636,8 +1636,11 @@ export default function RequestReviewPanel({
                                           .join(' + ')
                                       } else {
                                         // Single source: use first available field
+                                        const firstSourceField = Array.isArray(sourceFields)
+                                          ? sourceFields[0]
+                                          : undefined
                                         const field =
-                                          (sourceFields?.[0] ?? singleField) || aiField || ''
+                                          (firstSourceField ?? singleField) || aiField || ''
                                         fieldName = field
                                           ? formatSourceField(field)
                                           : 'Unknown Field'

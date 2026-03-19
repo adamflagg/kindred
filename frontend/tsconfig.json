@@ -30,7 +30,8 @@
     "exactOptionalPropertyTypes": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitOverride": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "erasableSyntaxOnly": true
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
