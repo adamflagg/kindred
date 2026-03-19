@@ -589,11 +589,11 @@ jobs:
 
           # Generate SARIF report (HIGH + CRITICAL, non-blocking)
           trivy image --format sarif --output "trivy-results-${IMAGE}.sarif" \
-            --severity CRITICAL,HIGH --exit-code 0 "$FULL_REF"
+            --severity CRITICAL,HIGH --exit-code 0 --ignorefile .trivyignore "$FULL_REF"
 
           # Check for CRITICAL vulnerabilities (scan all images before failing)
           if ! trivy image --format table --severity CRITICAL --exit-code 1 \
-               --skip-db-update "$FULL_REF"; then
+               --skip-db-update --ignorefile .trivyignore "$FULL_REF"; then
             echo "^^^ CRITICAL vulnerabilities found in ${IMAGE}!"
             HAS_CRITICAL=true
           fi
