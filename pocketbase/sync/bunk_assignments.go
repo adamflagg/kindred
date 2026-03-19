@@ -266,7 +266,7 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 
 	// Load person enrollments: personCMID -> list of sessionCMIDs they're enrolled in
 	// This is the source of truth for which session a person belongs to
-	attendeeFilter := fmt.Sprintf("year = %d && is_active = true", year)
+	attendeeFilter := fmt.Sprintf("year = %d && status_id = 2", year)
 	if err := s.PaginateRecords("attendees", attendeeFilter, func(record *core.Record) error {
 		personCMID := 0
 		sessionCMID := 0
