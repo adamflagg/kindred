@@ -26,6 +26,7 @@ from api.schemas.metrics import (
 from api.utils.session_metrics import (
     compute_summer_metrics,
     filter_attendees_by_session,
+    get_session_from_expand,
     resolve_duration_sessions,
 )
 
@@ -187,8 +188,7 @@ class RetentionTrendsService:
         """
         filtered = []
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if session and getattr(session, "session_type", None) in session_types:
                 filtered.append(a)
         return filtered
@@ -209,8 +209,7 @@ class RetentionTrendsService:
         """
         filtered = []
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             if session and getattr(session, "cm_id", None) == session_cm_id:
                 filtered.append(a)
         return filtered

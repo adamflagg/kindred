@@ -16,6 +16,7 @@ from api.schemas.metrics import (
     GradeBreakdown,
     YearSummary,
 )
+from api.utils.session_metrics import get_session_from_expand
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .extractors import extract_gender, extract_grade
@@ -109,8 +110,7 @@ class ComparisonService:
         """
         filtered = []
         for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session = get_session_from_expand(a)
             session_type = getattr(session, "session_type", None) if session else None
             if session_type in session_types:
                 filtered.append(a)

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from pocketbase import PocketBase
 
 from ...core.models import Person
@@ -142,11 +143,10 @@ class AttendeeRepository:
 
     def _get_session_cm_id(self, attendee: Any) -> int | None:
         """Extract session CM ID from expanded relation"""
-        if hasattr(attendee, "expand") and attendee.expand:
-            session = attendee.expand.get("session")
-            if session and hasattr(session, "cm_id"):
-                result: int = session.cm_id
-                return result
+        session = get_session_from_expand(attendee)
+        if session and hasattr(session, "cm_id"):
+            result: int = session.cm_id
+            return result
         return None
 
     def get_age_filtered_session_peers(
@@ -254,8 +254,7 @@ class AttendeeRepository:
                     continue
 
                 # Filter by session type — only bunking-relevant sessions
-                expand = getattr(item, "expand", None)
-                session = expand.get("session") if expand else None
+                session = get_session_from_expand(item)
                 session_type = getattr(session, "session_type", None) if session else None
                 if session_type not in VALID_BUNKING_SESSION_TYPES:
                     continue
@@ -353,8 +352,7 @@ class AttendeeRepository:
             # Extract bunkmate CM IDs (excluding requester)
             bunkmate_cm_ids = []
             for assignment in bunkmates:
-                assign_expand = getattr(assignment, "expand", {}) or {}
-                person_data = assign_expand.get("person")
+                person_data = get_person_from_expand(assignment)
                 if person_data:
                     cm_id = getattr(person_data, "cm_id", None)
                     if cm_id and cm_id != requester_cm_id:
@@ -429,11 +427,8 @@ class AttendeeRepository:
             prev_year_count = 0
 
             for attendee in attendees:
-                if not hasattr(attendee, "expand") or not attendee.expand:
-                    continue
-
-                person = attendee.expand.get("person")
-                session = attendee.expand.get("session")
+                person = get_person_from_expand(attendee)
+                session = get_session_from_expand(attendee)
 
                 if not person or not session:
                     continue

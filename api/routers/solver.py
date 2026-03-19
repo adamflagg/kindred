@@ -49,6 +49,7 @@ from ..schemas import (
 )
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
+from ..utils.session_metrics import get_session_from_expand
 
 logger = get_logger(__name__)
 
@@ -168,19 +169,17 @@ async def pre_validate_solver(
         person_session_type: dict[int, str] = {}
         for attendee in attendees:
             person_id = getattr(attendee, "person_id", None)
-            if person_id and hasattr(attendee, "expand") and attendee.expand:
-                session = attendee.expand.get("session")
-                if session:
-                    session_type: str = str(getattr(session, "type", None) or getattr(session, "session_type", "main"))
-                    person_session_type[person_id] = session_type
+            session = get_session_from_expand(attendee)
+            if person_id and session:
+                session_type: str = str(getattr(session, "type", None) or getattr(session, "session_type", "main"))
+                person_session_type[person_id] = session_type
 
         # Count attendees by session for breakdown
         attendees_by_session: defaultdict[int, int] = defaultdict(int)
         for attendee in attendees:
-            if hasattr(attendee, "expand") and attendee.expand:
-                session = attendee.expand.get("session")
-                if session and hasattr(session, "cm_id"):
-                    attendees_by_session[session.cm_id] += 1
+            session = get_session_from_expand(attendee)
+            if session and hasattr(session, "cm_id"):
+                attendees_by_session[session.cm_id] += 1
 
         # Fetch persons to get names (with year filter for data integrity)
         persons_dict: dict[int, Any] = {}
@@ -565,12 +564,7 @@ async def apply_solver_results(
                     )
                     continue
 
-                attendee_expand = getattr(attendees[0], "expand", {}) or {}
-                session_data = (
-                    attendee_expand.get("session")
-                    if isinstance(attendee_expand, dict)
-                    else getattr(attendee_expand, "session", None)
-                )
+                session_data = get_session_from_expand(attendees[0])
                 actual_session_cm_id_val = (
                     session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
                 )
@@ -618,12 +612,7 @@ async def apply_solver_results(
                     )
                     continue
 
-                attendee_expand = getattr(attendees[0], "expand", {}) or {}
-                session_data = (
-                    attendee_expand.get("session")
-                    if isinstance(attendee_expand, dict)
-                    else getattr(attendee_expand, "session", None)
-                )
+                session_data = get_session_from_expand(attendees[0])
                 actual_session_cm_id_raw = (
                     session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
                 )

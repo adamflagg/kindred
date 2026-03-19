@@ -43,6 +43,7 @@ from ..constants.collections import (
 from ..dependencies import pb, solver_runs
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
+from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 logger = get_logger(__name__)
 
@@ -125,16 +126,8 @@ async def create_scenario(
             for assignment in copy_source_assignments:
                 if request.should_copy_from_production and not request.copy_from_scenario:
                     assign_expand = getattr(assignment, "expand", {}) or {}
-                    person_data = (
-                        assign_expand.get("person")
-                        if isinstance(assign_expand, dict)
-                        else getattr(assign_expand, "person", None)
-                    )
-                    session_data = (
-                        assign_expand.get("session")
-                        if isinstance(assign_expand, dict)
-                        else getattr(assign_expand, "session", None)
-                    )
+                    person_data = get_person_from_expand(assignment)
+                    session_data = get_session_from_expand(assignment)
                     bunk_data = (
                         assign_expand.get("bunk")
                         if isinstance(assign_expand, dict)
@@ -317,7 +310,7 @@ async def evaluate_score(
         assignment_map: dict[int, int] = {}
         for a in assignments_raw:
             expand = getattr(a, "expand", {}) or {}
-            person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            person_data = get_person_from_expand(a)
             bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
 
             if person_data and bunk_data:

@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.direct_solver import (
     DirectBunk,
     DirectBunkAssignment,
@@ -72,11 +73,7 @@ async def fetch_session_data_v2(
         # Log attendee counts by session
         attendees_by_session: defaultdict[int, int] = defaultdict(int)
         for attendee in attendees:
-            session_cm_id_val = (
-                getattr(attendee.expand.get("session"), "cm_id", None)
-                if hasattr(attendee, "expand") and attendee.expand
-                else None
-            )
+            session_cm_id_val = getattr(get_session_from_expand(attendee), "cm_id", None)
             if session_cm_id_val:
                 attendees_by_session[session_cm_id_val] += 1
         logger.info(f"Fetched {len(attendees)} total attendees: {dict(attendees_by_session)}")
@@ -209,7 +206,7 @@ async def fetch_historical_bunking(
             expand = getattr(assignment, "expand", {}) or {}
 
             # Get person cm_id from expanded relation
-            person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            person_data = get_person_from_expand(assignment)
             person_cm_id = person_data.cm_id if person_data and hasattr(person_data, "cm_id") else None
 
             # Get bunk name from expanded relation
@@ -345,14 +342,7 @@ def prepare_direct_solver_input(
     person_cm_id_set = set()
 
     for attendee in attendees:
-        expand = getattr(attendee, "expand", {}) or {}
-
-        # Handle expand as either dict or object
-        person = None
-        if isinstance(expand, dict) and "person" in expand:
-            person = expand["person"]
-        elif hasattr(expand, "person"):
-            person = expand.person
+        person = get_person_from_expand(attendee)
 
         if not person:
             logger.warning(f"Attendee {attendee.id} missing person data")
@@ -366,10 +356,8 @@ def prepare_direct_solver_input(
         person_cm_id_set.add(person_cm_id)
 
         # Get session cm_id from expanded session relation
-        session_cm_id_val = None
-        session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-        if session_data and hasattr(session_data, "cm_id"):
-            session_cm_id_val = session_data.cm_id
+        session_data = get_session_from_expand(attendee)
+        session_cm_id_val = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
 
         direct_person = DirectPerson(
             campminder_person_id=person_cm_id,
@@ -387,8 +375,7 @@ def prepare_direct_solver_input(
     session_ids_in_data = set()
     ag_session_ids = set()
     for attendee in attendees:
-        expand = getattr(attendee, "expand", {}) or {}
-        session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        session_data = get_session_from_expand(attendee)
         if session_data and hasattr(session_data, "cm_id"):
             session_ids_in_data.add(session_data.cm_id)
             session_type = getattr(session_data, "session_type", "")
@@ -404,7 +391,7 @@ def prepare_direct_solver_input(
         expand = getattr(plan, "expand", {}) or {}
         bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
         bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
-        session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        session_data = get_session_from_expand(plan)
         session_cm_id_val = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
         if bunk_cm_id and session_cm_id_val:
             if bunk_cm_id not in bunk_to_session:
@@ -467,9 +454,9 @@ def prepare_direct_solver_input(
     direct_assignments = []
     for assignment in assignments:
         expand = getattr(assignment, "expand", {}) or {}
-        person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+        person_data = get_person_from_expand(assignment)
         person_cm_id = person_data.cm_id if person_data and hasattr(person_data, "cm_id") else None
-        session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        session_data = get_session_from_expand(assignment)
         session_cm_id_val = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
         bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
         bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None

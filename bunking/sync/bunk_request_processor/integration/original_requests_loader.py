@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -145,11 +146,8 @@ class OriginalRequestsLoader:
             prev_year_count = 0
 
             for attendee in attendees:
-                if not hasattr(attendee, "expand") or not attendee.expand:
-                    continue
-
-                person = attendee.expand.get("person")
-                session = attendee.expand.get("session")
+                person = get_person_from_expand(attendee)
+                session = get_session_from_expand(attendee)
                 attendee_year = attendee.year  # type: ignore[attr-defined]
 
                 if person:

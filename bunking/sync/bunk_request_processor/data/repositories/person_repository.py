@@ -8,6 +8,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from api.utils.session_metrics import get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -257,9 +258,9 @@ class PersonRepository(Repository):
             person_cm_ids = []
             for a in attendees:
                 # Get session CM ID from expanded relation
-                if hasattr(a, "expand") and a.expand:
-                    session = a.expand.get("session")
-                    if session and session.cm_id == session_cm_id:
+                session = get_session_from_expand(a)
+                if session:
+                    if session.cm_id == session_cm_id:
                         # person_id is a direct field with CM ID
                         if hasattr(a, "person_id") and a.person_id:
                             person_cm_ids.append(a.person_id)

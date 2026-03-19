@@ -43,6 +43,7 @@ from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
 from ..services.session_context import build_session_context
+from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 logger = get_logger(__name__)
 
@@ -245,8 +246,8 @@ async def validate_bunking(
         assignments = []
         for assignment_data in assignments_data:
             expand = getattr(assignment_data, "expand", {}) or {}
-            person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-            session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            person_data = get_person_from_expand(assignment_data)
+            session_data = get_session_from_expand(assignment_data)
             bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
 
             person_cm_id = person_data.cm_id if person_data and hasattr(person_data, "cm_id") else None
@@ -321,7 +322,7 @@ async def validate_bunking(
         for plan in bunk_plans_data:
             expand = getattr(plan, "expand", {}) or {}
             bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
-            session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session_data = get_session_from_expand(plan)
             bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
             session_cm_id_val = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
             if bunk_cm_id and session_cm_id_val:
@@ -332,8 +333,7 @@ async def validate_bunking(
         attendees_for_validator = []
         for attendee in attendees_data:
             person_cm_id = getattr(attendee, "person_id", None)
-            expand = getattr(attendee, "expand", {}) or {}
-            session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            session_data = get_session_from_expand(attendee)
             session_cm_id_val = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
             if person_cm_id and session_cm_id_val:
                 att = AttendeeData(person_cm_id=person_cm_id, session_cm_id=session_cm_id_val)
@@ -353,9 +353,9 @@ async def validate_bunking(
             )
             for hist in historical_data:
                 expand = getattr(hist, "expand", {}) or {}
-                person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+                person_data = get_person_from_expand(hist)
                 bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
-                session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                session_data = get_session_from_expand(hist)
 
                 person_cm_id = person_data.cm_id if person_data and hasattr(person_data, "cm_id") else None
                 bunk_name = bunk_data.name if bunk_data and hasattr(bunk_data, "name") else None

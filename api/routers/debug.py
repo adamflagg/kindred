@@ -88,6 +88,7 @@ from ..schemas.pipeline_debug import (
 )
 from ..settings import get_settings
 from ..utils.pb_filters import pb_escape
+from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 logger = get_logger(__name__)
 
@@ -544,8 +545,7 @@ async def list_original_requests_by_camper(
     if not attendees.items:
         return OriginalRequestsListResponse(items=[], total=0)
 
-    expand = getattr(attendees.items[0], "expand", {}) or {}
-    person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+    person = get_person_from_expand(attendees.items[0])
     if not person:
         return OriginalRequestsListResponse(items=[], total=0)
     person_pb_id = person.id
@@ -610,9 +610,8 @@ async def search_persons(
     # Group by person cm_id, collecting session CM IDs
     person_data: dict[int, PersonSearchItem] = {}
     for att in attendees:
-        expand = getattr(att, "expand", {}) or {}
-        person = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
-        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        person = get_person_from_expand(att)
+        session = get_session_from_expand(att)
         if not person:
             continue
 
