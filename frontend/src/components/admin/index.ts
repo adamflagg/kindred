@@ -5,7 +5,7 @@ export { SyncTab } from './SyncTab'
 export { SYNC_TYPES, YEAR_SYNC_TYPES, getYearSyncTypes } from './syncTypes'
 export { ConfigTab } from './ConfigTab'
 export { RegistrationDatesConfig } from './RegistrationDatesConfig'
-export { SessionBudgetConfig } from './SessionBudgetConfig'
+export { SessionConfigTable } from './SessionConfigTable'
 export { SectionCard, type SectionCardProps } from './SectionCard'
 export { ScaleGuideSidebar, type ScaleGuideSidebarProps } from './ScaleGuideSidebar'
 export {
