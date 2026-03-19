@@ -322,7 +322,7 @@ Links persons to camp sessions with enrollment status.
 
 **Unique**: `(person_id, year, session)`
 
-**Filtering**: Solver uses `is_active = 1 AND status_id = 2` for active enrollees.
+**Filtering**: Solver uses `status_id = 2` for active enrolled attendees.
 
 ### bunks
 
