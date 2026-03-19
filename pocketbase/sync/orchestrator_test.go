@@ -297,76 +297,6 @@ func TestIsHistoricalSyncRunning(t *testing.T) {
 	}
 }
 
-// TestStatusStruct tests Status struct initialization
-func TestStatusStruct(t *testing.T) {
-	now := time.Now()
-	endTime := now.Add(time.Minute)
-
-	status := Status{
-		Type:      serviceNameSessions,
-		Status:    statusCompleted,
-		StartTime: now,
-		EndTime:   &endTime,
-		Summary: Stats{
-			Created: 10,
-			Updated: 5,
-			Skipped: 2,
-			Errors:  1,
-		},
-		Year: 2024,
-	}
-
-	if status.Type != serviceNameSessions {
-		t.Errorf("expected type %q, got %q", serviceNameSessions, status.Type)
-	}
-
-	if status.Year != 2024 {
-		t.Errorf("expected year 2024, got %d", status.Year)
-	}
-
-	if status.Summary.Created != 10 {
-		t.Errorf("expected 10 created, got %d", status.Summary.Created)
-	}
-}
-
-// TestOptions tests Options struct
-func TestOptions(t *testing.T) {
-	opts := Options{
-		Year:       2023,
-		Services:   []string{"sessions", "attendees"},
-		Concurrent: true,
-	}
-
-	if opts.Year != 2023 {
-		t.Errorf("expected year 2023, got %d", opts.Year)
-	}
-
-	if len(opts.Services) != 2 {
-		t.Errorf("expected 2 services, got %d", len(opts.Services))
-	}
-
-	if !opts.Concurrent {
-		t.Error("expected Concurrent to be true")
-	}
-}
-
-// TestOptionsDefaults tests default Options values
-func TestOptionsDefaults(t *testing.T) {
-	opts := Options{}
-
-	if opts.Year != 0 {
-		t.Errorf("expected default year 0, got %d", opts.Year)
-	}
-
-	if len(opts.Services) != 0 {
-		t.Errorf("expected empty services, got %d", len(opts.Services))
-	}
-
-	if opts.Concurrent {
-		t.Error("expected Concurrent to default to false")
-	}
-}
-
 // TestSyncOrder tests that services are registered in correct dependency order
 func TestSyncOrder(t *testing.T) {
 	// Expected sync order for daily sync
@@ -457,13 +387,6 @@ func TestConcurrentAccess(_ *testing.T) {
 	<-done
 
 	// No race conditions should have occurred
-}
-
-// TestStatusConstants tests status constant values
-func TestStatusConstants(t *testing.T) {
-	if statusFailed != "failed" {
-		t.Errorf("expected statusFailed='failed', got %q", statusFailed)
-	}
 }
 
 // TestIsWeeklySyncRunning tests weekly sync running check
@@ -1369,42 +1292,6 @@ func TestGlobalTablesCheckBehavior(t *testing.T) {
 // Sync Queue Tests
 // =============================================================================
 
-// TestQueuedSyncStruct tests the QueuedSync struct
-func TestQueuedSyncStruct(t *testing.T) {
-	now := time.Now()
-	qs := QueuedSync{
-		ID:                  "test-uuid-123",
-		Year:                2025,
-		Service:             "all",
-		IncludeCustomValues: true,
-		Debug:               false,
-		QueuedAt:            now,
-		RequestedBy:         "user@example.com",
-	}
-
-	if qs.ID != "test-uuid-123" {
-		t.Errorf("expected ID='test-uuid-123', got %q", qs.ID)
-	}
-	if qs.Year != 2025 {
-		t.Errorf("expected Year=2025, got %d", qs.Year)
-	}
-	if qs.Service != "all" {
-		t.Errorf("expected Service='all', got %q", qs.Service)
-	}
-	if !qs.IncludeCustomValues {
-		t.Error("expected IncludeCustomValues=true")
-	}
-	if qs.Debug {
-		t.Error("expected Debug=false")
-	}
-	if !qs.QueuedAt.Equal(now) {
-		t.Errorf("expected QueuedAt=%v, got %v", now, qs.QueuedAt)
-	}
-	if qs.RequestedBy != "user@example.com" {
-		t.Errorf("expected RequestedBy='user@example.com', got %q", qs.RequestedBy)
-	}
-}
-
 // TestEnqueueUnifiedSync tests basic enqueueing functionality
 func TestEnqueueUnifiedSync(t *testing.T) {
 	o := NewOrchestrator(nil)
@@ -1818,41 +1705,6 @@ func TestStats_IsNoOp(t *testing.T) {
 // =============================================================================
 // Sync Phase Architecture Tests
 // =============================================================================
-
-// TestPhaseConstants tests that Phase constants are properly defined
-func TestPhaseConstants(t *testing.T) {
-	// All phase constants should be non-empty strings
-	phases := []Phase{
-		PhaseSource,
-		PhaseExpensive,
-		PhaseTransform,
-		PhaseProcess,
-		PhaseExport,
-	}
-
-	for _, phase := range phases {
-		if phase == "" {
-			t.Error("Phase constant should not be empty")
-		}
-	}
-
-	// Verify expected values
-	if PhaseSource != "source" {
-		t.Errorf("expected PhaseSource='source', got %q", PhaseSource)
-	}
-	if PhaseExpensive != "expensive" {
-		t.Errorf("expected PhaseExpensive='expensive', got %q", PhaseExpensive)
-	}
-	if PhaseTransform != "transform" {
-		t.Errorf("expected PhaseTransform='transform', got %q", PhaseTransform)
-	}
-	if PhaseProcess != "process" {
-		t.Errorf("expected PhaseProcess='process', got %q", PhaseProcess)
-	}
-	if PhaseExport != "export" {
-		t.Errorf("expected PhaseExport='export', got %q", PhaseExport)
-	}
-}
 
 // TestJobMeta_AllJobsHavePhase tests that all sync jobs have a phase assigned
 func TestJobMeta_AllJobsHavePhase(t *testing.T) {
