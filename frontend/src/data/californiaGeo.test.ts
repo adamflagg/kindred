@@ -9,7 +9,6 @@ import { describe, it, expect } from 'vitest'
 import {
   BAY_AREA_REGIONS,
   BAY_AREA_REGION_POLYGONS,
-  REGION_COLORS,
   getCityCoords,
   getCityRegion,
   type RegionPolygon,
