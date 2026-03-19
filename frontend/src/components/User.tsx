@@ -4,6 +4,34 @@ import { User as UserIcon, Mail, Activity, AlertTriangle, LogOut, Clock } from '
 import { formatDistanceToNow } from 'date-fns'
 import { pb } from '../lib/pocketbase'
 
+function ProfileRow({
+  icon,
+  label,
+  value,
+  hasBorder = true,
+  valueClassName = 'font-medium',
+}: {
+  icon: React.ReactNode
+  label: string
+  value: React.ReactNode
+  hasBorder?: boolean
+  valueClassName?: string
+}) {
+  return (
+    <div className={hasBorder ? 'border-border border-b pb-4' : ''}>
+      <div className="flex items-start gap-3">
+        <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
+          {icon}
+        </div>
+        <div className="flex-1">
+          <p className="text-muted-foreground text-sm">{label}</p>
+          <p className={valueClassName}>{value}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function User() {
   const navigate = useNavigate()
   const { user, isLoading, error, isBypassMode, logout } = useAuth()
@@ -83,46 +111,30 @@ export default function User() {
             </h3>
 
             <div className="space-y-4">
-              <div className="border-border border-b pb-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
-                    <Mail className="text-muted-foreground h-5 w-5" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-muted-foreground text-sm">Email Address</p>
-                    <p className="font-medium">{user['email'] ?? 'No email address provided'}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-border border-b pb-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
-                    <Activity className="text-muted-foreground h-5 w-5" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-muted-foreground text-sm">Account Status</p>
-                    <p className="text-primary font-medium">Active</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-start gap-3">
-                  <div className="bg-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
-                    <Clock className="text-muted-foreground h-5 w-5" />
-                  </div>
-                  <div className="flex-1" data-testid="profile-last-login">
-                    <p className="text-muted-foreground text-sm">Last Login</p>
-                    <p className="font-medium">
-                      {user['last_login']
-                        ? formatDistanceToNow(new Date(user['last_login'] as string), {
-                            addSuffix: true,
-                          })
-                        : 'Never'}
-                    </p>
-                  </div>
-                </div>
+              <ProfileRow
+                icon={<Mail className="text-muted-foreground h-5 w-5" />}
+                label="Email Address"
+                value={user['email'] ?? 'No email address provided'}
+              />
+              <ProfileRow
+                icon={<Activity className="text-muted-foreground h-5 w-5" />}
+                label="Account Status"
+                value="Active"
+                valueClassName="text-primary font-medium"
+              />
+              <div data-testid="profile-last-login">
+                <ProfileRow
+                  icon={<Clock className="text-muted-foreground h-5 w-5" />}
+                  label="Last Login"
+                  value={
+                    user['last_login']
+                      ? formatDistanceToNow(new Date(user['last_login'] as string), {
+                          addSuffix: true,
+                        })
+                      : 'Never'
+                  }
+                  hasBorder={false}
+                />
               </div>
             </div>
           </div>
