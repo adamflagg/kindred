@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 
 // Sub-entity stats for combined syncs (e.g., persons includes households)
 export interface SubStats {
@@ -102,7 +103,7 @@ export function useSyncStatusAPI() {
   const { isLoading } = useAuth()
 
   return useQuery({
-    queryKey: ['sync-status-api'],
+    queryKey: queryKeys.syncStatus(),
     queryFn: async (): Promise<SyncStatusResponse> => {
       const response = await pb.send('/api/custom/sync/status', {
         method: 'GET',

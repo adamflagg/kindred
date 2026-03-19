@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 import type { ProcessRequestOptionsState } from '../components/admin/ProcessRequestOptions'
 
@@ -123,7 +124,7 @@ export function useProcessRequests() {
       })
 
       // Invalidate sync status to show it's running
-      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
     onError: (error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'

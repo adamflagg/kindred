@@ -4,6 +4,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 
 /**
@@ -86,7 +87,7 @@ export function useMultiWorkbookExport() {
       }
       // Invalidate workbooks to show status change
       void queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
-      void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
     onError: (error) => {
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'

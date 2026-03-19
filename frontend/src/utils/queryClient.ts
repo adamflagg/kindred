@@ -93,7 +93,6 @@ export const invalidateSyncData = () => {
   // Metrics (depends on synced data)
   void queryClient.invalidateQueries({ queryKey: ['metrics'] })
 
-  // Sync status
+  // Sync status (prefix match covers both syncStatus and syncStatusForService)
   void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
-  void queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
 }
