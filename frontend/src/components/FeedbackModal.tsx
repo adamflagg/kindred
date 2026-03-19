@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 
 import { Modal } from './ui/Modal'
 import { pb } from '../lib/pocketbase'
+import { useAuth } from '../contexts/AuthContext'
 
 const MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -23,6 +24,7 @@ interface FeedbackModalProps {
 }
 
 export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
+  const { isLoading: isAuthLoading } = useAuth()
   const [category, setCategory] = useState<Category | null>(null)
   const [description, setDescription] = useState('')
   const [screenshot, setScreenshot] = useState<File | null>(null)
@@ -119,7 +121,8 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
     setScreenshot(named)
   }
 
-  const canSubmit = category !== null && description.trim() !== '' && !submitMutation.isPending
+  const canSubmit =
+    category !== null && description.trim() !== '' && !submitMutation.isPending && !isAuthLoading
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Report a Problem" size="md">
