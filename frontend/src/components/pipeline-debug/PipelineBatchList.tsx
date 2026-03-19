@@ -302,8 +302,22 @@ export function PipelineBatchList({
                     return (
                       <th
                         key={col.field}
+                        tabIndex={0}
+                        aria-sort={
+                          currentSort?.field === col.field
+                            ? currentSort.desc
+                              ? 'descending'
+                              : 'ascending'
+                            : undefined
+                        }
                         onClick={() => toggleSort(col.field)}
-                        className={`text-muted-foreground hover:text-foreground group cursor-pointer px-3 py-2 text-left text-xs font-medium select-none ${col.hiddenClass ?? ''}`}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            toggleSort(col.field)
+                          }
+                        }}
+                        className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
                       >
                         <span className="inline-flex items-center gap-1">
                           {col.label}
@@ -326,8 +340,16 @@ export function PipelineBatchList({
                 {items.map((item) => (
                   <tr
                     key={item.id}
+                    tabIndex={0}
+                    role="button"
                     onClick={() => onRowClick(item.trace_id)}
-                    className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 cursor-pointer transition-colors"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onRowClick(item.trace_id)
+                      }
+                    }}
+                    className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                   >
                     <td className="text-foreground px-3 py-2 font-medium">{item.requester_name}</td>
                     <td className="text-foreground px-3 py-2">{item.target_name}</td>

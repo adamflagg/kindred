@@ -307,4 +307,48 @@ describe('PipelineBatchList', () => {
       expect(screen.getByText(/42/)).toBeInTheDocument()
     })
   })
+
+  describe('Keyboard accessibility', () => {
+    it('rows are keyboard-focusable with role=button', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const rows = document.querySelectorAll('tbody tr')
+      expect(rows.length).toBeGreaterThan(0)
+      rows.forEach((row) => {
+        expect(row).toHaveAttribute('tabindex', '0')
+        expect(row).toHaveAttribute('role', 'button')
+      })
+    })
+
+    it('triggers row click on Enter key', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const firstRow = document.querySelector('tbody tr')!
+      firstRow.focus()
+      await userEvent.keyboard('{Enter}')
+      expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
+    })
+
+    it('triggers row click on Space key', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const firstRow = document.querySelector('tbody tr')!
+      firstRow.focus()
+      await userEvent.keyboard(' ')
+      expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
+    })
+
+    it('triggers sort on Enter key on sortable header', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const sortableHeader = document.querySelector('thead th[tabindex]')!
+      sortableHeader.focus()
+      await userEvent.keyboard('{Enter}')
+      expect(defaultProps.onFiltersChange).toHaveBeenCalled()
+    })
+
+    it('triggers sort on Space key on sortable header', async () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const sortableHeader = document.querySelector('thead th[tabindex]')!
+      sortableHeader.focus()
+      await userEvent.keyboard(' ')
+      expect(defaultProps.onFiltersChange).toHaveBeenCalled()
+    })
+  })
 })
