@@ -14,6 +14,7 @@ export const Permission = {
   METRICS_GEO: 'metrics.geo',
   REGISTRATION_MANAGE: 'registration.manage',
   SHEETS_EXPORT: 'sheets.export',
+  STAFF_HIRING: 'staff.hiring',
   USERS_MANAGE: 'users.manage',
 } as const
 
