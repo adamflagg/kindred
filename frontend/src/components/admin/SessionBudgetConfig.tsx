@@ -17,7 +17,6 @@ interface SessionBudgetRow {
   cm_id: number
   name: string
   session_type: string
-  configId: string | undefined
   participant_goal: number | null
   session_fee: number | null
 }
@@ -113,7 +112,6 @@ export function SessionBudgetConfig() {
           cm_id: cmId,
           name,
           session_type: sType,
-          configId: existing?.id,
           participant_goal: val?.participant_goal ?? null,
           session_fee: val?.session_fee ?? null,
         })
@@ -148,8 +146,10 @@ export function SessionBudgetConfig() {
     setIsSaving(true)
     try {
       for (const row of rows) {
+        const existingConfig = configRecords?.find((r) => r.config_key === `session_${row.cm_id}`)
+
         // Skip rows with no values set
-        if (row.participant_goal === null && row.session_fee === null && !row.configId) continue
+        if (row.participant_goal === null && row.session_fee === null && !existingConfig) continue
 
         const payload = {
           category: 'budget',
@@ -161,8 +161,8 @@ export function SessionBudgetConfig() {
           },
         }
 
-        if (row.configId) {
-          await pb.collection('config').update(row.configId, payload)
+        if (existingConfig?.id) {
+          await pb.collection('config').update(existingConfig.id, payload)
         } else {
           await pb.collection('config').create(payload)
         }
