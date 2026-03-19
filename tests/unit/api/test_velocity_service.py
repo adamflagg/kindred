@@ -4047,3 +4047,260 @@ class TestCancellationDailyData:
         for dp in result.combined.daily:
             assert dp.data_source == "reconstructed"
             assert dp.cancelled >= 0
+
+
+class TestHybridDailyPerSession:
+    """Test that _merge_hybrid_daily is applied per-session, not just globally.
+
+    When sessions have snapshots starting at different dates, each session's daily
+    data should be merged independently using its own first snapshot date as the
+    cutover point. Previously, daily merging was only done on the combined curve,
+    which used a single global cutover date — producing inaccurate deltas for
+    sessions whose snapshots started earlier or later than others.
+    """
+
+    @pytest.mark.asyncio
+    async def test_enrollment_hybrid_daily_merged_per_session(self, service, mock_repository, sample_sessions):
+        """Combined daily data should reflect per-session merges, not a single global merge.
+
+        Session 1001 snapshots start Jan 5, session 1002 snapshots start Feb 7.
+        The combined daily data should use reconstruction before each session's
+        own first snapshot date, not a single global cutover.
+        """
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = sample_sessions  # 1001 and 1002
+
+        # Session 1001 snapshots start Jan 5, Session 1002 snapshots start Feb 7
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30, cancelled=2),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=35, cancelled=3),
+            create_mock_snapshot("2026-02-07", 1002, 2026, enrolled=20, cancelled=1),
+            create_mock_snapshot("2026-02-14", 1002, 2026, enrolled=25, cancelled=2),
+        ]
+
+        # Reconstruction data for both sessions
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-12-01"),
+            create_mock_attendee_with_date(201, 1002, "2025-11-05"),
+            create_mock_attendee_with_date(202, 1002, "2025-12-10"),
+            create_mock_attendee_with_date(203, 1002, "2026-01-10"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        daily = result.combined.daily
+        assert len(daily) > 0, "Should have combined daily data"
+
+        # Between Jan 5 and Feb 7, session 1001 should use snapshot data
+        # but session 1002 should still use reconstruction data.
+        # Check that daily points in the Jan 5 - Feb 6 range have mixed sources
+        # (session 1001 from snapshots, session 1002 from reconstruction).
+        jan_daily = [dp for dp in daily if "2026-01-05" <= dp.date < "2026-02-07"]
+        assert len(jan_daily) > 0, "Should have daily points in the Jan-Feb gap"
+
+        # After Feb 7, both sessions should use snapshot data
+        feb_daily = [dp for dp in daily if dp.date >= "2026-02-07"]
+        assert len(feb_daily) > 0, "Should have daily points from Feb onward"
+
+        # The key check: the combined daily should have correct cumulative
+        # enrolled values that reflect both sessions' data.
+        # At Feb 7: session 1001 snapshot = 35 enrolled (from Jan 12 snapshot),
+        # session 1002 snapshot = 20. Combined should be ~55.
+        # With global merge, session 1002's reconstruction data from Jan would
+        # be dropped (cutover at Jan 5 for all), giving wrong combined totals.
+        feb7_points = [dp for dp in daily if dp.date == "2026-02-07"]
+        if feb7_points:
+            # session 1002 started snapshots here with 20 enrolled
+            # session 1001 should still carry its snapshot values
+            # The exact value depends on interpolation, but enrolled should be > 20
+            assert feb7_points[0].enrolled > 20, "Combined enrolled at Feb 7 should include session 1001's contribution"
+
+    @pytest.mark.asyncio
+    async def test_enrollment_hybrid_daily_data_sources_per_session(self, service, mock_repository, sample_sessions):
+        """Daily data between the two sessions' snapshot start dates should contain
+        data from both sources (reconstruction for session 1002, snapshot for session 1001)."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = sample_sessions
+
+        # Session 1001 snapshots from Jan 5, Session 1002 snapshots from Feb 7
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30, cancelled=0),
+            create_mock_snapshot("2026-02-07", 1002, 2026, enrolled=20, cancelled=0),
+        ]
+
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(201, 1002, "2025-11-05"),
+            create_mock_attendee_with_date(202, 1002, "2026-01-10"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        daily = result.combined.daily
+        assert len(daily) > 0
+
+        # Before Jan 5: both sessions use reconstruction -> source should be "reconstructed"
+        pre_jan = [dp for dp in daily if dp.date < "2026-01-05"]
+        assert len(pre_jan) > 0, "Should have reconstruction points before any snapshots"
+        assert all(dp.data_source == "reconstructed" for dp in pre_jan)
+
+        # After Feb 7: both sessions use snapshots -> source should be "snapshot"
+        post_feb = [dp for dp in daily if dp.date >= "2026-02-07"]
+        assert len(post_feb) > 0, "Should have snapshot points after all sessions have snapshots"
+        assert all(dp.data_source == "snapshot" for dp in post_feb)
+
+    @pytest.mark.asyncio
+    async def test_cancellation_hybrid_daily_merged_per_session(self, service, mock_repository, sample_sessions):
+        """Cancellation daily merge should also be applied per-session.
+
+        Session 1002 has a cancellation on Jan 10 (from reconstruction), but session 1001's
+        snapshots start Jan 5. With global merge, the Jan 10 data would be dropped since the
+        global cutover is Jan 5. With per-session merge, session 1002 should keep its
+        reconstruction data until its own snapshot start date (Feb 7).
+        """
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = sample_sessions
+
+        # Session 1001 snapshots from Jan 5, Session 1002 from Feb 7
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30, cancelled=5),
+            create_mock_snapshot("2026-02-07", 1002, 2026, enrolled=20, cancelled=3),
+        ]
+
+        # Cancellation transitions before snapshots for both sessions
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2025-11-15"),
+            create_mock_status_transition(201, 1002, "2025-12-01"),
+            create_mock_status_transition(202, 1002, "2026-01-10"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        daily = result.combined.daily
+        assert len(daily) > 0, "Should have combined cancellation daily data"
+
+        # With per-session merge, session 1002's Jan 10 cancellation (from reconstruction)
+        # should appear as a daily point. The global merge drops it because the cutover
+        # for ALL sessions is Jan 5 (session 1001's first snapshot).
+        jan10_points = [dp for dp in daily if dp.date == "2026-01-10"]
+        assert len(jan10_points) > 0, (
+            "Session 1002's Jan 10 reconstruction cancellation should be preserved "
+            "with per-session merge (session 1002 snapshots don't start until Feb 7)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_merge_hybrid_daily_unit_applied_per_session(self, service):
+        """Unit test: _merge_hybrid_daily should produce correct results when called per-session."""
+        from api.schemas.velocity import DailyDataPoint
+
+        # Session A: reconstruction until day 10, snapshots from day 10
+        recon_a = [
+            DailyDataPoint(
+                date="2025-11-01",
+                day_offset=0,
+                gross_enrolled=5,
+                enrolled=5,
+                cancelled=0,
+                daily_new=5,
+                daily_cancelled=0,
+                data_source="reconstructed",
+            ),
+            DailyDataPoint(
+                date="2025-11-05",
+                day_offset=4,
+                gross_enrolled=10,
+                enrolled=10,
+                cancelled=0,
+                daily_new=5,
+                daily_cancelled=0,
+                data_source="reconstructed",
+            ),
+        ]
+        snap_a = [
+            DailyDataPoint(
+                date="2025-11-10",
+                day_offset=9,
+                gross_enrolled=15,
+                enrolled=15,
+                cancelled=0,
+                daily_new=5,
+                daily_cancelled=0,
+                data_source="snapshot",
+            ),
+        ]
+
+        # Session B: reconstruction until day 20, snapshots from day 20
+        recon_b = [
+            DailyDataPoint(
+                date="2025-11-01",
+                day_offset=0,
+                gross_enrolled=3,
+                enrolled=3,
+                cancelled=0,
+                daily_new=3,
+                daily_cancelled=0,
+                data_source="reconstructed",
+            ),
+            DailyDataPoint(
+                date="2025-11-15",
+                day_offset=14,
+                gross_enrolled=8,
+                enrolled=8,
+                cancelled=0,
+                daily_new=5,
+                daily_cancelled=0,
+                data_source="reconstructed",
+            ),
+        ]
+        snap_b = [
+            DailyDataPoint(
+                date="2025-11-20",
+                day_offset=19,
+                gross_enrolled=12,
+                enrolled=12,
+                cancelled=0,
+                daily_new=4,
+                daily_cancelled=0,
+                data_source="snapshot",
+            ),
+        ]
+
+        # Per-session merge: each session uses its own cutover
+        merged_a = VelocityService._merge_hybrid_daily(recon_a, snap_a)
+        merged_b = VelocityService._merge_hybrid_daily(recon_b, snap_b)
+
+        # Session A: recon[day0, day4] + snap[day9]
+        assert len(merged_a) == 3
+        assert merged_a[0].data_source == "reconstructed"
+        assert merged_a[1].data_source == "reconstructed"
+        assert merged_a[2].data_source == "snapshot"
+
+        # Session B: recon[day0, day14] + snap[day19]
+        assert len(merged_b) == 3
+        assert merged_b[0].data_source == "reconstructed"
+        assert merged_b[1].data_source == "reconstructed"
+        assert merged_b[2].data_source == "snapshot"
+
+        # Now compare with global merge (wrong approach):
+        # Combining first then merging once would use snap_a's date as cutover for everything
+        combined_recon = recon_a + recon_b
+        combined_recon.sort(key=lambda dp: dp.date)
+        combined_snap = snap_a + snap_b
+        combined_snap.sort(key=lambda dp: dp.date)
+        global_merged = VelocityService._merge_hybrid_daily(combined_recon, combined_snap)
+
+        # Global merge drops session B's recon data after Nov 10 (session A's first snap date)
+        # Per-session merge preserves session B's Nov 15 data
+        per_session_dates = sorted({dp.date for dp in merged_a + merged_b})
+        global_dates = [dp.date for dp in global_merged]
+
+        # Session B's Nov 15 reconstruction data should appear in per-session merge
+        assert "2025-11-15" in per_session_dates, "Per-session merge should preserve session B's Nov 15 data"
+        # With global merge, Nov 15 from session B reconstruction gets dropped
+        # because global cutover is Nov 10 (session A's first snapshot)
+        assert "2025-11-15" not in global_dates, (
+            "Global merge should drop session B's Nov 15 data (confirms the bug exists)"
+        )

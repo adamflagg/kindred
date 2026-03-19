@@ -267,17 +267,19 @@ def _daily_counts_to_weekly_points(
 class _CurveResult:
     """Internal result from curve building, includes extra metadata."""
 
-    __slots__ = ("by_session", "cancelled_to_date", "combined")
+    __slots__ = ("by_session", "by_session_daily", "cancelled_to_date", "combined")
 
     def __init__(
         self,
         combined: VelocityCurve,
         by_session: list[VelocityCurve],
         cancelled_to_date: int = 0,
+        by_session_daily: dict[int, list[DailyDataPoint]] | None = None,
     ) -> None:
         self.combined = combined
         self.by_session = by_session
         self.cancelled_to_date = cancelled_to_date
+        self.by_session_daily = by_session_daily or {}
 
 
 class VelocityService:
@@ -879,6 +881,118 @@ class VelocityService:
 
         return merged
 
+    def _merge_hybrid_daily_per_session(
+        self,
+        recon_by_session_daily: dict[int, list[DailyDataPoint]],
+        snap_by_session_daily: dict[int, list[DailyDataPoint]],
+    ) -> dict[int, list[DailyDataPoint]]:
+        """Per-session daily merge: apply _merge_hybrid_daily independently for each session.
+
+        Each session uses its own first snapshot date as the cutover point, ensuring
+        sessions with later snapshot coverage keep their reconstruction daily data
+        until their own snapshots begin.
+        """
+        all_sids = set(recon_by_session_daily.keys()) | set(snap_by_session_daily.keys())
+        merged: dict[int, list[DailyDataPoint]] = {}
+
+        for sid in all_sids:
+            recon_daily = recon_by_session_daily.get(sid, [])
+            snap_daily = snap_by_session_daily.get(sid, [])
+            merged[sid] = self._merge_hybrid_daily(recon_daily, snap_daily)
+
+        return merged
+
+    @staticmethod
+    def _aggregate_per_session_daily(
+        per_session_daily: dict[int, list[DailyDataPoint]],
+    ) -> list[DailyDataPoint]:
+        """Aggregate per-session daily data into a combined daily series.
+
+        Sums enrolled/cancelled/gross_enrolled across sessions per date with
+        carry-forward: if a session has no data point on a given date, its last
+        known cumulative values are used. This prevents combined totals from
+        dropping when one session has sparser data than another.
+        """
+        if not per_session_daily:
+            return []
+
+        # Build per-session lookup: sid -> {date -> DailyDataPoint}
+        session_point_maps: dict[int, dict[str, DailyDataPoint]] = {}
+        all_dates: set[str] = set()
+
+        for sid, daily_points in per_session_daily.items():
+            point_map: dict[str, DailyDataPoint] = {}
+            for dp in daily_points:
+                point_map[dp.date] = dp
+                all_dates.add(dp.date)
+            session_point_maps[sid] = point_map
+
+        if not all_dates:
+            return []
+
+        sorted_dates = sorted(all_dates)
+
+        # Track last known cumulative values per session for carry-forward
+        last_known: dict[int, DailyDataPoint | None] = dict.fromkeys(per_session_daily)
+
+        result: list[DailyDataPoint] = []
+        prev_gross = 0
+        prev_cancelled = 0
+
+        for date_str in sorted_dates:
+            total_gross = 0
+            total_enrolled = 0
+            total_cancelled = 0
+            sources: set[str] = set()
+
+            for sid, point_map in session_point_maps.items():
+                if date_str in point_map:
+                    dp = point_map[date_str]
+                    last_known[sid] = dp
+                    total_gross += dp.gross_enrolled
+                    total_enrolled += dp.enrolled
+                    total_cancelled += dp.cancelled
+                    sources.add(dp.data_source)
+                else:
+                    # Carry forward last known cumulative values
+                    lk = last_known[sid]
+                    if lk is not None:
+                        total_gross += lk.gross_enrolled
+                        total_enrolled += lk.enrolled
+                        total_cancelled += lk.cancelled
+
+            daily_new = total_gross - prev_gross
+            daily_cancelled = total_cancelled - prev_cancelled
+            data_source = (
+                "snapshot"
+                if sources == {"snapshot"}
+                else ("reconstructed" if sources == {"reconstructed"} else "mixed")
+            )
+
+            # Compute day_offset from any session that has data on this date
+            day_offset = 0
+            for sid, point_map in session_point_maps.items():
+                if date_str in point_map:
+                    day_offset = point_map[date_str].day_offset
+                    break
+
+            result.append(
+                DailyDataPoint(
+                    date=date_str,
+                    day_offset=day_offset,
+                    gross_enrolled=total_gross,
+                    enrolled=total_enrolled,
+                    cancelled=total_cancelled,
+                    daily_new=max(daily_new, 0),
+                    daily_cancelled=max(daily_cancelled, 0),
+                    data_source=data_source,
+                )
+            )
+            prev_gross = total_gross
+            prev_cancelled = total_cancelled
+
+        return result
+
     async def _build_curves(
         self,
         ctx: SeasonContext,
@@ -919,8 +1033,12 @@ class VelocityService:
 
         merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, ctx.season_start)
 
-        # Merge daily data: reconstruction before first snapshot, snapshots from that date onward
-        merged_daily = self._merge_hybrid_daily(recon_result.combined.daily, snap_result.combined.daily)
+        # Merge daily data per-session: each session uses its own first snapshot date as cutover
+        merged_per_session_daily = self._merge_hybrid_daily_per_session(
+            recon_result.by_session_daily, snap_result.by_session_daily
+        )
+        merged_daily = self._aggregate_per_session_daily(merged_per_session_daily)
+
         season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
         is_current_season = season_start_date <= ctx.today <= season_end_date
@@ -1017,6 +1135,11 @@ class VelocityService:
             session_date_data, session_date_cancelled, season_start_date, ctx.season_end
         )
 
+        # Build per-session daily for hybrid merging
+        per_session_daily = self._snapshots_to_daily_per_session(
+            session_date_data, session_date_cancelled, season_start_date, ctx.season_end
+        )
+
         combined = VelocityCurve(
             year=ctx.year,
             session_cm_id=session_cm_id,
@@ -1028,7 +1151,12 @@ class VelocityService:
 
         by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
-        return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=cancelled_to_date)
+        return _CurveResult(
+            combined=combined,
+            by_session=by_session,
+            cancelled_to_date=cancelled_to_date,
+            by_session_daily=per_session_daily,
+        )
 
     def _aggregate_snapshots_to_weekly(
         self,
@@ -1158,6 +1286,67 @@ class VelocityService:
             )
             prev_cancelled = cancelled
             prev_gross = gross
+
+        return result
+
+    @staticmethod
+    def _snapshots_to_daily_per_session(
+        session_date_data: dict[int, dict[str, dict[str, int]]],
+        session_date_cancelled: dict[int, dict[str, int]],
+        season_start: date,
+        season_end: datetime,
+    ) -> dict[int, list[DailyDataPoint]]:
+        """Build per-session daily data points from snapshot data.
+
+        Like _snapshots_to_daily but returns a dict keyed by session ID instead of
+        aggregating across sessions. Used for per-session hybrid daily merging.
+        """
+        result: dict[int, list[DailyDataPoint]] = {}
+
+        for sid, date_data in session_date_data.items():
+            session_dates: dict[str, dict[str, int]] = {}
+            for date_str, counts in date_data.items():
+                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                if dt.date() < season_start or dt.date() > season_end.date():
+                    continue
+                clean_date = dt.strftime("%Y-%m-%d")
+                session_dates[clean_date] = {
+                    "enrolled": counts.get("enrolled", 0),
+                    "cancelled": session_date_cancelled.get(sid, {}).get(date_str, 0),
+                }
+
+            if not session_dates:
+                continue
+
+            points: list[DailyDataPoint] = []
+            prev_gross = 0
+            prev_cancelled = 0
+
+            for ds in sorted(session_dates.keys()):
+                data = session_dates[ds]
+                enrolled = data["enrolled"]
+                cancelled = data["cancelled"]
+                gross = enrolled + cancelled
+                day_offset = (datetime.strptime(ds, "%Y-%m-%d").date() - season_start).days
+                daily_new = gross - prev_gross
+                daily_cancelled = cancelled - prev_cancelled
+
+                points.append(
+                    DailyDataPoint(
+                        date=ds,
+                        day_offset=day_offset,
+                        gross_enrolled=gross,
+                        enrolled=enrolled,
+                        cancelled=cancelled,
+                        daily_new=max(daily_new, 0),
+                        daily_cancelled=max(daily_cancelled, 0),
+                        data_source="snapshot",
+                    )
+                )
+                prev_gross = gross
+                prev_cancelled = cancelled
+
+            result[sid] = points
 
         return result
 
@@ -1411,6 +1600,20 @@ class VelocityService:
             session_cm_id=session_cm_id,
         )
 
+        # Build per-session daily data for hybrid merging
+        per_session_daily: dict[int, list[DailyDataPoint]] = {}
+        for sid in per_session_data:
+            sid_daily = reconstruct_daily(
+                attendees=attendees,
+                season_start=season_start_date,
+                sessions=sessions,
+                end_date=end_date,
+                ag_parent_map=ag_parent_map,
+                session_cm_id=sid,
+            )
+            if sid_daily:
+                per_session_daily[sid] = sid_daily
+
         # Derive weekly from daily for combined curve
         combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_season)
 
@@ -1428,6 +1631,7 @@ class VelocityService:
             combined=combined,
             by_session=by_session,
             cancelled_to_date=total_cancellation_count,
+            by_session_daily=per_session_daily,
         )
 
     async def _gender_data_from_reconstruction(
@@ -1667,8 +1871,11 @@ class VelocityService:
 
         merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, ctx.season_start)
 
-        # Merge daily data for hybrid cancellation curves
-        merged_daily = self._merge_hybrid_daily(recon_result.combined.daily, snap_result.combined.daily)
+        # Merge daily data per-session for hybrid cancellation curves
+        merged_per_session_daily = self._merge_hybrid_daily_per_session(
+            recon_result.by_session_daily, snap_result.by_session_daily
+        )
+        merged_daily = self._aggregate_per_session_daily(merged_per_session_daily)
 
         combined_data = self._combine_weekly_curves(merged_by_session)
         combined = VelocityCurve(
@@ -1796,6 +2003,37 @@ class VelocityService:
             )
             prev_cancelled = cancelled
 
+        # Build per-session daily data for hybrid merging
+        per_session_daily: dict[int, list[DailyDataPoint]] = {}
+        for sid, date_data in session_date_cancelled.items():
+            if sid not in sessions:
+                continue
+            if session_cm_id is not None and sid != session_cm_id:
+                continue
+            sid_daily_points: list[DailyDataPoint] = []
+            prev_c = 0
+            for ds in sorted(date_data.keys()):
+                dt = datetime.strptime(ds, "%Y-%m-%d")
+                if dt.date() < season_start_date or dt.date() > ctx.season_end.date():
+                    continue
+                c = date_data[ds]
+                dc = c - prev_c
+                sid_daily_points.append(
+                    DailyDataPoint(
+                        date=ds,
+                        day_offset=(dt.date() - season_start_date).days,
+                        gross_enrolled=0,
+                        enrolled=c,
+                        cancelled=c,
+                        daily_new=0,
+                        daily_cancelled=max(dc, 0),
+                        data_source="snapshot",
+                    )
+                )
+                prev_c = c
+            if sid_daily_points:
+                per_session_daily[sid] = sid_daily_points
+
         combined = VelocityCurve(
             year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data, daily=daily_data
         )
@@ -1805,7 +2043,12 @@ class VelocityService:
 
         by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
-        return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=cancelled_to_date)
+        return _CurveResult(
+            combined=combined,
+            by_session=by_session,
+            cancelled_to_date=cancelled_to_date,
+            by_session_daily=per_session_daily,
+        )
 
     async def _cancellation_curves_from_reconstruction(
         self,
@@ -1913,13 +2156,45 @@ class VelocityService:
                 )
             )
 
+        # Build per-session daily data for hybrid merging
+        per_session_daily: dict[int, list[DailyDataPoint]] = {}
+        for sid in session_daily_cancels:
+            if sid not in sessions:
+                continue
+            if session_cm_id is not None and sid != session_cm_id:
+                continue
+            sid_daily_points: list[DailyDataPoint] = []
+            cum = 0
+            for ds in sorted(session_daily_cancels[sid].keys()):
+                c = session_daily_cancels[sid][ds]
+                cum += c
+                sid_daily_points.append(
+                    DailyDataPoint(
+                        date=ds,
+                        day_offset=(datetime.strptime(ds, "%Y-%m-%d").date() - season_start_date).days,
+                        gross_enrolled=0,
+                        enrolled=cum,
+                        cancelled=cum,
+                        daily_new=0,
+                        daily_cancelled=c,
+                        data_source="reconstructed",
+                    )
+                )
+            if sid_daily_points:
+                per_session_daily[sid] = sid_daily_points
+
         combined = VelocityCurve(
             year=ctx.year, session_cm_id=session_cm_id, gender=None, weekly=combined_data, daily=daily_data
         )
 
         by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
 
-        return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=total_count)
+        return _CurveResult(
+            combined=combined,
+            by_session=by_session,
+            cancelled_to_date=total_count,
+            by_session_daily=per_session_daily,
+        )
 
     async def _build_cancellation_gender_curves(
         self,
