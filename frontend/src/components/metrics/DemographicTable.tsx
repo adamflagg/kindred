@@ -7,6 +7,7 @@
 
 import { useState, useMemo } from 'react'
 import { Search, ChevronDown, ChevronUp, Download } from 'lucide-react'
+import { SortIcon } from './SortIcon'
 
 export interface DemographicRow {
   name: string
@@ -71,15 +72,6 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
     }
   }
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null
-    return sortDirection === 'desc' ? (
-      <ChevronDown className="h-4 w-4" />
-    ) : (
-      <ChevronUp className="h-4 w-4" />
-    )
-  }
-
   // Export to CSV
   const handleExport = () => {
     const headers = ['Name', 'Base Count', 'Returned', 'Retention Rate']
@@ -131,7 +123,14 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
               >
                 <div className="flex items-center gap-1">
                   {title}
-                  <SortIcon field="name" />
+                  <SortIcon
+                    field="name"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    ascIcon={ChevronUp}
+                    descIcon={ChevronDown}
+                    className="h-4 w-4"
+                  />
                 </div>
               </th>
               <th
@@ -140,7 +139,14 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
               >
                 <div className="flex items-center justify-end gap-1">
                   Count
-                  <SortIcon field="base_count" />
+                  <SortIcon
+                    field="base_count"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    ascIcon={ChevronUp}
+                    descIcon={ChevronDown}
+                    className="h-4 w-4"
+                  />
                 </div>
               </th>
               <th className="px-2 py-2 text-right">Returned</th>
@@ -150,7 +156,14 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
               >
                 <div className="flex items-center justify-end gap-1">
                   Rate
-                  <SortIcon field="retention_rate" />
+                  <SortIcon
+                    field="retention_rate"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    ascIcon={ChevronUp}
+                    descIcon={ChevronDown}
+                    className="h-4 w-4"
+                  />
                 </div>
               </th>
             </tr>
