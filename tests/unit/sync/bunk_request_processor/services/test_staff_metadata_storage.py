@@ -104,7 +104,7 @@ class TestParseRequestStaffMetadata:
         # This should not raise an error - staff_metadata is an optional field
         request = ParseRequest(
             request_text="Test request",
-            field_name="bunking_notes_notes",
+            field_name="bunking_notes",
             requester_name="Test Camper",
             requester_cm_id=12345,
             requester_grade="5",
@@ -124,7 +124,7 @@ class TestParseRequestStaffMetadata:
 
         request = ParseRequest(
             request_text="Test request",
-            field_name="bunking_notes_notes",
+            field_name="bunking_notes",
             requester_name="Test Camper",
             requester_cm_id=12345,
             requester_grade="5",
@@ -163,14 +163,14 @@ class TestOrchestratorStaffMetadataFlow:
                 "requester_cm_id": 12345,
                 "first_name": "Test",
                 "last_name": "Camper",
-                "bunking_notes_notes": ("Do not bunk with Emma JORDAN RIVERS (May 30 2024 2:18PM)"),
+                "bunking_notes": ("Do not bunk with Emma JORDAN RIVERS (May 30 2024 2:18PM)"),
             }
         ]
 
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
         # Find the bunking_notes parse request
-        bunking_reqs = [r for r in parse_requests if "BunkingNotes" in r.field_name]
+        bunking_reqs = [r for r in parse_requests if r.field_name == "bunking_notes"]
 
         assert len(bunking_reqs) == 1
         req = bunking_reqs[0]
@@ -188,14 +188,14 @@ class TestOrchestratorStaffMetadataFlow:
                 "requester_cm_id": 12345,
                 "first_name": "Test",
                 "last_name": "Camper",
-                "internal_bunk_notes": "Needs bottom bunk. Must be with twin.",
+                "internal_notes": "Needs bottom bunk. Must be with twin.",
             }
         ]
 
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
         # Find the internal notes parse request
-        internal_reqs = [r for r in parse_requests if "Internal" in r.field_name]
+        internal_reqs = [r for r in parse_requests if r.field_name == "internal_notes"]
 
         assert len(internal_reqs) == 1
         # Internal notes should have None staff_metadata
@@ -209,7 +209,7 @@ class TestOrchestratorStaffMetadataFlow:
                 "requester_cm_id": 12345,
                 "first_name": "Test",
                 "last_name": "Camper",
-                "bunking_notes_notes": (
+                "bunking_notes": (
                     "First note STAFF ONE (Jan 1 2025 1:00PM)\nSecond note STAFF TWO (Jan 2 2025 2:00PM)"
                 ),
             }
@@ -217,7 +217,7 @@ class TestOrchestratorStaffMetadataFlow:
 
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
-        bunking_reqs = [r for r in parse_requests if "BunkingNotes" in r.field_name]
+        bunking_reqs = [r for r in parse_requests if r.field_name == "bunking_notes"]
         assert len(bunking_reqs) == 1
 
         req = bunking_reqs[0]
@@ -254,7 +254,7 @@ class TestContextBuilderStaffMetadata:
             session_cm_id=123456,
             session_name="Session 2",
             year=2025,
-            field_name="bunking_notes_notes",
+            field_name="bunking_notes",
             additional_data={"staff_metadata": staff_metadata},
         )
 

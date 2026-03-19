@@ -7,8 +7,8 @@
  */
 
 import { Database, FlaskConical, Loader2, RefreshCw, User } from 'lucide-react'
-import { SOURCE_FIELD_LABELS } from './types'
-import type { OriginalRequestWithStatus, SourceFieldType } from './types'
+import { formatSourceField } from './types'
+import type { OriginalRequestWithStatus } from './types'
 
 interface ParseAnalysisListProps {
   items: OriginalRequestWithStatus[]
@@ -60,10 +60,7 @@ export function ParseAnalysisList({
         {items.map((item) => {
           const isSelected = item.id === selectedId
           const isReparsing = reparsingIds.has(item.id)
-          const sourceLabel =
-            SOURCE_FIELD_LABELS[item.source_field as SourceFieldType] ||
-            item.source_field ||
-            'Unknown'
+          const sourceLabel = item.source_field ? formatSourceField(item.source_field) : 'Unknown'
 
           // Determine parse status for badge
           const hasAnyResult = item.has_debug_result || item.has_production_result

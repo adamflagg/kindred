@@ -20,7 +20,7 @@ type PostPipelineNodeType = Node<PostPipelineData>
 
 function getState(data: PostPipelineTrace): NodeState {
   if (data.final_bunk_requests.length === 0) return 'skipped'
-  const hasDeclined = data.final_bunk_requests.some((r) => r.status === 'DECLINED')
+  const hasDeclined = data.final_bunk_requests.some((r) => r.status.toUpperCase() === 'DECLINED')
   if (hasDeclined) return 'error'
   if (data.conflict_detection.has_conflict) return 'warning'
   return 'success'

@@ -50,18 +50,18 @@ VALID_PLACEHOLDERS: set[str] = {
 
 
 # Canonical source field names as stored in the bunk_requests table
-# These match the original CampMinder/CSV column names
+# V2 internal names — used everywhere post-CSV-import
 class SourceField:
-    """Canonical source field values for bunk_requests.source_field"""
+    """Canonical source field values — V2 internal names used everywhere post-CSV-import."""
 
-    BUNK_WITH = "Share Bunk With"
-    NOT_BUNK_WITH = "Do Not Share Bunk With"
-    BUNKING_NOTES = "BunkingNotes Notes"
-    INTERNAL_NOTES = "Internal Bunk Notes"
-    SOCIALIZE_WITH = "RetParent-Socializewithbest"
+    BUNK_WITH = "bunk_with"
+    NOT_BUNK_WITH = "not_bunk_with"
+    BUNKING_NOTES = "bunking_notes"
+    INTERNAL_NOTES = "internal_notes"
+    SOCIALIZE_WITH = "socialize_with"
 
 
-# Reverse mapping from canonical SourceField values to config schema keys
+# Mapping from SourceField values to solver config schema keys
 # Used by solver files to look up objective.source_multipliers.* config values
 SOURCE_FIELD_TO_CONFIG_KEY: dict[str, str] = {
     SourceField.BUNK_WITH: "share_bunk_with",
@@ -71,41 +71,14 @@ SOURCE_FIELD_TO_CONFIG_KEY: dict[str, str] = {
     SourceField.SOCIALIZE_WITH: "socialize_preference",
 }
 
-# Map from original_bunk_requests.field values to bunk_requests.source_field
-# Used when loading from the original_bunk_requests table
-FIELD_TO_SOURCE_FIELD: dict[str, str] = {
-    "bunk_with": SourceField.BUNK_WITH,
-    "not_bunk_with": SourceField.NOT_BUNK_WITH,
-    "bunking_notes": SourceField.BUNKING_NOTES,
-    "internal_notes": SourceField.INTERNAL_NOTES,
-    "socialize_with": SourceField.SOCIALIZE_WITH,
-}
-
-# Map from raw CSV column keys to bunk_requests.source_field
-# Used when processing raw CSV data directly
-CSV_KEY_TO_SOURCE_FIELD: dict[str, str] = {
-    "share_bunk_with": SourceField.BUNK_WITH,
-    "do_not_share_bunk_with": SourceField.NOT_BUNK_WITH,
-    "bunking_notes_notes": SourceField.BUNKING_NOTES,
-    "internal_bunk_notes": SourceField.INTERNAL_NOTES,
-    "ret_parent_socialize_with_best": SourceField.SOCIALIZE_WITH,
-}
-
-# Combined mapping for both original_bunk_requests.field and CSV column keys
-# This is the complete mapping used by the orchestrator
-ALL_FIELD_TO_SOURCE_FIELD: dict[str, str] = {
-    **FIELD_TO_SOURCE_FIELD,
-    **CSV_KEY_TO_SOURCE_FIELD,
-}
-
-# Ordered list of (csv_key, source_field) tuples for iteration
+# Ordered list of V2 field names for iteration
 # Used in _prepare_parse_requests to check fields in consistent order
-FIELDS_TO_CHECK: list[tuple[str, str]] = [
-    ("share_bunk_with", SourceField.BUNK_WITH),
-    ("do_not_share_bunk_with", SourceField.NOT_BUNK_WITH),
-    ("bunking_notes_notes", SourceField.BUNKING_NOTES),
-    ("internal_bunk_notes", SourceField.INTERNAL_NOTES),
-    ("ret_parent_socialize_with_best", SourceField.SOCIALIZE_WITH),
+FIELDS_TO_CHECK: list[str] = [
+    SourceField.BUNK_WITH,
+    SourceField.NOT_BUNK_WITH,
+    SourceField.BUNKING_NOTES,
+    SourceField.INTERNAL_NOTES,
+    SourceField.SOCIALIZE_WITH,
 ]
 
 

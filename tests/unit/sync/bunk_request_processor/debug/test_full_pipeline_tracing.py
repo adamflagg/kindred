@@ -28,11 +28,11 @@ def _make_raw_request(
         "last_name": "Johnson",
         "Grade": 5,
         "year": 2025,
-        "share_bunk_with": bunk_with,
-        "do_not_share_bunk_with": "",
-        "bunking_notes_notes": "",
-        "internal_bunk_notes": "",
-        "ret_parent_socialize_with_best": "",
+        "bunk_with": bunk_with,
+        "not_bunk_with": "",
+        "bunking_notes": "",
+        "internal_notes": "",
+        "socialize_with": "",
         "_original_request_ids": original_request_ids or {"bunk_with": "orig_req_1"},
     }
 

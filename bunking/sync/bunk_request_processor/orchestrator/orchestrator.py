@@ -59,8 +59,7 @@ from ..services.request_builder import RequestBuilder
 from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
-    ALL_FIELD_TO_SOURCE_FIELD,
-    FIELD_TO_SOURCE_FIELD,
+    ALL_PROCESSING_FIELDS,
     FIELDS_TO_CHECK,
     UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
@@ -78,21 +77,17 @@ from ..validation.rules.self_reference import SelfReferenceRule
 
 logger = get_logger(__name__)
 
-# Reverse mapping: SourceField value -> PB field name (for _original_request_ids lookup)
-_SOURCE_FIELD_TO_PB_FIELD: dict[str, str] = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
-
 
 def _get_trace_key(parse_result: ParseResult) -> str:
     """Extract the original_request_id trace key from a ParseResult.
 
-    Maps from SourceField value → PB field name → _original_request_ids lookup.
+    Uses V2 field_name directly as the _original_request_ids key.
     Returns empty string if mapping fails (e.g., CSV data without original_request_ids).
     """
     if parse_result.parse_request is None:
         return ""
     field_name = parse_result.parse_request.field_name
-    pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
-    return str(parse_result.parse_request.row_data.get("_original_request_ids", {}).get(pb_field, ""))
+    return str(parse_result.parse_request.row_data.get("_original_request_ids", {}).get(field_name, ""))
 
 
 def generate_unresolved_person_id(name_text: str) -> int:
@@ -1486,13 +1481,16 @@ class RequestOrchestrator:
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
                 # Determine final status from BunkRequest if available
+                # Always UPPERCASE for debug traces (bunk_requests.status is lowercase,
+                # but debug_pipeline_summary.final_status uses UPPERCASE by convention)
                 final_status = "RESOLVED" if rr.is_resolved else "PENDING"
                 final_confidence = rr.confidence
                 if matched_br:
                     if hasattr(matched_br, "status") and matched_br.status:
-                        final_status = (
+                        raw_status = (
                             matched_br.status.value if hasattr(matched_br.status, "value") else str(matched_br.status)
                         )
+                        final_status = raw_status.upper()
                     if hasattr(matched_br, "confidence_score"):
                         final_confidence = matched_br.confidence_score
 
@@ -1586,7 +1584,7 @@ class RequestOrchestrator:
         }
 
     def _parse_socialize_preference(self, value: str) -> ParsedRequest | None:
-        """Parse the ret_parent_socialize_with_best field directly without AI.
+        """Parse the socialize_with field directly without AI.
 
         This field has exactly two possible dropdown values that map to age preferences:
         - "Kids their own grade and one grade above" → "older"
@@ -1639,7 +1637,7 @@ class RequestOrchestrator:
     ) -> tuple[list[ParseRequest], list[ParseResult]]:
         """Convert raw request data to ParseRequest objects.
 
-        Includes FC content filtering for bunking_notes and internal_bunk_notes
+        Includes FC content filtering for bunking_notes and internal_notes
         to remove Family Camp specific content before summer camp processing.
 
         Returns:
@@ -1670,13 +1668,12 @@ class RequestOrchestrator:
             requester_grade = str(row.get("Grade", 0))
 
             # Extract request texts from various fields (defined in constants.py)
-            for field_key, field_name in FIELDS_TO_CHECK:
+            for field_name in FIELDS_TO_CHECK:
                 total_fields_checked += 1
-                request_text = row.get(field_key, "").strip()
+                request_text = row.get(field_name, "").strip()
 
-                # Resolve trace key: PB field name from _original_request_ids
-                pb_field = _SOURCE_FIELD_TO_PB_FIELD.get(field_name, "")
-                trace_key = row.get("_original_request_ids", {}).get(pb_field, "")
+                # Resolve trace key: V2 field name directly in _original_request_ids
+                trace_key = row.get("_original_request_ids", {}).get(field_name, "")
 
                 if not request_text:
                     skipped_no_text += 1
@@ -1743,9 +1740,9 @@ class RequestOrchestrator:
                     continue
 
                 # Extract staff signatures from bunking_notes before AI parsing
-                # bunking_notes has STAFFNAME (DATETIME) patterns; internal_bunk_notes does not
+                # bunking_notes has STAFFNAME (DATETIME) patterns; internal_notes does not
                 staff_metadata = None
-                if field_key == "bunking_notes_notes":
+                if field_name == SourceField.BUNKING_NOTES:
                     parsed_notes = parse_multi_staff_notes(request_text)
 
                     request_text = " | ".join([n["content"] for n in parsed_notes if n["content"]])
@@ -1804,8 +1801,8 @@ class RequestOrchestrator:
                 # TODO: In future, could match based on request context
                 person_session_cm_id = person_sessions[0]
 
-                # Handle ret_parent_socialize_with_best without AI
-                if field_key == "ret_parent_socialize_with_best":
+                # Handle socialize_with without AI (dropdown field)
+                if field_name == SourceField.SOCIALIZE_WITH:
                     parsed_req = self._parse_socialize_preference(request_text)
                     if parsed_req:
                         # Create ParseRequest for context
@@ -1921,8 +1918,8 @@ class RequestOrchestrator:
         # Extract all notes texts for detection
         notes_texts: list[str | None] = []
         for req in raw_requests:
-            bunking_notes = (req.get("bunking_notes_notes") or "").strip()
-            internal_notes = (req.get("internal_bunk_notes") or "").strip()
+            bunking_notes = (req.get("bunking_notes") or "").strip()
+            internal_notes = (req.get("internal_notes") or "").strip()
             combined = f"{bunking_notes} {internal_notes}".strip()
             if combined:
                 notes_texts.append(combined)
@@ -2024,11 +2021,11 @@ class RequestOrchestrator:
         - Only clears requests from source_fields being reprocessed
         - Preserves requests from unchanged fields
         """
-        # Map from original_bunk_requests.field to bunk_requests.source_field
-        # Defined in constants.py as ALL_FIELD_TO_SOURCE_FIELD
+        # V2: field names are used directly as source_field values
 
         # Track source fields to clear per person
         # person_cm_id -> set of source_field values
+        _all_fields = set(ALL_PROCESSING_FIELDS)
         person_source_fields: dict[int, set[str]] = {}
 
         for row in raw_requests:
@@ -2044,15 +2041,14 @@ class RequestOrchestrator:
             # Method 1: Check _original_request_ids (from original_requests_loader)
             original_ids = row.get("_original_request_ids", {})
             for field_name in original_ids:
-                source_field = ALL_FIELD_TO_SOURCE_FIELD.get(field_name)
-                if source_field:
-                    person_source_fields[person_id].add(source_field)
+                if field_name in _all_fields:
+                    person_source_fields[person_id].add(field_name)
 
             # Method 2: Check which data fields are present in the row
             # This handles direct CSV processing
-            for field_name, source_field in ALL_FIELD_TO_SOURCE_FIELD.items():
+            for field_name in ALL_PROCESSING_FIELDS:
                 if row.get(field_name):
-                    person_source_fields[person_id].add(source_field)
+                    person_source_fields[person_id].add(field_name)
 
         # Clear requests per person, per source field
         total_cleared = 0

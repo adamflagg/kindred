@@ -37,7 +37,7 @@ CSV File (CampMinder export)
 CSV Row (1 row per camper)
   ↓ Go: 1 row → up to 5 original_bunk_requests (one per field)
 original_bunk_requests
-  ↓ Python Loader: groups by person, maps field names
+  ↓ Python Loader: groups by person, uses field names as dict keys
 Raw request dict (one per person, all fields merged)
   ↓ _prepare_parse_requests: splits into individual ParseRequests
 ParseRequest (one per field per person)
@@ -227,12 +227,8 @@ OriginalRequestsLoader(pb, year, session_cm_ids)
         ├─ For each person:
         │   ├─ Resolve session (first matching target session)
         │   ├─ Build row dict with person info
-        │   ├─ Map field content to orchestrator keys:
-        │   │   ├─ bunk_with        → share_bunk_with
-        │   │   ├─ not_bunk_with    → do_not_share_bunk_with
-        │   │   ├─ bunking_notes    → bunking_notes_notes
-        │   │   ├─ internal_notes   → internal_bunk_notes
-        │   │   └─ socialize_with   → ret_parent_socialize_with_best
+        │   ├─ Use V2 field names as dict keys (bunk_with, not_bunk_with, etc.)
+        │   │   No mapping needed — field names are used directly
         │   └─ Track _original_request_ids[field] = pb_record_id
         └─ Return list[dict] — one per person, multiple fields per row
 ```
@@ -245,7 +241,7 @@ OriginalRequestsLoader(pb, year, session_cm_ids)
 process_requests(raw_requests, clear_existing, progress_callback)
     │
     ├── 1. STAFF NAME DETECTION
-    │   └─ Extract notes from bunking_notes + internal_bunk_notes
+    │   └─ Extract notes from bunking_notes + internal_notes
     │   └─ Build global staff/parent name set for filtering during resolution
     │
     ├── 2. CLEAR EXISTING (if clear_existing=true)
@@ -762,7 +758,7 @@ Input: original_bunk_requests rows
 | File | Purpose |
 |---|---|
 | `bunk_request_processor/core/models.py` | ParseRequest, ParsedRequest, ParseResult, BunkRequest, Person |
-| `bunk_request_processor/shared/constants.py` | Field mappings, processing fields, patterns, thresholds |
+| `bunk_request_processor/shared/constants.py` | SourceField enum (V2 names), processing fields, patterns, thresholds |
 | `bunk_request_processor/core/constants.py` | AI confidence thresholds |
 | `bunk_request_processor/integration/ai_service.py` | AI provider abstraction |
 | `bunk_request_processor/integration/batch_processor.py` | Batch AI calls with rate limiting |

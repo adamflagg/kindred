@@ -20,7 +20,6 @@ from ..core.models import (
     RequestType,
 )
 from ..prompts import format_prompt
-from ..shared.constants import ALL_FIELD_TO_SOURCE_FIELD
 from ..utils.date_parser import parse_temporal_date
 from .ai_schemas import (
     AIBunkRequestItem,
@@ -296,19 +295,17 @@ class OpenAIProvider(AIProvider):
 
         Falls back to 'parse_request' for unknown field types.
 
-        Note: field_type values come from SourceField constants which use
-        canonical CSV column names like "Share Bunk With", not snake_case.
+        Note: field_type values come from SourceField constants (V2 internal names).
         """
         if not field_type:
             return "parse_request"
 
-        # Map canonical SourceField values to prompt template names
-        # These match the values in shared/constants.py:SourceField
+        # Map V2 SourceField values to prompt template names
         prompt_map = {
-            "Share Bunk With": "parse_bunk_with",
-            "Do Not Share Bunk With": "parse_not_bunk_with",
-            "BunkingNotes Notes": "parse_bunking_notes",
-            "Internal Bunk Notes": "parse_internal_notes",
+            "bunk_with": "parse_bunk_with",
+            "not_bunk_with": "parse_not_bunk_with",
+            "bunking_notes": "parse_bunking_notes",
+            "internal_notes": "parse_internal_notes",
         }
         return prompt_map.get(field_type, "parse_request")
 
@@ -364,7 +361,7 @@ class OpenAIProvider(AIProvider):
                 request_type=request_type,
                 target_name=ai_req.target_name,
                 age_preference=None,
-                source_field=ALL_FIELD_TO_SOURCE_FIELD.get(raw_field, raw_field),
+                source_field=raw_field,
                 source=self._map_source_type(ai_req.source_type),
                 confidence=self._calculate_confidence(ai_req),
                 csv_position=ai_req.list_position + 1,  # Convert 0-based to 1-based

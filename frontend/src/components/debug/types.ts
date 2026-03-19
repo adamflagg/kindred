@@ -76,6 +76,13 @@ export interface ParseResultWithSource {
   created: string | null
 }
 
+export { formatSourceField } from '../../utils/formatSourceField'
+
+/**
+ * Typed subset of source field labels for debug filter dropdowns.
+ * Uses the shared formatSourceField utility as the source of truth for display.
+ * This constant only enumerates the fields relevant to the debug UI filters.
+ */
 export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
   bunk_with: 'Bunk With',
   not_bunk_with: 'Not Bunk With',

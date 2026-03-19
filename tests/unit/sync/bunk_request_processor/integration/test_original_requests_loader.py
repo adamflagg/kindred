@@ -39,8 +39,8 @@ class TestOriginalRequest:
             updated=datetime.now(),
         )
 
-        # Verify field mapping - bunk_with maps to "Share Bunk With" per constants.py
-        assert req.source_field == "Share Bunk With"
+        # V2: source_field is the same as field (no mapping)
+        assert req.source_field == "bunk_with"
 
     def test_needs_processing_when_never_processed(self):
         """Should return True when processed is None"""
@@ -134,12 +134,12 @@ class TestOriginalRequest:
         assert result["preferred_name"] == "Testy"
         assert result["Grade"] == 5
         assert result["year"] == 2025
-        assert result["share_bunk_with"] == "wants to bunk with Sarah"
+        assert result["bunk_with"] == "wants to bunk with Sarah"
         assert result["_original_request_id"] == "test1"
         assert result["_field"] == "bunk_with"
 
     def test_to_orchestrator_format_maps_not_bunk_with(self):
-        """Should map not_bunk_with to do_not_share_bunk_with"""
+        """Should use V2 field name not_bunk_with as dict key"""
         req = OriginalRequest(
             id="test1",
             _requester_ref="person_123",
@@ -158,10 +158,10 @@ class TestOriginalRequest:
 
         result = req.to_orchestrator_format(session_cm_id=9876543)
 
-        assert result["do_not_share_bunk_with"] == "not with Jake"
+        assert result["not_bunk_with"] == "not with Jake"
 
     def test_to_orchestrator_format_maps_bunking_notes(self):
-        """Should map bunking_notes to bunking_notes_notes"""
+        """Should use V2 field name bunking_notes as dict key"""
         req = OriginalRequest(
             id="test1",
             _requester_ref="person_123",
@@ -180,7 +180,7 @@ class TestOriginalRequest:
 
         result = req.to_orchestrator_format(session_cm_id=9876543)
 
-        assert result["bunking_notes_notes"] == "prefers quiet cabin"
+        assert result["bunking_notes"] == "prefers quiet cabin"
 
 
 class TestOriginalRequestsLoader:
@@ -392,8 +392,8 @@ class TestOriginalRequestsLoader:
             result = loader.convert_to_orchestrator_input([req1, req2])
 
         assert len(result) == 1  # Grouped into one row
-        assert result[0]["share_bunk_with"] == "wants Sarah"
-        assert result[0]["do_not_share_bunk_with"] == "not Jake"
+        assert result[0]["bunk_with"] == "wants Sarah"
+        assert result[0]["not_bunk_with"] == "not Jake"
         assert result[0]["_original_request_ids"]["bunk_with"] == "rec1"
         assert result[0]["_original_request_ids"]["not_bunk_with"] == "rec2"
 

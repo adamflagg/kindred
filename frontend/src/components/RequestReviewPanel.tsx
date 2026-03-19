@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { formatSourceField } from '../utils/formatSourceField'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import {
@@ -1556,16 +1557,6 @@ export default function RequestReviewPanel({
                                     ) : expandedSourceLinks.length > 0 ? (
                                       <div className="space-y-3">
                                         {expandedSourceLinks.map((source, idx) => {
-                                          // Helper to format field name (snake_case -> Title Case)
-                                          const formatFieldName = (f: string) =>
-                                            f
-                                              .split('_')
-                                              .map(
-                                                (word: string) =>
-                                                  word.charAt(0).toUpperCase() + word.slice(1)
-                                              )
-                                              .join(' ')
-
                                           return (
                                             <div
                                               key={source.original_request_id || idx}
@@ -1578,7 +1569,7 @@ export default function RequestReviewPanel({
                                             >
                                               <div className="mb-1 flex items-center gap-2">
                                                 <span className="text-sm font-medium">
-                                                  {formatFieldName(source.source_field)}
+                                                  {formatSourceField(source.source_field)}
                                                 </span>
                                                 {source.is_primary && (
                                                   <span className="bg-primary/10 text-primary inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium">
@@ -1618,16 +1609,6 @@ export default function RequestReviewPanel({
                                       Source Field & Content
                                     </h4>
                                     {(() => {
-                                      // Helper to format field name (snake_case -> Title Case)
-                                      const formatFieldName = (f: string) =>
-                                        f
-                                          .split('_')
-                                          .map(
-                                            (word: string) =>
-                                              word.charAt(0).toUpperCase() + word.slice(1)
-                                          )
-                                          .join(' ')
-
                                       // Get field name(s) with proper fallback chain:
                                       // 1. source_fields (for merged requests - array)
                                       // 2. source_field (single field)
@@ -1651,13 +1632,15 @@ export default function RequestReviewPanel({
                                       if (Array.isArray(sourceFields) && sourceFields.length > 1) {
                                         // Merged request: show all source fields combined
                                         fieldName = sourceFields
-                                          .map((f) => formatFieldName(f))
+                                          .map((f) => formatSourceField(f))
                                           .join(' + ')
                                       } else {
                                         // Single source: use first available field
                                         const field =
                                           (sourceFields?.[0] ?? singleField) || aiField || ''
-                                        fieldName = field ? formatFieldName(field) : 'Unknown Field'
+                                        fieldName = field
+                                          ? formatSourceField(field)
+                                          : 'Unknown Field'
                                       }
 
                                       return (

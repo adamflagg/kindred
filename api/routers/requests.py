@@ -25,13 +25,9 @@ from bunking.sync.bunk_request_processor.data.repositories.request_repository im
 from bunking.sync.bunk_request_processor.data.repositories.source_link_repository import (
     SourceLinkRepository,
 )
-from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
 
 from ..constants.collections import ORIGINAL_BUNK_REQUESTS, PERSONS
 from ..dependencies import pb
-
-# Reverse mapping: source_field ("Share Bunk With") -> field enum ("bunk_with")
-SOURCE_FIELD_TO_DB_FIELD = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
 
 logger = get_logger(__name__)
 
@@ -67,7 +63,7 @@ def ensure_source_link_exists(
     Args:
         bunk_request_id: PocketBase ID of the bunk_request
         requester_cm_id: CampMinder ID of the requester
-        source_field: Human-readable source field (e.g., "Share Bunk With")
+        source_field: V2 internal field name (e.g., "bunk_with")
         year: Year of the request
         session_id: Session ID
         source_link_repo: SourceLinkRepository instance
@@ -82,11 +78,7 @@ def ensure_source_link_exists(
     if existing_sources:
         return True
 
-    # Map human-readable source_field to DB field enum
-    db_field = SOURCE_FIELD_TO_DB_FIELD.get(source_field)
-    if not db_field:
-        logger.warning(f"Unknown source_field: {source_field}")
-        return False
+    db_field = source_field  # V2: source_field IS the DB field name
 
     try:
         # Find the person record by cm_id

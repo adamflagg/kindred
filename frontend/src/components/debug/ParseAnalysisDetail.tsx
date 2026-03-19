@@ -19,11 +19,10 @@ import {
   User,
 } from 'lucide-react'
 import { ParseIntentCard } from './ParseIntentCard'
-import { SOURCE_FIELD_LABELS } from './types'
+import { formatSourceField } from './types'
 import type {
   FieldParseResult,
   DualSourceParseResult,
-  SourceFieldType,
   SourceViewMode,
   ParseResultData,
 } from './types'
@@ -98,8 +97,7 @@ function FieldRow({
   viewMode: SourceViewMode
   onViewModeChange: (mode: SourceViewMode) => void
 }) {
-  const fieldLabel =
-    SOURCE_FIELD_LABELS[field.source_field as SourceFieldType] || field.source_field
+  const fieldLabel = formatSourceField(field.source_field)
 
   // Field type color classes
   const fieldColorClass = (() => {

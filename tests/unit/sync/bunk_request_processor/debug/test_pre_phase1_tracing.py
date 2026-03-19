@@ -35,11 +35,11 @@ def _make_row(
         "last_name": last_name,
         "Grade": grade,
         "year": year,
-        "share_bunk_with": bunk_with,
-        "do_not_share_bunk_with": not_bunk_with,
-        "bunking_notes_notes": bunking_notes,
-        "internal_bunk_notes": internal_notes,
-        "ret_parent_socialize_with_best": socialize_with,
+        "bunk_with": bunk_with,
+        "not_bunk_with": not_bunk_with,
+        "bunking_notes": bunking_notes,
+        "internal_notes": internal_notes,
+        "socialize_with": socialize_with,
         "_original_request_ids": original_request_ids or {},
     }
     return row

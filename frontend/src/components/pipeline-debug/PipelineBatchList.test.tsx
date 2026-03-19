@@ -130,9 +130,11 @@ describe('PipelineBatchList', () => {
     it('shows source field badges', () => {
       render(<PipelineBatchList {...defaultProps} />)
 
-      const bunkWithBadges = screen.getAllByText('bunk_with')
-      expect(bunkWithBadges.length).toBe(2) // Two items have bunk_with
-      expect(screen.getByText('not_bunk_with')).toBeInTheDocument()
+      const bunkWithBadges = screen.getAllByText('Bunk With')
+      // 2 table badges + 1 dropdown option = 3 matches
+      expect(bunkWithBadges.length).toBe(3)
+      // 'Not Bunk With' appears as 1 badge + 1 dropdown option
+      expect(screen.getAllByText('Not Bunk With').length).toBe(2)
     })
 
     it('shows resolution method', () => {

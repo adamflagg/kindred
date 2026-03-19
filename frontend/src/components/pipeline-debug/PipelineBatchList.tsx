@@ -11,6 +11,7 @@
 
 import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
+import { formatSourceField } from '../../utils/formatSourceField'
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -47,7 +48,7 @@ interface PipelineBatchListProps {
 
 /** Get Tailwind classes for status badge color coding. */
 function getStatusClasses(status: string): string {
-  switch (status) {
+  switch (status.toUpperCase()) {
     case 'RESOLVED':
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
     case 'PENDING':
@@ -81,6 +82,8 @@ function getSourceFieldClasses(field: string): string {
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
     case 'internal_notes':
       return 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400'
+    case 'socialize_with':
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400'
     default:
       return 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
   }
@@ -168,6 +171,7 @@ export function PipelineBatchList({
               <option value="not_bunk_with">Not Bunk With</option>
               <option value="bunking_notes">Bunking Notes</option>
               <option value="internal_notes">Internal Notes</option>
+              <option value="socialize_with">Socialize With</option>
             </select>
           </div>
 
@@ -183,12 +187,20 @@ export function PipelineBatchList({
               className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 rounded-md border px-2 py-1 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
             >
               <option value="">All</option>
-              <option value="exact_match">Exact</option>
-              <option value="fuzzy_match">Fuzzy</option>
-              <option value="nickname">Nickname</option>
-              <option value="social_graph">Social Graph</option>
-              <option value="ai_disambiguation">AI</option>
-              <option value="age_preference">Age Pref</option>
+              <option value="exact_match">Exact Match</option>
+              <option value="fuzzy_match">Fuzzy Match</option>
+              <option value="phonetic_match">Phonetic Match</option>
+              <option value="school_disambiguation">School</option>
+              <option value="prior_bunkmate_exact">Prior Bunkmate (exact)</option>
+              <option value="prior_bunkmate_first_name">Prior Bunkmate (first)</option>
+              <option value="prior_year_bunkmate">Prior Year Bunkmate</option>
+              <option value="sibling_household_lookup">Sibling Lookup</option>
+              <option value="ai_id_validated">AI ID Validated</option>
+              <option value="ai_candidate_disambiguated">AI Candidate</option>
+              <option value="ai_disambiguation">AI Disambiguation</option>
+              <option value="social_graph_auto">Social Graph</option>
+              <option value="age_preference">Age Preference</option>
+              <option value="staff_filtered">Staff Filtered</option>
               <option value="placeholder">Placeholder</option>
               <option value="unresolved">Unresolved</option>
             </select>
@@ -312,7 +324,7 @@ export function PipelineBatchList({
                       <span
                         className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
                       >
-                        {item.source_field}
+                        {formatSourceField(item.source_field)}
                       </span>
                     </td>
                     <td className="px-3 py-2">

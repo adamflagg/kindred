@@ -37,16 +37,16 @@ class TestOrchestratorStaffNameDetection:
 
         raw_requests = [
             {
-                "bunking_notes_notes": "Mom called about bunking",
-                "internal_bunk_notes": "Per Jordan, this is okay",
+                "bunking_notes": "Mom called about bunking",
+                "internal_notes": "Per Jordan, this is okay",
             },
             {
-                "bunking_notes_notes": "",
-                "internal_bunk_notes": "Dad mentioned preference",
+                "bunking_notes": "",
+                "internal_notes": "Dad mentioned preference",
             },
             {
-                "bunking_notes_notes": "According to Lisa, put together",
-                "internal_bunk_notes": "",
+                "bunking_notes": "According to Lisa, put together",
+                "internal_notes": "",
             },
         ]
 
@@ -67,8 +67,8 @@ class TestOrchestratorStaffNameDetection:
         orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[])
 
         raw_requests: list[dict[str, Any]] = [
-            {"bunking_notes_notes": "", "internal_bunk_notes": ""},
-            {"bunking_notes_notes": None, "internal_bunk_notes": None},
+            {"bunking_notes": "", "internal_notes": ""},
+            {"bunking_notes": None, "internal_notes": None},
         ]
 
         orchestrator._detect_staff_names(raw_requests)
@@ -84,7 +84,7 @@ class TestOrchestratorStaffNameDetection:
         pb = Mock()
         orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[])
 
-        raw_requests = [{"bunking_notes_notes": "Per Jordan, bunk Sarah with Emily", "internal_bunk_notes": ""}]
+        raw_requests = [{"bunking_notes": "Per Jordan, bunk Sarah with Emily", "internal_notes": ""}]
 
         orchestrator._detect_staff_names(raw_requests)
 
@@ -104,7 +104,7 @@ class TestOrchestratorStaffNameDetection:
         pb = Mock()
         orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[])
 
-        raw_requests = [{"bunking_notes_notes": "Mom called", "internal_bunk_notes": "Per Jordan, okay"}]
+        raw_requests = [{"bunking_notes": "Mom called", "internal_notes": "Per Jordan, okay"}]
 
         with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.logger") as mock_logger:
             orchestrator._detect_staff_names(raw_requests)
