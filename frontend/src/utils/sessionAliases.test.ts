@@ -23,18 +23,14 @@ describe('resolveSessionAlias', () => {
     expect(resolveSessionAlias('Session 2b')).toBe('Taste of Camp 2')
   })
 
-  it('returns the original name when no alias exists', () => {
-    expect(resolveSessionAlias('Session 2')).toBe('Session 2')
-    expect(resolveSessionAlias('Session 3')).toBe('Session 3')
-    expect(resolveSessionAlias('Session 4')).toBe('Session 4')
-  })
-
-  it('returns the original name for already-canonical names', () => {
-    expect(resolveSessionAlias('Taste of Camp 1')).toBe('Taste of Camp 1')
-    expect(resolveSessionAlias('Taste of Camp 2')).toBe('Taste of Camp 2')
-  })
-
-  it('handles empty string', () => {
-    expect(resolveSessionAlias('')).toBe('')
+  it.each([
+    ['Session 2', 'Session 2'],
+    ['Session 3', 'Session 3'],
+    ['Session 4', 'Session 4'],
+    ['Taste of Camp 1', 'Taste of Camp 1'],
+    ['Taste of Camp 2', 'Taste of Camp 2'],
+    ['', ''],
+  ])('returns original name for %s', (input, expected) => {
+    expect(resolveSessionAlias(input)).toBe(expected)
   })
 })

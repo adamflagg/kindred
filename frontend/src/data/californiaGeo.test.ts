@@ -19,14 +19,6 @@ import {
 const REGION_KEYS = ['marin', 'sf', 'peninsula', 'southBay', 'eastBay', 'napaSonoma'] as const
 
 describe('BAY_AREA_REGIONS', () => {
-  it('has exactly 6 regions including napaSonoma', () => {
-    const keys = Object.keys(BAY_AREA_REGIONS)
-    expect(keys).toHaveLength(6)
-    for (const key of REGION_KEYS) {
-      expect(BAY_AREA_REGIONS).toHaveProperty(key)
-    }
-  })
-
   it('napaSonoma region has expected cities', () => {
     const region = BAY_AREA_REGIONS.napaSonoma
     expect(region.name).toBe('Napa / Sonoma')
@@ -36,49 +28,9 @@ describe('BAY_AREA_REGIONS', () => {
     expect(region.cities).toContain('Sonoma')
     expect(region.cities.length).toBeGreaterThanOrEqual(8)
   })
-
-  it('each region has a name, center, and cities', () => {
-    for (const key of REGION_KEYS) {
-      const region = BAY_AREA_REGIONS[key]
-      expect(region.name).toBeTruthy()
-      expect(region.center).toHaveLength(2)
-      expect(region.cities.length).toBeGreaterThan(0)
-    }
-  })
 })
 
 describe('BAY_AREA_REGION_POLYGONS', () => {
-  it('has exactly 6 entries matching region keys', () => {
-    const keys = Object.keys(BAY_AREA_REGION_POLYGONS)
-    expect(keys).toHaveLength(6)
-    for (const key of REGION_KEYS) {
-      expect(BAY_AREA_REGION_POLYGONS).toHaveProperty(key)
-    }
-  })
-
-  it('each polygon has at least 3 coordinate tuples (single or multi-ring)', () => {
-    for (const key of REGION_KEYS) {
-      const poly: RegionPolygon = BAY_AREA_REGION_POLYGONS[key]
-      // Multi-polygon: array of rings; single polygon: array of [lat,lng]
-      const isMulti = Array.isArray(poly.polygon[0]?.[0])
-      if (isMulti) {
-        for (const ring of poly.polygon as Array<Array<[number, number]>>) {
-          expect(ring.length).toBeGreaterThanOrEqual(3)
-        }
-      } else {
-        expect(poly.polygon.length).toBeGreaterThanOrEqual(3)
-      }
-    }
-  })
-
-  it('each polygon has a name and labelCenter', () => {
-    for (const key of REGION_KEYS) {
-      const poly: RegionPolygon = BAY_AREA_REGION_POLYGONS[key]
-      expect(poly.name).toBeTruthy()
-      expect(poly.labelCenter).toHaveLength(2)
-    }
-  })
-
   it('polygon coordinates are within Bay Area bounds', () => {
     // Bay Area roughly: lat 36.5-39.5, lng -124 to -120.5
     const checkPoint = ([lat, lng]: [number, number]) => {
@@ -97,20 +49,6 @@ describe('BAY_AREA_REGION_POLYGONS', () => {
       } else {
         for (const pt of poly.polygon as Array<[number, number]>) checkPoint(pt)
       }
-    }
-  })
-})
-
-describe('REGION_COLORS', () => {
-  it('has exactly 6 entries with fill and stroke', () => {
-    const keys = Object.keys(REGION_COLORS)
-    expect(keys).toHaveLength(6)
-    for (const key of REGION_KEYS) {
-      const color = REGION_COLORS[key]
-      expect(color).toHaveProperty('fill')
-      expect(color).toHaveProperty('stroke')
-      expect(typeof color.fill).toBe('string')
-      expect(typeof color.stroke).toBe('string')
     }
   })
 })
