@@ -9,8 +9,32 @@
  * to drill-down.
  */
 
-import { Loader2, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
+
+/** Column definitions for sortable headers. */
+const SORTABLE_COLUMNS: Array<{
+  label: string
+  field: keyof PipelineSummaryItem
+  hiddenClass?: string
+}> = [
+  { label: 'Camper', field: 'requester_name' },
+  { label: 'Target', field: 'target_name' },
+  { label: 'Source', field: 'source_field' },
+  { label: 'Status', field: 'final_status' },
+  { label: 'Confidence', field: 'final_confidence' },
+  { label: 'Method', field: 'resolution_method' },
+  { label: 'P3', field: 'phase3_triggered' },
+  { label: 'Reasoning', field: 'ai_reasoning_summary', hiddenClass: 'hidden lg:table-cell' },
+]
+
+/** Parse PocketBase sort string (e.g. "-final_confidence") into field + direction. */
+function parseSort(sort?: string): { field: string; desc: boolean } | null {
+  if (!sort) return null
+  if (sort.startsWith('-')) return { field: sort.slice(1), desc: true }
+  if (sort.startsWith('+')) return { field: sort.slice(1), desc: false }
+  return { field: sort, desc: false }
+}
 
 interface PipelineBatchListProps {
   items: PipelineSummaryItem[]
@@ -77,6 +101,22 @@ export function PipelineBatchList({
   ) {
     onFiltersChange({ ...filters, [key]: value })
   }
+
+  /** Toggle sort on a column: none → asc → desc → none. */
+  function toggleSort(field: string) {
+    const current = parseSort(filters.sort)
+    let next: string | undefined
+    if (current?.field !== field) {
+      next = field // ascending (no prefix)
+    } else if (!current.desc) {
+      next = `-${field}` // descending
+    } else {
+      next = undefined // clear sort
+    }
+    updateFilter('sort', next)
+  }
+
+  const currentSort = parseSort(filters.sort)
 
   if (isLoading) {
     return (
@@ -233,30 +273,30 @@ export function PipelineBatchList({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-bark-200 dark:border-bark-700 bg-bark-50 dark:bg-bark-800/50 border-b">
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    Camper
-                  </th>
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    Target
-                  </th>
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    Source
-                  </th>
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    Status
-                  </th>
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    Confidence
-                  </th>
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    Method
-                  </th>
-                  <th className="text-muted-foreground px-3 py-2 text-left text-xs font-medium">
-                    P3
-                  </th>
-                  <th className="text-muted-foreground hidden px-3 py-2 text-left text-xs font-medium lg:table-cell">
-                    Reasoning
-                  </th>
+                  {SORTABLE_COLUMNS.map((col) => {
+                    const isActive = currentSort?.field === col.field
+                    const isDesc = isActive && currentSort.desc
+                    return (
+                      <th
+                        key={col.field}
+                        onClick={() => toggleSort(col.field)}
+                        className={`text-muted-foreground hover:text-foreground group cursor-pointer px-3 py-2 text-left text-xs font-medium select-none ${col.hiddenClass ?? ''}`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {isActive ? (
+                            isDesc ? (
+                              <ArrowDown className="h-3 w-3" />
+                            ) : (
+                              <ArrowUp className="h-3 w-3" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </span>
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-bark-100 dark:divide-bark-700/50 divide-y">
