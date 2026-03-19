@@ -55,7 +55,7 @@ export interface PhaseMarker {
   phase: string
   date: string
   label: string
-  week_number: number
+  week_number: number | null
 }
 
 export interface SessionGenderBreakdown {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { VelocityResponse } from '../types/velocity'
+import type { PhaseMarker, VelocityResponse } from '../types/velocity'
 import { resolveSessionAlias } from '../utils/sessionAliases'
 import {
   sortSessionDataByCampThenQuest,
@@ -308,15 +308,14 @@ export function useVelocityChartData(
   // Phase lines with week_number for X-axis positioning
   const phaseLines = useMemo(() => {
     if (!data?.phase_markers) return []
-    return (
-      data.phase_markers
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- week_number may be null at runtime despite Required<> type; defensive guard
-        .filter((marker) => marker.week_number != null)
-        .map((marker) => ({
-          ...marker,
-          weekNumber: marker.week_number,
-        }))
-    )
+    return data.phase_markers
+      .filter(
+        (marker): marker is PhaseMarker & { week_number: number } => marker.week_number != null
+      )
+      .map((marker) => ({
+        ...marker,
+        weekNumber: marker.week_number,
+      }))
   }, [data?.phase_markers])
 
   // Phase day offsets for ReferenceArea bands on daily cumulative charts
