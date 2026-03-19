@@ -295,19 +295,17 @@ class OpenAIProvider(AIProvider):
 
         Falls back to 'parse_request' for unknown field types.
 
-        Note: field_type values come from SourceField constants which use
-        canonical CSV column names like "Share Bunk With", not snake_case.
+        Note: field_type values come from SourceField constants (V2 internal names).
         """
         if not field_type:
             return "parse_request"
 
-        # Map canonical SourceField values to prompt template names
-        # These match the values in shared/constants.py:SourceField
+        # Map V2 SourceField values to prompt template names
         prompt_map = {
-            "Share Bunk With": "parse_bunk_with",
-            "Do Not Share Bunk With": "parse_not_bunk_with",
-            "BunkingNotes Notes": "parse_bunking_notes",
-            "Internal Bunk Notes": "parse_internal_notes",
+            "bunk_with": "parse_bunk_with",
+            "not_bunk_with": "parse_not_bunk_with",
+            "bunking_notes": "parse_bunking_notes",
+            "internal_notes": "parse_internal_notes",
         }
         return prompt_map.get(field_type, "parse_request")
 

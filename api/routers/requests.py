@@ -62,7 +62,7 @@ def ensure_source_link_exists(
     Args:
         bunk_request_id: PocketBase ID of the bunk_request
         requester_cm_id: CampMinder ID of the requester
-        source_field: Human-readable source field (e.g., "Share Bunk With")
+        source_field: V2 internal field name (e.g., "bunk_with")
         year: Year of the request
         session_id: Session ID
         source_link_repo: SourceLinkRepository instance

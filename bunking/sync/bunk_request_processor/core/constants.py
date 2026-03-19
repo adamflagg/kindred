@@ -9,11 +9,11 @@ from __future__ import annotations
 # For DB-based session queries, use SessionRepository.get_valid_bunking_session_ids()
 VALID_SESSION_TYPES = {"main", "embedded", "ag"}
 
-# Source field to RequestSource mapping
+# Source field (V2) to RequestSource mapping
 SOURCE_FIELD_TO_SOURCE = {
-    "share_bunk_with": "family",
-    "do_not_share_with": "staff",
-    "ret_parent_socialize_with_best": "parent",
+    "bunk_with": "family",
+    "not_bunk_with": "family",
+    "socialize_with": "parent",
     "internal_notes": "staff-notes",
     "bunking_notes": "staff-notes",
 }
