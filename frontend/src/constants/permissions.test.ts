@@ -12,15 +12,12 @@ describe('Permission constants', () => {
     expect(Permission.USERS_MANAGE).toBe('users.manage')
   })
 
-  it('ALL_PERMISSIONS contains all 7 permissions', () => {
-    expect(ALL_PERMISSIONS).toHaveLength(7)
-    expect(ALL_PERMISSIONS).toContain('bunking.manage')
-    expect(ALL_PERMISSIONS).toContain('metrics.financial')
-    expect(ALL_PERMISSIONS).toContain('metrics.geo')
-    expect(ALL_PERMISSIONS).toContain('registration.manage')
-    expect(ALL_PERMISSIONS).toContain('sheets.export')
-    expect(ALL_PERMISSIONS).toContain('staff.hiring')
-    expect(ALL_PERMISSIONS).toContain('users.manage')
+  it('ALL_PERMISSIONS matches Permission object values', () => {
+    const expected = Object.values(Permission)
+    expect(ALL_PERMISSIONS).toHaveLength(expected.length)
+    for (const perm of expected) {
+      expect(ALL_PERMISSIONS).toContain(perm)
+    }
   })
 
   it('has no duplicates', () => {
