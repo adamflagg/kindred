@@ -48,20 +48,22 @@ func registerLastLoginHook(app *pocketbase.PocketBase) {
 			return e.Next()
 		}
 
-		// For new users: set last_login in CreateData
+		// For new users: set last_login and emailVisibility in CreateData
 		if e.IsNewRecord {
 			if e.CreateData == nil {
 				e.CreateData = map[string]any{}
 			}
 			e.CreateData["last_login"] = buildLastLoginTimestamp()
+			e.CreateData["emailVisibility"] = true
 		}
 
 		// For existing users: explicit Save() required because PocketBase only
 		// updates the external auth link during OAuth2 login, not the user record.
 		// This is the single Save() for all login-time field updates (last_login,
-		// is_admin) — the admin-sync hook sets fields but does not save.
+		// is_admin, emailVisibility) — the admin-sync hook sets fields but does not save.
 		if e.Record != nil && !e.IsNewRecord {
 			e.Record.Set("last_login", buildLastLoginTimestamp())
+			e.Record.Set("emailVisibility", true)
 			if err := e.App.Save(e.Record); err != nil {
 				slog.Error("Failed to update user on login",
 					"user_id", e.Record.Id,
