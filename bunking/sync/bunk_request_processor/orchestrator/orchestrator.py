@@ -1486,13 +1486,16 @@ class RequestOrchestrator:
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
                 # Determine final status from BunkRequest if available
+                # Always UPPERCASE for debug traces (bunk_requests.status is lowercase,
+                # but debug_pipeline_summary.final_status uses UPPERCASE by convention)
                 final_status = "RESOLVED" if rr.is_resolved else "PENDING"
                 final_confidence = rr.confidence
                 if matched_br:
                     if hasattr(matched_br, "status") and matched_br.status:
-                        final_status = (
+                        raw_status = (
                             matched_br.status.value if hasattr(matched_br.status, "value") else str(matched_br.status)
                         )
+                        final_status = raw_status.upper()
                     if hasattr(matched_br, "confidence_score"):
                         final_confidence = matched_br.confidence_score
 
