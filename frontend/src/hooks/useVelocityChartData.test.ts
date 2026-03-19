@@ -370,7 +370,7 @@ describe('useVelocityChartData', () => {
             phase: 'open',
             date: '2024-11-01',
             label: 'Open Reg',
-            week_number: null,
+            week_number: null as unknown as number,
           },
         ],
       })
