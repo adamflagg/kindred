@@ -94,6 +94,31 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
     setScreenshot(file)
   }
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.files
+    if (!items || items.length === 0) return
+
+    const imageFile = Array.from(items).find((f) => f.type.startsWith('image/'))
+    if (!imageFile) return
+
+    if (imageFile.size > MAX_SCREENSHOT_SIZE) {
+      setFileSizeError(true)
+      setScreenshot(null)
+      return
+    }
+
+    // Create a named file from the clipboard blob
+    const named = new File(
+      [imageFile],
+      `pasted-screenshot.${imageFile.type.split('/')[1] || 'png'}`,
+      {
+        type: imageFile.type,
+      }
+    )
+    setFileSizeError(false)
+    setScreenshot(named)
+  }
+
   const canSubmit = category !== null && description.trim() !== '' && !submitMutation.isPending
 
   return (
@@ -131,6 +156,7 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           id="feedback-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          onPaste={handlePaste}
           placeholder="What happened? What did you expect?"
           rows={4}
           className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary w-full rounded-xl border px-3 py-2 text-sm focus:ring-1 focus:outline-none"

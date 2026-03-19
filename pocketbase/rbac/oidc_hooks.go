@@ -39,29 +39,31 @@ func buildLastLoginTimestamp() string {
 	return time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
-// registerLastLoginHook registers a hook that sets last_login on every OAuth2 login.
+// registerLastLoginHook registers a hook that sets last_login and emailVisibility on every OAuth2 login.
 // This runs after any admin-sync hook (which only sets fields), so a single Save()
-// persists both last_login and any is_admin changes together.
+// persists last_login, is_admin, and emailVisibility changes together.
 func registerLastLoginHook(app *pocketbase.PocketBase) {
 	app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(e *core.RecordAuthWithOAuth2RequestEvent) error {
 		if e.OAuth2User == nil {
 			return e.Next()
 		}
 
-		// For new users: set last_login in CreateData
+		// For new users: set last_login and emailVisibility in CreateData
 		if e.IsNewRecord {
 			if e.CreateData == nil {
 				e.CreateData = map[string]any{}
 			}
 			e.CreateData["last_login"] = buildLastLoginTimestamp()
+			e.CreateData["emailVisibility"] = true
 		}
 
 		// For existing users: explicit Save() required because PocketBase only
 		// updates the external auth link during OAuth2 login, not the user record.
 		// This is the single Save() for all login-time field updates (last_login,
-		// is_admin) — the admin-sync hook sets fields but does not save.
+		// is_admin, emailVisibility) — the admin-sync hook sets fields but does not save.
 		if e.Record != nil && !e.IsNewRecord {
 			e.Record.Set("last_login", buildLastLoginTimestamp())
+			e.Record.Set("emailVisibility", true)
 			if err := e.App.Save(e.Record); err != nil {
 				slog.Error("Failed to update user on login",
 					"user_id", e.Record.Id,
@@ -117,7 +119,7 @@ func registerAdminSyncHook(app *pocketbase.PocketBase, adminGroup string) {
 
 // RegisterOIDCHooks registers OAuth2 login hooks:
 //   - Admin sync (optional, gated on ADMIN_GROUP_NAME) — sets is_admin field only
-//   - Last login tracking (always) — sets last_login and saves the record
+//   - Last login tracking (always) — sets last_login, emailVisibility, and saves the record
 //
 // Registration order matters: admin sync runs first (field-setter), then last-login
 // saves everything in a single write.

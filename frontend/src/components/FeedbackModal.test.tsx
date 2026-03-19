@@ -151,6 +151,61 @@ describe('FeedbackModal', () => {
     expect(submitButton).toBeDisabled()
   })
 
+  it('sets screenshot from clipboard paste with image data', async () => {
+    renderModal({ isOpen: true, onClose: mockOnClose })
+
+    const textarea = screen.getByPlaceholderText(/what happened/i)
+
+    // Create a mock clipboard event with image data
+    const imageFile = new File(['fake-png-data'], 'screenshot.png', { type: 'image/png' })
+    const dataTransfer = {
+      files: [imageFile],
+      types: ['Files'],
+    }
+
+    fireEvent.paste(textarea, { clipboardData: dataTransfer })
+
+    // The pasted image should be shown as the screenshot filename
+    await waitFor(() => {
+      expect(screen.getByText(/pasted-screenshot/i)).toBeInTheDocument()
+    })
+  })
+
+  it('ignores clipboard paste without image data', () => {
+    renderModal({ isOpen: true, onClose: mockOnClose })
+
+    const textarea = screen.getByPlaceholderText(/what happened/i)
+
+    // Paste with only text, no files
+    const dataTransfer = {
+      files: [],
+      types: ['text/plain'],
+    }
+
+    fireEvent.paste(textarea, { clipboardData: dataTransfer })
+
+    // No screenshot should be set — the filename display should not appear
+    expect(screen.queryByText(/pasted-screenshot/i)).not.toBeInTheDocument()
+  })
+
+  it('rejects pasted screenshot over 5MB', async () => {
+    renderModal({ isOpen: true, onClose: mockOnClose })
+
+    const textarea = screen.getByPlaceholderText(/what happened/i)
+
+    const largeFile = new File(['x'.repeat(6 * 1024 * 1024)], 'huge.png', { type: 'image/png' })
+    const dataTransfer = {
+      files: [largeFile],
+      types: ['Files'],
+    }
+
+    fireEvent.paste(textarea, { clipboardData: dataTransfer })
+
+    await waitFor(() => {
+      expect(screen.getByText(/5MB/i)).toBeInTheDocument()
+    })
+  })
+
   it('preserves text on submission error', async () => {
     const { pb } = await import('../lib/pocketbase')
     vi.mocked(pb.send).mockRejectedValueOnce(new Error('Network error'))
