@@ -123,7 +123,7 @@ class TestReturningStatusBreakdown:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_value, expected_person_ids",
+        ("breakdown_value", "expected_person_ids"),
         [
             ("new", {101, 102}),
             ("returning", {103, 104, 105}),
@@ -164,7 +164,7 @@ class TestSessionLengthBreakdown:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_value, expected_person_ids",
+        ("breakdown_value", "expected_person_ids"),
         [
             ("1-week", {101}),
             ("2-week", {102}),
@@ -503,7 +503,7 @@ class TestCityBreakdown:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_value, expected_person_ids",
+        ("breakdown_value", "expected_person_ids"),
         [
             ("San Francisco", {101, 102}),
             ("Oakland", {103, 105}),
@@ -653,7 +653,7 @@ class TestSynagogueBreakdown:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_value, expected_person_ids",
+        ("breakdown_value", "expected_person_ids"),
         [
             ("Congregation Beth Israel", {101, 102, 104}),
             ("Temple Sinai", {103, 105}),
@@ -753,7 +753,7 @@ class TestSchoolBreakdownNormalized:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_value, expected_person_ids",
+        ("breakdown_value", "expected_person_ids"),
         [
             ("Park Day School", {101, 102}),
             ("Mark Day School", {103}),
@@ -925,7 +925,7 @@ class TestNormalizedDisplayValues:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "school, normalized_school, expected_school",
+        ("school", "normalized_school", "expected_school"),
         [
             ("park day", "Park Day School", "Park Day School"),
             ("Hillcrest High", None, "Hillcrest High"),
@@ -960,7 +960,7 @@ class TestNormalizedDisplayValues:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "address_city, normalized_city, expected_city",
+        ("address_city", "normalized_city", "expected_city"),
         [
             ("san francisco", "San Francisco", "San Francisco"),
             ("Springfield", None, "Springfield"),
@@ -1040,7 +1040,7 @@ class TestPersonLevelDeduplication:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_type, breakdown_value, expected_person_ids, check_multi_sessions",
+        ("breakdown_type", "breakdown_value", "expected_person_ids", "check_multi_sessions"),
         [
             ("gender", "F", {101}, True),
             ("grade", "5", {101}, False),
@@ -2633,7 +2633,7 @@ class TestRetentionCardBreakdown:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "breakdown_type, expected_person_ids, expected_is_returning",
+        ("breakdown_type", "expected_person_ids", "expected_is_returning"),
         [
             ("retention_all", {101, 102, 103, 104}, None),
             ("retention_returned", {101, 102}, True),

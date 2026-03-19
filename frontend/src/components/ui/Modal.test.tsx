@@ -93,17 +93,26 @@ describe('Modal', () => {
   describe('size variants', () => {
     it.each([
       ['sm', 'max-w-md'],
-      ['md', 'max-w-lg'],
       ['lg', 'max-w-2xl'],
       ['xl', 'max-w-4xl'],
     ] as const)('applies %s size class', (size, expectedClass) => {
       render(
-        <Modal isOpen={true} onClose={() => {}} size={size === 'md' ? undefined : size}>
+        <Modal isOpen={true} onClose={() => {}} size={size}>
           <p>Content</p>
         </Modal>
       )
       const modalContent = screen.getByTestId('modal-content')
       expect(modalContent).toHaveClass(expectedClass)
+    })
+
+    it('applies md size class (default)', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+      const modalContent = screen.getByTestId('modal-content')
+      expect(modalContent).toHaveClass('max-w-lg')
     })
   })
 
