@@ -25,7 +25,6 @@ class MockRecord:
     grade: int | None = None
     session_type: str | None = None
     status: str | None = None
-    is_active: int | None = None
     status_id: int | None = None
     expand: dict[str, Any] | None = None
 
