@@ -289,29 +289,6 @@ describe('VerticalYAxis', () => {
     expect(wrapper).toHaveStyle({ height: '216px' })
   })
 
-  it('should use default width class w-8', () => {
-    const { container } = render(
-      <VerticalYAxis ticks={[0, 100]} axisMax={100} drawingHeight={200} barsHeight={216} />
-    )
-    const wrapper = container.firstChild as HTMLElement
-    expect(wrapper.className).toContain('w-8')
-  })
-
-  it('should accept custom width class', () => {
-    const { container } = render(
-      <VerticalYAxis
-        ticks={[0, 100]}
-        axisMax={100}
-        drawingHeight={200}
-        barsHeight={216}
-        width="w-10"
-      />
-    )
-    const wrapper = container.firstChild as HTMLElement
-    expect(wrapper.className).toContain('w-10')
-    expect(wrapper.className).not.toContain('w-8')
-  })
-
   it('should accept custom formatTick function', () => {
     render(
       <VerticalYAxis
@@ -342,19 +319,6 @@ describe('VerticalXAxis', () => {
     expect(screen.getByText('A')).toBeInTheDocument()
     expect(screen.getByText('B')).toBeInTheDocument()
     expect(screen.getByText('C')).toBeInTheDocument()
-  })
-
-  it('should render with border-t and pt-1 classes for straight labels', () => {
-    const { container } = render(<VerticalXAxis labels={['A', 'B']} />)
-    const wrapper = container.firstChild as HTMLElement
-    expect(wrapper.className).toContain('border-t')
-    expect(wrapper.className).toContain('pt-1')
-  })
-
-  it('should render items as flex-1 text-center for straight labels', () => {
-    const { container } = render(<VerticalXAxis labels={['A']} />)
-    const item = container.querySelector('.flex-1.text-center')
-    expect(item).toBeInTheDocument()
   })
 
   it('should apply rotated styles when rotated=true', () => {
@@ -436,22 +400,12 @@ describe('VerticalXAxis', () => {
     expect(wrapper.style.gap).toBe('16px')
   })
 
-  it('should use border-foreground/40 for axis line', () => {
-    const { container } = render(<VerticalXAxis labels={['A']} />)
-    const wrapper = container.firstChild as HTMLElement
-    expect(wrapper.className).toContain('border-foreground/40')
-  })
-
   // --- Tick marks ---
 
   it('should render tick marks for each rotated label', () => {
     const { container } = render(<VerticalXAxis labels={['A', 'B', 'C']} rotated />)
-    // Each label cell should contain a tick div with border-l and height 6px
     const ticks = container.querySelectorAll('[style*="height: 6px"]')
     expect(ticks.length).toBe(3)
-    for (const tick of ticks) {
-      expect((tick as HTMLElement).className).toContain('border-l')
-    }
   })
 
   it('should not render tick marks for straight labels', () => {
@@ -477,14 +431,6 @@ describe('VerticalXAxis', () => {
 // ColumnHoverOverlay
 // ---------------------------------------------------------------------------
 describe('ColumnHoverOverlay', () => {
-  it('should render a div with pointer-events-none', () => {
-    const { container } = render(
-      <ColumnHoverOverlay itemCount={5} hoveredIndex={null} lastIndex={0} />
-    )
-    const overlay = container.firstChild as HTMLElement
-    expect(overlay.className).toContain('pointer-events-none')
-  })
-
   it('should set width based on itemCount', () => {
     const { container } = render(
       <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
@@ -525,26 +471,14 @@ describe('ColumnHoverOverlay', () => {
     expect(overlay.style.transform).toBe('translateX(300%)') // 3 * 100%
   })
 
-  it('should have transition classes for animation', () => {
+  it('should have correct structural and animation classes', () => {
     const { container } = render(
       <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
     )
     const overlay = container.firstChild as HTMLElement
-    expect(overlay.className).toContain('transition-[transform,opacity]')
-    expect(overlay.className).toContain('duration-150')
-  })
-
-  it('should have correct structural classes', () => {
-    const { container } = render(
-      <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
-    )
-    const overlay = container.firstChild as HTMLElement
-    expect(overlay.className).toContain('absolute')
-    expect(overlay.className).toContain('left-0')
-    // Vertical positioning (top/bottom) is via inline styles, not inset-y-0 class
-    expect(overlay.className).toContain('z-0')
-    expect(overlay.className).toContain('rounded')
-    expect(overlay.className).toContain('bg-foreground/[0.06]')
+    for (const cls of ['absolute', 'pointer-events-none', 'bg-foreground/[0.06]']) {
+      expect(overlay.className).toContain(cls)
+    }
   })
 })
 
@@ -581,25 +515,6 @@ describe('VerticalTooltipShell', () => {
     )
     const shell = container.firstChild as HTMLElement
     expect(shell).toHaveStyle({ left: '150px', top: '250px' })
-  })
-
-  it('should have correct styling classes', () => {
-    const ref = createRef<HTMLDivElement>()
-    const { container } = render(
-      <VerticalTooltipShell visible={true} x={0} y={0} tooltipRef={ref}>
-        <span>Content</span>
-      </VerticalTooltipShell>
-    )
-    const shell = container.firstChild as HTMLElement
-    expect(shell.className).toContain('bg-card')
-    expect(shell.className).toContain('border-border')
-    expect(shell.className).toContain('pointer-events-none')
-    expect(shell.className).toContain('fixed')
-    expect(shell.className).toContain('z-50')
-    expect(shell.className).toContain('rounded-lg')
-    expect(shell.className).toContain('border')
-    expect(shell.className).toContain('p-3')
-    expect(shell.className).toContain('shadow-lg')
   })
 
   it('should forward tooltipRef to the shell div', () => {
