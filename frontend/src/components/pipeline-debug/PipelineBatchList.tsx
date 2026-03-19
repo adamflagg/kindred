@@ -70,6 +70,24 @@ function getConfidenceClasses(confidence: number): string {
   return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
 }
 
+/** Human-readable labels for source field badges. */
+function formatSourceField(field: string): string {
+  switch (field) {
+    case 'bunk_with':
+      return 'Bunk With'
+    case 'not_bunk_with':
+      return 'Not Bunk With'
+    case 'bunking_notes':
+      return 'Bunking Notes'
+    case 'internal_notes':
+      return 'Internal Notes'
+    case 'socialize_with':
+      return 'Socialize'
+    default:
+      return field
+  }
+}
+
 /** Get Tailwind classes for source field badge. */
 function getSourceFieldClasses(field: string): string {
   switch (field) {
@@ -81,6 +99,8 @@ function getSourceFieldClasses(field: string): string {
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
     case 'internal_notes':
       return 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400'
+    case 'socialize_with':
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400'
     default:
       return 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
   }
@@ -168,6 +188,7 @@ export function PipelineBatchList({
               <option value="not_bunk_with">Not Bunk With</option>
               <option value="bunking_notes">Bunking Notes</option>
               <option value="internal_notes">Internal Notes</option>
+              <option value="socialize_with">Socialize With</option>
             </select>
           </div>
 
@@ -312,7 +333,7 @@ export function PipelineBatchList({
                       <span
                         className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
                       >
-                        {item.source_field}
+                        {formatSourceField(item.source_field)}
                       </span>
                     </td>
                     <td className="px-3 py-2">

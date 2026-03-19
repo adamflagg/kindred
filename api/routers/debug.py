@@ -1293,8 +1293,8 @@ VALID_SOURCE_FIELDS = {
     "bunk_with",
     "not_bunk_with",
     "bunking_notes",
+    "internal_notes",
     "socialize_with",
-    "socialize_not_with",
 }
 VALID_PRE_P1_ACTIONS = {
     "parsed",

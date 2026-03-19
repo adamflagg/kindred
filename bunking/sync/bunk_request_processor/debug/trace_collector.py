@@ -10,6 +10,7 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
+from ..shared.constants import FIELD_TO_SOURCE_FIELD
 from .trace_models import (
     SCHEMA_VERSION,
     HistoricalVerificationTrace,
@@ -25,6 +26,15 @@ from .trace_models import (
 )
 
 logger = get_logger(__name__)
+
+# Inverted mapping: canonical SourceField strings -> internal field names.
+# Built from the existing FIELD_TO_SOURCE_FIELD to avoid a second source of truth.
+_CANONICAL_TO_INTERNAL: dict[str, str] = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
+
+
+def _canonical_to_internal_field(source_field: str) -> str:
+    """Convert canonical SourceField string to internal field name for debug data."""
+    return _CANONICAL_TO_INTERNAL.get(source_field, source_field)
 
 
 class TraceCollector:
@@ -233,7 +243,7 @@ class TraceCollector:
                 "requester_cm_id": meta.get("requester_cm_id", 0),
                 "year": meta.get("year", 0),
                 "session_cm_id": meta.get("session_cm_id", 0),
-                "source_field": meta.get("source_field", ""),
+                "source_field": _canonical_to_internal_field(meta.get("source_field", "")),
                 "trace_data": trace_data.model_dump(),
                 "pinned": False,
                 "schema_version": SCHEMA_VERSION,
@@ -258,7 +268,7 @@ class TraceCollector:
                     "requester_cm_id": meta.get("requester_cm_id", 0),
                     "requester_name": trace_data.pre_phase1.requester_info.name,
                     "target_name": br.requested_name or "",
-                    "source_field": meta.get("source_field", ""),
+                    "source_field": _canonical_to_internal_field(meta.get("source_field", "")),
                     "session_cm_id": meta.get("session_cm_id", 0),
                     "request_type": br.request_type,
                     "final_status": br.status,
