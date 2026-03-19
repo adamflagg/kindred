@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, GitMerge, AlertCircle, User, HelpCircle } from 'lucide-react'
+import { formatSourceField } from '../utils/formatSourceField'
 import { Modal } from './ui/Modal'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
@@ -220,7 +221,9 @@ export default function MergeRequestsModal({
                   </div>
                   <div className="text-sm">
                     <span className="font-medium">Source:</span>{' '}
-                    <span className="text-muted-foreground">{request.source_field}</span>
+                    <span className="text-muted-foreground">
+                      {formatSourceField(request.source_field)}
+                    </span>
                   </div>
                   <div className="text-sm">
                     <span className="font-medium">Confidence:</span>{' '}

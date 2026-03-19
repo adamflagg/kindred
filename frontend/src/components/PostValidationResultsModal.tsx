@@ -14,6 +14,7 @@ import {
   Activity,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
+import { formatSourceField } from '../utils/formatSourceField'
 
 interface FieldStats {
   total: number
@@ -255,17 +256,8 @@ export function getIssueTypeLabel(type: string): string {
   return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
-// Format field names nicely
-function formatFieldName(fieldName: string): string {
-  const labels: Record<string, string> = {
-    bunk_with: 'Bunk With',
-    not_bunk_with: 'Avoid',
-    bunking_notes: 'Bunking Notes',
-    internal_notes: 'Staff Notes',
-    socialize_with: 'Socialize With',
-  }
-  return labels[fieldName] ?? fieldName.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
-}
+// Format field names using shared utility
+const formatFieldName = formatSourceField
 
 // Satisfaction ring component - the visual centerpiece
 function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number }) {

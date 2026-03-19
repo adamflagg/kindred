@@ -8,8 +8,8 @@
 
 import { useMemo } from 'react'
 import { Loader2, RefreshCw, Trash2, User } from 'lucide-react'
-import { SOURCE_FIELD_LABELS } from './types'
-import type { CamperGroupedRequests, FieldParseResult, SourceFieldType } from './types'
+import { formatSourceField } from './types'
+import type { CamperGroupedRequests, FieldParseResult } from './types'
 
 interface ParseAnalysisGroupedListProps {
   items: CamperGroupedRequests[]
@@ -25,7 +25,7 @@ interface ParseAnalysisGroupedListProps {
 
 // Small badge component showing field type + status dot
 function FieldBadge({ field }: { field: FieldParseResult }) {
-  const label = SOURCE_FIELD_LABELS[field.source_field as SourceFieldType] || field.source_field
+  const label = formatSourceField(field.source_field)
 
   const colorClass = (() => {
     switch (field.source_field) {

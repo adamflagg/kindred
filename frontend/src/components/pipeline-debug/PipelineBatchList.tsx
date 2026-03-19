@@ -11,6 +11,7 @@
 
 import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
+import { formatSourceField } from '../../utils/formatSourceField'
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -68,24 +69,6 @@ function getConfidenceClasses(confidence: number): string {
     return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
   }
   return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-}
-
-/** Human-readable labels for source field badges. */
-function formatSourceField(field: string): string {
-  switch (field) {
-    case 'bunk_with':
-      return 'Bunk With'
-    case 'not_bunk_with':
-      return 'Not Bunk With'
-    case 'bunking_notes':
-      return 'Bunking Notes'
-    case 'internal_notes':
-      return 'Internal Notes'
-    case 'socialize_with':
-      return 'Socialize'
-    default:
-      return field
-  }
 }
 
 /** Get Tailwind classes for source field badge. */

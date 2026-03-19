@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
+import { formatSourceField } from '../../utils/formatSourceField'
 
 // Source field normalization - maps CSV column names to normalized keys
 const normalizeSourceField = (field: string): string => {
@@ -15,15 +16,6 @@ const normalizeSourceField = (field: string): string => {
   if (normalized.includes('internal')) return 'internal_notes'
   if (normalized.includes('socialize')) return 'socialize_with'
   return field // Return original if no match
-}
-
-// Source field display labels
-const SOURCE_FIELD_LABELS: Record<string, string> = {
-  bunk_with: 'Bunk With',
-  not_bunk_with: 'Not Bunk',
-  bunking_notes: 'Bunking Notes',
-  internal_notes: 'Internal Notes',
-  socialize_with: 'Socialize',
 }
 
 // Source field colors (matches debug page style)
@@ -232,7 +224,7 @@ function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) 
   if (!sourceField) return null
 
   const normalized = normalizeSourceField(sourceField)
-  const label = SOURCE_FIELD_LABELS[normalized] ?? sourceField
+  const label = formatSourceField(normalized)
   const colorClass =
     SOURCE_FIELD_COLORS[normalized] ??
     'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
