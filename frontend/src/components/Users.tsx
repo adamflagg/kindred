@@ -271,9 +271,16 @@ export default function Users() {
 
                       {/* Join Date */}
                       {created && (
-                        <div className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>{formatDistanceToNow(new Date(created), { addSuffix: true })}</span>
+                        <div className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex">
+                          <span className="text-[10px] tracking-wider uppercase opacity-60">
+                            Joined
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>
+                              {formatDistanceToNow(new Date(created), { addSuffix: true })}
+                            </span>
+                          </div>
                         </div>
                       )}
 
@@ -282,21 +289,31 @@ export default function Users() {
                         (lastLogin ? (
                           <div
                             data-testid={`last-login-${user.id}`}
-                            className="text-muted-foreground hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
+                            className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
                             title={new Date(lastLogin).toLocaleString()}
                           >
-                            <LogIn className="h-3.5 w-3.5" />
-                            <span>
-                              {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
+                            <span className="text-[10px] tracking-wider uppercase opacity-60">
+                              Last login
                             </span>
+                            <div className="flex items-center gap-1.5">
+                              <LogIn className="h-3.5 w-3.5" />
+                              <span>
+                                {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
+                              </span>
+                            </div>
                           </div>
                         ) : (
                           <div
                             data-testid={`last-login-${user.id}`}
-                            className="text-muted-foreground/50 hidden flex-shrink-0 items-center gap-1.5 text-sm sm:flex"
+                            className="text-muted-foreground/50 hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
                           >
-                            <LogIn className="h-3.5 w-3.5" />
-                            <span>Never</span>
+                            <span className="text-[10px] tracking-wider uppercase opacity-60">
+                              Last login
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <LogIn className="h-3.5 w-3.5" />
+                              <span>Never</span>
+                            </div>
                           </div>
                         ))}
                     </div>

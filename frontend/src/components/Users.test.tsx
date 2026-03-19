@@ -127,6 +127,36 @@ describe('Users page access control', () => {
   })
 })
 
+describe('Users page date column labels', () => {
+  beforeEach(() => {
+    mockHasPermission.mockReset()
+    mockIsAdmin = false
+    mockCurrentUserId = 'user-1'
+  })
+
+  it('renders Joined label next to join date', async () => {
+    mockHasPermission.mockReturnValue(false)
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    expect(screen.getAllByText('Joined').length).toBeGreaterThan(0)
+  })
+
+  it('renders Last login label for admin users', async () => {
+    mockIsAdmin = true
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    expect(screen.getAllByText('Last login').length).toBeGreaterThan(0)
+  })
+
+  it('does not render Last login label when canSeeLastLogin is false', async () => {
+    mockHasPermission.mockReturnValue(false)
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+    expect(screen.queryByText('Last login')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Joined').length).toBeGreaterThan(0)
+  })
+})
+
 describe('Users page last login visibility', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
