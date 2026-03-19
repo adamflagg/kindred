@@ -97,7 +97,6 @@ class TestSearchPersons:
         query_params = call_args[1].get("query_params", {})
         filter_str = query_params.get("filter", "")
         assert "year = 2025" in filter_str
-        assert "is_active = 1" in filter_str
         assert "status_id = 2" in filter_str
         assert "person.first_name" in filter_str or "person.last_name" in filter_str
         # Must expand person and session to get names and session CM IDs

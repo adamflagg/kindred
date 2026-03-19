@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from api.constants.collections import CONFIG
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -205,7 +206,7 @@ class SessionAvailabilityService:
         """Fetch session_availability config records."""
         try:
             return await asyncio.to_thread(
-                self.repository.pb.collection("config").get_full_list,
+                self.repository.pb.collection(CONFIG).get_full_list,
                 query_params={"filter": f'category = "session_availability" && subcategory = "{year}"'},
             )
         except Exception:

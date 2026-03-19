@@ -53,7 +53,7 @@ def _get_service() -> GeoService:
 @router.get("/gaps", response_model=GapsResponse)
 async def get_gaps(
     category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
-    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    year: int = Query(..., description="Year scope (e.g. 2025)", ge=2000, le=2100),
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
@@ -79,7 +79,7 @@ async def get_gaps(
 async def search_canonicals(
     category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
     q: str = Query("", description="Search query (case-insensitive substring match). Empty returns in-use entries."),
-    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    year: int = Query(..., description="Year scope (e.g. 2025)", ge=2000, le=2100),
     in_use: bool = Query(False, description="If true, only return entries with camper_count > 0"),
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
@@ -115,7 +115,7 @@ async def search_canonicals(
 async def get_sources(
     canonical_name: str,
     category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
-    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    year: int = Query(..., description="Year scope (e.g. 2025)", ge=2000, le=2100),
     active_only: bool = Query(False, description="Filter to active enrolled attendees only"),
     session_types: str | None = Query(None, description="Comma-separated session types (e.g. main,embedded,ag)"),
     session_cm_id: int | None = Query(None, description="Specific session CampMinder ID"),
@@ -148,7 +148,7 @@ async def get_sources(
 @router.post("/batch-resolve-coords", response_model=BatchResolveResponse)
 async def batch_resolve_coords(
     category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
-    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    year: int = Query(..., description="Year scope (e.g. 2025)", ge=2000, le=2100),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> BatchResolveResponse:
     """Batch auto-resolve coordinates for unambiguous canonical entries."""
@@ -165,7 +165,7 @@ async def batch_resolve_coords(
 @router.get("/overrides", response_model=list[OverrideResponse])
 async def list_overrides(
     category: GeoCategory = Query(..., description="Category: city, school, or congregation"),
-    year: int = Query(..., description="Year scope (e.g. 2025)"),
+    year: int = Query(..., description="Year scope (e.g. 2025)", ge=2000, le=2100),
     user: AuthUser = Depends(require_permission(Permission.METRICS_GEO)),
 ) -> list[OverrideResponse]:
     """List all geo overrides for a category and year."""

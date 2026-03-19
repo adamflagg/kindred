@@ -17,6 +17,7 @@ from bunking.graph.graph_cache_manager import GraphCacheManager
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
+from .constants.collections import SUPERUSERS
 from .services.id_cache import IDLookupCache
 from .services.metrics_cache import MetricsCache
 from .settings import get_settings
@@ -55,7 +56,7 @@ async def authenticate_pb() -> None:
     settings = get_settings()
     try:
         await asyncio.to_thread(
-            pb.collection("_superusers").auth_with_password,
+            pb.collection(SUPERUSERS).auth_with_password,
             settings.pocketbase_admin_email,
             settings.pocketbase_admin_password,
         )
@@ -94,7 +95,7 @@ async def authenticate_task_pb(task_pb: PocketBase) -> None:
     """Authenticate a task-specific PocketBase client."""
     settings = get_settings()
     await asyncio.to_thread(
-        task_pb.collection("_superusers").auth_with_password,
+        task_pb.collection(SUPERUSERS).auth_with_password,
         settings.pocketbase_admin_email,
         settings.pocketbase_admin_password,
     )

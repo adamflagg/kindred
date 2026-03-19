@@ -162,7 +162,7 @@ class TestOriginalRequestsByCamper:
     def test_attendee_filter_includes_year_and_enrollment(
         self, client_with_mock_pb: tuple[TestClient, MagicMock]
     ) -> None:
-        """Attendee query must filter by year, is_active, status_id, and person.cm_id."""
+        """Attendee query must filter by year, status_id, and person.cm_id."""
         client, mock_pb = client_with_mock_pb
 
         collections = _setup_attendee_lookup(mock_pb)
@@ -172,7 +172,6 @@ class TestOriginalRequestsByCamper:
         assert response.status_code == 200
         filter_str = collections["attendees"].get_list.call_args[1]["query_params"]["filter"]
         assert "year = 2025" in filter_str
-        assert "is_active = 1" in filter_str
         assert "status_id = 2" in filter_str
         assert "person.cm_id = 12345" in filter_str
 

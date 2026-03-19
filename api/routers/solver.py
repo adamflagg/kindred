@@ -30,6 +30,15 @@ from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
+from ..constants.collections import (
+    ATTENDEES,
+    BUNK_PLANS,
+    BUNK_REQUESTS,
+    BUNKS,
+    CAMP_SESSIONS,
+    PERSONS,
+    SOLVER_RUNS,
+)
 from ..dependencies import pb, solver_runs
 from ..schemas import (
     ClearAssignmentsRequest,
@@ -100,7 +109,7 @@ async def get_solver_run(
     if run_id not in solver_runs:
         # Try to fetch from PocketBase
         try:
-            pb_run = await asyncio.to_thread(pb.collection("solver_runs").get_one, run_id)
+            pb_run = await asyncio.to_thread(pb.collection(SOLVER_RUNS).get_one, run_id)
             return {
                 "id": pb_run.id,
                 "status": getattr(pb_run, "status", "unknown"),
@@ -142,12 +151,12 @@ async def pre_validate_solver(
         session_id_filter = ctx.session_id_filter
 
         # Get all active, enrolled attendees for all related sessions
-        # Filter: is_active = 1 AND status_id = 2 (enrolled status)
-        # See CLAUDE.md "Attendee Active Status Filtering"
+        from api.constants.filters import ACTIVE_ENROLLED_FILTER
+
         attendees = await asyncio.to_thread(
-            pb.collection("attendees").get_full_list,
+            pb.collection(ATTENDEES).get_full_list,
             query_params={
-                "filter": f"({session_relation_filter}) && year = {ctx.year} && is_active = 1 && status_id = 2",
+                "filter": f"({session_relation_filter}) && year = {ctx.year} && {ACTIVE_ENROLLED_FILTER}",
                 "expand": "session",
             },
         )
@@ -182,7 +191,7 @@ async def pre_validate_solver(
                 batch_ids = list(person_cm_ids)[i : i + batch_size]
                 filter_str = " || ".join([f"cm_id = {cm_id}" for cm_id in batch_ids])
                 batch_persons = await asyncio.to_thread(
-                    pb.collection("persons").get_full_list,
+                    pb.collection(PERSONS).get_full_list,
                     query_params={"filter": f"({filter_str}) && year = {ctx.year}"},
                 )
                 for person in batch_persons:
@@ -190,7 +199,7 @@ async def pre_validate_solver(
 
         # Get all bunk requests for related sessions
         requests = await asyncio.to_thread(
-            pb.collection("bunk_requests").get_full_list,
+            pb.collection(BUNK_REQUESTS).get_full_list,
             query_params={
                 "filter": f'({session_id_filter}) && year = {ctx.year} && status = "resolved"',
                 "sort": "-priority",
@@ -299,7 +308,7 @@ async def pre_validate_solver(
         # Get bunk plans for all related sessions (expand bunk to get gender)
         logger.info(f"Pre-validate: Fetching bunk plans with filter: ({session_relation_filter}) && year = {ctx.year}")
         bunk_plans = await asyncio.to_thread(
-            pb.collection("bunk_plans").get_full_list,
+            pb.collection(BUNK_PLANS).get_full_list,
             query_params={
                 "filter": f"({session_relation_filter}) && year = {ctx.year}",
                 "expand": "bunk",
@@ -398,7 +407,7 @@ async def pre_validate_solver(
         # Get session names for better reporting (filter by year to avoid cross-year contamination)
         session_names: dict[int, str] = {}
         all_sessions = await asyncio.to_thread(
-            pb.collection("camp_sessions").get_full_list,
+            pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
                 "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
             },
@@ -464,12 +473,12 @@ async def apply_solver_results(
     results: dict[str, Any] = {}
     if run_id not in solver_runs:
         try:
-            pb_run = await asyncio.to_thread(pb.collection("solver_runs").get_one, run_id)
+            pb_run = await asyncio.to_thread(pb.collection(SOLVER_RUNS).get_one, run_id)
             results = json.loads(getattr(pb_run, "results", "{}") or "{}")
             session_cm_id = getattr(pb_run, "session_cm_id", None)
             if not session_cm_id and getattr(pb_run, "session", None):
                 session_record = await asyncio.to_thread(
-                    pb.collection("camp_sessions").get_one, getattr(pb_run, "session", "")
+                    pb.collection(CAMP_SESSIONS).get_one, getattr(pb_run, "session", "")
                 )
                 session_cm_id = getattr(session_record, "cm_id", None)
 
@@ -514,7 +523,7 @@ async def apply_solver_results(
             person_cm_id = int(person_cm_id_str)
 
             bunks = await asyncio.to_thread(
-                pb.collection("bunks").get_full_list,
+                pb.collection(BUNKS).get_full_list,
                 query_params={"filter": f'name = "{bunk_name}" && year = {run_year}'},
             )
 
@@ -544,7 +553,7 @@ async def apply_solver_results(
 
                 # Use session_filter to get correct attendee for multi-enrolled campers
                 attendees = await asyncio.to_thread(
-                    pb.collection("attendees").get_full_list,
+                    pb.collection(ATTENDEES).get_full_list,
                     query_params={
                         "filter": f'person_id = {person_cm_id} && year = {run_year} && status = "enrolled" && ({session_filter})',
                         "expand": "session",
@@ -597,7 +606,7 @@ async def apply_solver_results(
 
                 # Use session_filter to get correct attendee for multi-enrolled campers
                 attendees = await asyncio.to_thread(
-                    pb.collection("attendees").get_full_list,
+                    pb.collection(ATTENDEES).get_full_list,
                     query_params={
                         "filter": f'person_id = {person_cm_id} && year = {run_year} && status = "enrolled" && ({session_filter})',
                         "expand": "session",
@@ -682,13 +691,13 @@ async def run_multi_session_solver(
 
     try:
         child_sessions = await asyncio.to_thread(
-            pb.collection("camp_sessions").get_full_list,
+            pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={"filter": f"parent_id = {request.parent_session_cm_id} && year = {request.year}"},
         )
 
         if not child_sessions:
             child_sessions = await asyncio.to_thread(
-                pb.collection("camp_sessions").get_full_list,
+                pb.collection(CAMP_SESSIONS).get_full_list,
                 query_params={"filter": f"cm_id = {request.parent_session_cm_id} && year = {request.year}"},
             )
 
@@ -804,7 +813,7 @@ async def clear_session_assignments(
 
         session_names = {}
         all_sessions = await asyncio.to_thread(
-            pb.collection("camp_sessions").get_full_list,
+            pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
                 "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
             },

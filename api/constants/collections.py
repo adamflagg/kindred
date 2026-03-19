@@ -33,5 +33,10 @@ GEO_OVERRIDES = "geo_overrides"
 HOUSEHOLD_CUSTOM_VALUES = "household_custom_values"
 FIELD_DEFINITIONS = "field_definitions"
 
+# Pipeline debug
+DEBUG_PIPELINE_RUNS = "debug_pipeline_runs"
+DEBUG_PIPELINE_SUMMARY = "debug_pipeline_summary"
+DEBUG_PIPELINE_TRACES = "debug_pipeline_traces"
+
 # Auth
 SUPERUSERS = "_superusers"

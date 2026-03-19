@@ -249,9 +249,6 @@ func (s *AttendeesSync) processEnrollment(
 		status = "unknown"
 	}
 
-	// Only StatusID = 2 is truly enrolled
-	isActive := statusID == 2
-
 	// Parse enrollment date (PostDate = current status date)
 	var enrollmentDate string
 	if postDate, ok := enrollment["PostDate"].(string); ok {
@@ -280,7 +277,6 @@ func (s *AttendeesSync) processEnrollment(
 		"enrollment_date":  enrollmentDate,
 		"effective_date":   effectiveDate,
 		"last_updated_utc": lastUpdatedUTC,
-		"is_active":        isActive,
 		"year":             s.Client.GetSeasonID(),
 	}
 

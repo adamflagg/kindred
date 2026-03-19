@@ -83,6 +83,23 @@ def get_session_from_expand(record: Any) -> Any:
     return getattr(expand, "session", None)
 
 
+def get_person_from_expand(record: Any) -> Any:
+    """Extract person from a record's PocketBase expand dict.
+
+    Handles both dict-style and object-style expand attributes.
+
+    Args:
+        record: A PocketBase record with an expand attribute.
+
+    Returns:
+        The person object, or None if not found.
+    """
+    expand = getattr(record, "expand", {}) or {}
+    if isinstance(expand, dict):
+        return expand.get("person")
+    return getattr(expand, "person", None)
+
+
 def build_ag_parent_map(sessions: dict[int, Any]) -> dict[int, int]:
     """Build mapping from AG session cm_ids to their parent main session cm_ids.
 

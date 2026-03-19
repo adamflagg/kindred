@@ -9,6 +9,18 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from api.constants.collections import (
+    ATTENDEE_STATUS_HISTORY,
+    ATTENDEES,
+    BUNK_ASSIGNMENTS,
+    BUNK_PLANS,
+    CAMP_SESSIONS,
+    CONFIG,
+    ENROLLMENT_SNAPSHOTS,
+    FIELD_DEFINITIONS,
+    HOUSEHOLD_CUSTOM_VALUES,
+    PERSONS,
+)
 from api.services.reconstruction import parse_date_only
 from bunking.logging_config import get_logger
 
@@ -47,30 +59,32 @@ class MetricsRepository:
         Args:
             year: The year to fetch attendees for.
             status_filter: Optional status filter. Can be:
-                - None: fetches active enrolled (is_active=1 AND status_id=2)
+                - None: fetches active enrolled (status_id=2)
                 - str: single status (e.g., 'waitlisted', 'applied', 'cancelled')
                 - list[str]: multiple statuses (e.g., ['enrolled', 'waitlisted'])
 
         Returns:
             List of attendee records with session expansion.
         """
+        from api.constants.filters import ACTIVE_ENROLLED_FILTER
+
         if status_filter is None:
             # Default: active enrolled
-            filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+            filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         elif isinstance(status_filter, list):
             # Multiple statuses - build OR filter
             status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
             filter_str = f"year = {year} && ({status_conditions})"
         elif status_filter == "enrolled":
-            # Enrolled uses the strict is_active + status_id filter
-            filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+            # Enrolled uses the strict status_id filter
+            filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         else:
             # Single non-enrolled status
             filter_str = f'year = {year} && status = "{status_filter}"'
 
         expand = "person,session" if expand_person else "session"
         return await asyncio.to_thread(
-            self.pb.collection("attendees").get_full_list,
+            self.pb.collection(ATTENDEES).get_full_list,
             query_params={"filter": filter_str, "expand": expand},
         )
 
@@ -87,7 +101,7 @@ class MetricsRepository:
             Dictionary mapping cm_id (int) to person record.
         """
         persons = await asyncio.to_thread(
-            self.pb.collection("persons").get_full_list,
+            self.pb.collection(PERSONS).get_full_list,
             query_params={"filter": f"year = {year}"},
         )
         # Ensure int keys for consistent lookup (PocketBase may return float)
@@ -113,7 +127,7 @@ class MetricsRepository:
             filter_str = f"({filter_str}) && ({type_filter})"
 
         sessions = await asyncio.to_thread(
-            self.pb.collection("camp_sessions").get_full_list,
+            self.pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={"filter": filter_str},
         )
         # Ensure int keys for consistent lookup
@@ -132,7 +146,7 @@ class MetricsRepository:
             List of bunk_assignment records with person, session, bunk expansion.
         """
         return await asyncio.to_thread(
-            self.pb.collection("bunk_assignments").get_full_list,
+            self.pb.collection(BUNK_ASSIGNMENTS).get_full_list,
             query_params={"filter": f"year = {year}", "expand": "person,session,bunk"},
         )
 
@@ -165,7 +179,7 @@ class MetricsRepository:
             filter_str = f"({person_filter}) && status_id = 2 && year <= {max_year}"
 
             batch_results = await asyncio.to_thread(
-                self.pb.collection("attendees").get_full_list,
+                self.pb.collection(ATTENDEES).get_full_list,
                 query_params={"filter": filter_str, "expand": "session"},
             )
             all_results.extend(batch_results)
@@ -192,7 +206,7 @@ class MetricsRepository:
             filter_str = f"({filter_str}) && ({session_filter})"
 
         return await asyncio.to_thread(
-            self.pb.collection("bunk_plans").get_full_list,
+            self.pb.collection(BUNK_PLANS).get_full_list,
             query_params={"filter": filter_str, "expand": "bunk"},
         )
 
@@ -206,7 +220,7 @@ class MetricsRepository:
         """
         try:
             config = await asyncio.to_thread(
-                self.pb.collection("config").get_first_list_item,
+                self.pb.collection(CONFIG).get_first_list_item,
                 'category = "constraint" && subcategory = "cabin_capacity" && config_key = "default"',
             )
             return int(config.value) if config and config.value else 12
@@ -233,9 +247,11 @@ class MetricsRepository:
         Returns:
             List of attendee records with person expansion.
         """
+        from api.constants.filters import ACTIVE_ENROLLED_FILTER
+
         # Build status filter
         if status_filter is None or status_filter == "enrolled":
-            filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+            filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         elif isinstance(status_filter, list):
             status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
             filter_str = f"year = {year} && ({status_conditions})"
@@ -246,7 +262,7 @@ class MetricsRepository:
         # by joining with sessions data, since attendees don't have session_type directly
 
         return await asyncio.to_thread(
-            self.pb.collection("attendees").get_full_list,
+            self.pb.collection(ATTENDEES).get_full_list,
             query_params={"filter": filter_str, "expand": "person,session"},
         )
 
@@ -276,7 +292,7 @@ class MetricsRepository:
             filter_str = " && ".join(filters)
 
             return await asyncio.to_thread(
-                self.pb.collection("attendee_status_history").get_full_list,
+                self.pb.collection(ATTENDEE_STATUS_HISTORY).get_full_list,
                 query_params={"filter": filter_str, "expand": "session,person"},
             )
         except Exception as e:
@@ -299,7 +315,7 @@ class MetricsRepository:
         try:
             # Find the Synagogue field definition
             field_def = await asyncio.to_thread(
-                self.pb.collection("field_definitions").get_first_list_item,
+                self.pb.collection(FIELD_DEFINITIONS).get_first_list_item,
                 'name = "Synagogue"',
             )
         except Exception as e:
@@ -310,7 +326,7 @@ class MetricsRepository:
             # Fetch household_custom_values for this field with household expansion
             filter_str = f'field = "{field_def.id}" && year = {year}'
             custom_values = await asyncio.to_thread(
-                self.pb.collection("household_custom_values").get_full_list,
+                self.pb.collection(HOUSEHOLD_CUSTOM_VALUES).get_full_list,
                 query_params={"filter": filter_str, "expand": "household"},
             )
 
@@ -338,7 +354,7 @@ class MetricsRepository:
         if session_cm_id is not None:
             filter_str += f" && session_cm_id = {session_cm_id}"
         return await asyncio.to_thread(
-            self.pb.collection("enrollment_snapshots").get_full_list,
+            self.pb.collection(ENROLLMENT_SNAPSHOTS).get_full_list,
             query_params={"filter": filter_str, "sort": "snapshot_datetime"},
         )
 
@@ -356,7 +372,7 @@ class MetricsRepository:
         filter_str = f"year = {year} && (enrollment_date != '' || effective_date != '')"
         expand = "session,person" if expand_person else "session"
         return await asyncio.to_thread(
-            self.pb.collection("attendees").get_full_list,
+            self.pb.collection(ATTENDEES).get_full_list,
             query_params={"filter": filter_str, "expand": expand},
         )
 
@@ -371,14 +387,14 @@ class MetricsRepository:
         filter_str = f"year = {year} && ({status_filter})"
         expand = "session,person" if expand_person else "session"
         return await asyncio.to_thread(
-            self.pb.collection("attendee_status_history").get_full_list,
+            self.pb.collection(ATTENDEE_STATUS_HISTORY).get_full_list,
             query_params={"filter": filter_str, "expand": expand},
         )
 
     async def fetch_available_snapshot_dates(self, year: int) -> list[str]:
         """Return distinct snapshot dates for a year, sorted descending (newest first)."""
         snapshots = await asyncio.to_thread(
-            self.pb.collection("enrollment_snapshots").get_full_list,
+            self.pb.collection(ENROLLMENT_SNAPSHOTS).get_full_list,
             query_params={"filter": f"year = {year}", "sort": "-snapshot_datetime", "fields": "snapshot_datetime"},
         )
         seen: set[str] = set()
@@ -399,7 +415,7 @@ class MetricsRepository:
         """
         try:
             records = await asyncio.to_thread(
-                self.pb.collection("config").get_full_list,
+                self.pb.collection(CONFIG).get_full_list,
                 query_params={
                     "filter": f'category = "budget" && subcategory = "{year}"',
                 },
@@ -424,7 +440,7 @@ class MetricsRepository:
         """Fetch registration phase dates from config table."""
         try:
             records = await asyncio.to_thread(
-                self.pb.collection("config").get_full_list,
+                self.pb.collection(CONFIG).get_full_list,
                 query_params={
                     "filter": f'category = "registration" && subcategory = "{year}"',
                 },
