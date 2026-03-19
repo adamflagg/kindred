@@ -3,12 +3,15 @@ import type {
   BunkPlansResponse,
   AttendeesResponse,
   PersonsResponse,
+  IsoAutoDateString,
 } from '../types/pocketbase-types'
 import {
   AttendeesStatusOptions,
   CampSessionsSessionTypeOptions,
   Collections,
 } from '../types/pocketbase-types'
+
+const autoDate = (s: string) => s as IsoAutoDateString
 
 export const mockSession = (overrides?: Partial<Session>): Session => ({
   id: 'session1',
@@ -32,8 +35,8 @@ export const mockSession = (overrides?: Partial<Session>): Session => ({
   start_grade_id: 0,
   collectionId: 'camp_sessions',
   collectionName: Collections.CampSessions,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   ...overrides,
 })
 
@@ -49,8 +52,8 @@ export const mockBunk = (overrides?: Partial<Bunk>): Bunk => ({
   year: 2024,
   collectionId: 'bunks',
   collectionName: Collections.Bunks,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   ...overrides,
 })
 
@@ -96,8 +99,8 @@ export const mockPerson = (overrides?: Partial<PersonsResponse>): PersonsRespons
   tshirt_size: '',
   collectionId: Collections.Persons,
   collectionName: Collections.Persons,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   ...overrides,
 })
 
@@ -116,8 +119,8 @@ export const mockCamper = (overrides?: Partial<Camper>): Camper => ({
   gender_identity_name: 'Girl/woman',
   gender_pronoun_name: 'She/her',
   household_id: 400,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   ...overrides,
 })
 
@@ -125,16 +128,18 @@ export const mockAttendee = (overrides?: Partial<AttendeesResponse>): AttendeesR
   id: 'attendee1',
   person: 'person1',
   session: 'session1',
+  effective_date: '',
   enrollment_date: '2024-01-01T00:00:00Z',
   is_active: true,
+  last_updated_utc: '',
   status: AttendeesStatusOptions.enrolled,
   status_id: 1,
   year: 2024,
   person_id: 3001, // For backend sync only
   collectionId: Collections.Attendees,
   collectionName: Collections.Attendees,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   ...overrides,
 })
 
@@ -146,8 +151,8 @@ export const mockConstraint = (overrides?: Partial<Constraint>): Constraint => (
   pair_camper2_id: 3002,
   description: 'Friends from same school',
   year: 2024,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   ...overrides,
 })
 
@@ -162,8 +167,8 @@ export const mockBunkPlan = (overrides?: Partial<BunkPlansResponse>): BunkPlansR
   is_active: true,
   collectionId: Collections.BunkPlans,
   collectionName: Collections.BunkPlans,
-  created: '2024-01-01T00:00:00Z',
-  updated: '2024-01-01T00:00:00Z',
+  created: autoDate('2024-01-01T00:00:00Z'),
+  updated: autoDate('2024-01-01T00:00:00Z'),
   expand: {
     bunk: mockBunk(),
   },
