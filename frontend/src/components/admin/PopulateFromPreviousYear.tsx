@@ -24,7 +24,7 @@ import {
   type PreviewSessionItem,
 } from './populateUtils'
 
-// ── Session type filter (same as GradeEligibilityConfig) ─────────────
+// ── Session type filter (same as SessionConfigTable) ─────────────
 
 const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
 

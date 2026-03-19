@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Grid2x2, Loader2, Save } from 'lucide-react'
+import { AlertCircle, Grid2x2, Loader2, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
@@ -74,10 +74,26 @@ function useBudgetConfig(year: number) {
 export function SessionConfigTable() {
   const { currentYear } = useCurrentYear()
   const queryClient = useQueryClient()
-  const { data: sessions, isLoading: sessionsLoading } = useAdminSessions(currentYear)
-  const { data: gradeRecords, isLoading: gradeLoading } = useGradeConfig(currentYear)
-  const { data: thresholdRecords, isLoading: thresholdLoading } = useThresholdConfig(currentYear)
-  const { data: budgetRecords, isLoading: budgetLoading } = useBudgetConfig(currentYear)
+  const {
+    data: sessions,
+    isLoading: sessionsLoading,
+    error: sessionsError,
+  } = useAdminSessions(currentYear)
+  const {
+    data: gradeRecords,
+    isLoading: gradeLoading,
+    error: gradeError,
+  } = useGradeConfig(currentYear)
+  const {
+    data: thresholdRecords,
+    isLoading: thresholdLoading,
+    error: thresholdError,
+  } = useThresholdConfig(currentYear)
+  const {
+    data: budgetRecords,
+    isLoading: budgetLoading,
+    error: budgetError,
+  } = useBudgetConfig(currentYear)
 
   const [rows, setRows] = useState<SessionRow[]>([])
   const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD)
@@ -169,6 +185,16 @@ export function SessionConfigTable() {
       // Save grade eligibility config
       for (const row of rows) {
         const existingGrade = gradeRecords?.find((r) => r.config_key === String(row.cm_id))
+
+        // Skip rows with no grade values set
+        if (
+          row.min_grade === null &&
+          row.max_grade === null &&
+          row.capacity_override === null &&
+          !existingGrade
+        )
+          continue
+
         const gradePayload = {
           category: 'session_availability',
           subcategory: String(currentYear),
@@ -247,6 +273,16 @@ export function SessionConfigTable() {
       <div className="flex items-center justify-center py-8">
         <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
         <span className="text-muted-foreground ml-2 text-sm">Loading session config...</span>
+      </div>
+    )
+  }
+
+  const queryError = sessionsError || gradeError || thresholdError || budgetError
+  if (queryError) {
+    return (
+      <div className="flex items-center justify-center py-8 text-red-600 dark:text-red-400">
+        <AlertCircle className="mr-2 h-5 w-5" />
+        <span className="text-sm">Failed to load session config: {queryError.message}</span>
       </div>
     )
   }

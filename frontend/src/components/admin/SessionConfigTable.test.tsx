@@ -295,9 +295,10 @@ describe('SessionConfigTable', () => {
     expect(screen.queryByText(/save/i)).not.toBeInTheDocument()
 
     // Change a budget input
+    // inputs[0] = threshold, inputs[1] = capacity_override, inputs[2] = participant_goal
     const inputs = screen.getAllByRole('spinbutton')
-    await user.clear(inputs[0]!)
-    await user.type(inputs[0]!, '175')
+    await user.clear(inputs[2]!)
+    await user.type(inputs[2]!, '175')
 
     expect(screen.getByText(/save/i)).toBeInTheDocument()
   })
@@ -449,9 +450,10 @@ describe('SessionConfigTable', () => {
     })
 
     // Change budget value for first session
+    // inputs[0] = threshold, inputs[1] = capacity_override, inputs[2] = participant_goal
     const inputs = screen.getAllByRole('spinbutton')
-    await user.clear(inputs[0]!)
-    await user.type(inputs[0]!, '175')
+    await user.clear(inputs[2]!)
+    await user.type(inputs[2]!, '175')
 
     const saveButton = screen.getByText(/save/i)
     await user.click(saveButton)
@@ -522,6 +524,301 @@ describe('SessionConfigTable', () => {
     await waitFor(() => {
       const thresholdInput = screen.getByLabelText<HTMLInputElement>(/limited.*threshold/i)
       expect(thresholdInput.value).toBe('80')
+    })
+  })
+
+  it('grade selects have options for grades 2-12 with ordinal labels', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<SessionConfigTable />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    const selects = screen.getAllByRole('combobox')
+    const firstSelect = selects[0] as HTMLSelectElement
+    const options = Array.from(firstSelect.options)
+
+    // First option is the empty "unset" option
+    expect(options[0]!.value).toBe('')
+    // Grades 2-12 should follow
+    expect(options).toHaveLength(12) // 1 empty + 11 grades (2-12)
+    expect(options[1]!.value).toBe('2')
+    expect(options[1]!.textContent).toBe('2nd')
+    expect(options[11]!.value).toBe('12')
+    expect(options[11]!.textContent).toBe('12th')
+  })
+
+  it('inputs start empty by default when no config exists', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce([]) // no grade config
+      .mockResolvedValueOnce([]) // no threshold
+      .mockResolvedValueOnce([]) // no budget config
+
+    renderWithProviders(<SessionConfigTable />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // All number inputs (except threshold which defaults to 80) should be empty
+    const inputs = screen.getAllByRole('spinbutton')
+    for (let i = 1; i < inputs.length; i++) {
+      expect((inputs[i] as HTMLInputElement).value).toBe('')
+    }
+  })
+
+  it('calls create (not update) for threshold when no record exists', async () => {
+    const user = userEvent.setup()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords)
+      .mockResolvedValueOnce([]) // no threshold
+      .mockResolvedValueOnce(mockBudgetConfigRecords)
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({ id: 'new-thr-1' })
+
+    renderWithProviders(<SessionConfigTable />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    const thresholdInput = screen.getByLabelText(/limited.*threshold/i)
+    await user.clear(thresholdInput)
+    await user.type(thresholdInput, '90')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      const createCalls = mockCreate.mock.calls
+      const thresholdCreate = createCalls.find(
+        (call) => (call[0] as Record<string, unknown>)['config_key'] === 'limited_threshold'
+      )
+      expect(thresholdCreate).toBeDefined()
+    })
+  })
+
+  it('calls update (not create) for threshold when record exists', async () => {
+    const user = userEvent.setup()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords)
+      .mockResolvedValueOnce([
+        {
+          id: 'thr1',
+          category: 'session_availability',
+          subcategory: '2026',
+          config_key: 'limited_threshold',
+          value: 80,
+        },
+      ])
+      .mockResolvedValueOnce(mockBudgetConfigRecords)
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    renderWithProviders(<SessionConfigTable />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    const thresholdInput = screen.getByLabelText(/limited.*threshold/i)
+    await user.clear(thresholdInput)
+    await user.type(thresholdInput, '90')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      const updateCalls = mockUpdate.mock.calls
+      const thresholdUpdate = updateCalls.find((call) => call[0] === 'thr1')
+      expect(thresholdUpdate).toBeDefined()
+      expect((thresholdUpdate![1] as Record<string, unknown>)['config_key']).toBe(
+        'limited_threshold'
+      )
+      expect((thresholdUpdate![1] as Record<string, unknown>)['value']).toBe(90)
+    })
+
+    // Verify create was NOT called for the threshold
+    const thresholdCreate = mockCreate.mock.calls.find(
+      (call) => (call[0] as Record<string, unknown>)['config_key'] === 'limited_threshold'
+    )
+    expect(thresholdCreate).toBeUndefined()
+  })
+
+  it('looks up grade configId from query data at save time, not stale row state', async () => {
+    const user = userEvent.setup()
+    const queryClient = createTestQueryClient()
+
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords) // cfg1 for session 1001
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(mockBudgetConfigRecords)
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <SessionConfigTable />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Make a change to trigger save button
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3')
+
+    // Simulate config records refetch with a NEW record ID (as if record was recreated)
+    const updatedGradeConfigRecords = [
+      {
+        id: 'cfg1-recreated',
+        category: 'session_availability',
+        subcategory: '2026',
+        config_key: '1001',
+        value: { min_grade: 2, max_grade: 6, capacity_override: null },
+      },
+    ]
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(updatedGradeConfigRecords)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(mockBudgetConfigRecords)
+
+    await queryClient.invalidateQueries()
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <SessionConfigTable />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Re-make the change (rows were rebuilt from fresh data)
+    const selectsAfter = screen.getAllByRole('combobox')
+    await user.selectOptions(selectsAfter[0]!, '4')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Should use the NEW record ID 'cfg1-recreated' from fresh query data
+      const updateCalls = mockUpdate.mock.calls
+      const freshUpdate = updateCalls.find((call) => call[0] === 'cfg1-recreated')
+      expect(freshUpdate).toBeDefined()
+      expect((freshUpdate![1] as Record<string, unknown>)['config_key']).toBe('1001')
+    })
+
+    // Verify the stale ID was NOT used
+    const staleUpdate = mockUpdate.mock.calls.find((call) => call[0] === 'cfg1')
+    expect(staleUpdate).toBeUndefined()
+  })
+
+  it('looks up budget configId from query data at save time, not stale row state', async () => {
+    const user = userEvent.setup()
+    const queryClient = createTestQueryClient()
+
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(mockBudgetConfigRecords) // budget1 for session_1001
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <SessionConfigTable />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Make a change
+    // inputs[0] = threshold, inputs[1] = capacity_override, inputs[2] = participant_goal
+    const inputs = screen.getAllByRole('spinbutton')
+    await user.clear(inputs[2]!)
+    await user.type(inputs[2]!, '175')
+
+    // Simulate budget records refetch with a NEW record ID
+    const updatedBudgetConfigRecords = [
+      {
+        id: 'budget1-recreated',
+        category: 'budget',
+        subcategory: '2026',
+        config_key: 'session_1001',
+        value: { participant_goal: 150, session_fee: 3500.0 },
+      },
+      mockBudgetConfigRecords[1],
+    ]
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(updatedBudgetConfigRecords)
+
+    await queryClient.invalidateQueries()
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <SessionConfigTable />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Re-make the change (rows were rebuilt from fresh data)
+    const inputsAfter = screen.getAllByRole('spinbutton')
+    await user.clear(inputsAfter[2]!)
+    await user.type(inputsAfter[2]!, '180')
+
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      // Should use the NEW record ID 'budget1-recreated' from fresh query data
+      const updateCalls = mockUpdate.mock.calls
+      const freshUpdate = updateCalls.find((call) => call[0] === 'budget1-recreated')
+      expect(freshUpdate).toBeDefined()
+      expect((freshUpdate![1] as Record<string, unknown>)['config_key']).toBe('session_1001')
+    })
+
+    // Verify the stale ID was NOT used
+    const staleUpdate = mockUpdate.mock.calls.find((call) => call[0] === 'budget1')
+    expect(staleUpdate).toBeUndefined()
+  })
+
+  it('renders error state when a query fails', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockRejectedValueOnce(new Error('Network error')) // grade config fails
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<SessionConfigTable />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load/i)).toBeInTheDocument()
     })
   })
 })
