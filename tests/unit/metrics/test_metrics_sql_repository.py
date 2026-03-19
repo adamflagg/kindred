@@ -41,7 +41,7 @@ class TestFetchAttendees:
 
     @pytest.mark.asyncio
     async def test_default_enrolled_filter(self, sql_db: sqlite3.Connection) -> None:
-        """Default (no status_filter) returns only active enrolled (status_id=2, is_active=1)."""
+        """Default (no status_filter) returns only active enrolled (status_id=2)."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees(2025)
         # att_1 (Emma/S1), att_2 (Liam/S1), att_3 (Olivia/S2) are enrolled
@@ -93,7 +93,7 @@ class TestFetchAttendees:
 
     @pytest.mark.asyncio
     async def test_enrolled_string_uses_strict_filter(self, sql_db: sqlite3.Connection) -> None:
-        """status_filter='enrolled' uses is_active=1 AND status_id=2, same as default."""
+        """status_filter='enrolled' uses status_id=2, same as default."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees(2025, status_filter="enrolled")
         assert len(result) == 3

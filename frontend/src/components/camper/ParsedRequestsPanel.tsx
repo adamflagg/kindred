@@ -5,15 +5,7 @@ import { useState } from 'react'
 import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import { formatSourceField } from '../../utils/formatSourceField'
-
-// Source field colors (matches debug page style)
-const SOURCE_FIELD_COLORS: Record<string, string> = {
-  bunk_with: 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400',
-  not_bunk_with: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
-  bunking_notes: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  internal_notes: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
-  socialize_with: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
-}
+import { getSourceFieldClasses } from '../../utils/sourceFieldColors'
 
 interface ParsedRequestsPanelProps {
   requests: EnhancedBunkRequest[]
@@ -212,9 +204,7 @@ function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) 
   if (!sourceField) return null
 
   const label = formatSourceField(sourceField)
-  const colorClass =
-    SOURCE_FIELD_COLORS[sourceField] ??
-    'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
+  const colorClass = getSourceFieldClasses(sourceField)
 
   return (
     <span

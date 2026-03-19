@@ -13,6 +13,7 @@ from typing import Any
 import community as community_louvain
 import networkx as nx
 
+from api.constants.collections import ATTENDEES, BUNK_ASSIGNMENTS, BUNK_REQUESTS, BUNKS, CAMP_SESSIONS, PERSONS
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -73,7 +74,7 @@ class SocialGraphBuilder:
         # Get session info for logging
         session_name = "Unknown"
         try:
-            session = self.pb.collection("camp_sessions").get_first_list_item(f"cm_id = {session_cm_id}")
+            session = self.pb.collection(CAMP_SESSIONS).get_first_list_item(f"cm_id = {session_cm_id}")
             session_name = session.name
             logger.info(f"Session type: {'AG' if 'all-gender' in session_name.lower() else 'Regular'} - {session_name}")
         except Exception as e:
@@ -111,7 +112,7 @@ class SocialGraphBuilder:
         # Get all members of this bunk for the specific session (uses relations)
         bunk_members = []
         try:
-            assignments = self.pb.collection("bunk_assignments").get_full_list(
+            assignments = self.pb.collection(BUNK_ASSIGNMENTS).get_full_list(
                 query_params={
                     "filter": f"bunk.cm_id = {bunk_cm_id} && year = {year} && session.cm_id = {session_cm_id}",
                     "expand": "person,bunk,session",
@@ -135,14 +136,14 @@ class SocialGraphBuilder:
 
             # Get bunk details to check if it's an AG bunk
             try:
-                bunk = self.pb.collection("bunks").get_first_list_item(f"cm_id = {bunk_cm_id}")
+                bunk = self.pb.collection(BUNKS).get_first_list_item(f"cm_id = {bunk_cm_id}")
                 bunk_name = getattr(bunk, "name", "")
 
                 if "AG" in bunk_name or bunk_name.startswith("AG"):
                     logger.info(f"AG bunk detected: {bunk_name}, checking all sessions for assignments")
 
                     # Find all sessions this bunk is assigned to (uses relations)
-                    all_assignments = self.pb.collection("bunk_assignments").get_full_list(
+                    all_assignments = self.pb.collection(BUNK_ASSIGNMENTS).get_full_list(
                         query_params={
                             "filter": f"bunk.cm_id = {bunk_cm_id} && year = {year}",
                             "expand": "person,session",
@@ -190,7 +191,7 @@ class SocialGraphBuilder:
         for person_cm_id in bunk_members:
             # Get person details
             try:
-                person = self.pb.collection("persons").get_first_list_item(f"cm_id = {person_cm_id}")
+                person = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
 
                 # Get last year's historical data from bunk_assignments
                 last_year_session = None
@@ -198,7 +199,7 @@ class SocialGraphBuilder:
                 try:
                     last_year = year - 1
                     # Query bunk_assignments with expanded relations
-                    historical = self.pb.collection("bunk_assignments").get_first_list_item(
+                    historical = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
                         f"person.cm_id = {person_cm_id} && year = {last_year}", query_params={"expand": "session,bunk"}
                     )
                     # Access expanded data safely
@@ -238,7 +239,7 @@ class SocialGraphBuilder:
         # Add ONLY request edges between bunk members
         try:
             # Get all requests for members of this bunk
-            requests = self.pb.collection("bunk_requests").get_full_list(
+            requests = self.pb.collection(BUNK_REQUESTS).get_full_list(
                 query_params={"filter": f'year = {year} && status = "resolved"'}
             )
 
@@ -357,7 +358,7 @@ class SocialGraphBuilder:
             persons_data = {}
             for person_cm_id in bunk_members:
                 try:
-                    person = self.pb.collection("persons").get_first_list_item(f"cm_id = {person_cm_id}")
+                    person = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
                     if person.family_id:
                         persons_data[person_cm_id] = person.family_id
                 except Exception:  # noqa: S110 — intentional silent handling
@@ -473,7 +474,7 @@ class SocialGraphBuilder:
     def _add_camper_nodes(self, year: int, session_cm_id: int) -> None:
         """Add all campers as nodes with attributes"""
         # Attendees uses session relation and person_id field
-        attendees = self.pb.collection("attendees").get_full_list(
+        attendees = self.pb.collection(ATTENDEES).get_full_list(
             query_params={"filter": f"year = {year} && session.cm_id = {session_cm_id}"}
         )
 
@@ -492,7 +493,7 @@ class SocialGraphBuilder:
             # Get person details if not cached
             if person_cm_id not in self.person_cache:
                 try:
-                    person = self.pb.collection("persons").get_first_list_item(f"cm_id = {person_cm_id}")
+                    person = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
                     self.person_cache[person_cm_id] = person.__dict__
                 except Exception as e:
                     logger.warning(f"Person {person_cm_id} not found: {e}")
@@ -503,7 +504,7 @@ class SocialGraphBuilder:
             # Get bunk assignment for this person (uses relations)
             bunk_cm_id = None
             try:
-                assignment = self.pb.collection("bunk_assignments").get_first_list_item(
+                assignment = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
                     f"person.cm_id = {person_cm_id} && session.cm_id = {session_cm_id} && year = {year}",
                     query_params={"expand": "bunk"},
                 )
@@ -543,7 +544,7 @@ class SocialGraphBuilder:
     def _add_request_edges(self, year: int, session_cm_id: int) -> None:
         """Add edges from bunk requests"""
         # bunk_requests uses session_id, requester_id, requestee_id fields
-        requests = self.pb.collection("bunk_requests").get_full_list(
+        requests = self.pb.collection(BUNK_REQUESTS).get_full_list(
             query_params={
                 "filter": f"year = {year} && session_id = {session_cm_id} && "
                 f'request_type = "bunk_with" && status != "removed"'

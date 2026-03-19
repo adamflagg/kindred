@@ -12,6 +12,7 @@
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 import { formatSourceField } from '../../utils/formatSourceField'
+import { getSourceFieldClasses } from '../../utils/sourceFieldColors'
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -70,24 +71,6 @@ function getConfidenceClasses(confidence: number): string {
     return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
   }
   return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-}
-
-/** Get Tailwind classes for source field badge. */
-function getSourceFieldClasses(field: string): string {
-  switch (field) {
-    case 'bunk_with':
-      return 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400'
-    case 'not_bunk_with':
-      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-    case 'bunking_notes':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-    case 'internal_notes':
-      return 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400'
-    case 'socialize_with':
-      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400'
-    default:
-      return 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400'
-  }
 }
 
 export function PipelineBatchList({
