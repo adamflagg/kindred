@@ -321,7 +321,7 @@ describe('PipelineBatchList', () => {
 
     it('triggers row click on Enter key', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const firstRow = document.querySelector('tbody tr')!
+      const firstRow = document.querySelector('tbody tr') as HTMLElement
       firstRow.focus()
       await userEvent.keyboard('{Enter}')
       expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
@@ -329,7 +329,7 @@ describe('PipelineBatchList', () => {
 
     it('triggers row click on Space key', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const firstRow = document.querySelector('tbody tr')!
+      const firstRow = document.querySelector('tbody tr') as HTMLElement
       firstRow.focus()
       await userEvent.keyboard(' ')
       expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
@@ -337,7 +337,7 @@ describe('PipelineBatchList', () => {
 
     it('triggers sort on Enter key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector('thead th[tabindex]')!
+      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
       sortableHeader.focus()
       await userEvent.keyboard('{Enter}')
       expect(defaultProps.onFiltersChange).toHaveBeenCalled()
@@ -345,7 +345,7 @@ describe('PipelineBatchList', () => {
 
     it('triggers sort on Space key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector('thead th[tabindex]')!
+      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
       sortableHeader.focus()
       await userEvent.keyboard(' ')
       expect(defaultProps.onFiltersChange).toHaveBeenCalled()
