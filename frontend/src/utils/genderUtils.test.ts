@@ -62,27 +62,21 @@ describe('getGenderIdentityDisplay', () => {
 
 describe('getGenderColorClasses', () => {
   it.each([
-    ['boys', ['bg-blue-100', 'border-blue-300']],
-    ['girls', ['bg-pink-100', 'border-pink-300']],
-    ['other', ['bg-purple-100', 'border-purple-300']],
-  ])('returns correct classes for %s', (category, expectedClasses) => {
-    const classes = getGenderColorClasses(category as any)
-    expectedClasses.forEach((cls) => {
-      expect(classes).toContain(cls)
-    })
+    ['boys', 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'],
+    ['girls', 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'],
+    ['other', 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'],
+  ])('returns correct classes for %s', (category, expected) => {
+    expect(getGenderColorClasses(category as any)).toBe(expected)
   })
 })
 
 describe('getGenderBadgeClasses', () => {
   it.each([
-    ['boys', ['bg-blue-100', 'text-blue-800']],
-    ['girls', ['bg-pink-100', 'text-pink-800']],
-    ['other', ['bg-purple-100', 'text-purple-800']],
-  ])('returns correct badge classes for %s', (category, expectedClasses) => {
-    const classes = getGenderBadgeClasses(category as any)
-    expectedClasses.forEach((cls) => {
-      expect(classes).toContain(cls)
-    })
+    ['boys', 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'],
+    ['girls', 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'],
+    ['other', 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'],
+  ])('returns correct badge classes for %s', (category, expected) => {
+    expect(getGenderBadgeClasses(category as any)).toBe(expected)
   })
 })
 
@@ -193,28 +187,28 @@ describe('getPronounCategory', () => {
 
 describe('getPronounColorClasses', () => {
   it.each([
-    ['he_him', ['bg-blue-100', 'border-blue-300']],
-    ['she_her', ['bg-pink-100', 'border-pink-300']],
-    ['non_binary', ['bg-purple-100', 'border-purple-300']],
-    ['prefer_not_answer', ['bg-purple-100', 'border-purple-300']],
-  ])('returns correct classes for %s', (category, expectedClasses) => {
-    const classes = getPronounColorClasses(category as any)
-    expectedClasses.forEach((cls) => {
-      expect(classes).toContain(cls)
-    })
+    ['he_him', 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'],
+    ['she_her', 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'],
+    ['non_binary', 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'],
+    [
+      'prefer_not_answer',
+      'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700',
+    ],
+  ])('returns correct classes for %s', (category, expected) => {
+    expect(getPronounColorClasses(category as any)).toBe(expected)
   })
 })
 
 describe('getPronounBadgeClasses', () => {
   it.each([
-    ['he_him', ['bg-blue-100', 'text-blue-800']],
-    ['she_her', ['bg-pink-100', 'text-pink-800']],
-    ['non_binary', ['bg-purple-100', 'text-purple-800']],
-    ['prefer_not_answer', ['bg-purple-100', 'text-purple-800']],
-  ])('returns correct badge classes for %s', (category, expectedClasses) => {
-    const classes = getPronounBadgeClasses(category as any)
-    expectedClasses.forEach((cls) => {
-      expect(classes).toContain(cls)
-    })
+    ['he_him', 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'],
+    ['she_her', 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'],
+    ['non_binary', 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'],
+    [
+      'prefer_not_answer',
+      'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+    ],
+  ])('returns correct badge classes for %s', (category, expected) => {
+    expect(getPronounBadgeClasses(category as any)).toBe(expected)
   })
 })

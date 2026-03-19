@@ -16,15 +16,15 @@ describe('calculateAge', () => {
   })
 
   it.each([
-    ['2015-01-01', 10.0, 'birthday earlier this year'],
-    ['2015-03-15', 9.1, 'birthday not yet reached'],
-    ['2015-01-15', 10.0, 'same day birthday'],
-    ['2015-01-14', 10.0, 'birthday yesterday (just turned)'],
-    ['2014-02-15', 10.11, 'fractional months'],
-    ['2014-12-15', 10.01, 'year boundary'],
-    ['2024-12-15', 0.01, 'very young age'],
-    ['2015-12-15', 9.01, 'future birthday in current year'],
-  ])('calculates age correctly for %s: %s', (birthDate, expected, _description) => {
+    { birthDate: '2015-01-01', expected: 10.0, desc: 'birthday earlier this year' },
+    { birthDate: '2015-03-15', expected: 9.1, desc: 'birthday not yet reached' },
+    { birthDate: '2015-01-15', expected: 10.0, desc: 'same day birthday' },
+    { birthDate: '2015-01-14', expected: 10.0, desc: 'birthday yesterday (just turned)' },
+    { birthDate: '2014-02-15', expected: 10.11, desc: 'fractional months' },
+    { birthDate: '2014-12-15', expected: 10.01, desc: 'year boundary' },
+    { birthDate: '2024-12-15', expected: 0.01, desc: 'very young age' },
+    { birthDate: '2015-12-15', expected: 9.01, desc: 'future birthday in current year' },
+  ])('$desc ($birthDate → $expected)', ({ birthDate, expected }) => {
     expect(calculateAge(birthDate)).toBe(expected)
   })
 })
