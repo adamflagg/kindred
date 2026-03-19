@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-18 (16 open issues; #619, #654, #658 fixed by combined tech-debt PR; added #653).
+Last updated: 2026-03-19 (4 open issues; 14 issues closed since last triage).
 
 ---
 
@@ -13,74 +13,39 @@ Last updated: 2026-03-18 (16 open issues; #619, #654, #658 fixed by combined tec
 |---|-------|------|
 | 453 | Promote geo overrides to static canonical data | feature |
 
-**Interplay:** None remaining. (#445 closed.)
+**Interplay:** None. Standalone geo normalization enhancement.
 
 ---
 
-## Group 8: Frontend — Blocked Tech Debt
-
-**Priority: Low** — Blocked on external fork update
-
-| # | Title | Type |
-|---|-------|------|
-| 377 | Enable `erasableSyntaxOnly` in tsconfig after migrating enums | tech-debt |
-
-**Interplay:** Requires updating `pocketbase-typegen` fork to emit `as const` objects instead of enums (19 enums, 0 consumer code changes). Also noted to fix `ExpandType` for 4 more eslint-disables.
-
----
-
-## Group 14: Metrics Hook API Design
-
-**Priority: Low** — Enhancement, no blockers
-
-| # | Title | Type |
-|---|-------|------|
-| 567 | Enforce mutual exclusivity of `sessionCmId` and `duration` in MetricsFilterOptions | enhancement |
-| 562 | Evaluate migrating all metrics hooks to full options objects | enhancement |
-
-**Interplay:** Both spawned from Group 3 (PR #566). #567 is a concrete fix — `MetricsFilterOptions` still allows both `sessionCmId` and `duration` with zero validation. #562: most hooks now use hybrid `(year, options)` pattern; `useComparisonMetrics` is the remaining outlier. Address #567 first, then evaluate #562.
-
----
-
-## Group 15: ESLint & Frontend Tech Debt
+## Group 15: Frontend Tech Debt (Remaining)
 
 **Priority: Low** — No behavior change, cleanup tasks
 
 | # | Title | Type |
 |---|-------|------|
-| 594 | Migrate `SessionAvailability` to QueryGuard pattern | tech-debt |
 | 604 | Leverage recharts 3.8 typed generics, niceTicks, and coordinate hooks | enhancement |
-| 623 | Gate authenticated query hooks on auth loading state | enhancement |
-| 640 | Extract shared ProfileRow component in User.tsx | refactor |
-| 641 | Users list date columns need headers and consistent layout | ux |
-| 653 | Debug pipeline page shows inconsistent status casing and source field names | bug |
+| 687 | Use centralized queryKeys in useSyncStatusAPI | tech-debt |
 
-**Interplay:** #619 fixed (4 eslint-disables removed with type fixes). #654 fixed (configId derived state eliminated, same pattern as #616/#617). #594 is a standalone QueryGuard migration. #604: recharts 3.8 now installed — no longer blocked, ready for implementation. #623: 11 hooks still ungated (camper detail/session views) — partially complete but not closeable. #640 and #641 are both Users page improvements — #640 extracts a reusable ProfileRow, #641 fixes date column headers/layout. **#653** is a bug: `getStatusClasses()` in PipelineBatchList.tsx only matches uppercase statuses but DB has mixed case; `getSourceFieldClasses()` expects canonical codes but gets CampMinder display names. Fix requires normalizing in trace_collector.py and updating frontend matchers.
+**Interplay:** #604: recharts 3.8 now installed — ready for implementation. #687: hardcoded `['sync-status-api']` queryKey in `useSyncStatusAPI.ts:105` should use centralized `queryKeys.syncStatus()`. Note cache key changes from `sync-status-api` to `sync-status` — verify no consumers depend on the old key.
 
 ---
 
-## Group 18: API Tech Debt
+## Group 18: API Tech Debt (Remaining)
 
 **Priority: Low** — Code quality, no behavior change
 
 | # | Title | Type |
 |---|-------|------|
-| 620 | Remove redundant `is_active` field, standardize on `status_id` for attendee filtering | tech-debt |
-| 624 | Extract duplicated `enrolled_attendee_groups` construction in drilldown_service | tech-debt |
 | 625 | Replace hand-rolled session/person expand extraction with `get_session_from_expand` utility | tech-debt |
-| 626 | Extract shared `_build_parsed_intent()` helper in debug.py | tech-debt |
-| 628 | Add year parameter bounds validation across all API endpoints | enhancement |
-| 629 | Use collection name constants instead of string literals in API routers | enhancement |
-| 630 | Extract shared constant for active-enrolled attendee filter fragment | enhancement |
 
-**Interplay:** #658 fixed (safe expand null-check in attendee_repository). #620 spawned from Group 16 investigation (#593 closed as not-a-bug). #624 and #625 spawned from PR #622 simplify review. #626 spawned from PR #635 — debug.py has 7+ duplicated parsed-intent construction blocks. #628, #629, #630 are all API hardening/consistency issues. #625 now adopted in drilldown_service (9 usages) but 10+ hand-rolled `expand.get("session")` patterns remain alongside it. #630 and #620 overlap — both touch attendee filtering patterns; `is_active = 1 && status_id = 2` still duplicated across metrics_repository.py, metrics_sql_repository.py, and solver.py.
+**Interplay:** Utility adopted in drilldown_service (9 usages) but 10+ hand-rolled `expand.get("session")` patterns remain alongside it.
 
 ---
 
 ## Suggested Attack Order
 
 1–20. ~~**Groups 1–19**~~ — All complete (see git history)
-21. **Groups 4, 8, 14, 15, 18** — All low priority, independent items, sprinkle in anytime
+21. **Groups 4, 15, 18** — All low priority, independent items, sprinkle in anytime
 
 ## Completed Groups (recent)
 
@@ -92,4 +57,7 @@ See git history for full completion log (Groups 1–16, scripts, Vite 8, etc.).
 | Group 17: Solver pipeline optimization (#615) | #635 | 2026-03-18 | Phase skipping for direct-mapped socialize requests |
 | Group 19: Sync bugs (#639, #642) | #644 | 2026-03-18 | Mutex race + force+limit over-clear; spawned #645 |
 | Standalone: #648 duplicate React key | #651 | 2026-03-18 | TOC value '1'→'toc' + dedup in ProcessRequestOptions |
-| Standalone: #619, #654, #658 tech-debt | (this PR) | 2026-03-18 | eslint-disables, derived configId, expand null-safety |
+| Standalone: #619, #654, #658 tech-debt | #660 | 2026-03-18 | eslint-disables, derived configId, expand null-safety |
+| Group 8: Frontend blocked tech debt (#377) | #692 | 2026-03-19 | erasableSyntaxOnly via as-const typegen |
+| Group 14: Metrics hook API (#567, #562) | #671+ | 2026-03-19 | Mutual exclusivity + hook migration evaluation |
+| Bulk close: #594, #620–#630, #640, #641, #653, #623 | Multiple | 2026-03-19 | 14 issues resolved across Groups 15, 18, and standalone |
