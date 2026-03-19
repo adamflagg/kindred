@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DollarSign, Loader2, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -134,13 +134,13 @@ export function SessionBudgetConfig() {
     )
   }
 
-  const hasChanges = (() => {
+  const hasChanges = useMemo(() => {
     const origRows = buildRows(sessions, configRecords)
     return rows.some((r) => {
       const orig = origRows.find((o) => o.cm_id === r.cm_id)
       return r.participant_goal !== orig?.participant_goal || r.session_fee !== orig.session_fee
     })
-  })()
+  }, [buildRows, sessions, configRecords, rows])
 
   const handleSave = async () => {
     setIsSaving(true)

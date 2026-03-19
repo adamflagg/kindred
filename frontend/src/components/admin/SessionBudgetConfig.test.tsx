@@ -422,9 +422,9 @@ describe('SessionBudgetConfig', () => {
     })
 
     // Re-make the change (rows were rebuilt from fresh data)
-    const selectsAfter = screen.getAllByRole('spinbutton')
-    await user.clear(selectsAfter[0]!)
-    await user.type(selectsAfter[0]!, '180')
+    const inputsAfter = screen.getAllByRole('spinbutton')
+    await user.clear(inputsAfter[0]!)
+    await user.type(inputsAfter[0]!, '180')
 
     const saveButton = screen.getByText(/save/i)
     await user.click(saveButton)
