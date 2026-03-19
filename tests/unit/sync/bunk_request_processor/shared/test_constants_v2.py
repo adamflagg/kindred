@@ -20,7 +20,6 @@ _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 SourceField = _mod.SourceField
 ALL_PROCESSING_FIELDS = _mod.ALL_PROCESSING_FIELDS
-FIELDS_TO_CHECK = _mod.FIELDS_TO_CHECK
 SOURCE_FIELD_TO_CONFIG_KEY = _mod.SOURCE_FIELD_TO_CONFIG_KEY
 
 
@@ -33,16 +32,11 @@ def test_source_field_values_are_v2():
     assert SourceField.SOCIALIZE_WITH == "socialize_with"
 
 
-def test_fields_to_check_is_v2_list():
-    """FIELDS_TO_CHECK should be a flat list of V2 names."""
-    assert isinstance(FIELDS_TO_CHECK, list)
-    assert all(isinstance(f, str) for f in FIELDS_TO_CHECK)
-    assert FIELDS_TO_CHECK == ["bunk_with", "not_bunk_with", "bunking_notes", "internal_notes", "socialize_with"]
-
-
-def test_fields_to_check_matches_all_processing():
-    """FIELDS_TO_CHECK should contain the same fields as ALL_PROCESSING_FIELDS."""
-    assert set(FIELDS_TO_CHECK) == set(ALL_PROCESSING_FIELDS)
+def test_all_processing_fields_is_v2_list():
+    """ALL_PROCESSING_FIELDS should be a flat list of V2 names."""
+    assert isinstance(ALL_PROCESSING_FIELDS, list)
+    assert all(isinstance(f, str) for f in ALL_PROCESSING_FIELDS)
+    assert ALL_PROCESSING_FIELDS == ["bunk_with", "not_bunk_with", "bunking_notes", "internal_notes", "socialize_with"]
 
 
 def test_source_field_to_config_key_uses_v2():
@@ -77,3 +71,4 @@ def test_deleted_v1_mappings():
     assert not hasattr(_mod, "FIELD_TO_SOURCE_FIELD"), "FIELD_TO_SOURCE_FIELD should be deleted"
     assert not hasattr(_mod, "CSV_KEY_TO_SOURCE_FIELD"), "CSV_KEY_TO_SOURCE_FIELD should be deleted"
     assert not hasattr(_mod, "ALL_FIELD_TO_SOURCE_FIELD"), "ALL_FIELD_TO_SOURCE_FIELD should be deleted"
+    assert not hasattr(_mod, "FIELDS_TO_CHECK"), "FIELDS_TO_CHECK should be deleted (use ALL_PROCESSING_FIELDS)"

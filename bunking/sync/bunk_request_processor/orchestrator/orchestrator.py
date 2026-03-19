@@ -60,7 +60,6 @@ from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
     ALL_PROCESSING_FIELDS,
-    FIELDS_TO_CHECK,
     UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
     UNRESOLVED_ID_MAX,
@@ -1668,7 +1667,7 @@ class RequestOrchestrator:
             requester_grade = str(row.get("Grade", 0))
 
             # Extract request texts from various fields (defined in constants.py)
-            for field_name in FIELDS_TO_CHECK:
+            for field_name in ALL_PROCESSING_FIELDS:
                 total_fields_checked += 1
                 request_text = row.get(field_name, "").strip()
 
@@ -2025,7 +2024,6 @@ class RequestOrchestrator:
 
         # Track source fields to clear per person
         # person_cm_id -> set of source_field values
-        _all_fields = set(ALL_PROCESSING_FIELDS)
         person_source_fields: dict[int, set[str]] = {}
 
         for row in raw_requests:
@@ -2041,7 +2039,7 @@ class RequestOrchestrator:
             # Method 1: Check _original_request_ids (from original_requests_loader)
             original_ids = row.get("_original_request_ids", {})
             for field_name in original_ids:
-                if field_name in _all_fields:
+                if field_name in ALL_PROCESSING_FIELDS:
                     person_source_fields[person_id].add(field_name)
 
             # Method 2: Check which data fields are present in the row
