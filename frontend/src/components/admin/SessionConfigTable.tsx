@@ -293,11 +293,14 @@ export function SessionConfigTable() {
 
   const renderRow = (row: SessionRow) => (
     <tr key={row.cm_id} className="border-border border-b">
-      <td className="py-2 pr-4 font-medium">{row.name}</td>
+      <th scope="row" id={`session-${row.cm_id}`} className="py-2 pr-4 text-left font-medium">
+        {row.name}
+      </th>
       <td className="px-2 py-2">
         <select
           value={row.min_grade ?? ''}
           onChange={(e) => handleChange(row.cm_id, 'min_grade', e.target.value)}
+          aria-labelledby={`session-${row.cm_id} col-min-grade`}
           className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
         >
           <option value="" />
@@ -312,6 +315,7 @@ export function SessionConfigTable() {
         <select
           value={row.max_grade ?? ''}
           onChange={(e) => handleChange(row.cm_id, 'max_grade', e.target.value)}
+          aria-labelledby={`session-${row.cm_id} col-max-grade`}
           className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
         >
           <option value="" />
@@ -328,6 +332,7 @@ export function SessionConfigTable() {
           min={0}
           value={row.capacity_override ?? ''}
           onChange={(e) => handleChange(row.cm_id, 'capacity_override', e.target.value)}
+          aria-labelledby={`session-${row.cm_id} col-cap-override`}
           className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
         />
       </td>
@@ -337,6 +342,7 @@ export function SessionConfigTable() {
           min={0}
           value={row.participant_goal ?? ''}
           onChange={(e) => handleChange(row.cm_id, 'participant_goal', e.target.value)}
+          aria-labelledby={`session-${row.cm_id} col-participant-goal`}
           className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
         />
       </td>
@@ -349,6 +355,7 @@ export function SessionConfigTable() {
             step={0.01}
             value={row.session_fee ?? ''}
             onChange={(e) => handleChange(row.cm_id, 'session_fee', e.target.value)}
+            aria-labelledby={`session-${row.cm_id} col-session-fee`}
             className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
           />
         </div>
@@ -390,11 +397,21 @@ export function SessionConfigTable() {
           <thead>
             <tr className="border-border border-b">
               <th className="py-2 pr-4 text-left font-medium">Session</th>
-              <th className="px-2 py-2 text-center font-medium">Min Grade</th>
-              <th className="px-2 py-2 text-center font-medium">Max Grade</th>
-              <th className="px-2 py-2 text-center font-medium">Cap. Override</th>
-              <th className="px-2 py-2 text-center font-medium">Participant Goal</th>
-              <th className="px-2 py-2 text-center font-medium">Session Fee</th>
+              <th id="col-min-grade" className="px-2 py-2 text-center font-medium">
+                Min Grade
+              </th>
+              <th id="col-max-grade" className="px-2 py-2 text-center font-medium">
+                Max Grade
+              </th>
+              <th id="col-cap-override" className="px-2 py-2 text-center font-medium">
+                Cap. Override
+              </th>
+              <th id="col-participant-goal" className="px-2 py-2 text-center font-medium">
+                Participant Goal
+              </th>
+              <th id="col-session-fee" className="px-2 py-2 text-center font-medium">
+                Session Fee
+              </th>
             </tr>
           </thead>
           <tbody>
