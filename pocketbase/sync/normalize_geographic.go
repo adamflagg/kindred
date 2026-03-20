@@ -34,7 +34,7 @@ const filterYearParam = "year = {:year}"
 // Orchestrates normalization by:
 //  1. Loading attendees with person+session data (school/city from persons,
 //     congregation from person_custom_values, state/country from household)
-//  2. Loading geo_overrides (alias, merge, rejected) for the year
+//  2. Loading geo_overrides (alias, merge, rejected) up to the current year
 //  3. Building normalization lookup via Python geo_normalizer (RapidFuzz, static lookups)
 //  4. Creating person+session mappings (applying alias/merge overrides)
 //  5. Preloading existing normalized_mappings for upsert comparison
@@ -156,8 +156,8 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		"attendees", len(attendeeData),
 	)
 
-	// Step 1b: Load geo_overrides (alias + merge + rejected) across all years
-	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides()
+	// Step 1b: Load geo_overrides (alias + merge + rejected) up to current year
+	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides(year)
 	if err != nil {
 		slog.Warn("Could not load geo_overrides, continuing without overrides", "error", err)
 		aliasOverrides = make(map[string]map[string]string)
@@ -431,7 +431,7 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 //   - aliasOverrides: category -> (lowercase raw_value -> canonical_name)
 //   - mergeOverrides: category -> (canonical_name -> merged_into)
 //   - rejectedOverrides: category -> (lowercase canonical_name -> true)
-func (n *NormalizeGeographicSync) loadGeoOverrides() (
+func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	aliasOverrides map[string]map[string]string,
 	mergeOverrides map[string]map[string]string,
 	rejectedOverrides map[string]map[string]bool,
@@ -447,7 +447,14 @@ func (n *NormalizeGeographicSync) loadGeoOverrides() (
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
 
-	records, findErr := n.App.FindRecordsByFilter("geo_overrides", "", "year ASC", 0, 0)
+	records, findErr := n.App.FindRecordsByFilter(
+		"geo_overrides",
+		"year <= {:year}",
+		"year ASC",
+		0,
+		0,
+		dbx.Params{"year": year},
+	)
 	if findErr != nil {
 		return aliasOverrides, mergeOverrides, rejectedOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
@@ -474,6 +481,8 @@ func (n *NormalizeGeographicSync) loadGeoOverrides() (
 				}
 			}
 		case "rejected":
+			// Rejections carry forward permanently across years. To un-reject a canonical,
+			// delete the rejection record from geo_overrides — there is no override mechanism.
 			name := record.GetString("canonical_name")
 			if name != "" {
 				if rejectedOverrides[cat] == nil {

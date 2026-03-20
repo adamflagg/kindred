@@ -382,7 +382,7 @@ class GeoService:
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
-            query_params={"filter": f'category = "{category}"', "sort": "year"},
+            query_params={"filter": f'category = "{category}" && year <= {year}', "sort": "year"},
         )
 
         if active_only:
@@ -514,7 +514,7 @@ class GeoService:
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
             query_params={
-                "filter": f'category = "{category}" && override_type = "canonical"',
+                "filter": f'category = "{category}" && year <= {year}',
                 "sort": "year",
             },
         )
@@ -579,9 +579,15 @@ class GeoService:
                     camper_count=count,
                 )
 
-        # Add override canonical entries
+        # Add override canonical entries, tracking latest override type per canonical
+        latest_override_type: dict[str, str] = {}
         for ov in overrides:
-            has_coords = ov.lat is not None and ov.lng is not None
+            latest_override_type[ov.canonical_name] = ov.override_type
+            if ov.override_type != "canonical":
+                continue
+            ov_has_coords = ov.lat is not None and ov.lng is not None
+            existing = all_canonicals.get(ov.canonical_name)
+            has_coords = ov_has_coords or (existing.has_coords if existing else False)
             all_canonicals[ov.canonical_name] = CanonicalEntry(
                 canonical_name=ov.canonical_name,
                 city=ov.city or "",
@@ -590,6 +596,11 @@ class GeoService:
                 has_coords=has_coords,
                 camper_count=camper_counts.get(ov.canonical_name, 0),
             )
+
+        # Remove entries whose latest override is a rejection or merge
+        for name, otype in latest_override_type.items():
+            if otype in ("rejected", "merge"):
+                all_canonicals.pop(name, None)
 
         # Filter by in_use_only (entries with camper data)
         if in_use_only:
@@ -882,7 +893,7 @@ class GeoService:
             ),
             asyncio.to_thread(
                 self.pb.collection(GEO_OVERRIDES).get_full_list,
-                query_params={"filter": f'category = "{category}"', "sort": "year"},
+                query_params={"filter": f'category = "{category}" && year <= {year}', "sort": "year"},
             ),
         )
         mappings: list[Any] = mappings_raw

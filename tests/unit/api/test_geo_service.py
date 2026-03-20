@@ -2523,6 +2523,172 @@ class TestVerifiedBadge:
         assert len(matching) == 1
         assert matching[0].source == "manual"
 
+    @pytest.mark.asyncio
+    async def test_has_coords_preserved_across_years(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """When a prior-year override has coords but the current-year override doesn't,
+        has_coords should remain True (OR across years, not overwrite)."""
+        overrides = [
+            _make_override_record(
+                id="ov1",
+                canonical_name="Riverside Elementary",
+                override_type="canonical",
+                lat=37.5,
+                lng=-122.0,
+                year=2025,
+            ),
+            _make_override_record(
+                id="ov2",
+                canonical_name="Riverside Elementary",
+                override_type="canonical",
+                lat=None,
+                lng=None,
+                year=2026,
+            ),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": [],
+                    "geo_overrides": overrides,
+                }
+            )
+
+            result = await service.search_canonicals("school", "", 2026)
+
+        matching = [e for e in result.results if e.canonical_name == "Riverside Elementary"]
+        assert len(matching) == 1
+        assert matching[0].has_coords is True
+
+    @pytest.mark.asyncio
+    async def test_rejected_override_removes_canonical_from_search(
+        self, service: GeoService, mock_pb: MagicMock
+    ) -> None:
+        """A canonical override followed by a rejection should not appear in search results."""
+        overrides = [
+            _make_override_record(
+                id="ov1",
+                canonical_name="Riverside Elementary",
+                override_type="canonical",
+                year=2025,
+            ),
+            _make_override_record(
+                id="ov2",
+                canonical_name="Riverside Elementary",
+                override_type="rejected",
+                year=2026,
+            ),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": [],
+                    "geo_overrides": overrides,
+                }
+            )
+
+            result = await service.search_canonicals("school", "", 2026)
+
+        matching = [e for e in result.results if e.canonical_name == "Riverside Elementary"]
+        assert len(matching) == 0
+
+    @pytest.mark.asyncio
+    async def test_merged_override_removes_canonical_from_search(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """A canonical override followed by a merge should not appear in search results."""
+        overrides = [
+            _make_override_record(
+                id="ov1",
+                canonical_name="Riverside Elementary",
+                override_type="canonical",
+                year=2025,
+            ),
+            _make_override_record(
+                id="ov2",
+                canonical_name="Riverside Elementary",
+                override_type="merge",
+                merged_into="Oak Valley Elementary",
+                year=2026,
+            ),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": [],
+                    "geo_overrides": overrides,
+                }
+            )
+
+            result = await service.search_canonicals("school", "", 2026)
+
+        matching = [e for e in result.results if e.canonical_name == "Riverside Elementary"]
+        assert len(matching) == 0
+
+    @pytest.mark.asyncio
+    async def test_rejection_then_re_canonical_shows_entry(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """A rejection followed by a later canonical override should show the entry."""
+        overrides = [
+            _make_override_record(
+                id="ov1",
+                canonical_name="Riverside Elementary",
+                override_type="rejected",
+                year=2025,
+            ),
+            _make_override_record(
+                id="ov2",
+                canonical_name="Riverside Elementary",
+                override_type="canonical",
+                year=2026,
+            ),
+        ]
+
+        with (
+            patch("api.services.geo_service._load_static_lookup") as mock_lookup,
+            patch("api.services.geo_service._load_static_coords") as mock_coords,
+            patch("api.services.geo_service._load_static_location") as mock_location,
+        ):
+            mock_lookup.return_value = {}
+            mock_coords.return_value = {}
+            mock_location.return_value = {}
+
+            mock_pb.collection.side_effect = _route_collections(
+                {
+                    "normalized_mappings": [],
+                    "geo_overrides": overrides,
+                }
+            )
+
+            result = await service.search_canonicals("school", "", 2026)
+
+        matching = [e for e in result.results if e.canonical_name == "Riverside Elementary"]
+        assert len(matching) == 1
+        assert matching[0].source == "manual"
+
 
 # ============================================================================
 # Batch Resolve Coords Carry-Forward Tests
