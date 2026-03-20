@@ -42,7 +42,7 @@ REQUIRED_COLLECTIONS = [
 # Critical fields that must exist on specific collections
 # Format: { collection_name: [field_name, ...] }
 REQUIRED_FIELDS = {
-    "attendees": ["person_id", "person", "status", "year", "session", "is_active"],
+    "attendees": ["person_id", "person", "status", "year", "session"],
     "persons": ["cm_id", "first_name", "last_name", "year", "household"],
     "camp_sessions": ["cm_id", "name", "year", "session_type"],
     "bunks": ["cm_id", "name", "gender", "year"],

@@ -130,7 +130,6 @@ export const mockAttendee = (overrides?: Partial<AttendeesResponse>): AttendeesR
   session: 'session1',
   effective_date: '',
   enrollment_date: '2024-01-01T00:00:00Z',
-  is_active: true,
   last_updated_utc: '',
   status: AttendeesStatusOptions.enrolled,
   status_id: 1,

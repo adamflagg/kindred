@@ -208,7 +208,6 @@ export type AttendeesRecord = {
   effective_date?: IsoDateString
   enrollment_date?: IsoDateString
   id: string
-  is_active?: boolean
   last_updated_utc?: IsoDateString
   person?: RecordIdString
   person_id: number

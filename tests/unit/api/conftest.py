@@ -80,7 +80,6 @@ def create_mock_attendee(
     year: int = 2026,
     status: str = "enrolled",
     status_id: int = 2,
-    is_active: bool = True,
     gender: str | None = None,
     enrollment_date: str | None = None,
     effective_date: str | None = None,
@@ -104,7 +103,6 @@ def create_mock_attendee(
     attendee.year = year
     attendee.status = status
     attendee.status_id = status_id
-    attendee.is_active = is_active
     attendee.enrollment_date = enrollment_date
     attendee.effective_date = effective_date
 

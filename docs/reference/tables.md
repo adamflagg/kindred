@@ -317,7 +317,6 @@ Links persons to camp sessions with enrollment status.
 | `status` | select | enrolled/applied/waitlisted/cancelled/etc. |
 | `status_id` | number | CampMinder status ID (1=None, 2=Enrolled, 4=Applied, 8=WaitList, 16=LeftEarly, 32=Cancelled, 64=Dismissed, 128=Inquiry, 256=Withdrawn, 512=Incomplete) |
 | `enrollment_date` | date | Enrollment date |
-| `is_active` | bool | Active enrollment |
 | `year` | number | Camp year |
 
 **Unique**: `(person_id, year, session)`

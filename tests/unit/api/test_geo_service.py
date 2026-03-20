@@ -55,14 +55,12 @@ def _make_mapping_record(
 
 def _make_attendee_record(
     person: str,
-    is_active: bool = True,
     status_id: int = 2,
     year: int = 2025,
 ) -> Mock:
     """Create a mock attendees record."""
     record = Mock()
     record.person = person
-    record.is_active = is_active
     record.status_id = status_id
     record.year = year
     return record

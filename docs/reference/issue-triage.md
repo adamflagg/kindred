@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-19 (5 open issues; bulk sprint closed #699, #705, #715, #716, #717, #718, #720, #721).
+Last updated: 2026-03-20 (4 open issues; #719 resolved by PR #730).
 
 ---
 
@@ -47,7 +47,6 @@ Last updated: 2026-03-19 (5 open issues; bulk sprint closed #699, #705, #715, #7
 | # | Title | Blocked on |
 |---|-------|------------|
 | 697 | Switch pocketbase-typegen to upstream | External upstream merge of --use-const flag |
-| 719 | Remove is_active from validate_migrations.py | PB schema migration to drop attendees.is_active column |
 
 ---
 

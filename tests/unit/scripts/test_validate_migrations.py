@@ -102,7 +102,6 @@ class TestRequiredCollections:
                     ),
                     make_field("year", "number"),
                     make_field("session", "relation", collectionId="col_sessions"),
-                    make_field("is_active", "bool"),
                 ],
                 indexes=["CREATE UNIQUE INDEX `idx_attendees_unique` ON `attendees` ..."],
             ),
@@ -167,7 +166,7 @@ class TestRequiredFields:
             make_collection(
                 "attendees",
                 fields=[
-                    # Missing person_id, person, status, year, session, is_active
+                    # Missing person_id, person, status, year, session
                 ],
             ),
             # Include other required collections minimally
@@ -209,7 +208,6 @@ class TestSelectValues:
                     ),
                     make_field("year", "number"),
                     make_field("session", "relation", collectionId="col_sessions"),
-                    make_field("is_active", "bool"),
                 ],
                 indexes=["CREATE UNIQUE INDEX `idx_attendees_unique` ..."],
             ),
