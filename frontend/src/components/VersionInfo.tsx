@@ -28,16 +28,30 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
   return (
     <div className={`flex items-center gap-2 text-xs text-gray-400 ${className}`}>
       {parsed && (
-        <a
-          href={parsed.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-300"
-          aria-label={`View Kindred ${parsed.display} on GitHub`}
-        >
-          <span>Kindred {parsed.display}</span>
-          <GitHubIcon />
-        </a>
+        <>
+          <a
+            href={parsed.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-300"
+            aria-label={`View Kindred ${parsed.display} on GitHub`}
+          >
+            <span>Kindred {parsed.display}</span>
+            {!parsed.ahead && <GitHubIcon />}
+          </a>
+          {parsed.ahead && (
+            <a
+              href={parsed.ahead.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-300"
+              aria-label={`View ${parsed.ahead.display} commits since ${parsed.display}`}
+            >
+              <span>{parsed.ahead.display}</span>
+              <GitHubIcon />
+            </a>
+          )}
+        </>
       )}
     </div>
   )

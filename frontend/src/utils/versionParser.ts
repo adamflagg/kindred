@@ -9,16 +9,27 @@ const TAG_RE = /^v\d+\.\d+(?:\.\d+)?$/
 // Bare short SHA (fallback when no tags exist)
 const SHA_RE = /^[0-9a-f]{7,40}$/
 
+export interface VersionAhead {
+  display: string
+  url: string
+}
+
+export interface ParsedVersion {
+  display: string
+  url: string
+  ahead?: VersionAhead
+}
+
 /**
  * Parse a version string from the CD pipeline into display text and GitHub URL.
  *
  * Formats:
  * - Clean tag "v0.8.0" → links to release page
- * - Git describe "v0.7.0-5-gabc1234" → shows "v0.7.0+5", links to compare view
+ * - Git describe "v0.7.0-5-gabc1234" → tag links to release, "+5" links to diff
  * - Bare SHA "abc1234" → links to commit
  * - "dev" / empty / undefined → null (hidden)
  */
-export function parseVersion(version: string): { display: string; url: string } | null {
+export function parseVersion(version: string): ParsedVersion | null {
   if (!version || version === 'dev' || version === 'undefined') {
     return null
   }
@@ -26,10 +37,16 @@ export function parseVersion(version: string): { display: string; url: string } 
   // Git describe: v0.7.0-5-gabc1234
   const describeMatch = version.match(DESCRIBE_RE)
   if (describeMatch) {
-    const [, tag, ahead, sha] = describeMatch
+    const tag = describeMatch[1]!
+    const aheadCount = describeMatch[2]!
+    const sha = describeMatch[3]!
     return {
-      display: `${tag}+${ahead}`,
-      url: `${GITHUB_REPO_URL}/compare/${tag}...${sha}`,
+      display: tag,
+      url: `${GITHUB_REPO_URL}/releases/tag/${tag}`,
+      ahead: {
+        display: `+${aheadCount}`,
+        url: `${GITHUB_REPO_URL}/compare/${tag}...${sha}`,
+      },
     }
   }
 
