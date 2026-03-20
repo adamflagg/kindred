@@ -1,7 +1,7 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-20 (4 open issues; #719 resolved by PR #730).
+Last updated: 2026-03-20 (2 open issues; #728 closed by PR #731, #453 closed by PR #729).
 
 ---
 
@@ -20,28 +20,6 @@ Last updated: 2026-03-20 (4 open issues; #719 resolved by PR #730).
 
 ---
 
-### Metrics — Standalone Features (Remnant of Group 4)
-
-**Priority: Low** — Standalone feature enhancement
-
-| # | Title | Type |
-|---|-------|------|
-| 453 | Promote geo overrides to static canonical data | feature |
-
----
-
-### API Tech Debt (New)
-
-**Priority: Low** — Follow-up refactoring
-
-| # | Title | Type |
-|---|-------|------|
-| 728 | Make reconstruct_daily a thin wrapper around reconstruct_daily_multi | tech-debt |
-
-**Context:** Spawned from shrink-it review of PR #726. Currently blocked on confidence that `reconstruct_daily_multi` is correct (test oracle pattern uses independent `reconstruct_daily` implementation for validation).
-
----
-
 ## Blocked
 
 | # | Title | Blocked on |
@@ -53,8 +31,8 @@ Last updated: 2026-03-20 (4 open issues; #719 resolved by PR #730).
 ## Suggested Attack Order
 
 1–24. ~~**Groups 1–24**~~ — All complete (see completed groups below)
-25. **#453, #604** — Low priority standalone items, sprinkle in anytime
-26. **#728** — Low priority, wait for `reconstruct_daily_multi` to prove itself
+25. **#604** — Low priority, needs design decisions on recharts 3.8 API adoption
+26. **#697** — Blocked on upstream `--use-const` merge
 
 ## Completed Groups (recent)
 
@@ -80,3 +58,5 @@ See git history for full completion log (Groups 1–16, scripts, Vite 8, etc.).
 | Group 24: API Tech Debt (#716, #718) | #726 | 2026-03-19 | Single-pass daily reconstruction + SQL dedup |
 | Standalone: #699 cancel velocity positive | #724 | 2026-03-19 | Weekly cancelled as positive values in delta chart |
 | Standalone: #705 OIDC hook save failures | — | 2026-03-19 | Closed as won't-fix (single admin, low risk) |
+| Standalone: #453 geo overrides promotion | #729 | 2026-03-20 | Carry forward geo overrides across years |
+| Standalone: #728 remove reconstruct_daily | #731 | 2026-03-20 | Deleted dead code, kept only reconstruct_daily_multi |
