@@ -208,6 +208,15 @@ def reconstruct_daily(
     daily_events: dict[str, dict[str, int]] = {}
     sessions_with_gender: set[int] = set()
 
+    _empty_bucket: dict[str, int] = {
+        "new": 0,
+        "cancelled": 0,
+        "new_boys": 0,
+        "new_girls": 0,
+        "canc_boys": 0,
+        "canc_girls": 0,
+    }
+
     for att in attendees:
         session = get_session_from_expand(att)
         if not session:
@@ -235,15 +244,6 @@ def reconstruct_daily(
         gender = getattr(person, "gender", None) if person else None
         if gender is not None:
             sessions_with_gender.add(sid)
-
-        _empty_bucket: dict[str, int] = {
-            "new": 0,
-            "cancelled": 0,
-            "new_boys": 0,
-            "new_girls": 0,
-            "canc_boys": 0,
-            "canc_girls": 0,
-        }
 
         # Enrollment event: bucket by effective_date
         enroll_date_str = _get_enrollment_date(att)
