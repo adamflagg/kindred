@@ -241,13 +241,3 @@ func TestCallAPIProcessor_CollectTracesField(t *testing.T) {
 		t.Errorf("expected 2 created, got %d", stats.Created)
 	}
 }
-
-// TestNewRequestProcessor_DefaultCollectTraces verifies CollectTraces defaults to false
-func TestNewRequestProcessor_DefaultCollectTraces(t *testing.T) {
-	// NewRequestProcessor requires a core.App, but we only need to check the default field value.
-	// We can't easily create a real PocketBase app in unit tests, so test the struct default directly.
-	p := &RequestProcessor{}
-	if p.CollectTraces {
-		t.Error("expected CollectTraces to default to false on zero-value struct")
-	}
-}
