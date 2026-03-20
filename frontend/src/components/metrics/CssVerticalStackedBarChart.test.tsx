@@ -4,13 +4,11 @@
  * Tests written FIRST before implementation (TDD).
  * Generic vertical stacked bar chart using segments prop.
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-import type {
-  VerticalStackedSegment,
-  CssVerticalStackedBarChart as CssVerticalStackedBarChartType,
-} from './CssVerticalStackedBarChart'
+import type { VerticalStackedSegment } from './CssVerticalStackedBarChart'
+import { CssVerticalStackedBarChart } from './CssVerticalStackedBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -32,9 +30,8 @@ const singleItem = [{ name: 'Solo', total: 10, male_count: 6, female_count: 4 }]
 // Module export
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart exports', () => {
-  it('should export CssVerticalStackedBarChart as a named function', async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    expect(typeof mod.CssVerticalStackedBarChart).toBe('function')
+  it('should export CssVerticalStackedBarChart as a named function', () => {
+    expect(typeof CssVerticalStackedBarChart).toBe('function')
   })
 
   it('should export the VerticalStackedSegment type (compile-time check)', () => {
@@ -47,13 +44,6 @@ describe('CssVerticalStackedBarChart exports', () => {
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart rendering', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should render the title when provided', () => {
     render(<CssVerticalStackedBarChart data={sampleData} segments={segments} title="My Chart" />)
     expect(screen.getByText('My Chart')).toBeInTheDocument()
@@ -79,13 +69,6 @@ describe('CssVerticalStackedBarChart rendering', () => {
 // Empty state
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart empty state', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should show "No data available" when data is empty', () => {
     render(<CssVerticalStackedBarChart data={[]} segments={segments} />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
@@ -96,13 +79,6 @@ describe('CssVerticalStackedBarChart empty state', () => {
 // Stacked bar rendering
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart bar rendering', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should render one column per data item', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sampleData} segments={segments} />
@@ -164,13 +140,6 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
 // Y-axis
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart Y-axis', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should auto-compute ticks via getNiceTicks in normal mode', () => {
     render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     // Data max total is 30, getNiceTicks should produce ticks including 0
@@ -182,13 +151,6 @@ describe('CssVerticalStackedBarChart Y-axis', () => {
 // Percent mode
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart percent mode', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should show percentage ticks in percent mode', () => {
     render(<CssVerticalStackedBarChart data={sampleData} segments={segments} percentMode />)
     expect(screen.getByText('0%')).toBeInTheDocument()
@@ -226,13 +188,6 @@ describe('CssVerticalStackedBarChart percent mode', () => {
 // Labels above bars
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart labels', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should show total as default label above each bar in normal mode', () => {
     const data = [{ name: 'Item', total: 37, male_count: 20, female_count: 17 }]
     render(<CssVerticalStackedBarChart data={data} segments={segments} />)
@@ -255,13 +210,6 @@ describe('CssVerticalStackedBarChart labels', () => {
 // X-axis labels
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart X-axis', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should render X-axis labels from data names', () => {
     render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     expect(screen.getByText('Grade 3')).toBeInTheDocument()
@@ -282,13 +230,6 @@ describe('CssVerticalStackedBarChart X-axis', () => {
 // Legend
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart legend', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should render legend with segment labels', () => {
     render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     expect(screen.getByText('Female')).toBeInTheDocument()
@@ -331,13 +272,6 @@ describe('CssVerticalStackedBarChart legend', () => {
 // Click handling
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart click handling', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should add cursor-pointer class when onBarClick is provided', () => {
     const onClick = vi.fn()
     const { container } = render(
@@ -375,13 +309,6 @@ describe('CssVerticalStackedBarChart click handling', () => {
 // Tooltip
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart tooltip', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should not render tooltip content initially', () => {
     render(
       <CssVerticalStackedBarChart
@@ -398,13 +325,6 @@ describe('CssVerticalStackedBarChart tooltip', () => {
 // Column sizing integration
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart column sizing', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should pass column sizing to x-axis in sparse mode for alignment', () => {
     const sparseData = [
       { name: 'A', total: 10, male_count: 6, female_count: 4 },
@@ -505,13 +425,6 @@ describe('CssVerticalStackedBarChart column sizing', () => {
 // Tooltip zero filtering
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should not show zero-value segments in default tooltip', () => {
     // Data where one segment is zero
     const dataWithZero = [{ name: 'Test', total: 10, male_count: 10, female_count: 0 }]
@@ -538,13 +451,6 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
 // maxColumnWidth prop
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should constrain and center columns when maxColumnWidth is provided', () => {
     const normalData = Array.from({ length: 5 }, (_, i) => ({
       name: `Y${i}`,
@@ -584,13 +490,6 @@ describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
 // No imports from GenderByGradeBreakdown or DrilldownFilter
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it('should accept data with arbitrary segment keys', () => {
     const customSegments: VerticalStackedSegment[] = [
       { key: 'apples', label: 'Apples', color: 'green' },
@@ -615,13 +514,6 @@ describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
 // Legend spacing (rotated vs straight labels)
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart legend spacing', () => {
-  let CssVerticalStackedBarChart: typeof CssVerticalStackedBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalStackedBarChart')
-    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
-  })
-
   it.each([
     { rotateLabels: true, expectedClass: 'mt-3', label: 'rotated labels' },
     { rotateLabels: false, expectedClass: 'mt-1', label: 'straight labels' },
