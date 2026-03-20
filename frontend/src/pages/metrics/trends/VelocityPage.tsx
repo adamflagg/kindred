@@ -326,7 +326,7 @@ export default function VelocityPage() {
     {
       header: 'Cancelled',
       accessor: (week) => (
-        <span className="text-red-600 dark:text-red-400">{week.weekly_cancelled || 0}</span>
+        <span className="text-red-600 dark:text-red-400">{week.weekly_cancelled ?? 0}</span>
       ),
       className: 'text-right',
     },
