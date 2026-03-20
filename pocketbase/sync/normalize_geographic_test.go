@@ -2126,10 +2126,10 @@ func TestOverrideMapDedup_AliasNewestYearWins(t *testing.T) {
 	}
 
 	// Simulate year-ASC sorted processing (2025 first, then 2026 overwrites)
-	aliasOverrides[categorySchool]["riverside elem"] = "Riverside Elementary"        // 2025
-	aliasOverrides[categorySchool]["riverside elem"] = "Riverside Elementary School" // 2026 overwrites
+	aliasOverrides[categorySchool]["riverside elem"] = "Riverside Elementary"         // 2025
+	aliasOverrides[categorySchool]["riverside elem"] = "Riverside Elementary Academy" // 2026 overwrites
 
-	if aliasOverrides[categorySchool]["riverside elem"] != "Riverside Elementary School" {
+	if aliasOverrides[categorySchool]["riverside elem"] != "Riverside Elementary Academy" {
 		t.Errorf("expected newest year value to win, got %q",
 			aliasOverrides[categorySchool]["riverside elem"])
 	}
