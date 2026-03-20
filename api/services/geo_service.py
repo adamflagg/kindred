@@ -382,7 +382,7 @@ class GeoService:
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year}'},
+            query_params={"filter": f'category = "{category}"', "sort": "year"},
         )
 
         if active_only:
@@ -513,7 +513,10 @@ class GeoService:
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year} && override_type = "canonical"'},
+            query_params={
+                "filter": f'category = "{category}" && override_type = "canonical"',
+                "sort": "year",
+            },
         )
 
         if active_only:
@@ -583,7 +586,7 @@ class GeoService:
                 canonical_name=ov.canonical_name,
                 city=ov.city or "",
                 state=ov.state or "",
-                source="manual",
+                source="verified" if ov.year < year else "manual",
                 has_coords=has_coords,
                 camper_count=camper_counts.get(ov.canonical_name, 0),
             )
@@ -879,7 +882,7 @@ class GeoService:
             ),
             asyncio.to_thread(
                 self.pb.collection(GEO_OVERRIDES).get_full_list,
-                query_params={"filter": f'category = "{category}" && year = {year}'},
+                query_params={"filter": f'category = "{category}"', "sort": "year"},
             ),
         )
         mappings: list[Any] = mappings_raw
