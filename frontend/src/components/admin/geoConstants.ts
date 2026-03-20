@@ -19,6 +19,8 @@ export function sourceLabel(source: string): string {
       return 'Suggested'
     case 'manual':
       return 'Manual'
+    case 'verified':
+      return 'Verified'
     default:
       return source
   }
@@ -38,6 +40,8 @@ export function sourceBadgeClasses(source: string): string {
       return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
     case 'manual':
       return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
+    case 'verified':
+      return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
     default:
       return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
   }
