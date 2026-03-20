@@ -92,6 +92,7 @@ linters:
       - pb_data
       - pb_public
       - backups
+      - node_modules
     rules:
       - path: _test\.go
         linters:
