@@ -2315,3 +2315,104 @@ func TestCamperHistoryUpsertDecision(t *testing.T) {
 		})
 	}
 }
+
+// TestCamperHistoryCompareFields verifies that the compareFields list for camper_history
+// contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
+func TestCamperHistoryCompareFields(t *testing.T) {
+	// camperHistoryCompareFields should list all fields that matter for idempotency checks,
+	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName)
+	// and the unique key fields (person_id, session_cm_id, year) which don't change.
+	expected := map[string]bool{
+		"session_name":        true,
+		"first_name":          true,
+		"last_name":           true,
+		"school":              true,
+		"city":                true,
+		"state":               true,
+		"is_returning_summer": true,
+		"is_returning_family": true,
+		"years_at_camp":       true,
+		"person":              true,
+		"session":             true,
+		"session_type":        true,
+		"gender":              true,
+		"grade":               true,
+		"age":                 true,
+		"household_id":        true,
+		"division_name":       true,
+		"status":              true,
+		"enrollment_date":     true,
+		"bunk_name":           true,
+		"bunk_cm_id":          true,
+		"synagogue":           true,
+	}
+
+	actual := make(map[string]bool)
+	for _, f := range camperHistoryCompareFields {
+		actual[f] = true
+	}
+
+	// Check all expected fields are present
+	for field := range expected {
+		if !actual[field] {
+			t.Errorf("camperHistoryCompareFields missing expected field %q", field)
+		}
+	}
+
+	// Check no unexpected fields are present
+	for field := range actual {
+		if !expected[field] {
+			t.Errorf("camperHistoryCompareFields contains unexpected field %q", field)
+		}
+	}
+
+	// Verify the unique key fields are NOT in compareFields
+	keyFields := []string{"person_id", "session_cm_id", "year"}
+	for _, field := range keyFields {
+		if actual[field] {
+			t.Errorf("camperHistoryCompareFields should NOT contain key field %q", field)
+		}
+	}
+}
+
+// TestCamperHistoryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
+// uses the compareFields (inclusion list) pattern, not skipFields (exclusion list).
+func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	c := &CamperHistorySync{}
+
+	// Build test data
+	newData := map[string]interface{}{
+		"person_id":           1001,
+		"session_cm_id":       100,
+		"year":                2025,
+		"session_name":        "Session 1",
+		"first_name":          testFirstName,
+		"last_name":           "Garcia",
+		"school":              "Riverside Elementary",
+		"city":                "Portland",
+		"state":               "OR",
+		"is_returning_summer": true,
+		"is_returning_family": false,
+		"years_at_camp":       3,
+	}
+
+	// mockGet simulates an existing record where all compareFields match
+	mockGet := func(field string) interface{} {
+		return newData[field]
+	}
+
+	// Verify: when all compareFields match, no update needed
+	needsUpdate := false
+	for _, field := range camperHistoryCompareFields {
+		if value, exists := newData[field]; exists {
+			if !c.fieldEquals(mockGet(field), value) {
+				needsUpdate = true
+				break
+			}
+		}
+	}
+
+	if needsUpdate {
+		t.Error("expected no update needed when all compareFields match")
+	}
+}

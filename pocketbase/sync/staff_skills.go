@@ -11,6 +11,14 @@ import (
 
 const serviceNameStaffSkills = "staff_skills"
 
+// staffSkillsCompareFields lists the fields to compare for idempotency checks.
+// Only these fields are checked when deciding whether an existing record needs updating.
+// Excludes unique key fields (person_id, skill_cm_id, year) and PocketBase-managed fields.
+var staffSkillsCompareFields = []string{
+	"skill_name", "is_intermediate", "is_experienced", "can_teach",
+	"is_certified", "raw_value", "first_name", "last_name", "person",
+}
+
 // partitionStaff is the partition value for staff-related custom fields
 const partitionStaff = "Staff"
 
@@ -183,12 +191,6 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("finding staff_skills collection: %w", err)
 	}
 
-	skipFields := map[string]bool{
-		"person_id":   true,
-		"skill_cm_id": true,
-		"year":        true,
-	}
-
 	// Process records
 	for _, sv := range skillValues {
 		select {
@@ -233,7 +235,7 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 		existing := existingRecords[key]
 
 		if existing != nil {
-			if s.recordNeedsUpdate(existing, recordData, skipFields) {
+			if s.recordNeedsUpdate(existing, recordData, staffSkillsCompareFields) {
 				for field, value := range recordData {
 					existing.Set(field, value)
 				}
@@ -659,16 +661,16 @@ func (s *StaffSkillsSync) fieldEquals(existing, newVal interface{}) bool {
 	return existing == newVal
 }
 
-// recordNeedsUpdate checks if any field differs
+// recordNeedsUpdate checks if any compared field differs between existing record and new data.
+// Uses compareFields (inclusion list): only the listed fields are checked for changes.
 func (s *StaffSkillsSync) recordNeedsUpdate(
-	existing *core.Record, newData map[string]interface{}, skipFields map[string]bool,
+	existing *core.Record, newData map[string]interface{}, compareFields []string,
 ) bool {
-	for field, newValue := range newData {
-		if skipFields[field] {
-			continue
-		}
-		if !s.fieldEquals(existing.Get(field), newValue) {
-			return true
+	for _, field := range compareFields {
+		if value, exists := newData[field]; exists {
+			if !s.fieldEquals(existing.Get(field), value) {
+				return true
+			}
 		}
 	}
 	return false

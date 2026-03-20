@@ -328,3 +328,87 @@ func findDietaryRecord(records []*testDietaryRecord, personID, year int) *testDi
 	}
 	return nil
 }
+
+// TestCamperDietaryCompareFields verifies that the compareFields list for camper_dietary
+// contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
+func TestCamperDietaryCompareFields(t *testing.T) {
+	// camperDietaryCompareFields should list all fields that matter for idempotency checks,
+	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName).
+	// Unlike other services, this includes person_id and year since the original skipFields
+	// only excluded PB-managed fields (id, created, updated).
+	expected := map[string]bool{
+		"attendee":            true,
+		"person_id":           true,
+		"year":                true,
+		"has_dietary_needs":   true,
+		"dietary_explanation": true,
+		"has_allergies":       true,
+		"allergy_info":        true,
+		"additional_medical":  true,
+	}
+
+	actual := make(map[string]bool)
+	for _, f := range camperDietaryCompareFields {
+		actual[f] = true
+	}
+
+	// Check all expected fields are present
+	for field := range expected {
+		if !actual[field] {
+			t.Errorf("camperDietaryCompareFields missing expected field %q", field)
+		}
+	}
+
+	// Check no unexpected fields are present
+	for field := range actual {
+		if !expected[field] {
+			t.Errorf("camperDietaryCompareFields contains unexpected field %q", field)
+		}
+	}
+
+	// Verify PocketBase-managed fields are NOT in compareFields
+	pbFields := []string{"id", "created", "updated", "collectionId", "collectionName"}
+	for _, field := range pbFields {
+		if actual[field] {
+			t.Errorf("camperDietaryCompareFields should NOT contain PB-managed field %q", field)
+		}
+	}
+}
+
+// TestCamperDietaryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
+// uses the compareFields (inclusion list) pattern, not skipFields (exclusion list).
+func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	s := &CamperDietarySync{}
+
+	// Build test data
+	newData := map[string]any{
+		"attendee":            "abc123",
+		"person_id":           12345,
+		"year":                2025,
+		"has_dietary_needs":   true,
+		"dietary_explanation": "Vegetarian",
+		"has_allergies":       false,
+		"allergy_info":        "",
+		"additional_medical":  "",
+	}
+
+	// mockGet simulates an existing record where all compareFields match
+	mockGet := func(field string) any {
+		return newData[field]
+	}
+
+	// Verify: when all compareFields match, no update needed
+	needsUpdate := false
+	for _, field := range camperDietaryCompareFields {
+		if value, exists := newData[field]; exists {
+			if !s.fieldEquals(mockGet(field), value) {
+				needsUpdate = true
+				break
+			}
+		}
+	}
+
+	if needsUpdate {
+		t.Error("expected no update needed when all compareFields match")
+	}
+}

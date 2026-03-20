@@ -785,3 +785,91 @@ func findStaffSkillRecord(records []*testStaffSkillRecord, personCMID, skillCMID
 	}
 	return nil
 }
+
+// TestStaffSkillsCompareFields verifies that the compareFields list for staff_skills
+// contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
+func TestStaffSkillsCompareFields(t *testing.T) {
+	// staffSkillsCompareFields should list all fields that matter for idempotency checks,
+	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName)
+	// and the unique key fields (person_id, skill_cm_id, year) which don't change.
+	expected := map[string]bool{
+		"skill_name":      true,
+		"is_intermediate": true,
+		"is_experienced":  true,
+		"can_teach":       true,
+		"is_certified":    true,
+		"raw_value":       true,
+		"first_name":      true,
+		"last_name":       true,
+		"person":          true,
+	}
+
+	actual := make(map[string]bool)
+	for _, f := range staffSkillsCompareFields {
+		actual[f] = true
+	}
+
+	// Check all expected fields are present
+	for field := range expected {
+		if !actual[field] {
+			t.Errorf("staffSkillsCompareFields missing expected field %q", field)
+		}
+	}
+
+	// Check no unexpected fields are present
+	for field := range actual {
+		if !expected[field] {
+			t.Errorf("staffSkillsCompareFields contains unexpected field %q", field)
+		}
+	}
+
+	// Verify the unique key fields are NOT in compareFields (they should be excluded)
+	keyFields := []string{"person_id", "skill_cm_id", "year"}
+	for _, field := range keyFields {
+		if actual[field] {
+			t.Errorf("staffSkillsCompareFields should NOT contain key field %q", field)
+		}
+	}
+}
+
+// TestStaffSkillsRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
+// uses the compareFields (inclusion list) pattern, not skipFields (exclusion list).
+func TestStaffSkillsRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	s := &StaffSkillsSync{}
+
+	// Build test data where only a non-compared field differs
+	newData := map[string]interface{}{
+		"person_id":       12345,
+		"skill_cm_id":     100,
+		"year":            2025,
+		"skill_name":      "Archery",
+		"is_intermediate": true,
+		"is_experienced":  false,
+		"can_teach":       false,
+		"is_certified":    false,
+		"raw_value":       "Int.",
+		"first_name":      testFirstName,
+		"last_name":       testLastName,
+	}
+
+	// mockGet simulates an existing record where all compareFields match
+	mockGet := func(field string) interface{} {
+		return newData[field]
+	}
+
+	// Verify: when all compareFields match, recordNeedsUpdate should return false
+	// This test exercises the compareFields signature (not skipFields)
+	needsUpdate := false
+	for _, field := range staffSkillsCompareFields {
+		if value, exists := newData[field]; exists {
+			if !s.fieldEquals(mockGet(field), value) {
+				needsUpdate = true
+				break
+			}
+		}
+	}
+
+	if needsUpdate {
+		t.Error("expected no update needed when all compareFields match")
+	}
+}

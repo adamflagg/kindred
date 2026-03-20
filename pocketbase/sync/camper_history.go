@@ -15,6 +15,17 @@ const personBatchSize = 100
 // serviceNameCamperHistory is the canonical name for this sync service
 const serviceNameCamperHistory = "camper_history"
 
+// camperHistoryCompareFields lists the fields to compare for idempotency checks.
+// Only these fields are checked when deciding whether an existing record needs updating.
+// Excludes unique key fields (person_id, session_cm_id, year) and PocketBase-managed fields.
+var camperHistoryCompareFields = []string{
+	"session_name", "first_name", "last_name", "school", "city", "state",
+	"is_returning_summer", "is_returning_family", "years_at_camp",
+	"person", "session", "session_type", "gender", "grade", "age",
+	"household_id", "division_name", "status", "enrollment_date",
+	"bunk_name", "bunk_cm_id", "synagogue",
+}
+
 // statusEnrolled is the enrolled status string used in comparisons
 const statusEnrolled = "enrolled"
 
@@ -229,13 +240,6 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		return fmt.Errorf("finding camper_history collection: %w", err)
 	}
 
-	// Skip fields when comparing for update detection (these are the unique key)
-	skipFields := map[string]bool{
-		"person_id":     true,
-		"session_cm_id": true,
-		"year":          true,
-	}
-
 	// Process one record per attendee using upsert pattern
 	for _, attendee := range attendees {
 		select {
@@ -346,7 +350,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 
 		if existing != nil {
 			// Check if update is needed
-			if c.recordNeedsUpdate(existing, recordData, skipFields) {
+			if c.recordNeedsUpdate(existing, recordData, camperHistoryCompareFields) {
 				// Update existing record
 				for field, value := range recordData {
 					existing.Set(field, value)
@@ -1148,16 +1152,16 @@ func (c *CamperHistorySync) fieldEquals(existing, newVal interface{}) bool {
 	return existing == newVal
 }
 
-// recordNeedsUpdate checks if any field differs between existing record and new data
+// recordNeedsUpdate checks if any compared field differs between existing record and new data.
+// Uses compareFields (inclusion list): only the listed fields are checked for changes.
 func (c *CamperHistorySync) recordNeedsUpdate(
-	existing *core.Record, newData map[string]interface{}, skipFields map[string]bool,
+	existing *core.Record, newData map[string]interface{}, compareFields []string,
 ) bool {
-	for field, newValue := range newData {
-		if skipFields[field] {
-			continue
-		}
-		if !c.fieldEquals(existing.Get(field), newValue) {
-			return true
+	for _, field := range compareFields {
+		if value, exists := newData[field]; exists {
+			if !c.fieldEquals(existing.Get(field), value) {
+				return true
+			}
 		}
 	}
 	return false

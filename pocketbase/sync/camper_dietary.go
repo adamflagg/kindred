@@ -12,6 +12,15 @@ import (
 // serviceNameCamperDietary is the canonical name for this sync service
 const serviceNameCamperDietary = "camper_dietary"
 
+// camperDietaryCompareFields lists the fields to compare for idempotency checks.
+// Only these fields are checked when deciding whether an existing record needs updating.
+// Excludes PocketBase-managed fields (id, created, updated, collectionId, collectionName).
+var camperDietaryCompareFields = []string{
+	"attendee", "person_id", "year",
+	"has_dietary_needs", "dietary_explanation",
+	"has_allergies", "allergy_info", "additional_medical",
+}
+
 // Column name constants for camper_dietary table
 const (
 	colHasDietaryNeeds    = "has_dietary_needs"
@@ -467,15 +476,14 @@ func (s *CamperDietarySync) fieldEquals(existing, newVal any) bool {
 	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
 }
 
-// recordNeedsUpdate checks if any field differs between existing record and new data
+// recordNeedsUpdate checks if any compared field differs between existing record and new data.
+// Uses compareFields (inclusion list): only the listed fields are checked for changes.
 func (s *CamperDietarySync) recordNeedsUpdate(record *core.Record, data map[string]any) bool {
-	skipFields := map[string]bool{"id": true, "created": true, "updated": true}
-	for field, newValue := range data {
-		if skipFields[field] {
-			continue
-		}
-		if !s.fieldEquals(record.Get(field), newValue) {
-			return true
+	for _, field := range camperDietaryCompareFields {
+		if value, exists := data[field]; exists {
+			if !s.fieldEquals(record.Get(field), value) {
+				return true
+			}
 		}
 	}
 	return false
