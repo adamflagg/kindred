@@ -3,6 +3,7 @@ import { defineConfig, mergeConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { existsSync, readFileSync, createReadStream, statSync } from 'fs'
+import { execSync } from 'child_process'
 import { resolve } from 'path'
 
 // =============================================================================
@@ -171,8 +172,17 @@ const testAuthDefines = process.env.VITE_DISABLE_AUTH === 'true' ? {
 } : {};
 
 // Version info from build process (with fallbacks for development)
+// In dev, use git describe to mirror prod version format (e.g. v3.8.0-5-gabc1234)
+function getDevVersion(): string {
+  try {
+    return execSync('git describe --tags --always', { encoding: 'utf-8' }).trim()
+  } catch {
+    return 'dev'
+  }
+}
+
 const versionDefines = {
-  'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.VITE_APP_VERSION ?? 'dev'),
+  'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.VITE_APP_VERSION ?? getDevVersion()),
   'import.meta.env.VITE_APP_BUILD_DATE': JSON.stringify(process.env.VITE_APP_BUILD_DATE ?? new Date().toISOString()),
 };
 
