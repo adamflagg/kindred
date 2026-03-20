@@ -33,27 +33,39 @@ describe('parseVersion', () => {
   })
 
   describe('git describe format (between releases)', () => {
-    it('should parse describe with commits ahead', () => {
+    it('should parse describe with tag release link and ahead diff link', () => {
       const result = parseVersion('v0.7.0-5-gabc1234')
       expect(result).toEqual({
-        display: 'v0.7.0+5',
-        url: 'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234',
+        display: 'v0.7.0',
+        url: 'https://github.com/adamflagg/kindred/releases/tag/v0.7.0',
+        ahead: {
+          display: '+5',
+          url: 'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234',
+        },
       })
     })
 
     it('should parse describe with many commits ahead', () => {
       const result = parseVersion('v1.2.3-42-gdeadbeef')
       expect(result).toEqual({
-        display: 'v1.2.3+42',
-        url: 'https://github.com/adamflagg/kindred/compare/v1.2.3...deadbeef',
+        display: 'v1.2.3',
+        url: 'https://github.com/adamflagg/kindred/releases/tag/v1.2.3',
+        ahead: {
+          display: '+42',
+          url: 'https://github.com/adamflagg/kindred/compare/v1.2.3...deadbeef',
+        },
       })
     })
 
     it('should parse describe from a major.minor tag', () => {
       const result = parseVersion('v1.0-3-g1234567')
       expect(result).toEqual({
-        display: 'v1.0+3',
-        url: 'https://github.com/adamflagg/kindred/compare/v1.0...1234567',
+        display: 'v1.0',
+        url: 'https://github.com/adamflagg/kindred/releases/tag/v1.0',
+        ahead: {
+          display: '+3',
+          url: 'https://github.com/adamflagg/kindred/compare/v1.0...1234567',
+        },
       })
     })
   })
@@ -105,12 +117,18 @@ describe('VersionInfo', () => {
     expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/releases/tag/v0.8.0')
   })
 
-  it('should render describe version with +N suffix and link to commit', () => {
+  it('should render describe version with tag linking to release and +N linking to diff', () => {
     mockVersion('v0.7.0-5-gabc1234')
     render(<VersionInfo />)
-    const link = screen.getByRole('link')
-    expect(link).toHaveTextContent('Kindred v0.7.0+5')
-    expect(link).toHaveAttribute(
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(2)
+    expect(links[0]).toHaveTextContent('Kindred v0.7.0')
+    expect(links[0]).toHaveAttribute(
+      'href',
+      'https://github.com/adamflagg/kindred/releases/tag/v0.7.0'
+    )
+    expect(links[1]).toHaveTextContent('+5')
+    expect(links[1]).toHaveAttribute(
       'href',
       'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234'
     )

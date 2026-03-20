@@ -28,17 +28,25 @@ describe('parseVersion', () => {
     })
   })
 
-  it('parses git describe format with compare URL', () => {
+  it('parses git describe with tag linking to release and ahead linking to diff', () => {
     expect(parseVersion('v3.3.0-6-gabc1234')).toEqual({
-      display: 'v3.3.0+6',
-      url: `${GITHUB_REPO_URL}/compare/v3.3.0...abc1234`,
+      display: 'v3.3.0',
+      url: `${GITHUB_REPO_URL}/releases/tag/v3.3.0`,
+      ahead: {
+        display: '+6',
+        url: `${GITHUB_REPO_URL}/compare/v3.3.0...abc1234`,
+      },
     })
   })
 
   it('parses git describe with large commit count', () => {
     expect(parseVersion('v0.7.0-25-g1234567')).toEqual({
-      display: 'v0.7.0+25',
-      url: `${GITHUB_REPO_URL}/compare/v0.7.0...1234567`,
+      display: 'v0.7.0',
+      url: `${GITHUB_REPO_URL}/releases/tag/v0.7.0`,
+      ahead: {
+        display: '+25',
+        url: `${GITHUB_REPO_URL}/compare/v0.7.0...1234567`,
+      },
     })
   })
 
