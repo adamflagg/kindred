@@ -29,7 +29,7 @@ from api.services.reconstruction import (
     ENROLLMENT_STATUSES,
     _get_enrollment_date,
     parse_date_only,
-    reconstruct_daily,
+    reconstruct_daily_multi,
 )
 from api.utils.session_metrics import (
     build_ag_parent_map,
@@ -1653,28 +1653,15 @@ class VelocityService:
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
         is_current_season = season_start_date <= ctx.today <= season_end_date
         end_date = ctx.today if is_current_season else season_end_date
-        daily_data = reconstruct_daily(
+        daily_data, per_session_daily = reconstruct_daily_multi(
             attendees=attendees,
             season_start=season_start_date,
             sessions=sessions,
             end_date=end_date,
             ag_parent_map=ag_parent_map,
             session_cm_id=session_cm_id,
+            session_ids=list(per_session_data.keys()),
         )
-
-        # Build per-session daily data for hybrid merging
-        per_session_daily: dict[int, list[DailyDataPoint]] = {}
-        for sid in per_session_data:
-            sid_daily = reconstruct_daily(
-                attendees=attendees,
-                season_start=season_start_date,
-                sessions=sessions,
-                end_date=end_date,
-                ag_parent_map=ag_parent_map,
-                session_cm_id=sid,
-            )
-            if sid_daily:
-                per_session_daily[sid] = sid_daily
 
         # Derive weekly from daily for combined curve
         combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_season)
