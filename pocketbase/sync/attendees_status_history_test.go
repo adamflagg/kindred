@@ -362,3 +362,55 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 		t.Errorf("last_updated_utc should be LastUpdatedUTC, got %v", lastUpdated)
 	}
 }
+
+// TestAttendeesSync_ParseDate tests date parsing for CampMinder attendee date formats.
+// CampMinder sends dates in two formats: full ISO 8601 with timezone, and date-only.
+func TestAttendeesSync_ParseDate(t *testing.T) {
+	s := &AttendeesSync{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "ISO 8601 with Z",
+			input:    "2025-12-03T10:30:00Z",
+			expected: "2025-12-03 10:30:00.000Z",
+		},
+		{
+			name:     "ISO 8601 with timezone offset",
+			input:    "2025-12-03T10:30:00-08:00",
+			expected: "2025-12-03 10:30:00.000Z", // Note: parseDate preserves local time, Z is literal
+		},
+		{
+			name:     "date only",
+			input:    "2025-12-03",
+			expected: "2025-12-03 00:00:00.000Z",
+		},
+		{
+			name:     "date only different month",
+			input:    "2025-06-15",
+			expected: "2025-06-15 00:00:00.000Z",
+		},
+		{
+			name:     "unparseable returns as-is",
+			input:    "not-a-date",
+			expected: "not-a-date",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.parseDate(tt.input)
+			if got != tt.expected {
+				t.Errorf("parseDate(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
