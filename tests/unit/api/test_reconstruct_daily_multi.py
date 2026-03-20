@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
-from api.services.reconstruction import reconstruct_daily, reconstruct_daily_multi
+from api.services.reconstruction import reconstruct_daily_multi
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,21 +73,10 @@ class TestReconstructDailyMulti:
         assert all(dp.enrolled == 0 for dp in combined)
         assert per_session == {}
 
-    def test_combined_matches_reconstruct_daily(self):
-        """Combined output matches calling reconstruct_daily with no session filter."""
-        attendees = [
-            _make_attendee(session_cm_id=100, effective_date="2025-11-01"),
-            _make_attendee(session_cm_id=200, effective_date="2025-11-02"),
-            _make_attendee(session_cm_id=100, effective_date="2025-11-03"),
-        ]
-        sessions = _make_sessions(100, 200)
-
-        expected = reconstruct_daily(
-            attendees=attendees,
-            season_start=SEASON_START,
-            sessions=sessions,
-            end_date=END_DATE,
-        )
+    def test_single_enrollment_daily_fields(self):
+        """Single enrollment produces correct daily_new, enrolled, day_offset, data_source."""
+        attendees = [_make_attendee(session_cm_id=100, effective_date="2025-11-01")]
+        sessions = _make_sessions(100)
 
         combined, _ = reconstruct_daily_multi(
             attendees=attendees,
@@ -96,14 +85,39 @@ class TestReconstructDailyMulti:
             end_date=END_DATE,
         )
 
-        assert len(combined) == len(expected)
-        for c, e in zip(combined, expected, strict=True):
-            assert c.date == e.date
-            assert c.enrolled == e.enrolled
-            assert c.gross_enrolled == e.gross_enrolled
-            assert c.cancelled == e.cancelled
-            assert c.daily_new == e.daily_new
-            assert c.daily_cancelled == e.daily_cancelled
+        assert len(combined) == 5  # Nov 1-5
+        assert combined[0].date == "2025-11-01"
+        assert combined[0].day_offset == 0
+        assert combined[0].daily_new == 1
+        assert combined[0].enrolled == 1
+        assert combined[0].gross_enrolled == 1
+        assert combined[0].data_source == "reconstructed"
+        # Day 2: no new, cumulative carries
+        assert combined[1].daily_new == 0
+        assert combined[1].enrolled == 1
+
+    def test_effective_date_fallback_to_enrollment_date(self):
+        """When effective_date is missing, falls back to enrollment_date truncated."""
+        attendees = [
+            _make_attendee(
+                session_cm_id=100,
+                effective_date="",
+                enrollment_date="2025-11-02 16:00:00.000Z",
+            ),
+        ]
+        sessions = _make_sessions(100)
+
+        combined, _ = reconstruct_daily_multi(
+            attendees=attendees,
+            season_start=SEASON_START,
+            sessions=sessions,
+            end_date=END_DATE,
+        )
+
+        # Should bucket on Nov 2 (truncated from enrollment_date)
+        assert combined[0].daily_new == 0  # Nov 1: nothing
+        assert combined[1].daily_new == 1  # Nov 2: fallback enrollment
+        assert combined[1].enrolled == 1
 
     def test_per_session_buckets_correctly(self):
         """Per-session output correctly buckets by session."""
@@ -125,21 +139,18 @@ class TestReconstructDailyMulti:
         assert 100 in per_session
         assert 200 in per_session
 
-        # Verify per-session matches calling reconstruct_daily with session filter
-        for sid in [100, 200]:
-            expected = reconstruct_daily(
-                attendees=attendees,
-                season_start=SEASON_START,
-                sessions=sessions,
-                end_date=END_DATE,
-                session_cm_id=sid,
-            )
-            actual = per_session[sid]
-            assert len(actual) == len(expected)
-            for a, e in zip(actual, expected, strict=True):
-                assert a.date == e.date
-                assert a.enrolled == e.enrolled
-                assert a.daily_new == e.daily_new
+        # Session 100: enrollments on Nov 1 and Nov 3
+        s100 = per_session[100]
+        assert s100[0].daily_new == 1  # Nov 1
+        assert s100[1].daily_new == 0  # Nov 2
+        assert s100[2].daily_new == 1  # Nov 3
+        assert s100[2].enrolled == 2
+
+        # Session 200: enrollment on Nov 2 only
+        s200 = per_session[200]
+        assert s200[0].daily_new == 0  # Nov 1
+        assert s200[1].daily_new == 1  # Nov 2
+        assert s200[1].enrolled == 1
 
     def test_session_ids_filter(self):
         """Only requested session_ids appear in per_session output."""
