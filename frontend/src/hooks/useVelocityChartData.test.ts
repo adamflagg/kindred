@@ -150,7 +150,7 @@ describe('useVelocityChartData', () => {
     })
   })
 
-  // 2. Enrollment metric: builds enrolled, gross_enrolled, weekly_new, weekly_cancelled (negated) fields
+  // 2. Enrollment metric: builds enrolled, gross_enrolled, weekly_new, weekly_cancelled fields
   describe('enrollment metric weeklyChartData', () => {
     it('builds enrolled, gross_enrolled, weekly_new, weekly_cancelled fields', () => {
       const data = makeResponse()
@@ -164,8 +164,7 @@ describe('useVelocityChartData', () => {
       expect(row1['enrolled']).toBe(100)
       expect(row1['gross_enrolled']).toBe(110)
       expect(row1['weekly_new']).toBe(15)
-      // weekly_cancelled is negated
-      expect(row1['weekly_cancelled']).toBe(-5)
+      expect(row1['weekly_cancelled']).toBe(5)
       expect(row1['label']).toBe('Jan 6–12')
     })
 
@@ -231,7 +230,7 @@ describe('useVelocityChartData', () => {
       expect(row['enrolled_2024']).toBe(90)
       expect(row['gross_enrolled_2024']).toBe(95)
       expect(row['weekly_new_2024']).toBe(12)
-      expect(row['weekly_cancelled_2024']).toBe(-3) // negated
+      expect(row['weekly_cancelled_2024']).toBe(3)
     })
 
     it('cancellation metric: prior year fields use cancelled_{year} pattern', () => {
@@ -287,8 +286,8 @@ describe('useVelocityChartData', () => {
       expect(row['gross_enrolled_girls']).toBe(50)
       expect(row['weekly_new_boys']).toBe(8)
       expect(row['weekly_new_girls']).toBe(7)
-      expect(row['weekly_cancelled_boys']).toBe(-2) // negated
-      expect(row['weekly_cancelled_girls']).toBe(-3) // negated
+      expect(row['weekly_cancelled_boys']).toBe(2)
+      expect(row['weekly_cancelled_girls']).toBe(3)
     })
 
     it('does not include gender fields when splitByGender is false', () => {

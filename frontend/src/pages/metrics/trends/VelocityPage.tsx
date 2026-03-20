@@ -326,9 +326,7 @@ export default function VelocityPage() {
     {
       header: 'Cancelled',
       accessor: (week) => (
-        <span className="text-red-600 dark:text-red-400">
-          {week.weekly_cancelled > 0 ? `-${week.weekly_cancelled}` : 0}
-        </span>
+        <span className="text-red-600 dark:text-red-400">{week.weekly_cancelled ?? 0}</span>
       ),
       className: 'text-right',
     },
@@ -628,7 +626,7 @@ export default function VelocityPage() {
                             : null
                         return (
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                            {entry.name}: {Math.abs(Number(entry.value)).toLocaleString()}
+                            {entry.name}: {Number(entry.value).toLocaleString()}
                             {priorDate && (
                               <span className="text-muted-foreground ml-1 text-xs">
                                 ({priorDate})

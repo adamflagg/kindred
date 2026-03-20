@@ -99,8 +99,7 @@ export function useVelocityChartData(
         row['enrolled'] = current?.enrolled ?? null
         row['gross_enrolled'] = current?.gross_enrolled ?? null
         row['weekly_new'] = current?.weekly_new ?? null
-        row['weekly_cancelled'] =
-          current?.weekly_cancelled != null ? -current.weekly_cancelled : null
+        row['weekly_cancelled'] = current?.weekly_cancelled ?? null
       } else {
         // cancellation: enrolled field repurposed for cancelled count
         row['cancelled'] = current?.enrolled ?? null
@@ -113,8 +112,7 @@ export function useVelocityChartData(
           row[`enrolled_${py.year}`] = pyPoint?.enrolled ?? null
           row[`gross_enrolled_${py.year}`] = pyPoint?.gross_enrolled ?? null
           row[`weekly_new_${py.year}`] = pyPoint?.weekly_new ?? null
-          row[`weekly_cancelled_${py.year}`] =
-            pyPoint?.weekly_cancelled != null ? -pyPoint.weekly_cancelled : null
+          row[`weekly_cancelled_${py.year}`] = pyPoint?.weekly_cancelled ?? null
         } else {
           row[`cancelled_${py.year}`] = pyPoint?.enrolled ?? null
         }
@@ -130,28 +128,20 @@ export function useVelocityChartData(
           // Gender delta keys for Weekly Delta view
           row['weekly_new_boys'] = mMap.get(wn)?.weekly_new ?? null
           row['weekly_new_girls'] = fMap.get(wn)?.weekly_new ?? null
-          const mVal = mMap.get(wn)
-          row['weekly_cancelled_boys'] =
-            mVal?.weekly_cancelled != null ? -mVal.weekly_cancelled : null
-          const fVal = fMap.get(wn)
-          row['weekly_cancelled_girls'] =
-            fVal?.weekly_cancelled != null ? -fVal.weekly_cancelled : null
+          row['weekly_cancelled_boys'] = mMap.get(wn)?.weekly_cancelled ?? null
+          row['weekly_cancelled_girls'] = fMap.get(wn)?.weekly_cancelled ?? null
 
           for (const { year, map } of priorMGenderMaps) {
             row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
             row[`gross_enrolled_boys_${year}`] = map.get(wn)?.gross_enrolled ?? null
             row[`weekly_new_boys_${year}`] = map.get(wn)?.weekly_new ?? null
-            const pmVal = map.get(wn)
-            row[`weekly_cancelled_boys_${year}`] =
-              pmVal?.weekly_cancelled != null ? -pmVal.weekly_cancelled : null
+            row[`weekly_cancelled_boys_${year}`] = map.get(wn)?.weekly_cancelled ?? null
           }
           for (const { year, map } of priorFGenderMaps) {
             row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
             row[`gross_enrolled_girls_${year}`] = map.get(wn)?.gross_enrolled ?? null
             row[`weekly_new_girls_${year}`] = map.get(wn)?.weekly_new ?? null
-            const pfVal = map.get(wn)
-            row[`weekly_cancelled_girls_${year}`] =
-              pfVal?.weekly_cancelled != null ? -pfVal.weekly_cancelled : null
+            row[`weekly_cancelled_girls_${year}`] = map.get(wn)?.weekly_cancelled ?? null
           }
         } else {
           // cancellation: gender maps from enrolled value
