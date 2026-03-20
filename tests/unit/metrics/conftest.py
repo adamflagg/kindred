@@ -255,27 +255,27 @@ def _seed_data(conn: sqlite3.Connection) -> None:
 
     # -- Attendees (year 2025) --
     conn.executemany(
-        "INSERT INTO attendees VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO attendees VALUES (?,?,?,?,?,?,?,?,?)",
         [
             # Emma enrolled in Session 1
-            ("att_1", 1001, 2025, "enrolled", 2, 1, "2025-01-15", "2025-01-15", "ses_s1", "per_emma"),
+            ("att_1", 1001, 2025, "enrolled", 2, "2025-01-15", "2025-01-15", "ses_s1", "per_emma"),
             # Liam enrolled in Session 1
-            ("att_2", 1002, 2025, "enrolled", 2, 1, "2025-01-20", "2025-01-20", "ses_s1", "per_liam"),
+            ("att_2", 1002, 2025, "enrolled", 2, "2025-01-20", "2025-01-20", "ses_s1", "per_liam"),
             # Olivia enrolled in Session 2
-            ("att_3", 1003, 2025, "enrolled", 2, 1, "2025-02-01", "2025-02-01", "ses_s2", "per_olivia"),
+            ("att_3", 1003, 2025, "enrolled", 2, "2025-02-01", "2025-02-01", "ses_s2", "per_olivia"),
             # Emma waitlisted in Session 2
-            ("att_4", 1001, 2025, "waitlisted", 3, 1, "2025-02-15", "2025-02-15", "ses_s2", "per_emma"),
+            ("att_4", 1001, 2025, "waitlisted", 3, "2025-02-15", "2025-02-15", "ses_s2", "per_emma"),
             # Liam cancelled from Session 2
-            ("att_5", 1002, 2025, "cancelled", 5, 0, "2025-03-01", "2024-11-20", "ses_s2", "per_liam"),
+            ("att_5", 1002, 2025, "cancelled", 5, "2025-03-01", "2024-11-20", "ses_s2", "per_liam"),
         ],
     )
 
     # -- Attendees (year 2024) for enrollment history --
     conn.executemany(
-        "INSERT INTO attendees VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO attendees VALUES (?,?,?,?,?,?,?,?,?)",
         [
-            ("att_h1", 1001, 2024, "enrolled", 2, 1, "2024-01-10", "2024-01-10", "ses_s1_24", "per_emma_24"),
-            ("att_h2", 1002, 2024, "enrolled", 2, 1, "2024-01-12", "2024-01-12", "ses_s2_24", "per_liam_24"),
+            ("att_h1", 1001, 2024, "enrolled", 2, "2024-01-10", "2024-01-10", "ses_s1_24", "per_emma_24"),
+            ("att_h2", 1002, 2024, "enrolled", 2, "2024-01-12", "2024-01-12", "ses_s2_24", "per_liam_24"),
         ],
     )
 

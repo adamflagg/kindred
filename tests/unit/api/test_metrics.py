@@ -525,12 +525,12 @@ class TestStatusMetrics:
     def mixed_status_attendees(self):
         """Attendees with various statuses."""
         return [
-            create_mock_attendee(101, 2001, 2026, "enrolled", 2, True),
-            create_mock_attendee(102, 2001, 2026, "enrolled", 2, True),
-            create_mock_attendee(103, 2001, 2026, "waitlisted", 4, True),
-            create_mock_attendee(104, 2002, 2026, "enrolled", 2, True),
-            create_mock_attendee(105, 2002, 2026, "cancelled", 5, False),
-            create_mock_attendee(106, 2002, 2026, "waitlisted", 4, True),
+            create_mock_attendee(101, 2001, 2026, "enrolled", 2),
+            create_mock_attendee(102, 2001, 2026, "enrolled", 2),
+            create_mock_attendee(103, 2001, 2026, "waitlisted", 4),
+            create_mock_attendee(104, 2002, 2026, "enrolled", 2),
+            create_mock_attendee(105, 2002, 2026, "cancelled", 5),
+            create_mock_attendee(106, 2002, 2026, "waitlisted", 4),
         ]
 
     def test_waitlist_count(self, mixed_status_attendees: list[Mock]) -> None:
@@ -1075,27 +1075,27 @@ class TestWaitlistCancelledSessionTypeFiltering:
         family_session = Mock(cm_id=2001, session_type="family", name="Family Camp Weekend")
 
         # Enrolled in summer (should count)
-        attendees.append(create_mock_attendee(101, 1001, 2026, "enrolled", 2, True))
+        attendees.append(create_mock_attendee(101, 1001, 2026, "enrolled", 2))
         attendees[-1].expand = {"session": main_session}
 
         # Waitlisted in summer (should count in filtered waitlist)
-        attendees.append(create_mock_attendee(102, 1001, 2026, "waitlisted", 4, True))
+        attendees.append(create_mock_attendee(102, 1001, 2026, "waitlisted", 4))
         attendees[-1].expand = {"session": main_session}
 
         # Waitlisted in AG session (should count)
-        attendees.append(create_mock_attendee(103, 1002, 2026, "waitlisted", 4, True))
+        attendees.append(create_mock_attendee(103, 1002, 2026, "waitlisted", 4))
         attendees[-1].expand = {"session": ag_session}
 
         # Cancelled in summer (should count)
-        attendees.append(create_mock_attendee(104, 1003, 2026, "cancelled", 5, False))
+        attendees.append(create_mock_attendee(104, 1003, 2026, "cancelled", 5))
         attendees[-1].expand = {"session": embedded_session}
 
         # Waitlisted in family camp (should NOT count in summer metrics)
-        attendees.append(create_mock_attendee(105, 2001, 2026, "waitlisted", 4, True))
+        attendees.append(create_mock_attendee(105, 2001, 2026, "waitlisted", 4))
         attendees[-1].expand = {"session": family_session}
 
         # Cancelled in family camp (should NOT count in summer metrics)
-        attendees.append(create_mock_attendee(106, 2001, 2026, "cancelled", 5, False))
+        attendees.append(create_mock_attendee(106, 2001, 2026, "cancelled", 5))
         attendees[-1].expand = {"session": family_session}
 
         return attendees
@@ -1392,7 +1392,7 @@ class TestDynamicStatusFetching:
         ]
 
         for i, (status, status_id) in enumerate(statuses_and_status_ids, start=101):
-            attendee = create_mock_attendee(i, 1001, 2026, status, status_id, status == "enrolled")
+            attendee = create_mock_attendee(i, 1001, 2026, status, status_id)
             attendee.expand = {"session": main_session}
             attendees.append(attendee)
 
@@ -1582,8 +1582,8 @@ class TestFetchAttendeesForYearDynamicStatuses:
         """
         # Create mock attendees with applied status
         applied_attendees = [
-            create_mock_attendee(101, 1001, 2026, "applied", 1, True),
-            create_mock_attendee(102, 1001, 2026, "applied", 1, True),
+            create_mock_attendee(101, 1001, 2026, "applied", 1),
+            create_mock_attendee(102, 1001, 2026, "applied", 1),
         ]
         # Add session expand
         main_session = Mock(cm_id=1001, session_type="main", name="Session 2")
@@ -2341,19 +2341,19 @@ class TestRetentionSessionCmIdFilter:
 
         # Session 2 (cm_id 1001): 3 campers in base year
         for i in range(3):
-            a = create_mock_attendee(100 + i, 1001, 2025, "enrolled", 2, True)
+            a = create_mock_attendee(100 + i, 1001, 2025, "enrolled", 2)
             a.expand = {"session": main_session_1}
             attendees.append(a)
 
         # Session 3 (cm_id 1002): 2 campers in base year
         for i in range(2):
-            a = create_mock_attendee(200 + i, 1002, 2025, "enrolled", 2, True)
+            a = create_mock_attendee(200 + i, 1002, 2025, "enrolled", 2)
             a.expand = {"session": main_session_2}
             attendees.append(a)
 
         # Session 2a (cm_id 1003): 2 campers in base year
         for i in range(2):
-            a = create_mock_attendee(300 + i, 1003, 2025, "enrolled", 2, True)
+            a = create_mock_attendee(300 + i, 1003, 2025, "enrolled", 2)
             a.expand = {"session": embedded_session}
             attendees.append(a)
 
