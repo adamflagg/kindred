@@ -156,8 +156,8 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		"attendees", len(attendeeData),
 	)
 
-	// Step 1b: Load geo_overrides (alias + merge + rejected) for this year
-	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides(year)
+	// Step 1b: Load geo_overrides (alias + merge + rejected) across all years
+	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides()
 	if err != nil {
 		slog.Warn("Could not load geo_overrides, continuing without overrides", "error", err)
 		aliasOverrides = make(map[string]map[string]string)
@@ -431,7 +431,7 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 //   - aliasOverrides: category -> (lowercase raw_value -> canonical_name)
 //   - mergeOverrides: category -> (canonical_name -> merged_into)
 //   - rejectedOverrides: category -> (lowercase canonical_name -> true)
-func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
+func (n *NormalizeGeographicSync) loadGeoOverrides() (
 	aliasOverrides map[string]map[string]string,
 	mergeOverrides map[string]map[string]string,
 	rejectedOverrides map[string]map[string]bool,
@@ -447,9 +447,7 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
 
-	filter := filterYearParam
-	filterParams := dbx.Params{"year": year}
-	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0, filterParams)
+	records, findErr := n.App.FindRecordsByFilter("geo_overrides", "", "year ASC", 0, 0)
 	if findErr != nil {
 		return aliasOverrides, mergeOverrides, rejectedOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
