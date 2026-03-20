@@ -34,7 +34,7 @@ const filterYearParam = "year = {:year}"
 // Orchestrates normalization by:
 //  1. Loading attendees with person+session data (school/city from persons,
 //     congregation from person_custom_values, state/country from household)
-//  2. Loading geo_overrides (alias, merge, rejected) for the year
+//  2. Loading geo_overrides (alias, merge, rejected) up to the current year
 //  3. Building normalization lookup via Python geo_normalizer (RapidFuzz, static lookups)
 //  4. Creating person+session mappings (applying alias/merge overrides)
 //  5. Preloading existing normalized_mappings for upsert comparison
@@ -156,7 +156,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		"attendees", len(attendeeData),
 	)
 
-	// Step 1b: Load geo_overrides (alias + merge + rejected) for this year
+	// Step 1b: Load geo_overrides (alias + merge + rejected) up to current year
 	aliasOverrides, mergeOverrides, rejectedOverrides, err := n.loadGeoOverrides(year)
 	if err != nil {
 		slog.Warn("Could not load geo_overrides, continuing without overrides", "error", err)
@@ -447,9 +447,14 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
 
-	filter := filterYearParam
-	filterParams := dbx.Params{"year": year}
-	records, findErr := n.App.FindRecordsByFilter("geo_overrides", filter, "", 0, 0, filterParams)
+	records, findErr := n.App.FindRecordsByFilter(
+		"geo_overrides",
+		"year <= {:year}",
+		"year ASC",
+		0,
+		0,
+		dbx.Params{"year": year},
+	)
 	if findErr != nil {
 		return aliasOverrides, mergeOverrides, rejectedOverrides, fmt.Errorf("loading geo_overrides: %w", findErr)
 	}
@@ -476,6 +481,8 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 				}
 			}
 		case "rejected":
+			// Rejections carry forward permanently across years. To un-reject a canonical,
+			// delete the rejection record from geo_overrides — there is no override mechanism.
 			name := record.GetString("canonical_name")
 			if name != "" {
 				if rejectedOverrides[cat] == nil {

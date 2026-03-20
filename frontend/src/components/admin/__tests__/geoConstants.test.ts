@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sourceBadgeClasses, formatLocation } from '../geoConstants'
+import { sourceBadgeClasses, formatLocation, sourceLabel } from '../geoConstants'
 
 describe('formatLocation', () => {
   it('returns "City, ST" for US entries', () => {
@@ -62,5 +62,29 @@ describe('sourceBadgeClasses', () => {
 
   it('curated and manual have different classes', () => {
     expect(sourceBadgeClasses('curated')).not.toBe(sourceBadgeClasses('manual'))
+  })
+
+  it('returns green classes for verified source', () => {
+    const classes = sourceBadgeClasses('verified')
+    expect(classes).toContain('green')
+    expect(classes).not.toContain('gray')
+  })
+
+  it('verified and manual have different classes', () => {
+    expect(sourceBadgeClasses('verified')).not.toBe(sourceBadgeClasses('manual'))
+  })
+})
+
+describe('sourceLabel', () => {
+  it('returns "Verified" for verified source', () => {
+    expect(sourceLabel('verified')).toBe('Verified')
+  })
+
+  it('returns "Manual" for manual source', () => {
+    expect(sourceLabel('manual')).toBe('Manual')
+  })
+
+  it('returns raw string for unknown source', () => {
+    expect(sourceLabel('unknown')).toBe('unknown')
   })
 })

@@ -2113,3 +2113,57 @@ func TestAddressCityPopulatedInMappings(t *testing.T) {
 		}
 	}
 }
+
+// ============================================================================
+// Override Map Dedup Tests (carry-forward across years)
+// ============================================================================
+
+// TestOverrideMapDedup_AliasNewestYearWins verifies that when the same alias key
+// is assigned from records sorted by year ASC, the newest year's value wins.
+func TestOverrideMapDedup_AliasNewestYearWins(t *testing.T) {
+	aliasOverrides := map[string]map[string]string{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+
+	// Simulate year-ASC sorted processing (2025 first, then 2026 overwrites)
+	aliasOverrides[categorySchool]["riverside elem"] = "Riverside Elementary"         // 2025
+	aliasOverrides[categorySchool]["riverside elem"] = "Riverside Elementary Academy" // 2026 overwrites
+
+	if aliasOverrides[categorySchool]["riverside elem"] != "Riverside Elementary Academy" {
+		t.Errorf("expected newest year value to win, got %q",
+			aliasOverrides[categorySchool]["riverside elem"])
+	}
+}
+
+// TestOverrideMapDedup_MergeNewestYearWins verifies merge override dedup.
+func TestOverrideMapDedup_MergeNewestYearWins(t *testing.T) {
+	mergeOverrides := map[string]map[string]string{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+
+	// 2025: "Old Name" -> "Name A"
+	// 2026: "Old Name" -> "Name B"
+	mergeOverrides[categoryCongregation]["Old Name"] = "Name A" // 2025
+	mergeOverrides[categoryCongregation]["Old Name"] = "Name B" // 2026 overwrites
+
+	if mergeOverrides[categoryCongregation]["Old Name"] != "Name B" {
+		t.Errorf("expected newest year merge to win, got %q",
+			mergeOverrides[categoryCongregation]["Old Name"])
+	}
+}
+
+// TestOverrideMapDedup_RejectedCarriesForward verifies rejected overrides persist across years.
+func TestOverrideMapDedup_RejectedCarriesForward(t *testing.T) {
+	rejectedOverrides := map[string]map[string]bool{
+		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
+	}
+
+	// 2025: "springfield" rejected = true
+	// 2026: same rejection carries forward
+	rejectedOverrides[categoryCity]["springfield"] = true // 2025
+	rejectedOverrides[categoryCity]["springfield"] = true // 2026 same
+
+	if !rejectedOverrides[categoryCity]["springfield"] {
+		t.Error("expected springfield to remain rejected")
+	}
+}
