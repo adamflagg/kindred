@@ -2646,16 +2646,15 @@ class TestListOverridesYearScoped:
         return GeoService(mock_pb)
 
     @pytest.mark.asyncio
-    async def test_list_overrides_excludes_other_years(self, service: GeoService, mock_pb: MagicMock) -> None:
-        """list_overrides should only return overrides for the requested year."""
-        override_2025 = _make_override_record(id="ov1", year=2025, canonical_name="School A")
-        override_2026 = _make_override_record(id="ov2", year=2026, canonical_name="School B")
+    async def test_list_overrides_queries_with_year_filter(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """list_overrides should pass year in the PocketBase filter (stays year-scoped)."""
+        mock_collection = MagicMock()
+        mock_collection.get_full_list.return_value = []
+        mock_pb.collection.return_value = mock_collection
 
-        mock_pb.collection.side_effect = _route_collections({"geo_overrides": [override_2025, override_2026]})
+        await service.list_overrides("school", 2026)
 
-        result = await service.list_overrides("school", 2026)
-
-        # list_overrides passes the year filter to PocketBase, so the mock
-        # returns everything. This test verifies the method runs without error
-        # and stays year-scoped.
-        assert isinstance(result, list)
+        call_args = mock_collection.get_full_list.call_args
+        filter_str = call_args.kwargs["query_params"]["filter"]
+        assert "year = 2026" in filter_str
+        assert 'category = "school"' in filter_str
