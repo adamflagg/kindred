@@ -247,6 +247,27 @@ class TestReconstructDailyMulti:
         assert combined[1].daily_new == 0  # Nov 2: session 200 enrolls, filtered out
         assert combined[4].enrolled == 1  # Only 1 enrollment total
 
+    def test_empty_session_ids_returns_empty_per_session(self):
+        """session_ids=[] produces combined data with all attendees but empty per_session."""
+        attendees = [
+            _make_attendee(session_cm_id=100, effective_date="2025-11-01"),
+            _make_attendee(session_cm_id=200, effective_date="2025-11-01"),
+        ]
+        sessions = _make_sessions(100, 200)
+
+        combined, per_session = reconstruct_daily_multi(
+            attendees=attendees,
+            season_start=SEASON_START,
+            sessions=sessions,
+            end_date=date(2025, 11, 1),
+            session_ids=[],
+        )
+
+        # Combined still includes all attendees
+        assert combined[0].gross_enrolled == 2
+        # Per-session is empty (no sessions requested)
+        assert per_session == {}
+
     def test_gender_data_propagated(self):
         """Gender data is propagated to both combined and per-session outputs."""
         attendees = [

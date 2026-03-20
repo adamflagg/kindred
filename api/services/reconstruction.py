@@ -204,8 +204,6 @@ def reconstruct_daily(
     Produces one DailyDataPoint per day from season_start through end_date,
     with running cumulative totals.
     """
-    from api.schemas.velocity import DailyDataPoint as DailyPoint
-
     # Build daily event buckets: date_str -> {new, cancelled, new_boys, ...}
     daily_events: dict[str, dict[str, int]] = {}
     sessions_with_gender: set[int] = set()
@@ -272,62 +270,7 @@ def reconstruct_daily(
 
     has_gender = len(sessions_with_gender) > 0
 
-    # Build daily points with running cumulatives
-    result: list[DailyPoint] = []
-    cum_gross = 0
-    cum_cancelled = 0
-    cum_gross_boys = 0
-    cum_gross_girls = 0
-    cum_canc_boys = 0
-    cum_canc_girls = 0
-
-    empty: dict[str, int] = {
-        "new": 0,
-        "cancelled": 0,
-        "new_boys": 0,
-        "new_girls": 0,
-        "canc_boys": 0,
-        "canc_girls": 0,
-    }
-
-    current = season_start
-    day_offset = 0
-    while current <= end_date:
-        date_str = current.isoformat()
-        events = daily_events.get(date_str, empty)
-
-        cum_gross += events["new"]
-        cum_cancelled += events["cancelled"]
-        cum_gross_boys += events["new_boys"]
-        cum_gross_girls += events["new_girls"]
-        cum_canc_boys += events["canc_boys"]
-        cum_canc_girls += events["canc_girls"]
-
-        result.append(
-            DailyPoint(
-                date=date_str,
-                day_offset=day_offset,
-                gross_enrolled=cum_gross,
-                enrolled=cum_gross - cum_cancelled,
-                cancelled=cum_cancelled,
-                daily_new=events["new"],
-                daily_cancelled=events["cancelled"],
-                daily_new_boys=events["new_boys"] if has_gender else None,
-                daily_new_girls=events["new_girls"] if has_gender else None,
-                daily_cancelled_boys=events["canc_boys"] if has_gender else None,
-                daily_cancelled_girls=events["canc_girls"] if has_gender else None,
-                gross_enrolled_boys=cum_gross_boys if has_gender else None,
-                gross_enrolled_girls=cum_gross_girls if has_gender else None,
-                enrolled_boys=(cum_gross_boys - cum_canc_boys) if has_gender else None,
-                enrolled_girls=(cum_gross_girls - cum_canc_girls) if has_gender else None,
-                data_source="reconstructed",
-            )
-        )
-
-        current += timedelta(days=1)
-        day_offset += 1
-
-    return result
+    return _build_daily_points(daily_events, has_gender, season_start, end_date)
 
 
 def _build_daily_points(
