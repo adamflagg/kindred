@@ -41,7 +41,6 @@ def _make_attendee(
     end_date: str = "2025-07-15",
     year: int = 2025,
     status: str = "enrolled",
-    is_active: int = 1,
 ) -> SimpleNamespace:
     """Create a SimpleNamespace matching the shape from fetch_attendees_with_dates."""
     return SimpleNamespace(
@@ -49,7 +48,6 @@ def _make_attendee(
         year=year,
         status=status,
         status_id=status_id,
-        is_active=is_active,
         enrollment_date=enrollment_date,
         effective_date=effective_date,
         expand={
@@ -149,7 +147,6 @@ class TestReconstructEnrollmentAtOffset:
             enrollment_date="2025-10-22",  # cancel date (PostDate)
             effective_date="2025-10-18",  # original registration date
             status="cancelled",
-            is_active=0,
         )
         repo = _mock_repo([att])
         sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
@@ -174,7 +171,6 @@ class TestReconstructEnrollmentAtOffset:
             enrollment_date="2025-11-20",  # cancel date is after offset
             effective_date="2025-10-18",  # registration within offset
             status="cancelled",
-            is_active=0,
         )
         repo = _mock_repo([att])
         sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
@@ -372,7 +368,6 @@ class TestReconstructEnrollmentAtOffset:
             enrollment_date="2025-10-22",  # withdrawal date (PostDate)
             effective_date="2025-10-18",  # original registration
             status="withdrawn",
-            is_active=0,
         )
         repo = _mock_repo([att])
         sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
@@ -402,7 +397,6 @@ def _make_attendee_with_person(
     person_cm_id: int = 1000,
     *,
     status: str = "enrolled",
-    is_active: int = 1,
 ) -> SimpleNamespace:
     """Create a mock attendee with expanded person for gender."""
     person = SimpleNamespace(gender=gender, cm_id=person_cm_id)
@@ -411,7 +405,6 @@ def _make_attendee_with_person(
         year=2025,
         status=status,
         status_id=status_id,
-        is_active=is_active,
         enrollment_date=enrollment_date,
         effective_date=effective_date,
         expand={
@@ -468,7 +461,6 @@ class TestReconstructionWithGender:
                 "M",
                 person_cm_id=3,
                 status="cancelled",
-                is_active=0,
             ),
         ]
         repo = _mock_repo_with_person(attendees)
@@ -491,7 +483,6 @@ class TestReconstructionWithGender:
             year=2025,
             status="enrolled",
             status_id=2,
-            is_active=1,
             enrollment_date="2025-10-16",
             effective_date="2025-10-16",
             expand={

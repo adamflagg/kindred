@@ -34,7 +34,6 @@ def create_mock_attendee(
     year: int,
     status: str = "enrolled",
     status_id: int = 2,
-    is_active: bool = True,
 ) -> Mock:
     """Create a mock attendee record with embedded session."""
     attendee = Mock()
@@ -42,7 +41,6 @@ def create_mock_attendee(
     attendee.year = year
     attendee.status = status
     attendee.status_id = status_id
-    attendee.is_active = is_active
     # Embed session in expand dict (matching real PocketBase behavior)
     attendee.expand = {"session": session}
     return attendee
