@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
+import { extractErrorMessage } from './createSyncMutation'
 import type { SyncPhase } from '../components/admin/syncTypes'
 
 interface PhaseSyncParams {
@@ -85,25 +86,7 @@ export function useRunPhaseSync() {
     onError: (error, variables) => {
       const phaseName = PHASE_NAMES[variables.phase]
 
-      // Extract error message from PocketBase error structure
-      let errorMessage = 'Unknown error'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      const pbError = error as {
-        response?: {
-          data?: { message?: string; error?: string }
-          message?: string
-        }
-        message?: string
-      }
-      if (pbError.response?.data?.error) {
-        errorMessage = pbError.response.data.error
-      } else if (pbError.response?.data?.message) {
-        errorMessage = pbError.response.data.message
-      } else if (pbError.response?.message) {
-        errorMessage = pbError.response.message
-      }
+      const errorMessage = extractErrorMessage(error)
 
       toast.error(`Failed to start ${phaseName} phase: ${errorMessage}`, {
         duration: 8000,

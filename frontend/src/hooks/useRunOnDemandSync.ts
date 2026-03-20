@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
+import { extractErrorMessage, SYNC_STARTED_TOAST_OPTIONS } from './createSyncMutation'
 import { SYNC_TYPE_NAMES } from './useRunIndividualSync'
 
 // Convert sync type ID to API endpoint (snake_case -> kebab-case)
@@ -50,14 +51,7 @@ export function useRunOnDemandSync() {
       const sessionText = session && session !== 'all' ? ` (Session ${session})` : ' (All sessions)'
 
       if (data?.status === 'started') {
-        toast(`${displayName}${sessionText} sync started`, {
-          icon: '✓',
-          duration: 3000,
-          className: 'toast-lodge toast-lodge-success',
-          style: {
-            borderLeft: '4px solid hsl(160, 100%, 21%)',
-          },
-        })
+        toast(`${displayName}${sessionText} sync started`, SYNC_STARTED_TOAST_OPTIONS)
       }
 
       // Invalidate sync status to show it's running
@@ -65,7 +59,7 @@ export function useRunOnDemandSync() {
     },
     onError: (error, { syncType }) => {
       const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
-      let errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      let errorMessage = extractErrorMessage(error)
 
       // Handle specific error cases
       if (errorMessage.includes('already in progress')) {

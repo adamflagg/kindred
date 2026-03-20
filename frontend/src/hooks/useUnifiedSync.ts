@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
+import { extractErrorMessage } from './createSyncMutation'
 
 interface UnifiedSyncParams {
   year: number
@@ -72,26 +73,7 @@ export function useUnifiedSync() {
     onError: (error, variables) => {
       const serviceDisplay = variables.service === 'all' ? 'all services' : variables.service
 
-      // Extract error message from PocketBase error structure
-      let errorMessage = 'Unknown error'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      // PocketBase errors have response.data or response.message
-      const pbError = error as {
-        response?: {
-          data?: { message?: string; error?: string }
-          message?: string
-        }
-        message?: string
-      }
-      if (pbError.response?.data?.error) {
-        errorMessage = pbError.response.data.error
-      } else if (pbError.response?.data?.message) {
-        errorMessage = pbError.response.data.message
-      } else if (pbError.response?.message) {
-        errorMessage = pbError.response.message
-      }
+      let errorMessage = extractErrorMessage(error)
 
       // Handle queue full error
       if (errorMessage.includes('full')) {

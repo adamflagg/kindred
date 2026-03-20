@@ -59,40 +59,47 @@ export const clearCache = () => {
 }
 
 /**
+ * All query key prefixes that depend on synced CampMinder data.
+ * When a sync completes, all queries with these prefixes are invalidated.
+ * Add new prefixes here when creating query keys for sync-derived data.
+ */
+const SYNC_DEPENDENT_PREFIXES = [
+  // Sessions (Tier 1)
+  'sessions',
+  'all-sessions',
+  'session',
+  'session-stats',
+  'session-groups',
+  'session-programs',
+  // Campers (Tier 1)
+  'campers',
+  'all-campers',
+  'camper',
+  'camper-history',
+  'enrolled-campers',
+  // Bunks (Tier 1)
+  'bunks',
+  'bunk-assignments',
+  // Bunk requests (Tier 2 but sync-dependent)
+  'bunk-requests',
+  'bunk-request-status',
+  // Historical (Tier 1)
+  'historical-bunking',
+  // Staff (Tier 1)
+  'bunk-staff',
+  // Metrics (Tier 1 — covers retention, registration, velocity, forecast, day1, etc.)
+  'metrics',
+  // Sync status
+  'sync-status',
+] as const
+
+/**
  * Invalidate all sync-related data caches.
  * Call this after sync operations complete to ensure fresh data.
- * This invalidates Tier 1 (sync data) queries that may have changed.
  */
 export const invalidateSyncData = () => {
-  // Invalidate server-side metrics cache (fire-and-forget)
   fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
-
-  // Sessions
-  void queryClient.invalidateQueries({ queryKey: ['sessions'] })
-  void queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-  void queryClient.invalidateQueries({ queryKey: ['session'] })
-  void queryClient.invalidateQueries({ queryKey: ['session-stats'] })
-
-  // Campers and persons
-  void queryClient.invalidateQueries({ queryKey: ['campers'] })
-  void queryClient.invalidateQueries({ queryKey: ['all-campers'] })
-  void queryClient.invalidateQueries({ queryKey: ['camper'] })
-  void queryClient.invalidateQueries({ queryKey: ['camper-history'] })
-
-  // Historical data
-  void queryClient.invalidateQueries({ queryKey: ['historical-bunking'] })
-
-  // Bunks and assignments
-  void queryClient.invalidateQueries({ queryKey: ['bunks'] })
-  void queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
-
-  // Bunk requests
-  void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-  void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
-
-  // Metrics (depends on synced data)
-  void queryClient.invalidateQueries({ queryKey: ['metrics'] })
-
-  // Sync status (prefix match covers both syncStatus and syncStatusForService)
-  void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+  for (const prefix of SYNC_DEPENDENT_PREFIXES) {
+    void queryClient.invalidateQueries({ queryKey: [prefix] })
+  }
 }

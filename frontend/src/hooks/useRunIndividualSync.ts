@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
+import { extractErrorMessage, SYNC_STARTED_TOAST_OPTIONS } from './createSyncMutation'
 
 // Map of sync types to their display names
 // Note: "persons" is a combined sync that populates persons and households tables
@@ -96,14 +97,7 @@ export function useRunIndividualSync() {
         )
       } else if (data?.status === 'started') {
         // Async sync started - show confirmation (not completion)
-        toast(`${displayName} sync started`, {
-          icon: '✓',
-          duration: 3000,
-          className: 'toast-lodge toast-lodge-success',
-          style: {
-            borderLeft: '4px solid hsl(160, 100%, 21%)',
-          },
-        })
+        toast(`${displayName} sync started`, SYNC_STARTED_TOAST_OPTIONS)
       } else if (data?.stats || data?.created !== undefined) {
         // Synchronous response with actual stats (some endpoints may return this)
         const stats = data?.stats ?? data
@@ -143,7 +137,7 @@ export function useRunIndividualSync() {
     },
     onError: (error, syncType) => {
       const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
-      let errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      let errorMessage = extractErrorMessage(error)
 
       // Handle specific error cases
       if (errorMessage.includes('Gateway timeout')) {
