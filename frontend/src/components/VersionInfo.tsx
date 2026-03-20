@@ -33,7 +33,7 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
             href={parsed.url}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex items-center gap-1.5 transition-colors hover:text-gray-300 ${parsed.ahead ? 'text-gray-500' : 'text-gray-400'}`}
+            className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-300"
             aria-label={`View Kindred ${parsed.display} on GitHub`}
           >
             <span>Kindred {parsed.display}</span>
@@ -47,7 +47,7 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
               className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-300"
               aria-label={`View ${parsed.ahead.display} commits since ${parsed.display}`}
             >
-              {parsed.ahead.display}
+              <span>{parsed.ahead.display}</span>
               <GitHubIcon />
             </a>
           )}
