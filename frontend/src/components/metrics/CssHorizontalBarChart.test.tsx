@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import type { CssHorizontalBarChart as CssHorizontalBarChartType } from './CssHorizontalBarChart'
+
+import { CssHorizontalBarChart } from './CssHorizontalBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -12,26 +13,9 @@ const sampleData = [
 ]
 
 // ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('CssHorizontalBarChart exports', () => {
-  it('should export CssHorizontalBarChart as a named function', async () => {
-    const mod = await import('./CssHorizontalBarChart')
-    expect(typeof mod.CssHorizontalBarChart).toBe('function')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart rendering', () => {
-  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssHorizontalBarChart')
-    CssHorizontalBarChart = mod.CssHorizontalBarChart
-  })
-
   it('should render the title when provided', () => {
     render(<CssHorizontalBarChart data={sampleData} title="Test Chart" />)
     expect(screen.getByText('Test Chart')).toBeInTheDocument()
@@ -74,13 +58,6 @@ describe('CssHorizontalBarChart rendering', () => {
 // Bar sizing
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart bar sizing', () => {
-  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssHorizontalBarChart')
-    CssHorizontalBarChart = mod.CssHorizontalBarChart
-  })
-
   it('should scale bar widths relative to max value', () => {
     const data = [
       { name: 'Half', value: 50 },
@@ -107,13 +84,6 @@ describe('CssHorizontalBarChart bar sizing', () => {
 // Click handler
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart click', () => {
-  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssHorizontalBarChart')
-    CssHorizontalBarChart = mod.CssHorizontalBarChart
-  })
-
   it('should call onBarClick with drilldown filter when both onBarClick and breakdownType are set', () => {
     const onClick = vi.fn()
     const data = [{ name: 'Test City', value: 50, id: 'city-1' }]
@@ -159,13 +129,6 @@ describe('CssHorizontalBarChart click', () => {
 // X-axis ticks
 // ---------------------------------------------------------------------------
 describe('CssHorizontalBarChart x-axis', () => {
-  let CssHorizontalBarChart: typeof CssHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssHorizontalBarChart')
-    CssHorizontalBarChart = mod.CssHorizontalBarChart
-  })
-
   it('should render x-axis tick labels', () => {
     render(<CssHorizontalBarChart data={sampleData} title="Axis" />)
     // getNiceTicks(100) should include 0

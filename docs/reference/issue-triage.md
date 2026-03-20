@@ -1,70 +1,44 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-19 (13 open issues; #687, #625, #708, #703, #707 closed this session).
+Last updated: 2026-03-19 (5 open issues; bulk sprint closed #699, #705, #715, #716, #717, #718, #720, #721).
 
 ---
 
-## Group 22: Frontend Test Fixes
+## Remaining Open Issues
 
-**Priority: Medium** — CI-adjacent, from PR #714 code review
+### Frontend Tech Debt (Remnants of Group 23)
 
-| # | Title | Type |
-|---|-------|------|
-| 720 | Replace dynamic imports with static imports in chart test files | test |
-| 721 | Move dynamic import out of it.each body in retention chart tests | test |
+**Priority: Low** — No behavior change, cleanup/upstream tasks
 
-**Interplay:** #721 is a subset of #720 — fixing #720 may resolve #721 too. Both relate to vitest + dynamic `import()` patterns in metrics chart tests.
+| # | Title | Type | Status |
+|---|-------|------|--------|
+| 604 | Leverage recharts 3.8 typed generics, niceTicks, and coordinate hooks | enhancement | Needs design decisions |
+| 697 | Switch pocketbase-typegen back to upstream once --use-const is merged | chore | Blocked on upstream |
 
----
-
-## Group 23: Frontend Tech Debt (Query Keys & Hooks)
-
-**Priority: Low** — No behavior change, cleanup tasks
-
-| # | Title | Type |
-|---|-------|------|
-| 604 | Leverage recharts 3.8 typed generics, niceTicks, and coordinate hooks | enhancement |
-| 697 | Switch pocketbase-typegen back to upstream once --use-const is merged | chore |
-| 715 | Migrate hardcoded query keys in invalidateSyncData to centralized queryKeys | tech-debt |
-| 717 | Create createSyncMutation factory to unify sync hook boilerplate | tech-debt |
-
-**Interplay:** #697 blocked on upstream merge. #715 is a natural extension of merged PR #711. #717 is independent refactoring. #604 needs design decisions.
+**Interplay:** Independent. #697 blocked externally. #604 needs design decisions on which recharts 3.8 APIs to adopt.
 
 ---
 
-## Group 24: API Tech Debt (Metrics)
+### Metrics — Standalone Features (Remnant of Group 4)
 
-**Priority: Low** — Code quality, no behavior change
-
-| # | Title | Type |
-|---|-------|------|
-| 716 | Reduce duplication and inefficiency in velocity_service daily data building | tech-debt |
-| 718 | Deduplicate fetch_attendees_with_dates expand_person branches | tech-debt |
-
-**Interplay:** Independent items. #716 covers N+1 reconstruct_daily, snapshot daily duplication, and strptime redundancy. #718 is a standalone SQL method cleanup.
-
----
-
-## Group 4: Metrics — Standalone Features
-
-**Priority: Low** — Standalone feature enhancements, no blockers
+**Priority: Low** — Standalone feature enhancement
 
 | # | Title | Type |
 |---|-------|------|
 | 453 | Promote geo overrides to static canonical data | feature |
-| 699 | Flip cancellation graph to positive Y-axis | enhancement |
-
-**Interplay:** Independent items. #699 needs UX clarification on what "positive" means.
 
 ---
 
-## Needs User Input
+### API Tech Debt (New)
 
-| # | Title | Question |
-|---|-------|----------|
-| 705 | OIDC login hook silently drops save failures | Errors ARE logged; hook continues via `e.Next()`. By design or bug? |
-| 699 | Flip cancellation Y-axis | What does "positive" mean here? |
+**Priority: Low** — Follow-up refactoring
+
+| # | Title | Type |
+|---|-------|------|
+| 728 | Make reconstruct_daily a thin wrapper around reconstruct_daily_multi | tech-debt |
+
+**Context:** Spawned from shrink-it review of PR #726. Currently blocked on confidence that `reconstruct_daily_multi` is correct (test oracle pattern uses independent `reconstruct_daily` implementation for validation).
 
 ---
 
@@ -79,9 +53,9 @@ Last updated: 2026-03-19 (13 open issues; #687, #625, #708, #703, #707 closed th
 
 ## Suggested Attack Order
 
-1–21. ~~**Groups 1–21**~~ — All complete (see git history)
-22. **Group 22** (Test fixes) — Medium priority, quick wins
-23. **Groups 23, 24, 4** — Low priority, independent items, sprinkle in anytime
+1–24. ~~**Groups 1–24**~~ — All complete (see completed groups below)
+25. **#453, #604** — Low priority standalone items, sprinkle in anytime
+26. **#728** — Low priority, wait for `reconstruct_daily_multi` to prove itself
 
 ## Completed Groups (recent)
 
@@ -102,3 +76,8 @@ See git history for full completion log (Groups 1–16, scripts, Vite 8, etc.).
 | Group 21: Auth/frontend fixes (#703, #687) | #710, #711 | 2026-03-19 | FeedbackModal auth gate + queryKeys centralization |
 | is_active cleanup (#620 remnants) | #712 | 2026-03-19 | Test filters, SQL cleanup, docs updated |
 | Test pruning phase 3 | #714 | 2026-03-19 | Parametrize and consolidate medium/low findings |
+| Group 22: Frontend Test Fixes (#720, #721) | #725 | 2026-03-19 | Static imports in chart tests + sibling cleanup |
+| Group 23: Frontend Tech Debt (#715, #717) | #727 | 2026-03-19 | Query key centralization + sync mutation factory |
+| Group 24: API Tech Debt (#716, #718) | #726 | 2026-03-19 | Single-pass daily reconstruction + SQL dedup |
+| Standalone: #699 cancel velocity positive | #724 | 2026-03-19 | Weekly cancelled as positive values in delta chart |
+| Standalone: #705 OIDC hook save failures | — | 2026-03-19 | Closed as won't-fix (single admin, low risk) |

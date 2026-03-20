@@ -1,10 +1,8 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import type {
-  StackedSegment,
-  StackedBarDataItem,
-  CssStackedHorizontalBarChart as CssStackedHorizontalBarChartType,
-} from './CssStackedHorizontalBarChart'
+
+import type { StackedSegment, StackedBarDataItem } from './CssStackedHorizontalBarChart'
+import { CssStackedHorizontalBarChart } from './CssStackedHorizontalBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -21,26 +19,9 @@ const sampleData: StackedBarDataItem[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('CssStackedHorizontalBarChart exports', () => {
-  it('should export CssStackedHorizontalBarChart as a named function', async () => {
-    const mod = await import('./CssStackedHorizontalBarChart')
-    expect(typeof mod.CssStackedHorizontalBarChart).toBe('function')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart rendering', () => {
-  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssStackedHorizontalBarChart')
-    CssStackedHorizontalBarChart = mod.CssStackedHorizontalBarChart
-  })
-
   it('should render the title when provided', () => {
     render(
       <CssStackedHorizontalBarChart data={sampleData} segments={segments} title="Stacked Test" />
@@ -90,13 +71,6 @@ describe('CssStackedHorizontalBarChart rendering', () => {
 // Legend
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart legend', () => {
-  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssStackedHorizontalBarChart')
-    CssStackedHorizontalBarChart = mod.CssStackedHorizontalBarChart
-  })
-
   it('should render legend items for active segments only', () => {
     render(<CssStackedHorizontalBarChart data={sampleData} segments={segments} />)
     expect(screen.getByText('Enrolled')).toBeInTheDocument()
@@ -117,13 +91,6 @@ describe('CssStackedHorizontalBarChart legend', () => {
 // Click handler
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart click', () => {
-  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssStackedHorizontalBarChart')
-    CssStackedHorizontalBarChart = mod.CssStackedHorizontalBarChart
-  })
-
   it('should call onBarClick with the data item', () => {
     const onClick = vi.fn()
     const data: StackedBarDataItem[] = [
@@ -153,13 +120,6 @@ describe('CssStackedHorizontalBarChart click', () => {
 // Stacked segment rendering
 // ---------------------------------------------------------------------------
 describe('CssStackedHorizontalBarChart segments', () => {
-  let CssStackedHorizontalBarChart: typeof CssStackedHorizontalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssStackedHorizontalBarChart')
-    CssStackedHorizontalBarChart = mod.CssStackedHorizontalBarChart
-  })
-
   it('should render colored segment divs within each bar', () => {
     const data: StackedBarDataItem[] = [{ name: 'Mixed', total: 100, enrolled: 70, waitlisted: 30 }]
     const { container } = render(<CssStackedHorizontalBarChart data={data} segments={segments} />)

@@ -1,28 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import type { ChartLegend as ChartLegendType } from './ChartLegend'
 
-// ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('ChartLegend exports', () => {
-  it('should export ChartLegend as a named function', async () => {
-    const mod = await import('./ChartLegend')
-    expect(typeof mod.ChartLegend).toBe('function')
-  })
-})
+import { ChartLegend } from './ChartLegend'
 
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 describe('ChartLegend rendering', () => {
-  let ChartLegend: typeof ChartLegendType
-
-  beforeAll(async () => {
-    const mod = await import('./ChartLegend')
-    ChartLegend = mod.ChartLegend
-  })
-
   it('should render one swatch per item', () => {
     const items = [
       { label: 'Red', color: '#f00' },

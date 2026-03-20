@@ -4,13 +4,12 @@
  * Tests written FIRST before implementation (TDD).
  * Generic single-bar-per-column CSS chart.
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-import type {
-  CssVerticalBarItem,
-  CssVerticalBarChart as CssVerticalBarChartType,
-} from './CssVerticalBarChart'
+import type { CssVerticalBarItem } from './CssVerticalBarChart'
+import { CssVerticalBarChart } from './CssVerticalBarChart'
+import { CssVerticalRetentionBarChart } from './CssVerticalRetentionBarChart'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -24,32 +23,9 @@ const sampleData: CssVerticalBarItem[] = [
 const singleItem: CssVerticalBarItem[] = [{ name: 'Solo', value: 50 }]
 
 // ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('CssVerticalBarChart exports', () => {
-  it('should export CssVerticalBarChart as a named function', async () => {
-    const mod = await import('./CssVerticalBarChart')
-    expect(typeof mod.CssVerticalBarChart).toBe('function')
-  })
-
-  it('should export the CssVerticalBarItem type (compile-time check)', () => {
-    // If this file compiles, the type export works.
-    const item: CssVerticalBarItem = { name: 'Test', value: 42 }
-    expect(item.name).toBe('Test')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart rendering', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should render the title when provided', () => {
     render(<CssVerticalBarChart data={sampleData} title="My Chart" />)
     expect(screen.getByText('My Chart')).toBeInTheDocument()
@@ -71,13 +47,6 @@ describe('CssVerticalBarChart rendering', () => {
 // Empty state
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart empty state', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should show "No data available" when data is empty', () => {
     render(<CssVerticalBarChart data={[]} />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
@@ -88,13 +57,6 @@ describe('CssVerticalBarChart empty state', () => {
 // Bar rendering
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart bar rendering', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should render one column per data item', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} />)
     // Each column is a flex-col child of the bars area
@@ -130,13 +92,6 @@ describe('CssVerticalBarChart bar rendering', () => {
 // Y-axis
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart Y-axis', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should use fixed yAxisTicks when provided', () => {
     render(
       <CssVerticalBarChart
@@ -173,13 +128,6 @@ describe('CssVerticalBarChart Y-axis', () => {
 // X-axis labels
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart X-axis', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should render X-axis labels from data names', () => {
     render(<CssVerticalBarChart data={sampleData} />)
     expect(screen.getByText('Alpha')).toBeInTheDocument()
@@ -199,13 +147,6 @@ describe('CssVerticalBarChart X-axis', () => {
 // Labels above bars
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart label format', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should show value as default label above each bar', () => {
     // Use a value unlikely to appear in auto-computed Y-axis ticks
     const data: CssVerticalBarItem[] = [{ name: 'Item', value: 37 }]
@@ -224,13 +165,6 @@ describe('CssVerticalBarChart label format', () => {
 // Tooltip
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart tooltip', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should not render tooltip content initially', () => {
     render(
       <CssVerticalBarChart
@@ -246,13 +180,6 @@ describe('CssVerticalBarChart tooltip', () => {
 // Click handling
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart click handling', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should add cursor-pointer class when onBarClick is provided', () => {
     const onClick = vi.fn()
     const { container } = render(<CssVerticalBarChart data={singleItem} onBarClick={onClick} />)
@@ -279,13 +206,6 @@ describe('CssVerticalBarChart click handling', () => {
 // Column sizing integration
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart column sizing', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should apply maxWidth to columns in sparse mode (<=4 items)', () => {
     const sparseData: CssVerticalBarItem[] = [
       { name: 'A', value: 10 },
@@ -354,13 +274,6 @@ describe('CssVerticalBarChart column sizing', () => {
 // Bar width percent
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart barWidthPercent', () => {
-  let CssVerticalBarChart: typeof CssVerticalBarChartType
-
-  beforeAll(async () => {
-    const mod = await import('./CssVerticalBarChart')
-    CssVerticalBarChart = mod.CssVerticalBarChart
-  })
-
   it('should set bar width style when barWidthPercent is provided', () => {
     const { container } = render(<CssVerticalBarChart data={singleItem} barWidthPercent={60} />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
@@ -395,13 +308,7 @@ describe('CssVerticalBarChart extra fields', () => {
 // CssVerticalRetentionBarChart as thin wrapper
 // ---------------------------------------------------------------------------
 describe('CssVerticalRetentionBarChart wrapper', () => {
-  it('should still export CssVerticalRetentionBarChart', async () => {
-    const mod = await import('./CssVerticalRetentionBarChart')
-    expect(typeof mod.CssVerticalRetentionBarChart).toBe('function')
-  })
-
-  it('should render title for retention chart', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should render title for retention chart', () => {
     const retentionData = [
       { name: 'City A', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
       { name: 'City B', retentionRate: 0.45, baseCount: 80, returnedCount: 36 },
@@ -410,8 +317,7 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     expect(screen.getByText('Retention Test')).toBeInTheDocument()
   })
 
-  it('should render empty state for retention chart', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should render empty state for retention chart', () => {
     render(<CssVerticalRetentionBarChart data={[]} title="Empty Retention" />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
   })
@@ -420,16 +326,14 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     { label: 'high', rate: 0.8, expectedColor: 'rgb(0, 179, 119)' },
     { label: 'medium', rate: 0.5, expectedColor: 'rgb(245, 174, 10)' },
     { label: 'low', rate: 0.3, expectedColor: 'rgb(217, 38, 68)' },
-  ])('should apply correct color for $label retention rates', async ({ rate, expectedColor }) => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  ])('should apply correct color for $label retention rates', ({ rate, expectedColor }) => {
     const data = [{ name: 'Test', retentionRate: rate, baseCount: 100, returnedCount: rate * 100 }]
     const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     expect(bar.style.backgroundColor).toBe(expectedColor)
   })
 
-  it('should show percentage Y-axis labels', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should show percentage Y-axis labels', () => {
     // Use a rate that won't produce a label matching a Y-axis tick (e.g. 65%)
     const data = [{ name: 'A', retentionRate: 0.65, baseCount: 100, returnedCount: 65 }]
     render(<CssVerticalRetentionBarChart data={data} title="Y-Axis" />)
@@ -438,23 +342,20 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
 
-  it('should show rate label without counts by default', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should show rate label without counts by default', () => {
     // Use a rate that doesn't collide with Y-axis ticks (0/25/50/75/100)
     const data = [{ name: 'Test', retentionRate: 0.83, baseCount: 100, returnedCount: 83 }]
     render(<CssVerticalRetentionBarChart data={data} title="Labels" />)
     expect(screen.getByText('83%')).toBeInTheDocument()
   })
 
-  it('should show rate label with counts when showCounts is true', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should show rate label with counts when showCounts is true', () => {
     const data = [{ name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 }]
     render(<CssVerticalRetentionBarChart data={data} title="Labels" showCounts />)
     expect(screen.getByText('75% (75/100)')).toBeInTheDocument()
   })
 
-  it('should call onBarClick with the original RetentionRateBarItem', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should call onBarClick with the original RetentionRateBarItem', () => {
     const onClick = vi.fn()
     const data = [{ name: 'Click Me', retentionRate: 0.6, baseCount: 50, returnedCount: 30 }]
     const { container } = render(
@@ -471,8 +372,7 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     expect(arg.returnedCount).toBe(30)
   })
 
-  it('should pass barWidthPercent through to CssVerticalBarChart', async () => {
-    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+  it('should pass barWidthPercent through to CssVerticalBarChart', () => {
     const data = [
       { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
       { name: 'B', retentionRate: 0.7, baseCount: 80, returnedCount: 56 },
