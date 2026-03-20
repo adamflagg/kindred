@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
+import { extractErrorMessage } from './createSyncMutation'
 import type { ProcessRequestOptionsState } from '../components/admin/ProcessRequestOptions'
 
 interface ProcessRequestsResponse {
@@ -127,7 +128,7 @@ export function useProcessRequests() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
     onError: (error) => {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorMessage = extractErrorMessage(error)
 
       if (errorMessage.includes('already in progress')) {
         toast.error('Request processing is already running')

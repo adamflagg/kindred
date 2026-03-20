@@ -3,12 +3,21 @@ import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 
-function extractErrorMessage(error: unknown): string {
+export const SYNC_STARTED_TOAST_OPTIONS = {
+  icon: '\u2713',
+  duration: 3000,
+  className: 'toast-lodge toast-lodge-success',
+  style: { borderLeft: '4px solid hsl(160, 100%, 21%)' },
+} as const
+
+export function extractErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     const pbError = error as {
-      response?: { data?: { error?: string }; message?: string }
+      response?: { data?: { error?: string; message?: string }; message?: string }
     }
     if (pbError.response?.data?.error) return pbError.response.data.error
+    if (pbError.response?.data?.message) return pbError.response.data.message
+    if (pbError.response?.message) return pbError.response.message
     return error.message
   }
   return 'Unknown error'
@@ -62,12 +71,7 @@ export function createSyncMutation<TParams = void>(config: SyncMutationConfig<TP
               : config.displayName
           const status = (data as { status?: string } | null)?.status
           if (status === 'started') {
-            toast(`${name} started`, {
-              icon: '\u2713',
-              duration: 3000,
-              className: 'toast-lodge toast-lodge-success',
-              style: { borderLeft: '4px solid hsl(160, 100%, 21%)' },
-            })
+            toast(`${name} started`, SYNC_STARTED_TOAST_OPTIONS)
           } else {
             toast.success(`${name} complete`, { duration: 3000 })
           }
