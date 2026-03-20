@@ -72,7 +72,6 @@ export function useCamperEnrollment(
           person_id: numericId,
           session: '',
           enrollment_date: new Date().toISOString(),
-          is_active: false,
           status: 'none' as const,
           status_id: 1,
           year: currentYear,

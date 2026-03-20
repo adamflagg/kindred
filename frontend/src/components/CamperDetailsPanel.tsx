@@ -167,7 +167,6 @@ export default function CamperDetailsPanel({
         person_id: personId,
         session: '',
         enrollment_date: new Date().toISOString(),
-        is_active: false,
         status: 'none' as const,
         status_id: 1,
         year: currentYear,

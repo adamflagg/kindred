@@ -59,7 +59,6 @@ export const PersonsResponseSchema = PersonsRecordSchema.merge(BaseSystemFieldsS
 // Attendees record schema
 export const AttendeesRecordSchema = z.object({
   enrollment_date: IsoDateStringSchema.optional(),
-  is_active: z.boolean().optional(),
   person: RecordIdStringSchema.optional(),
   person_id: z.number(),
   session: RecordIdStringSchema,
