@@ -7,9 +7,9 @@ import (
 const testSessionName = "Session 2"
 
 // TestParseDate tests date parsing from various CampMinder formats
-func TestParseDate(t *testing.T) {
-	s := &SessionsSync{}
-
+// TestParseDate_Sessions verifies date parsing behavior expected by sessions sync.
+// This now delegates to the shared ParseDate function in date_utils.go.
+func TestParseDate_Sessions(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -68,7 +68,7 @@ func TestParseDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := s.parseDate(tt.input)
+			got := ParseDate(tt.input)
 			if got != tt.expected {
 				t.Errorf("parseDate(%q) = %q, want %q", tt.input, got, tt.expected)
 			}

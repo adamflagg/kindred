@@ -213,8 +213,6 @@ func TestAttendeesSync_CompositeKeyWithYear(t *testing.T) {
 func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 	// Simulate the date extraction logic from processEnrollment.
 	// We test the pattern, not the full method (which needs PocketBase app).
-	svc := &AttendeesSync{}
-
 	tests := []struct {
 		name           string
 		enrollment     map[string]interface{}
@@ -229,8 +227,8 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 				"LastUpdatedUTC": "2024-11-18T12:30:00Z",
 				"StatusID":       float64(2),
 			},
-			wantEffective:  "2024-11-18 00:00:00.000Z",
-			wantLastUpdate: "2024-11-18 12:30:00.000Z",
+			wantEffective:  "2024-11-18 00:00:00Z",
+			wantLastUpdate: "2024-11-18 12:30:00Z",
 		},
 		{
 			name: "cancelled record: EffectiveDate = original reg, PostDate = cancel date",
@@ -240,8 +238,8 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 				"LastUpdatedUTC": "2025-07-06T09:15:00Z",
 				"StatusID":       float64(32),
 			},
-			wantEffective:  "2024-11-18 00:00:00.000Z",
-			wantLastUpdate: "2025-07-06 09:15:00.000Z",
+			wantEffective:  "2024-11-18 00:00:00Z",
+			wantLastUpdate: "2025-07-06 09:15:00Z",
 		},
 		{
 			name: "missing EffectiveDate results in empty string",
@@ -251,7 +249,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 				"StatusID":       float64(2),
 			},
 			wantEffective:  "",
-			wantLastUpdate: "2024-11-18 12:30:00.000Z",
+			wantLastUpdate: "2024-11-18 12:30:00Z",
 		},
 		{
 			name: "missing LastUpdatedUTC results in empty string",
@@ -260,7 +258,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 				"EffectiveDate": "2024-11-18T00:00:00Z",
 				"StatusID":      float64(2),
 			},
-			wantEffective:  "2024-11-18 00:00:00.000Z",
+			wantEffective:  "2024-11-18 00:00:00Z",
 			wantLastUpdate: "",
 		},
 	}
@@ -270,12 +268,12 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 			// Extract EffectiveDate using the same pattern processEnrollment should use
 			var effectiveDate string
 			if ed, ok := tt.enrollment["EffectiveDate"].(string); ok {
-				effectiveDate = svc.parseDate(ed)
+				effectiveDate = ParseDate(ed)
 			}
 
 			var lastUpdatedUTC string
 			if lu, ok := tt.enrollment["LastUpdatedUTC"].(string); ok {
-				lastUpdatedUTC = svc.parseDate(lu)
+				lastUpdatedUTC = ParseDate(lu)
 			}
 
 			if effectiveDate != tt.wantEffective {
@@ -305,8 +303,6 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 // TestAttendeesSync_RecordDataContainsEffectiveDate verifies the full recordData map
 // built in processEnrollment would contain effective_date and last_updated_utc fields.
 func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
-	svc := &AttendeesSync{}
-
 	enrollment := map[string]interface{}{
 		"SessionID":      float64(1001),
 		"StatusID":       float64(32), // cancelled
@@ -318,15 +314,15 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 	// Simulate the record data construction from processEnrollment
 	var enrollmentDate string
 	if postDate, ok := enrollment["PostDate"].(string); ok {
-		enrollmentDate = svc.parseDate(postDate)
+		enrollmentDate = ParseDate(postDate)
 	}
 	var effectiveDate string
 	if ed, ok := enrollment["EffectiveDate"].(string); ok {
-		effectiveDate = svc.parseDate(ed)
+		effectiveDate = ParseDate(ed)
 	}
 	var lastUpdatedUTC string
 	if lu, ok := enrollment["LastUpdatedUTC"].(string); ok {
-		lastUpdatedUTC = svc.parseDate(lu)
+		lastUpdatedUTC = ParseDate(lu)
 	}
 
 	recordData := map[string]interface{}{
@@ -364,10 +360,12 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 }
 
 // TestAttendeesSync_ParseDate tests date parsing for CampMinder attendee date formats.
-// CampMinder sends dates in two formats: full ISO 8601 with timezone, and date-only.
+// Now delegates to the shared ParseDate function in date_utils.go.
+// Key behavioral changes from the old per-service parseDate:
+// - Output format is "2006-01-02 15:04:05Z" (no milliseconds) for consistency
+// - Timezone offsets are properly converted to UTC
+// - Unparseable strings return "" (not raw input) for idempotency (#739)
 func TestAttendeesSync_ParseDate(t *testing.T) {
-	s := &AttendeesSync{}
-
 	tests := []struct {
 		name     string
 		input    string
@@ -381,35 +379,35 @@ func TestAttendeesSync_ParseDate(t *testing.T) {
 		{
 			name:     "ISO 8601 with Z",
 			input:    "2025-12-03T10:30:00Z",
-			expected: "2025-12-03 10:30:00.000Z",
+			expected: "2025-12-03 10:30:00Z",
 		},
 		{
-			name:     "ISO 8601 with timezone offset",
+			name:     "ISO 8601 with timezone offset converts to UTC",
 			input:    "2025-12-03T10:30:00-08:00",
-			expected: "2025-12-03 10:30:00.000Z", // Note: parseDate preserves local time, Z is literal
+			expected: "2025-12-03 18:30:00Z",
 		},
 		{
 			name:     "date only",
 			input:    "2025-12-03",
-			expected: "2025-12-03 00:00:00.000Z",
+			expected: "2025-12-03 00:00:00Z",
 		},
 		{
 			name:     "date only different month",
 			input:    "2025-06-15",
-			expected: "2025-06-15 00:00:00.000Z",
+			expected: "2025-06-15 00:00:00Z",
 		},
 		{
-			name:     "unparseable returns as-is",
+			name:     "unparseable returns empty string",
 			input:    "not-a-date",
-			expected: "not-a-date",
+			expected: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := s.parseDate(tt.input)
+			got := ParseDate(tt.input)
 			if got != tt.expected {
-				t.Errorf("parseDate(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("ParseDate(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}

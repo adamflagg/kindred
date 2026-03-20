@@ -365,7 +365,7 @@ func (s *StaffSync) setBunkAssignments(
 // setDateField extracts a date string and parses it.
 func (s *StaffSync) setDateField(pbData, data map[string]interface{}, srcKey, dstKey string) {
 	if dateStr, ok := data[srcKey].(string); ok && dateStr != "" {
-		pbData[dstKey] = s.parseDate(dateStr)
+		pbData[dstKey] = ParseDate(dateStr)
 	}
 }
 
@@ -389,19 +389,4 @@ func (s *StaffSync) setStaffFloatField(pbData, data map[string]interface{}, srcK
 // the last-known assignments for non-active bunk staff who had bunks.
 func shouldPreserveBunkData(statusID int, existingBunkStaff bool, existingBunks []string) bool {
 	return statusID != 1 && existingBunkStaff && len(existingBunks) > 0
-}
-
-// parseDate converts CampMinder date format to PocketBase format
-func (s *StaffSync) parseDate(dateStr string) string {
-	if dateStr == "" {
-		return ""
-	}
-	// CampMinder dates are typically in ISO format or similar
-	// PocketBase accepts ISO 8601 format: "2024-01-15 00:00:00.000Z"
-	// Try to normalize the date
-	if len(dateStr) >= 10 {
-		// Take the date part (YYYY-MM-DD)
-		return dateStr[:10] + " 00:00:00.000Z"
-	}
-	return dateStr
 }

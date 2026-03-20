@@ -137,10 +137,10 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		startDate := ""
 		endDate := ""
 		if startStr, ok := sessionData["StartDate"].(string); ok && startStr != "" {
-			startDate = s.parseDate(startStr)
+			startDate = ParseDate(startStr)
 		}
 		if endStr, ok := sessionData["EndDate"].(string); ok && endStr != "" {
-			endDate = s.parseDate(endStr)
+			endDate = ParseDate(endStr)
 		}
 
 		// Store session info for later refinement
@@ -202,10 +202,10 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 			startDate := ""
 			endDate := ""
 			if startStr, ok := sessionData["StartDate"].(string); ok && startStr != "" {
-				startDate = s.parseDate(startStr)
+				startDate = ParseDate(startStr)
 			}
 			if endStr, ok := sessionData["EndDate"].(string); ok && endStr != "" {
-				endDate = s.parseDate(endStr)
+				endDate = ParseDate(endStr)
 			}
 			if startDate != "" && endDate != "" {
 				dateKey := fmt.Sprintf("%s|%s", startDate, endDate)
@@ -322,11 +322,11 @@ func (s *SessionsSync) transformSessionToPBWithParent(
 	startDate := ""
 	endDate := ""
 	if startStr, ok := data["StartDate"].(string); ok && startStr != "" {
-		startDate = s.parseDate(startStr)
+		startDate = ParseDate(startStr)
 		pbData["start_date"] = startDate
 	}
 	if endStr, ok := data["EndDate"].(string); ok && endStr != "" {
-		endDate = s.parseDate(endStr)
+		endDate = ParseDate(endStr)
 		pbData["end_date"] = endDate
 	}
 
@@ -392,31 +392,6 @@ func (s *SessionsSync) transformSessionToPBWithParent(
 	return pbData, nil
 }
 
-// parseDate handles various date formats from CampMinder and returns ISO format without milliseconds
-func (s *SessionsSync) parseDate(dateStr string) string {
-	// Try various date formats that CampMinder might return
-	formats := []string{
-		"2006-01-02T15:04:05Z",
-		"2006-01-02T15:04:05",
-		"2006-01-02",
-		time.RFC3339,
-		"1/2/2006",                 // US format M/D/YYYY
-		"01/02/2006",               // US format MM/DD/YYYY
-		"2006-01-02T15:04:05.000Z", // ISO with milliseconds
-	}
-
-	for _, format := range formats {
-		if t, err := time.Parse(format, dateStr); err == nil {
-			// Return in PocketBase expected format WITHOUT milliseconds
-			// This ensures consistent comparison with stored DateTime values
-			return t.UTC().Format("2006-01-02 15:04:05Z")
-		}
-	}
-
-	// If parsing fails, return empty string
-	return ""
-}
-
 // sessionOverlapInfo holds information needed for date overlap analysis
 type sessionOverlapInfo struct {
 	cmID        int
@@ -466,8 +441,8 @@ func (s *SessionsSync) reclassifyOverlappingSessions(
 		endDateStr, _ := sessionData["EndDate"].(string)
 
 		// Parse dates using the existing parseDate function
-		startDate := s.parseDate(startDateStr)
-		endDate := s.parseDate(endDateStr)
+		startDate := ParseDate(startDateStr)
+		endDate := ParseDate(endDateStr)
 
 		// Skip sessions without valid dates
 		if startDate == "" || endDate == "" {
