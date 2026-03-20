@@ -109,8 +109,7 @@ class Deduplicator:
                     )
                 else:
                     # All other fields: dedupe across source fields
-                    # Key: (requester_cm_id, requested_cm_id, request_type, year, session_cm_id)
-                    # Matches DB unique constraint exactly
+                    # Key excludes source_field to merge cross-field duplicates
                     key = (
                         request.requester_cm_id,
                         request.requested_cm_id,
