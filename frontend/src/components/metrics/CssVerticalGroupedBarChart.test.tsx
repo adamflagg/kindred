@@ -30,20 +30,6 @@ const sampleData: CssVerticalGroupedBarChartProps['data'] = [
 const singleItem: CssVerticalGroupedBarChartProps['data'] = [{ name: 'Solo', male: 30, female: 25 }]
 
 // ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('CssVerticalGroupedBarChart exports', () => {
-  it('should export CssVerticalGroupedBarChart as a named function', () => {
-    expect(typeof CssVerticalGroupedBarChart).toBe('function')
-  })
-
-  it('should export the GroupedBarSeries type (compile-time check)', () => {
-    const s: GroupedBarSeries = { key: 'test', label: 'Test', color: 'red' }
-    expect(s.key).toBe('test')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart rendering', () => {

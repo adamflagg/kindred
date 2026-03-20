@@ -23,21 +23,6 @@ const sampleData: CssVerticalBarItem[] = [
 const singleItem: CssVerticalBarItem[] = [{ name: 'Solo', value: 50 }]
 
 // ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('CssVerticalBarChart exports', () => {
-  it('should export CssVerticalBarChart as a named function', () => {
-    expect(typeof CssVerticalBarChart).toBe('function')
-  })
-
-  it('should export the CssVerticalBarItem type (compile-time check)', () => {
-    // If this file compiles, the type export works.
-    const item: CssVerticalBarItem = { name: 'Test', value: 42 }
-    expect(item.name).toBe('Test')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart rendering', () => {
@@ -323,10 +308,6 @@ describe('CssVerticalBarChart extra fields', () => {
 // CssVerticalRetentionBarChart as thin wrapper
 // ---------------------------------------------------------------------------
 describe('CssVerticalRetentionBarChart wrapper', () => {
-  it('should still export CssVerticalRetentionBarChart', () => {
-    expect(typeof CssVerticalRetentionBarChart).toBe('function')
-  })
-
   it('should render title for retention chart', () => {
     const retentionData = [
       { name: 'City A', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },

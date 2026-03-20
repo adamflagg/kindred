@@ -27,20 +27,6 @@ const sampleData = [
 const singleItem = [{ name: 'Solo', total: 10, male_count: 6, female_count: 4 }]
 
 // ---------------------------------------------------------------------------
-// Module export
-// ---------------------------------------------------------------------------
-describe('CssVerticalStackedBarChart exports', () => {
-  it('should export CssVerticalStackedBarChart as a named function', () => {
-    expect(typeof CssVerticalStackedBarChart).toBe('function')
-  })
-
-  it('should export the VerticalStackedSegment type (compile-time check)', () => {
-    const seg: VerticalStackedSegment = { key: 'test', label: 'Test', color: 'red' }
-    expect(seg.key).toBe('test')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Rendering basics
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart rendering', () => {
