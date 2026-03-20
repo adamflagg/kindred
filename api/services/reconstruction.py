@@ -204,11 +204,18 @@ def reconstruct_daily(
     Produces one DailyDataPoint per day from season_start through end_date,
     with running cumulative totals.
     """
-    from api.schemas.velocity import DailyDataPoint as DailyPoint
-
     # Build daily event buckets: date_str -> {new, cancelled, new_boys, ...}
     daily_events: dict[str, dict[str, int]] = {}
     sessions_with_gender: set[int] = set()
+
+    _empty_bucket: dict[str, int] = {
+        "new": 0,
+        "cancelled": 0,
+        "new_boys": 0,
+        "new_girls": 0,
+        "canc_boys": 0,
+        "canc_girls": 0,
+    }
 
     for att in attendees:
         session = get_session_from_expand(att)
@@ -238,15 +245,6 @@ def reconstruct_daily(
         if gender is not None:
             sessions_with_gender.add(sid)
 
-        _empty_bucket: dict[str, int] = {
-            "new": 0,
-            "cancelled": 0,
-            "new_boys": 0,
-            "new_girls": 0,
-            "canc_boys": 0,
-            "canc_girls": 0,
-        }
-
         # Enrollment event: bucket by effective_date
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
@@ -272,7 +270,18 @@ def reconstruct_daily(
 
     has_gender = len(sessions_with_gender) > 0
 
-    # Build daily points with running cumulatives
+    return _build_daily_points(daily_events, has_gender, season_start, end_date)
+
+
+def _build_daily_points(
+    daily_events: dict[str, dict[str, int]],
+    has_gender: bool,
+    season_start: date,
+    end_date: date,
+) -> list[DailyDataPoint]:
+    """Convert daily event buckets into a list of DailyDataPoint with running cumulatives."""
+    from api.schemas.velocity import DailyDataPoint as DailyPoint
+
     result: list[DailyPoint] = []
     cum_gross = 0
     cum_cancelled = 0
@@ -328,3 +337,141 @@ def reconstruct_daily(
         day_offset += 1
 
     return result
+
+
+def reconstruct_daily_multi(
+    *,
+    attendees: list[Any],
+    season_start: date,
+    sessions: dict[int, Any],
+    end_date: date,
+    ag_parent_map: dict[int, int] | None = None,
+    session_cm_id: int | None = None,
+    session_ids: list[int] | None = None,
+) -> tuple[list[DailyDataPoint], dict[int, list[DailyDataPoint]]]:
+    """Reconstruct daily enrollment data for combined and per-session in a single pass.
+
+    Instead of calling reconstruct_daily N+1 times (once for combined, once per
+    session), this function iterates attendees once and buckets events into both
+    combined and per-session event dicts simultaneously.
+
+    Args:
+        attendees: List of attendee records with expand.session and expand.person.
+        season_start: Start date of the enrollment season.
+        sessions: Dict of session cm_id -> session object.
+        end_date: Last date to include in output.
+        ag_parent_map: Optional AG child -> parent session mapping.
+        session_cm_id: Optional session filter for the combined output.
+        session_ids: Session IDs to include in per-session output. None = all.
+
+    Returns:
+        Tuple of (combined_daily, per_session_daily) where per_session_daily
+        maps session cm_id to its daily data points.
+    """
+    # Build daily event buckets: one for combined, one per session
+    combined_events: dict[str, dict[str, int]] = {}
+    per_session_events: dict[int, dict[str, dict[str, int]]] = {}
+    combined_has_gender = False
+    per_session_has_gender: dict[int, bool] = {}
+
+    _empty_bucket: dict[str, int] = {
+        "new": 0,
+        "cancelled": 0,
+        "new_boys": 0,
+        "new_girls": 0,
+        "canc_boys": 0,
+        "canc_girls": 0,
+    }
+
+    for att in attendees:
+        session = get_session_from_expand(att)
+        if not session:
+            continue
+        sid = int(session.cm_id)
+        status = getattr(att, "status_id", 0) or 0
+
+        if status not in ENROLLMENT_STATUSES:
+            continue
+
+        # AG parent mapping
+        if ag_parent_map and sid in ag_parent_map:
+            sid = ag_parent_map[sid]
+
+        # Skip if session not in our set
+        if sid not in sessions:
+            continue
+
+        # Gender
+        person = get_person_from_expand(att)
+        gender = getattr(person, "gender", None) if person else None
+
+        # Determine if this attendee passes the combined filter
+        include_in_combined = session_cm_id is None or sid == session_cm_id
+
+        # Determine if this attendee should go into a per-session bucket
+        include_in_per_session = session_ids is None or sid in session_ids
+
+        # Track gender availability
+        if gender is not None:
+            if include_in_combined:
+                combined_has_gender = True
+            if include_in_per_session:
+                per_session_has_gender[sid] = True
+
+        # Enrollment event
+        enroll_date_str = _get_enrollment_date(att)
+        if enroll_date_str:
+            enroll_day = parse_date_only(enroll_date_str)
+
+            if include_in_combined:
+                bucket = combined_events.setdefault(enroll_day, dict(_empty_bucket))
+                bucket["new"] += 1
+                if gender == "M":
+                    bucket["new_boys"] += 1
+                elif gender == "F":
+                    bucket["new_girls"] += 1
+
+            if include_in_per_session:
+                sid_events = per_session_events.setdefault(sid, {})
+                bucket = sid_events.setdefault(enroll_day, dict(_empty_bucket))
+                bucket["new"] += 1
+                if gender == "M":
+                    bucket["new_boys"] += 1
+                elif gender == "F":
+                    bucket["new_girls"] += 1
+
+        # Cancellation event
+        if status in CANCELLATION_STATUSES:
+            canc_date_raw = getattr(att, "enrollment_date", "") or ""
+            if canc_date_raw:
+                canc_day = parse_date_only(canc_date_raw)
+
+                if include_in_combined:
+                    bucket = combined_events.setdefault(canc_day, dict(_empty_bucket))
+                    bucket["cancelled"] += 1
+                    if gender == "M":
+                        bucket["canc_boys"] += 1
+                    elif gender == "F":
+                        bucket["canc_girls"] += 1
+
+                if include_in_per_session:
+                    sid_events = per_session_events.setdefault(sid, {})
+                    bucket = sid_events.setdefault(canc_day, dict(_empty_bucket))
+                    bucket["cancelled"] += 1
+                    if gender == "M":
+                        bucket["canc_boys"] += 1
+                    elif gender == "F":
+                        bucket["canc_girls"] += 1
+
+    # Build combined daily points
+    combined = _build_daily_points(combined_events, combined_has_gender, season_start, end_date)
+
+    # Build per-session daily points
+    per_session_daily: dict[int, list[DailyDataPoint]] = {}
+    for sid, events in per_session_events.items():
+        has_gender = per_session_has_gender.get(sid, False)
+        points = _build_daily_points(events, has_gender, season_start, end_date)
+        if points:
+            per_session_daily[sid] = points
+
+    return combined, per_session_daily

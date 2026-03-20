@@ -603,35 +603,26 @@ class MetricsSQLRepository:
         expand_person: bool = False,
     ) -> list[Any]:
         """Fetch attendees with enrollment dates for velocity reconstruction."""
+        person_cols = ""
+        person_join = ""
         if expand_person:
-            sql = """SELECT a.person_id, a.year, a.status, a.status_id,
-                            a.enrollment_date, a.effective_date,
-                            cs.cm_id AS _session_cm_id, cs.name AS _session_name,
-                            cs.session_type AS _session_type,
-                            cs.parent_id AS _session_parent_id,
-                            cs.start_date AS _session_start_date,
-                            cs.end_date AS _session_end_date,
+            person_cols = """,
                             p.cm_id AS _person_cm_id,
                             p.first_name AS _person_first_name,
                             p.last_name AS _person_last_name,
                             p.gender AS _person_gender,
-                            p.grade AS _person_grade
-                     FROM attendees a
-                     JOIN camp_sessions cs ON a.session = cs.id
-                     JOIN persons p ON a.person = p.id
-                     WHERE a.year = ?
-                       AND (a.enrollment_date IS NOT NULL AND a.enrollment_date != ''
-                            OR a.effective_date IS NOT NULL AND a.effective_date != '')"""
-        else:
-            sql = """SELECT a.person_id, a.year, a.status, a.status_id,
+                            p.grade AS _person_grade"""
+            person_join = "\n                     JOIN persons p ON a.person = p.id"
+
+        sql = f"""SELECT a.person_id, a.year, a.status, a.status_id,
                             a.enrollment_date, a.effective_date,
                             cs.cm_id AS _session_cm_id, cs.name AS _session_name,
                             cs.session_type AS _session_type,
                             cs.parent_id AS _session_parent_id,
                             cs.start_date AS _session_start_date,
-                            cs.end_date AS _session_end_date
+                            cs.end_date AS _session_end_date{person_cols}
                      FROM attendees a
-                     JOIN camp_sessions cs ON a.session = cs.id
+                     JOIN camp_sessions cs ON a.session = cs.id{person_join}
                      WHERE a.year = ?
                        AND (a.enrollment_date IS NOT NULL AND a.enrollment_date != ''
                             OR a.effective_date IS NOT NULL AND a.effective_date != '')"""
