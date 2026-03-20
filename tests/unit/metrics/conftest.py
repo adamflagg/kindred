@@ -50,7 +50,6 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             year INTEGER NOT NULL,
             status TEXT,
             status_id INTEGER,
-            is_active INTEGER,
             enrollment_date TEXT,
             effective_date TEXT,
             session TEXT,
