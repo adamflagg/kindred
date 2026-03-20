@@ -195,6 +195,14 @@ class GeoService:
         self.pb = pb
         self._person_id_cache: dict[tuple[int, tuple[str, ...], int | None, str | None], tuple[set[str], float]] = {}
 
+    @staticmethod
+    def _overrides_query(category: str, year: int, extra_filter: str = "") -> dict[str, str]:
+        """Build query_params for loading geo_overrides up to the given year."""
+        filt = f'category = "{category}" && year <= {year}'
+        if extra_filter:
+            filt += f" && {extra_filter}"
+        return {"filter": filt, "sort": "year"}
+
     async def _fetch_active_person_pb_ids(
         self,
         year: int,
@@ -382,7 +390,7 @@ class GeoService:
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
-            query_params={"filter": f'category = "{category}" && year <= {year}', "sort": "year"},
+            query_params=self._overrides_query(category, year),
         )
 
         if active_only:
@@ -513,10 +521,7 @@ class GeoService:
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
-            query_params={
-                "filter": f'category = "{category}" && year <= {year}',
-                "sort": "year",
-            },
+            query_params=self._overrides_query(category, year, 'override_type != "alias"'),
         )
 
         if active_only:
@@ -579,7 +584,11 @@ class GeoService:
                     camper_count=count,
                 )
 
-        # Add override canonical entries, tracking latest override type per canonical
+        # Add override canonical entries, tracking latest override type per canonical.
+        # Overrides sorted by year ASC so last-seen type = newest year's decision.
+        # After the loop, entries whose latest type is "rejected" or "merge" are
+        # removed — a rejection means the grouping was wrong, a merge means the
+        # canonical was redirected into another entry.
         latest_override_type: dict[str, str] = {}
         for ov in overrides:
             latest_override_type[ov.canonical_name] = ov.override_type
@@ -893,7 +902,7 @@ class GeoService:
             ),
             asyncio.to_thread(
                 self.pb.collection(GEO_OVERRIDES).get_full_list,
-                query_params={"filter": f'category = "{category}" && year <= {year}', "sort": "year"},
+                query_params=self._overrides_query(category, year),
             ),
         )
         mappings: list[Any] = mappings_raw
