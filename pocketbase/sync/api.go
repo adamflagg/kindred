@@ -825,6 +825,9 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 						defer processCancel()
 
 						processor := NewRequestProcessor(scheduler.app)
+						// Clear existing bunk_requests for reprocessed persons/fields
+						// to avoid unique constraint violations on re-upload
+						processor.ClearExisting = true
 
 						// Panic recovery — matches /process-requests endpoint pattern
 						defer func() {
@@ -834,7 +837,8 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 							}
 						}()
 
-						// Use defaults: all sessions, no force, no field filter
+						// No force (intake handles processed flags), but clear_existing
+						// is set above to avoid unique constraint collisions on re-upload
 						procErr := processor.Sync(processCtx)
 						orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), procErr)
 					}

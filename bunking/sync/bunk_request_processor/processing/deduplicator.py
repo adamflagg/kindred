@@ -73,8 +73,7 @@ class Deduplicator:
             # but still need deduplication across source fields
             if request.request_type == RequestType.AGE_PREFERENCE:
                 # Age preferences: group by (requester, None, type, "", year, session)
-                # Dedupes across ALL source fields - matches DB unique constraint which
-                # doesn't include source_field. Same requester's age preference from
+                # Dedupes across ALL source fields. Same requester's age preference from
                 # different sources (AI-parsed vs dropdown) is the same intent.
                 # Priority: STAFF > FAMILY during merge preserves metadata from both.
                 key = (
@@ -93,8 +92,10 @@ class Deduplicator:
                 # - socialize_with: Include source_field (preserves 1:1 age preference per child)
                 # - Other fields: Exclude source_field (dedupes across form vs notes)
                 #
-                # This matches the DB unique constraint which does NOT include source_field.
-                # Same requester→target from different fields = same intent = one request.
+                # Note: The DB unique constraint DOES include source_field. This in-batch
+                # dedup intentionally excludes it to merge cross-field duplicates (e.g.,
+                # same name in bunk_with AND bunking_notes) into one request before saving,
+                # picking the higher-priority source field.
                 if request.source_field == SourceField.SOCIALIZE_WITH:
                     # socialize_with is special - never dedupe across sources
                     # This field outputs known age preference requests from dropdown values
@@ -108,8 +109,7 @@ class Deduplicator:
                     )
                 else:
                     # All other fields: dedupe across source fields
-                    # Key: (requester_cm_id, requested_cm_id, request_type, year, session_cm_id)
-                    # Matches DB unique constraint exactly
+                    # Key excludes source_field to merge cross-field duplicates
                     key = (
                         request.requester_cm_id,
                         request.requested_cm_id,

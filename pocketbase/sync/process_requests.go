@@ -23,6 +23,7 @@ type RequestProcessor struct {
 	Session       string   // Session filter (e.g., "all", "1", "2a", "toc")
 	Limit         int      // Optional limit for testing (0 = no limit)
 	Force         bool     // Force reprocess — passed to Python API to clear processed flags
+	ClearExisting bool     // Clear existing bunk_requests before reprocessing (granular per-person/field)
 	SourceFields  []string // Optional source field filter (empty = all fields)
 	Debug         bool     // Enable debug logging in Python processor
 	Trace         bool     // Enable trace logging (very verbose) in Python processor
@@ -36,6 +37,7 @@ func NewRequestProcessor(app core.App) *RequestProcessor {
 		Session:         "all",                        // Default to all sessions
 		Limit:           0,                            // Default to no limit
 		Force:           false,                        // Default to no force
+		ClearExisting:   false,                        // Default to no clearing
 		SourceFields:    nil,                          // Default to all fields
 		Debug:           false,                        // Default to no debug
 		Trace:           false,                        // Default to no trace
@@ -59,6 +61,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		"session", p.Session,
 		"limit", p.Limit,
 		"force", p.Force,
+		"clearExisting", p.ClearExisting,
 		"sourceFields", p.SourceFields,
 		"debug", p.Debug,
 		"trace", p.Trace,
@@ -76,7 +79,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		Session:       p.Session,
 		SourceFields:  p.SourceFields,
 		Limit:         p.Limit,
-		ClearExisting: p.Force,
+		ClearExisting: p.ClearExisting || p.Force,
 		Force:         p.Force,
 		Debug:         p.Debug,
 		Trace:         p.Trace,
