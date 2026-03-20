@@ -73,17 +73,17 @@ export function createSyncMutation<TParams = void>(config: SyncMutationConfig<TP
           }
         }
       },
-      onError: (error: Error) => {
+      onError: (error: Error, variables: TParams) => {
         const name =
           typeof config.displayName === 'function'
-            ? config.displayName(undefined as TParams)
+            ? config.displayName(variables)
             : config.displayName
         let errorMessage = extractErrorMessage(error)
         if (config.alreadyRunningMessage && errorMessage.includes('already in progress')) {
           errorMessage = config.alreadyRunningMessage
         }
         toast.error(
-          errorMessage.includes(name) ? errorMessage : `Failed to run ${name}: ${errorMessage}`,
+          errorMessage.includes(name) ? errorMessage : `${name} failed: ${errorMessage}`,
           { duration: 5000 }
         )
       },
