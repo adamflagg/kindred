@@ -1169,7 +1169,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
 		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
 		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
-		o.RegisterService("process_requests", NewRequestProcessor(o.app))
+		yearProcessor := NewRequestProcessor(o.app)
+		yearProcessor.CollectTraces = true // Always collect traces for scheduled/automated runs
+		o.RegisterService("process_requests", yearProcessor)
 		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
 
 		// Camper history computation (no CampMinder client needed - reads from PocketBase)
@@ -1702,7 +1704,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
-	o.RegisterService("process_requests", NewRequestProcessor(o.app))
+	processor := NewRequestProcessor(o.app)
+	processor.CollectTraces = true // Always collect traces for scheduled/automated runs
+	o.RegisterService("process_requests", processor)
 	// Camper history computation (no CampMinder client needed - reads from PocketBase)
 	o.RegisterService("camper_history", NewCamperHistorySync(o.app))
 	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
