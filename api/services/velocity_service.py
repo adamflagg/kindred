@@ -1648,7 +1648,7 @@ class VelocityService:
         # Build combined weekly from per-session data
         combined_data = self._combine_weekly_curves(per_session_data)
 
-        # Build daily data via reconstruct_daily
+        # Build daily data via reconstruct_daily_multi
         season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
         is_current_season = season_start_date <= ctx.today <= season_end_date
