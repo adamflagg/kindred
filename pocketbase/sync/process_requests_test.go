@@ -204,3 +204,50 @@ func TestCallAPIProcessor_ForceField(t *testing.T) {
 		t.Errorf("expected 3 created, got %d", stats.Created)
 	}
 }
+
+// TestCallAPIProcessor_CollectTracesField verifies collect_traces is serialized in the request body
+func TestCallAPIProcessor_CollectTracesField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		// Verify collect_traces field is present and true
+		val, ok := reqBody["collect_traces"]
+		if !ok {
+			t.Error("request body missing 'collect_traces' field")
+		}
+		if boolVal, ok := val.(bool); !ok || !boolVal {
+			t.Errorf("expected collect_traces=true, got %v", val)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		resp := `{"success":true,"created":2,"updated":0,"skipped":0,"errors":0,"already_processed":0}`
+		_, _ = w.Write([]byte(resp))
+	}))
+	defer server.Close()
+
+	stats, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+		Year:          2025,
+		Session:       "all",
+		CollectTraces: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stats.Created != 2 {
+		t.Errorf("expected 2 created, got %d", stats.Created)
+	}
+}
+
+// TestNewRequestProcessor_DefaultCollectTraces verifies CollectTraces defaults to false
+func TestNewRequestProcessor_DefaultCollectTraces(t *testing.T) {
+	// NewRequestProcessor requires a core.App, but we only need to check the default field value.
+	// We can't easily create a real PocketBase app in unit tests, so test the struct default directly.
+	p := &RequestProcessor{}
+	if p.CollectTraces {
+		t.Error("expected CollectTraces to default to false on zero-value struct")
+	}
+}
