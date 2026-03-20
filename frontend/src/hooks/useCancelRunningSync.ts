@@ -1,36 +1,11 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { pb } from '../lib/pocketbase'
-import { queryKeys } from '../utils/queryKeys'
-import toast from 'react-hot-toast'
+import { createSyncMutation } from './createSyncMutation'
 
 /**
  * Hook for canceling the currently running sync.
  */
-export function useCancelRunningSync() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async () => {
-      return await pb.send('/api/custom/sync/running', { method: 'DELETE' })
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
-      toast.success('Sync canceled', { duration: 3000 })
-    },
-    onError: (error) => {
-      // Extract error message
-      let errorMessage = 'Unknown error'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      const pbError = error as {
-        response?: { data?: { error?: string }; message?: string }
-      }
-      if (pbError.response?.data?.error) {
-        errorMessage = pbError.response.data.error
-      }
-
-      toast.error(`Failed to cancel sync: ${errorMessage}`, { duration: 5000 })
-    },
-  })
-}
+export const useCancelRunningSync = createSyncMutation({
+  endpoint: '/api/custom/sync/running',
+  method: 'DELETE',
+  displayName: 'Cancel Sync',
+  onSuccessMessage: () => 'Sync canceled',
+})
