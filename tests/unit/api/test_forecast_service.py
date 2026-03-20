@@ -873,7 +873,6 @@ class TestForecastReconstructionLookback:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date=f"2025-10-{16 + (i % 10):02d}",
                 effective_date=f"2025-10-{16 + (i % 10):02d}",
                 expand={
@@ -937,7 +936,6 @@ class TestForecastReconstructionLookback:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date="2025-10-20",
                 effective_date="2025-10-20",
                 expand={
@@ -1008,7 +1006,6 @@ class TestForecastReconstructionLookback:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date="2025-10-15",
                 effective_date="2025-10-15",
                 expand={
@@ -1081,7 +1078,6 @@ class TestForecastWithDayOffset:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date=f"2025-10-{16 + (i % 10):02d}",
                 effective_date=f"2025-10-{16 + (i % 10):02d}",
                 expand={
@@ -1106,7 +1102,6 @@ class TestForecastWithDayOffset:
                 year=2025,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date=f"2024-10-{15 + (i % 10):02d}",
                 effective_date=f"2024-10-{15 + (i % 10):02d}",
                 expand={
@@ -1206,7 +1201,6 @@ class TestForecastGenderFields:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date="2025-10-20",
                 effective_date="2025-10-20",
                 expand={
@@ -1229,7 +1223,6 @@ class TestForecastGenderFields:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date="2025-10-20",
                 effective_date="2025-10-20",
                 expand={
@@ -1272,7 +1265,6 @@ class TestForecastGenderFields:
                 year=2026,
                 status="enrolled",
                 status_id=2,
-                is_active=1,
                 enrollment_date="2025-10-20",
                 effective_date="2025-10-20",
                 expand={
@@ -1320,7 +1312,6 @@ class TestForecastGenderFields:
                     year=2026,
                     status="enrolled",
                     status_id=2,
-                    is_active=1,
                     enrollment_date="2025-10-20",
                     effective_date="2025-10-20",
                     expand={
@@ -1343,7 +1334,6 @@ class TestForecastGenderFields:
                     year=2026,
                     status="enrolled",
                     status_id=2,
-                    is_active=1,
                     enrollment_date="2025-10-20",
                     effective_date="2025-10-20",
                     expand={
@@ -1366,7 +1356,6 @@ class TestForecastGenderFields:
                     year=2026,
                     status="enrolled",
                     status_id=2,
-                    is_active=1,
                     enrollment_date="2025-10-20",
                     effective_date="2025-10-20",
                     expand={
@@ -1389,7 +1378,6 @@ class TestForecastGenderFields:
                     year=2026,
                     status="enrolled",
                     status_id=2,
-                    is_active=1,
                     enrollment_date="2025-10-20",
                     effective_date="2025-10-20",
                     expand={
