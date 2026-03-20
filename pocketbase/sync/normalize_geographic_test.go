@@ -970,8 +970,8 @@ func personSessionMappingNeedsUpdate(existing, newMapping *testPersonSessionMapp
 
 // TestAllAttendeesForYearInNormalizedMappings verifies that all attendees for
 // a given year are included in normalized_mappings regardless of enrollment status.
-// Note: is_active is derived from status_id == 2, so it cannot be used as an
-// independent filter. Year is the only meaningful filter for normalization.
+// Note: status_id == 2 determines enrolled status (is_active was dropped from
+// the schema). Year is the only meaningful filter for normalization.
 // Normalization is cheap (local fuzzy matching) and benefits all attendees:
 // - Waitlisted campers get clean data for review and seamless enrollment transitions
 // - More data points improve canonical value selection via frequency-based clustering
