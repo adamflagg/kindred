@@ -145,7 +145,6 @@ def create_mock_attendee_with_date(
     att.status = status
     att.enrollment_date = enrollment_date
     att.effective_date = effective_date
-    att.is_active = 1 if status == "enrolled" else 0
     att.status_id = _STATUS_ID_MAP.get(status, 0)
     session = Mock()
     session.cm_id = session_cm_id
