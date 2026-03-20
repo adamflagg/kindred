@@ -1,64 +1,87 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-19 (5 open issues).
+Last updated: 2026-03-19 (13 open issues; #687, #625, #708, #703, #707 closed this session).
 
 ---
 
-## Group 4: Metrics — Standalone Feature
+## Group 22: Frontend Test Fixes
 
-**Priority: Low** — Standalone feature, no blockers
+**Priority: Medium** — CI-adjacent, from PR #714 code review
 
 | # | Title | Type |
 |---|-------|------|
-| 453 | Promote geo overrides to static canonical data | feature |
+| 720 | Replace dynamic imports with static imports in chart test files | test |
+| 721 | Move dynamic import out of it.each body in retention chart tests | test |
 
-**Interplay:** None. Standalone geo normalization enhancement.
+**Interplay:** #721 is a subset of #720 — fixing #720 may resolve #721 too. Both relate to vitest + dynamic `import()` patterns in metrics chart tests.
 
 ---
 
-## Group 15: Frontend Tech Debt (Remaining)
+## Group 23: Frontend Tech Debt (Query Keys & Hooks)
 
 **Priority: Low** — No behavior change, cleanup tasks
 
 | # | Title | Type |
 |---|-------|------|
 | 604 | Leverage recharts 3.8 typed generics, niceTicks, and coordinate hooks | enhancement |
-| 687 | Use centralized queryKeys in useSyncStatusAPI | tech-debt |
+| 697 | Switch pocketbase-typegen back to upstream once --use-const is merged | chore |
+| 715 | Migrate hardcoded query keys in invalidateSyncData to centralized queryKeys | tech-debt |
+| 717 | Create createSyncMutation factory to unify sync hook boilerplate | tech-debt |
 
-**Interplay:** #604: recharts 3.8 now installed — ready for implementation. #687: hardcoded `['sync-status-api']` queryKey in `useSyncStatusAPI.ts:105` should use centralized `queryKeys.syncStatus()`. Note cache key changes from `sync-status-api` to `sync-status` — verify no consumers depend on the old key.
+**Interplay:** #697 blocked on upstream merge. #715 is a natural extension of merged PR #711. #717 is independent refactoring. #604 needs design decisions.
 
 ---
 
-## Group 18: API Tech Debt (Remaining)
+## Group 24: API Tech Debt (Metrics)
 
 **Priority: Low** — Code quality, no behavior change
 
 | # | Title | Type |
 |---|-------|------|
-| 625 | Replace hand-rolled session/person expand extraction with `get_session_from_expand` utility | tech-debt |
+| 716 | Reduce duplication and inefficiency in velocity_service daily data building | tech-debt |
+| 718 | Deduplicate fetch_attendees_with_dates expand_person branches | tech-debt |
 
-**Interplay:** Utility adopted in drilldown_service (9 usages) but 10+ hand-rolled `expand.get("session")` patterns remain alongside it.
+**Interplay:** Independent items. #716 covers N+1 reconstruct_daily, snapshot daily duplication, and strptime redundancy. #718 is a standalone SQL method cleanup.
 
 ---
 
-## Group 20: Velocity Service Bug
+## Group 4: Metrics — Standalone Features
 
-**Priority: Medium** — Correctness bug in metrics calculation
+**Priority: Low** — Standalone feature enhancements, no blockers
 
 | # | Title | Type |
 |---|-------|------|
-| 708 | `_merge_hybrid_daily` applied globally instead of per-session in velocity service | bug |
+| 453 | Promote geo overrides to static canonical data | feature |
+| 699 | Flip cancellation graph to positive Y-axis | enhancement |
 
-**Interplay:** None. Standalone bug in velocity daily-merge logic.
+**Interplay:** Independent items. #699 needs UX clarification on what "positive" means.
+
+---
+
+## Needs User Input
+
+| # | Title | Question |
+|---|-------|----------|
+| 705 | OIDC login hook silently drops save failures | Errors ARE logged; hook continues via `e.Next()`. By design or bug? |
+| 699 | Flip cancellation Y-axis | What does "positive" mean here? |
+
+---
+
+## Blocked
+
+| # | Title | Blocked on |
+|---|-------|------------|
+| 697 | Switch pocketbase-typegen to upstream | External upstream merge of --use-const flag |
+| 719 | Remove is_active from validate_migrations.py | PB schema migration to drop attendees.is_active column |
 
 ---
 
 ## Suggested Attack Order
 
-1–20. ~~**Groups 1–19**~~ — All complete (see git history)
-21. **Group 20** — Medium priority velocity bug
-22. **Groups 4, 15, 18** — All low priority, independent items, sprinkle in anytime
+1–21. ~~**Groups 1–21**~~ — All complete (see git history)
+22. **Group 22** (Test fixes) — Medium priority, quick wins
+23. **Groups 23, 24, 4** — Low priority, independent items, sprinkle in anytime
 
 ## Completed Groups (recent)
 
@@ -74,3 +97,8 @@ See git history for full completion log (Groups 1–16, scripts, Vite 8, etc.).
 | Group 8: Frontend blocked tech debt (#377) | #692 | 2026-03-19 | erasableSyntaxOnly via as-const typegen |
 | Group 14: Metrics hook API (#567, #562) | #671+ | 2026-03-19 | Mutual exclusivity + hook migration evaluation |
 | Bulk close: #594, #620–#630, #640, #641, #653, #623 | Multiple | 2026-03-19 | 14 issues resolved across Groups 15, 18, and standalone |
+| Group 18: API Tech Debt (#625) | #704 | 2026-03-19 | Expand extraction standardized via shared utility |
+| Group 20: Metrics bugs (#708) | #713 | 2026-03-19 | Per-session daily merge + schema fix |
+| Group 21: Auth/frontend fixes (#703, #687) | #710, #711 | 2026-03-19 | FeedbackModal auth gate + queryKeys centralization |
+| is_active cleanup (#620 remnants) | #712 | 2026-03-19 | Test filters, SQL cleanup, docs updated |
+| Test pruning phase 3 | #714 | 2026-03-19 | Parametrize and consolidate medium/low findings |
