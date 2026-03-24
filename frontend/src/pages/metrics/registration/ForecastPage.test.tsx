@@ -32,6 +32,12 @@ vi.mock('../../../hooks/useApiWithAuth', () => ({
   }),
 }))
 
+// Mock useWeekOptions — returns empty array by default (no Today option) so the
+// useEffect inside ForecastPage doesn't change dayOffset during tests
+vi.mock('../../../hooks/useWeekOptions', () => ({
+  useWeekOptions: () => ({ data: [] }),
+}))
+
 function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },

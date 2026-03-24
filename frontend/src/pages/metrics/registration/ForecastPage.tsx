@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -12,7 +12,7 @@ import {
 } from '../../../utils/sessionUtils'
 import { shortenSessionName } from '../../../utils/sessionDisplay'
 import { buildForecastSections } from '../../../utils/forecastUtils'
-import type { SessionForecast } from '../../../types/forecast'
+import type { SessionForecast, WeekOption } from '../../../types/forecast'
 
 function pctColor(pct: number | null): string {
   if (pct === null) return ''
@@ -56,6 +56,33 @@ function fmtCurrency(value: number | null): string {
 function fmtPct(value: number | null): string {
   if (value === null) return '---'
   return `${value.toFixed(1)}%`
+}
+
+/**
+ * Resolve dayOffset when weekOptions change (e.g., year switch).
+ * Returns the new dayOffset to use, or undefined if no change needed.
+ */
+export function resolveWeekOffset(
+  currentDayOffset: number | null,
+  weekOptions: WeekOption[]
+): number | null | undefined {
+  if (weekOptions.length === 0) return undefined
+
+  const hasTodayOption = weekOptions.some((o) => o.is_today)
+
+  if (currentDayOffset === null && hasTodayOption) return undefined
+  if (currentDayOffset === null && !hasTodayOption) return weekOptions[0].day_offset
+
+  const match = weekOptions.find((o) => o.day_offset === currentDayOffset)
+  if (match) return undefined
+
+  const currentWeek = currentDayOffset !== null ? Math.floor(currentDayOffset / 7) + 1 : 1
+  const closest = weekOptions.reduce((prev, curr) =>
+    Math.abs(curr.week_number - currentWeek) < Math.abs(prev.week_number - currentWeek)
+      ? curr
+      : prev
+  )
+  return closest.day_offset
 }
 
 function ForecastTableHeader() {
@@ -152,6 +179,14 @@ export default function ForecastPage() {
   } = useMetricsSession()
   const [dayOffset, setDayOffset] = useState<number | null>(null)
   const { data: weekOptions = [] } = useWeekOptions(currentYear)
+
+  // Remap week selection when year changes (weekOptions update)
+  useEffect(() => {
+    const resolved = resolveWeekOffset(dayOffset, weekOptions)
+    if (resolved !== undefined) {
+      setDayOffset(resolved)
+    }
+  }, [weekOptions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,
