@@ -15,10 +15,10 @@ import (
 // the sync pipeline:
 // 1. Default value on RequestProcessor
 // 2. Orchestrator registration in daily/historical sync paths
-// 3. CSV upload path wiring
-// 4. Manual API endpoint parameter passthrough
-// 5. JSON serialization for the Python API call
-// 6. End-to-end propagation through callAPIProcessor
+// 3. Query parameter parsing for the manual API endpoint
+// 4. JSON serialization for the Python API call
+// 5. End-to-end propagation through callAPIProcessor
+// 6. Re-registration overwrites previous value
 // =============================================================================
 
 // TestNewRequestProcessor_CollectTracesDefaultsFalse verifies that a freshly
@@ -34,98 +34,45 @@ func TestNewRequestProcessor_CollectTracesDefaultsFalse(t *testing.T) {
 	}
 }
 
-// TestDailySyncRegistration_SetsCollectTracesTrue verifies that the daily sync
-// registration pattern (as used in InitializeSyncServices) creates a
-// RequestProcessor with CollectTraces=true and registers it as
-// "process_requests" in the orchestrator.
-//
-// Production code (orchestrator.go ~line 1707):
-//
-//	processor := NewRequestProcessor(o.app)
-//	processor.CollectTraces = true
-//	o.RegisterService("process_requests", processor)
-func TestDailySyncRegistration_SetsCollectTracesTrue(t *testing.T) {
-	o := NewOrchestrator(nil)
-
-	// Replicate the exact production wiring from InitializeSyncServices()
-	processor := NewRequestProcessor(nil)
-	processor.CollectTraces = true
-	o.RegisterService("process_requests", processor)
-
-	// Retrieve and verify via the orchestrator's service map
-	svc, exists := o.services["process_requests"]
-	if !exists {
-		t.Fatal("process_requests service not registered")
+// TestSyncRegistration_SetsCollectTracesTrue verifies that both the daily sync
+// and historical sync registration patterns create a RequestProcessor with
+// CollectTraces=true and register it as "process_requests" in the orchestrator.
+func TestSyncRegistration_SetsCollectTracesTrue(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{name: "daily sync registration"},
+		{name: "historical sync registration"},
 	}
 
-	rp, ok := svc.(*RequestProcessor)
-	if !ok {
-		t.Fatal("process_requests service is not a *RequestProcessor")
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := NewOrchestrator(nil)
 
-	if !rp.CollectTraces {
-		t.Error("expected CollectTraces=true on process_requests registered for daily sync")
-	}
-}
+			processor := NewRequestProcessor(nil)
+			processor.CollectTraces = true
+			o.RegisterService("process_requests", processor)
 
-// TestHistoricalSyncRegistration_SetsCollectTracesTrue verifies that the
-// historical sync path in RunSyncWithOptions creates a new RequestProcessor
-// with CollectTraces=true when re-registering services for a specific year.
-//
-// Production code (orchestrator.go ~line 1172):
-//
-//	yearProcessor := NewRequestProcessor(o.app)
-//	yearProcessor.CollectTraces = true
-//	o.RegisterService("process_requests", yearProcessor)
-func TestHistoricalSyncRegistration_SetsCollectTracesTrue(t *testing.T) {
-	o := NewOrchestrator(nil)
+			svc, exists := o.services["process_requests"]
+			if !exists {
+				t.Fatal("process_requests service not registered")
+			}
 
-	// Replicate the exact production wiring from RunSyncWithOptions()
-	yearProcessor := NewRequestProcessor(nil)
-	yearProcessor.CollectTraces = true
-	o.RegisterService("process_requests", yearProcessor)
+			rp, ok := svc.(*RequestProcessor)
+			if !ok {
+				t.Fatal("process_requests service is not a *RequestProcessor")
+			}
 
-	svc, exists := o.services["process_requests"]
-	if !exists {
-		t.Fatal("process_requests service not registered")
-	}
-
-	rp, ok := svc.(*RequestProcessor)
-	if !ok {
-		t.Fatal("process_requests service is not a *RequestProcessor")
-	}
-
-	if !rp.CollectTraces {
-		t.Error("expected CollectTraces=true on process_requests registered for historical sync")
-	}
-}
-
-// TestCSVUploadPath_SetsCollectTracesTrue verifies that the CSV upload wiring
-// pattern creates a processor with both ClearExisting=true and
-// CollectTraces=true, matching the production code in api.go.
-//
-// Production code (api.go ~line 827-832):
-//
-//	processor := NewRequestProcessor(scheduler.app)
-//	processor.ClearExisting = true
-//	processor.CollectTraces = true
-func TestCSVUploadPath_SetsCollectTracesTrue(t *testing.T) {
-	processor := NewRequestProcessor(nil)
-	processor.ClearExisting = true
-	processor.CollectTraces = true
-
-	if !processor.CollectTraces {
-		t.Error("expected CollectTraces=true on processor configured for CSV upload")
-	}
-
-	if !processor.ClearExisting {
-		t.Error("expected ClearExisting=true on processor configured for CSV upload")
+			if !rp.CollectTraces {
+				t.Errorf("expected CollectTraces=true on process_requests registered for %s", tt.name)
+			}
+		})
 	}
 }
 
 // TestManualProcessRequests_CollectTracesFromParam verifies that the manual
-// /process-requests endpoint wiring correctly passes through the
-// collect_traces query parameter to the RequestProcessor.
+// /process-requests endpoint correctly parses the collect_traces query
+// parameter from an HTTP request URL.
 //
 // Production code (api.go ~line 204-215):
 //
@@ -133,27 +80,30 @@ func TestCSVUploadPath_SetsCollectTracesTrue(t *testing.T) {
 //	collectTraces := collectTracesParam == "true" || collectTracesParam == "1"
 //	processor.CollectTraces = collectTraces
 func TestManualProcessRequests_CollectTracesFromParam(t *testing.T) {
-	t.Run("collect_traces=true sets CollectTraces on processor", func(t *testing.T) {
-		processor := NewRequestProcessor(nil)
-		// Simulate parsing "true" from query parameter
-		collectTraces := true
-		processor.CollectTraces = collectTraces
+	tests := []struct {
+		name  string
+		query string
+		want  bool
+	}{
+		{name: "collect_traces=true", query: "?collect_traces=true", want: true},
+		{name: "collect_traces=1", query: "?collect_traces=1", want: true},
+		{name: "collect_traces=false", query: "?collect_traces=false", want: false},
+		{name: "collect_traces absent", query: "", want: false},
+		{name: "collect_traces empty", query: "?collect_traces=", want: false},
+	}
 
-		if !processor.CollectTraces {
-			t.Error("expected CollectTraces=true when collect_traces param is true")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/custom/sync/process-requests"+tt.query, http.NoBody)
 
-	t.Run("collect_traces absent leaves CollectTraces=false", func(t *testing.T) {
-		processor := NewRequestProcessor(nil)
-		// Simulate absent/empty query parameter
-		collectTraces := false
-		processor.CollectTraces = collectTraces
+			collectTracesParam := req.URL.Query().Get("collect_traces")
+			collectTraces := collectTracesParam == "true" || collectTracesParam == "1"
 
-		if processor.CollectTraces {
-			t.Error("expected CollectTraces=false when collect_traces param is absent")
-		}
-	})
+			if collectTraces != tt.want {
+				t.Errorf("expected collect_traces=%v for query %q, got %v", tt.want, tt.query, collectTraces)
+			}
+		})
+	}
 }
 
 // TestCollectTraces_JSONSerialization verifies that the collect_traces field
@@ -217,91 +167,52 @@ func TestCollectTraces_JSONSerialization(t *testing.T) {
 	})
 }
 
-// TestCollectTraces_EndToEndViaCallAPIProcessor verifies that CollectTraces=true
-// on the RequestProcessor results in collect_traces=true arriving at the Python
-// API endpoint. Uses a test HTTP server to capture the actual request body.
-func TestCollectTraces_EndToEndViaCallAPIProcessor(t *testing.T) {
-	t.Run("collect_traces=true reaches the API", func(t *testing.T) {
-		var receivedCollectTraces bool
-		var fieldPresent bool
+// TestCollectTraces_EndToEndFalseViaCallAPIProcessor verifies that
+// CollectTraces=false on the RequestProcessor results in collect_traces=false
+// arriving at the Python API endpoint. Uses a test HTTP server to capture the
+// actual request body.
+//
+// Note: The collect_traces=true case is covered by
+// TestCallAPIProcessor_CollectTracesField in process_requests_test.go.
+func TestCollectTraces_EndToEndFalseViaCallAPIProcessor(t *testing.T) {
+	var receivedCollectTraces bool
+	var fieldPresent bool
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var body map[string]interface{}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Errorf("failed to decode request body: %v", err)
-				w.WriteHeader(500)
-				return
-			}
-
-			val, ok := body["collect_traces"]
-			fieldPresent = ok
-			if ok {
-				receivedCollectTraces, _ = val.(bool)
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"success":true,"created":0,"updated":0,"skipped":0,"errors":0,"already_processed":0}`))
-		}))
-		defer server.Close()
-
-		_, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
-			Year:          2025,
-			Session:       "all",
-			CollectTraces: true,
-		})
-		if err != nil {
-			t.Fatalf("callAPIProcessor failed: %v", err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("failed to decode request body: %v", err)
+			w.WriteHeader(500)
+			return
 		}
 
-		if !fieldPresent {
-			t.Fatal("collect_traces field not present in request to Python API")
+		val, ok := body["collect_traces"]
+		fieldPresent = ok
+		if ok {
+			receivedCollectTraces, _ = val.(bool)
 		}
 
-		if !receivedCollectTraces {
-			t.Error("expected collect_traces=true to reach the Python API")
-		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"created":0,"updated":0,"skipped":0,"errors":0,"already_processed":0}`))
+	}))
+	defer server.Close()
+
+	_, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+		Year:          2025,
+		Session:       "all",
+		CollectTraces: false,
 	})
+	if err != nil {
+		t.Fatalf("callAPIProcessor failed: %v", err)
+	}
 
-	t.Run("collect_traces=false reaches the API", func(t *testing.T) {
-		var receivedCollectTraces bool
-		var fieldPresent bool
+	if !fieldPresent {
+		t.Fatal("collect_traces field not present in request to Python API")
+	}
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var body map[string]interface{}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Errorf("failed to decode request body: %v", err)
-				w.WriteHeader(500)
-				return
-			}
-
-			val, ok := body["collect_traces"]
-			fieldPresent = ok
-			if ok {
-				receivedCollectTraces, _ = val.(bool)
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"success":true,"created":0,"updated":0,"skipped":0,"errors":0,"already_processed":0}`))
-		}))
-		defer server.Close()
-
-		_, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
-			Year:          2025,
-			Session:       "all",
-			CollectTraces: false,
-		})
-		if err != nil {
-			t.Fatalf("callAPIProcessor failed: %v", err)
-		}
-
-		if !fieldPresent {
-			t.Fatal("collect_traces field not present in request to Python API")
-		}
-
-		if receivedCollectTraces {
-			t.Error("expected collect_traces=false to reach the Python API")
-		}
-	})
+	if receivedCollectTraces {
+		t.Error("expected collect_traces=false to reach the Python API")
+	}
 }
 
 // TestCollectTraces_OverwriteOnReRegistration verifies that when the
@@ -334,31 +245,5 @@ func TestCollectTraces_OverwriteOnReRegistration(t *testing.T) {
 	// Confirm it's a new instance, not a mutation of the old one
 	if svc1 == svc2 {
 		t.Error("expected different processor instances after re-registration")
-	}
-}
-
-// TestCollectTraces_ProcessorToRequestMapping verifies that the field mapping
-// from RequestProcessor.CollectTraces to apiProcessorRequest.CollectTraces
-// works correctly. This mirrors the mapping in RequestProcessor.Sync():
-//
-//	CollectTraces: p.CollectTraces,
-func TestCollectTraces_ProcessorToRequestMapping(t *testing.T) {
-	processor := NewRequestProcessor(nil)
-
-	// Default mapping
-	req := apiProcessorRequest{
-		CollectTraces: processor.CollectTraces,
-	}
-	if req.CollectTraces {
-		t.Error("default processor should map to CollectTraces=false in request")
-	}
-
-	// Enabled mapping
-	processor.CollectTraces = true
-	req = apiProcessorRequest{
-		CollectTraces: processor.CollectTraces,
-	}
-	if !req.CollectTraces {
-		t.Error("enabled processor should map to CollectTraces=true in request")
 	}
 }
