@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveWeekOffset } from '../pages/metrics/registration/ForecastPage'
+import { resolveWeekOffset } from './resolveWeekOffset'
 import type { WeekOption } from '../types/forecast'
 
 function makeOption(week: number, isToday = false): WeekOption {
@@ -23,7 +23,7 @@ describe('resolveWeekOffset', () => {
 
   it('returns first option offset when on Today but past season (no Today)', () => {
     const options = [makeOption(41), makeOption(40), makeOption(39)]
-    expect(resolveWeekOffset(null, options)).toBe(options[0].day_offset)
+    expect(resolveWeekOffset(null, options)).toBe(options[0]!.day_offset)
   })
 
   it('returns undefined when dayOffset matches an existing option', () => {
@@ -36,12 +36,12 @@ describe('resolveWeekOffset', () => {
     // Past season with weeks 41,40,39 — user had dayOffset=154 (Today exact for week 22)
     const options = [makeOption(41), makeOption(40), makeOption(39)]
     // dayOffset 154 → week ~22 → closest to 39
-    expect(resolveWeekOffset(154, options)).toBe(options[2].day_offset)
+    expect(resolveWeekOffset(154, options)).toBe(options[2]!.day_offset)
   })
 
   it('returns closest week for mid-range mismatch', () => {
     const options = [makeOption(41), makeOption(20), makeOption(10), makeOption(1)]
     // dayOffset 132 → week ~19 → closest to 20
-    expect(resolveWeekOffset(132, options)).toBe(options[1].day_offset)
+    expect(resolveWeekOffset(132, options)).toBe(options[1]!.day_offset)
   })
 })

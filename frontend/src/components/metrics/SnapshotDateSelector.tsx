@@ -27,7 +27,7 @@ export function SnapshotDateSelector({
     dayOffset == null
       ? todayOption
         ? TODAY_VALUE
-        : historicalOptions.length > 0
+        : historicalOptions[0]
           ? String(historicalOptions[0].day_offset)
           : TODAY_VALUE
       : String(dayOffset)

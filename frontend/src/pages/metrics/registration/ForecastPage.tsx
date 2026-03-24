@@ -12,7 +12,8 @@ import {
 } from '../../../utils/sessionUtils'
 import { shortenSessionName } from '../../../utils/sessionDisplay'
 import { buildForecastSections } from '../../../utils/forecastUtils'
-import type { SessionForecast, WeekOption } from '../../../types/forecast'
+import { resolveWeekOffset } from '../../../utils/resolveWeekOffset'
+import type { SessionForecast } from '../../../types/forecast'
 
 function pctColor(pct: number | null): string {
   if (pct === null) return ''
@@ -56,33 +57,6 @@ function fmtCurrency(value: number | null): string {
 function fmtPct(value: number | null): string {
   if (value === null) return '---'
   return `${value.toFixed(1)}%`
-}
-
-/**
- * Resolve dayOffset when weekOptions change (e.g., year switch).
- * Returns the new dayOffset to use, or undefined if no change needed.
- */
-export function resolveWeekOffset(
-  currentDayOffset: number | null,
-  weekOptions: WeekOption[]
-): number | null | undefined {
-  if (weekOptions.length === 0) return undefined
-
-  const hasTodayOption = weekOptions.some((o) => o.is_today)
-
-  if (currentDayOffset === null && hasTodayOption) return undefined
-  if (currentDayOffset === null && !hasTodayOption) return weekOptions[0].day_offset
-
-  const match = weekOptions.find((o) => o.day_offset === currentDayOffset)
-  if (match) return undefined
-
-  const currentWeek = currentDayOffset !== null ? Math.floor(currentDayOffset / 7) + 1 : 1
-  const closest = weekOptions.reduce((prev, curr) =>
-    Math.abs(curr.week_number - currentWeek) < Math.abs(prev.week_number - currentWeek)
-      ? curr
-      : prev
-  )
-  return closest.day_offset
 }
 
 function ForecastTableHeader() {
