@@ -90,7 +90,7 @@
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-react-refresh": "^0.5.2",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.1",
     "pocketbase-typegen": "github:adamflagg/pocketbase-typegen#kindred",
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.7.2",
