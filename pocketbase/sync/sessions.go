@@ -440,7 +440,7 @@ func (s *SessionsSync) reclassifyOverlappingSessions(
 		startDateStr, _ := sessionData["StartDate"].(string)
 		endDateStr, _ := sessionData["EndDate"].(string)
 
-		// Parse dates using the existing parseDate function
+		// Parse dates
 		startDate := ParseDate(startDateStr)
 		endDate := ParseDate(endDateStr)
 

@@ -44,10 +44,10 @@ func ParseDate(dateStr string) string {
 	return ""
 }
 
-// ParseDateValue is a convenience wrapper that accepts interface{} instead of
+// ParseDateValue is a convenience wrapper that accepts any instead of
 // string. It handles nil and non-string values gracefully. This replaces the
 // financial_transactions.go parseDate which accepted interface{}.
-func ParseDateValue(value interface{}) string {
+func ParseDateValue(value any) string {
 	if value == nil {
 		return ""
 	}

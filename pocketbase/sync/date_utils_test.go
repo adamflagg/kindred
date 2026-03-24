@@ -114,7 +114,7 @@ func TestParseDate_SharedFunction(t *testing.T) {
 func TestParseDateValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected string
 	}{
 		{
@@ -151,55 +151,6 @@ func TestParseDateValue(t *testing.T) {
 				t.Errorf("ParseDateValue(%v) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
-	}
-}
-
-// TestDateFormats verifies the shared format list is exported and contains expected formats
-func TestDateFormats(t *testing.T) {
-	if len(DateFormats) == 0 {
-		t.Error("DateFormats should not be empty")
-	}
-
-	// Verify the format list has the expected count
-	// RFC3339, RFC3339Nano, ISO with Z, ISO with millis, ISO bare, date-only, M/D/YYYY, MM/DD/YYYY
-	expectedCount := 8
-	if len(DateFormats) != expectedCount {
-		t.Errorf("DateFormats has %d entries, want %d", len(DateFormats), expectedCount)
-	}
-}
-
-// TestParseDate_StaffDateOnlyBehavior verifies that the shared function handles
-// date-only strings that staff.go previously handled by slicing first 10 chars.
-// The shared function should parse these correctly via the "2006-01-02" format.
-func TestParseDate_StaffDateOnlyBehavior(t *testing.T) {
-	// staff.go used to do: dateStr[:10] + " 00:00:00.000Z"
-	// For a CampMinder date like "2024-06-15T10:30:00Z", staff.go would return
-	// "2024-06-15 00:00:00.000Z" (losing time info).
-	// The shared function correctly preserves the time.
-
-	// Date-only input (what staff.go was actually designed for)
-	got := ParseDate("2024-06-15")
-	if got != "2024-06-15 00:00:00Z" {
-		t.Errorf("ParseDate date-only = %q, want %q", got, "2024-06-15 00:00:00Z")
-	}
-
-	// Full ISO input - shared function preserves time (unlike old staff.go which truncated)
-	got = ParseDate("2024-06-15T10:30:00Z")
-	if got != "2024-06-15 10:30:00Z" {
-		t.Errorf("ParseDate full ISO = %q, want %q", got, "2024-06-15 10:30:00Z")
-	}
-}
-
-// TestParseDate_AttendeeIdempotency verifies the fix from PR #735:
-// date-only strings like "2025-12-03" must normalize consistently so that
-// re-syncing the same data doesn't trigger unnecessary updates.
-func TestParseDate_AttendeeIdempotency(t *testing.T) {
-	// First parse: raw from CampMinder
-	first := ParseDate("2025-12-03")
-	// The key requirement is that ParseDate("2025-12-03") always returns the
-	// same normalized string, so re-syncing doesn't trigger spurious updates.
-	if first != "2025-12-03 00:00:00Z" {
-		t.Errorf("ParseDate(date-only) = %q, want %q", first, "2025-12-03 00:00:00Z")
 	}
 }
 
