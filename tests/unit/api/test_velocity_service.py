@@ -23,8 +23,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
+from api.services.camp_calendar import SEASON_WEEKS
 from api.services.velocity_service import (
-    SEASON_WEEKS,
     SeasonContext,
     VelocityService,
     _compute_season_start,

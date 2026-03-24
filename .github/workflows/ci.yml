@@ -225,7 +225,14 @@ jobs:
       run: uv run mypy . --explicit-package-bases
 
     - name: Security audit (pip-audit)
-      run: uv run pip-audit --desc
+      run: |
+        ARGS="--desc"
+        while IFS= read -r line; do
+          id="${line%%#*}"
+          id="${id// /}"
+          [ -n "$id" ] && ARGS="$ARGS --ignore-vuln $id"
+        done < .pip-audit-ignore
+        uv run pip-audit $ARGS
 
     - name: JSON config validation
       run: |

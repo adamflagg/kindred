@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -12,6 +12,7 @@ import {
 } from '../../../utils/sessionUtils'
 import { shortenSessionName } from '../../../utils/sessionDisplay'
 import { buildForecastSections } from '../../../utils/forecastUtils'
+import { resolveWeekOffset } from '../../../utils/resolveWeekOffset'
 import type { SessionForecast } from '../../../types/forecast'
 
 function pctColor(pct: number | null): string {
@@ -143,7 +144,7 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 }
 
 export default function ForecastPage() {
-  const { currentYear } = useCurrentYear()
+  const { currentYear, availableYears } = useCurrentYear()
   const {
     selectedSessionCmId,
     sessionTypesParam,
@@ -152,6 +153,24 @@ export default function ForecastPage() {
   } = useMetricsSession()
   const [dayOffset, setDayOffset] = useState<number | null>(null)
   const { data: weekOptions = [] } = useWeekOptions(currentYear)
+
+  // Always know "today's week" from the latest (current) season — React Query
+  // deduplicates when currentYear === latestYear, so no extra fetch in that case
+  const latestYear = Math.max(0, ...availableYears)
+  const { data: latestYearOptions = [] } = useWeekOptions(latestYear)
+  const todayWeek = latestYearOptions.find((o) => o.is_today)?.week_number ?? null
+
+  // Remap week selection when year changes or todayWeek becomes known
+  useEffect(() => {
+    // For past seasons, wait until todayWeek is loaded before remapping
+    const isPastSeason = !weekOptions.some((o) => o.is_today)
+    if (isPastSeason && todayWeek === null) return
+
+    const resolved = resolveWeekOffset(dayOffset, weekOptions, todayWeek)
+    if (resolved !== undefined) {
+      setDayOffset(resolved)
+    }
+  }, [weekOptions, todayWeek]) // eslint-disable-line react-hooks/exhaustive-deps -- dayOffset excluded to avoid feedback loop
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,

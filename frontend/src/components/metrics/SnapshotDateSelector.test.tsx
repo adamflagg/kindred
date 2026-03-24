@@ -71,4 +71,34 @@ describe('SnapshotDateSelector', () => {
     const select = screen.getByRole<HTMLSelectElement>('combobox')
     expect(select.value).toBe('147')
   })
+
+  it('defaults to first historical option when no today option and dayOffset is null', () => {
+    const pastSeasonOptions: WeekOption[] = [
+      weekOption({
+        week_number: 41,
+        day_offset: 286,
+        label: 'Week 41 · Aug 13–19',
+        is_today: false,
+      }),
+      weekOption({
+        week_number: 40,
+        day_offset: 279,
+        label: 'Week 40 · Aug 6–12',
+        is_today: false,
+      }),
+    ]
+
+    const onOffsetChange = vi.fn()
+    render(
+      <SnapshotDateSelector
+        dayOffset={null}
+        onOffsetChange={onOffsetChange}
+        weekOptions={pastSeasonOptions}
+      />
+    )
+
+    const select = screen.getByRole<HTMLSelectElement>('combobox')
+    // Should show first historical option, not a broken __today__ value
+    expect(select.value).toBe('286')
+  })
 })
