@@ -156,7 +156,7 @@ export default function ForecastPage() {
 
   // Always know "today's week" from the latest (current) season — React Query
   // deduplicates when currentYear === latestYear, so no extra fetch in that case
-  const latestYear = Math.max(...availableYears)
+  const latestYear = Math.max(0, ...availableYears)
   const { data: latestYearOptions = [] } = useWeekOptions(latestYear)
   const todayWeek = latestYearOptions.find((o) => o.is_today)?.week_number ?? null
 
@@ -170,7 +170,7 @@ export default function ForecastPage() {
     if (resolved !== undefined) {
       setDayOffset(resolved)
     }
-  }, [weekOptions, todayWeek]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [weekOptions, todayWeek]) // eslint-disable-line react-hooks/exhaustive-deps -- dayOffset excluded to avoid feedback loop
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,

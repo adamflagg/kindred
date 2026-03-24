@@ -47,6 +47,7 @@ class ForecastService:
         - Then each completed week from most recent down to Week 1
         - Weeks get tier suffixes (Priority Reg, Early Reg, Open Reg) based on reg dates
         - If today falls on an exact week boundary, no duplicate is created
+        - Past seasons (today > anchor + SEASON_WEEKS) cap at SEASON_WEEKS with no Today entry
 
         Args:
             year: The camp year to look up registration dates for.
