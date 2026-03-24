@@ -21,12 +21,23 @@ export function SnapshotDateSelector({
   const todayOption = weekOptions.find((o) => o.is_today)
   const historicalOptions = weekOptions.filter((o) => !o.is_today)
 
+  // Resolve the effective value: if dayOffset is null but no today option exists
+  // (past season), fall back to the first historical option
+  const effectiveValue =
+    dayOffset == null
+      ? todayOption
+        ? TODAY_VALUE
+        : historicalOptions.length > 0
+          ? String(historicalOptions[0].day_offset)
+          : TODAY_VALUE
+      : String(dayOffset)
+
   return (
     <div className="flex items-center gap-1.5 text-sm">
       <Calendar className="text-muted-foreground h-3.5 w-3.5" />
       <select
         aria-label="Forecast week"
-        value={dayOffset == null ? TODAY_VALUE : String(dayOffset)}
+        value={effectiveValue}
         onChange={(e) => {
           const val = e.target.value
           onOffsetChange(val === TODAY_VALUE ? null : Number(val))
