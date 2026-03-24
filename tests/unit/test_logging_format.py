@@ -234,10 +234,11 @@ class TestConfigureLogging:
         assert logger.level == logging.DEBUG
 
     def test_configure_logging_default_level_is_info(self):
-        """Default level should be INFO."""
+        """Default level should be INFO when LOG_LEVEL is not set."""
         from bunking.logging_config import configure_logging
 
-        logger = configure_logging(source="test", debug=False)
+        with patch.dict("os.environ", {}, clear=True):
+            logger = configure_logging(source="test", debug=False)
         assert logger.level == logging.INFO
 
     def test_get_logger_returns_named_logger(self):
