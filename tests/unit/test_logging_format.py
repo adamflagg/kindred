@@ -235,8 +235,6 @@ class TestConfigureLogging:
 
     def test_configure_logging_default_level_is_info(self):
         """Default level should be INFO when LOG_LEVEL is not set."""
-        from unittest.mock import patch
-
         from bunking.logging_config import configure_logging
 
         with patch.dict("os.environ", {}, clear=True):
