@@ -7,11 +7,11 @@ and revenue projections.
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast, WeekOption
-from api.services.camp_calendar import REGISTRATION_TIERS, format_week_date_range, get_camp_today
+from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_week_date_range, get_camp_today
 from api.services.reconstruction import (
     parse_date_only,
     reconstruct_enrollment_at_offset,
@@ -70,8 +70,13 @@ class ForecastService:
         if today < anchor:
             return []
 
-        total_days = (today - anchor).days
-        today_week = total_days // 7 + 1  # 1-based
+        # Cap past seasons at the season end boundary
+        season_end_date = anchor + timedelta(days=SEASON_WEEKS * 7)
+        is_past_season = today > season_end_date
+        effective_today = season_end_date if is_past_season else today
+
+        total_days = (effective_today - anchor).days
+        last_week = min(total_days // 7 + 1, SEASON_WEEKS)  # 1-based, capped
 
         # Build tier suffix map: week_number -> suffix label
         tier_suffixes: dict[int, str] = {}
@@ -86,26 +91,31 @@ class ForecastService:
 
         options: list[WeekOption] = []
 
-        # Today entry (always first)
-        today_suffixes = ["Today"]
-        tier_suffix = tier_suffixes.get(today_week)
-        if tier_suffix:
-            today_suffixes.insert(0, tier_suffix)
-        today_suffix_str = " · ".join(today_suffixes)
-        today_date_range = format_week_date_range(anchor, today_week)
-        today_label = f"Week {today_week} · {today_date_range} ({today_suffix_str})"
-        options.append(
-            WeekOption(
-                week_number=today_week,
-                day_offset=total_days,
-                label=today_label,
-                is_today=True,
+        if not is_past_season:
+            # Current season: Today entry (always first)
+            today_suffixes = ["Today"]
+            tier_suffix = tier_suffixes.get(last_week)
+            if tier_suffix:
+                today_suffixes.insert(0, tier_suffix)
+            today_suffix_str = " · ".join(today_suffixes)
+            today_date_range = format_week_date_range(anchor, last_week)
+            today_label = f"Week {last_week} · {today_date_range} ({today_suffix_str})"
+            options.append(
+                WeekOption(
+                    week_number=last_week,
+                    day_offset=total_days,
+                    label=today_label,
+                    is_today=True,
+                )
             )
-        )
 
-        # Build set of completed week milestones below the Today entry.
-        # Only fully completed weeks (1 through today_week-1) appear.
-        weeks_to_show: set[int] = set(range(1, today_week))
+        # Build completed week entries
+        if is_past_season:
+            # Past season: all weeks from SEASON_WEEKS down to 1
+            weeks_to_show = set(range(1, last_week + 1))
+        else:
+            # Current season: completed weeks below today
+            weeks_to_show = set(range(1, last_week))
 
         for week in sorted(weeks_to_show, reverse=True):
             date_range = format_week_date_range(anchor, week)
