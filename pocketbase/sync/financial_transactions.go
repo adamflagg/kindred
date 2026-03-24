@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -301,11 +300,11 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 	setFloatFromFloat(pbData, data, "amount", "amount")
 
 	// Dates
-	pbData["post_date"] = s.parseDate(data["postDate"])
-	pbData["effective_date"] = s.parseDate(data["effectiveDate"])
-	pbData["service_start_date"] = s.parseDate(data["serviceStartDate"])
-	pbData["service_end_date"] = s.parseDate(data["serviceEndDate"])
-	pbData["reversal_date"] = s.parseDate(data["reversalDate"])
+	pbData["post_date"] = ParseDateValue(data["postDate"])
+	pbData["effective_date"] = ParseDateValue(data["effectiveDate"])
+	pbData["service_start_date"] = ParseDateValue(data["serviceStartDate"])
+	pbData["service_end_date"] = ParseDateValue(data["serviceEndDate"])
+	pbData["reversal_date"] = ParseDateValue(data["reversalDate"])
 
 	// Reversal tracking
 	pbData["is_reversed"] = false
@@ -333,37 +332,6 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 	setRelation(pbData, data, "householdId", "household", maps.Households)
 
 	return pbData, nil
-}
-
-// parseDate parses various date formats from CampMinder
-func (s *FinancialTransactionsSync) parseDate(value interface{}) string {
-	if value == nil {
-		return ""
-	}
-
-	dateStr, ok := value.(string)
-	if !ok || dateStr == "" {
-		return ""
-	}
-
-	// Try common date formats
-	formats := []string{
-		time.RFC3339,
-		time.RFC3339Nano,
-		"2006-01-02T15:04:05Z",
-		"2006-01-02T15:04:05.000Z",
-		"2006-01-02T15:04:05",
-		"2006-01-02",
-	}
-
-	for _, format := range formats {
-		if t, err := time.Parse(format, dateStr); err == nil {
-			return t.UTC().Format("2006-01-02 15:04:05Z")
-		}
-	}
-
-	// Return original if we can't parse
-	return ""
 }
 
 // getStringOrEmpty safely extracts a string from the data map

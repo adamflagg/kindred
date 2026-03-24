@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -252,19 +251,19 @@ func (s *AttendeesSync) processEnrollment(
 	// Parse enrollment date (PostDate = current status date)
 	var enrollmentDate string
 	if postDate, ok := enrollment["PostDate"].(string); ok {
-		enrollmentDate = s.parseDate(postDate)
+		enrollmentDate = ParseDate(postDate)
 	}
 
 	// Parse EffectiveDate (original registration/application date, never overwritten)
 	var effectiveDate string
 	if ed, ok := enrollment["EffectiveDate"].(string); ok {
-		effectiveDate = s.parseDate(ed)
+		effectiveDate = ParseDate(ed)
 	}
 
 	// Parse LastUpdatedUTC (last modification timestamp)
 	var lastUpdatedUTC string
 	if lu, ok := enrollment["LastUpdatedUTC"].(string); ok {
-		lastUpdatedUTC = s.parseDate(lu)
+		lastUpdatedUTC = ParseDate(lu)
 	}
 
 	// Note: CampMinder attendee ID exists in enrollment["ID"] but we don't need it in PocketBase
@@ -346,35 +345,6 @@ func (s *AttendeesSync) logStatusChange(
 		"new_status", newStatus)
 
 	return nil
-}
-
-// parseDate parses CampMinder date format
-func (s *AttendeesSync) parseDate(dateStr string) string {
-	if dateStr == "" {
-		return ""
-	}
-
-	// Handle ISO format with timezone
-	if strings.Contains(dateStr, "T") {
-		// Parse the time
-		t, err := time.Parse(time.RFC3339, strings.Replace(dateStr, "Z", "+00:00", 1))
-		if err != nil {
-			// Try without timezone replacement
-			t, err = time.Parse(time.RFC3339, dateStr)
-			if err != nil {
-				return dateStr // Return as-is if parsing fails
-			}
-		}
-		// Format as PocketBase expects
-		return t.Format("2006-01-02 15:04:05.000Z")
-	}
-
-	// Handle date-only format (e.g., "2025-12-03")
-	t, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return dateStr // Return as-is if parsing fails
-	}
-	return t.Format("2006-01-02 15:04:05.000Z")
 }
 
 // deleteOrphans deletes attendees that exist in PocketBase but weren't in CampMinder
