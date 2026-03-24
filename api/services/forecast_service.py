@@ -72,7 +72,7 @@ class ForecastService:
             return []
 
         # Cap past seasons at the season end boundary
-        season_end_date = anchor + timedelta(days=SEASON_WEEKS * 7)
+        season_end_date = anchor + timedelta(days=SEASON_WEEKS * 7 - 1)
         is_past_season = today > season_end_date
         effective_today = season_end_date if is_past_season else today
 
