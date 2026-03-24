@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -154,12 +154,16 @@ export default function ForecastPage() {
   const [dayOffset, setDayOffset] = useState<number | null>(null)
   const { data: weekOptions = [] } = useWeekOptions(currentYear)
 
+  // Track previous weekOptions so we can look up the "Today" week_number on year switch
+  const prevWeekOptionsRef = useRef<typeof weekOptions>([])
+
   // Remap week selection when year changes (weekOptions update)
   useEffect(() => {
-    const resolved = resolveWeekOffset(dayOffset, weekOptions)
+    const resolved = resolveWeekOffset(dayOffset, weekOptions, prevWeekOptionsRef.current)
     if (resolved !== undefined) {
       setDayOffset(resolved)
     }
+    prevWeekOptionsRef.current = weekOptions
   }, [weekOptions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading, error } = useForecast(currentYear, {
