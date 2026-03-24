@@ -10,7 +10,7 @@ globalThis.fetch = mockFetch
 
 // Mock useCurrentYear
 vi.mock('../../../hooks/useCurrentYear', () => ({
-  useCurrentYear: () => ({ currentYear: 2026 }),
+  useCurrentYear: () => ({ currentYear: 2026, availableYears: [2024, 2025, 2026] }),
 }))
 
 // Mock useMetricsSession

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -144,7 +144,7 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 }
 
 export default function ForecastPage() {
-  const { currentYear } = useCurrentYear()
+  const { currentYear, availableYears } = useCurrentYear()
   const {
     selectedSessionCmId,
     sessionTypesParam,
@@ -154,17 +154,23 @@ export default function ForecastPage() {
   const [dayOffset, setDayOffset] = useState<number | null>(null)
   const { data: weekOptions = [] } = useWeekOptions(currentYear)
 
-  // Track previous weekOptions so we can look up the "Today" week_number on year switch
-  const prevWeekOptionsRef = useRef<typeof weekOptions>([])
+  // Always know "today's week" from the latest (current) season — React Query
+  // deduplicates when currentYear === latestYear, so no extra fetch in that case
+  const latestYear = Math.max(...availableYears)
+  const { data: latestYearOptions = [] } = useWeekOptions(latestYear)
+  const todayWeek = latestYearOptions.find((o) => o.is_today)?.week_number ?? null
 
-  // Remap week selection when year changes (weekOptions update)
+  // Remap week selection when year changes or todayWeek becomes known
   useEffect(() => {
-    const resolved = resolveWeekOffset(dayOffset, weekOptions, prevWeekOptionsRef.current)
+    // For past seasons, wait until todayWeek is loaded before remapping
+    const isPastSeason = !weekOptions.some((o) => o.is_today)
+    if (isPastSeason && todayWeek === null) return
+
+    const resolved = resolveWeekOffset(dayOffset, weekOptions, todayWeek)
     if (resolved !== undefined) {
       setDayOffset(resolved)
     }
-    prevWeekOptionsRef.current = weekOptions
-  }, [weekOptions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [weekOptions, todayWeek]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,

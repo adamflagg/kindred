@@ -1,37 +1,34 @@
 import type { WeekOption } from '../types/forecast'
 
 /**
- * Resolve dayOffset when weekOptions change (e.g., year switch).
+ * Resolve dayOffset when weekOptions change (e.g., year switch or initial load).
  * Returns the new dayOffset to use, or undefined if no change needed.
  *
  * @param currentDayOffset - Current dayOffset state (null = "Today")
- * @param newOptions - Week options for the newly selected year
- * @param previousOptions - Week options from the previous year (needed to
- *   look up the week_number when currentDayOffset is null / "Today")
+ * @param newOptions - Week options for the selected year
+ * @param todayWeek - Today's week number in the current season (from the
+ *   latest year's Today entry). Used to find the equivalent week when
+ *   switching to a past season.
  */
 export function resolveWeekOffset(
   currentDayOffset: number | null,
   newOptions: WeekOption[],
-  previousOptions: WeekOption[]
+  todayWeek: number | null
 ): number | null | undefined {
   if (newOptions.length === 0) return undefined
 
   const hasTodayOption = newOptions.some((o) => o.is_today)
 
-  // Current season → current season: keep "Today"
+  // Current season with Today → keep null (live mode)
   if (currentDayOffset === null && hasTodayOption) return undefined
 
-  // "Today" → past season: find equivalent week from previous Today entry
+  // Past season (no Today): find the equivalent of today's week
   if (currentDayOffset === null && !hasTodayOption) {
-    const prevToday = previousOptions.find((o) => o.is_today)
-    if (prevToday) {
-      const match = newOptions.find((o) => o.week_number === prevToday.week_number)
-      if (match) return match.day_offset
-      // Week doesn't exist in past season (e.g., week 42) → closest
-      return findClosestWeek(newOptions, prevToday.week_number)
+    if (todayWeek !== null) {
+      return findClosestWeek(newOptions, todayWeek)
     }
-    // No previous Today (shouldn't happen, but fall back to first option)
-    return newOptions[0]!.day_offset
+    // todayWeek not yet loaded — caller should wait before remapping
+    return undefined
   }
 
   // Specific week selected — check if it exists in new options
