@@ -71,7 +71,9 @@ class ForecastService:
         if today < anchor:
             return []
 
-        # Cap past seasons at the season end boundary
+        # Cap past seasons at the season end boundary (inclusive last day of
+        # final week — contrast with velocity_service._season_end which uses
+        # exclusive boundary for datetime filtering)
         season_end_date = anchor + timedelta(days=SEASON_WEEKS * 7 - 1)
         is_past_season = today > season_end_date
         effective_today = season_end_date if is_past_season else today
