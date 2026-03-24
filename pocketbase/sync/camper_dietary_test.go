@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // TestCamperDietarySync_Name verifies the service name is correct
@@ -376,39 +378,72 @@ func TestCamperDietaryCompareFields(t *testing.T) {
 }
 
 // TestCamperDietaryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
-// uses the compareFields (inclusion list) pattern, not skipFields (exclusion list).
+// correctly detects when fields match (no update) and when they differ (needs update).
 func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 	s := &CamperDietarySync{}
 
-	// Build test data
-	newData := map[string]any{
-		"attendee":            "abc123",
-		"person_id":           12345,
-		"year":                2025,
-		"has_dietary_needs":   true,
-		"dietary_explanation": "Vegetarian",
-		"has_allergies":       false,
-		"allergy_info":        "",
-		"additional_medical":  "",
-	}
+	// Create a minimal collection with the fields used in comparison
+	col := core.NewBaseCollection("test_camper_dietary")
+	col.Fields.Add(&core.TextField{Name: "attendee"})
+	col.Fields.Add(&core.NumberField{Name: "person_id"})
+	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.BoolField{Name: "has_dietary_needs"})
+	col.Fields.Add(&core.TextField{Name: "dietary_explanation"})
+	col.Fields.Add(&core.BoolField{Name: "has_allergies"})
+	col.Fields.Add(&core.TextField{Name: "allergy_info"})
+	col.Fields.Add(&core.TextField{Name: "additional_medical"})
 
-	// mockGet simulates an existing record where all compareFields match
-	mockGet := func(field string) any {
-		return newData[field]
-	}
+	t.Run("no update when all fields match", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("attendee", "abc123")
+		existing.Set("person_id", 12345)
+		existing.Set("year", 2025)
+		existing.Set("has_dietary_needs", true)
+		existing.Set("dietary_explanation", "Vegetarian")
+		existing.Set("has_allergies", false)
+		existing.Set("allergy_info", "")
+		existing.Set("additional_medical", "")
 
-	// Verify: when all compareFields match, no update needed
-	needsUpdate := false
-	for _, field := range camperDietaryCompareFields {
-		if value, exists := newData[field]; exists {
-			if !s.fieldEquals(mockGet(field), value) {
-				needsUpdate = true
-				break
-			}
+		newData := map[string]any{
+			"attendee":            "abc123",
+			"person_id":           12345,
+			"year":                2025,
+			"has_dietary_needs":   true,
+			"dietary_explanation": "Vegetarian",
+			"has_allergies":       false,
+			"allergy_info":        "",
+			"additional_medical":  "",
 		}
-	}
 
-	if needsUpdate {
-		t.Error("expected no update needed when all compareFields match")
-	}
+		if s.recordNeedsUpdate(existing, newData, camperDietaryCompareFields) {
+			t.Error("expected no update needed when all compareFields match")
+		}
+	})
+
+	t.Run("needs update when a compare field differs", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("attendee", "abc123")
+		existing.Set("person_id", 12345)
+		existing.Set("year", 2025)
+		existing.Set("has_dietary_needs", true)
+		existing.Set("dietary_explanation", "Vegetarian")
+		existing.Set("has_allergies", false)
+		existing.Set("allergy_info", "")
+		existing.Set("additional_medical", "")
+
+		newData := map[string]any{
+			"attendee":            "abc123",
+			"person_id":           12345,
+			"year":                2025,
+			"has_dietary_needs":   true,
+			"dietary_explanation": "Vegan",
+			"has_allergies":       false,
+			"allergy_info":        "",
+			"additional_medical":  "",
+		}
+
+		if !s.recordNeedsUpdate(existing, newData, camperDietaryCompareFields) {
+			t.Error("expected update needed when dietary_explanation differs")
+		}
+	})
 }

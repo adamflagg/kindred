@@ -433,60 +433,11 @@ func makeCamperDietaryKey(personID, year int) string {
 	return fmt.Sprintf("%d|%d", personID, year)
 }
 
-// fieldEquals compares two field values for equality, handling type conversions.
-// This mirrors the centralized BaseSyncService.FieldEquals logic.
-func (s *CamperDietarySync) fieldEquals(existing, newVal any) bool {
-	// Handle nil vs empty string
-	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
-		return true
-	}
-	// Handle nil vs false (for boolean fields)
-	if existing == nil && newVal == false {
-		return true
-	}
-	if existing == false && newVal == nil {
-		return true
-	}
-	// Handle nil vs 0
-	if existing == nil && newVal == 0 {
-		return true
-	}
-	if existing == 0 && newVal == nil {
-		return true
-	}
-	// Handle float64 vs int (JSON unmarshals numbers as float64)
-	if existFloat, ok := existing.(float64); ok {
-		if newInt, ok := newVal.(int); ok {
-			return int(existFloat) == newInt
-		}
-	}
-	if existInt, ok := existing.(int); ok {
-		if newFloat, ok := newVal.(float64); ok {
-			return existInt == int(newFloat)
-		}
-	}
-	// Handle bool comparison (PocketBase may return bool, we may pass bool)
-	if existBool, ok := existing.(bool); ok {
-		if newBool, ok := newVal.(bool); ok {
-			return existBool == newBool
-		}
-	}
-
-	// String comparison as fallback
-	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
-}
-
 // recordNeedsUpdate checks if any compared field differs between existing record and new data.
 // Uses compareFields (inclusion list): only the listed fields are checked for changes.
-func (s *CamperDietarySync) recordNeedsUpdate(record *core.Record, data map[string]any) bool {
-	for _, field := range camperDietaryCompareFields {
-		if value, exists := data[field]; exists {
-			if !s.fieldEquals(record.Get(field), value) {
-				return true
-			}
-		}
-	}
-	return false
+// Delegates to the shared compareRecordNeedsUpdate in base_sync.go.
+func (s *CamperDietarySync) recordNeedsUpdate(record *core.Record, data map[string]any, compareFields []string) bool {
+	return compareRecordNeedsUpdate(record, data, compareFields)
 }
 
 // loadExistingRecords loads existing camper_dietary records for a year
@@ -569,7 +520,7 @@ func (s *CamperDietarySync) upsertRecords(
 			}
 
 			// Check if update is actually needed
-			if !s.recordNeedsUpdate(record, data) {
+			if !s.recordNeedsUpdate(record, data, camperDietaryCompareFields) {
 				s.DebugLog("Skipping unchanged dietary record", "person_id", rec.personID, "year", year)
 				skipped++
 				continue

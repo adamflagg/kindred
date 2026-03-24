@@ -1116,55 +1116,13 @@ func (c *CamperHistorySync) preloadExistingRecords(year int) (map[string]*core.R
 }
 
 // fieldEquals compares two values for equality, handling type conversions
-func (c *CamperHistorySync) fieldEquals(existing, newVal interface{}) bool {
-	// Handle nil vs empty string
-	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
-		return true
-	}
-	// Handle nil vs 0
-	if existing == nil && newVal == 0 {
-		return true
-	}
-	if existing == 0 && newVal == nil {
-		return true
-	}
-	// Handle float64 vs int
-	if existingFloat, ok := existing.(float64); ok {
-		if newInt, ok := newVal.(int); ok {
-			return int(existingFloat) == newInt
-		}
-		if newFloat, ok := newVal.(float64); ok {
-			return existingFloat == newFloat
-		}
-	}
-	if existingInt, ok := existing.(int); ok {
-		if newFloat, ok := newVal.(float64); ok {
-			return existingInt == int(newFloat)
-		}
-	}
-	// Handle bool
-	if existingBool, ok := existing.(bool); ok {
-		if newBool, ok := newVal.(bool); ok {
-			return existingBool == newBool
-		}
-	}
-	// Direct comparison
-	return existing == newVal
-}
-
 // recordNeedsUpdate checks if any compared field differs between existing record and new data.
 // Uses compareFields (inclusion list): only the listed fields are checked for changes.
+// Delegates to the shared compareRecordNeedsUpdate in base_sync.go.
 func (c *CamperHistorySync) recordNeedsUpdate(
 	existing *core.Record, newData map[string]interface{}, compareFields []string,
 ) bool {
-	for _, field := range compareFields {
-		if value, exists := newData[field]; exists {
-			if !c.fieldEquals(existing.Get(field), value) {
-				return true
-			}
-		}
-	}
-	return false
+	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }
 
 // deleteOrphans removes records that weren't processed (campers unenrolled from sessions)

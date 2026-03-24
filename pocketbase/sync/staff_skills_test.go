@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // testLastName is a standard test last name (testFirstName is defined in persons_test.go)
@@ -833,43 +835,77 @@ func TestStaffSkillsCompareFields(t *testing.T) {
 }
 
 // TestStaffSkillsRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
-// uses the compareFields (inclusion list) pattern, not skipFields (exclusion list).
+// correctly detects when fields match (no update) and when they differ (needs update).
 func TestStaffSkillsRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 	s := &StaffSkillsSync{}
 
-	// Build test data where only a non-compared field differs
-	newData := map[string]interface{}{
-		"person_id":       12345,
-		"skill_cm_id":     100,
-		"year":            2025,
-		"skill_name":      "Archery",
-		"is_intermediate": true,
-		"is_experienced":  false,
-		"can_teach":       false,
-		"is_certified":    false,
-		"raw_value":       "Int.",
-		"first_name":      testFirstName,
-		"last_name":       testLastName,
-	}
+	// Create a minimal collection with the fields used in comparison
+	col := core.NewBaseCollection("test_staff_skills")
+	col.Fields.Add(&core.TextField{Name: "skill_name"})
+	col.Fields.Add(&core.BoolField{Name: "is_intermediate"})
+	col.Fields.Add(&core.BoolField{Name: "is_experienced"})
+	col.Fields.Add(&core.BoolField{Name: "can_teach"})
+	col.Fields.Add(&core.BoolField{Name: "is_certified"})
+	col.Fields.Add(&core.TextField{Name: "raw_value"})
+	col.Fields.Add(&core.TextField{Name: "first_name"})
+	col.Fields.Add(&core.TextField{Name: "last_name"})
+	col.Fields.Add(&core.TextField{Name: "person"})
 
-	// mockGet simulates an existing record where all compareFields match
-	mockGet := func(field string) interface{} {
-		return newData[field]
-	}
+	t.Run("no update when all fields match", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("skill_name", "Archery")
+		existing.Set("is_intermediate", true)
+		existing.Set("is_experienced", false)
+		existing.Set("can_teach", false)
+		existing.Set("is_certified", false)
+		existing.Set("raw_value", "Int.")
+		existing.Set("first_name", testFirstName)
+		existing.Set("last_name", testLastName)
+		existing.Set("person", "pb_abc123")
 
-	// Verify: when all compareFields match, recordNeedsUpdate should return false
-	// This test exercises the compareFields signature (not skipFields)
-	needsUpdate := false
-	for _, field := range staffSkillsCompareFields {
-		if value, exists := newData[field]; exists {
-			if !s.fieldEquals(mockGet(field), value) {
-				needsUpdate = true
-				break
-			}
+		newData := map[string]interface{}{
+			"skill_name":      "Archery",
+			"is_intermediate": true,
+			"is_experienced":  false,
+			"can_teach":       false,
+			"is_certified":    false,
+			"raw_value":       "Int.",
+			"first_name":      testFirstName,
+			"last_name":       testLastName,
+			"person":          "pb_abc123",
 		}
-	}
 
-	if needsUpdate {
-		t.Error("expected no update needed when all compareFields match")
-	}
+		if s.recordNeedsUpdate(existing, newData, staffSkillsCompareFields) {
+			t.Error("expected no update needed when all compareFields match")
+		}
+	})
+
+	t.Run("needs update when a compare field differs", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("skill_name", "Archery")
+		existing.Set("is_intermediate", true)
+		existing.Set("is_experienced", false)
+		existing.Set("can_teach", false)
+		existing.Set("is_certified", false)
+		existing.Set("raw_value", "Int.")
+		existing.Set("first_name", testFirstName)
+		existing.Set("last_name", testLastName)
+		existing.Set("person", "pb_abc123")
+
+		newData := map[string]interface{}{
+			"skill_name":      "Archery",
+			"is_intermediate": true,
+			"is_experienced":  true,
+			"can_teach":       false,
+			"is_certified":    false,
+			"raw_value":       "Int.|Exp.",
+			"first_name":      testFirstName,
+			"last_name":       testLastName,
+			"person":          "pb_abc123",
+		}
+
+		if !s.recordNeedsUpdate(existing, newData, staffSkillsCompareFields) {
+			t.Error("expected update needed when is_experienced differs")
+		}
+	})
 }
