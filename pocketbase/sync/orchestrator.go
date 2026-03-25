@@ -412,8 +412,10 @@ func (o *Orchestrator) GetCurrentRunProgress() (runType string, remaining []stri
 	// Jobs after current one (currentRunIndex points to currently running job)
 	if completed+1 < total {
 		remaining = queue[completed+1:]
+	} else {
+		remaining = []string{} // Ensure JSON serializes as [] not null
 	}
-	return
+	return runType, remaining, total, completed
 }
 
 // IsAnyJobRunning returns true if any sync job is currently running.
