@@ -555,3 +555,106 @@ class TestParseDateOnly:
         from api.services.reconstruction import parse_date_only
 
         assert parse_date_only("2026-03-13T14:30:00+05:00") == "2026-03-13"
+
+
+# ============================================================================
+# Pre-Anchor Enrollment Tests (Week 0)
+# ============================================================================
+
+
+class TestPreAnchorEnrollments:
+    """Tests for enrollments before the season start (Week 0)."""
+
+    @pytest.mark.asyncio
+    async def test_pre_anchor_enrollment_counted(self) -> None:
+        """Attendee enrolled before season_start should be counted."""
+        att = _make_attendee(
+            person_id=1,
+            session_cm_id=1000,
+            status_id=2,
+            enrollment_date="2025-10-10",
+            effective_date="2025-10-10",
+        )
+        repo = _mock_repo([att])
+        sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
+
+        result = await reconstruct_enrollment_at_offset(
+            repository=repo,
+            year=2025,
+            sessions=sessions,
+            day_offset=10,  # covers Oct 15-25 (but enrollment is Oct 10, before anchor)
+            season_start=SEASON_START,  # Oct 15
+        )
+        assert result == {1000: 1}
+
+    @pytest.mark.asyncio
+    async def test_pre_anchor_enrollment_with_gender(self) -> None:
+        """Pre-anchor attendee with gender data should populate gender counts."""
+        att = _make_attendee(
+            person_id=1,
+            session_cm_id=1000,
+            status_id=2,
+            enrollment_date="2025-10-10",
+            effective_date="2025-10-10",
+        )
+        # Add gender via person expand
+        att.expand["person"] = SimpleNamespace(gender="F")
+
+        repo = _mock_repo([att])
+        sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
+
+        result = await reconstruct_enrollment_with_gender(
+            repository=repo,
+            year=2025,
+            sessions=sessions,
+            day_offset=10,
+            season_start=SEASON_START,
+        )
+        assert result[1000]["enrolled"] == 1
+        assert result[1000]["enrolled_girls"] == 1
+        assert result[1000]["enrolled_boys"] == 0
+
+    @pytest.mark.asyncio
+    async def test_pre_anchor_far_back_still_counted(self) -> None:
+        """Enrollment 30 days before anchor is still counted in results."""
+        att = _make_attendee(
+            person_id=1,
+            session_cm_id=1000,
+            status_id=2,
+            enrollment_date="2025-09-15",
+            effective_date="2025-09-15",
+        )
+        repo = _mock_repo([att])
+        sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
+
+        result = await reconstruct_enrollment_at_offset(
+            repository=repo,
+            year=2025,
+            sessions=sessions,
+            day_offset=30,
+            season_start=SEASON_START,
+        )
+        assert result == {1000: 1}
+
+    @pytest.mark.asyncio
+    async def test_pre_anchor_cancellation_before_cutoff_subtracted(self) -> None:
+        """Pre-anchor enroll + pre-anchor cancel = net 0."""
+        att = _make_attendee(
+            person_id=1,
+            session_cm_id=1000,
+            status_id=32,
+            enrollment_date="2025-10-12",  # cancel date before anchor
+            effective_date="2025-10-08",  # enrollment date before anchor
+            status="cancelled",
+        )
+        repo = _mock_repo([att])
+        sessions = {1000: SimpleNamespace(cm_id=1000, name="S1")}
+
+        result = await reconstruct_enrollment_at_offset(
+            repository=repo,
+            year=2025,
+            sessions=sessions,
+            day_offset=10,
+            season_start=SEASON_START,
+        )
+        assert result.get(1000, 0) == 0

@@ -8,7 +8,8 @@ Data flow:
 2. For each attendee with status in {2, 32, 256} (enrolled, cancelled, withdrawn):
    - Enrollment event: use effective_date if available, else enrollment_date
    - Cancellation event (status 32 or 256 only): use enrollment_date
-3. Aggregate by session, counting events within [season_start, season_start + day_offset]
+3. Aggregate by session, counting events within [lower_bound, season_start + day_offset]
+   where lower_bound = season_start - 7 days when day_offset < 0 (Week 0), else season_start
 4. Net enrolled = gross enrollments - cancellations
 """
 
@@ -62,6 +63,10 @@ def _reconstruct_core(
         return {}
 
     cutoff_date = (season_start + timedelta(days=day_offset)).date()
+    # Lower bound: clamp to anchor - 7 days for negative offsets (Week 0 forecast)
+    # to prevent counting enrollments from arbitrarily far back.  For positive
+    # offsets pre-anchor enrollments are part of the cumulative total, so no bound.
+    lower_bound = (season_start - timedelta(days=7)).date() if day_offset < 0 else None
 
     # Per-session counters
     session_enrollments: dict[int, int] = defaultdict(int)
@@ -94,7 +99,7 @@ def _reconstruct_core(
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if season_start.date() <= dt.date() <= cutoff_date:
+            if (lower_bound is None or lower_bound <= dt.date()) and dt.date() <= cutoff_date:
                 session_enrollments[effective_sid] += 1
                 if gender == "M":
                     session_boys_enrolled[effective_sid] += 1
@@ -107,7 +112,7 @@ def _reconstruct_core(
             if cancel_date_raw:
                 cancel_date_str = parse_date_only(cancel_date_raw)
                 cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                if season_start.date() <= cancel_dt.date() <= cutoff_date:
+                if (lower_bound is None or lower_bound <= cancel_dt.date()) and cancel_dt.date() <= cutoff_date:
                     session_cancellations[effective_sid] += 1
                     if gender == "M":
                         session_boys_cancelled[effective_sid] += 1
@@ -195,6 +200,8 @@ def _build_daily_points(
     has_gender: bool,
     season_start: date,
     end_date: date,
+    *,
+    week0: bool = False,
 ) -> list[DailyDataPoint]:
     """Convert daily event buckets into a list of DailyDataPoint with running cumulatives."""
     from api.schemas.velocity import DailyDataPoint as DailyPoint
@@ -216,8 +223,12 @@ def _build_daily_points(
         "canc_girls": 0,
     }
 
-    current = season_start
-    day_offset = 0
+    if week0:
+        current = season_start - timedelta(days=7)
+        day_offset = -7
+    else:
+        current = season_start
+        day_offset = 0
     while current <= end_date:
         date_str = current.isoformat()
         events = daily_events.get(date_str, empty)
@@ -265,6 +276,7 @@ def reconstruct_daily_multi(
     ag_parent_map: dict[int, int] | None = None,
     session_cm_id: int | None = None,
     session_ids: list[int] | None = None,
+    week0: bool = False,
 ) -> tuple[list[DailyDataPoint], dict[int, list[DailyDataPoint]]]:
     """Reconstruct daily enrollment data for combined and per-session in a single pass.
 
@@ -298,6 +310,9 @@ def reconstruct_daily_multi(
         "canc_boys": 0,
         "canc_girls": 0,
     }
+
+    # In Week 0 mode, clamp pre-anchor events to the Week 0 window start
+    week0_start: str | None = (season_start - timedelta(days=7)).isoformat() if week0 else None
 
     for att in attendees:
         session = get_session_from_expand(att)
@@ -338,6 +353,9 @@ def reconstruct_daily_multi(
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
             enroll_day = parse_date_only(enroll_date_str)
+            # Clamp far-back pre-anchor events to the Week 0 window start
+            if week0_start and enroll_day < week0_start:
+                enroll_day = week0_start
 
             if include_in_combined:
                 bucket = combined_events.setdefault(enroll_day, dict(_empty_bucket))
@@ -361,6 +379,9 @@ def reconstruct_daily_multi(
             canc_date_raw = getattr(att, "enrollment_date", "") or ""
             if canc_date_raw:
                 canc_day = parse_date_only(canc_date_raw)
+                # Clamp far-back pre-anchor cancellations to the Week 0 window start
+                if week0_start and canc_day < week0_start:
+                    canc_day = week0_start
 
                 if include_in_combined:
                     bucket = combined_events.setdefault(canc_day, dict(_empty_bucket))
@@ -380,13 +401,13 @@ def reconstruct_daily_multi(
                         bucket["canc_girls"] += 1
 
     # Build combined daily points
-    combined = _build_daily_points(combined_events, combined_has_gender, season_start, end_date)
+    combined = _build_daily_points(combined_events, combined_has_gender, season_start, end_date, week0=week0)
 
     # Build per-session daily points
     per_session_daily: dict[int, list[DailyDataPoint]] = {}
     for sid, events in per_session_events.items():
         has_gender = per_session_has_gender.get(sid, False)
-        points = _build_daily_points(events, has_gender, season_start, end_date)
+        points = _build_daily_points(events, has_gender, season_start, end_date, week0=week0)
         if points:
             per_session_daily[sid] = points
 

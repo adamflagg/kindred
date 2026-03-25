@@ -700,6 +700,35 @@ class TestSeasonStartHelpers:
         day7 = datetime(2025, 12, 10)
         assert _week_start(day7, priority_reg) == priority_reg + timedelta(days=7)
 
+    def test_week_number_before_anchor_returns_zero(self):
+        """Dates before priority_reg_date should return week 0."""
+        priority_reg = datetime(2025, 11, 12)
+        day_before = datetime(2025, 11, 11)
+        week_before = datetime(2025, 11, 5)
+        month_before = datetime(2025, 10, 15)
+        assert _week_number(day_before, priority_reg) == 0
+        assert _week_number(week_before, priority_reg) == 0
+        assert _week_number(month_before, priority_reg) == 0
+
+    def test_week_start_before_anchor_returns_anchor_minus_7(self):
+        """Pre-anchor dates should bucket to anchor - 7 days."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 11, 12)
+        day_before = datetime(2025, 11, 11)
+        month_before = datetime(2025, 10, 15)
+        expected = priority_reg - timedelta(days=7)
+        assert _week_start(day_before, priority_reg) == expected
+        assert _week_start(month_before, priority_reg) == expected
+
+    def test_week_label_week_zero(self):
+        """Week 0 label should include 'Wk 0' with date range for the 7 days before anchor."""
+        priority_reg = datetime(2025, 11, 12)
+        day_before = datetime(2025, 11, 11)
+        label = _week_label(day_before, priority_reg)
+        assert label.startswith("Wk 0")
+        assert "Nov 5" in label  # anchor - 7 = Nov 5
+
     def test_season_end_from_priority_reg(self):
         """_season_end should return priority_reg_date + SEASON_WEEKS * 7 days."""
         from datetime import timedelta
@@ -741,13 +770,18 @@ class TestSeasonWindowClipping:
             assert p.week_start >= "2025-11-01"
 
     @pytest.mark.asyncio
-    async def test_reconstruction_before_season_start_excluded(self, service, mock_repository):
-        """Reconstruction from enrollment dates before season start should be excluded."""
+    async def test_reconstruction_far_back_clamped_to_week_0(self, service, mock_repository):
+        """Enrollments before the Week 0 window are clamped into Week 0.
+
+        Week 0 is anchor - 7d to anchor - 1d (Oct 25 - Oct 31 for Nov 1 anchor).
+        Enrollments before Oct 25 (e.g. Sep 15) are clamped to the first day of
+        the Week 0 window so they appear in Week 0's totals.
+        """
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = []
         mock_repository.fetch_attendees_with_dates.return_value = [
-            # Before season window
+            # Well before Week 0 window — clamped to Week 0 start
             create_mock_attendee_with_date(101, 1001, "2025-09-15"),
             # Inside season window
             create_mock_attendee_with_date(102, 1001, "2025-11-10"),
@@ -758,8 +792,13 @@ class TestSeasonWindowClipping:
 
         points = result.combined.weekly
         assert len(points) >= 1
-        for p in points:
-            assert p.week_start >= "2025-11-01"
+        # All three enrollments should be counted (far-back clamped to Week 0)
+        total = sum(p.weekly_new for p in points)
+        assert total == 3
+        # Week 0 should have the clamped enrollment
+        week0_points = [p for p in points if p.week_number == 0]
+        assert len(week0_points) == 1
+        assert week0_points[0].enrolled == 1
 
     @pytest.mark.asyncio
     async def test_data_past_season_end_excluded(self, service, mock_repository):
@@ -3178,27 +3217,40 @@ class TestPartialWeekInReconstruction:
 
     @pytest.mark.asyncio
     async def test_reconstruction_marks_last_week_partial(self, service):
-        """Reconstruction path should also mark the current partial week."""
+        """Reconstruction path should also mark the current partial week.
+
+        Anchor = 2026-01-05.  Week 0 = Dec 29–Jan 4 (empty).
+        Jan 6/7 → Week 1 (full).  Jan 13 → Week 2 (current, partial).
+        """
         from datetime import date
 
         service.repo.fetch_attendees_with_dates.return_value = [
-            # Week 0
+            # Week 1 (Jan 5-11)
             create_mock_attendee_with_date(1, 1001, "2026-01-06"),
             create_mock_attendee_with_date(2, 1001, "2026-01-07"),
-            # Week 1 (current, partial)
+            # Week 2 (current, partial)
             create_mock_attendee_with_date(3, 1001, "2026-01-13"),
         ]
 
         result = await service.get_velocity(year=2026, today=date(2026, 1, 15))
 
         points = result.combined.weekly
-        assert len(points) == 2
+        # Week 0 (empty) + Week 1 (full) + Week 2 (partial) = 3 points
+        assert len(points) == 3
 
-        assert points[0].is_partial is False
-        assert points[0].days_in_week == 7
+        week0 = points[0]
+        assert week0.week_number == 0
+        assert week0.is_partial is False
 
-        assert points[1].is_partial is True
-        assert points[1].days_in_week == 4  # Jan 12 to Jan 15 inclusive
+        week1 = points[1]
+        assert week1.week_number == 1
+        assert week1.is_partial is False
+        assert week1.days_in_week == 7
+
+        week2 = points[2]
+        assert week2.week_number == 2
+        assert week2.is_partial is True
+        assert week2.days_in_week == 4  # Jan 12 to Jan 15 inclusive
 
 
 class TestPartialWeekInCombinedCurves:
@@ -3509,7 +3561,11 @@ class TestReconstructionEffectiveDate:
 
     @pytest.mark.asyncio
     async def test_reconstruction_uses_effective_date_for_enrollment(self, service):
-        """Enrolled attendee's enrollment date should come from effective_date, not enrollment_date."""
+        """Enrolled attendee's enrollment date should come from effective_date, not enrollment_date.
+
+        Anchor = 2026-01-05.  effective_date=Jan 5 → day_offset=0 → Week 1.
+        Week 0 (Dec 29-Jan 4) is generated as an empty prefix week.
+        """
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
                 person_id=1,
@@ -3521,10 +3577,14 @@ class TestReconstructionEffectiveDate:
         ]
         result = await service.get_velocity(year=2026)
         points = result.combined.weekly
-        assert len(points) >= 1
-        # Should appear in the week of effective_date (Jan 5), not enrollment_date (Jan 12)
-        assert points[0].week_start == "2026-01-05"
-        assert points[0].enrolled == 1
+        assert len(points) >= 2  # Week 0 (empty) + at least Week 1
+        # Should appear in Week 1 (effective_date Jan 5), not enrollment_date (Jan 12)
+        # Week 0 is the empty prefix; find the week containing the enrollment
+        enrolled_points = [p for p in points if p.enrolled > 0]
+        assert len(enrolled_points) >= 1
+        enroll_point = enrolled_points[0]
+        assert enroll_point.week_start == "2026-01-05"
+        assert enroll_point.enrolled == 1
 
     @pytest.mark.asyncio
     async def test_reconstruction_cancelled_enrolled_then_subtracted(self, service):
@@ -4303,3 +4363,99 @@ class TestHybridDailyPerSession:
         assert "2025-11-15" not in global_dates, (
             "Global merge should drop session B's Nov 15 data (confirms the bug exists)"
         )
+
+
+# ============================================================================
+# Week 0: Pre-anchor enrollments in reconstruction paths
+# ============================================================================
+
+
+class TestWeek0InReconstruction:
+    """Test that pre-anchor enrollments appear as Week 0 in velocity curves."""
+
+    @pytest.fixture
+    def service(self):
+        repo = AsyncMock()
+        return VelocityService(repo), repo
+
+    @pytest.mark.asyncio
+    async def test_pre_anchor_enrollment_creates_week_0(self, service):
+        """Attendee enrolled before anchor should appear in week 0 of velocity curve."""
+        from datetime import date
+        from unittest.mock import MagicMock
+
+        svc, repo = service
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        repo.fetch_sessions.return_value = sessions
+        repo.fetch_enrollment_snapshots.return_value = []  # force reconstruction
+        repo.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        repo.fetch_status_transitions.return_value = []
+
+        # Attendee enrolled Nov 5 (7 days before anchor Nov 12)
+        att = MagicMock()
+        att.person_id = 1
+        att.status_id = 2
+        att.status = "enrolled"
+        att.effective_date = "2025-11-05"
+        att.enrollment_date = "2025-11-05"
+        att.expand = {"session": MagicMock(cm_id=1001, name="Session 1", session_type="main", parent_id=None)}
+        repo.fetch_attendees_with_dates.return_value = [att]
+
+        result = await svc.get_velocity(year=2026, today=date(2025, 11, 20))
+
+        # Should have week 0 data
+        week_numbers = [p.week_number for p in result.combined.weekly]
+        assert 0 in week_numbers, f"Expected week 0 in {week_numbers}"
+        week0_point = next(p for p in result.combined.weekly if p.week_number == 0)
+        assert week0_point.enrolled == 1
+
+
+class TestRollupDailyWeek0:
+    """Verify rollup_daily_to_weekly handles negative day_offset (Week 0)."""
+
+    def test_negative_day_offsets_bucket_to_week_0(self):
+        """Daily points with day_offset -7 to -1 should roll up to week_number 0."""
+        from datetime import date as d
+        from datetime import timedelta
+
+        from api.schemas.velocity import DailyDataPoint
+
+        season_start = d(2025, 11, 12)
+        daily = []
+        # Week 0: day_offset -7 to -1
+        for i in range(-7, 0):
+            daily.append(
+                DailyDataPoint(
+                    date=(season_start + timedelta(days=i)).isoformat(),
+                    day_offset=i,
+                    gross_enrolled=1,
+                    enrolled=1,
+                    cancelled=0,
+                    daily_new=1 if i == -7 else 0,
+                    daily_cancelled=0,
+                    data_source="reconstructed",
+                )
+            )
+        # Week 1: day_offset 0 to 6
+        for i in range(7):
+            daily.append(
+                DailyDataPoint(
+                    date=(season_start + timedelta(days=i)).isoformat(),
+                    day_offset=i,
+                    gross_enrolled=2 + i,
+                    enrolled=2 + i,
+                    cancelled=0,
+                    daily_new=1,
+                    daily_cancelled=0,
+                    data_source="reconstructed",
+                )
+            )
+
+        weekly = rollup_daily_to_weekly(daily, season_start)
+        week_nums = [w.week_number for w in weekly]
+        assert 0 in week_nums, f"Expected week 0 in {week_nums}"
+        assert 1 in week_nums
+        week0 = next(w for w in weekly if w.week_number == 0)
+        assert week0.enrolled == 1

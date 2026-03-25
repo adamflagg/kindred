@@ -22,6 +22,7 @@ def mock_repository():
     """Create a mock MetricsRepository with default empty returns."""
     repo = AsyncMock()
     repo.fetch_registration_dates = AsyncMock(return_value={})
+    repo.has_pre_anchor_enrollments = AsyncMock(return_value=False)
     return repo
 
 

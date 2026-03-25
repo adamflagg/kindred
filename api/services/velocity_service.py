@@ -132,15 +132,18 @@ def rollup_daily_to_weekly(
 
 
 def _week_start(d: datetime, season_start: datetime) -> datetime:
-    """Start of 7-day bucket containing d, anchored to season_start."""
+    """Start of 7-day bucket containing d, anchored to season_start. Pre-anchor → anchor - 7d."""
     days_since = (d - season_start).days
+    if days_since < 0:
+        return season_start - timedelta(days=7)
     return season_start + timedelta(days=(days_since // 7) * 7)
 
 
 def _week_label(d: datetime | date, season_start: datetime | date) -> str:
-    """Format a date as a week label like 'Wk N (Jan 6–12)'."""
+    """Format a date as a week label like 'Wk N (Jan 6–12)' or 'Wk 0 (Nov 5–11)'."""
     week_num = _week_number(d, season_start)
-    return f"Wk {week_num} ({format_week_date_range(season_start.date() if isinstance(season_start, datetime) else season_start, week_num)})"
+    anchor = season_start.date() if isinstance(season_start, datetime) else season_start
+    return f"Wk {week_num} ({format_week_date_range(anchor, week_num)})"
 
 
 def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | None:
@@ -162,10 +165,13 @@ def _season_end(priority_reg_date: datetime) -> datetime:
 
 
 def _week_number(d: datetime | date, priority_reg_date: datetime | date) -> int:
-    """Compute 1-based week offset from priority_reg_date."""
+    """Compute week offset from priority_reg_date. Returns 0 for pre-anchor dates, 1+ otherwise."""
     d_date = d.date() if isinstance(d, datetime) else d
     ref_date = priority_reg_date.date() if isinstance(priority_reg_date, datetime) else priority_reg_date
-    return (d_date - ref_date).days // 7 + 1
+    days = (d_date - ref_date).days
+    if days < 0:
+        return 0
+    return days // 7 + 1
 
 
 def _partial_week_info(week_start_str: str, year: int, *, today: date | None = None) -> tuple[bool, int]:
@@ -1551,7 +1557,7 @@ class VelocityService:
             enroll_date_str = _get_enrollment_date(att)
             if enroll_date_str:
                 dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-                if ctx.season_start.date() <= dt.date() <= ctx.season_end.date():
+                if dt.date() <= ctx.season_end.date():
                     date_key = dt.strftime("%Y-%m-%d")
                     session_daily_enrollments[effective_sid][date_key] += 1
 
@@ -1561,7 +1567,7 @@ class VelocityService:
                 if cancel_date_raw:
                     cancel_date_str = parse_date_only(cancel_date_raw)
                     cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                    if ctx.season_start.date() <= cancel_dt.date() <= ctx.season_end.date():
+                    if cancel_dt.date() <= ctx.season_end.date():
                         session_daily_cancellations[effective_sid][cancel_date_str] += 1
                         total_cancellation_count += 1
 
@@ -1647,6 +1653,8 @@ class VelocityService:
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
         is_current_season = season_start_date <= ctx.today <= season_end_date
         end_date = ctx.today if is_current_season else season_end_date
+        anchor_str = season_start_date.strftime("%Y-%m-%d")
+        has_week0 = await self.repo.has_pre_anchor_enrollments(ctx.year, anchor_str)
         daily_data, per_session_daily = reconstruct_daily_multi(
             attendees=attendees,
             season_start=season_start_date,
@@ -1655,6 +1663,7 @@ class VelocityService:
             ag_parent_map=ag_parent_map,
             session_cm_id=session_cm_id,
             session_ids=list(per_session_data.keys()),
+            week0=has_week0,
         )
 
         # Derive weekly from daily for combined curve
@@ -1725,7 +1734,7 @@ class VelocityService:
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if not (ctx.season_start.date() <= dt.date() <= ctx.season_end.date()):
+            if dt.date() > ctx.season_end.date():
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1

@@ -445,3 +445,40 @@ class MetricsRepository:
             return {getattr(r, "config_key", ""): getattr(r, "value", "") for r in records}
         except Exception:
             return {}
+
+    async def has_pre_anchor_enrollments(self, year: int, anchor_date: str) -> bool:
+        """Check if any attendees have enrollment dates before the anchor.
+
+        Mirrors _get_enrollment_date priority: effective_date first, then
+        enrollment_date only when effective_date is empty.  This prevents
+        false positives from cancelled attendees whose enrollment_date is
+        the cancel PostDate rather than the original registration date.
+        """
+        base = f"year = {year}"
+        # 1. effective_date present and before anchor
+        eff_filter = f'{base} && effective_date != "" && effective_date < "{anchor_date}"'
+        try:
+            records = await asyncio.to_thread(
+                self.pb.collection(ATTENDEES).get_list,
+                1,
+                1,
+                query_params={"filter": eff_filter},
+            )
+            if records.total_items > 0:
+                return True
+        except Exception:
+            logger.warning("has_pre_anchor_enrollments: effective_date check failed", exc_info=True)
+        # 2. effective_date empty, fall back to enrollment_date
+        enr_filter = f'{base} && effective_date = "" && enrollment_date != "" && enrollment_date < "{anchor_date}"'
+        try:
+            records = await asyncio.to_thread(
+                self.pb.collection(ATTENDEES).get_list,
+                1,
+                1,
+                query_params={"filter": enr_filter},
+            )
+            if records.total_items > 0:
+                return True
+        except Exception:
+            logger.warning("has_pre_anchor_enrollments: enrollment_date check failed", exc_info=True)
+        return False

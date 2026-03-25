@@ -50,6 +50,7 @@ def mock_repository():
     repo.fetch_budget_config = AsyncMock(return_value={})
     repo.fetch_registration_dates = AsyncMock(return_value={})
     repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+    repo.has_pre_anchor_enrollments = AsyncMock(return_value=False)
     return repo
 
 
@@ -1571,3 +1572,64 @@ class TestGetWeekOptions:
         assert week_offsets[1] == 6, f"Week 1 should be day_offset=6 (end of days 0-6), got {week_offsets[1]}"
         assert week_offsets[2] == 13, f"Week 2 should be day_offset=13 (end of days 7-13), got {week_offsets[2]}"
         assert week_offsets[3] == 20, f"Week 3 should be day_offset=20 (end of days 14-20), got {week_offsets[3]}"
+
+
+# ============================================================================
+# Week 0 (Pre-Anchor) Tests
+# ============================================================================
+
+
+class TestWeek0InForecast:
+    """Tests for Week 0 (pre-anchor) support in forecast."""
+
+    @pytest.mark.asyncio
+    async def test_week_options_includes_week_0_when_pre_anchor_exists(self, service, mock_repository):
+        """Week 0 appears at the bottom when pre-anchor enrollments exist."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        mock_repository.has_pre_anchor_enrollments = AsyncMock(return_value=True)
+        result = await service.get_week_options(2026, today=date(2025, 11, 20))
+        week_numbers = [o.week_number for o in result]
+        assert 0 in week_numbers
+        # Week 0 should be last (oldest)
+        assert result[-1].week_number == 0
+        assert result[-1].day_offset == -1
+        assert "Pre-Reg" in result[-1].label
+        assert result[-1].is_today is False
+
+    @pytest.mark.asyncio
+    async def test_week_options_no_week_0_when_no_pre_anchor(self, service, mock_repository):
+        """Week 0 does not appear when no pre-anchor enrollments exist."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        mock_repository.has_pre_anchor_enrollments = AsyncMock(return_value=False)
+        result = await service.get_week_options(2026, today=date(2025, 11, 20))
+        week_numbers = [o.week_number for o in result]
+        assert 0 not in week_numbers
+
+    @pytest.mark.asyncio
+    async def test_forecast_day_offset_negative_one_returns_week_0(self, service, mock_repository):
+        """day_offset=-1 returns pre-anchor enrollment state (Week 0)."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",
+        }
+        mock_repository.fetch_budget_config.return_value = {}
+
+        # Attendee enrolled Nov 8 (before anchor Nov 12)
+        att = create_mock_attendee(
+            person_id=1,
+            session_cm_id=1001,
+            year=2026,
+            status_id=2,
+            effective_date="2025-11-08",
+            enrollment_date="2025-11-08",
+        )
+        mock_repository.fetch_attendees_with_dates.return_value = [att]
+
+        result = await service.calculate_forecast(year=2026, day_offset=-1)
+        assert result.week_number == 0
+        assert result.grand_total.enrolled == 1
