@@ -550,7 +550,9 @@ async def get_forecast(
     year: int = Query(..., description="Year to forecast", ge=2000, le=2100),
     session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
-    day_offset: int | None = Query(None, ge=0, description="Days since registration anchor (week-relative mode)"),
+    day_offset: int | None = Query(
+        None, ge=-1, description="Days since registration anchor (week-relative mode); -1 for Week 0"
+    ),
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
