@@ -270,7 +270,8 @@ class OpenAIProvider(AIProvider):
         Falls back to generic parse_request.txt for unknown field types.
         """
         requester_info = f"Requester: {context.requester_name}\n"
-        requester_last = context.requester_name.split()[-1] if context.requester_name else ""
+        name_parts = context.requester_name.split() if context.requester_name else []
+        requester_last = name_parts[-1] if name_parts else ""
         requester_info += f"Requester last name: {requester_last}\n"
         if context.additional_context.get("requester_grade"):
             requester_info += f"Grade: {context.additional_context['requester_grade']}\n"

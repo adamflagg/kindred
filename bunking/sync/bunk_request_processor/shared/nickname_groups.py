@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any
 
 try:
@@ -188,32 +189,40 @@ def find_nickname_variations(name: str, config_service: Any = None) -> list[str]
         List of nickname variations (excluding the input name)
     """
     name_lower = name.lower()
-    variations: set[str] = set()
+    variations: list[str] = []
+    seen: set[str] = set()
+
+    def _add(values: Iterable[str]) -> None:
+        for v in values:
+            if v not in seen:
+                seen.add(v)
+                variations.append(v)
 
     # 1. Check built-in nickname groups (highest priority)
     groups = get_nickname_groups(config_service)
     for group in groups:
         if name_lower in group:
-            variations.update(n for n in group if n != name_lower)
+            _add(n for n in group if n != name_lower)
             break
 
     # 2. Check spelling variations
     if name_lower in SPELLING_VARIATIONS:
-        variations.update(SPELLING_VARIATIONS[name_lower])
+        _add(SPELLING_VARIATIONS[name_lower])
 
     # 3. Check camp-specific overrides
-    variations.update(_get_override_variations(name_lower))
+    _add(_get_override_variations(name_lower))
 
     # 4. Check nicknames library (broadest coverage, lowest priority)
-    variations.update(_get_library_variations(name_lower))
+    _add(_get_library_variations(name_lower))
 
-    return list(variations)
+    return variations
 
 
 def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None) -> bool:
     """Check if two names match exactly or via nickname groups.
 
-    (_names_match_with_nicknames method).
+    Consults the same sources as find_nickname_variations:
+    built-in groups, spelling variations, camp overrides, and nicknames library.
 
     Args:
         name1: First name (case insensitive)
@@ -230,18 +239,9 @@ def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None
     if name1_lower == name2_lower:
         return True
 
-    # Check if both names are in the same nickname group
-    groups = get_nickname_groups(config_service)
-    for group in groups:
-        if name1_lower in group and name2_lower in group:
-            return True
-
-    # Check spelling variations (bidirectional)
-    if name1_lower in SPELLING_VARIATIONS:
-        if name2_lower in SPELLING_VARIATIONS[name1_lower]:
-            return True
-    if name2_lower in SPELLING_VARIATIONS:
-        if name1_lower in SPELLING_VARIATIONS[name2_lower]:
-            return True
+    # Check all variation sources: name2 in name1's variations
+    variations = find_nickname_variations(name1, config_service)
+    if name2_lower in variations:
+        return True
 
     return False

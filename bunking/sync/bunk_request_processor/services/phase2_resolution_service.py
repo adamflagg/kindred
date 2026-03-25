@@ -447,12 +447,9 @@ class Phase2ResolutionService:
 
                 # Filter to session attendees if we have session info and attendee repo
                 if session_cm_id is not None and self.attendee_repository and year:
-                    session_candidates = []
-                    for person in candidates:
-                        candidate_session = self.attendee_repository.get_session_for_person(person.cm_id, year)
-                        if candidate_session == session_cm_id:
-                            session_candidates.append(person)
-                    candidates = session_candidates
+                    candidate_cm_ids = [p.cm_id for p in candidates]
+                    session_map = self.attendee_repository.bulk_get_sessions_for_persons(candidate_cm_ids, year)
+                    candidates = [p for p in candidates if session_map.get(p.cm_id) == session_cm_id]
 
                 if not candidates:
                     continue
@@ -476,8 +473,7 @@ class Phase2ResolutionService:
                 logger.info(
                     f"Generated {len(candidates)} single-name candidate(s) for '{target}' in session {session_cm_id}"
                 )
-                self._stats["ambiguous"] = self._stats.get("ambiguous", 0)
-                # Note: stat counting happens later in _update_stats
+                # Note: ambiguous stat counting happens later in _update_stats
 
     def _handle_no_resolution_cases(self, cases: list[ResolutionCase]) -> None:
         """Handle cases that don't need resolution"""
@@ -919,6 +915,11 @@ class Phase2ResolutionService:
         best_match = None
         best_score = 0.0
 
+        # Pre-fetch session mappings for all candidates in one bulk call
+        session_map: dict[int, int] = {}
+        if session_cm_id is not None and self.attendee_repository and year:
+            session_map = self.attendee_repository.bulk_get_sessions_for_persons(clean_candidate_ids, year)
+
         for cm_id in clean_candidate_ids:
             person = self.person_repository.find_by_cm_id(cm_id)
             if not person:
@@ -927,8 +928,8 @@ class Phase2ResolutionService:
 
             score = 0.5  # Base score for being in cache
 
-            if session_cm_id is not None and self.attendee_repository and year:
-                candidate_session = self.attendee_repository.get_session_for_person(cm_id, year)
+            if session_cm_id is not None and session_map:
+                candidate_session = session_map.get(cm_id)
                 if candidate_session is not None:
                     if candidate_session == session_cm_id:
                         score += 0.3  # Same session is strong signal

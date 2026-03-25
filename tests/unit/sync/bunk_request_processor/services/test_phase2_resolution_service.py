@@ -825,7 +825,9 @@ class TestAICandidateScoringMonolithParity:
         # Setup attendee repository to show candidate1 is in same session (1000002)
         attendee_repo = Mock()
         session_map = {111: 1000002, 222: 1000003}  # 111 same session, 222 different
-        attendee_repo.get_session_for_person = Mock(side_effect=lambda cm_id, year: session_map.get(cm_id))
+        attendee_repo.bulk_get_sessions_for_persons = Mock(
+            side_effect=lambda cm_ids, year: {cid: session_map[cid] for cid in cm_ids if cid in session_map}
+        )
         service.attendee_repository = attendee_repo
 
         parsed = self._create_parsed_request_with_candidates(target_name="Jake Smith", candidate_ids=[111, 222])
@@ -865,7 +867,9 @@ class TestAICandidateScoringMonolithParity:
         # Setup attendee repository
         attendee_repo = Mock()
         session_map = {111: 1000003, 222: 1000002}  # 111 different session, 222 same
-        attendee_repo.get_session_for_person = Mock(side_effect=lambda cm_id, year: session_map.get(cm_id))
+        attendee_repo.bulk_get_sessions_for_persons = Mock(
+            side_effect=lambda cm_ids, year: {cid: session_map[cid] for cid in cm_ids if cid in session_map}
+        )
         service.attendee_repository = attendee_repo
 
         parsed = self._create_parsed_request_with_candidates(target_name="Jake Smith", candidate_ids=[111, 222])
@@ -1025,7 +1029,9 @@ class TestAICandidateScoringMonolithParity:
         # Setup attendee repository
         attendee_repo = Mock()
         session_map = {111: 1000003, 222: 1000002, 333: 1000002}
-        attendee_repo.get_session_for_person = Mock(side_effect=lambda cm_id, year: session_map.get(cm_id))
+        attendee_repo.bulk_get_sessions_for_persons = Mock(
+            side_effect=lambda cm_ids, year: {cid: session_map[cid] for cid in cm_ids if cid in session_map}
+        )
         service.attendee_repository = attendee_repo
 
         # Requester info
@@ -1433,7 +1439,9 @@ class TestSingleNameCandidateGeneration:
 
         # Set up attendee_repository mock so both are in-session
         attendee_repo = Mock()
-        attendee_repo.get_session_for_person = Mock(return_value=1000002)
+        attendee_repo.bulk_get_sessions_for_persons = Mock(
+            side_effect=lambda cm_ids, year: {cid: 1000002 for cid in cm_ids}
+        )
 
         service = Phase2ResolutionService(
             resolution_pipeline=pipeline,
@@ -1481,7 +1489,9 @@ class TestSingleNameCandidateGeneration:
 
         # All in session
         attendee_repo = Mock()
-        attendee_repo.get_session_for_person = Mock(return_value=1000002)
+        attendee_repo.bulk_get_sessions_for_persons = Mock(
+            side_effect=lambda cm_ids, year: {cid: 1000002 for cid in cm_ids}
+        )
 
         service = Phase2ResolutionService(
             resolution_pipeline=pipeline,
@@ -1597,8 +1607,8 @@ class TestSingleNameCandidateGeneration:
 
         attendee_repo = Mock()
         # cm_id 100 is in session 1000002, cm_id 200 is in session 1000003
-        attendee_repo.get_session_for_person = Mock(
-            side_effect=lambda cm_id, year: 1000002 if cm_id == 100 else 1000003
+        attendee_repo.bulk_get_sessions_for_persons = Mock(
+            side_effect=lambda cm_ids, year: {cid: (1000002 if cid == 100 else 1000003) for cid in cm_ids}
         )
 
         service = Phase2ResolutionService(
