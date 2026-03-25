@@ -72,6 +72,9 @@ class AIBunkRequestItem(BaseModel):
     temporal_info: TemporalInfo | None = None
     """Temporal metadata for conflict detection - date mentioned, superseded status."""
 
+    historical_year: int | None = None
+    """Year of historical bunking reference (e.g., 2024 for 'same bunk last year')."""
+
 
 class AIParseResponse(BaseModel):
     """Response from parse-only AI request.

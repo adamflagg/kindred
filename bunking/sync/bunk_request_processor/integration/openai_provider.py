@@ -270,6 +270,8 @@ class OpenAIProvider(AIProvider):
         Falls back to generic parse_request.txt for unknown field types.
         """
         requester_info = f"Requester: {context.requester_name}\n"
+        requester_last = context.requester_name.split()[-1] if context.requester_name else ""
+        requester_info += f"Requester last name: {requester_last}\n"
         if context.additional_context.get("requester_grade"):
             requester_info += f"Grade: {context.additional_context['requester_grade']}\n"
         if context.additional_context.get("session_name"):
@@ -349,6 +351,10 @@ class OpenAIProvider(AIProvider):
                 "ambiguity_reason": ai_req.ambiguity_reason,
                 "source_type": ai_req.source_type,
             }
+
+            # Include historical_year if AI extracted one
+            if ai_req.historical_year:
+                request_metadata["historical_year"] = ai_req.historical_year
 
             # Include staff_metadata if present in context (for bunking_notes fields)
             staff_metadata = context.additional_context.get("staff_metadata")

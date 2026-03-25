@@ -170,7 +170,15 @@ class SocialGraph:
         return base_weight
 
     async def _add_informational_relationships(self, graph: nx.Graph, session_cm_id: int) -> None:
-        """Add family, school, and bunkmate relationships (informational only)"""
+        """Add family and school relationships from expanded person data (informational only).
+
+        Fields like household_id, school, and grade live on the persons table,
+        not on attendees. We read them from the expanded person record.
+
+        Current bunk grouping is intentionally skipped -- we are solving bunking
+        assignments, so using existing bunk placement would be circular.
+        Historical bunking is handled separately by _add_historical_bunking_relationships.
+        """
         try:
             # Get all attendees for this year with person and session expanded
             filter_str = f"year = {self.year} && status = 'enrolled'"
@@ -181,9 +189,8 @@ class SocialGraph:
 
             # Create lookup structures
             attendee_data: dict[int, Any] = {}
-            families: dict[str, list[int]] = {}  # family_id -> [person_cm_ids]
+            families: dict[int, list[int]] = {}  # household_id -> [person_cm_ids]
             schools: dict[tuple[str, int | None], list[int]] = {}  # (school, grade) -> [person_cm_ids]
-            bunks: dict[str, list[int]] = {}  # bunk_id -> [person_cm_ids]
 
             for attendee in attendees:
                 # Filter by session CM ID (check expanded session)
@@ -191,36 +198,35 @@ class SocialGraph:
                 if not session or session.cm_id != session_cm_id:
                     continue
 
-                # Get person CM ID from expanded person
+                # Get person from expanded record -- school, grade, household_id live here
                 person = get_person_from_expand(attendee)
                 if not person:
                     continue
                 person_cm_id = person.cm_id
                 attendee_data[person_cm_id] = attendee
 
-                # Group by family
-                if hasattr(attendee, "family_id") and attendee.family_id:
-                    family_id = attendee.family_id
-                    if family_id not in families:
-                        families[family_id] = []
-                    families[family_id].append(person_cm_id)
+                # Group by household (from expanded person)
+                household_id = getattr(person, "household_id", None)
+                if household_id:
+                    if household_id not in families:
+                        families[household_id] = []
+                    families[household_id].append(person_cm_id)
 
-                # Group by school and grade
-                if hasattr(attendee, "school") and attendee.school and hasattr(attendee, "grade") and attendee.grade:
-                    school_key = (attendee.school, attendee.grade)
+                # Group by school and grade (from expanded person)
+                school = getattr(person, "school", None)
+                grade = getattr(person, "grade", None)
+                if school and grade:
+                    school_key = (school, grade)
                     if school_key not in schools:
                         schools[school_key] = []
                     schools[school_key].append(person_cm_id)
 
-                # Group by current bunk
-                if hasattr(attendee, "current_bunk_id") and attendee.current_bunk_id:
-                    bunk_id = attendee.current_bunk_id
-                    if bunk_id not in bunks:
-                        bunks[bunk_id] = []
-                    bunks[bunk_id].append(person_cm_id)
+                # NOTE: Current bunk grouping intentionally skipped.
+                # We are solving bunking, so using current bunk would be circular.
+                # Historical bunking is handled by _add_historical_bunking_relationships.
 
             # Add sibling edges (strongest informational connection)
-            for family_id, members in families.items():
+            for members in families.values():
                 if len(members) > 1:
                     for i in range(len(members)):
                         for j in range(i + 1, len(members)):
@@ -243,19 +249,6 @@ class SocialGraph:
                                 members[j],
                                 RelationshipType.CLASSMATE,
                                 RELATIONSHIP_WEIGHTS[RelationshipType.CLASSMATE],
-                            )
-
-            # Add bunkmate edges (strong informational connection)
-            for bunk_id, members in bunks.items():
-                if len(members) > 1:
-                    for i in range(len(members)):
-                        for j in range(i + 1, len(members)):
-                            self._add_informational_edge(
-                                graph,
-                                members[i],
-                                members[j],
-                                RelationshipType.BUNKMATE,
-                                RELATIONSHIP_WEIGHTS[RelationshipType.BUNKMATE],
                             )
 
         except Exception as e:

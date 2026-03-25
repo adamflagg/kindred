@@ -344,7 +344,10 @@ class ExactMatchStrategy(BaseMatchStrategy):
         first_t, last_t = parsed.first.title(), parsed.last.title()
         if candidates is not None:
             matches = [
-                c for c in candidates if c.first_name.title() == first_t and last_name_matches(last_t, c.last_name)
+                c
+                for c in candidates
+                if (c.first_name.title() == first_t or (c.preferred_name and c.preferred_name.title() == first_t))
+                and last_name_matches(last_t, c.last_name)
             ]
         else:
             # Fall back to database query if no candidates provided

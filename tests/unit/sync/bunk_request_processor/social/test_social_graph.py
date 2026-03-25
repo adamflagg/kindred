@@ -1057,3 +1057,201 @@ class TestNoPathScenarios:
         # Should have max distance since disconnected
         assert signals["social_distance"] == 999
         assert signals["in_same_component"] is False
+
+
+class TestAddInformationalRelationshipsExpandedPerson:
+    """Tests that _add_informational_relationships reads fields from expanded person, not attendee.
+
+    The bug: family_id, school, grade, current_bunk_id were read from the attendee
+    record directly, but those fields don't exist on the attendees collection.
+    They live on the persons table and must be accessed via expand.
+    """
+
+    def _make_attendee(
+        self,
+        person_cm_id: int,
+        session_cm_id: int,
+        household_id: int | None = None,
+        school: str | None = None,
+        grade: int | None = None,
+    ) -> Mock:
+        """Create a mock attendee with properly expanded person and session."""
+        person = Mock()
+        person.cm_id = person_cm_id
+        person.household_id = household_id
+        person.school = school
+        person.grade = grade
+
+        session = Mock()
+        session.cm_id = session_cm_id
+
+        attendee = Mock(spec=["expand", "status", "year"])
+        attendee.status = "enrolled"
+        attendee.year = 2025
+        attendee.expand = {"person": person, "session": session}
+        return attendee
+
+    @pytest.mark.asyncio
+    async def test_school_grade_grouping_reads_from_expanded_person(self):
+        """School and grade come from expanded person, not attendee directly."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
+
+        # Two attendees at the same school and grade (via expanded person)
+        attendees = [
+            self._make_attendee(person_cm_id=101, session_cm_id=1234, school="Riverside Elementary", grade=5),
+            self._make_attendee(person_cm_id=102, session_cm_id=1234, school="Riverside Elementary", grade=5),
+        ]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        graph = nx.Graph()
+        await sg._add_informational_relationships(graph, 1234)
+
+        # Should have 2 nodes and a CLASSMATE edge between them
+        assert graph.number_of_nodes() == 2
+        assert graph.has_edge(101, 102)
+        edge_data = graph[101][102]
+        assert RelationshipType.CLASSMATE in edge_data["relationship_types"]
+
+    @pytest.mark.asyncio
+    async def test_household_grouping_reads_from_expanded_person(self):
+        """Household/family grouping reads household_id from expanded person."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
+
+        # Two siblings with same household_id (via expanded person)
+        attendees = [
+            self._make_attendee(person_cm_id=201, session_cm_id=1234, household_id=9001),
+            self._make_attendee(person_cm_id=202, session_cm_id=1234, household_id=9001),
+        ]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        graph = nx.Graph()
+        await sg._add_informational_relationships(graph, 1234)
+
+        # Should have SIBLING edge between them
+        assert graph.number_of_nodes() == 2
+        assert graph.has_edge(201, 202)
+        edge_data = graph[201][202]
+        assert RelationshipType.SIBLING in edge_data["relationship_types"]
+
+    @pytest.mark.asyncio
+    async def test_graph_produces_nodes_with_expanded_person_data(self):
+        """Graph produces >0 nodes when attendees exist with expanded person data."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
+
+        # Three attendees with school/household data on expanded person
+        attendees = [
+            self._make_attendee(
+                person_cm_id=301, session_cm_id=1234, household_id=8001, school="Oak Valley Middle", grade=6
+            ),
+            self._make_attendee(
+                person_cm_id=302, session_cm_id=1234, household_id=8001, school="Oak Valley Middle", grade=6
+            ),
+            self._make_attendee(
+                person_cm_id=303, session_cm_id=1234, household_id=8002, school="Oak Valley Middle", grade=6
+            ),
+        ]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        graph = nx.Graph()
+        await sg._add_informational_relationships(graph, 1234)
+
+        # All three should be nodes (they all share school+grade at minimum)
+        assert graph.number_of_nodes() == 3
+
+        # 301-302 should have both SIBLING and CLASSMATE edges
+        assert graph.has_edge(301, 302)
+        edge_types_12 = graph[301][302]["relationship_types"]
+        assert RelationshipType.SIBLING in edge_types_12
+        assert RelationshipType.CLASSMATE in edge_types_12
+
+        # 301-303 and 302-303 should have CLASSMATE edge (same school+grade)
+        assert graph.has_edge(301, 303)
+        assert graph.has_edge(302, 303)
+
+    @pytest.mark.asyncio
+    async def test_bunk_grouping_is_skipped(self):
+        """Current bunk grouping should be skipped (we are solving bunking, not using it)."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
+
+        # Create attendees that have NO school/household data on the person
+        # so no CLASSMATE or SIBLING edges are created
+        person1 = Mock()
+        person1.cm_id = 401
+        person1.household_id = None
+        person1.school = None
+        person1.grade = None
+
+        person2 = Mock()
+        person2.cm_id = 402
+        person2.household_id = None
+        person2.school = None
+        person2.grade = None
+
+        session = Mock()
+        session.cm_id = 1234
+
+        att1 = Mock(spec=["expand", "status", "year"])
+        att1.status = "enrolled"
+        att1.year = 2025
+        att1.expand = {"person": person1, "session": session}
+
+        att2 = Mock(spec=["expand", "status", "year"])
+        att2.status = "enrolled"
+        att2.year = 2025
+        att2.expand = {"person": person2, "session": session}
+
+        mock_pb.collection.return_value.get_full_list.return_value = [att1, att2]
+
+        graph = nx.Graph()
+        await sg._add_informational_relationships(graph, 1234)
+
+        # No BUNKMATE edges from current bunk grouping
+        # (historical bunking is handled separately by _add_historical_bunking_relationships)
+        for u, v, data in graph.edges(data=True):
+            assert RelationshipType.BUNKMATE not in data.get("relationship_types", [])
+
+    @pytest.mark.asyncio
+    async def test_historical_bunking_not_short_circuited_by_zero_nodes(self):
+        """When nodes exist from informational relationships, historical bunking populates."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
+
+        # Two attendees sharing school
+        attendees = [
+            self._make_attendee(person_cm_id=501, session_cm_id=1234, school="Hillcrest High", grade=9),
+            self._make_attendee(person_cm_id=502, session_cm_id=1234, school="Hillcrest High", grade=9),
+        ]
+
+        # Historical bunk assignments for previous year
+        hist_assignment1 = Mock()
+        hist_assignment1.expand = {"person": Mock(cm_id=501), "bunk": Mock(id="bunk_A")}
+        hist_assignment1.year = 2024
+
+        hist_assignment2 = Mock()
+        hist_assignment2.expand = {"person": Mock(cm_id=502), "bunk": Mock(id="bunk_A")}
+        hist_assignment2.year = 2024
+
+        def mock_get_full_list(**kwargs):
+            query = kwargs.get("query_params", {})
+            filter_str = query.get("filter", "")
+            if "year < " in filter_str:
+                return [hist_assignment1, hist_assignment2]
+            return attendees
+
+        mock_pb.collection.return_value.get_full_list.side_effect = mock_get_full_list
+
+        graph = await sg._build_session_graph(1234)
+
+        # Should have >0 nodes (from informational relationships)
+        assert graph.number_of_nodes() > 0
+        # Should have edges (classmate + historical bunkmate)
+        assert graph.number_of_edges() > 0
+
+        # Check that historical bunkmate edge exists
+        assert graph.has_edge(501, 502)
+        edge_types = graph[501][502]["relationship_types"]
+        assert RelationshipType.BUNKMATE in edge_types

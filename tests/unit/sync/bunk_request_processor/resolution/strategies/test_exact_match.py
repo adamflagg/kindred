@@ -338,5 +338,68 @@ class TestExactMatchParentSurname:
         assert result.metadata.get("match_type") == "parent_surname"
 
 
+class TestExactMatchPreferredName:
+    """Test preferred_name matching in ExactMatchStrategy."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return ExactMatchStrategy(person_repo, attendee_repo)
+
+    def test_resolve_with_context_matches_preferred_name(self, strategy):
+        """preferred_name should match when first_name doesn't."""
+        candidates = [
+            Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name="Nick"),
+        ]
+        result = strategy.resolve_with_context("Nick Garcia", requester_cm_id=999, candidates=candidates)
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+
+    def test_resolve_with_context_preferred_name_none_safe(self, strategy):
+        """Candidates with preferred_name=None should not crash."""
+        candidates = [
+            Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name=None),
+        ]
+        result = strategy.resolve_with_context("Nick Garcia", requester_cm_id=999, candidates=candidates)
+        assert not result.is_resolved  # "Nick" != "Nicholas", no preferred_name
+
+    def test_resolve_with_context_first_name_still_works(self, strategy):
+        """Standard first_name matching still works alongside preferred_name."""
+        candidates = [
+            Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name="Nick"),
+        ]
+        result = strategy.resolve_with_context("Nicholas Garcia", requester_cm_id=999, candidates=candidates)
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+
+    def test_resolve_with_context_preferred_name_case_insensitive(self, strategy):
+        """preferred_name matching should be case-insensitive via title()."""
+        candidates = [
+            Person(cm_id=100, first_name="Elizabeth", last_name="Chen", preferred_name="liz"),
+        ]
+        result = strategy.resolve_with_context("Liz Chen", requester_cm_id=999, candidates=candidates)
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+
+    def test_resolve_preferred_name_with_empty_string(self, strategy):
+        """Empty string preferred_name should not match anything."""
+        candidates = [
+            Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name=""),
+        ]
+        result = strategy.resolve_with_context("Nick Garcia", requester_cm_id=999, candidates=candidates)
+        assert not result.is_resolved
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

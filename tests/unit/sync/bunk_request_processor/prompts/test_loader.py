@@ -47,6 +47,62 @@ class TestPromptLoaderBasics:
         assert "{camp_name}" not in formatted
 
 
+class TestSiblingGuardrailsInPrompt:
+    """Test that sibling detection guardrails appear in rendered prompts."""
+
+    def test_prompt_contains_sibling_guardrails_section(self):
+        """The parse_bunk_with prompt must include sibling detection guardrails."""
+        clear_cache()
+
+        formatted = format_prompt(
+            "parse_bunk_with",
+            requester_info="Requester: Emma Johnson\nRequester last name: Johnson\nGrade: 5\n",
+            request_text="Olivia Chen",
+        )
+
+        assert "SIBLING DETECTION GUARDRAILS" in formatted
+
+    def test_prompt_states_different_last_names_not_siblings(self):
+        """Guardrails must state that different last names means not siblings."""
+        clear_cache()
+
+        formatted = format_prompt(
+            "parse_bunk_with",
+            requester_info="Requester: Emma Johnson\nRequester last name: Johnson\nGrade: 5\n",
+            request_text="Olivia Chen",
+        )
+
+        assert "DIFFERENT last" in formatted or "different last" in formatted.lower()
+
+    def test_prompt_states_shared_school_not_sibling_indicator(self):
+        """Guardrails must state that shared school/grade alone does not indicate siblings."""
+        clear_cache()
+
+        formatted = format_prompt(
+            "parse_bunk_with",
+            requester_info="Requester: Emma Johnson\nRequester last name: Johnson\nGrade: 5\n",
+            request_text="Olivia Chen",
+        )
+
+        # The prompt must indicate that school/grade alone is not a sibling signal
+        lower = formatted.lower()
+        assert "school" in lower and "grade" in lower and "sibling" in lower
+
+    def test_prompt_requires_explicit_family_words_for_sibling(self):
+        """Guardrails must require explicit family relationship words for SIBLING."""
+        clear_cache()
+
+        formatted = format_prompt(
+            "parse_bunk_with",
+            requester_info="Requester: Emma Johnson\nRequester last name: Johnson\nGrade: 5\n",
+            request_text="Olivia Chen",
+        )
+
+        # Must mention explicit family words like sister, brother, twin
+        lower = formatted.lower()
+        assert "sister" in lower and "brother" in lower and "twin" in lower
+
+
 class TestPromptLoaderPartials:
     """Tests for partial injection feature.
 

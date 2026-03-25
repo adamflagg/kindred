@@ -46,6 +46,17 @@ Use these EXACT strings as target_name when appropriate:
 
 These placeholders will be expanded to actual names by the system later.
 
+=== SIBLING DETECTION GUARDRAILS ===
+
+The requester's last name is included in the requester info above.
+- ONLY use "SIBLING" when the text explicitly mentions a family relationship
+  using words like "sister", "brother", "twin", "sibling", "my twin", etc.
+- If two people are mentioned wanting to bunk together but have DIFFERENT last
+  names (e.g., requester is "Johnson" but text mentions "Olivia Chen"), extract
+  the non-requester's full name as a bunk_with target. Different last names
+  almost always means friends, not family.
+- Shared school, grade, or classroom alone does NOT indicate siblings.
+
 === PRIORITY INDICATORS ===
 
 Parents may indicate priority. Capture in keywords_found:
@@ -78,6 +89,11 @@ Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context
 Example 4 - Historical reference:
 Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
 Output: 1 bunk_with request with target_name "LAST_YEAR_BUNKMATES", parse_notes: "2024 Session 3 B-4"
+
+Example 4b - Historical bunking with year:
+Input: "Same bunk as last year with Emma and Olivia - they were B4 together"
+Output: 2 bunk_with requests for "Emma" and "Olivia", each with historical_year set to
+the year before the current camp season
 
 Example 5 - Complex with siblings:
 Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"

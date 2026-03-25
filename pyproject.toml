@@ -61,6 +61,9 @@ dependencies = [
     # System
     "psutil>=5.9.0",
     "rapidfuzz>=3.14.3",
+    # Phonetic & fuzzy matching
+    "jellyfish>=1.1.0",
+    "nicknames>=0.2.0",
 ]
 
 [dependency-groups]

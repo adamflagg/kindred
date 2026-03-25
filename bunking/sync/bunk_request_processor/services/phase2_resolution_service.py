@@ -363,6 +363,12 @@ class Phase2ResolutionService:
 
             # Store result at the correct index, preserving target_name for debugging
             result.target_name = parsed.target_name or ""
+
+            # Carry historical_year from parsed request to resolution result for Phase 2.5
+            parsed_meta = parsed.metadata or {}
+            if parsed_meta.get("historical_year") and result.metadata is not None:
+                result.metadata["historical_year"] = parsed_meta["historical_year"]
+
             case.resolution_results[req_idx] = result
 
             # Apply confidence scoring if available and resolved
@@ -392,6 +398,86 @@ class Phase2ResolutionService:
                 logger.debug(f"Ambiguous resolution for '{parsed.target_name}': {num_candidates} candidates")
             else:
                 logger.debug(f"Failed to resolve '{parsed.target_name}'")
+
+        # Post-process: generate candidates for unresolved single-name targets
+        self._generate_single_name_candidates(cases)
+
+    def _generate_single_name_candidates(self, cases: list[ResolutionCase]) -> None:
+        """Generate candidate lists for unresolved single-name targets.
+
+        When Phase 2 receives a first-name-only target (e.g., "Lily") that the
+        resolution pipeline cannot resolve, query for persons with matching
+        first_name or preferred_name in the session and return them as ambiguous
+        candidates so Phase 3 can disambiguate.
+
+        Candidates are filtered to the requester's session and capped at 5.
+        """
+        if not self.person_repository:
+            return
+
+        for case in cases:
+            if not case.resolution_results or not case.parse_result.parse_request:
+                continue
+
+            parse_request = case.parse_result.parse_request
+            session_cm_id = parse_request.session_cm_id
+            year = parse_request.year
+
+            for idx, result in enumerate(case.resolution_results):
+                if result is None:
+                    continue
+                # Skip already-resolved or already-ambiguous results
+                if result.is_resolved or result.is_ambiguous:
+                    continue
+
+                parsed = case.parsed_requests[idx] if idx < len(case.parsed_requests) else None
+                if not parsed or not parsed.target_name:
+                    continue
+
+                # Only apply to single-word names (first name only)
+                target = parsed.target_name.strip()
+                if " " in target:
+                    continue
+
+                # Query for persons matching first name
+                candidates = self.person_repository.find_by_first_name(target, year=year)
+
+                if not candidates:
+                    continue
+
+                # Filter to session attendees if we have session info and attendee repo
+                if session_cm_id is not None and self.attendee_repository and year:
+                    session_candidates = []
+                    for person in candidates:
+                        candidate_session = self.attendee_repository.get_session_for_person(person.cm_id, year)
+                        if candidate_session == session_cm_id:
+                            session_candidates.append(person)
+                    candidates = session_candidates
+
+                if not candidates:
+                    continue
+
+                # Cap at 5 candidates
+                candidates = candidates[:5]
+
+                # Replace the unresolved result with an ambiguous result
+                case.resolution_results[idx] = ResolutionResult(
+                    person=None,
+                    confidence=0.3,
+                    method="single_name_candidates",
+                    candidates=candidates,
+                    target_name=target,
+                    metadata={
+                        "single_name_lookup": True,
+                        "candidate_count": len(candidates),
+                    },
+                )
+
+                logger.info(
+                    f"Generated {len(candidates)} single-name candidate(s) for '{target}' in session {session_cm_id}"
+                )
+                self._stats["ambiguous"] = self._stats.get("ambiguous", 0)
+                # Note: stat counting happens later in _update_stats
 
     def _handle_no_resolution_cases(self, cases: list[ResolutionCase]) -> None:
         """Handle cases that don't need resolution"""

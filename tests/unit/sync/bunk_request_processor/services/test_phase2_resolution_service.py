@@ -1406,3 +1406,216 @@ class TestBuildResultsLengthPreservation:
         assert all(isinstance(r, ResolutionResult) for r in resolution_list), (
             "All items in resolution_list must be ResolutionResult objects"
         )
+
+
+class TestSingleNameCandidateGeneration:
+    """Tests for first-name-only candidate generation fallback in Phase 2.
+
+    When Phase 2 receives a first-name-only target (e.g., "Lily") that the
+    pipeline cannot resolve, it should generate a session-filtered candidate
+    list so Phase 3 can disambiguate instead of returning empty-handed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_single_name_produces_candidates(self):
+        """First-name-only target generates ambiguous result with session-filtered candidates."""
+        pipeline = Mock()
+        # Pipeline returns unresolved result for single name (no match)
+        pipeline.batch_resolve = Mock(
+            return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
+        )
+
+        # Set up person_repository mock with session-filtered results
+        person_repo = Mock()
+        lily_chen = _create_person(cm_id=100, first_name="Lily", last_name="Chen")
+        lily_garcia = _create_person(cm_id=200, first_name="Lily", last_name="Garcia")
+        person_repo.find_by_first_name = Mock(return_value=[lily_chen, lily_garcia])
+
+        # Set up attendee_repository mock so both are in-session
+        attendee_repo = Mock()
+        attendee_repo.get_session_for_person = Mock(return_value=1000002)
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=pipeline,
+            person_repository=person_repo,
+            attendee_repository=attendee_repo,
+        )
+
+        # Single first name only (no last name)
+        parsed_request = _create_parsed_request(target_name="Lily")
+        parse_request = _create_parse_request(session_cm_id=1000002, year=2025)
+        parse_result = _create_parse_result(
+            parsed_requests=[parsed_request],
+            parse_request=parse_request,
+        )
+
+        results = await service.batch_resolve([parse_result])
+
+        _, resolutions = results[0]
+        assert len(resolutions) == 1
+        result = resolutions[0]
+
+        # Should be ambiguous with candidates
+        assert result.is_ambiguous, "Single-name target should produce ambiguous result"
+        assert len(result.candidates) == 2
+        assert result.confidence == 0.3
+        assert result.method == "single_name_candidates"
+        # Should include both Lilys
+        candidate_ids = {c.cm_id for c in result.candidates}
+        assert candidate_ids == {100, 200}
+
+    @pytest.mark.asyncio
+    async def test_single_name_caps_at_five(self):
+        """At most 5 candidates returned for single-name targets."""
+        pipeline = Mock()
+        pipeline.batch_resolve = Mock(
+            return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
+        )
+
+        # Create 8 people named "Emma"
+        emmas = [_create_person(cm_id=100 + i, first_name="Emma", last_name=f"Last{i}") for i in range(8)]
+
+        person_repo = Mock()
+        person_repo.find_by_first_name = Mock(return_value=emmas)
+
+        # All in session
+        attendee_repo = Mock()
+        attendee_repo.get_session_for_person = Mock(return_value=1000002)
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=pipeline,
+            person_repository=person_repo,
+            attendee_repository=attendee_repo,
+        )
+
+        parsed_request = _create_parsed_request(target_name="Emma")
+        parse_request = _create_parse_request(session_cm_id=1000002, year=2025)
+        parse_result = _create_parse_result(
+            parsed_requests=[parsed_request],
+            parse_request=parse_request,
+        )
+
+        results = await service.batch_resolve([parse_result])
+
+        _, resolutions = results[0]
+        result = resolutions[0]
+
+        assert result.is_ambiguous
+        assert len(result.candidates) <= 5, "Candidates should be capped at 5"
+
+    @pytest.mark.asyncio
+    async def test_full_name_not_affected(self):
+        """Full names still go through normal pipeline."""
+        pipeline = Mock()
+        resolved_person = _create_person(cm_id=100, first_name="Lily", last_name="Chen")
+        pipeline.batch_resolve = Mock(
+            return_value=[_create_resolution_result(person=resolved_person, confidence=0.95, method="exact_full_name")]
+        )
+
+        person_repo = Mock()
+        attendee_repo = Mock()
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=pipeline,
+            person_repository=person_repo,
+            attendee_repository=attendee_repo,
+        )
+
+        # Full name (two words)
+        parsed_request = _create_parsed_request(target_name="Lily Chen")
+        parse_request = _create_parse_request(session_cm_id=1000002, year=2025)
+        parse_result = _create_parse_result(
+            parsed_requests=[parsed_request],
+            parse_request=parse_request,
+        )
+
+        results = await service.batch_resolve([parse_result])
+
+        _, resolutions = results[0]
+        result = resolutions[0]
+
+        # Should be resolved normally, not treated as single-name
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+        assert result.method == "exact_full_name"
+        # find_by_first_name should NOT have been called
+        person_repo.find_by_first_name.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_single_name_empty_session_no_candidates(self):
+        """Empty session produces no candidates (not an error)."""
+        pipeline = Mock()
+        pipeline.batch_resolve = Mock(
+            return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
+        )
+
+        person_repo = Mock()
+        person_repo.find_by_first_name = Mock(return_value=[])
+
+        attendee_repo = Mock()
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=pipeline,
+            person_repository=person_repo,
+            attendee_repository=attendee_repo,
+        )
+
+        parsed_request = _create_parsed_request(target_name="Lily")
+        parse_request = _create_parse_request(session_cm_id=1000002, year=2025)
+        parse_result = _create_parse_result(
+            parsed_requests=[parsed_request],
+            parse_request=parse_request,
+        )
+
+        results = await service.batch_resolve([parse_result])
+
+        _, resolutions = results[0]
+        result = resolutions[0]
+
+        # Should not be ambiguous since no candidates found
+        assert not result.is_ambiguous
+        # Should remain as unresolved (original pipeline result)
+        assert not result.is_resolved
+
+    @pytest.mark.asyncio
+    async def test_single_name_filters_to_session_attendees(self):
+        """Only persons enrolled in the target session appear as candidates."""
+        pipeline = Mock()
+        pipeline.batch_resolve = Mock(
+            return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
+        )
+
+        # Two Lilys found by first name, but only one in session
+        lily_in_session = _create_person(cm_id=100, first_name="Lily", last_name="Chen")
+        lily_other_session = _create_person(cm_id=200, first_name="Lily", last_name="Garcia")
+
+        person_repo = Mock()
+        person_repo.find_by_first_name = Mock(return_value=[lily_in_session, lily_other_session])
+
+        attendee_repo = Mock()
+        # cm_id 100 is in session 1000002, cm_id 200 is in session 1000003
+        attendee_repo.get_session_for_person = Mock(
+            side_effect=lambda cm_id, year: 1000002 if cm_id == 100 else 1000003
+        )
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=pipeline,
+            person_repository=person_repo,
+            attendee_repository=attendee_repo,
+        )
+
+        parsed_request = _create_parsed_request(target_name="Lily")
+        parse_request = _create_parse_request(session_cm_id=1000002, year=2025)
+        parse_result = _create_parse_result(
+            parsed_requests=[parsed_request],
+            parse_request=parse_request,
+        )
+
+        results = await service.batch_resolve([parse_result])
+
+        _, resolutions = results[0]
+        result = resolutions[0]
+
+        # Only the in-session Lily should be a candidate
+        assert len(result.candidates) == 1
+        assert result.candidates[0].cm_id == 100

@@ -209,6 +209,7 @@ tmp/
 !config/sheets_export.example.json
 !config/sheets_sharing.example.json
 !config/branding.json
+!config/nicknames_override.json
 !**/example_*.json
 !campminder/**/*.json
 !bunking/geo_normalizer/data/us_cities.json
