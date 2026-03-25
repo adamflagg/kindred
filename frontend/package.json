@@ -35,7 +35,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@headlessui/react": "^2.2.9",
     "@popperjs/core": "^2.11.8",
-    "@tailwindcss/vite": "^4.2.1",
+    "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-virtual": "^3.13.22",
     "@types/leaflet": "^1.9.21",
@@ -64,12 +64,8 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "@tanstack/query-core": "5.90.13",
     "eslint-plugin-react-hooks": {
       "eslint": "^10.0.0"
-    },
-    "@tailwindcss/vite": {
-      "vite": "^8.0.0"
     },
     "flatted": ">=3.4.2"
   },
