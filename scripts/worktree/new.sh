@@ -188,6 +188,7 @@ if [ -d "$LOCAL_REPO" ]; then
     cp -r "$LOCAL_REPO/local" "$WORKTREE_DIR/local"
     cp -f "$LOCAL_REPO/config/branding.local.json" "$WORKTREE_DIR/config/branding.local.json"
     cp -f "$LOCAL_REPO/config/staff_list.json" "$WORKTREE_DIR/config/staff_list.json"
+    cp -f "$LOCAL_REPO/config/nicknames_override.json" "$WORKTREE_DIR/config/nicknames_override.json" 2>/dev/null || true
     # Symlinked: dev-only files (not in Docker build context)
     ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$WORKTREE_DIR/CLAUDE.local.md"
     ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$WORKTREE_DIR/config/sheets_sharing.local.json"
