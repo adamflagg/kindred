@@ -12,9 +12,9 @@ from typing import Any
 try:
     from nicknames import NickNamer
 
-    _nicknamer = NickNamer()
+    _nicknamer: NickNamer | None = NickNamer()
 except ImportError:
-    _nicknamer = None
+    _nicknamer: NickNamer | None = None  # type: ignore[no-redef]
 
 _OVERRIDE_PATH = Path(__file__).parent.parent.parent.parent.parent / "config" / "nicknames_override.json"
 
