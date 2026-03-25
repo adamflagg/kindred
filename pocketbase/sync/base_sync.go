@@ -745,6 +745,68 @@ func (b *BaseSyncService) getRecordName(record *core.Record, entityType string) 
 	return fmt.Sprintf("ID: %s", record.Id)
 }
 
+// compareFieldEquals compares two field values for equality, handling type conversions.
+// This is the shared implementation used by derived-table sync services (camper_dietary,
+// camper_history, staff_skills) for their compareFields-based idempotency checks.
+func compareFieldEquals(existing, newVal any) bool {
+	// Handle nil vs empty string
+	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
+		return true
+	}
+	// Handle nil vs false (for boolean fields)
+	if existing == nil && newVal == false {
+		return true
+	}
+	if existing == false && newVal == nil {
+		return true
+	}
+	// Handle nil vs 0
+	if existing == nil && newVal == 0 {
+		return true
+	}
+	if existing == 0 && newVal == nil {
+		return true
+	}
+	// Handle float64 vs int (JSON unmarshals numbers as float64)
+	if existFloat, ok := existing.(float64); ok {
+		if newInt, ok := newVal.(int); ok {
+			return int(existFloat) == newInt
+		}
+		if newFloat, ok := newVal.(float64); ok {
+			return existFloat == newFloat
+		}
+	}
+	if existInt, ok := existing.(int); ok {
+		if newFloat, ok := newVal.(float64); ok {
+			return existInt == int(newFloat)
+		}
+	}
+	// Handle bool comparison
+	if existBool, ok := existing.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
+			return existBool == newBool
+		}
+	}
+
+	// String comparison as fallback
+	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
+}
+
+// compareRecordNeedsUpdate checks if any compared field differs between an existing
+// record and new data. Uses compareFields (inclusion list): only the listed fields
+// are checked for changes. This is the shared implementation used by derived-table
+// sync services.
+func compareRecordNeedsUpdate(existing *core.Record, newData map[string]any, compareFields []string) bool {
+	for _, field := range compareFields {
+		if value, exists := newData[field]; exists {
+			if !compareFieldEquals(existing.Get(field), value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // CompositeKey creates a year-scoped key for record lookups
 // This ensures year isolation by making the year part of the record's identity
 func CompositeKey(id interface{}, year int) string {

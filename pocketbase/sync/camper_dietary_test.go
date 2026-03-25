@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // TestCamperDietarySync_Name verifies the service name is correct
@@ -327,4 +329,121 @@ func findDietaryRecord(records []*testDietaryRecord, personID, year int) *testDi
 		}
 	}
 	return nil
+}
+
+// TestCamperDietaryCompareFields verifies that the compareFields list for camper_dietary
+// contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
+func TestCamperDietaryCompareFields(t *testing.T) {
+	// camperDietaryCompareFields should list all fields that matter for idempotency checks,
+	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName).
+	// Unlike other services, this includes person_id and year since the original skipFields
+	// only excluded PB-managed fields (id, created, updated).
+	expected := map[string]bool{
+		"attendee":            true,
+		"person_id":           true,
+		"year":                true,
+		"has_dietary_needs":   true,
+		"dietary_explanation": true,
+		"has_allergies":       true,
+		"allergy_info":        true,
+		"additional_medical":  true,
+	}
+
+	actual := make(map[string]bool)
+	for _, f := range camperDietaryCompareFields {
+		actual[f] = true
+	}
+
+	// Check all expected fields are present
+	for field := range expected {
+		if !actual[field] {
+			t.Errorf("camperDietaryCompareFields missing expected field %q", field)
+		}
+	}
+
+	// Check no unexpected fields are present
+	for field := range actual {
+		if !expected[field] {
+			t.Errorf("camperDietaryCompareFields contains unexpected field %q", field)
+		}
+	}
+
+	// Verify PocketBase-managed fields are NOT in compareFields
+	pbFields := []string{"id", "created", "updated", "collectionId", "collectionName"}
+	for _, field := range pbFields {
+		if actual[field] {
+			t.Errorf("camperDietaryCompareFields should NOT contain PB-managed field %q", field)
+		}
+	}
+}
+
+// TestCamperDietaryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
+// correctly detects when fields match (no update) and when they differ (needs update).
+func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	s := &CamperDietarySync{}
+
+	// Create a minimal collection with the fields used in comparison
+	col := core.NewBaseCollection("test_camper_dietary")
+	col.Fields.Add(&core.TextField{Name: "attendee"})
+	col.Fields.Add(&core.NumberField{Name: "person_id"})
+	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.BoolField{Name: "has_dietary_needs"})
+	col.Fields.Add(&core.TextField{Name: "dietary_explanation"})
+	col.Fields.Add(&core.BoolField{Name: "has_allergies"})
+	col.Fields.Add(&core.TextField{Name: "allergy_info"})
+	col.Fields.Add(&core.TextField{Name: "additional_medical"})
+
+	t.Run("no update when all fields match", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("attendee", "abc123")
+		existing.Set("person_id", 12345)
+		existing.Set("year", 2025)
+		existing.Set("has_dietary_needs", true)
+		existing.Set("dietary_explanation", "Vegetarian")
+		existing.Set("has_allergies", false)
+		existing.Set("allergy_info", "")
+		existing.Set("additional_medical", "")
+
+		newData := map[string]any{
+			"attendee":            "abc123",
+			"person_id":           12345,
+			"year":                2025,
+			"has_dietary_needs":   true,
+			"dietary_explanation": "Vegetarian",
+			"has_allergies":       false,
+			"allergy_info":        "",
+			"additional_medical":  "",
+		}
+
+		if s.recordNeedsUpdate(existing, newData, camperDietaryCompareFields) {
+			t.Error("expected no update needed when all compareFields match")
+		}
+	})
+
+	t.Run("needs update when a compare field differs", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("attendee", "abc123")
+		existing.Set("person_id", 12345)
+		existing.Set("year", 2025)
+		existing.Set("has_dietary_needs", true)
+		existing.Set("dietary_explanation", "Vegetarian")
+		existing.Set("has_allergies", false)
+		existing.Set("allergy_info", "")
+		existing.Set("additional_medical", "")
+
+		newData := map[string]any{
+			"attendee":            "abc123",
+			"person_id":           12345,
+			"year":                2025,
+			"has_dietary_needs":   true,
+			"dietary_explanation": "Vegan",
+			"has_allergies":       false,
+			"allergy_info":        "",
+			"additional_medical":  "",
+		}
+
+		if !s.recordNeedsUpdate(existing, newData, camperDietaryCompareFields) {
+			t.Error("expected update needed when dietary_explanation differs")
+		}
+	})
 }

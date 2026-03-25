@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // Test constants for fictional data
@@ -2314,4 +2316,204 @@ func TestCamperHistoryUpsertDecision(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCamperHistoryCompareFields verifies that the compareFields list for camper_history
+// contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
+func TestCamperHistoryCompareFields(t *testing.T) {
+	// camperHistoryCompareFields should list all fields that matter for idempotency checks,
+	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName)
+	// and the unique key fields (person_id, session_cm_id, year) which don't change.
+	expected := map[string]bool{
+		"session_name":        true,
+		"first_name":          true,
+		"last_name":           true,
+		"school":              true,
+		"city":                true,
+		"state":               true,
+		"is_returning_summer": true,
+		"is_returning_family": true,
+		"years_at_camp":       true,
+		"person":              true,
+		"session":             true,
+		"session_type":        true,
+		"gender":              true,
+		"grade":               true,
+		"age":                 true,
+		"household_id":        true,
+		"division_name":       true,
+		"status":              true,
+		"enrollment_date":     true,
+		"bunk_name":           true,
+		"bunk_cm_id":          true,
+		"synagogue":           true,
+	}
+
+	actual := make(map[string]bool)
+	for _, f := range camperHistoryCompareFields {
+		actual[f] = true
+	}
+
+	// Check all expected fields are present
+	for field := range expected {
+		if !actual[field] {
+			t.Errorf("camperHistoryCompareFields missing expected field %q", field)
+		}
+	}
+
+	// Check no unexpected fields are present
+	for field := range actual {
+		if !expected[field] {
+			t.Errorf("camperHistoryCompareFields contains unexpected field %q", field)
+		}
+	}
+
+	// Verify the unique key fields are NOT in compareFields
+	keyFields := []string{"person_id", "session_cm_id", "year"}
+	for _, field := range keyFields {
+		if actual[field] {
+			t.Errorf("camperHistoryCompareFields should NOT contain key field %q", field)
+		}
+	}
+}
+
+// TestCamperHistoryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
+// correctly detects when fields match (no update) and when they differ (needs update).
+func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	c := &CamperHistorySync{}
+
+	// Create a minimal collection with the fields used in comparison
+	col := core.NewBaseCollection("test_camper_history")
+	col.Fields.Add(&core.TextField{Name: "session_name"})
+	col.Fields.Add(&core.TextField{Name: "first_name"})
+	col.Fields.Add(&core.TextField{Name: "last_name"})
+	col.Fields.Add(&core.TextField{Name: "school"})
+	col.Fields.Add(&core.TextField{Name: "city"})
+	col.Fields.Add(&core.TextField{Name: "state"})
+	col.Fields.Add(&core.BoolField{Name: "is_returning_summer"})
+	col.Fields.Add(&core.BoolField{Name: "is_returning_family"})
+	col.Fields.Add(&core.NumberField{Name: "years_at_camp"})
+	col.Fields.Add(&core.TextField{Name: "person"})
+	col.Fields.Add(&core.TextField{Name: "session"})
+	col.Fields.Add(&core.TextField{Name: "session_type"})
+	col.Fields.Add(&core.TextField{Name: "gender"})
+	col.Fields.Add(&core.NumberField{Name: "grade"})
+	col.Fields.Add(&core.NumberField{Name: "age"})
+	col.Fields.Add(&core.NumberField{Name: "household_id"})
+	col.Fields.Add(&core.TextField{Name: "division_name"})
+	col.Fields.Add(&core.TextField{Name: "status"})
+	col.Fields.Add(&core.TextField{Name: "enrollment_date"})
+	col.Fields.Add(&core.TextField{Name: "bunk_name"})
+	col.Fields.Add(&core.NumberField{Name: "bunk_cm_id"})
+	col.Fields.Add(&core.TextField{Name: "synagogue"})
+
+	t.Run("no update when all fields match", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("session_name", "Session 1")
+		existing.Set("first_name", testFirstName)
+		existing.Set("last_name", "Garcia")
+		existing.Set("school", "Riverside Elementary")
+		existing.Set("city", "Portland")
+		existing.Set("state", "OR")
+		existing.Set("is_returning_summer", true)
+		existing.Set("is_returning_family", false)
+		existing.Set("years_at_camp", 3)
+		existing.Set("person", "pb_person1")
+		existing.Set("session", "pb_session1")
+		existing.Set("session_type", "main")
+		existing.Set("gender", "M")
+		existing.Set("grade", 5)
+		existing.Set("age", 11)
+		existing.Set("household_id", 5001)
+		existing.Set("division_name", "Division A")
+		existing.Set("status", "enrolled")
+		existing.Set("enrollment_date", "2025-01-15")
+		existing.Set("bunk_name", "Cabin 7")
+		existing.Set("bunk_cm_id", 200)
+		existing.Set("synagogue", testSynagogue)
+
+		newData := map[string]interface{}{
+			"session_name":        "Session 1",
+			"first_name":          testFirstName,
+			"last_name":           "Garcia",
+			"school":              "Riverside Elementary",
+			"city":                "Portland",
+			"state":               "OR",
+			"is_returning_summer": true,
+			"is_returning_family": false,
+			"years_at_camp":       3,
+			"person":              "pb_person1",
+			"session":             "pb_session1",
+			"session_type":        "main",
+			"gender":              "M",
+			"grade":               5,
+			"age":                 11,
+			"household_id":        5001,
+			"division_name":       "Division A",
+			"status":              "enrolled",
+			"enrollment_date":     "2025-01-15",
+			"bunk_name":           "Cabin 7",
+			"bunk_cm_id":          200,
+			"synagogue":           testSynagogue,
+		}
+
+		if c.recordNeedsUpdate(existing, newData, camperHistoryCompareFields) {
+			t.Error("expected no update needed when all compareFields match")
+		}
+	})
+
+	t.Run("needs update when a compare field differs", func(t *testing.T) {
+		existing := core.NewRecord(col)
+		existing.Set("session_name", "Session 1")
+		existing.Set("first_name", testFirstName)
+		existing.Set("last_name", "Garcia")
+		existing.Set("school", "Riverside Elementary")
+		existing.Set("city", "Portland")
+		existing.Set("state", "OR")
+		existing.Set("is_returning_summer", true)
+		existing.Set("is_returning_family", false)
+		existing.Set("years_at_camp", 3)
+		existing.Set("person", "pb_person1")
+		existing.Set("session", "pb_session1")
+		existing.Set("session_type", "main")
+		existing.Set("gender", "M")
+		existing.Set("grade", 5)
+		existing.Set("age", 11)
+		existing.Set("household_id", 5001)
+		existing.Set("division_name", "Division A")
+		existing.Set("status", "enrolled")
+		existing.Set("enrollment_date", "2025-01-15")
+		existing.Set("bunk_name", "Cabin 7")
+		existing.Set("bunk_cm_id", 200)
+		existing.Set("synagogue", testSynagogue)
+
+		newData := map[string]interface{}{
+			"session_name":        "Session 1",
+			"first_name":          testFirstName,
+			"last_name":           "Garcia",
+			"school":              "Oak Valley Middle",
+			"city":                "Portland",
+			"state":               "OR",
+			"is_returning_summer": true,
+			"is_returning_family": false,
+			"years_at_camp":       3,
+			"person":              "pb_person1",
+			"session":             "pb_session1",
+			"session_type":        "main",
+			"gender":              "M",
+			"grade":               5,
+			"age":                 11,
+			"household_id":        5001,
+			"division_name":       "Division A",
+			"status":              "enrolled",
+			"enrollment_date":     "2025-01-15",
+			"bunk_name":           "Cabin 7",
+			"bunk_cm_id":          200,
+			"synagogue":           testSynagogue,
+		}
+
+		if !c.recordNeedsUpdate(existing, newData, camperHistoryCompareFields) {
+			t.Error("expected update needed when school differs")
+		}
+	})
 }
