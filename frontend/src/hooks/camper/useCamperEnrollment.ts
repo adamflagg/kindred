@@ -10,6 +10,7 @@ import { queryKeys } from '../../utils/queryKeys'
 import { normalizeGender } from '../../utils/genderUtils'
 
 import { sortEnrolledFirst } from '../../utils/enrollmentSort'
+import { filterEnrollmentsByStatus } from '../../utils/enrollmentFilter'
 import type { Camper } from '../../types/app-types'
 import type {
   AttendeesResponse,
@@ -31,7 +32,10 @@ interface AssignmentExpand {
 }
 
 export interface UseCamperEnrollmentResult {
+  /** Only actually enrolled campers (status === 'enrolled') */
   enrolledCampers: Camper[]
+  /** All attendees including non-enrolled (for fallback display) */
+  allAttendees: Camper[]
   isLoading: boolean
   error: Error | null
 }
@@ -42,11 +46,7 @@ export function useCamperEnrollment(
 ): UseCamperEnrollmentResult {
   const isValidPersonId = !!personCmId && !isNaN(personCmId)
 
-  const {
-    data: enrolledCampers = [],
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: queryKeys.enrolledCampers(personCmId ?? 0, currentYear),
     queryFn: async () => {
       if (!personCmId) throw new Error('Invalid person ID')
@@ -64,7 +64,7 @@ export function useCamperEnrollment(
       })
 
       if (attendees.length === 0) {
-        return []
+        return { allCampers: [] }
       }
 
       // Person data is now expanded in attendees, get from first attendee
@@ -89,7 +89,7 @@ export function useCamperEnrollment(
       )
 
       // Transform attendees to campers
-      const campers = attendees.map((attendee) => {
+      const allCampers = attendees.map((attendee) => {
         const expand = attendee.expand as AttendeeExpand | undefined
         const expandedSession = expand?.session
         const expandedPerson = expand?.person ?? person
@@ -151,20 +151,24 @@ export function useCamperEnrollment(
       })
 
       // Sort: enrolled first, then by session type priority
-      campers.sort((a, b) => {
+      allCampers.sort((a, b) => {
         const aType = (a.expand?.session as { session_type?: string } | undefined)?.session_type
         const bType = (b.expand?.session as { session_type?: string } | undefined)?.session_type
         return sortEnrolledFirst(a.attendee_status, aType, b.attendee_status, bType)
       })
 
-      return campers
+      return { allCampers }
     },
     enabled: isValidPersonId,
     retry: false,
   })
 
+  const allAttendees = data?.allCampers ?? []
+  const { enrolled } = filterEnrollmentsByStatus(allAttendees)
+
   return {
-    enrolledCampers,
+    enrolledCampers: enrolled,
+    allAttendees,
     isLoading,
     error: error,
   }

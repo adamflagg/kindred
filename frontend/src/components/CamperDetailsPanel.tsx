@@ -47,6 +47,7 @@ import CamperLink from './CamperLink'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
+import { getStatusIndicator } from '../utils/enrollmentFilter'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -96,6 +97,7 @@ interface HistoricalRecord {
   sessionName: string
   sessionType: string
   bunkName: string
+  attendeeStatus?: string
 }
 
 // Interface for current-year enrollment (one per attendee record)
@@ -104,6 +106,7 @@ interface CurrentEnrollment {
   sessionType: string
   sessionCmId: number
   bunkName: string | null
+  attendeeStatus?: string
 }
 
 export default function CamperDetailsPanel({
@@ -218,6 +221,7 @@ export default function CamperDetailsPanel({
           sessionType: sess?.session_type ?? '',
           sessionCmId: sess?.cm_id ?? 0,
           bunkName,
+          attendeeStatus: att.status,
         })
 
         // First attendee is primary (used for the main camper card)
@@ -243,7 +247,17 @@ export default function CamperDetailsPanel({
   })
 
   const camper = camperData?.camper
-  const currentEnrollments = camperData?.enrollments ?? []
+  const allEnrollments = camperData?.enrollments ?? []
+  // Show enrolled sessions only; if none enrolled, show best non-enrolled as fallback
+  const enrolledOnly = allEnrollments.filter(
+    (e) => !e.attendeeStatus || e.attendeeStatus === 'enrolled'
+  )
+  const currentEnrollments =
+    enrolledOnly.length > 0
+      ? enrolledOnly
+      : allEnrollments.length > 0
+        ? [allEnrollments[0] as CurrentEnrollment] // Best non-enrolled (already sorted by priority)
+        : []
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
@@ -748,25 +762,34 @@ export default function CamperDetailsPanel({
             </span>
           </div>
           {currentEnrollments.length > 1 ? (
-            currentEnrollments.map((enrollment) => (
-              <div
-                key={enrollment.sessionCmId}
-                className="text-forest-100 flex items-center gap-1.5"
-              >
-                <Calendar className="text-forest-300 h-3 w-3" />
-                <span>
-                  {getEnrollmentShortName(enrollment)}
-                  {enrollment.bunkName ? (
-                    <>
-                      {' '}
-                      <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
-                    </>
-                  ) : (
-                    <span className="text-amber-300"> (unassigned)</span>
-                  )}
-                </span>
-              </div>
-            ))
+            currentEnrollments.map((enrollment) => {
+              const indicator = getStatusIndicator(enrollment.attendeeStatus)
+              return (
+                <div
+                  key={enrollment.sessionCmId}
+                  className="text-forest-100 flex items-center gap-1.5"
+                >
+                  <Calendar className="text-forest-300 h-3 w-3" />
+                  <span>
+                    {getEnrollmentShortName(enrollment)}
+                    {indicator ? (
+                      <span
+                        className={`ml-1.5 inline-flex rounded px-1 py-0.5 text-[9px] leading-none font-bold ${indicator.colorClass}`}
+                      >
+                        {indicator.letter}
+                      </span>
+                    ) : enrollment.bunkName ? (
+                      <>
+                        {' '}
+                        <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
+                      </>
+                    ) : (
+                      <span className="text-amber-300"> (unassigned)</span>
+                    )}
+                  </span>
+                </div>
+              )
+            })
           ) : (
             <>
               {camper.expand?.assigned_bunk && (
@@ -929,31 +952,51 @@ export default function CamperDetailsPanel({
                 <div className="space-y-1.5">
                   {/* Current year - show all enrollments */}
                   {currentEnrollments.length > 0
-                    ? currentEnrollments.map((enrollment, idx) => (
-                        <div
-                          key={`current-${enrollment.sessionCmId}`}
-                          className="relative flex items-center gap-2.5"
-                        >
-                          <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />
-                          <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
-                            {idx === 0 ? currentYear : ''}
-                          </span>
-                          <span className="text-muted-foreground truncate text-xs">
-                            {getEnrollmentShortName(enrollment)}
-                          </span>
-                          <span className="text-muted-foreground text-xs">·</span>
-                          <span
-                            className={`truncate text-xs ${enrollment.bunkName ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
+                    ? currentEnrollments.map((enrollment, idx) => {
+                        const indicator = getStatusIndicator(enrollment.attendeeStatus)
+                        return (
+                          <div
+                            key={`current-${enrollment.sessionCmId}`}
+                            className="relative flex items-center gap-2.5"
                           >
-                            {enrollment.bunkName ?? 'Unassigned'}
-                          </span>
-                          {idx === 0 && (
-                            <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
-                              Now
+                            <div
+                              className={`relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2 ${
+                                indicator
+                                  ? 'bg-amber-400 ring-amber-100 dark:bg-amber-600 dark:ring-amber-900'
+                                  : 'bg-forest-600 ring-forest-100 dark:ring-forest-900'
+                              }`}
+                            />
+                            <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
+                              {idx === 0 ? currentYear : ''}
                             </span>
-                          )}
-                        </div>
-                      ))
+                            <span className="text-muted-foreground truncate text-xs">
+                              {getEnrollmentShortName(enrollment)}
+                            </span>
+                            {indicator ? (
+                              <span
+                                className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] leading-none font-bold ${indicator.colorClass}`}
+                                title={enrollment.attendeeStatus}
+                              >
+                                {indicator.letter}
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-muted-foreground text-xs">·</span>
+                                <span
+                                  className={`truncate text-xs ${enrollment.bunkName ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
+                                >
+                                  {enrollment.bunkName ?? 'Unassigned'}
+                                </span>
+                              </>
+                            )}
+                            {idx === 0 && !indicator && (
+                              <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                Now
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })
                     : camper.expand?.session && (
                         <div className="relative flex items-center gap-2.5">
                           <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />

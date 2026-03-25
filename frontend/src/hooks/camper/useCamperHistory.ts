@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import { isValidSummerSession } from '../../constants/sessionTypes'
+import { filterEnrollmentsByStatus } from '../../utils/enrollmentFilter'
 import type { Camper } from '../../types/app-types'
 import type {
   BunkAssignmentsResponse,
@@ -24,7 +25,7 @@ export function useCamperHistory(
   personCmId: number | null,
   currentYear: number,
   camper: Camper | null,
-  allEnrolledCampers?: Camper[]
+  allAttendees?: Camper[]
 ): UseCamperHistoryResult {
   const {
     data: camperHistory = [],
@@ -37,7 +38,7 @@ export function useCamperHistory(
       currentYear,
       camper?.expand?.session,
       camper?.expand?.assigned_bunk,
-      allEnrolledCampers?.length,
+      allAttendees?.length,
     ],
     queryFn: async () => {
       if (!personCmId) return []
@@ -45,18 +46,17 @@ export function useCamperHistory(
       try {
         const allHistory: HistoricalRecord[] = []
 
-        // Add current year data for ALL enrollments (multi-session support)
-        const enrollments =
-          allEnrolledCampers && allEnrolledCampers.length > 0
-            ? allEnrolledCampers
-            : camper
-              ? [camper]
-              : []
+        // Filter current year attendees: show only enrolled, or fallback to best non-enrolled
+        const { enrolled, fallback } = filterEnrollmentsByStatus(allAttendees ?? [])
 
-        for (const enrolled of enrollments) {
-          if (enrolled.expand?.session) {
-            const session = enrolled.expand.session
-            const assignedBunk = enrolled.expand.assigned_bunk
+        const currentYearCampers =
+          enrolled.length > 0 ? enrolled : fallback ? [fallback] : camper ? [camper] : []
+
+        for (const currentCamper of currentYearCampers) {
+          if (currentCamper.expand?.session) {
+            const session = currentCamper.expand.session
+            const assignedBunk = currentCamper.expand.assigned_bunk
+            const isEnrolled = currentCamper.attendee_status === 'enrolled'
             allHistory.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',
@@ -64,6 +64,8 @@ export function useCamperHistory(
               bunkName: assignedBunk?.name ?? 'Unassigned',
               startDate: session.start_date,
               endDate: session.end_date,
+              // Only set attendeeStatus for non-enrolled records
+              ...(isEnrolled ? {} : { attendeeStatus: currentCamper.attendee_status }),
             })
           }
         }
@@ -120,30 +122,29 @@ export function useCamperHistory(
         return allHistory
       } catch (err) {
         console.error('Error fetching camp history:', err)
-        // If error, at least return current year data for all enrollments
-        const fallbackEnrollments =
-          allEnrolledCampers && allEnrolledCampers.length > 0
-            ? allEnrolledCampers
-            : camper
-              ? [camper]
-              : []
+        // If error, at least return current year data from enrolled campers
+        const { enrolled, fallback } = filterEnrollmentsByStatus(allAttendees ?? [])
+        const fallbackCampers =
+          enrolled.length > 0 ? enrolled : fallback ? [fallback] : camper ? [camper] : []
 
-        const fallback: HistoricalRecord[] = []
-        for (const enrolled of fallbackEnrollments) {
-          if (enrolled.expand?.session) {
-            const session = enrolled.expand.session
-            const assignedBunk = enrolled.expand.assigned_bunk
-            fallback.push({
+        const fallbackHistory: HistoricalRecord[] = []
+        for (const currentCamper of fallbackCampers) {
+          if (currentCamper.expand?.session) {
+            const session = currentCamper.expand.session
+            const assignedBunk = currentCamper.expand.assigned_bunk
+            const isEnrolled = currentCamper.attendee_status === 'enrolled'
+            fallbackHistory.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',
               sessionType: session.session_type,
               bunkName: assignedBunk?.name ?? 'Unassigned',
               startDate: session.start_date,
               endDate: session.end_date,
+              ...(isEnrolled ? {} : { attendeeStatus: currentCamper.attendee_status }),
             })
           }
         }
-        return fallback
+        return fallbackHistory
       }
     },
     enabled: !!personCmId && !!camper,
