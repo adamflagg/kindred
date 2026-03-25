@@ -4418,7 +4418,8 @@ class TestRollupDailyWeek0:
 
     def test_negative_day_offsets_bucket_to_week_0(self):
         """Daily points with day_offset -7 to -1 should roll up to week_number 0."""
-        from datetime import date as d, timedelta
+        from datetime import date as d
+        from datetime import timedelta
 
         from api.schemas.velocity import DailyDataPoint
 

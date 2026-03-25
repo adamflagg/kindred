@@ -460,6 +460,6 @@ class MetricsRepository:
                 )
                 if records.total_items > 0:
                     return True
-            except Exception:
+            except Exception:  # noqa: S112
                 continue
         return False
