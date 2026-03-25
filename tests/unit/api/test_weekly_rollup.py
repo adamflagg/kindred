@@ -1,6 +1,6 @@
 """Tests for weekly rollup derived from daily data points."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from api.schemas.velocity import DailyDataPoint
 from api.services.velocity_service import rollup_daily_to_weekly
@@ -180,3 +180,42 @@ def test_rollup_gender_fields():
     assert result[0].enrolled_girls == 1
     assert result[0].gross_enrolled_boys == 2
     assert result[0].gross_enrolled_girls == 1
+
+
+def test_rollup_week_0_never_partial():
+    """Week 0 (pre-anchor) should never be marked partial — it's historical data."""
+    season_start = date(2025, 11, 12)
+    daily = []
+    # Only 3 days of Week 0 data (not a full 7)
+    for i in range(-3, 0):
+        daily.append(
+            DailyDataPoint(
+                date=(season_start + timedelta(days=i)).isoformat(),
+                day_offset=i,
+                gross_enrolled=1,
+                enrolled=1,
+                cancelled=0,
+                daily_new=1 if i == -3 else 0,
+                daily_cancelled=0,
+                data_source="reconstructed",
+            )
+        )
+    # Add Week 1 data to make it a current year scenario
+    for i in range(7):
+        daily.append(
+            DailyDataPoint(
+                date=(season_start + timedelta(days=i)).isoformat(),
+                day_offset=i,
+                gross_enrolled=2,
+                enrolled=2,
+                cancelled=0,
+                daily_new=1 if i == 0 else 0,
+                daily_cancelled=0,
+                data_source="reconstructed",
+            )
+        )
+    weekly = rollup_daily_to_weekly(daily, season_start, is_current_year=True)
+    week0 = next((w for w in weekly if w.week_number == 0), None)
+    assert week0 is not None
+    assert week0.is_partial is False
+    assert week0.days_in_week == 3
