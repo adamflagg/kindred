@@ -49,12 +49,13 @@ jobs:
 
             echo "=== Checking $dir ==="
 
-            # Try npm ci first — if it succeeds, the lock file is consistent
-            if (cd "$dir" && npm ci --ignore-scripts); then
+            # Resolve the full dependency tree (no downloads) and check if
+            # the lock file changed — lighter than npm ci which installs everything
+            (cd "$dir" && npm install --package-lock-only --ignore-scripts)
+            if git diff --quiet -- "$lockfile"; then
               echo "✅ $dir: lock file is consistent"
             else
-              echo "⚠️  $dir: lock file inconsistent, regenerating..."
-              (cd "$dir" && rm -rf node_modules && npm install --package-lock-only)
+              echo "⚠️  $dir: lock file was stale, regenerated"
               changed=true
             fi
           done
