@@ -1653,6 +1653,8 @@ class VelocityService:
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
         is_current_season = season_start_date <= ctx.today <= season_end_date
         end_date = ctx.today if is_current_season else season_end_date
+        anchor_str = season_start_date.strftime("%Y-%m-%d")
+        has_week0 = await self.repo.has_pre_anchor_enrollments(ctx.year, anchor_str)
         daily_data, per_session_daily = reconstruct_daily_multi(
             attendees=attendees,
             season_start=season_start_date,
@@ -1661,7 +1663,7 @@ class VelocityService:
             ag_parent_map=ag_parent_map,
             session_cm_id=session_cm_id,
             session_ids=list(per_session_data.keys()),
-            week0=True,
+            week0=has_week0,
         )
 
         # Derive weekly from daily for combined curve

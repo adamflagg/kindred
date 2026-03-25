@@ -8,7 +8,8 @@ Data flow:
 2. For each attendee with status in {2, 32, 256} (enrolled, cancelled, withdrawn):
    - Enrollment event: use effective_date if available, else enrollment_date
    - Cancellation event (status 32 or 256 only): use enrollment_date
-3. Aggregate by session, counting events within [season_start, season_start + day_offset]
+3. Aggregate by session, counting events within [lower_bound, season_start + day_offset]
+   where lower_bound = season_start - 7 days when day_offset < 0 (Week 0), else season_start
 4. Net enrolled = gross enrollments - cancellations
 """
 
@@ -62,6 +63,10 @@ def _reconstruct_core(
         return {}
 
     cutoff_date = (season_start + timedelta(days=day_offset)).date()
+    # Lower bound: clamp to anchor - 7 days for negative offsets (Week 0 forecast)
+    # to prevent counting enrollments from arbitrarily far back.  For positive
+    # offsets pre-anchor enrollments are part of the cumulative total, so no bound.
+    lower_bound = (season_start - timedelta(days=7)).date() if day_offset < 0 else None
 
     # Per-session counters
     session_enrollments: dict[int, int] = defaultdict(int)
@@ -94,7 +99,7 @@ def _reconstruct_core(
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if dt.date() <= cutoff_date:
+            if (lower_bound is None or lower_bound <= dt.date()) and dt.date() <= cutoff_date:
                 session_enrollments[effective_sid] += 1
                 if gender == "M":
                     session_boys_enrolled[effective_sid] += 1
@@ -107,7 +112,7 @@ def _reconstruct_core(
             if cancel_date_raw:
                 cancel_date_str = parse_date_only(cancel_date_raw)
                 cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                if cancel_dt.date() <= cutoff_date:
+                if (lower_bound is None or lower_bound <= cancel_dt.date()) and cancel_dt.date() <= cutoff_date:
                     session_cancellations[effective_sid] += 1
                     if gender == "M":
                         session_boys_cancelled[effective_sid] += 1

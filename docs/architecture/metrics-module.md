@@ -65,6 +65,22 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation:
 - **Demographics**: Use normalized fields when available (`normalized_school`, `normalized_city`, `normalized_congregation`), fall back to raw fields
 - **AG sessions**: Linked to parent via `parent_id`; metrics for AG fold into parent main session
 
+## Week 0 (Pre-Registration Enrollment)
+
+Week 0 captures enrollments that occur before the registration anchor date (priority_reg_date or early_reg_date). These are typically staff/board early-access registrations.
+
+**How it works:**
+- **Week 0 window**: Fixed 7-day period from `anchor - 7 days` to `anchor - 1 day`. All pre-anchor enrollments are bucketed here regardless of how far back they occurred.
+- **`day_offset=-1`**: Sentinel value in the forecast API that maps to `week_number=0` via Python floor division: `(-1 // 7) + 1 = 0`.
+- **Conditional display**: Week 0 only appears in the forecast dropdown and velocity curves when `has_pre_anchor_enrollments()` returns true for that year.
+- **Repository method**: `has_pre_anchor_enrollments(year, anchor_date)` checks attendees using the same date priority as `_get_enrollment_date()` — `effective_date` first, `enrollment_date` only when `effective_date` is empty.
+- **Reconstruction**: `_reconstruct_core` uses a lower bound of `anchor - 7 days` for negative offsets. `reconstruct_daily_multi` and `_build_daily_points` accept a `week0` flag to emit 7 days of negative-offset data.
+
+**Key functions:**
+- `_week_number()` / `_week_start()` in `velocity_service.py` — return 0 / `anchor - 7d` for pre-anchor dates
+- `format_week_date_range()` in `camp_calendar.py` — handles `week_num=0` as a special case
+- `get_week_options()` in `forecast_service.py` — appends Week 0 at the bottom of the dropdown when pre-anchor data exists
+
 ## Adding a New Metric
 
 1. Add Pydantic response model in `api/schemas/metrics.py`
