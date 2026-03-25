@@ -611,7 +611,7 @@ jobs:
     - name: Upload Trivy results - Caddy
       if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       with:
         sarif_file: 'trivy-results-kindred-caddy.sarif'
         category: 'trivy-kindred-caddy'
@@ -621,7 +621,7 @@ jobs:
     - name: Upload Trivy results - API
       if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       with:
         sarif_file: 'trivy-results-kindred-api.sarif'
         category: 'trivy-kindred-api'
@@ -631,7 +631,7 @@ jobs:
     - name: Upload Trivy results - PocketBase
       if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       with:
         sarif_file: 'trivy-results-kindred-pocketbase.sarif'
         category: 'trivy-kindred-pocketbase'
@@ -641,7 +641,7 @@ jobs:
     - name: Upload Trivy results - Init
       if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       with:
         sarif_file: 'trivy-results-kindred-init.sarif'
         category: 'trivy-kindred-init'
