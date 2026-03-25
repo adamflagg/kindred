@@ -30,6 +30,79 @@ ENROLLMENT_STATUSES: set[int] = {2, 32, 256}  # enrolled, cancelled, withdrawn
 CANCELLATION_STATUSES: set[int] = {32, 256}  # cancelled, withdrawn
 
 
+def compress_pre_anchor_events(
+    daily_events: dict[str, dict[str, int]],
+    anchor: date,
+    window: int = 7,
+) -> dict[str, dict[str, int]]:
+    """Proportionally compress pre-anchor events into a fixed display window.
+
+    Maps N real pre-registration days into a ``window``-day display range
+    (anchor - window .. anchor - 1).  Events on or after ``anchor`` are untouched.
+
+    If the real span fits within ``window``, events are right-aligned against the
+    anchor preserving their relative gaps.  If the span exceeds ``window``, events
+    are proportionally compressed with totals preserved (multiple real days may
+    merge into one display day).
+
+    Returns a **new** dict — the input is not mutated.
+    """
+    anchor_str = anchor.isoformat()
+
+    pre: dict[str, dict[str, int]] = {}
+    post: dict[str, dict[str, int]] = {}
+    for k, v in daily_events.items():
+        if k < anchor_str:
+            pre[k] = v
+        else:
+            post[k] = v
+
+    if not pre:
+        return dict(daily_events)
+
+    sorted_keys = sorted(pre.keys())
+    earliest = date.fromisoformat(sorted_keys[0])
+    real_span = (anchor - earliest).days  # calendar days, exclusive of anchor
+
+    result: dict[str, dict[str, int]] = {}
+
+    if real_span <= window:
+        # Right-align: shift so events occupy the last real_span days of the window
+        shift = window - real_span
+        for key in sorted_keys:
+            event_date = date.fromisoformat(key)
+            i = (event_date - earliest).days
+            target = anchor - timedelta(days=window) + timedelta(days=shift + i)
+            target_str = target.isoformat()
+            if target_str in result:
+                _merge_buckets(result[target_str], pre[key])
+            else:
+                result[target_str] = dict(pre[key])
+    else:
+        # Proportional compression
+        scale = window / real_span
+        for key in sorted_keys:
+            event_date = date.fromisoformat(key)
+            i = (event_date - earliest).days
+            display_day = min(int(i * scale), window - 1)
+            target = anchor - timedelta(days=window) + timedelta(days=display_day)
+            target_str = target.isoformat()
+            if target_str in result:
+                _merge_buckets(result[target_str], pre[key])
+            else:
+                result[target_str] = dict(pre[key])
+
+    # Add post-anchor events unchanged
+    result.update(post)
+    return result
+
+
+def _merge_buckets(target: dict[str, int], source: dict[str, int]) -> None:
+    """Sum all fields from source into target bucket (in-place)."""
+    for field in ("new", "cancelled", "new_boys", "new_girls", "canc_boys", "canc_girls"):
+        target[field] = target.get(field, 0) + source.get(field, 0)
+
+
 def parse_date_only(value: str) -> str:
     """Extract YYYY-MM-DD from a datetime string that may include time/timezone."""
     return value.split("T")[0].split(" ")[0]
