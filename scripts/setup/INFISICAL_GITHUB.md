@@ -177,4 +177,4 @@ jobs:
 - `AI_MODEL` (gpt-4.1-nano for prod, maybe gpt-4-turbo for dev)
 - `AUTH_MODE` (production for prod, bypass for dev)
 - `CAMPMINDER_SEASON_ID` (2025)
-- `API_LOG_LEVEL` (INFO for prod, DEBUG for dev)
+- `LOG_LEVEL` (INFO for prod, DEBUG for dev)

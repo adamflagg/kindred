@@ -10,7 +10,7 @@ globalThis.fetch = mockFetch
 
 // Mock useCurrentYear
 vi.mock('../../../hooks/useCurrentYear', () => ({
-  useCurrentYear: () => ({ currentYear: 2026 }),
+  useCurrentYear: () => ({ currentYear: 2026, availableYears: [2024, 2025, 2026] }),
 }))
 
 // Mock useMetricsSession
@@ -30,6 +30,12 @@ vi.mock('../../../hooks/useApiWithAuth', () => ({
     fetchWithAuth: mockFetch,
     isAuthenticated: true,
   }),
+}))
+
+// Mock useWeekOptions — returns empty array by default (no Today option) so the
+// useEffect inside ForecastPage doesn't change dayOffset during tests
+vi.mock('../../../hooks/useWeekOptions', () => ({
+  useWeekOptions: () => ({ data: [] }),
 }))
 
 function createTestQueryClient() {

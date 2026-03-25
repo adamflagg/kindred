@@ -22,7 +22,7 @@ from api.schemas.velocity import (
     VelocityResponse,
     WeeklyDataPoint,
 )
-from api.services.camp_calendar import REGISTRATION_TIERS, format_week_date_range
+from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_week_date_range
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     CANCELLATION_STATUSES,
@@ -154,12 +154,6 @@ def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | No
         if date_str:
             return datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
     return None
-
-
-# Maximum number of weeks from season start that contains meaningful
-# registration data.  Camp historically ends between week 39.6 and 41.3
-# relative to season start Monday (derived from 2017-2026 data).
-SEASON_WEEKS = 41
 
 
 def _season_end(priority_reg_date: datetime) -> datetime:

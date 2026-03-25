@@ -26,6 +26,11 @@ REGISTRATION_TIERS: list[tuple[str, str, str]] = [
     ("open", "open_reg_date", "Open Registration"),
 ]
 
+# Maximum weeks from season start containing meaningful registration data.
+# Camp historically ends between week 39.6 and 41.3 relative to season start
+# (derived from 2017-2026 data).
+SEASON_WEEKS = 41
+
 
 def get_camp_date(utc_dt: datetime) -> date:
     """Convert a UTC datetime to the camp date it falls in.

@@ -235,3 +235,75 @@ class TestWeekOptionsLabels:
         # Week 1 label should contain "Oct 15" (1-based, anchor week)
         week_1 = next(o for o in result if o.week_number == 1)
         assert "Oct 15" in week_1.label
+
+
+class TestWeekOptionsPastSeason:
+    """Test that past seasons cap at SEASON_WEEKS instead of extending to today."""
+
+    @pytest.mark.asyncio
+    async def test_past_season_caps_at_season_weeks(self, service, mock_repository):
+        """Past season (today > anchor + 41 weeks) caps week options at SEASON_WEEKS."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2023-11-07",  # 2024 season anchor
+        }
+
+        # "Today" is far past the 2024 season end (41 weeks = 287 days after anchor)
+        # 2023-11-07 + 287 = 2024-08-20 season end
+        # Using 2026-03-24 as "today" — well past the season
+        result = await service.get_week_options(year=2024, today=date(2026, 3, 24))
+
+        # Should cap at SEASON_WEEKS, not extend to today
+        assert len(result) > 0
+        max_week = max(o.week_number for o in result)
+        assert max_week == 41  # SEASON_WEEKS
+
+    @pytest.mark.asyncio
+    async def test_past_season_has_no_today_entry(self, service, mock_repository):
+        """Past season should have no is_today=True entry."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2023-11-07",
+        }
+
+        result = await service.get_week_options(year=2024, today=date(2026, 3, 24))
+
+        today_entries = [o for o in result if o.is_today]
+        assert len(today_entries) == 0
+
+    @pytest.mark.asyncio
+    async def test_past_season_first_entry_is_last_week(self, service, mock_repository):
+        """Past season's first entry should be the final week (descending order)."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2023-11-07",
+        }
+
+        result = await service.get_week_options(year=2024, today=date(2026, 3, 24))
+
+        assert result[0].week_number == 41
+        assert result[0].is_today is False
+
+    @pytest.mark.asyncio
+    async def test_past_season_total_entries_equals_season_weeks(self, service, mock_repository):
+        """Past season returns exactly SEASON_WEEKS entries (Week 1 through 41)."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2023-11-07",
+        }
+
+        result = await service.get_week_options(year=2024, today=date(2026, 3, 24))
+
+        assert len(result) == 41
+        # Verify descending order
+        week_numbers = [o.week_number for o in result]
+        assert week_numbers == list(range(41, 0, -1))
+
+    @pytest.mark.asyncio
+    async def test_current_season_still_has_today(self, service, mock_repository):
+        """Current season (today within season window) still shows Today entry."""
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-12",  # 2026 season anchor
+        }
+
+        # 19 weeks into the current season
+        result = await service.get_week_options(year=2026, today=date(2026, 3, 24))
+
+        today_entries = [o for o in result if o.is_today]
+        assert len(today_entries) == 1
