@@ -4,6 +4,7 @@
  */
 import { TreePine, Home } from 'lucide-react'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
+import { getStatusIndicator } from '../../utils/enrollmentFilter'
 import type { HistoricalRecord } from '../../hooks/camper/types'
 import { getCampTagline } from '../../config/branding'
 
@@ -44,6 +45,7 @@ export function CampJourneyTimeline({
                 // Hide year label if same year as previous record (multi-session)
                 const prevRecord = idx > 0 ? history[idx - 1] : null
                 const showYear = prevRecord?.year !== record.year
+                const statusIndicator = getStatusIndicator(record.attendeeStatus)
 
                 return (
                   <div
@@ -54,7 +56,9 @@ export function CampJourneyTimeline({
                     <div
                       className={`relative z-10 flex-shrink-0 rounded-full ${
                         isCurrentYear
-                          ? 'bg-forest-600 ring-forest-100 dark:ring-forest-900 h-3 w-3 ring-2'
+                          ? statusIndicator
+                            ? 'h-3 w-3 bg-amber-400 ring-2 ring-amber-100 dark:bg-amber-600 dark:ring-amber-900'
+                            : 'bg-forest-600 ring-forest-100 dark:ring-forest-900 h-3 w-3 ring-2'
                           : 'bg-forest-400 dark:bg-forest-600 h-3 w-3'
                       }`}
                     />
@@ -75,22 +79,37 @@ export function CampJourneyTimeline({
                       {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
                     </span>
 
-                    <span className="text-muted-foreground">·</span>
+                    {/* Status indicator for non-enrolled */}
+                    {statusIndicator && (
+                      <span
+                        className={`flex-shrink-0 rounded px-1 py-0.5 text-[10px] leading-none font-bold ${statusIndicator.colorClass}`}
+                        title={record.attendeeStatus}
+                      >
+                        {statusIndicator.letter}
+                      </span>
+                    )}
 
-                    {/* Bunk */}
-                    <span
-                      className={`flex items-center gap-1 truncate text-sm ${
-                        record.bunkName === 'Unassigned'
-                          ? 'text-amber-600 italic dark:text-amber-400'
-                          : 'text-foreground font-medium'
-                      }`}
-                    >
-                      <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
-                      {record.bunkName}
-                    </span>
+                    {/* Only show bunk for enrolled records */}
+                    {!statusIndicator && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
 
-                    {/* Current badge - only on first current-year record */}
-                    {isCurrentYear && showYear && (
+                        {/* Bunk */}
+                        <span
+                          className={`flex items-center gap-1 truncate text-sm ${
+                            record.bunkName === 'Unassigned'
+                              ? 'text-amber-600 italic dark:text-amber-400'
+                              : 'text-foreground font-medium'
+                          }`}
+                        >
+                          <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
+                          {record.bunkName}
+                        </span>
+                      </>
+                    )}
+
+                    {/* Current badge - only on first current-year enrolled record */}
+                    {isCurrentYear && showYear && !statusIndicator && (
                       <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white">
                         Now
                       </span>

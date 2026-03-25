@@ -88,6 +88,7 @@ export default function CamperDetail() {
   // Fetch enrolled campers using extracted hook
   const {
     enrolledCampers,
+    allAttendees,
     isLoading: camperLoading,
     error: camperError,
   } = useCamperEnrollment(personCmId, currentYear)
@@ -117,11 +118,11 @@ export default function CamperDetail() {
     console.error('Error fetching person:', personError)
   }
 
-  // Select primary camper from enrolled campers
-  const camper = enrolledCampers[0] ?? null
+  // Select primary camper: prefer enrolled, fall back to first attendee
+  const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
-  // Fetch camper's history using extracted hook (pass all enrollments for multi-session support)
-  const { camperHistory } = useCamperHistory(personCmId, currentYear, camper, enrolledCampers)
+  // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
+  const { camperHistory } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
 
   // Fetch original CSV data using extracted hook
   const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
@@ -168,10 +169,10 @@ export default function CamperDetail() {
   }
 
   // Show person info even if no current enrollments
-  if ((person || enrolledCampers.length === 0) && !camper) {
+  if ((person || allAttendees.length === 0) && !camper) {
     const displayPerson =
       person ??
-      (enrolledCampers.length === 0 && personCmId
+      (allAttendees.length === 0 && personCmId
         ? {
             first_name: 'Person',
             last_name: `#${personCmId}`,
@@ -275,7 +276,7 @@ export default function CamperDetail() {
               {/* Bunking Status */}
               <BunkingStatusPanel
                 camper={camper}
-                enrolledCampers={enrolledCampers.filter((c) => c.attendee_status === 'enrolled')}
+                enrolledCampers={enrolledCampers}
                 sessionShortName={sessionShortName}
                 allBunkRequests={allBunkRequests}
                 agePreferenceRequests={agePreferenceRequests}
