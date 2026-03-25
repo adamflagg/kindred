@@ -132,8 +132,8 @@ class TestRetentionTrendsEnrollmentByYear:
                 assert "grade" in grade_entry or grade_entry.get("grade") is None, "grade field check failed"
                 assert "count" in grade_entry, "count field missing in by_grade"
 
-    def test_enrollment_by_year_has_three_entries_for_three_years(self, test_client: TestClient) -> None:
-        """Test that num_years=3 returns 3 enrollment entries."""
+    def test_enrollment_by_year_has_entries_for_all_years(self, test_client: TestClient) -> None:
+        """Test that num_years=3 returns num_years+1 enrollment entries (includes base year)."""
         response = test_client.get(
             "/api/metrics/retention-trends",
             params={"current_year": 2026, "num_years": 3},
@@ -144,12 +144,12 @@ class TestRetentionTrendsEnrollmentByYear:
 
         enrollment_by_year = data.get("enrollment_by_year", [])
 
-        # Should have exactly 3 entries for years 2024, 2025, 2026
-        assert len(enrollment_by_year) == 3, f"Expected 3 entries, got {len(enrollment_by_year)}"
+        # num_years=3 means 3 transitions from 4 years of data (2023→24, 24→25, 25→26)
+        assert len(enrollment_by_year) == 4, f"Expected 4 entries, got {len(enrollment_by_year)}"
 
         # Verify the years are correct
         years = [entry["year"] for entry in enrollment_by_year]
-        assert years == [2024, 2025, 2026], f"Expected years [2024, 2025, 2026], got {years}"
+        assert years == [2023, 2024, 2025, 2026], f"Expected years [2023, 2024, 2025, 2026], got {years}"
 
     def test_enrollment_by_year_gender_totals_match_year_total(self, test_client: TestClient) -> None:
         """Test that sum of gender counts equals year total."""
@@ -163,7 +163,6 @@ class TestRetentionTrendsEnrollmentByYear:
 
         for entry in data.get("enrollment_by_year", []):
             gender_total = sum(g["count"] for g in entry["by_gender"])
-            # Gender counts should equal total (each person counted once)
             assert gender_total == entry["total"], (
                 f"Year {entry['year']}: gender total {gender_total} != year total {entry['total']}"
             )
@@ -180,7 +179,6 @@ class TestRetentionTrendsEnrollmentByYear:
 
         for entry in data.get("enrollment_by_year", []):
             grade_total = sum(g["count"] for g in entry["by_grade"])
-            # Grade counts should equal total (each person counted once)
             assert grade_total == entry["total"], (
                 f"Year {entry['year']}: grade total {grade_total} != year total {entry['total']}"
             )
@@ -337,8 +335,8 @@ class TestRetentionTrendsEnrollmentIntegration:
 
         enrollment_by_year = data.get("enrollment_by_year", [])
 
-        # Verify we have entries for all 3 years
-        assert len(enrollment_by_year) == 3, f"Expected 3 entries, got {len(enrollment_by_year)}"
+        # num_years=3 means 3 transitions from 4 years of data
+        assert len(enrollment_by_year) == 4, f"Expected 4 entries, got {len(enrollment_by_year)}"
 
 
 class TestEnrollmentByYearAllSessions:
@@ -365,7 +363,7 @@ class TestEnrollmentByYearAllSessions:
         data = response.json()
 
         enrollment_by_year = data.get("enrollment_by_year", [])
-        assert len(enrollment_by_year) == 3, f"Expected 3 years, got {len(enrollment_by_year)}"
+        assert len(enrollment_by_year) == 4, f"Expected 4 years, got {len(enrollment_by_year)}"
 
         # Track which years have gender data
         years_with_gender_data = []

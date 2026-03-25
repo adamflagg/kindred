@@ -346,6 +346,9 @@ class RetentionTrendsService:
             year_data = data_by_year[year]
             person_ids = year_data["person_ids"]
             persons = year_data["persons"]
+            # Only count persons that exist in both attendees and persons tables
+            # (attendees from excluded programs like family camps may lack person records)
+            person_ids = person_ids & persons.keys()
             total = len(person_ids)
 
             # Demographic breakdowns using generic calculator
