@@ -1,0 +1,98 @@
+name: Dependabot Lock File Fix-up
+
+# Dependabot sometimes updates direct dependencies without fully regenerating
+# the lock file's transitive dependency tree. This causes version mismatches
+# (e.g., @tanstack/react-query 5.91 expecting query-core 5.91, but lock file
+# still pinning query-core 5.90). This workflow detects and fixes that.
+
+on:
+  pull_request:
+    paths:
+      - '**/package.json'
+      - '**/package-lock.json'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  fixup:
+    name: Fix Lock Files
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Dependabot branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.head_ref }}
+          # Need a token that can push back to Dependabot branches
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+
+      - name: Setup Python + uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Regenerate npm lock files
+        id: npm-fixup
+        run: |
+          changed=false
+
+          for dir in frontend pocketbase .; do
+            lockfile="$dir/package-lock.json"
+            [ -f "$lockfile" ] || continue
+
+            echo "=== Checking $dir ==="
+
+            # Try npm ci first — if it succeeds, the lock file is consistent
+            if (cd "$dir" && npm ci --ignore-scripts 2>/dev/null); then
+              echo "✅ $dir: lock file is consistent"
+            else
+              echo "⚠️  $dir: lock file inconsistent, regenerating..."
+              (cd "$dir" && rm -rf node_modules && npm install --package-lock-only)
+              changed=true
+            fi
+          done
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Regenerate uv.lock
+        id: uv-fixup
+        run: |
+          changed=false
+
+          if [ -f uv.lock ]; then
+            echo "=== Checking uv.lock ==="
+
+            # --locked fails if uv.lock is out of sync with pyproject.toml
+            if uv lock --locked 2>/dev/null; then
+              echo "✅ uv.lock is consistent"
+            else
+              echo "⚠️  uv.lock inconsistent, regenerating..."
+              uv lock
+              changed=true
+            fi
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push fixes
+        if: steps.npm-fixup.outputs.changed == 'true' || steps.uv-fixup.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A '*.lock' '**/package-lock.json'
+          git commit -m "fix(deps): regenerate lock files for consistency
+
+          Dependabot updated direct dependencies but the lock file's transitive
+          dependency tree was stale. Regenerated to resolve version mismatches.
+
+          [dependabot skip]"
+
+          git push
