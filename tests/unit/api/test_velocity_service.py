@@ -4411,3 +4411,51 @@ class TestWeek0InReconstruction:
         assert 0 in week_numbers, f"Expected week 0 in {week_numbers}"
         week0_point = next(p for p in result.combined.weekly if p.week_number == 0)
         assert week0_point.enrolled == 1
+
+
+class TestRollupDailyWeek0:
+    """Verify rollup_daily_to_weekly handles negative day_offset (Week 0)."""
+
+    def test_negative_day_offsets_bucket_to_week_0(self):
+        """Daily points with day_offset -7 to -1 should roll up to week_number 0."""
+        from datetime import date as d, timedelta
+
+        from api.schemas.velocity import DailyDataPoint
+
+        season_start = d(2025, 11, 12)
+        daily = []
+        # Week 0: day_offset -7 to -1
+        for i in range(-7, 0):
+            daily.append(
+                DailyDataPoint(
+                    date=(season_start + timedelta(days=i)).isoformat(),
+                    day_offset=i,
+                    gross_enrolled=1,
+                    enrolled=1,
+                    cancelled=0,
+                    daily_new=1 if i == -7 else 0,
+                    daily_cancelled=0,
+                    data_source="reconstructed",
+                )
+            )
+        # Week 1: day_offset 0 to 6
+        for i in range(7):
+            daily.append(
+                DailyDataPoint(
+                    date=(season_start + timedelta(days=i)).isoformat(),
+                    day_offset=i,
+                    gross_enrolled=2 + i,
+                    enrolled=2 + i,
+                    cancelled=0,
+                    daily_new=1,
+                    daily_cancelled=0,
+                    data_source="reconstructed",
+                )
+            )
+
+        weekly = rollup_daily_to_weekly(daily, season_start)
+        week_nums = [w.week_number for w in weekly]
+        assert 0 in week_nums, f"Expected week 0 in {week_nums}"
+        assert 1 in week_nums
+        week0 = next(w for w in weekly if w.week_number == 0)
+        assert week0.enrolled == 1
