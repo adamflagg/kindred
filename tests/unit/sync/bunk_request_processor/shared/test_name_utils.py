@@ -1,7 +1,5 @@
 """Tests for name_utils module - last_name_matches with Jaro-Winkler fuzzy matching."""
 
-import pytest
-
 from bunking.sync.bunk_request_processor.shared.name_utils import last_name_matches
 
 

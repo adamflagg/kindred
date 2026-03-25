@@ -308,7 +308,7 @@ class TestReciprocalBoostStatusReCheck:
         result = orchestrator._apply_validation_pipeline([non_reciprocal, req_a, req_b])
 
         # Non-reciprocal should stay PENDING (no reciprocal_boost metadata)
-        non_recip_result = [r for r in result if r.requester_cm_id == 300][0]
+        non_recip_result = next(r for r in result if r.requester_cm_id == 300)
         assert non_recip_result.status == RequestStatus.PENDING, (
             "Non-reciprocal request should not be promoted even if above threshold"
         )
@@ -344,7 +344,7 @@ class TestReciprocalBoostStatusReCheck:
         result = orchestrator._apply_validation_pipeline([req_a, req_b])
 
         # Request with negative cm_id should stay PENDING
-        unresolved = [r for r in result if r.requester_cm_id == 100][0]
+        unresolved = next(r for r in result if r.requester_cm_id == 100)
         assert unresolved.status == RequestStatus.PENDING, (
             "Unresolved name (negative cm_id) should not be promoted even with reciprocal boost"
         )

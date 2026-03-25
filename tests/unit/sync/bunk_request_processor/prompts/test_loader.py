@@ -86,7 +86,9 @@ class TestSiblingGuardrailsInPrompt:
 
         # The prompt must indicate that school/grade alone is not a sibling signal
         lower = formatted.lower()
-        assert "school" in lower and "grade" in lower and "sibling" in lower
+        assert "school" in lower
+        assert "grade" in lower
+        assert "sibling" in lower
 
     def test_prompt_requires_explicit_family_words_for_sibling(self):
         """Guardrails must require explicit family relationship words for SIBLING."""
@@ -100,7 +102,9 @@ class TestSiblingGuardrailsInPrompt:
 
         # Must mention explicit family words like sister, brother, twin
         lower = formatted.lower()
-        assert "sister" in lower and "brother" in lower and "twin" in lower
+        assert "sister" in lower
+        assert "brother" in lower
+        assert "twin" in lower
 
 
 class TestPromptLoaderPartials:
