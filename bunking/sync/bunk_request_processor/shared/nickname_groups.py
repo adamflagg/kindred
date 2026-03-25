@@ -5,9 +5,9 @@ Provides centralized nickname mappings used across the system."""
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
-from collections.abc import Iterable
 from typing import Any
 
 try:
@@ -240,8 +240,4 @@ def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None
         return True
 
     # Check all variation sources: name2 in name1's variations
-    variations = find_nickname_variations(name1, config_service)
-    if name2_lower in variations:
-        return True
-
-    return False
+    return name2_lower in find_nickname_variations(name1, config_service)

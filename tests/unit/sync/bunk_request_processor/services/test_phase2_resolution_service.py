@@ -1440,7 +1440,7 @@ class TestSingleNameCandidateGeneration:
         # Set up attendee_repository mock so both are in-session
         attendee_repo = Mock()
         attendee_repo.bulk_get_sessions_for_persons = Mock(
-            side_effect=lambda cm_ids, year: {cid: 1000002 for cid in cm_ids}
+            side_effect=lambda cm_ids, year: dict.fromkeys(cm_ids, 1000002)
         )
 
         service = Phase2ResolutionService(
@@ -1490,7 +1490,7 @@ class TestSingleNameCandidateGeneration:
         # All in session
         attendee_repo = Mock()
         attendee_repo.bulk_get_sessions_for_persons = Mock(
-            side_effect=lambda cm_ids, year: {cid: 1000002 for cid in cm_ids}
+            side_effect=lambda cm_ids, year: dict.fromkeys(cm_ids, 1000002)
         )
 
         service = Phase2ResolutionService(
