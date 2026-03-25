@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 ENROLLMENT_STATUSES: set[int] = {2, 32, 256}  # enrolled, cancelled, withdrawn
 CANCELLATION_STATUSES: set[int] = {32, 256}  # cancelled, withdrawn
 
+# Canonical bucket fields for daily event aggregation.  Used by _empty_bucket,
+# _merge_buckets, and _build_daily_points — change once here if schema evolves.
+_BUCKET_FIELDS: tuple[str, ...] = ("new", "cancelled", "new_boys", "new_girls", "canc_boys", "canc_girls")
+
 
 def compress_pre_anchor_events(
     daily_events: dict[str, dict[str, int]],
@@ -65,32 +69,26 @@ def compress_pre_anchor_events(
     real_span = (anchor - earliest).days  # calendar days, exclusive of anchor
 
     result: dict[str, dict[str, int]] = {}
+    base = anchor - timedelta(days=window)
 
     if real_span <= window:
-        # Right-align: shift so events occupy the last real_span days of the window
         shift = window - real_span
-        for key in sorted_keys:
-            event_date = date.fromisoformat(key)
-            i = (event_date - earliest).days
-            target = anchor - timedelta(days=window) + timedelta(days=shift + i)
-            target_str = target.isoformat()
-            if target_str in result:
-                _merge_buckets(result[target_str], pre[key])
-            else:
-                result[target_str] = dict(pre[key])
+
+        def _remap(i: int) -> int:
+            return shift + i
     else:
-        # Proportional compression
         scale = window / real_span
-        for key in sorted_keys:
-            event_date = date.fromisoformat(key)
-            i = (event_date - earliest).days
-            display_day = min(int(i * scale), window - 1)
-            target = anchor - timedelta(days=window) + timedelta(days=display_day)
-            target_str = target.isoformat()
-            if target_str in result:
-                _merge_buckets(result[target_str], pre[key])
-            else:
-                result[target_str] = dict(pre[key])
+
+        def _remap(i: int) -> int:
+            return min(int(i * scale), window - 1)
+
+    for key in sorted_keys:
+        i = (date.fromisoformat(key) - earliest).days
+        target_str = (base + timedelta(days=_remap(i))).isoformat()
+        if target_str in result:
+            _merge_buckets(result[target_str], pre[key])
+        else:
+            result[target_str] = dict(pre[key])
 
     # Add post-anchor events unchanged
     result.update(post)
@@ -99,7 +97,7 @@ def compress_pre_anchor_events(
 
 def _merge_buckets(target: dict[str, int], source: dict[str, int]) -> None:
     """Sum all fields from source into target bucket (in-place)."""
-    for field in ("new", "cancelled", "new_boys", "new_girls", "canc_boys", "canc_girls"):
+    for field in _BUCKET_FIELDS:
         target[field] = target.get(field, 0) + source.get(field, 0)
 
 
@@ -287,14 +285,7 @@ def _build_daily_points(
     cum_canc_boys = 0
     cum_canc_girls = 0
 
-    empty: dict[str, int] = {
-        "new": 0,
-        "cancelled": 0,
-        "new_boys": 0,
-        "new_girls": 0,
-        "canc_boys": 0,
-        "canc_girls": 0,
-    }
+    empty: dict[str, int] = dict.fromkeys(_BUCKET_FIELDS, 0)
 
     if week0:
         current = season_start - timedelta(days=7)
@@ -375,14 +366,7 @@ def reconstruct_daily_multi(
     combined_has_gender = False
     per_session_has_gender: dict[int, bool] = {}
 
-    _empty_bucket: dict[str, int] = {
-        "new": 0,
-        "cancelled": 0,
-        "new_boys": 0,
-        "new_girls": 0,
-        "canc_boys": 0,
-        "canc_girls": 0,
-    }
+    _empty_bucket: dict[str, int] = dict.fromkeys(_BUCKET_FIELDS, 0)
 
     for att in attendees:
         session = get_session_from_expand(att)
