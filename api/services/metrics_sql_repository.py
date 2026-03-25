@@ -706,7 +706,7 @@ class MetricsSQLRepository:
             """SELECT 1 FROM attendees
                WHERE year = ?
                  AND ((effective_date != '' AND effective_date < ?)
-                      OR (effective_date = '' AND enrollment_date < ?))
+                      OR (effective_date = '' AND enrollment_date != '' AND enrollment_date < ?))
                LIMIT 1""",
             (year, anchor_date, anchor_date),
         )
