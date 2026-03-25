@@ -1457,6 +1457,7 @@ class TestSingleNameCandidateGeneration:
 
         # Should be ambiguous with candidates
         assert result.is_ambiguous, "Single-name target should produce ambiguous result"
+        assert result.candidates is not None
         assert len(result.candidates) == 2
         assert result.confidence == 0.3
         assert result.method == "single_name_candidates"
@@ -1501,6 +1502,7 @@ class TestSingleNameCandidateGeneration:
         result = resolutions[0]
 
         assert result.is_ambiguous
+        assert result.candidates is not None
         assert len(result.candidates) <= 5, "Candidates should be capped at 5"
 
     @pytest.mark.asyncio
@@ -1536,6 +1538,7 @@ class TestSingleNameCandidateGeneration:
 
         # Should be resolved normally, not treated as single-name
         assert result.is_resolved
+        assert result.person is not None
         assert result.person.cm_id == 100
         assert result.method == "exact_full_name"
         # find_by_first_name should NOT have been called
@@ -1617,5 +1620,6 @@ class TestSingleNameCandidateGeneration:
         result = resolutions[0]
 
         # Only the in-session Lily should be a candidate
+        assert result.candidates is not None
         assert len(result.candidates) == 1
         assert result.candidates[0].cm_id == 100
