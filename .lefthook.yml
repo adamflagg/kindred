@@ -5,8 +5,13 @@
 # Stages:
 #   pre-commit  — formatters + validators on staged files (<1s)
 #   commit-msg  — conventional commit validation
-#   pre-push    — full-suite linters + tests (~1 min, parallel)
+#   pre-push    — fast type checks + linters (~15s, parallel). CI is the full gate.
 #   post-merge  — worktree cleanup notifications
+#
+# Philosophy:
+#   pre-commit  = auto-format (fix it for me)
+#   pre-push    = "does it compile/type-check?" + fast linters (~2s each)
+#   CI          = comprehensive gate (all linters, all tests, security audits)
 #
 # Escape hatches:
 #   LEFTHOOK=0 git commit    — bypass all hooks
@@ -66,7 +71,9 @@ commit-msg:
       skip:
         - run: "! command -v npx >/dev/null 2>&1 || [ ! -d node_modules ]"
 
-# ─── Pre-push: full-suite linters + tests (parallel) ─────────────────
+# ─── Pre-push: fast type checks + linters (parallel) ─────────────────
+# Keeps: type checkers (mypy, tsc), compilation (go build), fast linters (<1s each)
+# Moved to CI-only: eslint, golangci-lint, hadolint, caddy-validate, all test suites
 pre-push:
   parallel: true
   commands:
@@ -83,13 +90,6 @@ pre-push:
         - "pyproject.toml"
       run: uv run mypy . --explicit-package-bases
 
-    eslint:
-      root: "frontend/"
-      glob:
-        - "frontend/**/*.{ts,tsx,js,jsx}"
-        - "frontend/eslint.config.js"
-      run: npm run lint
-
     type-check:
       root: "frontend/"
       glob:
@@ -97,16 +97,6 @@ pre-push:
         - "frontend/tsconfig.json"
         - "frontend/tsconfig.node.json"
       run: npm run type-check
-
-    golangci-lint:
-      root: "pocketbase/"
-      glob:
-        - "pocketbase/*.go"
-        - "pocketbase/**/*.go"
-        - ".golangci.yml"
-      run: golangci-lint run --config ../.golangci.yml
-      skip:
-        - run: "! command -v golangci-lint >/dev/null 2>&1"
 
     go-build:
       root: "pocketbase/"
@@ -123,30 +113,6 @@ pre-push:
       skip:
         - run: "! command -v shellcheck >/dev/null 2>&1"
 
-    hadolint:
-      glob:
-        - "docker/Dockerfile.*"
-        - ".hadolint.yaml"
-      run: |
-        for df in docker/Dockerfile.*; do
-          [ -f "$df" ] || continue
-          if ! docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < "$df"; then
-            exit 1
-          fi
-        done
-      skip:
-        - run: "! command -v docker >/dev/null 2>&1"
-
-    caddy-validate:
-      glob:
-        - "docker/Caddyfile"
-        - "frontend/Caddyfile"
-      run: |
-        caddy validate --config docker/Caddyfile 2>&1 && \
-        caddy validate --config frontend/Caddyfile 2>&1
-      skip:
-        - run: "! command -v caddy >/dev/null 2>&1"
-
     pb-js-lint:
       root: "pocketbase/"
       glob:
@@ -154,26 +120,6 @@ pre-push:
         - "pocketbase/pb_hooks/*.js"
         - "pocketbase/package.json"
       run: npm run lint
-
-    pytest:
-      glob:
-        - "**/*.py"
-        - "pyproject.toml"
-      run: uv run pytest tests/unit/ -v --tb=short
-
-    go-test:
-      root: "pocketbase/"
-      glob:
-        - "pocketbase/*.go"
-        - "pocketbase/**/*.go"
-      run: go test -race ./... -v
-
-    vitest:
-      root: "frontend/"
-      glob:
-        - "frontend/**/*.{ts,tsx,js,jsx}"
-        - "frontend/vitest.config.ts"
-      run: npx vitest run
 
     behind-origin:
       only:
