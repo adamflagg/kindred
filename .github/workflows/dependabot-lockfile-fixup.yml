@@ -88,7 +88,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -A '*.lock' '**/package-lock.json'
+          # Stage each lock file individually — git add fails entirely if any
+          # pathspec doesn't match, so we can't combine them in one command
+          git add uv.lock 2>/dev/null || true
+          git add package-lock.json 2>/dev/null || true
+          git add */package-lock.json 2>/dev/null || true
+
+          # Safety: exit cleanly if nothing was staged despite detection
+          if git diff --cached --quiet; then
+            echo "No lock file changes to commit"
+            exit 0
+          fi
           git commit -m "fix(deps): regenerate lock files for consistency
 
           Dependabot updated direct dependencies but the lock file's transitive
