@@ -34,11 +34,18 @@ def _make_session(cm_id: int, name: str, session_type: str = "main", parent_id: 
     return s
 
 
-def _make_attendee(person_id: int, session_cm_id: int, session_name: str, status: str = "cancelled") -> MagicMock:
+def _make_attendee(
+    person_id: int,
+    session_cm_id: int,
+    session_name: str,
+    status: str = "cancelled",
+    enrollment_date: str | None = None,
+) -> MagicMock:
     """Create a mock attendee record with expand.session."""
     att = MagicMock()
     att.person_id = person_id
     att.status = status
+    att.enrollment_date = enrollment_date
     session = MagicMock()
     session.cm_id = session_cm_id
     session.name = session_name
