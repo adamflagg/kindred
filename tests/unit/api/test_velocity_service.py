@@ -770,18 +770,17 @@ class TestSeasonWindowClipping:
             assert p.week_start >= "2025-11-01"
 
     @pytest.mark.asyncio
-    async def test_reconstruction_far_back_clamped_to_week_0(self, service, mock_repository):
-        """Enrollments before the Week 0 window are clamped into Week 0.
+    async def test_reconstruction_far_back_proportionally_compressed(self, service, mock_repository):
+        """Enrollments far before anchor are proportionally compressed into Week 0.
 
-        Week 0 is anchor - 7d to anchor - 1d (Oct 25 - Oct 31 for Nov 1 anchor).
-        Enrollments before Oct 25 (e.g. Sep 15) are clamped to the first day of
-        the Week 0 window so they appear in Week 0's totals.
+        Week 0 is a 7-day display window before the anchor. Enrollments outside
+        that window are proportionally mapped in, preserving totals.
         """
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = []
         mock_repository.fetch_attendees_with_dates.return_value = [
-            # Well before Week 0 window — clamped to Week 0 start
+            # Well before Week 0 window — proportionally compressed
             create_mock_attendee_with_date(101, 1001, "2025-09-15"),
             # Inside season window
             create_mock_attendee_with_date(102, 1001, "2025-11-10"),
@@ -792,10 +791,10 @@ class TestSeasonWindowClipping:
 
         points = result.combined.weekly
         assert len(points) >= 1
-        # All three enrollments should be counted (far-back clamped to Week 0)
+        # All three enrollments should be counted (totals preserved)
         total = sum(p.weekly_new for p in points)
         assert total == 3
-        # Week 0 should have the clamped enrollment
+        # Week 0 should have the pre-anchor enrollment
         week0_points = [p for p in points if p.week_number == 0]
         assert len(week0_points) == 1
         assert week0_points[0].enrolled == 1
