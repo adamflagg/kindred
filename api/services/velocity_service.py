@@ -25,10 +25,8 @@ from api.schemas.velocity import (
 from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_week_date_range
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
-    CANCELLATION_STATUSES,
     ENROLLMENT_STATUSES,
     _get_enrollment_date,
-    parse_date_only,
     reconstruct_daily_multi,
 )
 from api.utils.session_metrics import (
@@ -1556,9 +1554,7 @@ class VelocityService:
         )
 
         # Derive weekly from daily for both combined and per-session curves
-        combined_weekly = rollup_daily_to_weekly(
-            daily_data, season_start_date, is_current_year=is_current_season
-        )
+        combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_season)
         per_session_weekly: dict[int, list[WeeklyDataPoint]] = {
             sid: rollup_daily_to_weekly(pts, season_start_date, is_current_year=is_current_season)
             for sid, pts in per_session_daily.items()
