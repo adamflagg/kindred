@@ -198,7 +198,8 @@ type Status struct {
 	EndTime   *time.Time `json:"end_time,omitempty"`
 	Error     string     `json:"error,omitempty"`
 	Summary   Stats      `json:"summary"`
-	Year      int        `json:"year,omitempty"` // Year being synced (0 = current year)
+	Year      int        `json:"year,omitempty"`      // Year being synced (0 = current year)
+	RunToken  string     `json:"run_token,omitempty"` // Unique token per run to prevent cross-run confusion
 }
 
 // QueuedSync represents a sync request waiting in the queue
@@ -489,12 +490,19 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 		return fmt.Errorf("sync service not found: %s", syncType)
 	}
 
+	// Generate a unique token for this run
+	runToken := fmt.Sprintf("%d", time.Now().UnixNano())
+
 	// Check if status was pre-marked by MarkSyncRunning
 	// If so, reuse it; otherwise create a new status
 	var status *Status
 	if existingStatus != nil {
 		// Reuse pre-marked status (set by MarkSyncRunning before goroutine started)
 		status = existingStatus
+		// Overwrite the token so runSyncAndWait can track this specific execution
+		o.mu.Lock()
+		status.RunToken = runToken
+		o.mu.Unlock()
 	} else {
 		// No pre-marked status - check if something else is running
 		if o.IsRunning(syncType) {
@@ -508,6 +516,7 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 			StartTime: time.Now(),
 			Summary:   Stats{},
 			Year:      o.currentSyncYear,
+			RunToken:  runToken,
 		}
 
 		o.mu.Lock()
@@ -606,13 +615,14 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 		return fmt.Errorf("sync already in progress: %s", syncType)
 	}
 
-	// Create status entry
+	// Create status entry with a unique run token
 	status := &Status{
 		Type:      syncType,
 		Status:    statusRunning,
 		StartTime: time.Now(),
 		Summary:   Stats{},
 		Year:      o.currentSyncYear,
+		RunToken:  fmt.Sprintf("%d", time.Now().UnixNano()),
 	}
 
 	o.mu.Lock()
@@ -913,6 +923,16 @@ func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string) erro
 		return err
 	}
 
+	// Capture the token for THIS run so we only unblock on its completion,
+	// not on a stale or different run's completed status.
+	o.mu.RLock()
+	runningStatus := o.runningJobs[syncType]
+	var expectedToken string
+	if runningStatus != nil {
+		expectedToken = runningStatus.RunToken
+	}
+	o.mu.RUnlock()
+
 	// Wait for completion
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -923,15 +943,18 @@ func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string) erro
 			return ctx.Err()
 		case <-ticker.C:
 			if !o.IsRunning(syncType) {
-				// Check final status
+				// Check final status — only accept if the token matches this run
 				o.mu.RLock()
 				status := o.lastCompletedStatus[syncType]
 				o.mu.RUnlock()
 
-				if status != nil && status.Status == statusFailed {
-					return fmt.Errorf("%s", status.Error)
+				if status != nil && status.RunToken == expectedToken {
+					if status.Status == statusFailed {
+						return fmt.Errorf("%s", status.Error)
+					}
+					return nil
 				}
-				return nil
+				// Token doesn't match — a stale completion; keep waiting
 			}
 		}
 	}

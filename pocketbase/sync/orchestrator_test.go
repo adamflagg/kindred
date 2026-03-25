@@ -3048,3 +3048,149 @@ func TestRunSingleSyncAtomicStatusTransition(t *testing.T) {
 		t.Errorf("detected %d inconsistent status reads", inconsistent)
 	}
 }
+
+// TestRunTokenPopulated tests that RunSingleSync populates RunToken on the status
+func TestRunTokenPopulated(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	mock := &MockService{name: "test_service", delay: 50 * time.Millisecond}
+	o.RegisterService("test", mock)
+
+	ctx := context.Background()
+	err := o.RunSingleSync(ctx, "test")
+	if err != nil {
+		t.Fatalf("RunSingleSync failed: %v", err)
+	}
+
+	// While running, status should have a non-empty RunToken
+	o.mu.RLock()
+	status := o.runningJobs["test"]
+	o.mu.RUnlock()
+
+	if status == nil {
+		t.Fatal("expected running status")
+		return
+	}
+
+	if status.RunToken == "" {
+		t.Error("expected RunToken to be populated, got empty string")
+	}
+
+	// Wait for completion
+	time.Sleep(100 * time.Millisecond)
+
+	// Completed status should also have the token
+	o.mu.RLock()
+	completed := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if completed == nil {
+		t.Fatal("expected completed status")
+		return
+	}
+
+	if completed.RunToken == "" {
+		t.Error("expected completed status to preserve RunToken")
+	}
+
+	if completed.RunToken != status.RunToken {
+		t.Errorf("RunToken mismatch: running=%q completed=%q", status.RunToken, completed.RunToken)
+	}
+}
+
+// TestRunTokenPreservedByFinalizeSyncStatus tests that FinalizeSyncStatus preserves
+// the RunToken from the running status
+func TestRunTokenPreservedByFinalizeSyncStatus(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	mock := &MockService{name: "test_service"}
+	o.RegisterService("test", mock)
+
+	// Mark as running
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("MarkSyncRunning failed: %v", err)
+	}
+
+	// MarkSyncRunning should also set a RunToken
+	o.mu.RLock()
+	runningStatus := o.runningJobs["test"]
+	token := runningStatus.RunToken
+	o.mu.RUnlock()
+
+	if token == "" {
+		t.Fatal("expected MarkSyncRunning to set RunToken")
+	}
+
+	// Finalize the status
+	o.FinalizeSyncStatus("test", Stats{Created: 5}, nil)
+
+	// Check that the token is preserved
+	o.mu.RLock()
+	completed := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if completed == nil {
+		t.Fatal("expected completed status")
+		return
+	}
+
+	if completed.RunToken != token {
+		t.Errorf("FinalizeSyncStatus did not preserve RunToken: expected %q, got %q", token, completed.RunToken)
+	}
+}
+
+// TestRunSyncAndWaitMatchesToken tests the core race condition fix:
+// runSyncAndWait should only unblock when the completed status has a matching token,
+// not when a different run of the same syncType completes.
+func TestRunSyncAndWaitMatchesToken(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Register a slow service
+	mock := &MockService{name: "test_service", delay: 200 * time.Millisecond}
+	o.RegisterService("test", mock)
+
+	// Simulate the race condition:
+	// 1. Pre-populate lastCompletedStatus with a STALE token from a previous run
+	o.mu.Lock()
+	staleToken := "stale-run-token"
+	o.lastCompletedStatus["test"] = &Status{
+		Type:     "test",
+		Status:   statusSuccess,
+		RunToken: staleToken,
+	}
+	o.mu.Unlock()
+
+	// 2. Start runSyncAndWait - it should NOT unblock on the stale completed status
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- o.runSyncAndWait(ctx, "test")
+	}()
+
+	// 3. Wait for it to complete - it should wait for the NEW run, not return immediately
+	//    from seeing the stale completed status
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("runSyncAndWait returned error: %v", err)
+		}
+		// Verify it actually ran the sync (didn't just return from stale status)
+		if mock.GetCallCount() != 1 {
+			t.Errorf("expected service to be called once, got %d", mock.GetCallCount())
+		}
+
+		// Verify the completed status has a NEW token, not the stale one
+		o.mu.RLock()
+		completed := o.lastCompletedStatus["test"]
+		o.mu.RUnlock()
+
+		if completed.RunToken == staleToken {
+			t.Error("runSyncAndWait unblocked on stale token - race condition not fixed")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runSyncAndWait timed out")
+	}
+}
