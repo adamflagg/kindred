@@ -2707,7 +2707,10 @@ func TestGetCurrentRunProgress_HistoricalSyncRunning(t *testing.T) {
 	if completed != 2 {
 		t.Errorf("expected completed 2, got %d", completed)
 	}
-	// No remaining jobs after current
+	// No remaining jobs after current — must be non-nil empty slice for JSON [] serialization
+	if remaining == nil {
+		t.Error("expected non-nil empty slice for remaining (JSON serializes nil as null), got nil")
+	}
 	if len(remaining) != 0 {
 		t.Errorf("expected 0 remaining jobs, got %d", len(remaining))
 	}
@@ -2763,7 +2766,10 @@ func TestGetCurrentRunProgress_CustomValuesSyncRunning(t *testing.T) {
 	if completed != 1 {
 		t.Errorf("expected completed 1, got %d", completed)
 	}
-	// No remaining jobs after current
+	// No remaining jobs after current — must be non-nil empty slice for JSON [] serialization
+	if remaining == nil {
+		t.Error("expected non-nil empty slice for remaining (JSON serializes nil as null), got nil")
+	}
 	if len(remaining) != 0 {
 		t.Errorf("expected 0 remaining jobs (last job running), got %d", len(remaining))
 	}
@@ -2791,7 +2797,10 @@ func TestGetCurrentRunProgress_IndexOutOfBounds(t *testing.T) {
 	if completed != 2 {
 		t.Errorf("expected completed 2 (out of bounds index), got %d", completed)
 	}
-	// remaining should be nil or empty when index >= total
+	// remaining must be non-nil empty slice when index >= total, for JSON [] serialization
+	if remaining == nil {
+		t.Error("expected non-nil empty slice for remaining (JSON serializes nil as null), got nil")
+	}
 	if len(remaining) != 0 {
 		t.Errorf("expected 0 remaining jobs when index >= total, got %d", len(remaining))
 	}
