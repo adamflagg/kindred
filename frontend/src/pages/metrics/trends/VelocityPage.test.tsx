@@ -129,6 +129,7 @@ vi.mock('../../../hooks/useChartZoom', () => ({
     handleBrushChange: vi.fn(),
     resetZoom: vi.fn(),
     setZoomRange: vi.fn(),
+    isZoomedIn: false,
   }),
 }))
 
@@ -173,7 +174,7 @@ vi.mock('../../../utils/chartFormatters', () => ({
   priorYearDailyDateLabel: () => null,
 }))
 
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import VelocityPage from './VelocityPage'
 
 describe('VelocityPage chart remount on year change (#752)', () => {
@@ -184,17 +185,20 @@ describe('VelocityPage chart remount on year change (#752)', () => {
     expect(containers.length).toBeGreaterThan(0)
   })
 
-  it('re-renders without error after year change', () => {
-    render(<VelocityPage />)
-    expect(screen.getAllByTestId('responsive-container').length).toBeGreaterThan(0)
+  it('remounts chart container when year changes (key-prop mechanism)', () => {
+    // Render at year 2026 and capture the container DOM node
+    const { rerender } = render(<VelocityPage />)
+    const containerBefore = screen.getAllByTestId('responsive-container')[0]
 
-    cleanup()
-
-    // Change year to 2025 and re-render — the key prop includes currentYear,
-    // so React will fully remount the chart, preventing stale Line components
+    // Change year and rerender in-place — React reconciliation will see the
+    // key change from "velocity-chart-2026" to "velocity-chart-2025" and
+    // fully remount the ResponsiveContainer, preventing stale Line components
     mockCurrentYear.currentYear = 2025
-    render(<VelocityPage />)
-    expect(screen.getAllByTestId('responsive-container').length).toBeGreaterThan(0)
+    rerender(<VelocityPage />)
+    const containerAfter = screen.getAllByTestId('responsive-container')[0]
+
+    // A new DOM node confirms React remounted rather than reconciled in-place
+    expect(containerAfter).not.toBe(containerBefore)
 
     // Reset for other tests
     mockCurrentYear.currentYear = 2026
