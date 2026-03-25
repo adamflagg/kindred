@@ -1557,7 +1557,7 @@ class VelocityService:
             enroll_date_str = _get_enrollment_date(att)
             if enroll_date_str:
                 dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-                if ctx.season_start.date() <= dt.date() <= ctx.season_end.date():
+                if dt.date() <= ctx.season_end.date():
                     date_key = dt.strftime("%Y-%m-%d")
                     session_daily_enrollments[effective_sid][date_key] += 1
 
@@ -1567,7 +1567,7 @@ class VelocityService:
                 if cancel_date_raw:
                     cancel_date_str = parse_date_only(cancel_date_raw)
                     cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                    if ctx.season_start.date() <= cancel_dt.date() <= ctx.season_end.date():
+                    if cancel_dt.date() <= ctx.season_end.date():
                         session_daily_cancellations[effective_sid][cancel_date_str] += 1
                         total_cancellation_count += 1
 
@@ -1661,6 +1661,7 @@ class VelocityService:
             ag_parent_map=ag_parent_map,
             session_cm_id=session_cm_id,
             session_ids=list(per_session_data.keys()),
+            week0=True,
         )
 
         # Derive weekly from daily for combined curve
@@ -1731,7 +1732,7 @@ class VelocityService:
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if not (ctx.season_start.date() <= dt.date() <= ctx.season_end.date()):
+            if dt.date() > ctx.season_end.date():
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1
