@@ -566,7 +566,12 @@ export default function VelocityPage() {
               </div>
             )}
 
-        <ResponsiveContainer width="100%" height={380}>
+        <ResponsiveContainer
+          width="100%"
+          height={380}
+          key={`velocity-weekly-${currentYear}`}
+          data-chart-year={currentYear}
+        >
           {viewMode === 'delta' ? (
             <LineChart
               data={chartData.weeklyChartData}
