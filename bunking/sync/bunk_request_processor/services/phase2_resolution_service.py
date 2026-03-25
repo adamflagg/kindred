@@ -366,7 +366,7 @@ class Phase2ResolutionService:
 
             # Carry historical_year from parsed request to resolution result for Phase 2.5
             parsed_meta = parsed.metadata or {}
-            if parsed_meta.get("historical_year") and result.metadata is not None:
+            if parsed_meta.get("historical_year") is not None and result.metadata is not None:
                 result.metadata["historical_year"] = parsed_meta["historical_year"]
 
             case.resolution_results[req_idx] = result

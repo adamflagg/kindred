@@ -27,6 +27,7 @@ DEFAULT_SESSION_MATCH = 0.85
 DEFAULT_SAME_SESSION_BOOST = 0.0  # Fuzzy match maintains base confidence for same session
 DEFAULT_DIFFERENT_SESSION_PENALTY = -0.10
 DEFAULT_NOT_ENROLLED_PENALTY = -0.05  # Person not in attendee list for this year
+DEFAULT_JARO_WINKLER_THRESHOLD = 0.85
 
 
 class FuzzyMatchStrategy(BaseMatchStrategy):
@@ -533,7 +534,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         if not parsed.is_complete or not candidates:
             return ResolutionResult(confidence=0.0, method=self.name)
 
-        jw_threshold = 0.85
+        jw_threshold = float(self._get_confidence("jaro_winkler_threshold", DEFAULT_JARO_WINKLER_THRESHOLD))
         first_lower = parsed.first.lower()
         matches = []
 

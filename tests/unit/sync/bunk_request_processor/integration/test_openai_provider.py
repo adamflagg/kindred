@@ -236,7 +236,7 @@ class TestBuildPromptRequesterLastName:
         assert "Requester last name:" in prompt
 
     def test_build_prompt_handles_single_word_name(self):
-        """When requester_name is a single word, that word is the last name."""
+        """When requester_name is a single word, last name should be empty (it's a first name)."""
         provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
 
         context = AIRequestContext(
@@ -252,4 +252,5 @@ class TestBuildPromptRequesterLastName:
 
         prompt = provider._build_prompt("Noah Chen", context)
 
-        assert "Requester last name: Cher" in prompt
+        # Single-word name has no last name — parse_name treats it as first name only
+        assert "Requester last name: \n" in prompt or "Requester last name:\n" in prompt

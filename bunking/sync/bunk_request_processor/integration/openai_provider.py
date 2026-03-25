@@ -20,6 +20,7 @@ from ..core.models import (
     RequestType,
 )
 from ..prompts import format_prompt
+from ..shared.name_utils import parse_name
 from ..utils.date_parser import parse_temporal_date
 from .ai_schemas import (
     AIBunkRequestItem,
@@ -270,8 +271,7 @@ class OpenAIProvider(AIProvider):
         Falls back to generic parse_request.txt for unknown field types.
         """
         requester_info = f"Requester: {context.requester_name}\n"
-        name_parts = context.requester_name.split() if context.requester_name else []
-        requester_last = name_parts[-1] if name_parts else ""
+        requester_last = parse_name(context.requester_name or "").last
         requester_info += f"Requester last name: {requester_last}\n"
         if context.additional_context.get("requester_grade"):
             requester_info += f"Grade: {context.additional_context['requester_grade']}\n"
@@ -354,7 +354,7 @@ class OpenAIProvider(AIProvider):
             }
 
             # Include historical_year if AI extracted one
-            if ai_req.historical_year:
+            if ai_req.historical_year is not None:
                 request_metadata["historical_year"] = ai_req.historical_year
 
             # Include staff_metadata if present in context (for bunking_notes fields)
