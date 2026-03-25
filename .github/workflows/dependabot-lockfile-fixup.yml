@@ -27,8 +27,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.head_ref }}
-          # Need a token that can push back to Dependabot branches
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # RELEASE_TOKEN (PAT) instead of GITHUB_TOKEN so that the push
+          # triggers downstream workflows (CI). GITHUB_TOKEN pushes are
+          # silently ignored by GitHub Actions to prevent infinite loops.
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6

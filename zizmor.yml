@@ -43,6 +43,7 @@ rules:
       - cd.yml
       - claude.yml
       - release.yml
+      - dependabot-lockfile-fixup.yml
 
   bot-conditions:
     # dependabot-auto-merge.yml: actor check is an optimization gate;
