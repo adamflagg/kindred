@@ -12,6 +12,8 @@ export interface HistoricalRecord {
   bunkName: string
   startDate?: string
   endDate?: string
+  /** Non-enrolled status (e.g. 'waitlisted', 'cancelled'). Absent for enrolled records. */
+  attendeeStatus?: string
 }
 
 // Original CSV bunk data structure
