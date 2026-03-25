@@ -445,3 +445,21 @@ class MetricsRepository:
             return {getattr(r, "config_key", ""): getattr(r, "value", "") for r in records}
         except Exception:
             return {}
+
+    async def has_pre_anchor_enrollments(self, year: int, anchor_date: str) -> bool:
+        """Check if any attendees have enrollment dates before the anchor."""
+        filter_str = f"year = {year}"
+        for date_field in ["effective_date", "enrollment_date"]:
+            check_filter = f'{filter_str} && {date_field} != "" && {date_field} < "{anchor_date}"'
+            try:
+                records = await asyncio.to_thread(
+                    self.pb.collection(ATTENDEES).get_list,
+                    1,
+                    1,
+                    query_params={"filter": check_filter},
+                )
+                if records.total_items > 0:
+                    return True
+            except Exception:
+                continue
+        return False

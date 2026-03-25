@@ -135,6 +135,20 @@ class ForecastService:
                 )
             )
 
+        # Week 0: pre-anchor enrollments (appended at bottom = oldest)
+        anchor_date_str = anchor.isoformat()
+        has_pre_anchor = await self.repository.has_pre_anchor_enrollments(year, anchor_date_str)
+        if has_pre_anchor:
+            week0_range = format_week_date_range(anchor, 0)
+            options.append(
+                WeekOption(
+                    week_number=0,
+                    day_offset=-1,
+                    label=f"Week 0 · {week0_range} (Pre-Reg)",
+                    is_today=False,
+                )
+            )
+
         return options
 
     async def calculate_forecast(

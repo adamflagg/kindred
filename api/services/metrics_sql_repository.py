@@ -699,3 +699,15 @@ class MetricsSQLRepository:
             (str(year),),
         )
         return {r["config_key"]: json.loads(r["value"]) if r["value"] else "" for r in rows}
+
+    def has_pre_anchor_enrollments(self, year: int, anchor_date: str) -> bool:
+        """Check if any attendees have enrollment dates before the anchor."""
+        rows = self._query(
+            """SELECT 1 FROM attendees
+               WHERE year = ?
+                 AND ((effective_date != '' AND effective_date < ?)
+                      OR (effective_date = '' AND enrollment_date < ?))
+               LIMIT 1""",
+            (year, anchor_date, anchor_date),
+        )
+        return len(rows) > 0
