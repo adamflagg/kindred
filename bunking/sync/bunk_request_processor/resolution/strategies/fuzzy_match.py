@@ -13,6 +13,7 @@ from ...analysis import RelationshipAnalyzer
 from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import last_name_matches, parse_name
+from ...shared.name_utils import ParsedName
 from ...shared.nickname_groups import SPELLING_VARIATIONS, find_nickname_variations
 from ..interfaces import ResolutionResult
 from .base_match_strategy import BaseMatchStrategy
@@ -26,6 +27,7 @@ DEFAULT_SESSION_MATCH = 0.85
 DEFAULT_SAME_SESSION_BOOST = 0.0  # Fuzzy match maintains base confidence for same session
 DEFAULT_DIFFERENT_SESSION_PENALTY = -0.10
 DEFAULT_NOT_ENROLLED_PENALTY = -0.05  # Person not in attendee list for this year
+DEFAULT_JARO_WINKLER_THRESHOLD = 0.85
 
 
 class FuzzyMatchStrategy(BaseMatchStrategy):
@@ -112,6 +114,13 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             # 2. Try spelling variations
             result = self._try_spelling_variations(
                 name_parts, requester_cm_id, session_cm_id, year, candidates, attendee_info
+            )
+            if result.is_resolved or result.is_ambiguous:
+                return result
+
+            # 2b. Try Jaro-Winkler first name similarity
+            result = self._try_jaro_winkler_first_name(
+                parsed, requester_cm_id, session_cm_id, year, candidates, attendee_info
             )
             if result.is_resolved or result.is_ambiguous:
                 return result
@@ -505,6 +514,66 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             )
 
         return ResolutionResult(confidence=0.0, method=self.name)
+
+    def _try_jaro_winkler_first_name(
+        self,
+        parsed: ParsedName,
+        requester_cm_id: int,
+        session_cm_id: int | None,
+        year: int | None,
+        candidates: list[Person] | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
+    ) -> ResolutionResult:
+        """Try Jaro-Winkler similarity on first names as a fallback.
+
+        Catches close first-name variants like Charlie/Charlotte, Zoey/Zoe
+        that aren't in the nickname dictionary.
+        """
+        import jellyfish
+
+        if not parsed.is_complete or not candidates:
+            return ResolutionResult(confidence=0.0, method=self.name)
+
+        jw_threshold = float(self._get_confidence("jaro_winkler_threshold", DEFAULT_JARO_WINKLER_THRESHOLD))
+        first_lower = parsed.first.lower()
+        matches = []
+
+        for c in candidates:
+            if c.cm_id == requester_cm_id:
+                continue
+            if not last_name_matches(parsed.last, c.last_name):
+                continue
+            c_first = (c.first_name or "").lower()
+            c_pref = (c.preferred_name or "").lower()
+            if jellyfish.jaro_winkler_similarity(first_lower, c_first) >= jw_threshold or (
+                c_pref and jellyfish.jaro_winkler_similarity(first_lower, c_pref) >= jw_threshold
+            ):
+                matches.append(c)
+
+        if not matches:
+            return ResolutionResult(confidence=0.0, method=self.name)
+
+        if len(matches) == 1:
+            confidence = self._calculate_confidence(
+                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_nickname=True
+            )
+            return ResolutionResult(
+                person=matches[0],
+                confidence=confidence,
+                method=self.name,
+                metadata={"match_type": "jaro_winkler_first_name"},
+            )
+
+        return ResolutionResult(
+            candidates=matches,
+            confidence=0.5,
+            method=self.name,
+            metadata={
+                "ambiguity_reason": "multiple_jaro_winkler_matches",
+                "match_count": len(matches),
+                "match_type": "jaro_winkler_first_name",
+            },
+        )
 
     def _calculate_confidence(
         self,

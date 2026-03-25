@@ -13,3 +13,8 @@
   - Any ambiguity or uncertainty in the input
 
 - list_position: Position in multi-item extractions (0-indexed)
+
+- historical_year: (optional, integer or null) If the text references a specific past year
+  of bunking together (e.g., "same bunk last year", "bunked in 2024"), set to that year.
+  For "last year" or "last summer", use the year before the current camp season.
+  Only set when text explicitly references prior bunking, not for general friendship.

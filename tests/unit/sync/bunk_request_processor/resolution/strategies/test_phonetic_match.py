@@ -58,14 +58,14 @@ class TestPhoneticMatchStrategy:
     def test_metaphone_algorithm(self, strategy):
         """Test Metaphone code generation"""
         test_cases = [
-            ("Smith", "SMIT"),
-            ("Schmidt", "SKMIDT"),
-            ("Philip", "FILIP"),
-            ("Phillip", "FILIP"),  # Same as Philip
-            ("Knight", "NIT"),  # KN -> N
-            ("Night", "NIT"),  # Same as Knight
-            ("Wright", "RIT"),  # WR -> R
-            ("Thompson", "TOMPSON"),
+            ("Smith", "SM0"),
+            ("Schmidt", "SXMTT"),
+            ("Philip", "FLP"),
+            ("Phillip", "FLP"),  # Same as Philip
+            ("Knight", "NT"),  # KN -> N
+            ("Night", "NT"),  # Same as Knight
+            ("Wright", "RT"),  # WR -> R
+            ("Thompson", "0MPSN"),
             ("", ""),
         ]
 

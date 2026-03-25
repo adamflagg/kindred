@@ -405,12 +405,13 @@ If no fast path resolved the name, try strategies in order. First confident matc
 
 #### Strategy 2: Fuzzy Match (`resolution/strategies/fuzzy_match.py`)
 
-Four-step cascade:
+Five-step cascade:
 
-1. **Nickname variations** (Bob→Robert, Kate→Katherine): confidence ~0.85
-2. **Spelling variations** (Alexis↔Alexus, Stephine↔Stephanie): confidence ~0.85
-3. **Normalized search** (substring matching in full/preferred names): confidence ~0.80
-4. **Parent surname match**: confidence ~0.70
+1. **Nickname variations** (Bob→Robert, Kate→Katherine): confidence ~0.85. Sources: built-in groups, camp overrides (`config/nicknames_override.json`), `nicknames` PyPI library.
+2. **Jaro-Winkler first name similarity** (Charlie→Charlotte, Zoey→Zoe): confidence ~0.85. Threshold configurable via PB config `jaro_winkler_threshold` (default 0.85). Also checks `preferred_name`.
+3. **Spelling variations** (Alexis↔Alexus, Stephine↔Stephanie): confidence ~0.85
+4. **Normalized search** (substring matching in full/preferred names): confidence ~0.80
+5. **Parent surname match**: confidence ~0.70
 
 Session adjustments: same session +0.0, different session -0.10, not enrolled -0.05.
 
@@ -611,7 +612,7 @@ Data from 864-trace production run (2026 season, 1014 source records → 1908 ou
 |---|---|---|---|
 | Temporal conflict filter | 1500× | **0×** | Zero `is_superseded` or `temporal_date` in 2026 data. Only relevant for notes fields. |
 | Source text validation (unit names) | All | **0 rejections** | Unit names appear as person last names ("Chen-Carmel") but resolve correctly. Risk of false positive for camper named "Eilat". |
-| Phase 2.5 historical verification | 832× | **0×** | `historical_year` metadata never set in production code. 100% dormant feature. |
+| Phase 2.5 historical verification | 832× | **0×** | `historical_year` was never set in 2026 data. PR #780 wires AI extraction of `historical_year` → Phase 2.5 — re-measure after next production run. |
 | Placeholder expansion | All | **0 triggers** | 395 `prior_year_bunkmate` requests came from Phase 2's prior bunkmate shortcut, not placeholder expansion. |
 | Self-reference detection | All | **0 hits** | Free safety net, no production matches. |
 | Staff name detection | All rows | **1 hit** | Low value but cheap. Only reads notes fields. |
@@ -640,16 +641,18 @@ Identified from production data analysis (2026-03-18). Pending implementation.
 
 1. **Split socialize_with** out of the main pipeline. Fork early (after direct parse), merge before dedup. socialize_with currently rides through 10+ stages as a no-op passenger.
 2. **Lazy + concurrent cache init.** Temporal name cache and social graph initialize unconditionally. Guard on whether any AI-parsed results need name resolution. Run both concurrently (`asyncio.gather`).
-3. **Remove Phase 2.5** (dead code — `historical_year` never set in production).
+3. ~~**Remove Phase 2.5**~~ — Addressed by PR #780: `historical_year` now extracted by AI parse and wired through to Phase 2.5 verification.
 4. **Scope temporal conflict filter** to notes fields only (zero hits on other fields).
 5. **Scope NA stripping** to `bunk_with` only (zero hits on other fields).
 6. **Guard staff detection** on `source_fields` filter (no-op when processing non-notes fields).
 7. **Conditional post-expansion conflict filter** (only when expansion happened — 0 triggers in production).
 8. **Fix Phase 3 string contract.** Phase 3 exclusion uses `rr.method != "age_preference"` (fragile string). Use `RequestType.AGE_PREFERENCE` enum.
-9. **Improve Phase 2 resolution** with prefix matching (Liv→Olivia, Rob→Robert) to reduce Phase 3 load.
+9. ~~**Improve Phase 2 resolution**~~ — Partially addressed by PR #780: jellyfish Jaro-Winkler matching catches close name variants (Zoey/Zoe, Kiefer/Kieffer), `nicknames` library provides broader nickname coverage (Rob→Robert), and preferred_name matching in exact strategy. Remaining gap: prefix matching (Liv→Olivia) not yet implemented.
 10. **Expand conflict detection** with attendee enrollment data for auto-decline (cross-session BUNK_WITH) and auto-approve (cross-session NOT_BUNK_WITH).
 11. **Method-aware auto-resolve thresholds.** Exact match at 0.82 is more trustworthy than phonetic at 0.87.
 12. **SIBLING expansion enrollment check.** Current sibling lookup doesn't verify enrollment in the same session.
+13. **Extract shared strategy methods to BaseMatchStrategy.** `_apply_session_adjustment_simple()`, `_calculate_confidence()`, and `_disambiguate_with_session()` are duplicated across `FuzzyMatchStrategy` and `PhoneticMatchStrategy`. Extract to base class to reduce ~160 lines of duplication.
+14. **Fix N+1 spread filter query in resolution pipeline.** `resolution_pipeline.py` batch-loads all persons at line 212, but re-queries `person_repo.find_by_cm_id(requester_cm_id)` inside the per-request loop at line 284 when spread filter is enabled. Should reuse the pre-loaded dict.
 
 ### Proposed Conditional Gating Architecture
 

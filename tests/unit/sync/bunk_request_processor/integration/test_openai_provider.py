@@ -168,3 +168,89 @@ class TestSupportsReasoning:
     def test_supports_reasoning(self, model: str, expected: bool) -> None:
         provider = OpenAIProvider(api_key="test-key", model=model)
         assert provider._supports_reasoning() == expected, f"Expected {expected} for model '{model}'"
+
+
+class TestBuildPromptRequesterLastName:
+    """Test that _build_prompt includes requester last name in requester_info."""
+
+    def test_build_prompt_includes_requester_last_name(self):
+        """The rendered prompt must include the requester's last name."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        context = AIRequestContext(
+            requester_name="Emma Johnson",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "bunk_with",
+                "requester_grade": "5",
+                "session_name": "Session 2",
+            },
+        )
+
+        prompt = provider._build_prompt("Olivia Chen", context)
+
+        assert "Requester last name: Johnson" in prompt
+
+    def test_build_prompt_includes_last_name_for_multi_word_name(self):
+        """The requester last name should be the last word of the full name."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        context = AIRequestContext(
+            requester_name="Olivia Rose Thompson",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "bunk_with",
+                "requester_grade": "4",
+                "session_name": "Session 1",
+            },
+        )
+
+        prompt = provider._build_prompt("Liam Garcia", context)
+
+        assert "Requester last name: Thompson" in prompt
+
+    def test_build_prompt_handles_empty_requester_name(self):
+        """When requester_name is empty, last name should be empty or absent."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        context = AIRequestContext(
+            requester_name="",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "bunk_with",
+            },
+        )
+
+        prompt = provider._build_prompt("Noah Chen", context)
+
+        # Should not crash; requester_last should be empty string
+        assert "Requester last name:" in prompt
+
+    def test_build_prompt_handles_single_word_name(self):
+        """When requester_name is a single word, last name should be empty (it's a first name)."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        context = AIRequestContext(
+            requester_name="Cher",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "bunk_with",
+            },
+        )
+
+        prompt = provider._build_prompt("Noah Chen", context)
+
+        # Single-word name has no last name — parse_name treats it as first name only
+        assert "Requester last name: \n" in prompt or "Requester last name:\n" in prompt

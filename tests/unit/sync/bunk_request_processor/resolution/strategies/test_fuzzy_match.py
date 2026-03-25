@@ -366,5 +366,71 @@ class TestFuzzyMatchParentSurname:
         assert result.metadata.get("match_type") == "nickname"
 
 
+class TestFuzzyMatchJaroWinklerFirstName:
+    """Test Jaro-Winkler first name fallback in FuzzyMatchStrategy."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.find_by_name.return_value = []
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return FuzzyMatchStrategy(person_repo, attendee_repo)
+
+    def test_jaro_winkler_first_name_charlie_charlotte(self, strategy):
+        """JW catches close first-name variants not in nickname dict."""
+        candidates = [Person(cm_id=100, first_name="Charlotte", last_name="Garcia")]
+        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+        assert result.metadata.get("match_type") == "jaro_winkler_first_name"
+
+    def test_jaro_winkler_first_name_zoey_zoe(self, strategy):
+        """Zoey/Zoe should match via JW."""
+        candidates = [Person(cm_id=100, first_name="Zoe", last_name="Chen")]
+        result = strategy.resolve_with_context("Zoey Chen", requester_cm_id=999, candidates=candidates)
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+
+    def test_jaro_winkler_rejects_short_dissimilar(self, strategy):
+        """Short dissimilar names should not match."""
+        candidates = [Person(cm_id=100, first_name="May", last_name="Garcia")]
+        result = strategy.resolve_with_context("Max Garcia", requester_cm_id=999, candidates=candidates)
+        assert not result.is_resolved
+
+    def test_jaro_winkler_checks_preferred_name(self, strategy):
+        """JW should also match against preferred_name."""
+        candidates = [Person(cm_id=100, first_name="Charlotte", last_name="Garcia", preferred_name="Charli")]
+        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        assert result.is_resolved
+        assert result.person.cm_id == 100
+
+    def test_jaro_winkler_requires_last_name_match(self, strategy):
+        """JW first name match requires last name to also match."""
+        candidates = [Person(cm_id=100, first_name="Charlotte", last_name="Johnson")]
+        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        assert not result.is_resolved
+
+    def test_jaro_winkler_multiple_matches_ambiguous(self, strategy):
+        """Multiple JW matches should return ambiguous result."""
+        candidates = [
+            Person(cm_id=100, first_name="Charlotte", last_name="Garcia"),
+            Person(cm_id=200, first_name="Charlene", last_name="Garcia"),
+        ]
+        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        assert result.is_ambiguous
+        assert len(result.candidates) == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

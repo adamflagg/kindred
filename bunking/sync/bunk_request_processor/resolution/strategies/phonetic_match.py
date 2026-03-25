@@ -440,110 +440,20 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         return any(name1 in group and name2 in group for group in nickname_groups)
 
     def _soundex(self, name: str) -> str:
-        """Generate Soundex code for a name.
+        """Generate Soundex code for a name using jellyfish."""
+        import jellyfish
 
-        Soundex algorithm:
-        1. Keep the first letter
-        2. Replace consonants with digits
-        3. Remove vowels and h, w, y
-        4. Limit to 4 characters, pad with 0s if needed
-        """
         if not name:
             return "0000"
-
-        # Convert to uppercase
-        name = name.upper()
-
-        # Save the first letter
-        soundex = name[0]
-
-        # Mapping of letters to digits
-        mapping = {
-            "B": "1",
-            "F": "1",
-            "P": "1",
-            "V": "1",
-            "C": "2",
-            "G": "2",
-            "J": "2",
-            "K": "2",
-            "Q": "2",
-            "S": "2",
-            "X": "2",
-            "Z": "2",
-            "D": "3",
-            "T": "3",
-            "L": "4",
-            "M": "5",
-            "N": "5",
-            "R": "6",
-        }
-
-        # Process remaining letters
-        last_digit = mapping.get(name[0], "0")  # Get digit for first letter
-        for letter in name[1:]:
-            digit = mapping.get(letter, "0")
-            if digit != "0" and digit != last_digit:
-                soundex += digit
-            last_digit = digit
-
-        # Pad with zeros or truncate to length 4
-        soundex = soundex[:4].ljust(4, "0")
-
-        return soundex
+        return jellyfish.soundex(name)
 
     def _metaphone(self, name: str) -> str:
-        """Generate simplified Metaphone code for a name.
+        """Generate Metaphone code for a name using jellyfish."""
+        import jellyfish
 
-        This is a simplified version focusing on common patterns.
-        """
         if not name:
             return ""
-
-        # Convert to uppercase and remove non-letters
-        name = "".join(c for c in name.upper() if c.isalpha())
-        if not name:
-            return ""
-
-        # Apply transformations
-        result = name
-
-        # Common beginning patterns
-        if result.startswith("KN") or result.startswith("GN") or result.startswith("PN"):
-            result = "N" + result[2:]
-        elif result.startswith("WR"):
-            result = "R" + result[2:]
-
-        # Replace patterns in specific order (longer patterns first)
-        replacements = [
-            ("DGE", "J"),
-            ("TIO", "SH"),
-            ("TIA", "SH"),
-            ("TCH", "CH"),
-            ("CK", "K"),
-            ("PH", "F"),
-            ("GH", ""),  # Silent GH as in Night
-            ("TH", "T"),  # TH often sounds like T
-            ("Q", "K"),
-            ("V", "F"),
-            ("Z", "S"),
-            ("X", "KS"),
-            ("C", "K"),  # Simplified - C usually sounds like K
-            ("H", ""),  # H is often silent
-        ]
-
-        for old, new in replacements:
-            result = result.replace(old, new)
-
-        # Remove duplicate letters
-        simplified = ""
-        last_char = ""
-        for char in result:
-            if char != last_char:
-                simplified += char
-                last_char = char
-
-        return simplified
+        return jellyfish.metaphone(name)
 
     def _disambiguate_with_session(
         self, matches: list[Person], requester_cm_id: int, session_cm_id: int, year: int

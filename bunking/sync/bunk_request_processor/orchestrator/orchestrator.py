@@ -2317,6 +2317,25 @@ class RequestOrchestrator:
         if reciprocal_pairs:
             logger.info(f"Detected {len(reciprocal_pairs)} reciprocal pair(s)")
 
+        # Step 4: Re-check status for reciprocal-boosted requests
+        # After reciprocal boost bumps confidence, requests that now cross
+        # the auto-resolve threshold should be promoted from PENDING to RESOLVED.
+        threshold = self._get_auto_resolve_threshold()
+        reciprocal_promoted = 0
+        for req in deduplicated_requests:
+            if (
+                req.metadata.get("reciprocal_boost")
+                and req.status == RequestStatus.PENDING
+                and req.confidence_score >= threshold
+                and req.requested_cm_id is not None
+                and req.requested_cm_id > 0
+            ):
+                req.status = RequestStatus.RESOLVED
+                reciprocal_promoted += 1
+        self._stats["reciprocal_promoted"] = reciprocal_promoted
+        if reciprocal_promoted > 0:
+            logger.info(f"Reciprocal boost auto-resolved {reciprocal_promoted} request(s)")
+
         return deduplicated_requests
 
     async def close(self) -> None:

@@ -4,7 +4,20 @@ Provides centralized nickname mappings used across the system."""
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
+
+try:
+    from nicknames import NickNamer
+
+    _nicknamer: NickNamer | None = NickNamer()
+except ImportError:
+    _nicknamer: NickNamer | None = None  # type: ignore[no-redef]
+
+_OVERRIDE_PATH = Path(__file__).parent.parent.parent.parent.parent / "config" / "nicknames_override.json"
 
 # Default nickname groups
 # Each set contains interchangeable names (full name and common nicknames)
@@ -120,8 +133,53 @@ def get_nickname_groups(config_service: Any = None) -> list[set[str]]:
     return DEFAULT_NICKNAME_GROUPS
 
 
+@lru_cache(maxsize=1)
+def _load_overrides() -> dict[str, list[str]]:
+    """Load camp-specific nickname overrides from config file."""
+    if _OVERRIDE_PATH.exists():
+        with open(_OVERRIDE_PATH) as f:
+            data = json.load(f)
+        return {k: v for k, v in data.items() if not k.startswith("_")}
+    return {}
+
+
+def _get_library_variations(name_lower: str) -> set[str]:
+    """Get nickname variations from the nicknames PyPI library (bidirectional)."""
+    if _nicknamer is None:
+        return set()
+    results: set[str] = set()
+    # Forward: full name → nicknames
+    for n in _nicknamer.nicknames_of(name_lower):
+        results.add(n.lower())
+    # Reverse: nickname → canonical/full names
+    for n in _nicknamer.canonicals_of(name_lower):
+        results.add(n.lower())
+    results.discard(name_lower)
+    return results
+
+
+def _get_override_variations(name_lower: str) -> set[str]:
+    """Get nickname variations from camp-specific override file (bidirectional)."""
+    overrides = _load_overrides()
+    results: set[str] = set()
+    # Forward: key → values
+    if name_lower in overrides:
+        results.update(v.lower() for v in overrides[name_lower])
+    # Reverse: value → key
+    for key, values in overrides.items():
+        if name_lower in [v.lower() for v in values]:
+            results.add(key.lower())
+    results.discard(name_lower)
+    return results
+
+
 def find_nickname_variations(name: str, config_service: Any = None) -> list[str]:
     """Find all nickname variations for a given name.
+
+    Consults three sources in priority order:
+    1. Built-in nickname groups (DEFAULT_NICKNAME_GROUPS)
+    2. Camp-specific override file (config/nicknames_override.json)
+    3. nicknames PyPI library (broadest coverage)
 
     Args:
         name: Name to find variations for (case insensitive)
@@ -132,25 +190,39 @@ def find_nickname_variations(name: str, config_service: Any = None) -> list[str]
     """
     name_lower = name.lower()
     variations: list[str] = []
+    seen: set[str] = set()
 
-    # Check nickname groups
+    def _add(values: Iterable[str]) -> None:
+        for v in values:
+            if v not in seen:
+                seen.add(v)
+                variations.append(v)
+
+    # 1. Check built-in nickname groups (highest priority)
     groups = get_nickname_groups(config_service)
     for group in groups:
         if name_lower in group:
-            variations.extend(n for n in group if n != name_lower)
+            _add(n for n in group if n != name_lower)
             break
 
-    # Check spelling variations
+    # 2. Check spelling variations
     if name_lower in SPELLING_VARIATIONS:
-        variations.extend(SPELLING_VARIATIONS[name_lower])
+        _add(SPELLING_VARIATIONS[name_lower])
 
-    return list(set(variations))  # Remove duplicates
+    # 3. Check camp-specific overrides
+    _add(_get_override_variations(name_lower))
+
+    # 4. Check nicknames library (broadest coverage, lowest priority)
+    _add(_get_library_variations(name_lower))
+
+    return variations
 
 
 def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None) -> bool:
     """Check if two names match exactly or via nickname groups.
 
-    (_names_match_with_nicknames method).
+    Consults the same sources as find_nickname_variations:
+    built-in groups, spelling variations, camp overrides, and nicknames library.
 
     Args:
         name1: First name (case insensitive)
@@ -167,18 +239,5 @@ def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None
     if name1_lower == name2_lower:
         return True
 
-    # Check if both names are in the same nickname group
-    groups = get_nickname_groups(config_service)
-    for group in groups:
-        if name1_lower in group and name2_lower in group:
-            return True
-
-    # Check spelling variations (bidirectional)
-    if name1_lower in SPELLING_VARIATIONS:
-        if name2_lower in SPELLING_VARIATIONS[name1_lower]:
-            return True
-    if name2_lower in SPELLING_VARIATIONS:
-        if name1_lower in SPELLING_VARIATIONS[name2_lower]:
-            return True
-
-    return False
+    # Check all variation sources: name2 in name1's variations
+    return name2_lower in find_nickname_variations(name1, config_service)
