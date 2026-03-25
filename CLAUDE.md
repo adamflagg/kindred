@@ -340,7 +340,7 @@ Hooks are managed by [lefthook](https://github.com/evilmartians/lefthook) via `.
 |-------|---------|-----------|-------|
 | **pre-commit** | Every commit | Formatters on staged files (prettier, ruff format, gofmt) | <1s |
 | **commit-msg** | Every commit | commitlint validation | Instant |
-| **pre-push** | Every push | Full linters + tests in parallel | ~1 min |
+| **pre-push** | Every push | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint) | ~15s |
 | **post-merge** | After pull | Worktree cleanup notifications | ~5s |
 
 **Escape hatches:** `LEFTHOOK=0 git commit` or `git commit --no-verify`
@@ -348,7 +348,7 @@ Hooks are managed by [lefthook](https://github.com/evilmartians/lefthook) via `.
 **Run manually:**
 ```bash
 lefthook run pre-commit    # Test formatters
-lefthook run pre-push      # Test full lint+test suite
+lefthook run pre-push      # Test type checks + fast linters
 ```
 
 ## 🚨 CRITICAL: Development Quality Standards
