@@ -344,7 +344,7 @@ export function useVelocityChartData(
     dailyChartData.forEach((pt, i) => {
       const offset = pt['day_offset'] as number
       if (offset % 7 === 0) {
-        const weekNum = Math.floor(offset / 7) + 1
+        const weekNum = offset < 0 ? 0 : Math.floor(offset / 7) + 1
         const dateStr = pt['date'] as string
         const dateLabel = dateStr ? formatDateShort(dateStr) : ''
         milestones.push({ index: i, label: `Wk ${weekNum}${dateLabel ? ` - ${dateLabel}` : ''}` })

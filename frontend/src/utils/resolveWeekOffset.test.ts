@@ -59,3 +59,30 @@ describe('resolveWeekOffset', () => {
     expect(resolveWeekOffset(132, options, 19)).toBe(options[1]!.day_offset)
   })
 })
+
+function makeWeek0Option(): WeekOption {
+  return {
+    week_number: 0,
+    day_offset: -1,
+    label: 'Week 0 · Nov 5–11 (Pre-Reg)',
+    is_today: false,
+  }
+}
+
+describe('Week 0 support', () => {
+  it('preserves day_offset -1 when Week 0 option exists', () => {
+    const options = [makeOption(19, true), makeOption(18), makeOption(1), makeWeek0Option()]
+    expect(resolveWeekOffset(-1, options, 19)).toBeUndefined()
+  })
+
+  it('maps to Week 1 when switching to year without Week 0', () => {
+    const options = [makeOption(41), makeOption(20), makeOption(1)]
+    const result = resolveWeekOffset(-1, options, 19)
+    expect(result).toBe(options[2]!.day_offset)
+  })
+
+  it('keeps Week 1 when switching to year with Week 0', () => {
+    const options = [makeOption(19, true), makeOption(1), makeWeek0Option()]
+    expect(resolveWeekOffset(6, options, 19)).toBeUndefined()
+  })
+})
