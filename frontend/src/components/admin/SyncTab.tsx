@@ -46,6 +46,18 @@ import {
 } from './syncTypes'
 import clsx from 'clsx'
 
+const ALL_SYNC_TYPES = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES]
+
+/** Gradient arrow connecting pipeline stages */
+function PipelineConnector({ gradient }: { gradient: string }) {
+  return (
+    <div className="text-bark-400 dark:text-bark-600 flex flex-shrink-0 items-center gap-1 px-1">
+      <div className={`h-px w-6 bg-gradient-to-r ${gradient}`} />
+      <ChevronRight className="h-3 w-3" />
+    </div>
+  )
+}
+
 export function SyncTab() {
   const currentYear = useYear()
   // Unified sync state (replaces separate daily/historical)
@@ -85,11 +97,12 @@ export function SyncTab() {
   // Get queue from status
   const queue: QueuedSyncItem[] = syncStatus?._queue ?? []
   const hasQueuedItems = queue.length > 0
+  const remainingJobs = syncStatus?._current_run?.remaining_jobs ?? []
 
   // Find the currently running job(s) with their status (includes year)
   const runningJobs = useMemo(() => {
     if (!syncStatus) return []
-    const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES]
+    const allSyncTypes = ALL_SYNC_TYPES
     return allSyncTypes
       .map((syncType) => {
         const statusValue = syncStatus[syncType.id as keyof typeof syncStatus]
@@ -132,7 +145,7 @@ export function SyncTab() {
     if (item.service === 'all') {
       return 'All Services'
     }
-    const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES]
+    const allSyncTypes = ALL_SYNC_TYPES
     const syncType = allSyncTypes.find((t) => t.id === item.service)
     return (
       syncType?.name ?? item.service.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -547,66 +560,53 @@ export function SyncTab() {
                   })}
 
                   {/* Connector to remaining jobs or queue */}
-                  {syncStatus._current_run &&
-                  (syncStatus._current_run.remaining_jobs ?? []).length > 0 ? (
-                    <div className="text-bark-400 dark:text-bark-600 flex flex-shrink-0 items-center gap-1 px-1">
-                      <div className="from-forest-300 dark:from-forest-700 h-px w-6 bg-gradient-to-r to-teal-300 dark:to-teal-700" />
-                      <ChevronRight className="h-3 w-3" />
-                    </div>
+                  {remainingJobs.length > 0 ? (
+                    <PipelineConnector gradient="from-forest-300 to-teal-300 dark:from-forest-700 dark:to-teal-700" />
                   ) : (
                     hasQueuedItems && (
-                      <div className="text-bark-400 dark:text-bark-600 flex flex-shrink-0 items-center gap-1 px-1">
-                        <div className="from-forest-300 dark:from-forest-700 h-px w-6 bg-gradient-to-r to-amber-300 dark:to-amber-700" />
-                        <ChevronRight className="h-3 w-3" />
-                      </div>
+                      <PipelineConnector gradient="from-forest-300 to-amber-300 dark:from-forest-700 dark:to-amber-700" />
                     )
                   )}
                 </>
               )}
 
               {/* Remaining Jobs in Current Sequence - teal theme */}
-              {syncStatus._current_run &&
-                (syncStatus._current_run.remaining_jobs ?? []).length > 0 && (
-                  <>
-                    {/* Remaining label with count */}
-                    <div className="flex flex-shrink-0 items-center gap-1.5">
-                      <div className="h-2 w-2 rounded-full bg-teal-400 dark:bg-teal-500" />
-                      <span className="text-xs font-semibold tracking-wide text-teal-600 uppercase dark:text-teal-400">
-                        Next ({(syncStatus._current_run.remaining_jobs ?? []).length})
-                      </span>
-                    </div>
+              {remainingJobs.length > 0 && (
+                <>
+                  {/* Remaining label with count */}
+                  <div className="flex flex-shrink-0 items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-full bg-teal-400 dark:bg-teal-500" />
+                    <span className="text-xs font-semibold tracking-wide text-teal-600 uppercase dark:text-teal-400">
+                      Next ({remainingJobs.length})
+                    </span>
+                  </div>
 
-                    {/* Job chips - show first 4, then "+N more" */}
-                    {(syncStatus._current_run.remaining_jobs ?? []).slice(0, 4).map((jobId) => {
-                      const syncType = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES].find(
-                        (t) => t.id === jobId
-                      )
-                      return (
-                        <div
-                          key={jobId}
-                          className="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-teal-700 dark:border-teal-800 dark:bg-teal-900/20 dark:text-teal-300"
-                        >
-                          <span className="text-xs font-medium">
-                            {syncType?.name ?? jobId.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                      )
-                    })}
-                    {(syncStatus._current_run.remaining_jobs ?? []).length > 4 && (
-                      <span className="text-xs font-medium text-teal-600 dark:text-teal-400">
-                        +{(syncStatus._current_run.remaining_jobs ?? []).length - 4} more
-                      </span>
-                    )}
-
-                    {/* Connector to external queue if items exist */}
-                    {hasQueuedItems && (
-                      <div className="text-bark-400 dark:text-bark-600 flex flex-shrink-0 items-center gap-1 px-1">
-                        <div className="h-px w-6 bg-gradient-to-r from-teal-300 to-amber-300 dark:from-teal-700 dark:to-amber-700" />
-                        <ChevronRight className="h-3 w-3" />
+                  {/* Job chips - show first 4, then "+N more" */}
+                  {remainingJobs.slice(0, 4).map((jobId) => {
+                    const syncType = ALL_SYNC_TYPES.find((t) => t.id === jobId)
+                    return (
+                      <div
+                        key={jobId}
+                        className="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-teal-700 dark:border-teal-800 dark:bg-teal-900/20 dark:text-teal-300"
+                      >
+                        <span className="text-xs font-medium">
+                          {syncType?.name ?? jobId.replace(/_/g, ' ')}
+                        </span>
                       </div>
-                    )}
-                  </>
-                )}
+                    )
+                  })}
+                  {remainingJobs.length > 4 && (
+                    <span className="text-xs font-medium text-teal-600 dark:text-teal-400">
+                      +{remainingJobs.length - 4} more
+                    </span>
+                  )}
+
+                  {/* Connector to external queue if items exist */}
+                  {hasQueuedItems && (
+                    <PipelineConnector gradient="from-teal-300 to-amber-300 dark:from-teal-700 dark:to-amber-700" />
+                  )}
+                </>
+              )}
 
               {/* Queued Items - amber theme */}
               {hasQueuedItems && (
