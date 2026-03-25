@@ -49,9 +49,11 @@ jobs:
 
             echo "=== Checking $dir ==="
 
-            # Resolve the full dependency tree (no downloads) and check if
-            # the lock file changed — lighter than npm ci which installs everything
-            (cd "$dir" && npm install --package-lock-only --ignore-scripts)
+            # npm install --package-lock-only doesn't always catch transitive
+            # version mismatches (e.g., react-query@5.94 wanting query-core@5.94
+            # but lockfile still pinning query-core@5.90). Delete and regenerate
+            # from scratch to guarantee a fully resolved tree.
+            (cd "$dir" && rm package-lock.json && npm install --package-lock-only --ignore-scripts)
             if git diff --quiet -- "$lockfile"; then
               echo "✅ $dir: lock file is consistent"
             else
