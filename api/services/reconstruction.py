@@ -384,9 +384,6 @@ def reconstruct_daily_multi(
         "canc_girls": 0,
     }
 
-    # In Week 0 mode, clamp pre-anchor events to the Week 0 window start
-    week0_start: str | None = (season_start - timedelta(days=7)).isoformat() if week0 else None
-
     for att in attendees:
         session = get_session_from_expand(att)
         if not session:
@@ -426,9 +423,6 @@ def reconstruct_daily_multi(
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
             enroll_day = parse_date_only(enroll_date_str)
-            # Clamp far-back pre-anchor events to the Week 0 window start
-            if week0_start and enroll_day < week0_start:
-                enroll_day = week0_start
 
             if include_in_combined:
                 bucket = combined_events.setdefault(enroll_day, dict(_empty_bucket))
@@ -452,9 +446,6 @@ def reconstruct_daily_multi(
             canc_date_raw = getattr(att, "enrollment_date", "") or ""
             if canc_date_raw:
                 canc_day = parse_date_only(canc_date_raw)
-                # Clamp far-back pre-anchor cancellations to the Week 0 window start
-                if week0_start and canc_day < week0_start:
-                    canc_day = week0_start
 
                 if include_in_combined:
                     bucket = combined_events.setdefault(canc_day, dict(_empty_bucket))
@@ -472,6 +463,12 @@ def reconstruct_daily_multi(
                         bucket["canc_boys"] += 1
                     elif gender == "F":
                         bucket["canc_girls"] += 1
+
+    # Proportionally compress pre-anchor events into the Week 0 display window
+    if week0:
+        combined_events = compress_pre_anchor_events(combined_events, season_start)
+        for sid in per_session_events:
+            per_session_events[sid] = compress_pre_anchor_events(per_session_events[sid], season_start)
 
     # Build combined daily points
     combined = _build_daily_points(combined_events, combined_has_gender, season_start, end_date, week0=week0)
