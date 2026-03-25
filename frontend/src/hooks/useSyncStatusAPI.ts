@@ -27,7 +27,7 @@ export interface CurrentRunProgress {
   type: 'daily' | 'historical' | 'weekly' | 'custom_values'
   total_jobs: number
   completed_jobs: number
-  remaining_jobs: string[]
+  remaining_jobs: string[] | null
 }
 
 export interface SyncStatus {
