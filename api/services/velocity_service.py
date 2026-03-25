@@ -1536,125 +1536,14 @@ class VelocityService:
             empty_combined = VelocityCurve(year=ctx.year, session_cm_id=None, gender=None, weekly=[])
             return _CurveResult(combined=empty_combined, by_session=[], cancelled_to_date=0)
 
-        # Group enrollments and cancellations by session (date -> count), merging AG
-        session_daily_enrollments: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        session_daily_cancellations: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        total_cancellation_count = 0
-
-        for att in attendees:
-            session = get_session_from_expand(att)
-            if not session:
-                continue
-
-            status_id = getattr(att, "status_id", 0) or 0
-            if status_id not in ENROLLMENT_STATUSES:
-                continue
-
-            raw_sid = int(session.cm_id)
-            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-
-            # Enrollment event: use effective_date (original registration date)
-            enroll_date_str = _get_enrollment_date(att)
-            if enroll_date_str:
-                dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-                if dt.date() <= ctx.season_end.date():
-                    date_key = dt.strftime("%Y-%m-%d")
-                    session_daily_enrollments[effective_sid][date_key] += 1
-
-            # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
-            if status_id in CANCELLATION_STATUSES:
-                cancel_date_raw = getattr(att, "enrollment_date", "") or ""
-                if cancel_date_raw:
-                    cancel_date_str = parse_date_only(cancel_date_raw)
-                    cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                    if cancel_dt.date() <= ctx.season_end.date():
-                        session_daily_cancellations[effective_sid][cancel_date_str] += 1
-                        total_cancellation_count += 1
-
-        # Filter by session if specified
-        if session_cm_id is not None:
-            session_daily_enrollments = {
-                sid: dates for sid, dates in session_daily_enrollments.items() if sid == session_cm_id
-            }
-            session_daily_cancellations = {
-                sid: dates for sid, dates in session_daily_cancellations.items() if sid == session_cm_id
-            }
-            total_cancellation_count = sum(
-                count for dates in session_daily_cancellations.values() for count in dates.values()
-            )
-
-        # Filter out sessions not in the sessions dict (excludes non-summer types)
-        session_daily_enrollments = {sid: w for sid, w in session_daily_enrollments.items() if sid in sessions}
-
-        # Build per-session cumulative curves (bucket by Monday)
-        per_session_data: dict[int, list[WeeklyDataPoint]] = {}
-
-        for sid, daily_enrollments in session_daily_enrollments.items():
-            # Collect all dates from both enrollments and cancellations
-            all_dates = set(daily_enrollments.keys())
-            if sid in session_daily_cancellations:
-                all_dates |= set(session_daily_cancellations[sid].keys())
-
-            # Bucket enrollments and cancellations separately by 7-day periods
-            weekly_enrollments: dict[str, int] = defaultdict(int)
-            weekly_cancellations: dict[str, int] = defaultdict(int)
-            for date_key in all_dates:
-                new_enrolled = daily_enrollments.get(date_key, 0)
-                cancelled = session_daily_cancellations.get(sid, {}).get(date_key, 0)
-                dt = datetime.strptime(date_key, "%Y-%m-%d")
-                bucket = _week_start(dt, ctx.season_start)
-                bucket_key = bucket.strftime("%Y-%m-%d")
-                weekly_enrollments[bucket_key] += new_enrolled
-                weekly_cancellations[bucket_key] += cancelled
-
-            # Build cumulative weekly points
-            gross_cumulative = 0
-            cancel_cumulative = 0
-            points: list[WeeklyDataPoint] = []
-
-            all_bucket_keys = sorted(set(weekly_enrollments.keys()) | set(weekly_cancellations.keys()))
-            for bucket_key in all_bucket_keys:
-                week_new = weekly_enrollments.get(bucket_key, 0)
-                week_cancel = weekly_cancellations.get(bucket_key, 0)
-                gross_cumulative += week_new
-                cancel_cumulative += week_cancel
-                net = gross_cumulative - cancel_cumulative
-                prev_enrolled_val = points[-1].enrolled if points else 0
-                delta = net - prev_enrolled_val
-
-                bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-                wn = _week_number(bucket_dt, ctx.season_start)
-                week_end_date = bucket_dt + timedelta(days=6)
-                is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
-                points.append(
-                    WeeklyDataPoint(
-                        week_start=bucket_key,
-                        week_end=week_end_date.strftime("%Y-%m-%d"),
-                        week_label=_week_label(bucket_dt, ctx.season_start),
-                        week_number=wn,
-                        enrolled=net,
-                        delta=delta,
-                        data_source="reconstructed",
-                        gross_enrolled=gross_cumulative,
-                        weekly_new=week_new,
-                        weekly_cancelled=week_cancel,
-                        is_partial=is_partial,
-                        days_in_week=days_in_week,
-                    )
-                )
-
-            per_session_data[sid] = points
-
-        # Build combined weekly from per-session data
-        combined_data = self._combine_weekly_curves(per_session_data)
-
-        # Build daily data via reconstruct_daily_multi
         season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
         is_current_season = season_start_date <= ctx.today <= season_end_date
         end_date = ctx.today if is_current_season else season_end_date
+
         anchor_str = season_start_date.strftime("%Y-%m-%d")
         has_week0 = await self.repo.has_pre_anchor_enrollments(ctx.year, anchor_str)
+
         daily_data, per_session_daily = reconstruct_daily_multi(
             attendees=attendees,
             season_start=season_start_date,
@@ -1662,27 +1551,34 @@ class VelocityService:
             end_date=end_date,
             ag_parent_map=ag_parent_map,
             session_cm_id=session_cm_id,
-            session_ids=list(per_session_data.keys()),
+            session_ids=None,
             week0=has_week0,
         )
 
-        # Derive weekly from daily for combined curve
-        combined_weekly = rollup_daily_to_weekly(daily_data, season_start_date, is_current_year=is_current_season)
+        # Derive weekly from daily for both combined and per-session curves
+        combined_weekly = rollup_daily_to_weekly(
+            daily_data, season_start_date, is_current_year=is_current_season
+        )
+        per_session_weekly: dict[int, list[WeeklyDataPoint]] = {
+            sid: rollup_daily_to_weekly(pts, season_start_date, is_current_year=is_current_season)
+            for sid, pts in per_session_daily.items()
+        }
 
         combined = VelocityCurve(
             year=ctx.year,
             session_cm_id=session_cm_id,
             gender=None,
-            weekly=combined_weekly if combined_weekly else combined_data,
+            weekly=combined_weekly,
             daily=daily_data,
         )
 
-        by_session = self._build_session_curves(ctx.year, sessions, per_session_data)
+        by_session = self._build_session_curves(ctx.year, sessions, per_session_weekly)
+        cancelled_to_date = daily_data[-1].cancelled if daily_data else 0
 
         return _CurveResult(
             combined=combined,
             by_session=by_session,
-            cancelled_to_date=total_cancellation_count,
+            cancelled_to_date=cancelled_to_date,
             by_session_daily=per_session_daily,
         )
 
