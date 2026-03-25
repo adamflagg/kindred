@@ -132,15 +132,18 @@ def rollup_daily_to_weekly(
 
 
 def _week_start(d: datetime, season_start: datetime) -> datetime:
-    """Start of 7-day bucket containing d, anchored to season_start."""
+    """Start of 7-day bucket containing d, anchored to season_start. Pre-anchor → anchor - 7d."""
     days_since = (d - season_start).days
+    if days_since < 0:
+        return season_start - timedelta(days=7)
     return season_start + timedelta(days=(days_since // 7) * 7)
 
 
 def _week_label(d: datetime | date, season_start: datetime | date) -> str:
-    """Format a date as a week label like 'Wk N (Jan 6–12)'."""
+    """Format a date as a week label like 'Wk N (Jan 6–12)' or 'Wk 0 (Nov 5–11)'."""
     week_num = _week_number(d, season_start)
-    return f"Wk {week_num} ({format_week_date_range(season_start.date() if isinstance(season_start, datetime) else season_start, week_num)})"
+    anchor = season_start.date() if isinstance(season_start, datetime) else season_start
+    return f"Wk {week_num} ({format_week_date_range(anchor, week_num)})"
 
 
 def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | None:
@@ -162,10 +165,13 @@ def _season_end(priority_reg_date: datetime) -> datetime:
 
 
 def _week_number(d: datetime | date, priority_reg_date: datetime | date) -> int:
-    """Compute 1-based week offset from priority_reg_date."""
+    """Compute week offset from priority_reg_date. Returns 0 for pre-anchor dates, 1+ otherwise."""
     d_date = d.date() if isinstance(d, datetime) else d
     ref_date = priority_reg_date.date() if isinstance(priority_reg_date, datetime) else priority_reg_date
-    return (d_date - ref_date).days // 7 + 1
+    days = (d_date - ref_date).days
+    if days < 0:
+        return 0
+    return days // 7 + 1
 
 
 def _partial_week_info(week_start_str: str, year: int, *, today: date | None = None) -> tuple[bool, int]:

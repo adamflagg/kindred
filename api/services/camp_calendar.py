@@ -64,14 +64,18 @@ def camp_week_offset(camp_date: date, anchor: date) -> int:
 
 
 def format_week_date_range(anchor: date, week_num: int) -> str:
-    """Format a date range for a 1-based week number, e.g. "Nov 12\u201318" or "Nov 26\u2013Dec 2".
+    """Format a date range for a week number, e.g. "Nov 12\u201318" or "Nov 26\u2013Dec 2".
 
     Args:
         anchor: Registration anchor date (start of Week 1).
-        week_num: 1-based week number.
+        week_num: 1-based week number. 0 means the 7 days before anchor.
     """
-    week_start = anchor + timedelta(days=(week_num - 1) * 7)
-    week_end = anchor + timedelta(days=week_num * 7 - 1)
+    if week_num == 0:
+        week_start = anchor - timedelta(days=7)
+        week_end = anchor - timedelta(days=1)
+    else:
+        week_start = anchor + timedelta(days=(week_num - 1) * 7)
+        week_end = anchor + timedelta(days=week_num * 7 - 1)
     start_fmt = week_start.strftime("%b %-d")
     if week_start.month == week_end.month:
         end_fmt = str(week_end.day)

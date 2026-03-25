@@ -700,6 +700,35 @@ class TestSeasonStartHelpers:
         day7 = datetime(2025, 12, 10)
         assert _week_start(day7, priority_reg) == priority_reg + timedelta(days=7)
 
+    def test_week_number_before_anchor_returns_zero(self):
+        """Dates before priority_reg_date should return week 0."""
+        priority_reg = datetime(2025, 11, 12)
+        day_before = datetime(2025, 11, 11)
+        week_before = datetime(2025, 11, 5)
+        month_before = datetime(2025, 10, 15)
+        assert _week_number(day_before, priority_reg) == 0
+        assert _week_number(week_before, priority_reg) == 0
+        assert _week_number(month_before, priority_reg) == 0
+
+    def test_week_start_before_anchor_returns_anchor_minus_7(self):
+        """Pre-anchor dates should bucket to anchor - 7 days."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 11, 12)
+        day_before = datetime(2025, 11, 11)
+        month_before = datetime(2025, 10, 15)
+        expected = priority_reg - timedelta(days=7)
+        assert _week_start(day_before, priority_reg) == expected
+        assert _week_start(month_before, priority_reg) == expected
+
+    def test_week_label_week_zero(self):
+        """Week 0 label should include 'Wk 0' with date range for the 7 days before anchor."""
+        priority_reg = datetime(2025, 11, 12)
+        day_before = datetime(2025, 11, 11)
+        label = _week_label(day_before, priority_reg)
+        assert label.startswith("Wk 0")
+        assert "Nov 5" in label  # anchor - 7 = Nov 5
+
     def test_season_end_from_priority_reg(self):
         """_season_end should return priority_reg_date + SEASON_WEEKS * 7 days."""
         from datetime import timedelta
