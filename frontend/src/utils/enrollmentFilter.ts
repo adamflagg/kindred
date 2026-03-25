@@ -5,8 +5,6 @@
  * fall back to the single most relevant non-enrolled status.
  */
 
-import type { Camper } from '../types/app-types'
-
 /** Priority order for picking the "best" non-enrolled status (lower = better) */
 const STATUS_PRIORITY: Record<string, number> = {
   waitlisted: 1,
@@ -17,7 +15,8 @@ const STATUS_PRIORITY: Record<string, number> = {
   dismissed: 6,
   incomplete: 7,
   inquiry: 8,
-  none: 9,
+  unknown: 9,
+  none: 10,
 }
 
 /** Compact single-letter indicator for non-enrolled statuses */
@@ -59,11 +58,19 @@ const STATUS_INDICATORS: Record<string, StatusIndicator> = {
     letter: '?',
     colorClass: 'bg-stone-100 text-stone-700 dark:bg-stone-900/30 dark:text-stone-400',
   },
+  unknown: {
+    letter: '?',
+    colorClass: 'bg-stone-100 text-stone-700 dark:bg-stone-900/30 dark:text-stone-400',
+  },
+  none: {
+    letter: '-',
+    colorClass: 'bg-stone-100 text-stone-700 dark:bg-stone-900/30 dark:text-stone-400',
+  },
 }
 
 /**
  * Get compact status indicator for a non-enrolled status.
- * Returns null for enrolled or unknown statuses.
+ * Returns null for enrolled or statuses not in the indicator map.
  */
 export function getStatusIndicator(status: string | undefined): StatusIndicator | null {
   if (!status || status === 'enrolled') return null
@@ -78,34 +85,45 @@ export function getStatusPriority(status: string | undefined): number {
   return STATUS_PRIORITY[status ?? ''] ?? 999
 }
 
-export interface FilteredEnrollment {
-  /** Only actually enrolled campers */
-  enrolled: Camper[]
-  /** If no enrolled campers, the single best non-enrolled camper */
-  fallback: Camper | null
+export interface FilteredEnrollment<T> {
+  /** Only actually enrolled items */
+  enrolled: T[]
+  /** If no enrolled items, the single best non-enrolled item */
+  fallback: T | null
 }
 
 /**
- * Filter attendees by enrollment status.
+ * Filter items by enrollment status.
  *
- * Returns enrolled campers only. If none are enrolled,
- * picks the single most relevant non-enrolled camper
+ * Returns enrolled items only. If none are enrolled,
+ * picks the single most relevant non-enrolled item
  * (by status priority: waitlisted > applied > cancelled > ...).
+ *
+ * Treats undefined/missing status as enrolled (defensive default).
+ *
+ * @param items - Array of items to filter
+ * @param getStatus - Accessor to extract the status string from each item
  */
-export function filterEnrollmentsByStatus(allAttendees: Camper[]): FilteredEnrollment {
-  const enrolled = allAttendees.filter((c) => c.attendee_status === 'enrolled')
+export function filterEnrollmentsByStatus<T>(
+  items: T[],
+  getStatus: (item: T) => string | undefined
+): FilteredEnrollment<T> {
+  const enrolled = items.filter((item) => {
+    const status = getStatus(item)
+    return !status || status === 'enrolled'
+  })
 
   if (enrolled.length > 0) {
     return { enrolled, fallback: null }
   }
 
   // No enrolled — pick best non-enrolled by status priority
-  if (allAttendees.length === 0) {
+  if (items.length === 0) {
     return { enrolled: [], fallback: null }
   }
 
-  const sorted = [...allAttendees].sort(
-    (a, b) => getStatusPriority(a.attendee_status) - getStatusPriority(b.attendee_status)
+  const sorted = [...items].sort(
+    (a, b) => getStatusPriority(getStatus(a)) - getStatusPriority(getStatus(b))
   )
 
   return { enrolled: [], fallback: sorted[0] ?? null }

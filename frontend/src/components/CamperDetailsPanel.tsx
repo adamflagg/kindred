@@ -47,7 +47,7 @@ import CamperLink from './CamperLink'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
-import { getStatusIndicator } from '../utils/enrollmentFilter'
+import { getStatusIndicator, filterEnrollmentsByStatus } from '../utils/enrollmentFilter'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -249,15 +249,12 @@ export default function CamperDetailsPanel({
   const camper = camperData?.camper
   const allEnrollments = camperData?.enrollments ?? []
   // Show enrolled sessions only; if none enrolled, show best non-enrolled as fallback
-  const enrolledOnly = allEnrollments.filter(
-    (e) => !e.attendeeStatus || e.attendeeStatus === 'enrolled'
+  const { enrolled: enrolledOnly, fallback: fallbackEnrollment } = filterEnrollmentsByStatus(
+    allEnrollments,
+    (e) => e.attendeeStatus
   )
   const currentEnrollments =
-    enrolledOnly.length > 0
-      ? enrolledOnly
-      : allEnrollments.length > 0
-        ? [allEnrollments[0] as CurrentEnrollment] // Best non-enrolled (already sorted by priority)
-        : []
+    enrolledOnly.length > 0 ? enrolledOnly : fallbackEnrollment ? [fallbackEnrollment] : []
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
@@ -761,51 +758,73 @@ export default function CamperDetailsPanel({
               {camper.years_at_camp ?? 0} {(camper.years_at_camp ?? 0) === 1 ? 'year' : 'years'}
             </span>
           </div>
-          {currentEnrollments.length > 1 ? (
-            currentEnrollments.map((enrollment) => {
-              const indicator = getStatusIndicator(enrollment.attendeeStatus)
-              return (
-                <div
-                  key={enrollment.sessionCmId}
-                  className="text-forest-100 flex items-center gap-1.5"
-                >
-                  <Calendar className="text-forest-300 h-3 w-3" />
-                  <span>
-                    {getEnrollmentShortName(enrollment)}
-                    {indicator ? (
-                      <span
-                        className={`ml-1.5 inline-flex rounded px-1 py-0.5 text-[9px] leading-none font-bold ${indicator.colorClass}`}
-                      >
-                        {indicator.letter}
-                      </span>
-                    ) : enrollment.bunkName ? (
-                      <>
-                        {' '}
-                        <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
-                      </>
+          {currentEnrollments.length > 1
+            ? currentEnrollments.map((enrollment) => {
+                const indicator = getStatusIndicator(enrollment.attendeeStatus)
+                return (
+                  <div
+                    key={enrollment.sessionCmId}
+                    className="text-forest-100 flex items-center gap-1.5"
+                  >
+                    <Calendar className="text-forest-300 h-3 w-3" />
+                    <span>
+                      {getEnrollmentShortName(enrollment)}
+                      {indicator ? (
+                        <span
+                          className={`ml-1.5 inline-flex rounded px-1 py-0.5 text-[9px] leading-none font-bold ${indicator.colorClass}`}
+                        >
+                          {indicator.letter}
+                        </span>
+                      ) : enrollment.bunkName ? (
+                        <>
+                          {' '}
+                          <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
+                        </>
+                      ) : (
+                        <span className="text-amber-300"> (unassigned)</span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })
+            : (() => {
+                const singleIndicator =
+                  currentEnrollments.length === 1
+                    ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
+                    : null
+                return (
+                  <>
+                    {singleIndicator ? (
+                      <div className="text-forest-100 flex items-center gap-1.5">
+                        <Calendar className="text-forest-300 h-3 w-3" />
+                        <span>
+                          {getSessionShortName()}
+                          <span
+                            className={`ml-1.5 inline-flex rounded px-1 py-0.5 text-[9px] leading-none font-bold ${singleIndicator.colorClass}`}
+                          >
+                            {singleIndicator.letter}
+                          </span>
+                        </span>
+                      </div>
                     ) : (
-                      <span className="text-amber-300"> (unassigned)</span>
+                      <>
+                        {camper.expand?.assigned_bunk && (
+                          <div className="text-forest-100 flex items-center gap-1.5">
+                            <Home className="text-forest-300 h-3 w-3" />
+                            <span>{camper.expand.assigned_bunk.name}</span>
+                          </div>
+                        )}
+                        {getSessionShortName() && (
+                          <div className="text-forest-100 flex items-center gap-1.5">
+                            <Calendar className="text-forest-300 h-3 w-3" />
+                            <span>{getSessionShortName()}</span>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </span>
-                </div>
-              )
-            })
-          ) : (
-            <>
-              {camper.expand?.assigned_bunk && (
-                <div className="text-forest-100 flex items-center gap-1.5">
-                  <Home className="text-forest-300 h-3 w-3" />
-                  <span>{camper.expand.assigned_bunk.name}</span>
-                </div>
-              )}
-              {getSessionShortName() && (
-                <div className="text-forest-100 flex items-center gap-1.5">
-                  <Calendar className="text-forest-300 h-3 w-3" />
-                  <span>{getSessionShortName()}</span>
-                </div>
-              )}
-            </>
-          )}
+                  </>
+                )
+              })()}
         </div>
       </div>
 

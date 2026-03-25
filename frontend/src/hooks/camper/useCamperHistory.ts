@@ -47,7 +47,10 @@ export function useCamperHistory(
         const allHistory: HistoricalRecord[] = []
 
         // Filter current year attendees: show only enrolled, or fallback to best non-enrolled
-        const { enrolled, fallback } = filterEnrollmentsByStatus(allAttendees ?? [])
+        const { enrolled, fallback } = filterEnrollmentsByStatus(
+          allAttendees ?? [],
+          (c) => c.attendee_status
+        )
 
         const currentYearCampers =
           enrolled.length > 0 ? enrolled : fallback ? [fallback] : camper ? [camper] : []
@@ -123,7 +126,10 @@ export function useCamperHistory(
       } catch (err) {
         console.error('Error fetching camp history:', err)
         // If error, at least return current year data from enrolled campers
-        const { enrolled, fallback } = filterEnrollmentsByStatus(allAttendees ?? [])
+        const { enrolled, fallback } = filterEnrollmentsByStatus(
+          allAttendees ?? [],
+          (c) => c.attendee_status
+        )
         const fallbackCampers =
           enrolled.length > 0 ? enrolled : fallback ? [fallback] : camper ? [camper] : []
 

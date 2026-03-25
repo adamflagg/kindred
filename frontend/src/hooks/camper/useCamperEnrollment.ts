@@ -164,7 +164,7 @@ export function useCamperEnrollment(
   })
 
   const allAttendees = data?.allCampers ?? []
-  const { enrolled } = filterEnrollmentsByStatus(allAttendees)
+  const { enrolled } = filterEnrollmentsByStatus(allAttendees, (c) => c.attendee_status)
 
   return {
     enrolledCampers: enrolled,
