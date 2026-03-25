@@ -306,7 +306,7 @@ def reconstruct_daily_multi(
         "canc_girls": 0,
     }
 
-    # In Week 0 mode, exclude events before the 7-day pre-anchor window
+    # In Week 0 mode, clamp pre-anchor events to the Week 0 window start
     week0_start: str | None = (season_start - timedelta(days=7)).isoformat() if week0 else None
 
     for att in attendees:
@@ -348,35 +348,37 @@ def reconstruct_daily_multi(
         enroll_date_str = _get_enrollment_date(att)
         if enroll_date_str:
             enroll_day = parse_date_only(enroll_date_str)
-            # Exclude events before the Week 0 window start
-            if not (week0_start and enroll_day < week0_start):
-                if include_in_combined:
-                    bucket = combined_events.setdefault(enroll_day, dict(_empty_bucket))
-                    bucket["new"] += 1
-                    if gender == "M":
-                        bucket["new_boys"] += 1
-                    elif gender == "F":
-                        bucket["new_girls"] += 1
+            # Clamp far-back pre-anchor events to the Week 0 window start
+            if week0_start and enroll_day < week0_start:
+                enroll_day = week0_start
 
-                if include_in_per_session:
-                    sid_events = per_session_events.setdefault(sid, {})
-                    bucket = sid_events.setdefault(enroll_day, dict(_empty_bucket))
-                    bucket["new"] += 1
-                    if gender == "M":
-                        bucket["new_boys"] += 1
-                    elif gender == "F":
-                        bucket["new_girls"] += 1
+            if include_in_combined:
+                bucket = combined_events.setdefault(enroll_day, dict(_empty_bucket))
+                bucket["new"] += 1
+                if gender == "M":
+                    bucket["new_boys"] += 1
+                elif gender == "F":
+                    bucket["new_girls"] += 1
+
+            if include_in_per_session:
+                sid_events = per_session_events.setdefault(sid, {})
+                bucket = sid_events.setdefault(enroll_day, dict(_empty_bucket))
+                bucket["new"] += 1
+                if gender == "M":
+                    bucket["new_boys"] += 1
+                elif gender == "F":
+                    bucket["new_girls"] += 1
 
         # Cancellation event
         if status in CANCELLATION_STATUSES:
             canc_date_raw = getattr(att, "enrollment_date", "") or ""
             if canc_date_raw:
                 canc_day = parse_date_only(canc_date_raw)
-                # Exclude cancellation events before the Week 0 window start
+                # Clamp far-back pre-anchor cancellations to the Week 0 window start
                 if week0_start and canc_day < week0_start:
-                    canc_day = None  # type: ignore[assignment]
+                    canc_day = week0_start
 
-                if canc_day is not None and include_in_combined:
+                if include_in_combined:
                     bucket = combined_events.setdefault(canc_day, dict(_empty_bucket))
                     bucket["cancelled"] += 1
                     if gender == "M":
@@ -384,7 +386,7 @@ def reconstruct_daily_multi(
                     elif gender == "F":
                         bucket["canc_girls"] += 1
 
-                if canc_day is not None and include_in_per_session:
+                if include_in_per_session:
                     sid_events = per_session_events.setdefault(sid, {})
                     bucket = sid_events.setdefault(canc_day, dict(_empty_bucket))
                     bucket["cancelled"] += 1

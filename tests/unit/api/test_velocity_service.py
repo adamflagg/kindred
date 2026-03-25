@@ -770,19 +770,18 @@ class TestSeasonWindowClipping:
             assert p.week_start >= "2025-11-01"
 
     @pytest.mark.asyncio
-    async def test_reconstruction_before_season_start_excluded(self, service, mock_repository):
-        """Reconstruction from enrollment dates before Week 0 should be excluded.
+    async def test_reconstruction_far_back_clamped_to_week_0(self, service, mock_repository):
+        """Enrollments before the Week 0 window are clamped into Week 0.
 
         Week 0 is anchor - 7d to anchor - 1d (Oct 25 - Oct 31 for Nov 1 anchor).
-        Enrollments before Oct 25 (e.g. Sep 15) fall outside even the Week 0 window
-        and should not contribute to any point's enrolled count.
-        Week 0 itself may appear as an empty week.
+        Enrollments before Oct 25 (e.g. Sep 15) are clamped to the first day of
+        the Week 0 window so they appear in Week 0's totals.
         """
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = []
         mock_repository.fetch_attendees_with_dates.return_value = [
-            # Well before Week 0 window (Oct 25 - Oct 31); should be excluded
+            # Well before Week 0 window — clamped to Week 0 start
             create_mock_attendee_with_date(101, 1001, "2025-09-15"),
             # Inside season window
             create_mock_attendee_with_date(102, 1001, "2025-11-10"),
@@ -793,13 +792,13 @@ class TestSeasonWindowClipping:
 
         points = result.combined.weekly
         assert len(points) >= 1
-        # Sep 15 enrollment (before Week 0 window) must not appear in any point
-        for p in points:
-            if p.week_start < "2025-10-25":
-                assert p.enrolled == 0, f"Pre-window enrollment leaked into {p.week_start}"
-        # The two inside-window enrollments should appear
+        # All three enrollments should be counted (far-back clamped to Week 0)
         total = sum(p.weekly_new for p in points)
-        assert total == 2
+        assert total == 3
+        # Week 0 should have the clamped enrollment
+        week0_points = [p for p in points if p.week_number == 0]
+        assert len(week0_points) == 1
+        assert week0_points[0].enrolled == 1
 
     @pytest.mark.asyncio
     async def test_data_past_season_end_excluded(self, service, mock_repository):
