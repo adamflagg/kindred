@@ -3,6 +3,7 @@ import {
   getStatusIndicator,
   getStatusPriority,
   filterEnrollmentsByStatus,
+  toDisplayList,
 } from './enrollmentFilter'
 import type { Camper } from '../types/app-types'
 
@@ -272,5 +273,22 @@ describe('filterEnrollmentsByStatus', () => {
       const result = filterEnrollmentsByStatus([cancelled, waitlisted], getSimpleStatus)
       expect(result.fallback!.attendeeStatus).toBe('waitlisted')
     })
+  })
+})
+
+describe('toDisplayList', () => {
+  it('returns enrolled items when present', () => {
+    const result = toDisplayList({ enrolled: [{ id: 'a' }, { id: 'b' }], fallback: null })
+    expect(result).toEqual([{ id: 'a' }, { id: 'b' }])
+  })
+
+  it('returns fallback wrapped in array when no enrolled', () => {
+    const result = toDisplayList({ enrolled: [], fallback: { id: 'x' } })
+    expect(result).toEqual([{ id: 'x' }])
+  })
+
+  it('returns empty array when no enrolled and no fallback', () => {
+    const result = toDisplayList({ enrolled: [], fallback: null })
+    expect(result).toEqual([])
   })
 })

@@ -128,3 +128,12 @@ export function filterEnrollmentsByStatus<T>(
 
   return { enrolled: [], fallback: sorted[0] ?? null }
 }
+
+/**
+ * Convert a FilteredEnrollment to a flat display list:
+ * enrolled items if any, otherwise the fallback wrapped in an array.
+ */
+export function toDisplayList<T>(result: FilteredEnrollment<T>): T[] {
+  if (result.enrolled.length > 0) return result.enrolled
+  return result.fallback ? [result.fallback] : []
+}
