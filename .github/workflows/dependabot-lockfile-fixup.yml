@@ -20,7 +20,7 @@ permissions:
 jobs:
   fixup:
     name: Fix Lock Files
-    if: github.actor == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]' || startsWith(github.head_ref, 'dependabot/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Dependabot branch
