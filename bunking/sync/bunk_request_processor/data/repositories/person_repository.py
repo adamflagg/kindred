@@ -407,6 +407,57 @@ class PersonRepository(Repository):
             logger.error(f"Error finding siblings for person {cm_id}: {e}")
             return []
 
+    def find_by_school(self, school: str, year: int) -> list[Person]:
+        """Find all persons attending a given school in a given year.
+
+        Used by group reference resolution to expand "classmates" references
+        into individual bunk requests for campers at the same school.
+
+        Args:
+            school: School name to match (exact match on the school field)
+            year: Year to filter by (persons table has year-specific records)
+
+        Returns:
+            List of Person objects at the given school
+        """
+        try:
+            escaped_school = _escape_filter_value(school)
+            filter_str = f"school = '{escaped_school}' && year = {year}"
+
+            results = self.pb.collection("persons").get_full_list(query_params={"filter": filter_str})
+
+            return [p for p in (self._map_to_person(item) for item in results) if p is not None]
+
+        except Exception as e:
+            logger.error("Error finding persons by school '%s' year %s: %s", school, year, e)
+            return []
+
+    def find_by_congregation(self, congregation: str, year: int) -> list[Person]:
+        """Find all persons with a given normalized congregation in a given year.
+
+        Used by group reference resolution to expand "congregation" references
+        into individual bunk requests for campers at the same congregation.
+        Queries the normalized_congregation column on the persons table.
+
+        Args:
+            congregation: Normalized congregation name to match
+            year: Year to filter by (persons table has year-specific records)
+
+        Returns:
+            List of Person objects at the given congregation
+        """
+        try:
+            escaped_congregation = _escape_filter_value(congregation)
+            filter_str = f"normalized_congregation = '{escaped_congregation}' && year = {year}"
+
+            results = self.pb.collection("persons").get_full_list(query_params={"filter": filter_str})
+
+            return [p for p in (self._map_to_person(item) for item in results) if p is not None]
+
+        except Exception as e:
+            logger.error("Error finding persons by congregation '%s' year %s: %s", congregation, year, e)
+            return []
+
     def get_all_for_phonetic_matching(self, year: int | None = None) -> list[Person]:
         """Get all persons for phonetic matching.
 

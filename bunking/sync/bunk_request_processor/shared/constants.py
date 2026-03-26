@@ -19,29 +19,24 @@ from re import Pattern
 # Placeholder Constants
 # =============================================================================
 
-# Placeholder for requests to bunk with prior year bunkmates.
-# When a parent says "keep with last year's bunk", the AI returns this.
-# This placeholder is expanded to individual bunk_with requests by the orchestrator.
-LAST_YEAR_BUNKMATES_PLACEHOLDER = "LAST_YEAR_BUNKMATES"
-
-# Placeholder for sibling/twin/family member references.
-# When text says "twins", "my sister", "siblings", etc., the AI returns this.
-# This placeholder is expanded to actual sibling(s) via household_id lookup.
-SIBLING_PLACEHOLDER = "SIBLING"
-
 # Cabin unit names — targets matching these are cabin units, not people.
 # Matches current camp's Tier 1 division entries. Update if units change.
 UNIT_NAMES: set[str] = {"nitzanim", "galil", "eilat", "haifa", "chalutzim", "carmel"}
 
 # Special placeholders accepted as valid target names.
-# Not real person names — expanded later in the pipeline.
+# Age preference values are still passed as target_name; group references
+# (sibling, bunkmates, classmates, congregation) now use group_kind field instead.
 VALID_PLACEHOLDERS: set[str] = {
-    "last_year_bunkmates",
-    "sibling",
     "older",
     "younger",
     "unclear",
 }
+
+# Legacy placeholder strings for backward compatibility with PlaceholderExpander.
+# Group references now use group_kind field, but these are still used as
+# sentinel target_name values in priority calculation and context building.
+LAST_YEAR_BUNKMATES_PLACEHOLDER = "__LAST_YEAR_BUNKMATES__"
+SIBLING_PLACEHOLDER = "__SIBLING__"
 
 
 # =============================================================================
