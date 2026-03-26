@@ -480,6 +480,14 @@ func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) e
 
 // RunSingleSync runs a single sync service
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
+	_, err := o.runSingleSyncInternal(parentCtx, syncType)
+	return err
+}
+
+// runSingleSyncInternal runs a single sync service and returns the run token.
+// Returning the token directly eliminates the race window where the goroutine
+// completes before the caller can read the token from runningJobs (issue #789).
+func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType string) (string, error) {
 	// Check if service exists
 	o.mu.RLock()
 	service, exists := o.services[syncType]
@@ -487,7 +495,7 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 	o.mu.RUnlock()
 
 	if !exists {
-		return fmt.Errorf("sync service not found: %s", syncType)
+		return "", fmt.Errorf("sync service not found: %s", syncType)
 	}
 
 	// Generate a unique token for this run
@@ -506,7 +514,7 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 	} else {
 		// No pre-marked status - check if something else is running
 		if o.IsRunning(syncType) {
-			return fmt.Errorf("sync already in progress: %s", syncType)
+			return "", fmt.Errorf("sync already in progress: %s", syncType)
 		}
 
 		// Create status entry
@@ -595,7 +603,7 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 		o.mu.Unlock()
 	}()
 
-	return nil
+	return runToken, nil
 }
 
 // MarkSyncRunning sets a sync's status to "running" without starting it.
@@ -918,20 +926,13 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 
 // runSyncAndWait runs a sync and waits for it to complete
 func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string) error {
-	// Start the sync
-	if err := o.RunSingleSync(ctx, syncType); err != nil {
+	// Start the sync and capture the token directly from the return value.
+	// This eliminates the race where the goroutine completes before we can
+	// read the token from runningJobs (issue #789).
+	expectedToken, err := o.runSingleSyncInternal(ctx, syncType)
+	if err != nil {
 		return err
 	}
-
-	// Capture the token for THIS run so we only unblock on its completion,
-	// not on a stale or different run's completed status.
-	o.mu.RLock()
-	runningStatus := o.runningJobs[syncType]
-	var expectedToken string
-	if runningStatus != nil {
-		expectedToken = runningStatus.RunToken
-	}
-	o.mu.RUnlock()
 
 	// Wait for completion
 	ticker := time.NewTicker(500 * time.Millisecond)

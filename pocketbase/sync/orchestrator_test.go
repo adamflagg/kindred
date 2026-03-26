@@ -3194,3 +3194,63 @@ func TestRunSyncAndWaitMatchesToken(t *testing.T) {
 		t.Fatal("runSyncAndWait timed out")
 	}
 }
+
+// TestRunSingleSyncInternalReturnsToken tests that the internal method returns
+// the run token directly, eliminating the race window where the goroutine
+// completes before the caller can read the token from runningJobs.
+func TestRunSingleSyncInternalReturnsToken(t *testing.T) {
+	o := NewOrchestrator(nil)
+	mock := &MockService{name: "test_service", delay: 50 * time.Millisecond}
+	o.RegisterService("test", mock)
+
+	token, err := o.runSingleSyncInternal(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("runSingleSyncInternal failed: %v", err)
+	}
+
+	if token == "" {
+		t.Fatal("expected non-empty token from runSingleSyncInternal")
+	}
+
+	// Wait for sync to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// The completed status should have the same token
+	o.mu.RLock()
+	completed := o.lastCompletedStatus["test"]
+	o.mu.RUnlock()
+
+	if completed == nil {
+		t.Fatal("expected completed status")
+	}
+	if completed.RunToken != token {
+		t.Errorf("token mismatch: returned=%q completed=%q", token, completed.RunToken)
+	}
+}
+
+// TestRunSyncAndWaitZeroDelayNoDeadlock reproduces the exact race from issue #789:
+// with an instant-completing service, runSyncAndWait must not deadlock.
+// The goroutine may complete before the token is captured from runningJobs,
+// leaving expectedToken="" which never matches — causing an infinite loop.
+func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
+	// Run multiple iterations to increase race likelihood
+	for i := range 20 {
+		t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
+			o := NewOrchestrator(nil)
+			mock := &MockService{name: "test_service"} // zero delay — instant completion
+			o.RegisterService("test", mock)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			err := o.runSyncAndWait(ctx, "test")
+			if err != nil {
+				t.Fatalf("runSyncAndWait failed: %v (likely deadlocked and hit timeout)", err)
+			}
+
+			if mock.GetCallCount() != 1 {
+				t.Errorf("expected service called once, got %d", mock.GetCallCount())
+			}
+		})
+	}
+}
