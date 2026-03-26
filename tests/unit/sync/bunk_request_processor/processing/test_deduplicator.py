@@ -396,14 +396,12 @@ class TestDeduplicator:
         if errors:
             raise AssertionError("Parameter mismatches:\n  " + "\n  ".join(errors))
 
-    def test_socialize_with_not_deduplicated_across_fields(self, deduplicator):
-        """Test that socialize_with field preserves uniqueness across sources.
+    def test_socialize_with_bunk_with_deduped_across_fields(self, deduplicator):
+        """Test that non-AGE_PREFERENCE socialize_with requests cross-field dedupe normally.
 
-        The socialize_with (retparent_socialize) field outputs 1:1 known age
-        preference requests per child. These should NEVER be deduplicated
-        even if the same requester→target pair appears elsewhere.
-
-        This test documents the business rule: socialize_with is special.
+        socialize_with only produces AGE_PREFERENCE requests in production
+        (caught by the first branch). If a BUNK_WITH somehow came from
+        socialize_with, it should dedupe across fields like any other source.
         """
         # Request from socialize_with field
         socialize_request = BunkRequest(
@@ -414,7 +412,7 @@ class TestDeduplicator:
             priority=3,
             confidence_score=0.95,
             source=RequestSource.FAMILY,
-            source_field=SourceField.SOCIALIZE_WITH,  # Special field - should never dedupe
+            source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -431,7 +429,7 @@ class TestDeduplicator:
             priority=1,
             confidence_score=0.80,
             source=RequestSource.STAFF,
-            source_field="bunking_notes",  # Different field
+            source_field="bunking_notes",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -441,10 +439,10 @@ class TestDeduplicator:
 
         result = deduplicator.deduplicate_batch([socialize_request, notes_request])
 
-        # Both should be kept - socialize_with is special
-        assert len(result.kept_requests) == 2
-        assert len(result.duplicate_groups) == 0
-        assert result.statistics["duplicates_removed"] == 0
+        # Cross-field dedup merges them — same requester→target pair
+        assert len(result.kept_requests) == 1
+        assert len(result.duplicate_groups) == 1
+        assert result.statistics["duplicates_removed"] == 1
 
     def test_bunk_with_deduplicated_across_source_fields(self, deduplicator):
         """Test that bunk_with/bunking_notes/internal_notes deduplicate across source fields.
