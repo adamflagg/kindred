@@ -43,14 +43,14 @@ class TestConflictDetector:
         """No conflicts when requester and target are in same session"""
         detector = ConflictDetector()
 
-        # Both Eden and resolved target in Session 3
+        # Both requester and resolved target in same session
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith"),
                 {
-                    "requester_cm_id": 4146291,  # Eden
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,  # Resolved Ivy
-                    "session_cm_id": 1371793,  # Session 3
+                    "session_cm_id": 1000010,  # Session 3
                 },
             ),
             # Add target as a requester in the same session so we can find their session
@@ -59,7 +59,7 @@ class TestConflictDetector:
                 {
                     "requester_cm_id": 1234567,  # Ivy (target is now a requester)
                     "person_cm_id": 9999999,
-                    "session_cm_id": 1371793,  # Same Session 3
+                    "session_cm_id": 1000010,  # Same Session 3
                 },
             ),
         ]
@@ -78,9 +78,9 @@ class TestConflictDetector:
             (
                 make_parsed_request("Ivy Smith"),
                 {
-                    "requester_cm_id": 4146291,  # Eden
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,  # Resolved Ivy
-                    "session_cm_id": 1371793,  # Session 3
+                    "session_cm_id": 1000010,  # Session 3
                 },
             ),
             # Add target as a requester in different session
@@ -119,9 +119,9 @@ class TestConflictDetector:
             (
                 make_parsed_request("Ivy"),
                 {
-                    "requester_cm_id": 4146291,  # Eden
+                    "requester_cm_id": 1000001,
                     "person_cm_id": placeholder_ivy_id,  # Unresolved placeholder
-                    "session_cm_id": 1371793,  # Session 3
+                    "session_cm_id": 1000010,  # Session 3
                 },
             ),
             # A.l Lange in AG Session 2 also requests unresolved "Ivy"
@@ -154,7 +154,7 @@ class TestConflictDetector:
                 {
                     "requester_cm_id": 1111111,
                     "person_cm_id": -999999,  # Negative = placeholder
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -174,7 +174,7 @@ class TestConflictDetector:
                 {
                     "requester_cm_id": 1111111,
                     "person_cm_id": 2222222,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -202,16 +202,16 @@ class TestConflictDetectorWithAttendeeRepo:
 
     def test_bunk_with_cross_session_via_attendee_repo_is_declined(self):
         """BUNK_WITH where target session comes from attendee_repo (not another request) → conflict."""
-        attendee_repo = make_mock_attendee_repo({7777777: 1309513})  # target in Session 1
+        attendee_repo = make_mock_attendee_repo({7777777: 1000020})  # target in Session 1
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith"),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,  # requester in Session 3
+                    "session_cm_id": 1000010,  # requester in Session 3
                 },
             ),
         ]
@@ -221,21 +221,21 @@ class TestConflictDetectorWithAttendeeRepo:
         assert result.has_conflicts
         assert len(result.conflicts) == 1
         assert result.conflicts[0].conflict_type == ConflictType.SESSION_MISMATCH
-        assert result.conflicts[0].metadata["requester_session"] == 1371793
-        assert result.conflicts[0].metadata["target_session"] == 1309513
+        assert result.conflicts[0].metadata["requester_session"] == 1000010
+        assert result.conflicts[0].metadata["target_session"] == 1000020
 
     def test_bunk_with_same_session_via_attendee_repo_no_conflict(self):
         """BUNK_WITH where target is in same session per attendee_repo → no conflict."""
-        attendee_repo = make_mock_attendee_repo({7777777: 1371793})  # target in same Session 3
+        attendee_repo = make_mock_attendee_repo({7777777: 1000010})  # target in same Session 3
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith"),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -253,9 +253,9 @@ class TestConflictDetectorWithAttendeeRepo:
             (
                 make_parsed_request("Ivy Smith"),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -272,9 +272,9 @@ class TestConflictDetectorWithAttendeeRepo:
             (
                 make_parsed_request("Ivy Smith"),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,  # Session 3
+                    "session_cm_id": 1000010,  # Session 3
                 },
             ),
             # Target NOT a requester → session unknown → no conflict
@@ -286,16 +286,16 @@ class TestConflictDetectorWithAttendeeRepo:
 
     def test_negative_placeholder_ids_skipped(self):
         """Negative/placeholder target IDs are skipped even with attendee_repo."""
-        attendee_repo = make_mock_attendee_repo({-12345: 1309513})
+        attendee_repo = make_mock_attendee_repo({-12345: 1000020})
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Unknown Person"),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": -12345,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -308,8 +308,8 @@ class TestConflictDetectorWithAttendeeRepo:
         """Attendee_repo is called once with all unknown target IDs, not per-request."""
         attendee_repo = make_mock_attendee_repo(
             {
-                7777777: 1309513,
-                8888888: 1309513,
+                7777777: 1000020,
+                8888888: 1000020,
             }
         )
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
@@ -317,11 +317,11 @@ class TestConflictDetectorWithAttendeeRepo:
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith"),
-                {"requester_cm_id": 4146291, "person_cm_id": 7777777, "session_cm_id": 1371793},
+                {"requester_cm_id": 1000001, "person_cm_id": 7777777, "session_cm_id": 1000010},
             ),
             (
                 make_parsed_request("Joe Brown"),
-                {"requester_cm_id": 4146291, "person_cm_id": 8888888, "session_cm_id": 1371793},
+                {"requester_cm_id": 1000001, "person_cm_id": 8888888, "session_cm_id": 1000010},
             ),
         ]
 
@@ -339,16 +339,16 @@ class TestCrossSessionNotBunkWith:
 
     def test_not_bunk_with_cross_session_is_satisfied(self):
         """NOT_BUNK_WITH where target is in different session → CROSS_SESSION_SATISFIED."""
-        attendee_repo = make_mock_attendee_repo({7777777: 1309513})  # target in Session 1
+        attendee_repo = make_mock_attendee_repo({7777777: 1000020})  # target in Session 1
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,  # requester in Session 3
+                    "session_cm_id": 1000010,  # requester in Session 3
                 },
             ),
         ]
@@ -359,21 +359,21 @@ class TestCrossSessionNotBunkWith:
         assert len(result.conflicts) == 1
         assert result.conflicts[0].conflict_type == ConflictType.CROSS_SESSION_SATISFIED
         assert result.conflicts[0].auto_resolvable is True
-        assert result.conflicts[0].metadata["requester_session"] == 1371793
-        assert result.conflicts[0].metadata["target_session"] == 1309513
+        assert result.conflicts[0].metadata["requester_session"] == 1000010
+        assert result.conflicts[0].metadata["target_session"] == 1000020
 
     def test_not_bunk_with_same_session_no_conflict(self):
         """NOT_BUNK_WITH where target is in same session → no conflict (normal processing)."""
-        attendee_repo = make_mock_attendee_repo({7777777: 1371793})  # same session
+        attendee_repo = make_mock_attendee_repo({7777777: 1000010})  # same session
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -384,16 +384,16 @@ class TestCrossSessionNotBunkWith:
 
     def test_apply_conflict_resolution_sets_auto_satisfied(self):
         """apply_conflict_resolution sets auto_satisfied for CROSS_SESSION_SATISFIED conflicts."""
-        attendee_repo = make_mock_attendee_repo({7777777: 1309513})
+        attendee_repo = make_mock_attendee_repo({7777777: 1000020})
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]
@@ -408,16 +408,16 @@ class TestCrossSessionNotBunkWith:
 
     def test_apply_conflict_resolution_bunk_with_still_sets_has_conflict(self):
         """apply_conflict_resolution still sets has_conflict for SESSION_MISMATCH (BUNK_WITH)."""
-        attendee_repo = make_mock_attendee_repo({7777777: 1309513})
+        attendee_repo = make_mock_attendee_repo({7777777: 1000020})
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
         resolved_requests = [
             (
                 make_parsed_request("Ivy Smith", request_type=RequestType.BUNK_WITH),
                 {
-                    "requester_cm_id": 4146291,
+                    "requester_cm_id": 1000001,
                     "person_cm_id": 7777777,
-                    "session_cm_id": 1371793,
+                    "session_cm_id": 1000010,
                 },
             ),
         ]

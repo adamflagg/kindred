@@ -570,3 +570,33 @@ class TestConfidenceFactorsOnMetadata:
         stale_factors = scorer.last_score_factors
         assert stale_factors["formula"] == "not_bunk_with"  # Always the last one
         assert stale_factors["formula"] != "bunk_with"  # First request's factors are lost
+
+    def test_ai_boost_updates_weighted_total(self):
+        """When ai_boost is applied, weighted_total reflects the boosted score."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+
+        parsed_req = ParsedRequest(
+            raw_text="Alice Smith",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Alice Smith",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.85,
+            csv_position=0,
+            metadata={"ai_provided_person_id": True},
+        )
+
+        target = Person(cm_id=2001, first_name="Alice", last_name="Smith")
+        result = ResolutionResult(
+            person=target,
+            confidence=0.95,
+            method="exact_match",
+        )
+
+        returned_score = scorer.score_resolution(parsed_req, result, requester_cm_id=1001, year=2026)
+        factors = scorer.last_score_factors
+
+        # weighted_total must match the actual returned score (including ai_boost)
+        assert factors["weighted_total"] == round(returned_score, 4)
+        assert "ai_boost" in factors

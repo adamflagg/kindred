@@ -212,7 +212,7 @@ class TestAutoSatisfiedStatus:
             "auto_satisfied": True,
             "satisfaction_reason": "Automatically satisfied — different sessions",
             "confidence": 0.7,
-            "conflict_metadata": {"requester_session": 1371793, "target_session": 1309513},
+            "conflict_metadata": {"requester_session": 1000010, "target_session": 1000020},
         }
         metadata: dict[str, Any] = {}
 

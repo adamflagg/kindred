@@ -450,39 +450,39 @@ class TestJaroWinklerFullPoolFallback:
         return FuzzyMatchStrategy(person_repo, attendee_repo), person_repo, attendee_repo
 
     def test_misspelled_last_name_resolves_via_full_pool(self, strategy_with_repos):
-        """'Lila Obsfeld' resolves to 'Lila Obstfeld' via JW on all_persons fallback."""
+        """'Olivia Jonson' resolves to 'Olivia Johnson' via JW on all_persons fallback."""
         strategy, person_repo, _ = strategy_with_repos
 
-        target = Person(cm_id=7439177, first_name="Lila", last_name="Obstfeld")
+        target = Person(cm_id=1000002, first_name="Olivia", last_name="Johnson")
         all_persons = [
             target,
-            Person(cm_id=9999999, first_name="Other", last_name="Person"),
+            Person(cm_id=1000099, first_name="Other", last_name="Person"),
         ]
 
         result = strategy.resolve_with_context(
-            name="Lila Obsfeld",
-            requester_cm_id=1111111,
-            session_cm_id=1371793,
+            name="Olivia Jonson",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
             year=2026,
             candidates=None,  # empty — simulates no exact-match candidates
             all_persons=all_persons,
         )
 
         assert result.is_resolved
-        assert result.person.cm_id == 7439177
+        assert result.person.cm_id == 1000002
         assert result.metadata.get("match_type") == "jaro_winkler_full_pool"
 
     def test_misspelled_last_name_below_threshold_does_not_resolve(self, strategy_with_repos):
         """Very different last name below JW 0.90 threshold does not match."""
         strategy, _, _ = strategy_with_repos
 
-        target = Person(cm_id=7439177, first_name="Lila", last_name="Completely-Different")
+        target = Person(cm_id=1000002, first_name="Olivia", last_name="Completely-Different")
         all_persons = [target]
 
         result = strategy.resolve_with_context(
-            name="Lila Obsfeld",
-            requester_cm_id=1111111,
-            session_cm_id=1371793,
+            name="Olivia Jonson",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
             year=2026,
             candidates=None,
             all_persons=all_persons,
@@ -494,29 +494,29 @@ class TestJaroWinklerFullPoolFallback:
         """When candidates list is non-empty, JW uses candidates, not all_persons."""
         strategy, _, _ = strategy_with_repos
 
-        candidate = Person(cm_id=7439177, first_name="Lila", last_name="Obstfeld")
-        other_person = Person(cm_id=8888888, first_name="Lila", last_name="Obsfeld-Match")
+        candidate = Person(cm_id=1000002, first_name="Olivia", last_name="Johnson")
+        other_person = Person(cm_id=1000003, first_name="Olivia", last_name="Jonson-Match")
 
         result = strategy.resolve_with_context(
-            name="Lila Obstfeld",  # exact match on candidate
-            requester_cm_id=1111111,
+            name="Olivia Johnson",  # exact match on candidate
+            requester_cm_id=1000001,
             year=2026,
             candidates=[candidate],
             all_persons=[other_person],  # this should NOT be used
         )
 
-        # Should resolve via earlier strategies (exact/nickname) using candidates
-        # or via JW on candidates — not all_persons
-        # The point is all_persons doesn't override candidates
-        assert result.is_resolved or not result.is_resolved  # just verify no crash
+        # Verify candidates are preferred — match should come from candidate pool
+        if result.is_resolved:
+            assert result.person.cm_id == candidate.cm_id
+            assert result.metadata.get("match_type") != "jaro_winkler_full_pool"
 
     def test_both_empty_returns_unresolved(self, strategy_with_repos):
         """Empty candidates AND empty all_persons → unresolved, no crash."""
         strategy, _, _ = strategy_with_repos
 
         result = strategy.resolve_with_context(
-            name="Lila Obsfeld",
-            requester_cm_id=1111111,
+            name="Olivia Jonson",
+            requester_cm_id=1000001,
             year=2026,
             candidates=None,
             all_persons=None,
@@ -528,12 +528,12 @@ class TestJaroWinklerFullPoolFallback:
         """Requester's own cm_id is excluded from matches even in full pool."""
         strategy, _, _ = strategy_with_repos
 
-        self_person = Person(cm_id=1111111, first_name="Lila", last_name="Obstfeld")
+        self_person = Person(cm_id=1000001, first_name="Olivia", last_name="Johnson")
         all_persons = [self_person]
 
         result = strategy.resolve_with_context(
-            name="Lila Obsfeld",
-            requester_cm_id=1111111,
+            name="Olivia Jonson",
+            requester_cm_id=1000001,
             year=2026,
             candidates=None,
             all_persons=all_persons,

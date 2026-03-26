@@ -136,6 +136,8 @@ class ConfidenceScorer:
             # Get ai_boost from config, default to 0.15
             ai_boost = self.scoring_config.get("ai_boost", 0.15)
             score = min(1.0, score + ai_boost)
+            self._last_score_factors["ai_boost"] = ai_boost
+            self._last_score_factors["weighted_total"] = round(score, 4)
             logger.debug(f"Applied AI confidence boost: +{ai_boost} -> {score:.2f}")
 
         return score

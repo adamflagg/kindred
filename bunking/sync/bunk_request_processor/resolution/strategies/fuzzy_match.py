@@ -530,7 +530,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         Catches close first-name variants like Charlie/Charlotte, Zoey/Zoe
         that aren't in the nickname dictionary. Falls back to all_persons
         when candidates is empty (catches last-name misspellings like
-        Obsfeld→Obstfeld).
+        Jonson→Johnson).
         """
         import jellyfish
 
