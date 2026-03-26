@@ -18,6 +18,7 @@ from unittest.mock import Mock
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
+    GroupKind,
     ParsedRequest,
     ParseRequest,
     ParseResult,
@@ -26,6 +27,10 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestType,
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
+from bunking.sync.bunk_request_processor.services.group_resolvers import (
+    ResolvedGroupMember,
+    build_resolver_registry,
+)
 from bunking.sync.bunk_request_processor.services.placeholder_expander import (
     PlaceholderExpander,
 )
@@ -154,6 +159,16 @@ def expander(mock_attendee_repo: Mock, mock_person_repo: Mock) -> PlaceholderExp
     )
 
 
+@pytest.fixture
+def resolver_registry(mock_attendee_repo: Mock, mock_person_repo: Mock) -> dict:
+    """Create a resolver registry using mock dependencies."""
+    return build_resolver_registry(
+        attendee_repo=mock_attendee_repo,
+        person_repo=mock_person_repo,
+        year=2025,
+    )
+
+
 # ============================================================================
 # Test: Initialization
 # ============================================================================
@@ -191,34 +206,38 @@ class TestPassThrough:
     """Tests for non-placeholder results passing through unchanged"""
 
     @pytest.mark.asyncio
-    async def test_non_placeholder_results_pass_through(self, expander: PlaceholderExpander) -> None:
+    async def test_non_placeholder_results_pass_through(
+        self, expander: PlaceholderExpander, resolver_registry: dict
+    ) -> None:
         """Results without placeholders should pass through unchanged"""
         person = _create_person()
         parse_result = _create_parse_result(parsed_requests=[_create_parsed_request(target_name="Sarah Smith")])
         resolution = _create_resolved_result(person)
 
         input_results = [(parse_result, [resolution])]
-        output = await expander.expand(input_results)
+        output = await expander.expand(input_results, resolver_registry)
 
         assert len(output) == 1
         assert output[0] == (parse_result, [resolution])
 
     @pytest.mark.asyncio
-    async def test_invalid_parse_results_pass_through(self, expander: PlaceholderExpander) -> None:
+    async def test_invalid_parse_results_pass_through(
+        self, expander: PlaceholderExpander, resolver_registry: dict
+    ) -> None:
         """Invalid parse results should pass through unchanged"""
         parse_result = _create_parse_result(is_valid=False)
         resolution = ResolutionResult(confidence=0.0, method="none")
 
         input_results = [(parse_result, [resolution])]
-        output = await expander.expand(input_results)
+        output = await expander.expand(input_results, resolver_registry)
 
         assert len(output) == 1
         assert output[0] == (parse_result, [resolution])
 
     @pytest.mark.asyncio
-    async def test_empty_input_returns_empty(self, expander: PlaceholderExpander) -> None:
+    async def test_empty_input_returns_empty(self, expander: PlaceholderExpander, resolver_registry: dict) -> None:
         """Empty input should return empty output"""
-        output = await expander.expand([])
+        output = await expander.expand([], resolver_registry)
         assert output == []
 
 
@@ -232,7 +251,7 @@ class TestPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_expands_placeholder_to_individual_requests(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
     ) -> None:
         """Should expand placeholder into individual bunk_with requests"""
         # Setup: 2 returning bunkmates
@@ -250,7 +269,7 @@ class TestPlaceholderExpansion:
         resolution = _create_placeholder_resolution()
 
         input_results = [(parse_result, [resolution])]
-        output = await expander.expand(input_results)
+        output = await expander.expand(input_results, resolver_registry)
 
         # Should have 2 expanded results (one per bunkmate)
         assert len(output) == 2
@@ -273,7 +292,7 @@ class TestPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_expansion_preserves_metadata(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
     ) -> None:
         """Expanded requests should have proper metadata"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
@@ -286,23 +305,22 @@ class TestPlaceholderExpansion:
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         assert len(output) == 1
         first_parse, first_resolutions = output[0]
 
         # Check parsed request metadata
         parsed_req = first_parse.parsed_requests[0]
-        assert parsed_req.metadata.get("auto_generated_from_prior_year") is True
-        assert parsed_req.metadata.get("prior_year_bunk") == "G-5"
+        assert parsed_req.metadata.get("expanded_from") == "last_year_bunkmates"
+        assert parsed_req.metadata.get("prior_bunk") == "G-5"
         assert parsed_req.metadata.get("prior_year") == 2024
-        assert parsed_req.metadata.get("original_request") == LAST_YEAR_BUNKMATES_PLACEHOLDER
 
         # Check resolution metadata
         res = first_resolutions[0]
         assert res.metadata is not None
-        assert res.metadata.get("auto_generated_from_prior_year") is True
-        assert res.method == "prior_year_bunkmate"
+        assert res.metadata.get("expanded_from") == "last_year_bunkmates"
+        assert res.method == "last_year_bunkmates_expansion"
 
 
 # ============================================================================
@@ -314,14 +332,16 @@ class TestExpansionFailures:
     """Tests for placeholder expansion failure cases"""
 
     @pytest.mark.asyncio
-    async def test_no_prior_year_data(self, expander: PlaceholderExpander, mock_attendee_repo: Mock) -> None:
+    async def test_no_prior_year_data(
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict
+    ) -> None:
         """Should handle when requester has no prior year assignment"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = None
 
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         # Should return one result with failed expansion
         assert len(output) == 1
@@ -331,7 +351,9 @@ class TestExpansionFailures:
         assert "expansion_failure_reason" in resolutions[0].metadata
 
     @pytest.mark.asyncio
-    async def test_no_returning_bunkmates(self, expander: PlaceholderExpander, mock_attendee_repo: Mock) -> None:
+    async def test_no_returning_bunkmates(
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict
+    ) -> None:
         """Should handle when no bunkmates are returning this year"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
             "cm_ids": [],
@@ -342,7 +364,7 @@ class TestExpansionFailures:
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         assert len(output) == 1
         _, resolutions = output[0]
@@ -350,7 +372,7 @@ class TestExpansionFailures:
 
     @pytest.mark.asyncio
     async def test_bunkmate_not_found_in_person_repo(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
     ) -> None:
         """Should skip bunkmates that can't be found in person repo"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
@@ -367,7 +389,7 @@ class TestExpansionFailures:
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         # Should only have 1 expanded result (the found bunkmate)
         assert len(output) == 1
@@ -385,7 +407,7 @@ class TestMixedResults:
 
     @pytest.mark.asyncio
     async def test_mixed_placeholder_and_regular_results(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
     ) -> None:
         """Should handle mix of placeholder and regular results"""
         # Setup placeholder expansion
@@ -410,7 +432,7 @@ class TestMixedResults:
             (placeholder_parse, [placeholder_resolution]),
         ]
 
-        output = await expander.expand(input_results)
+        output = await expander.expand(input_results, resolver_registry)
 
         # Should have 2 results: 1 regular pass-through + 1 expanded
         assert len(output) == 2
@@ -482,7 +504,7 @@ class TestSiblingPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_expands_sibling_placeholder_to_individual_request(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
     ) -> None:
         """Should expand SIBLING placeholder into request for sibling"""
         # Setup: Twin sibling found via household_id
@@ -503,7 +525,7 @@ class TestSiblingPlaceholderExpansion:
         )
         resolution = _create_sibling_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         # Should have 1 expanded result (the sibling)
         assert len(output) == 1
@@ -516,11 +538,11 @@ class TestSiblingPlaceholderExpansion:
         assert expanded_res[0].person is not None
         assert expanded_res[0].person.cm_id == 19930605
         assert expanded_res[0].confidence == 0.95  # High confidence for sibling lookup
-        assert expanded_res[0].method == "sibling_household_lookup"
+        assert expanded_res[0].method == "sibling_expansion"
 
     @pytest.mark.asyncio
     async def test_sibling_expansion_preserves_request_type(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
     ) -> None:
         """Should preserve original request_type (bunk_with or not_bunk_with)"""
         sibling = _create_person(cm_id=19930605, first_name="Penelope", last_name="Wright-Thompson")
@@ -535,7 +557,7 @@ class TestSiblingPlaceholderExpansion:
         )
         resolution = _create_sibling_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         assert len(output) == 1
         expanded_parse, _ = output[0]
@@ -543,7 +565,9 @@ class TestSiblingPlaceholderExpansion:
         assert expanded_parse.parsed_requests[0].request_type == RequestType.NOT_BUNK_WITH
 
     @pytest.mark.asyncio
-    async def test_sibling_expansion_metadata(self, expander: PlaceholderExpander, mock_person_repo: Mock) -> None:
+    async def test_sibling_expansion_metadata(
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+    ) -> None:
         """Expanded sibling requests should have proper metadata"""
         sibling = _create_person(cm_id=19930605, first_name="Penelope", last_name="Wright-Thompson")
         mock_person_repo.find_siblings.return_value = [sibling]
@@ -556,25 +580,25 @@ class TestSiblingPlaceholderExpansion:
         )
         resolution = _create_sibling_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         assert len(output) == 1
         expanded_parse, expanded_res = output[0]
 
         # Check parsed request metadata
         parsed_req = expanded_parse.parsed_requests[0]
-        assert parsed_req.metadata.get("auto_generated_from_sibling") is True
-        assert parsed_req.metadata.get("sibling_cm_id") == 19930605
-        assert parsed_req.metadata.get("original_request") == SIBLING_PLACEHOLDER
+        assert parsed_req.metadata.get("expanded_from") == "sibling"
 
         # Check resolution metadata
         res = expanded_res[0]
         assert res.metadata is not None
-        assert res.metadata.get("auto_generated_from_sibling") is True
-        assert res.method == "sibling_household_lookup"
+        assert res.metadata.get("expanded_from") == "sibling"
+        assert res.method == "sibling_expansion"
 
     @pytest.mark.asyncio
-    async def test_no_siblings_found(self, expander: PlaceholderExpander, mock_person_repo: Mock) -> None:
+    async def test_no_siblings_found(
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+    ) -> None:
         """Should handle when no siblings are found (no matching household_id)"""
         mock_person_repo.find_siblings.return_value = []  # No siblings
 
@@ -586,7 +610,7 @@ class TestSiblingPlaceholderExpansion:
         )
         resolution = _create_sibling_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         # Should return one result with failed expansion
         assert len(output) == 1
@@ -594,10 +618,12 @@ class TestSiblingPlaceholderExpansion:
         assert resolutions[0].method == "placeholder_expansion_failed"
         assert resolutions[0].metadata is not None
         assert "expansion_failure_reason" in resolutions[0].metadata
-        assert SIBLING_PLACEHOLDER in str(resolutions[0].metadata.get("original_request"))
+        assert resolutions[0].metadata.get("group_kind") == "sibling"
 
     @pytest.mark.asyncio
-    async def test_multiple_siblings_expanded(self, expander: PlaceholderExpander, mock_person_repo: Mock) -> None:
+    async def test_multiple_siblings_expanded(
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+    ) -> None:
         """Should create individual requests for each sibling (e.g., triplets)"""
         # Setup: Multiple siblings (triplets)
         sibling1 = _create_person(cm_id=111, first_name="Alice", last_name="Smith")
@@ -612,7 +638,7 @@ class TestSiblingPlaceholderExpansion:
         )
         resolution = _create_sibling_placeholder_resolution()
 
-        output = await expander.expand([(parse_result, [resolution])])
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
         # Should have 2 expanded results (one per sibling)
         assert len(output) == 2

@@ -1,12 +1,11 @@
-"""PlaceholderExpander service for expanding placeholder requests.
+"""PlaceholderExpander service for expanding group reference requests.
 
-Extracts placeholder expansion logic from orchestrator.py to reduce complexity.
-This service handles the expansion of placeholder requests into individual
-bunk_with requests based on historical bunking data or family relationships.
+Uses a pluggable resolver registry to expand group references (siblings,
+bunkmates, classmates, congregation-mates) into individual bunk requests.
 
-Supported placeholders:
-- LAST_YEAR_BUNKMATES: Expands to bunk_with requests for returning bunkmates
-- SIBLING: Expands to bunk_with/not_bunk_with request for sibling(s) via household_id
+Each group kind maps to a GroupResolver that knows how to look up members.
+The expander creates individual ParseResult+ResolutionResult pairs for each
+resolved group member.
 """
 
 from __future__ import annotations
@@ -16,8 +15,8 @@ from typing import TYPE_CHECKING, Any
 from bunking.logging_config import get_logger
 
 from ..core.models import (
+    GroupKind,
     ParsedRequest,
-    ParseRequest,
     ParseResult,
     RequestType,
 )
@@ -27,18 +26,25 @@ from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER, SIBLING_PLACEHOL
 if TYPE_CHECKING:
     from ..data.repositories.attendee_repository import AttendeeRepository
     from ..data.repositories.person_repository import PersonRepository
+    from .group_resolvers import GroupResolver, ResolvedGroupMember
 
 logger = get_logger(__name__)
 
+# Map legacy placeholder strings to GroupKind for backward compat
+_PLACEHOLDER_TO_GROUP_KIND = {
+    LAST_YEAR_BUNKMATES_PLACEHOLDER: GroupKind.LAST_YEAR_BUNKMATES,
+    SIBLING_PLACEHOLDER: GroupKind.SIBLING,
+}
+
 
 class PlaceholderExpander:
-    """Service for expanding placeholder requests into individual requests.
+    """Service for expanding group reference requests into individual requests.
 
-    Handles two types of placeholders:
-    1. LAST_YEAR_BUNKMATES: When a parent says "keep with last year's bunk",
-       expands to individual bunk_with requests for each returning bunkmate.
-    2. SIBLING: When parents say "bunk with twin", "with sibling", etc.,
-       expands to request(s) for sibling(s) found via household_id lookup.
+    Supports two detection paths:
+    1. Modern: parsed_request.group_kind is set by AI (preferred)
+    2. Legacy: resolution metadata contains placeholder string (backward compat)
+
+    Both paths dispatch to the same resolver registry for expansion.
     """
 
     def __init__(
@@ -47,16 +53,6 @@ class PlaceholderExpander:
         person_repo: PersonRepository,
         year: int,
     ) -> None:
-        """Initialize the placeholder expander.
-
-        Args:
-            attendee_repo: Repository for attendee/bunkmate data
-            person_repo: Repository for person data
-            year: Current year for processing
-
-        Raises:
-            ValueError: If year is not positive
-        """
         if year <= 0:
             raise ValueError("year must be positive")
 
@@ -67,198 +63,138 @@ class PlaceholderExpander:
     async def expand(
         self,
         resolution_results: list[tuple[ParseResult, list[ResolutionResult]]],
+        resolver_registry: dict[GroupKind, GroupResolver] | None = None,
     ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Expand placeholder requests into individual requests.
-
-        Handles both LAST_YEAR_BUNKMATES and SIBLING placeholders.
+        """Expand group reference requests into individual requests.
 
         Args:
             resolution_results: List of (ParseResult, List[ResolutionResult]) from Phase 2
+            resolver_registry: Optional registry mapping GroupKind to resolvers.
+                When None, falls back to legacy placeholder detection only.
 
         Returns:
-            Updated list with placeholder requests expanded to individual requests
+            Updated list with group references expanded to individual requests
         """
         if not resolution_results:
             return []
 
-        expanded_results = []
+        expanded_results: list[tuple[ParseResult, list[ResolutionResult]]] = []
 
         for parse_result, resolution_list in resolution_results:
             if not parse_result.is_valid or not parse_result.parsed_requests:
                 expanded_results.append((parse_result, resolution_list))
                 continue
 
-            # Check for LAST_YEAR_BUNKMATES placeholder
-            lyb_idx = self._find_placeholder_index(resolution_list, LAST_YEAR_BUNKMATES_PLACEHOLDER)
-            if lyb_idx is not None:
-                expanded = await self._expand_last_year_bunkmates(parse_result, resolution_list, lyb_idx)
-                expanded_results.extend(expanded)
+            # Find group references (modern group_kind or legacy placeholders)
+            group_refs = self._find_group_references(parse_result, resolution_list)
+            if not group_refs:
+                expanded_results.append((parse_result, resolution_list))
                 continue
 
-            # Check for SIBLING placeholder
-            sibling_idx = self._find_placeholder_index(resolution_list, SIBLING_PLACEHOLDER)
-            if sibling_idx is not None:
-                expanded = await self._expand_sibling(parse_result, resolution_list, sibling_idx)
-                expanded_results.extend(expanded)
-                continue
-
-            # No placeholder, pass through unchanged
-            expanded_results.append((parse_result, resolution_list))
+            # Expand each group reference
+            for idx, group_kind in group_refs:
+                if resolver_registry and group_kind in resolver_registry:
+                    resolver = resolver_registry[group_kind]
+                    expanded = self._expand_via_resolver(parse_result, resolution_list, idx, group_kind, resolver)
+                    expanded_results.extend(expanded)
+                else:
+                    logger.warning(f"No resolver for group kind: {group_kind}")
+                    expanded_results.extend(
+                        self._handle_expansion_failure(parse_result, resolution_list, idx, group_kind)
+                    )
 
         return expanded_results
 
-    def _find_placeholder_index(self, resolution_list: list[ResolutionResult], placeholder_type: str) -> int | None:
-        """Find the index of a specific placeholder in resolution list.
+    def _find_group_references(
+        self, parse_result: ParseResult, resolution_list: list[ResolutionResult]
+    ) -> list[tuple[int, GroupKind]]:
+        """Find all group references in a parse result's intents.
 
-        Args:
-            resolution_list: List of resolution results
-            placeholder_type: The placeholder constant to search for
-
-        Returns:
-            Index of placeholder, or None if not found
+        Checks two paths:
+        1. Modern: parsed_request.group_kind is set
+        2. Legacy: resolution metadata has placeholder string
         """
-        for idx, res_result in enumerate(resolution_list):
-            if res_result.metadata is None:
-                continue
-            if res_result.method == "placeholder" and res_result.metadata.get("placeholder") == placeholder_type:
-                return idx
-        return None
+        groups: list[tuple[int, GroupKind]] = []
 
-    async def _expand_last_year_bunkmates(
+        for idx, parsed_req in enumerate(parse_result.parsed_requests):
+            # Modern path: group_kind field set by AI
+            if parsed_req.group_kind is not None:
+                groups.append((idx, parsed_req.group_kind))
+                continue
+
+            # Legacy path: placeholder string in resolution metadata
+            if idx < len(resolution_list):
+                res = resolution_list[idx]
+                if res.metadata and res.method == "placeholder":
+                    placeholder = res.metadata.get("placeholder", "")
+                    kind = _PLACEHOLDER_TO_GROUP_KIND.get(placeholder)
+                    if kind is not None:
+                        groups.append((idx, kind))
+
+        return groups
+
+    def _expand_via_resolver(
         self,
         parse_result: ParseResult,
         resolution_list: list[ResolutionResult],
-        placeholder_idx: int,
+        idx: int,
+        group_kind: GroupKind,
+        resolver: GroupResolver,
     ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Expand a single placeholder into individual requests.
-
-        Args:
-            parse_result: Original parse result containing the placeholder
-            resolution_list: List of resolution results
-            placeholder_idx: Index of the placeholder in resolution_list
-
-        Returns:
-            List of expanded (ParseResult, ResolutionResult) pairs
-        """
-        parsed_req = parse_result.parsed_requests[placeholder_idx]
+        """Expand a single group reference using its resolver."""
+        parsed_req = parse_result.parsed_requests[idx]
         original_parse_request = parse_result.parse_request
 
         if original_parse_request is None:
             return []
+
         requester_cm_id = original_parse_request.requester_cm_id
         session_cm_id = original_parse_request.session_cm_id
 
-        logger.info(f"Expanding LAST_YEAR_BUNKMATES for requester {requester_cm_id} in session {session_cm_id}")
+        logger.info(f"Expanding {group_kind.value} for requester {requester_cm_id}")
 
-        # Find prior year bunkmates
-        prior_data = self._attendee_repo.find_prior_year_bunkmates(
+        members = resolver.resolve(
             requester_cm_id=requester_cm_id,
+            parsed_request=parsed_req,
             session_cm_id=session_cm_id,
-            year=self.year,
         )
 
-        # Handle failure cases
-        if not prior_data or not prior_data.get("cm_ids"):
-            return self._handle_expansion_failure(parse_result, resolution_list, placeholder_idx, prior_data)
+        if not members:
+            return self._handle_expansion_failure(parse_result, resolution_list, idx, group_kind)
 
-        # Expand to individual requests
-        return await self._create_expanded_requests(parsed_req, original_parse_request, prior_data)
+        return self._create_expanded_requests(parsed_req, original_parse_request, members, group_kind)
 
-    def _handle_expansion_failure(
-        self,
-        parse_result: ParseResult,
-        resolution_list: list[ResolutionResult],
-        placeholder_idx: int,
-        prior_data: dict[str, Any] | None,
-    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Handle cases where placeholder expansion fails.
-
-        Args:
-            parse_result: Original parse result
-            resolution_list: List of resolution results
-            placeholder_idx: Index of the placeholder
-            prior_data: Prior year data (may be None or empty)
-
-        Returns:
-            Single-item list with failed expansion result
-        """
-        if not prior_data:
-            reason = "No prior year assignment found for requester"
-        else:
-            reason = f"No returning bunkmates from {prior_data.get('prior_bunk', 'unknown bunk')}"
-
-        logger.warning(f"Cannot expand LAST_YEAR_BUNKMATES: {reason}")
-
-        updated_resolution = ResolutionResult(
-            person=None,
-            confidence=0.0,
-            method="placeholder_expansion_failed",
-            metadata={
-                "original_request": LAST_YEAR_BUNKMATES_PLACEHOLDER,
-                "prior_data": prior_data,
-                "expansion_failure_reason": reason,
-            },
-        )
-
-        # Replace the placeholder resolution with the failed one
-        new_resolution_list = resolution_list.copy()
-        new_resolution_list[placeholder_idx] = updated_resolution
-
-        return [(parse_result, new_resolution_list)]
-
-    async def _create_expanded_requests(
+    def _create_expanded_requests(
         self,
         parsed_req: ParsedRequest,
-        original_parse_request: ParseRequest,
-        prior_data: dict[str, Any],
+        original_parse_request: Any,
+        members: list[ResolvedGroupMember],
+        group_kind: GroupKind,
     ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Create individual bunk_with requests for each returning bunkmate.
+        """Create individual requests for each resolved group member."""
+        logger.info(f"Expanding {group_kind.value} to {len(members)} individual requests")
 
-        Args:
-            parsed_req: Original parsed request with placeholder
-            original_parse_request: Original parse request for context
-            prior_data: Prior year bunkmate data
+        expanded_results: list[tuple[ParseResult, list[ResolutionResult]]] = []
 
-        Returns:
-            List of (ParseResult, ResolutionResult) pairs, one per bunkmate
-        """
-        prior_bunk = prior_data.get("prior_bunk", "Unknown")
-        prior_year = prior_data.get("prior_year", self.year - 1)
+        for member in members:
+            member_name = member.person.full_name
 
-        logger.info(f"Found {len(prior_data['cm_ids'])} returning bunkmates from {prior_bunk} in {prior_year}")
-
-        expanded_results = []
-
-        for bunkmate_cm_id in prior_data["cm_ids"]:
-            # Look up bunkmate person info
-            bunkmate = self._person_repo.find_by_cm_id(bunkmate_cm_id)
-
-            if not bunkmate:
-                logger.warning(f"Could not find person for cm_id {bunkmate_cm_id}")
-                continue
-
-            bunkmate_name = bunkmate.full_name
-
-            # Create new ParsedRequest for this bunkmate
             new_parsed_request = ParsedRequest(
                 raw_text=parsed_req.raw_text,
-                request_type=RequestType.BUNK_WITH,
-                target_name=bunkmate_name,
+                request_type=member.request_type,
+                target_name=member_name,
                 age_preference=None,
                 source_field=parsed_req.source_field,
                 source=parsed_req.source,
-                confidence=0.90,
+                confidence=member.confidence,
                 csv_position=parsed_req.csv_position,
                 metadata={
-                    "auto_generated_from_prior_year": True,
-                    "prior_year_bunk": prior_bunk,
-                    "prior_year": prior_year,
-                    "original_request": LAST_YEAR_BUNKMATES_PLACEHOLDER,
+                    **member.metadata,
+                    "expanded_from": group_kind.value,
                 },
-                notes=f"Auto-expanded from 'last year's bunk' request. Was in {prior_bunk} in {prior_year}",
+                notes=f"Auto-expanded from {group_kind.value} reference to {member_name}",
             )
 
-            # Create new ParseResult (one per expanded request)
             new_parse_result = ParseResult(
                 parsed_requests=[new_parsed_request],
                 needs_historical_context=False,
@@ -266,183 +202,52 @@ class PlaceholderExpander:
                 parse_request=original_parse_request,
                 metadata={
                     "expanded_from_placeholder": True,
-                    "original_placeholder": LAST_YEAR_BUNKMATES_PLACEHOLDER,
+                    "original_placeholder": group_kind.value,
                 },
             )
 
-            # Create ResolutionResult with the resolved person
             new_resolution = ResolutionResult(
-                person=bunkmate,
-                confidence=0.90,
-                method="prior_year_bunkmate",
+                person=member.person,
+                confidence=member.confidence,
+                method=f"{group_kind.value}_expansion",
                 metadata={
-                    "auto_generated_from_prior_year": True,
-                    "prior_year_bunk": prior_bunk,
-                    "prior_year": prior_year,
-                    "original_request": LAST_YEAR_BUNKMATES_PLACEHOLDER,
-                },
-            )
-
-            expanded_results.append((new_parse_result, [new_resolution]))
-            logger.info(f"  - Created bunk_with request for {bunkmate_name} (ID: {bunkmate_cm_id})")
-
-        return expanded_results
-
-    # =========================================================================
-    # SIBLING Placeholder Expansion
-    # =========================================================================
-
-    async def _expand_sibling(
-        self,
-        parse_result: ParseResult,
-        resolution_list: list[ResolutionResult],
-        placeholder_idx: int,
-    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Expand a SIBLING placeholder into request(s) for sibling(s).
-
-        Looks up siblings via household_id and creates individual requests
-        for each sibling found. Preserves the original request_type (bunk_with
-        or not_bunk_with) from the parsed request.
-
-        Args:
-            parse_result: Original parse result containing the placeholder
-            resolution_list: List of resolution results
-            placeholder_idx: Index of the placeholder in resolution_list
-
-        Returns:
-            List of expanded (ParseResult, ResolutionResult) pairs
-        """
-        parsed_req = parse_result.parsed_requests[placeholder_idx]
-        original_parse_request = parse_result.parse_request
-
-        if original_parse_request is None:
-            return []
-
-        requester_cm_id = original_parse_request.requester_cm_id
-
-        logger.info(f"Expanding SIBLING placeholder for requester {requester_cm_id}")
-
-        # Find siblings via household_id
-        siblings = self._person_repo.find_siblings(requester_cm_id, self.year)
-
-        if not siblings:
-            return self._handle_sibling_expansion_failure(
-                parse_result, resolution_list, placeholder_idx, requester_cm_id
-            )
-
-        # Create individual requests for each sibling
-        return self._create_sibling_requests(parsed_req, original_parse_request, siblings)
-
-    def _handle_sibling_expansion_failure(
-        self,
-        parse_result: ParseResult,
-        resolution_list: list[ResolutionResult],
-        placeholder_idx: int,
-        requester_cm_id: int,
-    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Handle cases where sibling expansion fails (no siblings found).
-
-        Args:
-            parse_result: Original parse result
-            resolution_list: List of resolution results
-            placeholder_idx: Index of the placeholder
-            requester_cm_id: CM ID of the requester
-
-        Returns:
-            Single-item list with failed expansion result
-        """
-        reason = f"No siblings found for person {requester_cm_id} (no matching household_id)"
-        logger.warning(f"Cannot expand SIBLING: {reason}")
-
-        updated_resolution = ResolutionResult(
-            person=None,
-            confidence=0.0,
-            method="placeholder_expansion_failed",
-            metadata={
-                "original_request": SIBLING_PLACEHOLDER,
-                "requester_cm_id": requester_cm_id,
-                "expansion_failure_reason": reason,
-            },
-        )
-
-        # Replace the placeholder resolution with the failed one
-        new_resolution_list = resolution_list.copy()
-        new_resolution_list[placeholder_idx] = updated_resolution
-
-        return [(parse_result, new_resolution_list)]
-
-    def _create_sibling_requests(
-        self,
-        parsed_req: ParsedRequest,
-        original_parse_request: ParseRequest,
-        siblings: list[Any],  # list[Person] - but avoiding circular import
-    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Create individual requests for each sibling.
-
-        Preserves the original request_type (bunk_with or not_bunk_with)
-        from the parsed request.
-
-        Args:
-            parsed_req: Original parsed request with SIBLING placeholder
-            original_parse_request: Original parse request for context
-            siblings: List of sibling Person objects
-
-        Returns:
-            List of (ParseResult, ResolutionResult) pairs, one per sibling
-        """
-        logger.info(f"Found {len(siblings)} sibling(s): {[s.full_name for s in siblings]}")
-
-        expanded_results = []
-
-        for sibling in siblings:
-            sibling_name = sibling.full_name
-
-            # Create new ParsedRequest for this sibling
-            # IMPORTANT: Preserve the original request_type (bunk_with or not_bunk_with)
-            new_parsed_request = ParsedRequest(
-                raw_text=parsed_req.raw_text,
-                request_type=parsed_req.request_type,  # Preserve original type
-                target_name=sibling_name,
-                age_preference=None,
-                source_field=parsed_req.source_field,
-                source=parsed_req.source,
-                confidence=0.95,  # High confidence - sibling lookup is reliable
-                csv_position=parsed_req.csv_position,
-                metadata={
-                    "auto_generated_from_sibling": True,
-                    "sibling_cm_id": sibling.cm_id,
-                    "original_request": SIBLING_PLACEHOLDER,
-                },
-                notes=f"Auto-expanded from sibling reference to {sibling_name}",
-            )
-
-            # Create new ParseResult
-            new_parse_result = ParseResult(
-                parsed_requests=[new_parsed_request],
-                needs_historical_context=False,
-                is_valid=True,
-                parse_request=original_parse_request,
-                metadata={
-                    "expanded_from_placeholder": True,
-                    "original_placeholder": SIBLING_PLACEHOLDER,
-                },
-            )
-
-            # Create ResolutionResult with the resolved sibling
-            new_resolution = ResolutionResult(
-                person=sibling,
-                confidence=0.95,
-                method="sibling_household_lookup",
-                metadata={
-                    "auto_generated_from_sibling": True,
-                    "sibling_cm_id": sibling.cm_id,
-                    "original_request": SIBLING_PLACEHOLDER,
+                    **member.metadata,
+                    "expanded_from": group_kind.value,
                 },
             )
 
             expanded_results.append((new_parse_result, [new_resolution]))
             logger.info(
-                f"  - Created {parsed_req.request_type.value} request for sibling {sibling_name} (ID: {sibling.cm_id})"
+                f"  - Created {member.request_type.value} request for {member_name} (ID: {member.person.cm_id})"
             )
 
         return expanded_results
+
+    def _handle_expansion_failure(
+        self,
+        parse_result: ParseResult,
+        resolution_list: list[ResolutionResult],
+        idx: int,
+        group_kind: GroupKind,
+    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
+        """Handle cases where group reference expansion fails (resolver returned empty)."""
+        reason = f"No members found for {group_kind.value} expansion"
+        logger.warning(f"Cannot expand {group_kind.value}: {reason}")
+
+        updated_resolution = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="placeholder_expansion_failed",
+            metadata={
+                "group_kind": group_kind.value,
+                "expansion_failure_reason": reason,
+            },
+        )
+
+        new_resolution_list = resolution_list.copy()
+        if idx < len(new_resolution_list):
+            new_resolution_list[idx] = updated_resolution
+        else:
+            new_resolution_list.append(updated_resolution)
+
+        return [(parse_result, new_resolution_list)]
