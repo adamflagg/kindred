@@ -7,7 +7,7 @@ Updated for new PocketBase schema:
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -592,6 +592,76 @@ class TestBulkGetSessionsFiltersBunkingSessions:
         assert 12345 not in sessions
         # The valid item MUST still be returned — not lost to a broad except
         assert sessions[67890] == 1235404
+
+
+class TestBulkGetSessionsLogging:
+    """Tests that silent except blocks log exceptions instead of swallowing them."""
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_attendees_collection = Mock()
+        mock_persons_collection = Mock()
+
+        def collection_side_effect(name):
+            if name == "attendees":
+                return mock_attendees_collection
+            elif name == "persons":
+                return mock_persons_collection
+            return Mock()
+
+        mock_client.collection.side_effect = collection_side_effect
+        return mock_client, mock_attendees_collection, mock_persons_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _, _ = mock_pb_client
+        return AttendeeRepository(mock_client)
+
+    def test_bulk_get_sessions_logs_exception_on_query_failure(self, repository, mock_pb_client):
+        """Silent except blocks must log — not swallow — exceptions."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.side_effect = Exception("PB connection failed")
+
+        with patch("bunking.sync.bunk_request_processor.data.repositories.attendee_repository.logger") as mock_logger:
+            result = repository.bulk_get_sessions_for_persons([12345], 2025)
+
+        assert result == {}
+        mock_logger.exception.assert_called_once()
+
+    def test_get_session_attendees_logs_exception(self, repository, mock_pb_client):
+        """get_session_attendees must log exceptions."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.side_effect = Exception("DB timeout")
+
+        with patch("bunking.sync.bunk_request_processor.data.repositories.attendee_repository.logger") as mock_logger:
+            result = repository.get_session_attendees(1000002, 2025)
+
+        assert result == []
+        mock_logger.exception.assert_called_once()
+
+    def test_get_age_filtered_peers_logs_exception(self, repository, mock_pb_client):
+        """get_age_filtered_session_peers must log exceptions."""
+        _, mock_attendees, _ = mock_pb_client
+
+        # get_by_person_and_year must succeed (it has its own intentional silent catch)
+        mock_result = Mock()
+        mock_attendee = Mock()
+        mock_attendee.person_id = 12345
+        mock_attendee.year = 2025
+        mock_attendee.birth_date = "2010-05-15"
+        mock_attendee.expand = {"session": Mock(cm_id=1000002)}
+        mock_result.items = [mock_attendee]
+        mock_attendees.get_list.return_value = mock_result
+
+        # Then make the session attendees call fail (triggers outer except)
+        mock_attendees.get_full_list.side_effect = Exception("Session query failed")
+
+        with patch("bunking.sync.bunk_request_processor.data.repositories.attendee_repository.logger") as mock_logger:
+            result = repository.get_age_filtered_session_peers(12345, 1000002, 2025)
+
+        assert result == []
+        mock_logger.exception.assert_called()
 
 
 if __name__ == "__main__":

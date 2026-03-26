@@ -11,10 +11,14 @@ from typing import Any
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from pocketbase import PocketBase
 
+from bunking.logging_config import get_logger
+
 from ...core.models import Person
 from ...shared import parse_date
 from ..pocketbase_wrapper import PocketBaseWrapper
 from .person_repository import PersonRepository
+
+logger = get_logger(__name__)
 
 
 class AttendeeRepository:
@@ -135,6 +139,7 @@ class AttendeeRepository:
             return attendees
 
         except Exception:
+            logger.exception("get_session_attendees failed for session_cm_id=%s year=%s", session_cm_id, year)
             return []
 
     def clear_cache(self) -> None:
@@ -194,6 +199,7 @@ class AttendeeRepository:
             return filtered_peers
 
         except Exception:
+            logger.exception("get_age_filtered_session_peers failed for person_cm_id=%s", person_cm_id)
             return []
 
     _BULK_CHUNK_SIZE = 100
@@ -264,6 +270,7 @@ class AttendeeRepository:
             return sessions_dict
 
         except Exception:
+            logger.exception("bulk_get_sessions_chunk failed for %d person IDs (year=%d)", len(person_cm_ids), year)
             return {}
 
     def _map_attendee_record(self, db_record: Any) -> dict[str, Any]:
@@ -322,6 +329,7 @@ class AttendeeRepository:
                     }
                 )
             except Exception:
+                logger.exception("find_prior_year_bunkmates failed querying assignments for cm_id=%s", requester_cm_id)
                 return {}
 
             if not assignments:
@@ -374,6 +382,7 @@ class AttendeeRepository:
             }
 
         except Exception:
+            logger.exception("find_prior_year_bunkmates failed for cm_id=%s", requester_cm_id)
             return {}
 
     def build_person_session_mappings(
