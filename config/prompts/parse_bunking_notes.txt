@@ -32,11 +32,13 @@ This field may contain ANY request type:
 3. "age_preference" - Age/grade recommendations
    Keywords: "bunk older", "same age/younger", "would do better with younger kids"
 
-=== SPECIAL PLACEHOLDERS ===
+=== GROUP REFERENCES ===
 
-Use these EXACT strings as target_name when appropriate:
-- "SIBLING" - For twin/sibling bunking notes
-- "LAST_YEAR_BUNKMATES" - For "same bunk as last year" references
+Instead of special placeholder strings, use the group_kind field for group references:
+- group_kind="sibling" for twin/sibling bunking notes (target_name="")
+- group_kind="last_year_bunkmates" for "same bunk as last year" (target_name="")
+- group_kind="classmates" for school group references (target_name="", include group_metadata)
+- group_kind="congregation" for synagogue/temple references (target_name="", include group_metadata)
 
 === NARRATIVE EXTRACTION RULES ===
 

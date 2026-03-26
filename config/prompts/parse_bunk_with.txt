@@ -27,24 +27,27 @@ A name alone means "bunk this person with the named friend."
 This field commonly contains:
 
 1. "bunk_with" - Wants to share a cabin with specific person(s)
-   target_name = person's name, "SIBLING", or "LAST_YEAR_BUNKMATES"
+   target_name = person's name (for specific individuals)
+   OR set group_kind instead for group references (see GROUP REFERENCES below)
 
 2. "not_bunk_with" - Embedded negatives (look for "NOT", "don't", "please avoid", "separate from")
-   target_name = person's name or "SIBLING"
+   target_name = person's name, or set group_kind for group references
 
 3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
    target_name = "older", "younger", or "unclear"
    Use when text says "prefers older kids" without naming anyone specific
 
+4. Group references - References to groups rather than specific individuals
+   Set group_kind to:
+   - "sibling" for twins, siblings, brothers, sisters, "my twin", "bunk together" (for twins)
+   - "last_year_bunkmates" for "last year's bunk", "same cabin as 2024", "B-4 bunkmates"
+   - "classmates" for "kids from my school", "schoolmates", or naming a specific school
+   - "congregation" for "Beth Jacob girls", "temple friends", or naming a specific synagogue/temple
+   When group_kind is set, target_name should be empty string "".
+   For classmates, include group_metadata with {"school_name": "..."}
+   For congregation, include group_metadata with {"congregation_name": "..."}
+
 IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
-
-=== SPECIAL PLACEHOLDERS ===
-
-Use these EXACT strings as target_name when appropriate:
-- "SIBLING" - For family references: twins, sister, brother, sibling, my twin, "bunk together" (for twins)
-- "LAST_YEAR_BUNKMATES" - For prior cabin references: "last year's bunk", "same cabin as 2024", "B-4 bunkmates"
-
-These placeholders will be expanded to actual names by the system later.
 
 === SIBLING DETECTION GUARDRAILS ===
 

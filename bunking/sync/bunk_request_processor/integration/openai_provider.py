@@ -15,6 +15,7 @@ from bunking.logging_config import get_logger
 
 from ..core.models import (
     AgePreference,
+    GroupKind,
     ParsedRequest,
     RequestSource,
     RequestType,
@@ -28,6 +29,13 @@ from .ai_schemas import (
     AIParseResponse,
 )
 from .ai_types import AIProvider, AIRequestContext, ParsedResponse, TokenUsage
+
+_GROUP_KIND_MAP: dict[str, GroupKind] = {
+    "sibling": GroupKind.SIBLING,
+    "last_year_bunkmates": GroupKind.LAST_YEAR_BUNKMATES,
+    "classmates": GroupKind.CLASSMATES,
+    "congregation": GroupKind.CONGREGATION,
+}
 
 logger = get_logger(__name__)
 
@@ -277,6 +285,12 @@ class OpenAIProvider(AIProvider):
             requester_info += f"Grade: {context.additional_context['requester_grade']}\n"
         if context.additional_context.get("session_name"):
             requester_info += f"Session: {context.additional_context['session_name']}\n"
+        if context.additional_context.get("requester_school"):
+            requester_info += f"School: {context.additional_context['requester_school']}\n"
+        if context.additional_context.get("requester_congregation"):
+            requester_info += f"Congregation: {context.additional_context['requester_congregation']}\n"
+        if context.additional_context.get("requester_city"):
+            requester_info += f"City: {context.additional_context['requester_city']}\n"
 
         # Select field-specific prompt template
         prompt_name = self._get_prompt_name_for_field(context.field_type)
@@ -390,6 +404,12 @@ class OpenAIProvider(AIProvider):
                     None,  # "unclear" maps to None for manual review
                 )
                 parsed_request.target_name = None
+
+            # Handle group_kind from AI output
+            if ai_req.group_kind:
+                parsed_request.group_kind = _GROUP_KIND_MAP.get(ai_req.group_kind)
+                if ai_req.group_metadata:
+                    request_metadata["group_metadata"] = ai_req.group_metadata
 
             v2_requests.append(parsed_request)
 
