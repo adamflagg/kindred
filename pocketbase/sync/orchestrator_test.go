@@ -3194,3 +3194,31 @@ func TestRunSyncAndWaitMatchesToken(t *testing.T) {
 		t.Fatal("runSyncAndWait timed out")
 	}
 }
+
+// TestRunSyncAndWaitZeroDelayNoDeadlock reproduces the exact race from issue #789:
+// with an instant-completing service, runSyncAndWait must not deadlock.
+// The goroutine may complete before the token is captured from runningJobs,
+// leaving expectedToken="" which never matches — causing an infinite loop.
+func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
+	// Run multiple iterations to increase race likelihood
+	for i := range 5 {
+		t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
+			t.Parallel()
+			o := NewOrchestrator(nil)
+			mock := &MockService{name: "test_service"} // zero delay — instant completion
+			o.RegisterService("test", mock)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			err := o.runSyncAndWait(ctx, "test")
+			if err != nil {
+				t.Fatalf("runSyncAndWait failed: %v (likely deadlocked and hit timeout)", err)
+			}
+
+			if mock.GetCallCount() != 1 {
+				t.Errorf("expected service called once, got %d", mock.GetCallCount())
+			}
+		})
+	}
+}
