@@ -25,6 +25,7 @@ class ConflictType(Enum):
 
     SESSION_MISMATCH = "session_mismatch"  # Requests across different sessions - only real processing error
     CROSS_SESSION_SATISFIED = "cross_session_satisfied"  # NOT_BUNK_WITH auto-satisfied by different sessions
+    TARGET_NOT_ENROLLED = "target_not_enrolled"  # Target has no bunking enrollment at all
 
 
 @dataclass
@@ -84,7 +85,12 @@ class ConflictDetector:
         self.year = year
 
         # Statistics
-        self._stats = {"total_conflicts": 0, "session_mismatches": 0, "cross_session_satisfied": 0}
+        self._stats = {
+            "total_conflicts": 0,
+            "session_mismatches": 0,
+            "cross_session_satisfied": 0,
+            "target_not_enrolled": 0,
+        }
 
     def detect_conflicts(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> V2ConflictResult:
         """Detect conflicts in resolved requests.
@@ -104,12 +110,19 @@ class ConflictDetector:
         # Build session maps for efficient conflict detection
         session_maps = self._build_session_maps(resolved_requests)
 
-        # Detect session mismatches (BUNK_WITH)
-        session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps)
+        # Detect target-not-enrolled (must check before session conflicts)
+        not_enrolled_conflicts = self._detect_target_not_enrolled(resolved_requests, session_maps)
+        conflicts.extend(not_enrolled_conflicts)
+        not_enrolled_indices = {idx for c in not_enrolled_conflicts for idx in c.affected_request_indices}
+
+        # Detect session mismatches (BUNK_WITH) — skip already-declined not-enrolled
+        session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps, not_enrolled_indices)
         conflicts.extend(session_conflicts)
 
-        # Detect cross-session satisfied (NOT_BUNK_WITH)
-        satisfied_conflicts = self._detect_cross_session_satisfied(resolved_requests, session_maps)
+        # Detect cross-session satisfied (NOT_BUNK_WITH) — skip already-declined not-enrolled
+        satisfied_conflicts = self._detect_cross_session_satisfied(
+            resolved_requests, session_maps, not_enrolled_indices
+        )
         conflicts.extend(satisfied_conflicts)
 
         # Collect affected request indices
@@ -158,23 +171,57 @@ class ConflictDetector:
                     maps["negative_requests"][(requester, target)] = entry
 
         # Enrich: look up sessions for targets not in the map
+        all_targets_requested: set[int] = set()  # Track all targets we tried to enrich
         if self.attendee_repo and self.year:
-            all_targets = set()
             for requester, target in maps["positive_requests"]:
                 if target not in maps["person_to_session"]:
-                    all_targets.add(target)
+                    all_targets_requested.add(target)
             for requester, target in maps["negative_requests"]:
                 if target not in maps["person_to_session"]:
-                    all_targets.add(target)
+                    all_targets_requested.add(target)
 
-            if all_targets:
-                enriched = self.attendee_repo.bulk_get_sessions_for_persons(list(all_targets), self.year)
+            if all_targets_requested:
+                enriched = self.attendee_repo.bulk_get_sessions_for_persons(list(all_targets_requested), self.year)
                 maps["person_to_session"].update(enriched)
+
+        # Track which targets were requested but not found (no bunking enrollment)
+        maps["unenrolled_targets"] = all_targets_requested - set(maps["person_to_session"].keys())
 
         return maps
 
-    def _detect_session_conflicts(
+    def _detect_target_not_enrolled(
         self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
+    ) -> list[V2Conflict]:
+        """Detect requests where target has no bunking enrollment at all."""
+        conflicts = []
+        unenrolled = maps.get("unenrolled_targets", set())
+        if not unenrolled:
+            return conflicts
+
+        # Check both positive and negative requests
+        for request_map_key in ("positive_requests", "negative_requests"):
+            for (requester, target), (idx, session_info) in maps[request_map_key].items():
+                if target in unenrolled:
+                    conflict = V2Conflict(
+                        conflict_type=ConflictType.TARGET_NOT_ENROLLED,
+                        person_a_cm_id=requester,
+                        person_b_cm_id=target,
+                        description=(f"Target {target} has no bunking session enrollment (requested by {requester})"),
+                        severity="high",
+                        auto_resolvable=False,
+                        resolution_suggestion="Target is not enrolled in any bunking session",
+                        affected_request_indices=[idx],
+                        metadata={"requester_session": session_info["requester_session"]},
+                    )
+                    conflicts.append(conflict)
+
+        return conflicts
+
+    def _detect_session_conflicts(
+        self,
+        resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]],
+        maps: dict[str, Any],
+        skip_indices: set[int] | None = None,
     ) -> list[V2Conflict]:
         """Detect BUNK_WITH requests across different sessions.
 
@@ -184,6 +231,8 @@ class ConflictDetector:
         conflicts = []
 
         for (requester, target), (idx, session_info) in maps["positive_requests"].items():
+            if skip_indices and idx in skip_indices:
+                continue
             requester_session = session_info["requester_session"]
             target_session = maps["person_to_session"].get(target)
 
@@ -207,12 +256,17 @@ class ConflictDetector:
         return conflicts
 
     def _detect_cross_session_satisfied(
-        self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
+        self,
+        resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]],
+        maps: dict[str, Any],
+        skip_indices: set[int] | None = None,
     ) -> list[V2Conflict]:
         """Detect NOT_BUNK_WITH requests that are automatically satisfied by different sessions."""
         conflicts = []
 
         for (requester, target), (idx, session_info) in maps["negative_requests"].items():
+            if skip_indices and idx in skip_indices:
+                continue
             requester_session = session_info["requester_session"]
             target_session = maps["person_to_session"].get(target)
 
@@ -264,6 +318,13 @@ class ConflictDetector:
                     if conflict.conflict_type == ConflictType.CROSS_SESSION_SATISFIED:
                         resolution_info["auto_satisfied"] = True
                         resolution_info["satisfaction_reason"] = conflict.resolution_suggestion
+                    elif conflict.conflict_type == ConflictType.TARGET_NOT_ENROLLED:
+                        resolution_info["has_conflict"] = True
+                        resolution_info["conflict_type"] = conflict.conflict_type.value
+                        resolution_info["conflict_description"] = conflict.description
+                        resolution_info["conflict_severity"] = conflict.severity
+                        resolution_info["auto_resolvable"] = False
+                        resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
                     else:
                         resolution_info["has_conflict"] = True
                         resolution_info["conflict_type"] = conflict.conflict_type.value
@@ -313,3 +374,5 @@ class ConflictDetector:
                 self._stats["session_mismatches"] += 1
             elif c.conflict_type == ConflictType.CROSS_SESSION_SATISFIED:
                 self._stats["cross_session_satisfied"] += 1
+            elif c.conflict_type == ConflictType.TARGET_NOT_ENROLLED:
+                self._stats["target_not_enrolled"] += 1
