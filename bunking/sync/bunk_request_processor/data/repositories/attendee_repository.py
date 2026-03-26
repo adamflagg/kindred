@@ -252,10 +252,13 @@ class AttendeeRepository:
             # Map to dictionary, filtering to bunking-relevant sessions only.
             # This prevents family camp / quest enrollments from overwriting
             # the correct summer session assignment.
+            # Status priority: enrolled (2) wins over all other statuses.
             sessions_dict: dict[int, int] = {}
+            sessions_status: dict[int, int] = {}  # person_cm_id → best status_id seen
             for item in items:
                 person_cm_id = getattr(item, "person_id", None)
                 session_cm_id = self._get_session_cm_id(item)
+                status_id = getattr(item, "status_id", None)
                 if not person_cm_id or not session_cm_id:
                     continue
 
@@ -265,7 +268,13 @@ class AttendeeRepository:
                 if session_type not in VALID_BUNKING_SESSION_TYPES:
                     continue
 
+                # Don't overwrite an enrolled session with a non-enrolled one
+                existing_status = sessions_status.get(person_cm_id)
+                if existing_status == 2 and status_id != 2:
+                    continue
+
                 sessions_dict[person_cm_id] = session_cm_id
+                sessions_status[person_cm_id] = status_id or 0
 
             return sessions_dict
 

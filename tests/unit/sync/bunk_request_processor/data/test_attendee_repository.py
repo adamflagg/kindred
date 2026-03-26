@@ -664,5 +664,88 @@ class TestBulkGetSessionsLogging:
         mock_logger.exception.assert_called()
 
 
+class TestBulkGetSessionsStatusPriority:
+    """Tests that enrolled sessions are prioritized over applied/waitlisted."""
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_attendees_collection = Mock()
+        mock_persons_collection = Mock()
+
+        def collection_side_effect(name):
+            if name == "attendees":
+                return mock_attendees_collection
+            elif name == "persons":
+                return mock_persons_collection
+            return Mock()
+
+        mock_client.collection.side_effect = collection_side_effect
+        return mock_client, mock_attendees_collection, mock_persons_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _, _ = mock_pb_client
+        return AttendeeRepository(mock_client)
+
+    def _make_attendee(self, person_id, session_cm_id, status_id, session_type="main"):
+        mock = Mock()
+        mock.person_id = person_id
+        mock.status_id = status_id
+        session_mock = Mock()
+        session_mock.cm_id = session_cm_id
+        session_mock.session_type = session_type
+        mock.expand = {"session": session_mock}
+        return mock
+
+    def test_enrolled_session_not_overwritten_by_applied(self, repository, mock_pb_client):
+        """When person has enrolled (2) + applied (8) bunking sessions, enrolled wins."""
+        _, mock_attendees, _ = mock_pb_client
+
+        # Rosie Leeds scenario: enrolled in Session 2 (main), applied for Session 2a (embedded)
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(18018509, 1235404, 2, "main"),  # enrolled
+            self._make_attendee(18018509, 1356533, 8, "embedded"),  # applied — should NOT overwrite
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([18018509], 2026)
+        assert sessions[18018509] == 1235404  # enrolled session wins
+
+    def test_enrolled_not_overwritten_by_waitlisted(self, repository, mock_pb_client):
+        """Enrolled session not overwritten by a waitlisted one."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1235404, 2, "main"),  # enrolled
+            self._make_attendee(12345, 1235405, 4, "main"),  # waitlisted
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([12345], 2026)
+        assert sessions[12345] == 1235404
+
+    def test_non_enrolled_can_be_overwritten_by_enrolled(self, repository, mock_pb_client):
+        """If applied comes first, enrolled later should overwrite."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1356533, 8, "embedded"),  # applied first
+            self._make_attendee(12345, 1235404, 2, "main"),  # enrolled later — should win
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([12345], 2026)
+        assert sessions[12345] == 1235404
+
+    def test_cancelled_only_still_appears_in_results(self, repository, mock_pb_client):
+        """Person with only cancelled bunking enrollment still appears (ConflictDetector handles decline)."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(16714060, 1235406, 32, "main"),  # cancelled
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([16714060], 2026)
+        assert 16714060 in sessions
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
