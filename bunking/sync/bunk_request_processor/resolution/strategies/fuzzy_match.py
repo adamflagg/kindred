@@ -120,7 +120,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
 
             # 2b. Try Jaro-Winkler first name similarity
             result = self._try_jaro_winkler_first_name(
-                parsed, requester_cm_id, session_cm_id, year, candidates, attendee_info
+                parsed, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons
             )
             if result.is_resolved or result.is_ambiguous:
                 return result
@@ -523,22 +523,31 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         year: int | None,
         candidates: list[Person] | None = None,
         attendee_info: dict[int, dict[str, Any]] | None = None,
+        all_persons: list[Person] | None = None,
     ) -> ResolutionResult:
         """Try Jaro-Winkler similarity on first names as a fallback.
 
         Catches close first-name variants like Charlie/Charlotte, Zoey/Zoe
-        that aren't in the nickname dictionary.
+        that aren't in the nickname dictionary. Falls back to all_persons
+        when candidates is empty (catches last-name misspellings like
+        Obsfeld→Obstfeld).
         """
         import jellyfish
 
-        if not parsed.is_complete or not candidates:
+        if not parsed.is_complete:
             return ResolutionResult(confidence=0.0, method=self.name)
+
+        jw_pool = candidates if candidates else (all_persons or [])
+        if not jw_pool:
+            return ResolutionResult(confidence=0.0, method=self.name)
+
+        using_full_pool = not candidates and bool(all_persons)
 
         jw_threshold = float(self._get_confidence("jaro_winkler_threshold", DEFAULT_JARO_WINKLER_THRESHOLD))
         first_lower = parsed.first.lower()
         matches = []
 
-        for c in candidates:
+        for c in jw_pool:
             if c.cm_id == requester_cm_id:
                 continue
             if not last_name_matches(parsed.last, c.last_name):
@@ -553,6 +562,8 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         if not matches:
             return ResolutionResult(confidence=0.0, method=self.name)
 
+        match_type = "jaro_winkler_full_pool" if using_full_pool else "jaro_winkler_first_name"
+
         if len(matches) == 1:
             confidence = self._calculate_confidence(
                 matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_nickname=True
@@ -561,7 +572,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "jaro_winkler_first_name"},
+                metadata={"match_type": match_type},
             )
 
         return ResolutionResult(
@@ -571,7 +582,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             metadata={
                 "ambiguity_reason": "multiple_jaro_winkler_matches",
                 "match_count": len(matches),
-                "match_type": "jaro_winkler_first_name",
+                "match_type": match_type,
             },
         )
 
