@@ -328,3 +328,145 @@ class TestUnresolvedRequests:
         # No target person, so can't calculate proximity
         assert signals.grade_proximity == 999
         assert signals.age_proximity == 999.0
+
+
+class TestLastScoreFactors:
+    """Tests for confidence_factors breakdown tracking."""
+
+    def test_bunk_with_populates_factors(self):
+        """score_resolution for BUNK_WITH populates last_score_factors with breakdown."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+
+        parsed_req = ParsedRequest(
+            raw_text="Bob Jones",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Bob Jones",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.85,
+            csv_position=0,
+            metadata={},
+        )
+
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        resolution_result = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(parsed_req, resolution_result, requester_cm_id=1001, year=2026)
+
+        factors = scorer.last_score_factors
+        assert factors["formula"] == "bunk_with"
+        assert "name_score" in factors
+        assert "ai_score" in factors
+        assert "context_score" in factors
+        assert "weights" in factors
+        assert "weighted_total" in factors
+        assert isinstance(factors["weighted_total"], float)
+
+    def test_not_bunk_with_populates_factors(self):
+        """score_resolution for NOT_BUNK_WITH populates last_score_factors."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+
+        parsed_req = ParsedRequest(
+            raw_text="Bob Jones",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Bob Jones",
+            age_preference=None,
+            source_field="not_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.85,
+            csv_position=0,
+            metadata={},
+        )
+
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        resolution_result = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(parsed_req, resolution_result, requester_cm_id=1001, year=2026)
+
+        factors = scorer.last_score_factors
+        assert factors["formula"] == "not_bunk_with"
+        assert "name_score" in factors
+        assert "ai_score" in factors
+        assert "context_score" in factors
+
+    def test_age_preference_populates_factors(self):
+        """score_parsed_request for AGE_PREFERENCE populates last_score_factors."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+
+        parsed_req = ParsedRequest(
+            raw_text="older kids",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=None,
+            source_field="socialize_with",
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=0,
+            metadata={},
+        )
+
+        scorer.score_parsed_request(parsed_req)
+
+        factors = scorer.last_score_factors
+        assert factors["formula"] == "age_preference"
+        assert factors["ai_parse_confidence"] == 1.0
+
+    def test_second_call_overwrites_factors(self):
+        """Calling score_resolution twice replaces previous factors."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+
+        bunk_req = ParsedRequest(
+            raw_text="Bob",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Bob",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.85,
+            csv_position=0,
+            metadata={},
+        )
+        not_bunk_req = ParsedRequest(
+            raw_text="Bob",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Bob",
+            age_preference=None,
+            source_field="not_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.85,
+            csv_position=0,
+            metadata={},
+        )
+
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        res = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(bunk_req, res, 1001, 2026)
+        assert scorer.last_score_factors["formula"] == "bunk_with"
+
+        scorer.score_resolution(not_bunk_req, res, 1001, 2026)
+        assert scorer.last_score_factors["formula"] == "not_bunk_with"
+
+    def test_last_score_factors_returns_copy(self):
+        """last_score_factors returns a copy, not a reference to internal state."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+
+        parsed_req = ParsedRequest(
+            raw_text="Bob",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Bob",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.85,
+            csv_position=0,
+            metadata={},
+        )
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        res = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(parsed_req, res, 1001, 2026)
+        factors1 = scorer.last_score_factors
+        factors2 = scorer.last_score_factors
+        assert factors1 is not factors2

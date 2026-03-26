@@ -81,9 +81,15 @@ class ConfidenceScorer:
         self.attendee_repo = attendee_repo
         self.social_graph_signals = social_graph_signals
         self.person_repo = person_repo
+        self._last_score_factors: dict[str, Any] = {}
 
         # Extract scoring config
         self.scoring_config = self.config.get("confidence_scoring", {})
+
+    @property
+    def last_score_factors(self) -> dict[str, Any]:
+        """Get the score breakdown from the most recent scoring call."""
+        return self._last_score_factors.copy()
 
     def score_parsed_request(
         self, parsed_request: ParsedRequest, resolution_result: ResolutionResult | None = None
@@ -317,6 +323,15 @@ class ConfidenceScorer:
         )
 
         final_score: float = min(1.0, max(0.0, score))
+        self._last_score_factors = {
+            "formula": "bunk_with",
+            "name_score": round(name_score, 4),
+            "ai_score": round(float(ai_score), 4),
+            "context_score": round(context_score, 4),
+            "reciprocal_score": round(reciprocal_score, 4),
+            "weights": weights,
+            "weighted_total": round(final_score, 4),
+        }
         return final_score
 
     def _score_not_bunk_with(self, signals: V2ConfidenceSignals) -> float:
@@ -345,13 +360,27 @@ class ConfidenceScorer:
         )
 
         final_not_bunk: float = min(1.0, max(0.0, score))
+        self._last_score_factors = {
+            "formula": "not_bunk_with",
+            "name_score": round(name_score, 4),
+            "ai_score": round(float(ai_score), 4),
+            "context_score": round(context_score, 4),
+            "weights": weights,
+            "weighted_total": round(final_not_bunk, 4),
+        }
         return final_not_bunk
 
     def _score_age_preference(self, signals: V2ConfidenceSignals) -> float:
         """Score age preference requests - only AI parsing matters"""
         # For age preferences, we rely entirely on AI parsing
         # since there's no name to resolve
-        return signals.ai_parse_confidence
+        score = signals.ai_parse_confidence
+        self._last_score_factors = {
+            "formula": "age_preference",
+            "ai_parse_confidence": round(float(score), 4),
+            "weighted_total": round(float(score), 4),
+        }
+        return score
 
     def _score_generic(self, signals: V2ConfidenceSignals) -> float:
         """Generic scoring for unknown request types"""
@@ -361,7 +390,13 @@ class ConfidenceScorer:
             0.5 if signals.match_certainty == "partial" else 1.0 if signals.match_certainty == "exact" else 0.0,
             0.8 if signals.found_in_current_year else 0.3,
         ]
-        return sum(scores) / len(scores)
+        result = sum(scores) / len(scores)
+        self._last_score_factors = {
+            "formula": "generic",
+            "scores": [round(s, 4) for s in scores],
+            "weighted_total": round(result, 4),
+        }
+        return result
 
     def _map_source_type(self, source: RequestSource) -> str:
         """Map V2 RequestSource to string for signals"""
