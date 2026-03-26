@@ -386,6 +386,10 @@ class Phase2ResolutionService:
                 )
                 # Update confidence with scored value
                 result.confidence = scored_confidence
+                # Capture factors immediately — reading scorer.last_score_factors later
+                # in a batch loop would give every request the last-scored factors
+                if result.metadata is not None:
+                    result.metadata["confidence_factors"] = self.confidence_scorer.last_score_factors
 
             # Log resolution details
             if result.is_resolved and result.person:

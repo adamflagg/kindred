@@ -280,16 +280,19 @@ class Phase3DisambiguationService:
                             )
 
                         num_candidates = len(resolution.candidates) if resolution.candidates else 0
+                        disambiguation_metadata: dict[str, Any] = {
+                            "ai_confidence": getattr(result, "confidence", confidence),
+                            "disambiguation_reason": getattr(result, "reason", "AI selected"),
+                            "original_method": resolution.method,
+                            "candidates_considered": num_candidates,
+                        }
+                        if self.confidence_scorer:
+                            disambiguation_metadata["confidence_factors"] = self.confidence_scorer.last_score_factors
                         case.disambiguated_results[ambiguous_idx] = ResolutionResult(
                             person=selected_person,
                             confidence=confidence,
                             method="ai_disambiguation",
-                            metadata={
-                                "ai_confidence": getattr(result, "confidence", confidence),
-                                "disambiguation_reason": getattr(result, "reason", "AI selected"),
-                                "original_method": resolution.method,
-                                "candidates_considered": num_candidates,
-                            },
+                            metadata=disambiguation_metadata,
                         )
                         if "status" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["status"] = {}
