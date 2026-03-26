@@ -6,6 +6,7 @@ correctly populated when building confidence signals from resolution results."""
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.confidence.confidence_scorer import (
@@ -328,3 +329,176 @@ class TestUnresolvedRequests:
         # No target person, so can't calculate proximity
         assert signals.grade_proximity == 999
         assert signals.age_proximity == 999.0
+
+
+def _make_scorer_request(
+    request_type: RequestType = RequestType.BUNK_WITH,
+    target_name: str | None = "Bob Jones",
+    confidence: float = 0.85,
+    source_field: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> ParsedRequest:
+    """Build a ParsedRequest for scorer tests with sensible defaults."""
+    if source_field is None:
+        source_field = "not_bunk_with" if request_type == RequestType.NOT_BUNK_WITH else "bunk_with"
+    return ParsedRequest(
+        raw_text=target_name or "request",
+        request_type=request_type,
+        target_name=target_name,
+        age_preference=None,
+        source_field=source_field,
+        source=RequestSource.FAMILY,
+        confidence=confidence,
+        csv_position=0,
+        metadata=metadata or {},
+    )
+
+
+class TestLastScoreFactors:
+    """Tests for confidence_factors breakdown tracking."""
+
+    def test_bunk_with_populates_factors(self):
+        """score_resolution for BUNK_WITH populates last_score_factors with breakdown."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        parsed_req = _make_scorer_request()
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        resolution_result = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(parsed_req, resolution_result, requester_cm_id=1001, year=2026)
+
+        factors = scorer.last_score_factors
+        assert factors["formula"] == "bunk_with"
+        assert "name_score" in factors
+        assert "ai_score" in factors
+        assert "context_score" in factors
+        assert "weights" in factors
+        assert "weighted_total" in factors
+        assert isinstance(factors["weighted_total"], float)
+
+    def test_not_bunk_with_populates_factors(self):
+        """score_resolution for NOT_BUNK_WITH populates last_score_factors."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        parsed_req = _make_scorer_request(RequestType.NOT_BUNK_WITH)
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        resolution_result = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(parsed_req, resolution_result, requester_cm_id=1001, year=2026)
+
+        factors = scorer.last_score_factors
+        assert factors["formula"] == "not_bunk_with"
+        assert "name_score" in factors
+        assert "ai_score" in factors
+        assert "context_score" in factors
+
+    def test_age_preference_populates_factors(self):
+        """score_parsed_request for AGE_PREFERENCE populates last_score_factors."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        parsed_req = _make_scorer_request(
+            RequestType.AGE_PREFERENCE, target_name=None, confidence=1.0, source_field="socialize_with"
+        )
+
+        scorer.score_parsed_request(parsed_req)
+
+        factors = scorer.last_score_factors
+        assert factors["formula"] == "age_preference"
+        assert factors["ai_parse_confidence"] == 1.0
+
+    def test_second_call_overwrites_factors(self):
+        """Calling score_resolution twice replaces previous factors."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        bunk_req = _make_scorer_request(RequestType.BUNK_WITH, target_name="Bob")
+        not_bunk_req = _make_scorer_request(RequestType.NOT_BUNK_WITH, target_name="Bob")
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        res = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(bunk_req, res, 1001, 2026)
+        assert scorer.last_score_factors["formula"] == "bunk_with"
+
+        scorer.score_resolution(not_bunk_req, res, 1001, 2026)
+        assert scorer.last_score_factors["formula"] == "not_bunk_with"
+
+    def test_last_score_factors_returns_copy(self):
+        """last_score_factors returns a copy, not a reference to internal state."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        parsed_req = _make_scorer_request(target_name="Bob")
+        target = Person(cm_id=2001, first_name="Bob", last_name="Jones")
+        res = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        scorer.score_resolution(parsed_req, res, 1001, 2026)
+        factors1 = scorer.last_score_factors
+        factors2 = scorer.last_score_factors
+        assert factors1 is not factors2
+
+
+class TestConfidenceFactorsOnMetadata:
+    """Tests that confidence_factors are captured on result metadata immediately after scoring.
+
+    This prevents the staleness bug where reading scorer.last_score_factors later
+    in a batch loop gives every request the same (wrong) factors from the last scored request.
+    """
+
+    def test_phase2_style_capture_preserves_per_request_factors(self):
+        """Scoring two requests and capturing factors immediately gives each its own breakdown."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        req_bunk = _make_scorer_request(RequestType.BUNK_WITH, target_name="Alice Smith")
+        req_not_bunk = _make_scorer_request(RequestType.NOT_BUNK_WITH, target_name="Bob Jones", confidence=0.90)
+
+        target_a = Person(cm_id=2001, first_name="Alice", last_name="Smith")
+        result_a = ResolutionResult(person=target_a, confidence=0.95, method="exact_match")
+
+        target_b = Person(cm_id=2002, first_name="Bob", last_name="Jones")
+        result_b = ResolutionResult(person=target_b, confidence=0.90, method="fuzzy_match")
+
+        # Score first request and capture immediately (simulating the fix)
+        scorer.score_resolution(req_bunk, result_a, requester_cm_id=1001, year=2026)
+        assert result_a.metadata is not None
+        result_a.metadata["confidence_factors"] = scorer.last_score_factors
+
+        # Score second request and capture immediately
+        scorer.score_resolution(req_not_bunk, result_b, requester_cm_id=1001, year=2026)
+        assert result_b.metadata is not None
+        result_b.metadata["confidence_factors"] = scorer.last_score_factors
+
+        # Each result has its OWN factors, not the last-scored request's
+        assert result_a.metadata["confidence_factors"]["formula"] == "bunk_with"
+        assert result_b.metadata["confidence_factors"]["formula"] == "not_bunk_with"
+
+        # Without immediate capture, both would have "not_bunk_with" (the last scored)
+        assert scorer.last_score_factors["formula"] == "not_bunk_with"
+
+    def test_stale_read_gives_wrong_factors(self):
+        """Demonstrates the bug: reading last_score_factors after all scoring gives wrong results."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        req_bunk = _make_scorer_request(RequestType.BUNK_WITH, target_name="Alice Smith")
+        req_not_bunk = _make_scorer_request(RequestType.NOT_BUNK_WITH, target_name="Bob Jones", confidence=0.90)
+
+        target_a = Person(cm_id=2001, first_name="Alice", last_name="Smith")
+        result_a = ResolutionResult(person=target_a, confidence=0.95, method="exact_match")
+
+        target_b = Person(cm_id=2002, first_name="Bob", last_name="Jones")
+        result_b = ResolutionResult(person=target_b, confidence=0.90, method="fuzzy_match")
+
+        # Score both FIRST (like Phase 2 does), then read factors LATER (like the bug)
+        scorer.score_resolution(req_bunk, result_a, requester_cm_id=1001, year=2026)
+        scorer.score_resolution(req_not_bunk, result_b, requester_cm_id=1001, year=2026)
+
+        # Reading now gives the LAST scored request's factors for both — this is the bug
+        stale_factors = scorer.last_score_factors
+        assert stale_factors["formula"] == "not_bunk_with"  # Always the last one
+        assert stale_factors["formula"] != "bunk_with"  # First request's factors are lost
+
+    def test_ai_boost_updates_weighted_total(self):
+        """When ai_boost is applied, weighted_total reflects the boosted score."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=None)
+        parsed_req = _make_scorer_request(
+            RequestType.BUNK_WITH, target_name="Alice Smith", metadata={"ai_provided_person_id": True}
+        )
+        target = Person(cm_id=2001, first_name="Alice", last_name="Smith")
+        result = ResolutionResult(person=target, confidence=0.95, method="exact_match")
+
+        returned_score = scorer.score_resolution(parsed_req, result, requester_cm_id=1001, year=2026)
+        factors = scorer.last_score_factors
+
+        # weighted_total must match the actual returned score (including ai_boost)
+        assert factors["weighted_total"] == round(returned_score, 4)
+        assert "ai_boost" in factors

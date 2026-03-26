@@ -761,7 +761,11 @@ class RequestOrchestrator:
 
         # Create native V2 conflict detector
         conflict_config = self.ai_config.get("conflict_detection", {})
-        self.conflict_detector = ConflictDetector(conflict_config)
+        self.conflict_detector = ConflictDetector(
+            config=conflict_config,
+            attendee_repo=self._attendee_repo,
+            year=self.year,
+        )
 
         # Create priority calculator with config from ai_config.json
         priority_config = self.ai_config.get("priority", {})
@@ -1976,7 +1980,9 @@ class RequestOrchestrator:
                     resolution_info["person_cm_id"] = resolution_result.person.cm_id
                     resolution_info["person_name"] = resolution_result.person.full_name
                     resolution_info["resolution_method"] = resolution_result.method
-                    resolution_info["confidence_factors"] = getattr(resolution_result, "confidence_factors", [])
+                    resolution_info["confidence_factors"] = (
+                        resolution_result.metadata.get("confidence_factors", {}) if resolution_result.metadata else {}
+                    )
                     # Pass along resolution metadata (includes Phase 3 reasoning if applicable)
                     if resolution_result.metadata:
                         resolution_info["resolution_metadata"] = resolution_result.metadata

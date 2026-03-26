@@ -81,9 +81,19 @@ class ConfidenceScorer:
         self.attendee_repo = attendee_repo
         self.social_graph_signals = social_graph_signals
         self.person_repo = person_repo
+        self._last_score_factors: dict[str, Any] = {}
 
         # Extract scoring config
         self.scoring_config = self.config.get("confidence_scoring", {})
+
+    @property
+    def last_score_factors(self) -> dict[str, Any]:
+        """Get the score breakdown from the most recent scoring call."""
+        return self._last_score_factors.copy()
+
+    def _record_factors(self, formula: str, *, weighted_total: float, **kwargs: Any) -> None:
+        """Record the score breakdown for the most recent scoring call."""
+        self._last_score_factors = {"formula": formula, **kwargs, "weighted_total": round(weighted_total, 4)}
 
     def score_parsed_request(
         self, parsed_request: ParsedRequest, resolution_result: ResolutionResult | None = None
@@ -130,6 +140,8 @@ class ConfidenceScorer:
             # Get ai_boost from config, default to 0.15
             ai_boost = self.scoring_config.get("ai_boost", 0.15)
             score = min(1.0, score + ai_boost)
+            self._last_score_factors["ai_boost"] = ai_boost
+            self._last_score_factors["weighted_total"] = round(score, 4)
             logger.debug(f"Applied AI confidence boost: +{ai_boost} -> {score:.2f}")
 
         return score
@@ -317,6 +329,15 @@ class ConfidenceScorer:
         )
 
         final_score: float = min(1.0, max(0.0, score))
+        self._record_factors(
+            "bunk_with",
+            weighted_total=final_score,
+            name_score=round(name_score, 4),
+            ai_score=round(float(ai_score), 4),
+            context_score=round(context_score, 4),
+            reciprocal_score=round(reciprocal_score, 4),
+            weights=weights,
+        )
         return final_score
 
     def _score_not_bunk_with(self, signals: V2ConfidenceSignals) -> float:
@@ -345,13 +366,23 @@ class ConfidenceScorer:
         )
 
         final_not_bunk: float = min(1.0, max(0.0, score))
+        self._record_factors(
+            "not_bunk_with",
+            weighted_total=final_not_bunk,
+            name_score=round(name_score, 4),
+            ai_score=round(float(ai_score), 4),
+            context_score=round(context_score, 4),
+            weights=weights,
+        )
         return final_not_bunk
 
     def _score_age_preference(self, signals: V2ConfidenceSignals) -> float:
         """Score age preference requests - only AI parsing matters"""
         # For age preferences, we rely entirely on AI parsing
         # since there's no name to resolve
-        return signals.ai_parse_confidence
+        score = signals.ai_parse_confidence
+        self._record_factors("age_preference", weighted_total=float(score), ai_parse_confidence=round(float(score), 4))
+        return score
 
     def _score_generic(self, signals: V2ConfidenceSignals) -> float:
         """Generic scoring for unknown request types"""
@@ -361,7 +392,9 @@ class ConfidenceScorer:
             0.5 if signals.match_certainty == "partial" else 1.0 if signals.match_certainty == "exact" else 0.0,
             0.8 if signals.found_in_current_year else 0.3,
         ]
-        return sum(scores) / len(scores)
+        result = sum(scores) / len(scores)
+        self._record_factors("generic", weighted_total=result, scores=[round(s, 4) for s in scores])
+        return result
 
     def _map_source_type(self, source: RequestSource) -> str:
         """Map V2 RequestSource to string for signals"""
