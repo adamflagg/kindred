@@ -1980,7 +1980,7 @@ class RequestOrchestrator:
                     resolution_info["person_cm_id"] = resolution_result.person.cm_id
                     resolution_info["person_name"] = resolution_result.person.full_name
                     resolution_info["resolution_method"] = resolution_result.method
-                    resolution_info["confidence_factors"] = getattr(resolution_result, "confidence_factors", [])
+                    resolution_info["confidence_factors"] = self.confidence_scorer.last_score_factors
                     # Pass along resolution metadata (includes Phase 3 reasoning if applicable)
                     if resolution_result.metadata:
                         resolution_info["resolution_metadata"] = resolution_result.metadata
