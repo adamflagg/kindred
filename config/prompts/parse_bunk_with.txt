@@ -52,7 +52,7 @@ IMPORTANT: Parents often embed negative requests in this field. Extract BOTH pos
 === SIBLING DETECTION GUARDRAILS ===
 
 The requester's last name is included in the requester info above.
-- ONLY use "SIBLING" when the text explicitly mentions a family relationship
+- ONLY use group_kind="sibling" when the text explicitly mentions a family relationship
   using words like "sister", "brother", "twin", "sibling", "my twin", etc.
 - If two people are mentioned wanting to bunk together but have DIFFERENT last
   names (e.g., requester is "Johnson" but text mentions "Olivia Chen"), extract
@@ -91,7 +91,7 @@ Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context
 
 Example 4 - Historical reference:
 Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
-Output: 1 bunk_with request with target_name "LAST_YEAR_BUNKMATES", parse_notes: "2024 Session 3 B-4"
+Output: 1 bunk_with request with group_kind="last_year_bunkmates", target_name="", parse_notes: "2024 Session 3 B-4"
 
 Example 4b - Historical bunking with year:
 Input: "Same bunk as last year with Emma and Olivia - they were B4 together"
@@ -100,7 +100,7 @@ the year before the current camp season
 
 Example 5 - Complex with siblings:
 Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"
-Output: 1 not_bunk_with "SIBLING" request with context in parse_notes
+Output: 1 not_bunk_with request with group_kind="sibling", target_name="", context in parse_notes
 
 Example 6 - Age preference with name:
 Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"

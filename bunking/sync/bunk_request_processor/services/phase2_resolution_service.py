@@ -689,8 +689,12 @@ class Phase2ResolutionService:
                         self._stats["low_confidence_resolved"] += 1
                 elif resolution_result.is_ambiguous:
                     self._stats["ambiguous"] += 1
-                elif resolution_result.method == "age_preference":
-                    # Already counted
+                elif resolution_result.method in (
+                    "age_preference",
+                    "age_preference_undirected",
+                    "group_reference",
+                ):
+                    # Intentional non-resolution: age prefs and group refs are handled downstream
                     pass
                 else:
                     self._stats["failed"] += 1

@@ -32,11 +32,8 @@ logger = get_logger(__name__)
 class PlaceholderExpander:
     """Service for expanding group reference requests into individual requests.
 
-    Supports two detection paths:
-    1. Modern: parsed_request.group_kind is set by AI (preferred)
-    2. Legacy: resolution metadata contains placeholder string (backward compat)
-
-    Both paths dispatch to the same resolver registry for expansion.
+    Detects group references via parsed_request.group_kind (set by AI) and
+    dispatches to the resolver registry for expansion.
     """
 
     def __init__(
@@ -82,6 +79,24 @@ class PlaceholderExpander:
             if not group_refs:
                 expanded_results.append((parse_result, resolution_list))
                 continue
+
+            # Separate group and non-group intents
+            group_indices = {idx for idx, _ in group_refs}
+
+            # Preserve non-group intents as-is
+            non_group_requests = [req for i, req in enumerate(parse_result.parsed_requests) if i not in group_indices]
+            non_group_resolutions = [
+                res for i, res in enumerate(resolution_list) if i not in group_indices and i < len(resolution_list)
+            ]
+            if non_group_requests:
+                preserved_pr = ParseResult(
+                    parsed_requests=non_group_requests,
+                    needs_historical_context=parse_result.needs_historical_context,
+                    is_valid=parse_result.is_valid,
+                    parse_request=parse_result.parse_request,
+                    metadata=parse_result.metadata,
+                )
+                expanded_results.append((preserved_pr, non_group_resolutions))
 
             # Expand each group reference
             for idx, group_kind in group_refs:

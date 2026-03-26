@@ -214,6 +214,15 @@ class _SchoolCongregationBaseResolver:
     def base_confidence(self) -> float:
         return 0.85
 
+    def _get_gender(self, person: Person) -> str | None:
+        """Get gender as a string, handling both Camper.gender (enum) and metadata['gender'] (str)."""
+        # Camper objects have gender as a Gender enum attribute
+        gender_attr = getattr(person, "gender", None)
+        if gender_attr is not None:
+            return gender_attr.value if hasattr(gender_attr, "value") else str(gender_attr)
+        # Person objects from DB store gender in metadata
+        return person.metadata.get("gender") if person.metadata else None
+
     def _get_field_value(self, person: Person) -> str | None:
         """Get the field value to match on (school or congregation).
 
@@ -262,7 +271,7 @@ class _SchoolCongregationBaseResolver:
             return []
 
         requester_grade = requester.grade
-        requester_gender = getattr(requester, "gender", None)
+        requester_gender = self._get_gender(requester)
 
         # Get all session attendees
         attendees = self._attendee_repo.get_session_attendees(session_cm_id, self._year)
@@ -297,11 +306,10 @@ class _SchoolCongregationBaseResolver:
                 continue
 
             # Check gender
-            peer_gender = getattr(person, "gender", None)
-            if requester_gender is None or peer_gender is None:
-                continue
-            if peer_gender != requester_gender:
-                continue
+            peer_gender = self._get_gender(person)
+            if requester_gender is not None and peer_gender is not None:
+                if peer_gender != requester_gender:
+                    continue
 
             member = ResolvedGroupMember(
                 person=person,

@@ -76,7 +76,7 @@ Output: 1 not_bunk_with "Ava Collins", parse_notes: "continuing from 2024"
 
 Example 5 - Must bunk with sibling:
 Input: "Must bunk with twin sister, plus ideally also a friend request"
-Output: 1 bunk_with "SIBLING", keywords_found: ["must"]
+Output: 1 bunk_with with group_kind="sibling", target_name="", keywords_found: ["must"]
 
 Example 6 - Mixed requests in narrative:
 Input: "Tough relationship with Chloe Davis and wants to not be with her. Mom shared that it'll be fine if she can be with Mia as well."

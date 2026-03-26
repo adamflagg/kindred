@@ -1287,28 +1287,26 @@ class RequestOrchestrator:
             trace_key = _get_trace_key(pr)
             if not trace_key:
                 continue
-            # Detect if expansion happened by checking for placeholder-expanded requests
-            expanded_reqs = [
-                req
-                for req in pr.parsed_requests
-                if (getattr(req, "metadata", None) or {}).get("expanded_from_placeholder")
-            ]
-            has_expansion = len(expanded_reqs) > 0
-            expansion_type = (
-                (expanded_reqs[0].metadata or {}).get("expanded_from_placeholder") if expanded_reqs else None
+            # Detect if expansion happened — check ParseResult.metadata (set by PlaceholderExpander)
+            pr_meta = pr.metadata or {}
+            has_expansion = bool(pr_meta.get("expanded_from_placeholder"))
+            expansion_type = pr_meta.get("original_placeholder")
+            expanded_targets = (
+                [
+                    {
+                        "target_name": req.target_name or "",
+                        "request_type": req.request_type.value if req.request_type else "",
+                    }
+                    for req in pr.parsed_requests
+                ]
+                if has_expansion
+                else []
             )
-            expanded_targets = [
-                {
-                    "target_name": req.target_name or "",
-                    "request_type": req.request_type.value if req.request_type else "",
-                }
-                for req in expanded_reqs
-            ]
             self.trace_collector.record_expansion(
                 key=trace_key,
                 triggered=has_expansion,
                 expansion_type=str(expansion_type) if expansion_type else None,
-                expanded_count=len(expanded_reqs),
+                expanded_count=len(expanded_targets),
                 expanded_targets=expanded_targets,
             )
 
@@ -1557,11 +1555,21 @@ class RequestOrchestrator:
                         declined_reason=br_meta.get("declined_reason"),
                     )
                 )
+            # Filter conflicts relevant to this requester's targets
+            target_cm_ids = {rr.person.cm_id for _, rr in zip(pr.parsed_requests, res_list, strict=False) if rr.person}
+            relevant_conflicts = [
+                c
+                for c in conflict_result.conflicts
+                if c.person_a_cm_id == requester_cm_id
+                or c.person_b_cm_id == requester_cm_id
+                or c.person_a_cm_id in target_cm_ids
+                or c.person_b_cm_id in target_cm_ids
+            ]
             self.trace_collector.record_post_pipeline(
                 key=trace_key,
                 post_trace=PostPipelineTrace(
                     conflict_detection={
-                        "has_conflict": conflict_result.has_conflicts,
+                        "has_conflict": len(relevant_conflicts) > 0,
                         "details": [
                             {
                                 "conflict_type": c.conflict_type.value,
@@ -1571,7 +1579,7 @@ class RequestOrchestrator:
                                 "severity": c.severity,
                                 "auto_resolvable": c.auto_resolvable,
                             }
-                            for c in conflict_result.conflicts
+                            for c in relevant_conflicts
                         ],
                     },
                     self_reference={"detected": any_self_ref},

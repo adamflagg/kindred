@@ -428,8 +428,8 @@ class PersonRepository(Repository):
 
             return [p for p in (self._map_to_person(item) for item in results) if p is not None]
 
-        except Exception as e:
-            logger.error("Error finding persons by school '%s' year %s: %s", school, year, e)
+        except Exception:
+            logger.exception("Error finding persons by school '%s' year %s", school, year)
             return []
 
     def find_by_congregation(self, congregation: str, year: int) -> list[Person]:
@@ -454,8 +454,8 @@ class PersonRepository(Repository):
 
             return [p for p in (self._map_to_person(item) for item in results) if p is not None]
 
-        except Exception as e:
-            logger.error("Error finding persons by congregation '%s' year %s: %s", congregation, year, e)
+        except Exception:
+            logger.exception("Error finding persons by congregation '%s' year %s", congregation, year)
             return []
 
     def get_all_for_phonetic_matching(self, year: int | None = None) -> list[Person]:
@@ -558,6 +558,12 @@ class PersonRepository(Repository):
                 except (ValueError, TypeError):
                     pass
 
+            # Build metadata with gender for resolver filtering
+            metadata: dict[str, Any] = {}
+            gender_val = getattr(db_record, "gender", None)
+            if gender_val:
+                metadata["gender"] = gender_val
+
             return Person(
                 cm_id=db_record.cm_id,
                 first_name=db_record.first_name,
@@ -572,6 +578,7 @@ class PersonRepository(Repository):
                 age=cm_age,  # CampMinder's authoritative age field
                 parent_names=parent_names,  # JSON of parent/guardian info
                 household_id=household_id,  # For sibling lookups
+                metadata=metadata,
             )
         except Exception as e:
             logger.error("Error mapping person record: %s", e)
