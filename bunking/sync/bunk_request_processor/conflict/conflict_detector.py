@@ -1,8 +1,8 @@
-"""V2 Conflict Detector - Simplified implementation for session mismatch detection
+"""V2 Conflict Detector - Session-aware conflict detection
 
-Only detects session mismatches - all other constraint checking is delegated
-to the solver where it belongs. This keeps request processing focused on
-parsing and resolution, not constraint satisfaction."""
+Detects cross-session conflicts: BUNK_WITH across sessions (→ DECLINED) and
+NOT_BUNK_WITH across sessions (→ auto-RESOLVED). All other constraint checking
+is delegated to the solver where it belongs."""
 
 from __future__ import annotations
 
@@ -58,9 +58,12 @@ class V2ConflictResult:
 class ConflictDetector:
     """Native V2 implementation of conflict detection.
 
-    Simplified to only detect session mismatches. All other constraint
-    checking (reciprocal requests, circular dependencies, capacity, etc.)
-    is delegated to the solver where it belongs.
+    Detects two cross-session conflict types:
+    - SESSION_MISMATCH: BUNK_WITH across sessions → auto-DECLINED
+    - CROSS_SESSION_SATISFIED: NOT_BUNK_WITH across sessions → auto-RESOLVED
+
+    All other constraint checking (reciprocal requests, circular dependencies,
+    capacity, etc.) is delegated to the solver where it belongs.
     """
 
     def __init__(
@@ -281,13 +284,16 @@ class ConflictDetector:
         if not conflict_result.has_conflicts:
             return "No conflicts detected"
 
-        summary_lines = [
-            f"Detected {len(conflict_result.conflicts)} session mismatch conflicts:",
-            "All require manual review",
-            "",
-        ]
+        mismatches = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.SESSION_MISMATCH]
+        satisfied = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.CROSS_SESSION_SATISFIED]
 
-        # Show all session conflicts (they're important)
+        summary_lines = [f"Detected {len(conflict_result.conflicts)} cross-session conflicts:"]
+        if mismatches:
+            summary_lines.append(f"  {len(mismatches)} session mismatch(es) → DECLINED")
+        if satisfied:
+            summary_lines.append(f"  {len(satisfied)} auto-satisfied NOT_BUNK_WITH → RESOLVED")
+        summary_lines.append("")
+
         for conflict in conflict_result.conflicts:
             summary_lines.append(f"- {conflict.description}")
             if conflict.resolution_suggestion:
