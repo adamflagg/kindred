@@ -16,6 +16,13 @@ import re
 from re import Pattern
 
 # =============================================================================
+# Status Constants
+# =============================================================================
+
+# CampMinder attendee status IDs — used in session enrollment filtering
+ENROLLED_STATUS_ID = 2  # Active enrolled attendee
+
+# =============================================================================
 # Placeholder Constants
 # =============================================================================
 

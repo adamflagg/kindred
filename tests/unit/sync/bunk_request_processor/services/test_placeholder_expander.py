@@ -148,13 +148,9 @@ def mock_person_repo() -> Mock:
 
 
 @pytest.fixture
-def expander(mock_attendee_repo: Mock, mock_person_repo: Mock) -> PlaceholderExpander:
-    """Create a PlaceholderExpander with mock dependencies"""
-    return PlaceholderExpander(
-        attendee_repo=mock_attendee_repo,
-        person_repo=mock_person_repo,
-        year=2025,
-    )
+def expander() -> PlaceholderExpander:
+    """Create a PlaceholderExpander"""
+    return PlaceholderExpander(year=2025)
 
 
 @pytest.fixture
@@ -175,24 +171,16 @@ def resolver_registry(mock_attendee_repo: Mock, mock_person_repo: Mock) -> dict[
 class TestPlaceholderExpanderInit:
     """Tests for PlaceholderExpander initialization"""
 
-    def test_init_with_required_dependencies(self, mock_attendee_repo: Mock, mock_person_repo: Mock) -> None:
-        """Should initialize with attendee and person repositories"""
-        expander = PlaceholderExpander(
-            attendee_repo=mock_attendee_repo,
-            person_repo=mock_person_repo,
-            year=2025,
-        )
+    def test_init_with_year(self) -> None:
+        """Should initialize with year"""
+        expander = PlaceholderExpander(year=2025)
         assert expander is not None
         assert expander.year == 2025
 
-    def test_init_validates_year(self, mock_attendee_repo: Mock, mock_person_repo: Mock) -> None:
+    def test_init_validates_year(self) -> None:
         """Should raise ValueError for invalid year"""
         with pytest.raises(ValueError, match="year must be positive"):
-            PlaceholderExpander(
-                attendee_repo=mock_attendee_repo,
-                person_repo=mock_person_repo,
-                year=0,
-            )
+            PlaceholderExpander(year=0)
 
 
 # ============================================================================
@@ -266,10 +254,9 @@ class TestPlaceholderExpansion:
             "prior_bunk": "B-3",
             "prior_year": 2024,
         }
-        mock_person_repo.find_by_cm_id.side_effect = [
-            _create_person(cm_id=22222, first_name="Alex", last_name="Jones"),
-            _create_person(cm_id=33333, first_name="Jordan", last_name="Lee"),
-        ]
+        alex = _create_person(cm_id=22222, first_name="Alex", last_name="Jones")
+        jordan = _create_person(cm_id=33333, first_name="Jordan", last_name="Lee")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: alex, 33333: jordan}
 
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
@@ -310,7 +297,8 @@ class TestPlaceholderExpansion:
             "prior_bunk": "G-5",
             "prior_year": 2024,
         }
-        mock_person_repo.find_by_cm_id.return_value = _create_person(cm_id=22222)
+        person = _create_person(cm_id=22222)
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: person}
 
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
@@ -394,11 +382,9 @@ class TestExpansionFailures:
             "prior_bunk": "B-3",
             "prior_year": 2024,
         }
-        # Only first bunkmate found
-        mock_person_repo.find_by_cm_id.side_effect = [
-            _create_person(cm_id=22222, first_name="Alex", last_name="Jones"),
-            None,  # Second bunkmate not found
-        ]
+        # Only first bunkmate found in bulk lookup
+        alex = _create_person(cm_id=22222, first_name="Alex", last_name="Jones")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: alex}  # 33333 missing
 
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
@@ -434,7 +420,8 @@ class TestMixedResults:
             "prior_bunk": "B-3",
             "prior_year": 2024,
         }
-        mock_person_repo.find_by_cm_id.return_value = _create_person(cm_id=22222)
+        person = _create_person(cm_id=22222)
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: person}
 
         # Regular result (no placeholder)
         regular_person = _create_person(cm_id=44444, first_name="Sam", last_name="Wilson")

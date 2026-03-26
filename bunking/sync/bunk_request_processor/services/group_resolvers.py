@@ -168,9 +168,11 @@ class BunkmateResolver:
         prior_bunk = bunkmate_data.get("prior_bunk")
         prior_year = bunkmate_data.get("prior_year")
 
+        persons_dict = self._person_repo.bulk_find_by_cm_ids(bunkmate_data["cm_ids"])
+
         result = []
         for cm_id in bunkmate_data["cm_ids"]:
-            person = self._person_repo.find_by_cm_id(cm_id)
+            person = persons_dict.get(cm_id)
             if person is None:
                 logger.warning("Could not resolve bunkmate cm_id %s to a Person", cm_id)
                 continue

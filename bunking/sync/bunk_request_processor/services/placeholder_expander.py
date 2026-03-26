@@ -22,8 +22,6 @@ from ..core.models import (
 from ..resolution.interfaces import ResolutionResult
 
 if TYPE_CHECKING:
-    from ..data.repositories.attendee_repository import AttendeeRepository
-    from ..data.repositories.person_repository import PersonRepository
     from .group_resolvers import GroupResolver, ResolvedGroupMember
 
 logger = get_logger(__name__)
@@ -38,28 +36,23 @@ class PlaceholderExpander:
 
     def __init__(
         self,
-        attendee_repo: AttendeeRepository,
-        person_repo: PersonRepository,
         year: int,
     ) -> None:
         if year <= 0:
             raise ValueError("year must be positive")
 
-        self._attendee_repo = attendee_repo
-        self._person_repo = person_repo
         self.year = year
 
     async def expand(
         self,
         resolution_results: list[tuple[ParseResult, list[ResolutionResult]]],
-        resolver_registry: dict[GroupKind, GroupResolver] | None = None,
+        resolver_registry: dict[GroupKind, GroupResolver],
     ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
         """Expand group reference requests into individual requests.
 
         Args:
             resolution_results: List of (ParseResult, List[ResolutionResult]) from Phase 2
-            resolver_registry: Optional registry mapping GroupKind to resolvers.
-                When None, falls back to legacy placeholder detection only.
+            resolver_registry: Registry mapping GroupKind to resolvers.
 
         Returns:
             Updated list with group references expanded to individual requests
@@ -74,7 +67,6 @@ class PlaceholderExpander:
                 expanded_results.append((parse_result, resolution_list))
                 continue
 
-            # Find group references (modern group_kind or legacy placeholders)
             group_refs = self._find_group_references(parse_result, resolution_list)
             if not group_refs:
                 expanded_results.append((parse_result, resolution_list))

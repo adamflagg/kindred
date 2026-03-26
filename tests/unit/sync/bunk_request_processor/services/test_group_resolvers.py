@@ -190,7 +190,7 @@ class TestBunkmateResolver:
 
         bunkmate1 = _make_person(3001, "Ava", "Williams")
         bunkmate2 = _make_person(3002, "Sophia", "Martinez")
-        person_repo.find_by_cm_id.side_effect = lambda cm_id: {3001: bunkmate1, 3002: bunkmate2}.get(cm_id)
+        person_repo.bulk_find_by_cm_ids.return_value = {3001: bunkmate1, 3002: bunkmate2}
 
         resolver = BunkmateResolver(attendee_repo, person_repo, year=2025)
         parsed = _make_parsed_request(group_kind=GroupKind.LAST_YEAR_BUNKMATES)
@@ -227,9 +227,9 @@ class TestBunkmateResolver:
         }
 
         bunkmate1 = _make_person(3001, "Ava", "Williams")
-        # 3002 returns None (unresolvable)
+        # 3002 missing from bulk lookup (unresolvable)
         bunkmate3 = _make_person(3003, "Isabella", "Brown")
-        person_repo.find_by_cm_id.side_effect = lambda cm_id: {3001: bunkmate1, 3003: bunkmate3}.get(cm_id)
+        person_repo.bulk_find_by_cm_ids.return_value = {3001: bunkmate1, 3003: bunkmate3}
 
         resolver = BunkmateResolver(attendee_repo, person_repo, year=2025)
         parsed = _make_parsed_request(group_kind=GroupKind.LAST_YEAR_BUNKMATES)
@@ -253,7 +253,7 @@ class TestBunkmateResolver:
         }
 
         bunkmate = _make_person(3001, "Ava", "Williams")
-        person_repo.find_by_cm_id.return_value = bunkmate
+        person_repo.bulk_find_by_cm_ids.return_value = {3001: bunkmate}
 
         resolver = BunkmateResolver(attendee_repo, person_repo, year=2025)
         parsed = _make_parsed_request(group_kind=GroupKind.LAST_YEAR_BUNKMATES)
@@ -278,7 +278,7 @@ class TestBunkmateResolver:
         }
 
         bunkmate = _make_person(3001, "Ava", "Williams")
-        person_repo.find_by_cm_id.return_value = bunkmate
+        person_repo.bulk_find_by_cm_ids.return_value = {3001: bunkmate}
 
         resolver = BunkmateResolver(attendee_repo, person_repo, year=2025)
         parsed = _make_parsed_request(group_kind=GroupKind.LAST_YEAR_BUNKMATES)
@@ -300,7 +300,7 @@ class TestBunkmateResolver:
         }
 
         bunkmate = _make_person(3001, "Ava", "Williams")
-        person_repo.find_by_cm_id.return_value = bunkmate
+        person_repo.bulk_find_by_cm_ids.return_value = {3001: bunkmate}
 
         resolver = BunkmateResolver(attendee_repo, person_repo, year=2025)
         parsed = _make_parsed_request(group_kind=GroupKind.LAST_YEAR_BUNKMATES)

@@ -918,11 +918,7 @@ class RequestOrchestrator:
         - PlaceholderExpander: Expands group references via resolver registry
         - HistoricalVerificationService: Verifies historical bunking groups
         """
-        self.placeholder_expander = PlaceholderExpander(
-            attendee_repo=self._attendee_repo,
-            person_repo=self._person_repo,
-            year=self.year,
-        )
+        self.placeholder_expander = PlaceholderExpander(year=self.year)
         self.resolver_registry = build_resolver_registry(
             attendee_repo=self._attendee_repo,
             person_repo=self._person_repo,

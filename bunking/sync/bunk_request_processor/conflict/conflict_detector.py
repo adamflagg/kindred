@@ -320,14 +320,8 @@ class ConflictDetector:
                     if conflict.conflict_type == ConflictType.CROSS_SESSION_SATISFIED:
                         resolution_info["auto_satisfied"] = True
                         resolution_info["satisfaction_reason"] = conflict.resolution_suggestion
-                    elif conflict.conflict_type == ConflictType.TARGET_NOT_ENROLLED:
-                        resolution_info["has_conflict"] = True
-                        resolution_info["conflict_type"] = conflict.conflict_type.value
-                        resolution_info["conflict_description"] = conflict.description
-                        resolution_info["conflict_severity"] = conflict.severity
-                        resolution_info["auto_resolvable"] = False
-                        resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
                     else:
+                        # SESSION_MISMATCH, TARGET_NOT_ENROLLED, and any future types
                         resolution_info["has_conflict"] = True
                         resolution_info["conflict_type"] = conflict.conflict_type.value
                         resolution_info["conflict_description"] = conflict.description
@@ -349,10 +343,13 @@ class ConflictDetector:
 
         mismatches = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.SESSION_MISMATCH]
         satisfied = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.CROSS_SESSION_SATISFIED]
+        not_enrolled = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ENROLLED]
 
-        summary_lines = [f"Detected {len(conflict_result.conflicts)} cross-session conflicts:"]
+        summary_lines = [f"Detected {len(conflict_result.conflicts)} conflict(s):"]
         if mismatches:
             summary_lines.append(f"  {len(mismatches)} session mismatch(es) → DECLINED")
+        if not_enrolled:
+            summary_lines.append(f"  {len(not_enrolled)} target not enrolled → DECLINED")
         if satisfied:
             summary_lines.append(f"  {len(satisfied)} auto-satisfied NOT_BUNK_WITH → RESOLVED")
         summary_lines.append("")

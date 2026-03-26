@@ -68,10 +68,6 @@ class TestExpandLastYearBunkmatesPlaceholders:
         orch._attendee_repo = mock_attendee_repo
         orch._person_repo = mock_person_repo
 
-        # Also update the PlaceholderExpander service to use the mocked repos
-        orch.placeholder_expander._attendee_repo = mock_attendee_repo
-        orch.placeholder_expander._person_repo = mock_person_repo
-
         # Build resolver registry with mocked repos
         orch.resolver_registry = build_resolver_registry(
             attendee_repo=mock_attendee_repo,
@@ -190,11 +186,10 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 2,
         }
 
-        # Mock person lookups for the bunkmates
-        mock_person_repo.find_by_cm_id.side_effect = [
-            Person(cm_id=22222, first_name="John", last_name="Smith"),
-            Person(cm_id=33333, first_name="Jane", last_name="Doe"),
-        ]
+        # Mock bulk person lookup for the bunkmates
+        john = Person(cm_id=22222, first_name="John", last_name="Smith")
+        jane = Person(cm_id=33333, first_name="Jane", last_name="Doe")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: john, 33333: jane}
 
         # Create resolution results with the placeholder
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
@@ -327,7 +322,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 1,
         }
 
-        mock_person_repo.find_by_cm_id.return_value = Person(cm_id=22222, first_name="John", last_name="Smith")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {
+            22222: Person(cm_id=22222, first_name="John", last_name="Smith"),
+        }
 
         # Create resolution results: one placeholder + one regular
         placeholder_pr, placeholder_res = self._create_parse_result_with_placeholder(11111, session_cm_id)
@@ -375,7 +372,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 1,
         }
 
-        mock_person_repo.find_by_cm_id.return_value = Person(cm_id=22222, first_name="Emma", last_name="Wilson")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {
+            22222: Person(cm_id=22222, first_name="Emma", last_name="Wilson"),
+        }
 
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
         resolution_results = [(parse_result, resolution_list)]
@@ -413,7 +412,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 1,
         }
 
-        mock_person_repo.find_by_cm_id.return_value = Person(cm_id=22222, first_name="John", last_name="Smith")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {
+            22222: Person(cm_id=22222, first_name="John", last_name="Smith"),
+        }
 
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
         # Modify source_field to verify it's preserved

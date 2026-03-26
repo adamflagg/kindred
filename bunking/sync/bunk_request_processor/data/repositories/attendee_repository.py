@@ -14,6 +14,7 @@ from pocketbase import PocketBase
 
 from ...core.models import Person
 from ...shared import parse_date
+from ...shared.constants import ENROLLED_STATUS_ID
 from ..pocketbase_wrapper import PocketBaseWrapper
 from .person_repository import PersonRepository
 
@@ -269,7 +270,7 @@ class AttendeeRepository:
 
                 # Don't overwrite an enrolled session with a non-enrolled one
                 existing_status = sessions_status.get(person_cm_id)
-                if existing_status == 2 and status_id != 2:
+                if existing_status == ENROLLED_STATUS_ID and status_id != ENROLLED_STATUS_ID:
                     continue
 
                 sessions_dict[person_cm_id] = session_cm_id
