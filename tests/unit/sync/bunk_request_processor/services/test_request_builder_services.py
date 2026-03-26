@@ -8,6 +8,7 @@ Tests the RequestBuilder class in services/ which handles:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -213,7 +214,7 @@ class TestAutoSatisfiedStatus:
             "confidence": 0.7,
             "conflict_metadata": {"requester_session": 1371793, "target_session": 1309513},
         }
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         status = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
@@ -245,7 +246,7 @@ class TestAutoSatisfiedStatus:
             "conflict_description": "Session mismatch",
             "confidence": 0.9,
         }
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         status = builder.determine_request_status(parsed_req, resolution_info, metadata)
 

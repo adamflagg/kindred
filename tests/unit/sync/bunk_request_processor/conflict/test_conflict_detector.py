@@ -185,7 +185,7 @@ class TestConflictDetector:
         assert not result.has_conflicts
 
 
-def make_mock_attendee_repo(session_map: dict[int, int] | None = None):
+def make_mock_attendee_repo(session_map: dict[int, int] | None = None) -> Mock:
     """Create a mock AttendeeRepository that returns sessions from a map.
 
     Args:
