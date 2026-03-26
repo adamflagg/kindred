@@ -175,10 +175,11 @@ class PlaceholderExpander:
                 confidence=member.confidence,
                 csv_position=parsed_req.csv_position,
                 metadata={
+                    **(parsed_req.metadata or {}),
                     **member.metadata,
                     "expanded_from": group_kind.value,
                 },
-                notes=f"Auto-expanded from {group_kind.value} reference to {member_name}",
+                notes=parsed_req.notes or f"Auto-expanded from {group_kind.value} reference to {member_name}",
             )
 
             new_parse_result = ParseResult(
