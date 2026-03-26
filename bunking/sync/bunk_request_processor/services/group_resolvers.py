@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.core.models import (
+    GroupKind,
     ParsedRequest,
     Person,
     RequestType,
@@ -348,3 +349,26 @@ class CongregationResolver(_SchoolCongregationBaseResolver):
 
     def _expanded_from_label(self) -> str:
         return "congregation"
+
+
+def build_resolver_registry(
+    attendee_repo: AttendeeRepository,
+    person_repo: PersonRepository,
+    year: int,
+) -> dict[GroupKind, GroupResolver]:
+    """Build a registry mapping each GroupKind to its resolver.
+
+    Args:
+        attendee_repo: Repository for attendee/bunkmate lookups
+        person_repo: Repository for person/sibling lookups
+        year: The current year for all resolvers
+
+    Returns:
+        Dict mapping GroupKind to initialized GroupResolver instances
+    """
+    return {
+        GroupKind.SIBLING: SiblingResolver(person_repo, year),
+        GroupKind.LAST_YEAR_BUNKMATES: BunkmateResolver(attendee_repo, person_repo, year),
+        GroupKind.CLASSMATES: ClassmateResolver(person_repo, attendee_repo, year),
+        GroupKind.CONGREGATION: CongregationResolver(person_repo, attendee_repo, year),
+    }

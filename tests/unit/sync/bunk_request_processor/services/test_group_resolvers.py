@@ -26,6 +26,7 @@ from bunking.sync.bunk_request_processor.services.group_resolvers import (
     CongregationResolver,
     ResolvedGroupMember,
     SiblingResolver,
+    build_resolver_registry,
 )
 
 
@@ -626,3 +627,55 @@ class TestCongregationResolver:
         result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
 
         assert result[0].metadata["expanded_from"] == "congregation"
+
+
+class TestBuildResolverRegistry:
+    """Test the build_resolver_registry factory function."""
+
+    def test_returns_all_four_group_kinds(self):
+        """Registry should contain all four GroupKind keys."""
+        attendee_repo = MagicMock()
+        person_repo = MagicMock()
+        registry = build_resolver_registry(attendee_repo, person_repo, year=2025)
+
+        assert set(registry.keys()) == {
+            GroupKind.SIBLING,
+            GroupKind.LAST_YEAR_BUNKMATES,
+            GroupKind.CLASSMATES,
+            GroupKind.CONGREGATION,
+        }
+
+    def test_sibling_resolver_type(self):
+        """SIBLING key should map to SiblingResolver."""
+        attendee_repo = MagicMock()
+        person_repo = MagicMock()
+        registry = build_resolver_registry(attendee_repo, person_repo, year=2025)
+        assert isinstance(registry[GroupKind.SIBLING], SiblingResolver)
+
+    def test_bunkmate_resolver_type(self):
+        """LAST_YEAR_BUNKMATES key should map to BunkmateResolver."""
+        attendee_repo = MagicMock()
+        person_repo = MagicMock()
+        registry = build_resolver_registry(attendee_repo, person_repo, year=2025)
+        assert isinstance(registry[GroupKind.LAST_YEAR_BUNKMATES], BunkmateResolver)
+
+    def test_classmate_resolver_type(self):
+        """CLASSMATES key should map to ClassmateResolver."""
+        attendee_repo = MagicMock()
+        person_repo = MagicMock()
+        registry = build_resolver_registry(attendee_repo, person_repo, year=2025)
+        assert isinstance(registry[GroupKind.CLASSMATES], ClassmateResolver)
+
+    def test_congregation_resolver_type(self):
+        """CONGREGATION key should map to CongregationResolver."""
+        attendee_repo = MagicMock()
+        person_repo = MagicMock()
+        registry = build_resolver_registry(attendee_repo, person_repo, year=2025)
+        assert isinstance(registry[GroupKind.CONGREGATION], CongregationResolver)
+
+    def test_registry_has_exactly_four_entries(self):
+        """Registry should have exactly 4 entries (one per GroupKind)."""
+        attendee_repo = MagicMock()
+        person_repo = MagicMock()
+        registry = build_resolver_registry(attendee_repo, person_repo, year=2025)
+        assert len(registry) == 4
