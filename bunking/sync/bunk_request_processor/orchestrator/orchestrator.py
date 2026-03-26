@@ -1523,7 +1523,9 @@ class RequestOrchestrator:
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
                 # Check if this request was removed by deduplication
-                is_deduped = (requester_cm_id, target_name) in deduped_keys
+                # Use resolved name to match deduped_keys (built from BunkRequest.requested_name)
+                resolved_name = rr.person.full_name if rr.person and hasattr(rr.person, "full_name") else target_name
+                is_deduped = (requester_cm_id, resolved_name or "") in deduped_keys
                 if is_deduped:
                     any_dedup = True
 

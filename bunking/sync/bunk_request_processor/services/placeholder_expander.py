@@ -224,7 +224,12 @@ class PlaceholderExpander:
         idx: int,
         group_kind: GroupKind,
     ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Handle cases where group reference expansion fails (resolver returned empty)."""
+        """Handle cases where group reference expansion fails (resolver returned empty).
+
+        Returns a ParseResult containing only the failed group request (not the
+        full original) to avoid duplicating non-group requests already preserved
+        by the caller.
+        """
         reason = f"No members found for {group_kind.value} expansion"
         logger.warning(f"Cannot expand {group_kind.value}: {reason}")
 
@@ -238,10 +243,13 @@ class PlaceholderExpander:
             },
         )
 
-        new_resolution_list = resolution_list.copy()
-        if idx < len(new_resolution_list):
-            new_resolution_list[idx] = updated_resolution
-        else:
-            new_resolution_list.append(updated_resolution)
+        failed_request = parse_result.parsed_requests[idx]
+        failed_pr = ParseResult(
+            parsed_requests=[failed_request],
+            needs_historical_context=parse_result.needs_historical_context,
+            is_valid=parse_result.is_valid,
+            parse_request=parse_result.parse_request,
+            metadata={**parse_result.metadata, "expansion_failed": True},
+        )
 
-        return [(parse_result, new_resolution_list)]
+        return [(failed_pr, [updated_resolution])]

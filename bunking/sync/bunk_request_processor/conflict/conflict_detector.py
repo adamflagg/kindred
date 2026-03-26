@@ -1,8 +1,9 @@
-"""V2 Conflict Detector - Session-aware conflict detection
+"""V2 Conflict Detector - Session and enrollment conflict detection
 
-Detects cross-session conflicts: BUNK_WITH across sessions (→ DECLINED) and
-NOT_BUNK_WITH across sessions (→ auto-RESOLVED). All other constraint checking
-is delegated to the solver where it belongs."""
+Detects session conflicts (BUNK_WITH across sessions → DECLINED,
+NOT_BUNK_WITH across sessions → auto-RESOLVED) and enrollment conflicts
+(TARGET_NOT_ENROLLED → DECLINED). All other constraint checking is
+delegated to the solver where it belongs."""
 
 from __future__ import annotations
 
@@ -59,9 +60,10 @@ class V2ConflictResult:
 class ConflictDetector:
     """Native V2 implementation of conflict detection.
 
-    Detects two cross-session conflict types:
+    Detects three conflict types:
     - SESSION_MISMATCH: BUNK_WITH across sessions → auto-DECLINED
     - CROSS_SESSION_SATISFIED: NOT_BUNK_WITH across sessions → auto-RESOLVED
+    - TARGET_NOT_ENROLLED: target has no bunking enrollment → auto-DECLINED
 
     All other constraint checking (reciprocal requests, circular dependencies,
     capacity, etc.) is delegated to the solver where it belongs.
@@ -95,8 +97,8 @@ class ConflictDetector:
     def detect_conflicts(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> V2ConflictResult:
         """Detect conflicts in resolved requests.
 
-        Currently only detects session mismatches - requests between people
-        in different sessions cannot be fulfilled.
+        Detects session mismatches, cross-session satisfaction, and
+        unenrolled targets.
 
         Args:
             resolved_requests: List of (parsed_request, resolution_info) tuples

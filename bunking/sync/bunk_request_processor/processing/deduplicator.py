@@ -25,9 +25,7 @@ class DuplicateGroup:
     primary: BunkRequest
     duplicates: list[BunkRequest]
     # Key: (requester_cm_id, requested_cm_id, request_type, source_field, year, session_cm_id)
-    # Includes source_field to prevent cross-field deduplication:
-    # - Different form fields (share_bunk_with vs socialize_with) may have different semantics
-    # - Staff notes vs parent form may have different timing context
+    # source_field is always "" — cross-field deduplication is intentional
     duplicate_key: tuple[int, int | None, RequestType, str, int, int]
 
 
