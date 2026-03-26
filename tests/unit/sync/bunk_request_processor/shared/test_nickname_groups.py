@@ -1,5 +1,7 @@
 """Tests for nickname_groups module — nicknames library integration + camp overrides."""
 
+from unittest.mock import patch
+
 from bunking.sync.bunk_request_processor.shared.nickname_groups import find_nickname_variations
 
 
@@ -31,26 +33,41 @@ class TestNicknameLibraryIntegration:
         assert "addy" in lower_vars
 
 
+_MOCK_OVERRIDES = {
+    "danny": ["Daniel", "Dan"],
+    "lulu": ["Louise"],
+    "sammy": ["Samuel", "Samantha"],
+}
+
+
+def _with_mock_overrides(name: str) -> list[str]:
+    """Call find_nickname_variations with mocked overrides."""
+    with patch(
+        "bunking.sync.bunk_request_processor.shared.nickname_groups._load_overrides",
+        return_value=_MOCK_OVERRIDES,
+    ):
+        return find_nickname_variations(name)
+
+
 class TestCampOverrides:
-    """Test camp-specific nickname overrides."""
+    """Test the override mechanism with mock data (real overrides are private config)."""
 
-    def test_camp_override_esti(self):
-        """Camp override: Esti → Esther."""
-        variations = find_nickname_variations("Esti")
-        lower_vars = [v.lower() for v in variations]
-        assert "esther" in lower_vars
+    def test_override_forward_lookup(self):
+        """Override key resolves to its values."""
+        lower_vars = [v.lower() for v in _with_mock_overrides("Danny")]
+        assert "daniel" in lower_vars
+        assert "dan" in lower_vars
 
-    def test_camp_override_ari(self):
-        """Camp override: Ari → Arielle/Ariel."""
-        variations = find_nickname_variations("Ari")
-        lower_vars = [v.lower() for v in variations]
-        assert any(n in lower_vars for n in ["arielle", "ariel", "ariella"])
+    def test_override_reverse_lookup(self):
+        """Override value resolves back to its key."""
+        lower_vars = [v.lower() for v in _with_mock_overrides("Louise")]
+        assert "lulu" in lower_vars
 
-    def test_camp_override_rafa(self):
-        """Camp override: Rafa → Rafael."""
-        variations = find_nickname_variations("Rafa")
-        lower_vars = [v.lower() for v in variations]
-        assert "rafael" in lower_vars
+    def test_override_does_not_include_self(self):
+        """Override lookup excludes the input name itself."""
+        lower_vars = [v.lower() for v in _with_mock_overrides("Sammy")]
+        assert "sammy" not in lower_vars
+        assert "samuel" in lower_vars
 
 
 class TestExistingBehaviorPreserved:
