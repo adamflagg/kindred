@@ -286,13 +286,13 @@ class Phase2ResolutionService:
                     # Handle both enum and string age_preference values
                     age_pref = parsed_request.age_preference
                     if age_pref is None:
-                        # Still need to append a result to maintain list alignment
+                        # Undirected age preference — staff review needed
                         case.resolution_results.append(
                             ResolutionResult(
                                 person=None,
-                                confidence=0.0,
-                                method="age_preference_missing",
-                                metadata={"error": "age_preference field was None"},
+                                confidence=0.50,
+                                method="age_preference_undirected",
+                                metadata={"age_preference": None, "note": "Direction unclear — staff review needed"},
                             )
                         )
                     else:
@@ -300,7 +300,7 @@ class Phase2ResolutionService:
                         case.resolution_results.append(
                             ResolutionResult(
                                 person=None,
-                                confidence=1.0,
+                                confidence=0.90,
                                 method="age_preference",
                                 metadata={"age_preference": age_pref_value},
                             )
@@ -492,13 +492,13 @@ class Phase2ResolutionService:
                     # Handle both enum and string age_preference values
                     age_pref = parsed_request.age_preference
                     if age_pref is None:
-                        # Still need to append a result to maintain list alignment
+                        # Undirected age preference — staff review needed
                         case.resolution_results.append(
                             ResolutionResult(
                                 person=None,
-                                confidence=0.0,
-                                method="age_preference",
-                                metadata={"age_preference": None, "error": "No age preference specified"},
+                                confidence=0.50,
+                                method="age_preference_undirected",
+                                metadata={"age_preference": None, "note": "Direction unclear — staff review needed"},
                             )
                         )
                         continue
@@ -506,7 +506,7 @@ class Phase2ResolutionService:
                     case.resolution_results.append(
                         ResolutionResult(
                             person=None,
-                            confidence=1.0,
+                            confidence=0.90,
                             method="age_preference",
                             metadata={"age_preference": age_pref_value},
                         )
