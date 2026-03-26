@@ -4,6 +4,8 @@ Specifically tests the session mismatch detection logic."""
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 from bunking.sync.bunk_request_processor.conflict.conflict_detector import (
     ConflictDetector,
     ConflictType,
@@ -181,3 +183,152 @@ class TestConflictDetector:
 
         # NOT_BUNK_WITH requests shouldn't be tracked for session conflicts
         assert not result.has_conflicts
+
+
+def make_mock_attendee_repo(session_map: dict[int, int] | None = None):
+    """Create a mock AttendeeRepository that returns sessions from a map.
+
+    Args:
+        session_map: {person_cm_id: session_cm_id} for bulk lookups
+    """
+    repo = Mock()
+    session_map = session_map or {}
+    repo.bulk_get_sessions_for_persons.return_value = session_map
+    return repo
+
+
+class TestConflictDetectorWithAttendeeRepo:
+    """Tests for ConflictDetector with attendee_repo session enrichment."""
+
+    def test_bunk_with_cross_session_via_attendee_repo_is_declined(self):
+        """BUNK_WITH where target session comes from attendee_repo (not another request) → conflict."""
+        attendee_repo = make_mock_attendee_repo({7777777: 1309513})  # target in Session 1
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,  # requester in Session 3
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert result.has_conflicts
+        assert len(result.conflicts) == 1
+        assert result.conflicts[0].conflict_type == ConflictType.SESSION_MISMATCH
+        assert result.conflicts[0].metadata["requester_session"] == 1371793
+        assert result.conflicts[0].metadata["target_session"] == 1309513
+
+    def test_bunk_with_same_session_via_attendee_repo_no_conflict(self):
+        """BUNK_WITH where target is in same session per attendee_repo → no conflict."""
+        attendee_repo = make_mock_attendee_repo({7777777: 1371793})  # target in same Session 3
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert not result.has_conflicts
+
+    def test_target_not_enrolled_no_conflict(self):
+        """Target not in attendee_repo at all → no conflict (can't determine session)."""
+        attendee_repo = make_mock_attendee_repo({})  # empty — target not enrolled
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert not result.has_conflicts
+
+    def test_no_attendee_repo_falls_back_to_existing_behavior(self):
+        """Without attendee_repo, only detects conflicts where target is also a requester (existing behavior)."""
+        detector = ConflictDetector()  # no attendee_repo
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,  # Session 3
+                },
+            ),
+            # Target NOT a requester → session unknown → no conflict
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert not result.has_conflicts
+
+    def test_negative_placeholder_ids_skipped(self):
+        """Negative/placeholder target IDs are skipped even with attendee_repo."""
+        attendee_repo = make_mock_attendee_repo({-12345: 1309513})
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Unknown Person"),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": -12345,
+                    "session_cm_id": 1371793,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert not result.has_conflicts
+
+    def test_bulk_query_batches_unknown_targets(self):
+        """Attendee_repo is called once with all unknown target IDs, not per-request."""
+        attendee_repo = make_mock_attendee_repo(
+            {
+                7777777: 1309513,
+                8888888: 1309513,
+            }
+        )
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {"requester_cm_id": 4146291, "person_cm_id": 7777777, "session_cm_id": 1371793},
+            ),
+            (
+                make_parsed_request("Joe Brown"),
+                {"requester_cm_id": 4146291, "person_cm_id": 8888888, "session_cm_id": 1371793},
+            ),
+        ]
+
+        detector.detect_conflicts(resolved_requests)
+
+        # Should be called once with both IDs
+        attendee_repo.bulk_get_sessions_for_persons.assert_called_once()
+        call_args = attendee_repo.bulk_get_sessions_for_persons.call_args
+        assert set(call_args[0][0]) == {7777777, 8888888}
+        assert call_args[0][1] == 2026

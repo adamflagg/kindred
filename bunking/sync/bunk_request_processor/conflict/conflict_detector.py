@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, RequestType
+
+if TYPE_CHECKING:
+    from ..data.repositories.attendee_repository import AttendeeRepository
 
 logger = get_logger(__name__)
 
@@ -59,13 +62,22 @@ class ConflictDetector:
     is delegated to the solver where it belongs.
     """
 
-    def __init__(self, config: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        attendee_repo: AttendeeRepository | None = None,
+        year: int | None = None,
+    ):
         """Initialize the conflict detector.
 
         Args:
             config: Configuration for conflict detection rules
+            attendee_repo: Optional attendee repository for session lookups
+            year: Year for attendee queries
         """
         self.config = config or {}
+        self.attendee_repo = attendee_repo
+        self.year = year
 
         # Statistics
         self._stats = {"total_conflicts": 0, "session_mismatches": 0}
@@ -116,6 +128,7 @@ class ConflictDetector:
         maps: dict[str, dict[Any, Any]] = {
             "person_to_session": {},  # person_cm_id -> session_cm_id
             "positive_requests": {},  # (requester, target) -> (idx, session_info)
+            "negative_requests": {},  # (requester, target) -> (idx, session_info)
         }
 
         for idx, (parsed_req, resolution_info) in enumerate(resolved_requests):
@@ -129,40 +142,43 @@ class ConflictDetector:
             # Track person to session mapping
             maps["person_to_session"][requester] = session
 
-            # Track positive requests for session checking
-            if parsed_req.request_type == RequestType.BUNK_WITH and target:
-                maps["positive_requests"][(requester, target)] = (
-                    idx,
-                    {"requester_session": session, "target_session": maps["person_to_session"].get(target)},
-                )
+            if target and target > 0:
+                entry = (idx, {"requester_session": session})
+                if parsed_req.request_type == RequestType.BUNK_WITH:
+                    maps["positive_requests"][(requester, target)] = entry
+                elif parsed_req.request_type == RequestType.NOT_BUNK_WITH:
+                    maps["negative_requests"][(requester, target)] = entry
+
+        # Enrich: look up sessions for targets not in the map
+        if self.attendee_repo and self.year:
+            all_targets = set()
+            for requester, target in maps["positive_requests"]:
+                if target not in maps["person_to_session"]:
+                    all_targets.add(target)
+            for requester, target in maps["negative_requests"]:
+                if target not in maps["person_to_session"]:
+                    all_targets.add(target)
+
+            if all_targets:
+                enriched = self.attendee_repo.bulk_get_sessions_for_persons(list(all_targets), self.year)
+                maps["person_to_session"].update(enriched)
 
         return maps
 
     def _detect_session_conflicts(
         self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
     ) -> list[V2Conflict]:
-        """Detect requests across different sessions
+        """Detect BUNK_WITH requests across different sessions.
 
         Only detects conflicts when we can reliably determine both people's sessions.
-        Negative (placeholder) IDs represent unresolved names where we cannot
-        determine the actual session - these are skipped to avoid false positives.
+        Negative (placeholder) IDs are already filtered in _build_session_maps.
         """
         conflicts = []
 
-        # Check each bunk_with request
         for (requester, target), (idx, session_info) in maps["positive_requests"].items():
-            # Skip negative/placeholder IDs - these are unresolved names
-            # We cannot reliably determine their session
-            if target is not None and target < 0:
-                continue
-
             requester_session = session_info["requester_session"]
-
-            # Get target's session from person_to_session map
-            # This only works if the target is also a requester somewhere
             target_session = maps["person_to_session"].get(target)
 
-            # Check if sessions match
             if target_session and requester_session != target_session:
                 conflict = V2Conflict(
                     conflict_type=ConflictType.SESSION_MISMATCH,
