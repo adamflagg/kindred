@@ -574,15 +574,13 @@ The `build_resolver_registry()` factory creates all resolvers and returns a `dic
 
 ### Expansion Flow
 
-```
+```text
 PlaceholderExpander.expand(resolution_results, resolver_registry)
     │
     ├── For each (ParseResult, [ResolutionResult]):
     │   │
-    │   ├── _find_group_references() — two detection paths:
-    │   │   ├── Modern: parsed_request.group_kind is set (from AI Phase 1)
-    │   │   └── Legacy: resolution metadata has placeholder string
-    │   │       └── Maps "LAST_YEAR_BUNKMATES"/"SIBLING" → GroupKind enum
+    │   ├── _find_group_references()
+    │   │   └── parsed_request.group_kind is set (from AI Phase 1)
     │   │
     │   ├── If no group references → pass through unchanged
     │   │
@@ -608,11 +606,11 @@ Multiple group references within a single ParseResult are supported (e.g., "bunk
 
 **SiblingResolver**: Looks up all persons sharing the same `household_id` as the requester (excluding self). Preserves the original `request_type` from the parsed request.
 
-**BunkmateResolver**: Finds the requester's cabin assignment from the prior year, then resolves each returning bunkmate to a Person. Forces `request_type` to `BUNK_WITH` regardless of original. Includes `prior_bunk` and `prior_year` in metadata.
+**BunkmateResolver**: Finds the requester's cabin assignment from the prior year, then resolves each returning bunkmate to a Person. Preserves the original `request_type` from the parsed request (e.g., `NOT_BUNK_WITH` for "don't put with last year's bunkmates"). Includes `prior_bunk` and `prior_year` in metadata.
 
 **ClassmateResolver / CongregationResolver**: Both extend `_SchoolCongregationBaseResolver` with a shared filter pipeline:
 
-```
+```text
 1. Look up requester → get field value (school or normalized_congregation)
 2. Get all session attendees → exclude self
 3. Bulk fetch Person records
@@ -642,15 +640,6 @@ group_metadata: dict[str, str] | None = None  # e.g., {"school_name": "Riverside
 - `requester_city` — city for geographic context
 
 **Mapping** (`integration/openai_provider.py`): The AI string output is mapped to the `GroupKind` enum via `_GROUP_KIND_MAP`. `group_metadata` (e.g., school name, congregation name) is stored in the parsed request's metadata.
-
-### Backward Compatibility
-
-The system supports both detection paths:
-
-1. **Modern (preferred)**: AI sets `group_kind` on the `ParsedRequest` during Phase 1. No placeholder resolution needed.
-2. **Legacy**: Phase 2 resolution detects placeholder strings (e.g., `LAST_YEAR_BUNKMATES`, `SIBLING`) in resolution metadata. These are mapped to `GroupKind` via `_PLACEHOLDER_TO_GROUP_KIND`.
-
-Both paths dispatch to the same resolver registry. The legacy path only supports `SIBLING` and `LAST_YEAR_BUNKMATES` (the original two group types). `CLASSMATES` and `CONGREGATION` require the modern AI path.
 
 ---
 

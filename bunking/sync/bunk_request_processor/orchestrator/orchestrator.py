@@ -65,7 +65,7 @@ from ..shared.constants import (
     UNRESOLVED_ID_DEFAULT,
     UNRESOLVED_ID_MAX,
     UNRESOLVED_ID_MIN,
-    VALID_PLACEHOLDERS,
+    VALID_AGE_TARGETS,
     SourceField,
     is_no_preference,
     strip_na_prefix,
@@ -566,8 +566,8 @@ class RequestOrchestrator:
                 target = parsed_req.target_name.strip()
                 target_lower = target.lower()
 
-                # Skip valid placeholders (sibling, last_year_bunkmates, older, younger, unclear)
-                if target_lower in VALID_PLACEHOLDERS:
+                # Skip valid age target names (older, younger, unclear)
+                if target_lower in VALID_AGE_TARGETS:
                     validated_requests.append(parsed_req)
                     kept_count += 1
                     continue
@@ -616,12 +616,12 @@ class RequestOrchestrator:
         self,
         expansion_results: list[tuple[ParseResult, list[ResolutionResult]]],
     ) -> tuple[list[tuple[ParseResult, list[ResolutionResult]]], int, int]:
-        """Filter conflicts introduced by placeholder expansion.
+        """Filter conflicts introduced by group reference expansion.
 
-        After SIBLING placeholder expansion, check for cases where the same
-        person now has bunk_with and not_bunk_with requests targeting the same
-        resolved person_cm_id. This catches conflicts that weren't visible
-        during pre-expansion filtering (when target was "SIBLING" string).
+        After group expansion (sibling, bunkmates, classmates, congregation),
+        check for cases where the same person now has bunk_with and not_bunk_with
+        requests targeting the same resolved person_cm_id. This catches conflicts
+        that weren't visible before expansion (when target was a group reference).
 
         This is a deterministic safety net that doesn't depend on AI correctly
         marking is_superseded flags.
@@ -915,7 +915,7 @@ class RequestOrchestrator:
         """Initialize services extracted from orchestrator for reduced complexity.
 
         These services encapsulate specific orchestrator functionality:
-        - PlaceholderExpander: Expands LAST_YEAR_BUNKMATES placeholders
+        - PlaceholderExpander: Expands group references via resolver registry
         - HistoricalVerificationService: Verifies historical bunking groups
         """
         self.placeholder_expander = PlaceholderExpander(
@@ -1194,6 +1194,12 @@ class RequestOrchestrator:
                 f"unit_names={self._stats.get('unit_name_rejected', 0)})"
             )
 
+        # Enrich age preference requests with directional keywords from AI reasoning
+        for pr in parse_results:
+            if pr.is_valid:
+                for parsed_req in pr.parsed_requests:
+                    self._map_age_preference_direction(parsed_req)
+
         # --- Trace: Validation results ---
         for pr in parse_results:
             trace_key = _get_trace_key(pr)
@@ -1314,7 +1320,7 @@ class RequestOrchestrator:
             return {"dry_run": dry_run, "phase": "expansion"}
 
         # Post-expansion conflict detection: catch conflicts that weren't visible before
-        # SIBLING expansion (e.g., "not_bunk_with Pippi" vs "bunk_with SIBLING" → Pippi)
+        # group expansion (e.g., "not_bunk_with Pippi" vs group_kind=SIBLING → Pippi)
         resolution_results, post_kept, post_filtered = self._filter_post_expansion_conflicts(resolution_results)
         if post_filtered > 0:
             logger.info(f"Post-expansion conflict filter: kept {post_kept}, filtered {post_filtered}")

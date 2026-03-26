@@ -178,7 +178,7 @@ class BunkmateResolver:
             member = ResolvedGroupMember(
                 person=person,
                 confidence=self.base_confidence,
-                request_type=RequestType.BUNK_WITH,
+                request_type=parsed_request.request_type,
                 metadata={
                     "expanded_from": "last_year_bunkmates",
                     "prior_bunk": prior_bunk,
@@ -348,8 +348,8 @@ class CongregationResolver(_SchoolCongregationBaseResolver):
     """Resolves congregation group references by matching normalized_congregation.
 
     Finds campers in the same congregation, in the same session,
-    within +-1 grade, matching gender. Congregation data is stored
-    in person.metadata['normalized_congregation'].
+    within +-1 grade, matching gender. Reads normalized_congregation
+    from person.metadata (populated by _map_to_person).
     """
 
     def _get_field_value(self, person: Person) -> str | None:

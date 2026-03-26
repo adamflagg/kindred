@@ -111,6 +111,8 @@ class PriorityCalculator:
         non_age_requests = [r for r in all_requests_for_person if r.request_type != RequestType.AGE_PREFERENCE]
 
         has_other_requests = len(all_requests_for_person) > 1
+        # Group references (sibling, classmates, etc.) are not "specific" —
+        # only named-person requests count for priority escalation.
         has_specific_bunk_requests = any(
             r for r in non_age_requests if r.request_type == RequestType.BUNK_WITH and r.group_kind is None
         )

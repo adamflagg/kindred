@@ -139,7 +139,7 @@ IGNORE Family Camp content entirely:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name, placeholder, or age value
+- target_name: Person's name or age value ("older", "younger", "unclear")
 - confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
 - keywords_found: Priority words like "must", "important", "critical", "first choice"
 

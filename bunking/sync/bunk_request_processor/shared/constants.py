@@ -23,10 +23,9 @@ from re import Pattern
 # Matches current camp's Tier 1 division entries. Update if units change.
 UNIT_NAMES: set[str] = {"nitzanim", "galil", "eilat", "haifa", "chalutzim", "carmel"}
 
-# Special placeholders accepted as valid target names.
-# Age preference values are still passed as target_name; group references
-# (sibling, bunkmates, classmates, congregation) now use group_kind field instead.
-VALID_PLACEHOLDERS: set[str] = {
+# Age preference values accepted as valid target_name values.
+# Group references (sibling, bunkmates, classmates, congregation) use group_kind field instead.
+VALID_AGE_TARGETS: set[str] = {
     "older",
     "younger",
     "unclear",
