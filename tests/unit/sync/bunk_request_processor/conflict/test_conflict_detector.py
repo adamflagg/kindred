@@ -332,3 +332,99 @@ class TestConflictDetectorWithAttendeeRepo:
         call_args = attendee_repo.bulk_get_sessions_for_persons.call_args
         assert set(call_args[0][0]) == {7777777, 8888888}
         assert call_args[0][1] == 2026
+
+
+class TestCrossSessionNotBunkWith:
+    """Tests for NOT_BUNK_WITH cross-session auto-satisfy."""
+
+    def test_not_bunk_with_cross_session_is_satisfied(self):
+        """NOT_BUNK_WITH where target is in different session → CROSS_SESSION_SATISFIED."""
+        attendee_repo = make_mock_attendee_repo({7777777: 1309513})  # target in Session 1
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,  # requester in Session 3
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert result.has_conflicts
+        assert len(result.conflicts) == 1
+        assert result.conflicts[0].conflict_type == ConflictType.CROSS_SESSION_SATISFIED
+        assert result.conflicts[0].auto_resolvable is True
+        assert result.conflicts[0].metadata["requester_session"] == 1371793
+        assert result.conflicts[0].metadata["target_session"] == 1309513
+
+    def test_not_bunk_with_same_session_no_conflict(self):
+        """NOT_BUNK_WITH where target is in same session → no conflict (normal processing)."""
+        attendee_repo = make_mock_attendee_repo({7777777: 1371793})  # same session
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        assert not result.has_conflicts
+
+    def test_apply_conflict_resolution_sets_auto_satisfied(self):
+        """apply_conflict_resolution sets auto_satisfied for CROSS_SESSION_SATISFIED conflicts."""
+        attendee_repo = make_mock_attendee_repo({7777777: 1309513})
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        modified = detector.apply_conflict_resolution(resolved_requests, result)
+
+        _, resolution_info = modified[0]
+        assert resolution_info.get("auto_satisfied") is True
+        assert "requester_session" in resolution_info.get("conflict_metadata", {})
+        assert "target_session" in resolution_info.get("conflict_metadata", {})
+
+    def test_apply_conflict_resolution_bunk_with_still_sets_has_conflict(self):
+        """apply_conflict_resolution still sets has_conflict for SESSION_MISMATCH (BUNK_WITH)."""
+        attendee_repo = make_mock_attendee_repo({7777777: 1309513})
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith", request_type=RequestType.BUNK_WITH),
+                {
+                    "requester_cm_id": 4146291,
+                    "person_cm_id": 7777777,
+                    "session_cm_id": 1371793,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        modified = detector.apply_conflict_resolution(resolved_requests, result)
+
+        _, resolution_info = modified[0]
+        assert resolution_info.get("has_conflict") is True
+        assert resolution_info.get("auto_satisfied") is None

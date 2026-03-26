@@ -24,6 +24,7 @@ class ConflictType(Enum):
     """Types of conflicts that can occur"""
 
     SESSION_MISMATCH = "session_mismatch"  # Requests across different sessions - only real processing error
+    CROSS_SESSION_SATISFIED = "cross_session_satisfied"  # NOT_BUNK_WITH auto-satisfied by different sessions
 
 
 @dataclass
@@ -80,7 +81,7 @@ class ConflictDetector:
         self.year = year
 
         # Statistics
-        self._stats = {"total_conflicts": 0, "session_mismatches": 0}
+        self._stats = {"total_conflicts": 0, "session_mismatches": 0, "cross_session_satisfied": 0}
 
     def detect_conflicts(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> V2ConflictResult:
         """Detect conflicts in resolved requests.
@@ -100,16 +101,20 @@ class ConflictDetector:
         # Build session maps for efficient conflict detection
         session_maps = self._build_session_maps(resolved_requests)
 
-        # Detect session mismatches
+        # Detect session mismatches (BUNK_WITH)
         session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps)
         conflicts.extend(session_conflicts)
+
+        # Detect cross-session satisfied (NOT_BUNK_WITH)
+        satisfied_conflicts = self._detect_cross_session_satisfied(resolved_requests, session_maps)
+        conflicts.extend(satisfied_conflicts)
 
         # Collect affected request indices
         for conflict in conflicts:
             affected_indices.update(conflict.affected_request_indices)
 
-        # All session conflicts require manual review
-        manual_review = len(conflicts)
+        auto_resolvable = sum(1 for c in conflicts if c.auto_resolvable)
+        manual_review = len(conflicts) - auto_resolvable
 
         # Update statistics
         self._update_stats(conflicts)
@@ -117,10 +122,10 @@ class ConflictDetector:
         return V2ConflictResult(
             has_conflicts=len(conflicts) > 0,
             conflicts=conflicts,
-            auto_resolvable_count=0,  # Session conflicts cannot be auto-resolved
+            auto_resolvable_count=auto_resolvable,
             manual_review_count=manual_review,
             affected_requests=sorted(affected_indices),
-            conflict_groups={},  # No grouping needed for simple session conflicts
+            conflict_groups={},
         )
 
     def _build_session_maps(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> dict[str, Any]:
@@ -198,6 +203,35 @@ class ConflictDetector:
 
         return conflicts
 
+    def _detect_cross_session_satisfied(
+        self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
+    ) -> list[V2Conflict]:
+        """Detect NOT_BUNK_WITH requests that are automatically satisfied by different sessions."""
+        conflicts = []
+
+        for (requester, target), (idx, session_info) in maps["negative_requests"].items():
+            requester_session = session_info["requester_session"]
+            target_session = maps["person_to_session"].get(target)
+
+            if target_session and requester_session != target_session:
+                conflict = V2Conflict(
+                    conflict_type=ConflictType.CROSS_SESSION_SATISFIED,
+                    person_a_cm_id=requester,
+                    person_b_cm_id=target,
+                    description=(
+                        f"Automatically satisfied: Person {requester} (session {requester_session}) "
+                        f"NOT_BUNK_WITH {target} (session {target_session}) — different sessions"
+                    ),
+                    severity="info",
+                    auto_resolvable=True,
+                    resolution_suggestion="Automatically satisfied — different sessions",
+                    affected_request_indices=[idx],
+                    metadata={"requester_session": requester_session, "target_session": target_session},
+                )
+                conflicts.append(conflict)
+
+        return conflicts
+
     def apply_conflict_resolution(
         self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], conflict_result: V2ConflictResult
     ) -> list[tuple[ParsedRequest, dict[str, Any]]]:
@@ -224,14 +258,16 @@ class ConflictDetector:
                 if idx < len(modified_requests):
                     _parsed_req, resolution_info = modified_requests[idx]
 
-                    # Add conflict information
-                    resolution_info["has_conflict"] = True
-                    resolution_info["conflict_type"] = conflict.conflict_type.value
-                    resolution_info["conflict_description"] = conflict.description
-                    resolution_info["conflict_severity"] = conflict.severity
-                    resolution_info["auto_resolvable"] = False
-                    resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
-                    # Conflict detected - status will be set to PENDING or DECLINED
+                    if conflict.conflict_type == ConflictType.CROSS_SESSION_SATISFIED:
+                        resolution_info["auto_satisfied"] = True
+                        resolution_info["satisfaction_reason"] = conflict.resolution_suggestion
+                    else:
+                        resolution_info["has_conflict"] = True
+                        resolution_info["conflict_type"] = conflict.conflict_type.value
+                        resolution_info["conflict_description"] = conflict.description
+                        resolution_info["conflict_severity"] = conflict.severity
+                        resolution_info["auto_resolvable"] = False
+                        resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
 
                     # Add conflict metadata
                     if "conflict_metadata" not in resolution_info:
@@ -266,4 +302,8 @@ class ConflictDetector:
     def _update_stats(self, conflicts: list[V2Conflict]) -> None:
         """Update internal statistics"""
         self._stats["total_conflicts"] += len(conflicts)
-        self._stats["session_mismatches"] += len(conflicts)
+        for c in conflicts:
+            if c.conflict_type == ConflictType.SESSION_MISMATCH:
+                self._stats["session_mismatches"] += 1
+            elif c.conflict_type == ConflictType.CROSS_SESSION_SATISFIED:
+                self._stats["cross_session_satisfied"] += 1
