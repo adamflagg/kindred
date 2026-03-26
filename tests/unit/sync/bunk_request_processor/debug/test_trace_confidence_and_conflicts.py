@@ -9,6 +9,8 @@ These tests replicate the orchestrator's trace-building logic to verify correct 
 
 from __future__ import annotations
 
+from typing import Any
+
 from bunking.sync.bunk_request_processor.conflict.conflict_detector import (
     ConflictType,
     V2Conflict,
@@ -58,7 +60,7 @@ def _build_phase2_trace(rr: ResolutionResult) -> Phase2IntentTrace:
     )
 
 
-def _build_conflict_details(conflict_result: V2ConflictResult) -> list[dict]:
+def _build_conflict_details(conflict_result: V2ConflictResult) -> list[dict[str, Any]]:
     """Serialize V2Conflict objects for the post-pipeline trace.
 
     This is the logic that should exist in the orchestrator's trace-building code.

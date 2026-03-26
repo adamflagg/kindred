@@ -146,7 +146,7 @@ class ConflictDetector:
 
     def _build_session_maps(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> dict[str, Any]:
         """Build efficient lookup maps for session conflict detection"""
-        maps: dict[str, dict[Any, Any]] = {
+        maps: dict[str, Any] = {
             "person_to_session": {},  # person_cm_id -> session_cm_id
             "positive_requests": {},  # (requester, target) -> (idx, session_info)
             "negative_requests": {},  # (requester, target) -> (idx, session_info)
@@ -193,7 +193,7 @@ class ConflictDetector:
         self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
     ) -> list[V2Conflict]:
         """Detect requests where target has no bunking enrollment at all."""
-        conflicts = []
+        conflicts: list[V2Conflict] = []
         unenrolled = maps.get("unenrolled_targets", set())
         if not unenrolled:
             return conflicts

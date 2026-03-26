@@ -3,6 +3,8 @@
 These tests define the expected behavior for group reference types
 that can be expanded into individual bunk requests."""
 
+from typing import Any
+
 from bunking.sync.bunk_request_processor.core.models import (
     GroupKind,
     ParsedRequest,
@@ -38,9 +40,9 @@ class TestGroupKind:
 class TestParsedRequestGroupKind:
     """Test the group_kind field on ParsedRequest."""
 
-    def _make_parsed_request(self, **overrides):
+    def _make_parsed_request(self, **overrides: Any) -> ParsedRequest:
         """Helper to create a ParsedRequest with sensible defaults."""
-        defaults = {
+        defaults: dict[str, Any] = {
             "raw_text": "bunk with sibling",
             "request_type": RequestType.BUNK_WITH,
             "target_name": None,

@@ -3,6 +3,7 @@
 Tests define the expected behavior for expanding group references
 (siblings, bunkmates, classmates, congregation) into individual requests."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 from bunking.sync.bunk_request_processor.core.models import (
@@ -24,9 +25,9 @@ from bunking.sync.bunk_request_processor.services.group_resolvers import (
 )
 
 
-def _make_parsed_request(**overrides) -> ParsedRequest:
+def _make_parsed_request(**overrides: Any) -> ParsedRequest:
     """Helper to create a ParsedRequest with sensible defaults."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "raw_text": "bunk with sibling",
         "request_type": RequestType.BUNK_WITH,
         "target_name": None,
@@ -43,7 +44,7 @@ def _make_parsed_request(**overrides) -> ParsedRequest:
     return ParsedRequest(**defaults)
 
 
-def _make_person(cm_id: int, first_name: str = "Emma", last_name: str = "Johnson", **kwargs) -> Person:
+def _make_person(cm_id: int, first_name: str = "Emma", last_name: str = "Johnson", **kwargs: Any) -> Person:
     """Helper to create a Person with sensible defaults."""
     return Person(cm_id=cm_id, first_name=first_name, last_name=last_name, **kwargs)
 
@@ -56,7 +57,7 @@ def _make_camper(
     grade: int = 5,
     school: str | None = "Riverside Elementary",
     session_cm_id: int | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> Camper:
     """Helper to create a Camper with sensible defaults."""
     return Camper(

@@ -28,6 +28,7 @@ from bunking.sync.bunk_request_processor.core.models import (
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.services.group_resolvers import (
+    GroupResolver,
     build_resolver_registry,
 )
 from bunking.sync.bunk_request_processor.services.placeholder_expander import (
@@ -157,7 +158,7 @@ def expander(mock_attendee_repo: Mock, mock_person_repo: Mock) -> PlaceholderExp
 
 
 @pytest.fixture
-def resolver_registry(mock_attendee_repo: Mock, mock_person_repo: Mock) -> dict:
+def resolver_registry(mock_attendee_repo: Mock, mock_person_repo: Mock) -> dict[GroupKind, GroupResolver]:
     """Create a resolver registry using mock dependencies."""
     return build_resolver_registry(
         attendee_repo=mock_attendee_repo,
@@ -204,7 +205,7 @@ class TestPassThrough:
 
     @pytest.mark.asyncio
     async def test_non_placeholder_results_pass_through(
-        self, expander: PlaceholderExpander, resolver_registry: dict
+        self, expander: PlaceholderExpander, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Results without placeholders should pass through unchanged"""
         person = _create_person()
@@ -221,7 +222,7 @@ class TestPassThrough:
 
     @pytest.mark.asyncio
     async def test_invalid_parse_results_pass_through(
-        self, expander: PlaceholderExpander, resolver_registry: dict
+        self, expander: PlaceholderExpander, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Invalid parse results should pass through unchanged"""
         parse_result = _create_parse_result(is_valid=False)
@@ -234,7 +235,9 @@ class TestPassThrough:
         assert output[0] == (parse_result, [resolution])
 
     @pytest.mark.asyncio
-    async def test_empty_input_returns_empty(self, expander: PlaceholderExpander, resolver_registry: dict) -> None:
+    async def test_empty_input_returns_empty(
+        self, expander: PlaceholderExpander, resolver_registry: dict[GroupKind, GroupResolver]
+    ) -> None:
         """Empty input should return empty output"""
         output = await expander.expand([], resolver_registry)
         assert output == []
@@ -250,7 +253,11 @@ class TestPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_expands_placeholder_to_individual_requests(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
+        self,
+        expander: PlaceholderExpander,
+        mock_attendee_repo: Mock,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
         """Should expand placeholder into individual bunk_with requests"""
         # Setup: 2 returning bunkmates
@@ -291,7 +298,11 @@ class TestPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_expansion_preserves_metadata(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
+        self,
+        expander: PlaceholderExpander,
+        mock_attendee_repo: Mock,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
         """Expanded requests should have proper metadata"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
@@ -332,7 +343,7 @@ class TestExpansionFailures:
 
     @pytest.mark.asyncio
     async def test_no_prior_year_data(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Should handle when requester has no prior year assignment"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = None
@@ -351,7 +362,7 @@ class TestExpansionFailures:
 
     @pytest.mark.asyncio
     async def test_no_returning_bunkmates(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Should handle when no bunkmates are returning this year"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
@@ -371,7 +382,11 @@ class TestExpansionFailures:
 
     @pytest.mark.asyncio
     async def test_bunkmate_not_found_in_person_repo(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
+        self,
+        expander: PlaceholderExpander,
+        mock_attendee_repo: Mock,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
         """Should skip bunkmates that can't be found in person repo"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
@@ -406,7 +421,11 @@ class TestMixedResults:
 
     @pytest.mark.asyncio
     async def test_mixed_placeholder_and_regular_results(
-        self, expander: PlaceholderExpander, mock_attendee_repo: Mock, mock_person_repo: Mock, resolver_registry: dict
+        self,
+        expander: PlaceholderExpander,
+        mock_attendee_repo: Mock,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
         """Should handle mix of placeholder and regular results"""
         # Setup placeholder expansion
@@ -506,7 +525,7 @@ class TestSiblingPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_expands_sibling_placeholder_to_individual_request(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Should expand SIBLING placeholder into request for sibling"""
         # Setup: Twin sibling found via household_id
@@ -544,7 +563,7 @@ class TestSiblingPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_sibling_expansion_preserves_request_type(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Should preserve original request_type (bunk_with or not_bunk_with)"""
         sibling = _create_person(cm_id=19930605, first_name="Penelope", last_name="Wright-Thompson")
@@ -568,7 +587,7 @@ class TestSiblingPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_sibling_expansion_metadata(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Expanded sibling requests should have proper metadata"""
         sibling = _create_person(cm_id=19930605, first_name="Penelope", last_name="Wright-Thompson")
@@ -599,7 +618,7 @@ class TestSiblingPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_no_siblings_found(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Should handle when no siblings are found (no matching household_id)"""
         mock_person_repo.find_siblings.return_value = []  # No siblings
@@ -624,7 +643,7 @@ class TestSiblingPlaceholderExpansion:
 
     @pytest.mark.asyncio
     async def test_multiple_siblings_expanded(
-        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict
+        self, expander: PlaceholderExpander, mock_person_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
         """Should create individual requests for each sibling (e.g., triplets)"""
         # Setup: Multiple siblings (triplets)

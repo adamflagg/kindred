@@ -16,6 +16,7 @@ class TestAIBunkRequestItemGroupKind:
             group_metadata={"school_name": "Park Day"},
         )
         assert item.group_kind == "classmates"
+        assert item.group_metadata is not None
         assert item.group_metadata["school_name"] == "Park Day"
 
     def test_group_kind_sibling(self):
@@ -39,4 +40,5 @@ class TestAIBunkRequestItemGroupKind:
             group_metadata={"congregation_name": "Beth Am"},
         )
         assert item.group_kind == "congregation"
+        assert item.group_metadata is not None
         assert item.group_metadata["congregation_name"] == "Beth Am"
