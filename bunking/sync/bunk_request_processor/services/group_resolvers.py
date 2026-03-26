@@ -195,3 +195,156 @@ class BunkmateResolver:
             [m.person.full_name for m in result],
         )
         return result
+
+
+class _SchoolCongregationBaseResolver:
+    """Base class for school and congregation resolvers.
+
+    Shared logic: look up all session attendees, resolve to Person objects,
+    then filter by a matching field value, grade (+-1), gender, and exclude self.
+    """
+
+    def __init__(self, person_repo: PersonRepository, attendee_repo: AttendeeRepository, year: int) -> None:
+        self._person_repo = person_repo
+        self._attendee_repo = attendee_repo
+        self._year = year
+
+    @property
+    def base_confidence(self) -> float:
+        return 0.85
+
+    def _get_field_value(self, person: Person) -> str | None:
+        """Get the field value to match on (school or congregation).
+
+        Subclasses must override this.
+        """
+        raise NotImplementedError
+
+    def _expanded_from_label(self) -> str:
+        """Label for the expanded_from metadata field.
+
+        Subclasses must override this.
+        """
+        raise NotImplementedError
+
+    def resolve(
+        self,
+        requester_cm_id: int,
+        parsed_request: ParsedRequest,
+        session_cm_id: int,
+    ) -> list[ResolvedGroupMember]:
+        """Resolve group references by matching a shared attribute among session peers.
+
+        Filters: same field value, same session, +-1 grade, same gender, exclude self.
+
+        Args:
+            requester_cm_id: CampMinder ID of the requester
+            parsed_request: The parsed request
+            session_cm_id: The session this request applies to
+
+        Returns:
+            List of ResolvedGroupMember for each matching peer
+        """
+        # Look up the requester to get their field value, grade, and gender
+        requester = self._person_repo.find_by_cm_id(requester_cm_id)
+        if requester is None:
+            logger.warning("Could not find requester %s for group resolution", requester_cm_id)
+            return []
+
+        requester_field = self._get_field_value(requester)
+        if not requester_field:
+            logger.debug(
+                "No %s data for requester %s, skipping group expansion",
+                self._expanded_from_label(),
+                requester_cm_id,
+            )
+            return []
+
+        requester_grade = requester.grade
+        requester_gender = getattr(requester, "gender", None)
+
+        # Get all session attendees
+        attendees = self._attendee_repo.get_session_attendees(session_cm_id, self._year)
+        if not attendees:
+            return []
+
+        # Get cm_ids for bulk lookup (exclude self)
+        peer_cm_ids = [a["person_cm_id"] for a in attendees if a["person_cm_id"] != requester_cm_id]
+        if not peer_cm_ids:
+            return []
+
+        # Bulk fetch persons
+        persons_dict = self._person_repo.bulk_find_by_cm_ids(peer_cm_ids)
+
+        # Filter peers
+        result = []
+        for cm_id in peer_cm_ids:
+            person = persons_dict.get(cm_id)
+            if person is None:
+                continue
+
+            # Check matching field value
+            peer_field = self._get_field_value(person)
+            if not peer_field or peer_field != requester_field:
+                continue
+
+            # Check grade (+-1)
+            peer_grade = person.grade
+            if requester_grade is None or peer_grade is None:
+                continue
+            if abs(requester_grade - peer_grade) > 1:
+                continue
+
+            # Check gender
+            peer_gender = getattr(person, "gender", None)
+            if requester_gender is None or peer_gender is None:
+                continue
+            if peer_gender != requester_gender:
+                continue
+
+            member = ResolvedGroupMember(
+                person=person,
+                confidence=self.base_confidence,
+                request_type=parsed_request.request_type,
+                metadata={"expanded_from": self._expanded_from_label()},
+            )
+            result.append(member)
+
+        logger.info(
+            "Resolved %d %s peer(s) for person %s (%s): %s",
+            len(result),
+            self._expanded_from_label(),
+            requester_cm_id,
+            requester_field,
+            [m.person.full_name for m in result],
+        )
+        return result
+
+
+class ClassmateResolver(_SchoolCongregationBaseResolver):
+    """Resolves classmate group references by matching school.
+
+    Finds campers at the same school, in the same session,
+    within +-1 grade, matching gender.
+    """
+
+    def _get_field_value(self, person: Person) -> str | None:
+        return person.school
+
+    def _expanded_from_label(self) -> str:
+        return "classmates"
+
+
+class CongregationResolver(_SchoolCongregationBaseResolver):
+    """Resolves congregation group references by matching normalized_congregation.
+
+    Finds campers in the same congregation, in the same session,
+    within +-1 grade, matching gender. Congregation data is stored
+    in person.metadata['normalized_congregation'].
+    """
+
+    def _get_field_value(self, person: Person) -> str | None:
+        return person.metadata.get("normalized_congregation") if person.metadata else None
+
+    def _expanded_from_label(self) -> str:
+        return "congregation"

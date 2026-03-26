@@ -14,8 +14,16 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestSource,
     RequestType,
 )
+from bunking.sync.bunk_request_processor.core.models import (
+    Camper,
+    Gender,
+    Session,
+    SessionFamily,
+)
 from bunking.sync.bunk_request_processor.services.group_resolvers import (
     BunkmateResolver,
+    ClassmateResolver,
+    CongregationResolver,
     ResolvedGroupMember,
     SiblingResolver,
 )
@@ -43,6 +51,29 @@ def _make_parsed_request(**overrides) -> ParsedRequest:
 def _make_person(cm_id: int, first_name: str = "Emma", last_name: str = "Johnson", **kwargs) -> Person:
     """Helper to create a Person with sensible defaults."""
     return Person(cm_id=cm_id, first_name=first_name, last_name=last_name, **kwargs)
+
+
+def _make_camper(
+    cm_id: int,
+    first_name: str = "Emma",
+    last_name: str = "Johnson",
+    gender: Gender = Gender.FEMALE,
+    grade: int = 5,
+    school: str | None = "Riverside Elementary",
+    session_cm_id: int | None = None,
+    **kwargs,
+) -> Camper:
+    """Helper to create a Camper with sensible defaults."""
+    return Camper(
+        cm_id=cm_id,
+        first_name=first_name,
+        last_name=last_name,
+        gender=gender,
+        grade=grade,
+        school=school,
+        session_cm_id=session_cm_id,
+        **kwargs,
+    )
 
 
 class TestResolvedGroupMember:
@@ -280,3 +311,318 @@ class TestBunkmateResolver:
         result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
 
         assert result[0].confidence == 0.90
+
+
+class TestClassmateResolver:
+    """Test the ClassmateResolver.
+
+    ClassmateResolver finds campers at the same school, in the same session,
+    within +-1 grade, matching gender, excluding self.
+    """
+
+    def _setup_resolver(self, requester, session_peers):
+        """Set up mocked repos and resolver.
+
+        Args:
+            requester: The Camper making the request
+            session_peers: List of Camper objects in the session
+
+        Returns:
+            (resolver, person_repo, attendee_repo)
+        """
+        person_repo = MagicMock()
+        attendee_repo = MagicMock()
+
+        # person_repo.find_by_cm_id returns the requester
+        person_repo.find_by_cm_id.side_effect = lambda cm_id: (
+            requester if cm_id == requester.cm_id else next((p for p in session_peers if p.cm_id == cm_id), None)
+        )
+
+        # attendee_repo.get_session_attendees returns dicts for all session members
+        all_members = [requester] + session_peers
+        attendee_repo.get_session_attendees.return_value = [
+            {"person_cm_id": m.cm_id, "session_cm_id": 5000} for m in all_members
+        ]
+
+        # person_repo.bulk_find_by_cm_ids returns all members as dict
+        persons_dict = {m.cm_id: m for m in all_members}
+        person_repo.bulk_find_by_cm_ids.return_value = persons_dict
+
+        resolver = ClassmateResolver(person_repo, attendee_repo, year=2025)
+        return resolver, person_repo, attendee_repo
+
+    def test_base_confidence(self):
+        """ClassmateResolver.base_confidence should be 0.85."""
+        person_repo = MagicMock()
+        attendee_repo = MagicMock()
+        resolver = ClassmateResolver(person_repo, attendee_repo, year=2025)
+        assert resolver.base_confidence == 0.85
+
+    def test_finds_same_school_session_grade_gender(self):
+        """Should find campers with same school, session, similar grade, same gender."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+        peer = _make_camper(2001, "Olivia", "Chen", Gender.FEMALE, grade=5, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 1
+        assert result[0].person.cm_id == 2001
+
+    def test_excludes_different_school(self):
+        """Should exclude campers from a different school."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+        peer = _make_camper(2001, "Olivia", "Chen", Gender.FEMALE, grade=5, school="Oak Valley Middle")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_excludes_different_gender(self):
+        """Should exclude campers of different gender."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+        peer = _make_camper(2001, "Liam", "Garcia", Gender.MALE, grade=5, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_excludes_grade_difference_of_2(self):
+        """Should exclude campers with grade difference >= 2."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+        peer = _make_camper(2001, "Olivia", "Chen", Gender.FEMALE, grade=7, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_includes_adjacent_grade(self):
+        """Should include campers with grade difference of exactly 1."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+        peer = _make_camper(2001, "Olivia", "Chen", Gender.FEMALE, grade=6, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 1
+        assert result[0].person.cm_id == 2001
+
+    def test_excludes_self(self):
+        """Should never include the requester themselves."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_empty_when_no_school_data(self):
+        """Should return empty list when requester has no school."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school=None)
+        peer = _make_camper(2001, "Olivia", "Chen", Gender.FEMALE, grade=5, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_sets_classmate_metadata(self):
+        """Should set metadata with expanded_from=classmates."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5, school="Riverside Elementary")
+        peer = _make_camper(2001, "Olivia", "Chen", Gender.FEMALE, grade=5, school="Riverside Elementary")
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CLASSMATES)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert result[0].metadata["expanded_from"] == "classmates"
+
+
+class TestCongregationResolver:
+    """Test the CongregationResolver.
+
+    CongregationResolver finds campers in the same congregation, in the same session,
+    within +-1 grade, matching gender, excluding self. Congregation data comes from
+    person.metadata['normalized_congregation'].
+    """
+
+    def _setup_resolver(self, requester, session_peers):
+        """Set up mocked repos and resolver."""
+        person_repo = MagicMock()
+        attendee_repo = MagicMock()
+
+        person_repo.find_by_cm_id.side_effect = lambda cm_id: (
+            requester if cm_id == requester.cm_id else next((p for p in session_peers if p.cm_id == cm_id), None)
+        )
+
+        all_members = [requester] + session_peers
+        attendee_repo.get_session_attendees.return_value = [
+            {"person_cm_id": m.cm_id, "session_cm_id": 5000} for m in all_members
+        ]
+
+        persons_dict = {m.cm_id: m for m in all_members}
+        person_repo.bulk_find_by_cm_ids.return_value = persons_dict
+
+        resolver = CongregationResolver(person_repo, attendee_repo, year=2025)
+        return resolver, person_repo, attendee_repo
+
+    def test_base_confidence(self):
+        """CongregationResolver.base_confidence should be 0.85."""
+        person_repo = MagicMock()
+        attendee_repo = MagicMock()
+        resolver = CongregationResolver(person_repo, attendee_repo, year=2025)
+        assert resolver.base_confidence == 0.85
+
+    def test_finds_same_congregation(self):
+        """Should find campers with same congregation, session, similar grade, same gender."""
+        requester = _make_camper(
+            1001,
+            "Emma",
+            "Johnson",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+        peer = _make_camper(
+            2001,
+            "Olivia",
+            "Chen",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CONGREGATION)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 1
+        assert result[0].person.cm_id == 2001
+
+    def test_excludes_different_congregation(self):
+        """Should exclude campers from a different congregation."""
+        requester = _make_camper(
+            1001,
+            "Emma",
+            "Johnson",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+        peer = _make_camper(
+            2001,
+            "Olivia",
+            "Chen",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Congregation Shalom"},
+        )
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CONGREGATION)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_empty_when_no_congregation_data(self):
+        """Should return empty list when requester has no congregation."""
+        requester = _make_camper(1001, "Emma", "Johnson", Gender.FEMALE, grade=5)
+        peer = _make_camper(
+            2001,
+            "Olivia",
+            "Chen",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CONGREGATION)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_excludes_different_gender(self):
+        """Should exclude campers of different gender."""
+        requester = _make_camper(
+            1001,
+            "Emma",
+            "Johnson",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+        peer = _make_camper(
+            2001,
+            "Liam",
+            "Garcia",
+            Gender.MALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CONGREGATION)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_excludes_grade_difference_of_2(self):
+        """Should exclude campers with grade difference >= 2."""
+        requester = _make_camper(
+            1001,
+            "Emma",
+            "Johnson",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+        peer = _make_camper(
+            2001,
+            "Olivia",
+            "Chen",
+            Gender.FEMALE,
+            grade=7,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CONGREGATION)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert len(result) == 0
+
+    def test_sets_congregation_metadata(self):
+        """Should set metadata with expanded_from=congregation."""
+        requester = _make_camper(
+            1001,
+            "Emma",
+            "Johnson",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+        peer = _make_camper(
+            2001,
+            "Olivia",
+            "Chen",
+            Gender.FEMALE,
+            grade=5,
+            metadata={"normalized_congregation": "Temple Beth El"},
+        )
+
+        resolver, _, _ = self._setup_resolver(requester, [peer])
+        parsed = _make_parsed_request(group_kind=GroupKind.CONGREGATION)
+        result = resolver.resolve(requester_cm_id=1001, parsed_request=parsed, session_cm_id=5000)
+
+        assert result[0].metadata["expanded_from"] == "congregation"
