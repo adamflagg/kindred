@@ -507,6 +507,15 @@ class PersonRepository(Repository):
                 except (ValueError, TypeError):
                     pass
 
+            # Build metadata for resolver filtering (gender, congregation)
+            metadata: dict[str, Any] = {}
+            gender_val = getattr(db_record, "gender", None)
+            if gender_val:
+                metadata["gender"] = gender_val
+            congregation_val = getattr(db_record, "normalized_congregation", None)
+            if congregation_val:
+                metadata["normalized_congregation"] = congregation_val
+
             return Person(
                 cm_id=db_record.cm_id,
                 first_name=db_record.first_name,
@@ -521,6 +530,7 @@ class PersonRepository(Repository):
                 age=cm_age,  # CampMinder's authoritative age field
                 parent_names=parent_names,  # JSON of parent/guardian info
                 household_id=household_id,  # For sibling lookups
+                metadata=metadata,
             )
         except Exception as e:
             logger.error("Error mapping person record: %s", e)

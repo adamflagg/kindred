@@ -7,7 +7,7 @@ Updated for new PocketBase schema:
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -592,6 +592,159 @@ class TestBulkGetSessionsFiltersBunkingSessions:
         assert 12345 not in sessions
         # The valid item MUST still be returned — not lost to a broad except
         assert sessions[67890] == 1235404
+
+
+class TestBulkGetSessionsLogging:
+    """Tests that silent except blocks log exceptions instead of swallowing them."""
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_attendees_collection = Mock()
+        mock_persons_collection = Mock()
+
+        def collection_side_effect(name):
+            if name == "attendees":
+                return mock_attendees_collection
+            elif name == "persons":
+                return mock_persons_collection
+            return Mock()
+
+        mock_client.collection.side_effect = collection_side_effect
+        return mock_client, mock_attendees_collection, mock_persons_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _, _ = mock_pb_client
+        return AttendeeRepository(mock_client)
+
+    def test_bulk_get_sessions_logs_exception_on_query_failure(self, repository, mock_pb_client):
+        """Silent except blocks must log — not swallow — exceptions."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.side_effect = Exception("PB connection failed")
+
+        with patch("bunking.sync.bunk_request_processor.data.repositories.attendee_repository.logger") as mock_logger:
+            result = repository.bulk_get_sessions_for_persons([12345], 2025)
+
+        assert result == {}
+        mock_logger.exception.assert_called_once()
+
+    def test_get_session_attendees_logs_exception(self, repository, mock_pb_client):
+        """get_session_attendees must log exceptions."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.side_effect = Exception("DB timeout")
+
+        with patch("bunking.sync.bunk_request_processor.data.repositories.attendee_repository.logger") as mock_logger:
+            result = repository.get_session_attendees(1000002, 2025)
+
+        assert result == []
+        mock_logger.exception.assert_called_once()
+
+    def test_get_age_filtered_peers_logs_exception(self, repository, mock_pb_client):
+        """get_age_filtered_session_peers must log exceptions."""
+        _, mock_attendees, _ = mock_pb_client
+
+        # get_by_person_and_year must succeed (it has its own intentional silent catch)
+        mock_result = Mock()
+        mock_attendee = Mock()
+        mock_attendee.person_id = 12345
+        mock_attendee.year = 2025
+        mock_attendee.birth_date = "2010-05-15"
+        mock_attendee.expand = {"session": Mock(cm_id=1000002)}
+        mock_result.items = [mock_attendee]
+        mock_attendees.get_list.return_value = mock_result
+
+        # Then make the session attendees call fail (triggers outer except)
+        mock_attendees.get_full_list.side_effect = Exception("Session query failed")
+
+        with patch("bunking.sync.bunk_request_processor.data.repositories.attendee_repository.logger") as mock_logger:
+            result = repository.get_age_filtered_session_peers(12345, 1000002, 2025)
+
+        assert result == []
+        mock_logger.exception.assert_called()
+
+
+class TestBulkGetSessionsStatusPriority:
+    """Tests that enrolled sessions are prioritized over applied/waitlisted."""
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_attendees_collection = Mock()
+        mock_persons_collection = Mock()
+
+        def collection_side_effect(name):
+            if name == "attendees":
+                return mock_attendees_collection
+            elif name == "persons":
+                return mock_persons_collection
+            return Mock()
+
+        mock_client.collection.side_effect = collection_side_effect
+        return mock_client, mock_attendees_collection, mock_persons_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _, _ = mock_pb_client
+        return AttendeeRepository(mock_client)
+
+    def _make_attendee(self, person_id, session_cm_id, status_id, session_type="main"):
+        mock = Mock()
+        mock.person_id = person_id
+        mock.status_id = status_id
+        session_mock = Mock()
+        session_mock.cm_id = session_cm_id
+        session_mock.session_type = session_type
+        mock.expand = {"session": session_mock}
+        return mock
+
+    def test_enrolled_session_not_overwritten_by_applied(self, repository, mock_pb_client):
+        """When person has enrolled (2) + applied (8) bunking sessions, enrolled wins."""
+        _, mock_attendees, _ = mock_pb_client
+
+        # Enrolled in main session, applied for embedded — enrolled should win
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(1000001, 1000010, 2, "main"),  # enrolled
+            self._make_attendee(1000001, 1000011, 8, "embedded"),  # applied — should NOT overwrite
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([1000001], 2026)
+        assert sessions[1000001] == 1000010  # enrolled session wins
+
+    def test_enrolled_not_overwritten_by_waitlisted(self, repository, mock_pb_client):
+        """Enrolled session not overwritten by a waitlisted one."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 2, "main"),  # enrolled
+            self._make_attendee(12345, 1000013, 4, "main"),  # waitlisted
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([12345], 2026)
+        assert sessions[12345] == 1000010
+
+    def test_non_enrolled_can_be_overwritten_by_enrolled(self, repository, mock_pb_client):
+        """If applied comes first, enrolled later should overwrite."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000011, 8, "embedded"),  # applied first
+            self._make_attendee(12345, 1000010, 2, "main"),  # enrolled later — should win
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([12345], 2026)
+        assert sessions[12345] == 1000010
+
+    def test_cancelled_only_still_appears_in_results(self, repository, mock_pb_client):
+        """Person with only cancelled bunking enrollment still appears (ConflictDetector handles decline)."""
+        _, mock_attendees, _ = mock_pb_client
+
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(1000002, 1000012, 32, "main"),  # cancelled
+        ]
+
+        sessions = repository.bulk_get_sessions_for_persons([1000002], 2026)
+        assert 1000002 in sessions
 
 
 if __name__ == "__main__":

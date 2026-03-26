@@ -161,9 +161,12 @@ class TestFullPipelineTracing:
         conflict_result.conflicts = []
         orch.conflict_detector.detect_conflicts = MagicMock(return_value=conflict_result)
 
+        # Mock resolver registry (used by placeholder_expander.expand)
+        orch.resolver_registry = {}
+
         # Mock request creation
         orch._prepare_for_conflict_detection = MagicMock(return_value=[])  # type: ignore[method-assign]
-        orch._create_bunk_requests = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        orch._create_bunk_requests = AsyncMock(return_value=([], set()))  # type: ignore[method-assign]
 
         # Mock cache monitor
         orch.cache_monitor = None

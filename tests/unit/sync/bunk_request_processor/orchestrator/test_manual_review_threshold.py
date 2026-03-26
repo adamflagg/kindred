@@ -238,7 +238,7 @@ class TestReciprocalBoostStatusReCheck:
             status=RequestStatus.PENDING,
         )
 
-        result = orchestrator._apply_validation_pipeline([req_a, req_b])
+        result, _ = orchestrator._apply_validation_pipeline([req_a, req_b])
 
         # After reciprocal boost (0.80 + 0.10 = 0.90 >= 0.85), both should be RESOLVED
         for req in result:
@@ -267,7 +267,7 @@ class TestReciprocalBoostStatusReCheck:
             status=RequestStatus.PENDING,
         )
 
-        result = orchestrator._apply_validation_pipeline([req_a, req_b])
+        result, _ = orchestrator._apply_validation_pipeline([req_a, req_b])
 
         # After reciprocal boost (0.70 + 0.10 = 0.80 < 0.85), both should stay PENDING
         for req in result:
@@ -305,7 +305,7 @@ class TestReciprocalBoostStatusReCheck:
             status=RequestStatus.PENDING,
         )
 
-        result = orchestrator._apply_validation_pipeline([non_reciprocal, req_a, req_b])
+        result, _ = orchestrator._apply_validation_pipeline([non_reciprocal, req_a, req_b])
 
         # Non-reciprocal should stay PENDING (no reciprocal_boost metadata)
         non_recip_result = next(r for r in result if r.requester_cm_id == 300)
@@ -341,7 +341,7 @@ class TestReciprocalBoostStatusReCheck:
             status=RequestStatus.PENDING,
         )
 
-        result = orchestrator._apply_validation_pipeline([req_a, req_b])
+        result, _ = orchestrator._apply_validation_pipeline([req_a, req_b])
 
         # Request with negative cm_id should stay PENDING
         unresolved = next(r for r in result if r.requester_cm_id == 100)

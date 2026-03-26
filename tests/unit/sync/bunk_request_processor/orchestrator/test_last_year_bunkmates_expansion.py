@@ -1,10 +1,10 @@
-"""Tests for LAST_YEAR_BUNKMATES placeholder expansion.
+"""Tests for LAST_YEAR_BUNKMATES group reference expansion.
 
 Verifies that the orchestrator's PlaceholderExpander service correctly expands
 generic "keep with last year's bunk" requests into individual bunk_with requests
 for each returning bunkmate.
 
-1. Detects LAST_YEAR_BUNKMATES placeholder in parsed requests
+1. Detects group_kind=LAST_YEAR_BUNKMATES in parsed requests
 2. Calls find_prior_year_bunkmates() to get returning bunkmates
 3. Creates individual bunk_with request for each returning bunkmate
 4. Sets confidence=0.90, includes prior_year_bunk metadata
@@ -18,6 +18,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
+    GroupKind,
     ParsedRequest,
     ParseRequest,
     ParseResult,
@@ -55,6 +56,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
+        from bunking.sync.bunk_request_processor.services.group_resolvers import (
+            build_resolver_registry,
+        )
 
         # Create orchestrator with minimal config - suppress AI initialization
         with patch.dict("os.environ", {"AI_API_KEY": "test-key"}):
@@ -64,26 +68,30 @@ class TestExpandLastYearBunkmatesPlaceholders:
         orch._attendee_repo = mock_attendee_repo
         orch._person_repo = mock_person_repo
 
-        # Also update the PlaceholderExpander service to use the mocked repos
-        orch.placeholder_expander._attendee_repo = mock_attendee_repo
-        orch.placeholder_expander._person_repo = mock_person_repo
+        # Build resolver registry with mocked repos
+        orch.resolver_registry = build_resolver_registry(
+            attendee_repo=mock_attendee_repo,
+            person_repo=mock_person_repo,
+            year=2025,
+        )
 
         return orch
 
     def _create_parse_result_with_placeholder(
         self, requester_cm_id: int, session_cm_id: int
     ) -> tuple[ParseResult, list[ResolutionResult]]:
-        """Helper to create a ParseResult with LAST_YEAR_BUNKMATES placeholder."""
+        """Helper to create a ParseResult with LAST_YEAR_BUNKMATES group reference."""
         parsed_request = ParsedRequest(
             raw_text="keep with last year's bunk",
             request_type=RequestType.BUNK_WITH,
-            target_name="LAST_YEAR_BUNKMATES",
+            target_name="",
             age_preference=None,
             source_field="Share Bunk With",
             source=RequestSource.FAMILY,
             confidence=1.0,
             csv_position=0,
             metadata={},
+            group_kind=GroupKind.LAST_YEAR_BUNKMATES,
         )
 
         parse_request = ParseRequest(
@@ -107,7 +115,10 @@ class TestExpandLastYearBunkmatesPlaceholders:
         )
 
         resolution_result = ResolutionResult(
-            person=None, confidence=1.0, method="placeholder", metadata={"placeholder": "LAST_YEAR_BUNKMATES"}
+            person=None,
+            confidence=1.0,
+            method="group_reference",
+            metadata={"group_kind": "last_year_bunkmates"},
         )
 
         return parse_result, [resolution_result]
@@ -175,18 +186,19 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 2,
         }
 
-        # Mock person lookups for the bunkmates
-        mock_person_repo.find_by_cm_id.side_effect = [
-            Person(cm_id=22222, first_name="John", last_name="Smith"),
-            Person(cm_id=33333, first_name="Jane", last_name="Doe"),
-        ]
+        # Mock bulk person lookup for the bunkmates
+        john = Person(cm_id=22222, first_name="John", last_name="Smith")
+        jane = Person(cm_id=33333, first_name="Jane", last_name="Doe")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: john, 33333: jane}
 
         # Create resolution results with the placeholder
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
         resolution_results = [(parse_result, resolution_list)]
 
         # Execute expansion via the PlaceholderExpander service
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         # Verify: Should have 2 results (one for each returning bunkmate)
         assert len(expanded_results) == 2
@@ -198,8 +210,8 @@ class TestExpandLastYearBunkmatesPlaceholders:
         assert pr1.parsed_requests[0].request_type == RequestType.BUNK_WITH
         assert res1[0].person.cm_id == 22222
         assert res1[0].confidence == 0.90
-        assert res1[0].metadata.get("auto_generated_from_prior_year") is True
-        assert res1[0].metadata.get("prior_year_bunk") == "B-5"
+        assert res1[0].metadata.get("expanded_from") == "last_year_bunkmates"
+        assert res1[0].metadata.get("prior_bunk") == "B-5"
         assert res1[0].metadata.get("prior_year") == 2024
 
         # Check second expanded request
@@ -229,7 +241,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
         resolution_results = [(parse_result, resolution_list)]
 
         # Execute expansion via the PlaceholderExpander service
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         # Should keep original result but mark for review
         assert len(expanded_results) == 1
@@ -255,7 +269,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
         resolution_results = [(parse_result, resolution_list)]
 
         # Execute expansion
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         # Should keep original but with 0 confidence (will be PENDING)
         assert len(expanded_results) == 1
@@ -279,7 +295,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
         resolution_results = [(parse_result, resolution_list)]
 
         # Execute expansion
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         # Should pass through unchanged
         assert len(expanded_results) == 1
@@ -304,7 +322,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 1,
         }
 
-        mock_person_repo.find_by_cm_id.return_value = Person(cm_id=22222, first_name="John", last_name="Smith")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {
+            22222: Person(cm_id=22222, first_name="John", last_name="Smith"),
+        }
 
         # Create resolution results: one placeholder + one regular
         placeholder_pr, placeholder_res = self._create_parse_result_with_placeholder(11111, session_cm_id)
@@ -313,31 +333,33 @@ class TestExpandLastYearBunkmatesPlaceholders:
         resolution_results = [(placeholder_pr, placeholder_res), (regular_pr, regular_res)]
 
         # Execute expansion
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         # Should have 2 results: 1 expanded from placeholder, 1 regular
         assert len(expanded_results) == 2
 
-        # Verify expanded request (from placeholder)
+        # Verify expanded request (from group reference)
         pr1, res1 = expanded_results[0]
         assert pr1.parsed_requests[0].target_name == "John Smith"
         assert res1[0].person.cm_id == 22222
-        assert res1[0].metadata.get("auto_generated_from_prior_year") is True
+        assert res1[0].metadata.get("expanded_from") == "last_year_bunkmates"
 
         # Verify regular request (unchanged)
         pr2, res2 = expanded_results[1]
         assert pr2.parsed_requests[0].target_name == "Sarah Jones"
         assert res2[0].person.cm_id == 55555
-        assert res2[0].metadata.get("auto_generated_from_prior_year") is None
+        assert res2[0].metadata.get("expanded_from") is None
 
     @pytest.mark.asyncio
     async def test_expanded_requests_have_correct_metadata(self, orchestrator, mock_attendee_repo, mock_person_repo):
-        """Expanded requests should include all required metadata matching monolith behavior.
+        """Expanded requests should include all required metadata.
 
-        - auto_generated_from_prior_year: True
-        - prior_year_bunk: bunk name from last year
+        - expanded_from: 'last_year_bunkmates'
+        - prior_bunk: bunk name from last year
         - prior_year: the prior year
-        - original_request: 'LAST_YEAR_BUNKMATES'
+        - method: 'last_year_bunkmates_expansion'
         """
         requester_cm_id = 11111
         session_cm_id = 1234567
@@ -350,22 +372,26 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 1,
         }
 
-        mock_person_repo.find_by_cm_id.return_value = Person(cm_id=22222, first_name="Emma", last_name="Wilson")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {
+            22222: Person(cm_id=22222, first_name="Emma", last_name="Wilson"),
+        }
 
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
         resolution_results = [(parse_result, resolution_list)]
 
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         assert len(expanded_results) == 1
         pr, res_list = expanded_results[0]
 
-        # Check all required metadata
+        # Check all required metadata on the resolution result
         metadata = res_list[0].metadata
-        assert metadata.get("auto_generated_from_prior_year") is True
-        assert metadata.get("prior_year_bunk") == "G-Aleph"
+        assert metadata.get("expanded_from") == "last_year_bunkmates"
+        assert metadata.get("prior_bunk") == "G-Aleph"
         assert metadata.get("prior_year") == 2024
-        assert metadata.get("original_request") == "LAST_YEAR_BUNKMATES"
+        assert res_list[0].method == "last_year_bunkmates_expansion"
 
         # The ParsedRequest should also have the generated target name
         assert pr.parsed_requests[0].target_name == "Emma Wilson"
@@ -386,7 +412,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
             "returning_count": 1,
         }
 
-        mock_person_repo.find_by_cm_id.return_value = Person(cm_id=22222, first_name="John", last_name="Smith")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {
+            22222: Person(cm_id=22222, first_name="John", last_name="Smith"),
+        }
 
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
         # Modify source_field to verify it's preserved
@@ -395,7 +423,9 @@ class TestExpandLastYearBunkmatesPlaceholders:
 
         resolution_results = [(parse_result, resolution_list)]
 
-        expanded_results = await orchestrator.placeholder_expander.expand(resolution_results)
+        expanded_results = await orchestrator.placeholder_expander.expand(
+            resolution_results, orchestrator.resolver_registry
+        )
 
         pr, res_list = expanded_results[0]
         assert pr.parsed_requests[0].source_field == "BunkingNotes Notes"

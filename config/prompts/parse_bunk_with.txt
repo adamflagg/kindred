@@ -27,29 +27,32 @@ A name alone means "bunk this person with the named friend."
 This field commonly contains:
 
 1. "bunk_with" - Wants to share a cabin with specific person(s)
-   target_name = person's name, "SIBLING", or "LAST_YEAR_BUNKMATES"
+   target_name = person's name (for specific individuals)
+   OR set group_kind instead for group references (see GROUP REFERENCES below)
 
 2. "not_bunk_with" - Embedded negatives (look for "NOT", "don't", "please avoid", "separate from")
-   target_name = person's name or "SIBLING"
+   target_name = person's name, or set group_kind for group references
 
 3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
    target_name = "older", "younger", or "unclear"
    Use when text says "prefers older kids" without naming anyone specific
 
+4. Group references - References to groups rather than specific individuals
+   Set group_kind to:
+   - "sibling" for twins, siblings, brothers, sisters, "my twin", "bunk together" (for twins)
+   - "last_year_bunkmates" for "last year's bunk", "same cabin as 2024", "B-4 bunkmates"
+   - "classmates" for "kids from my school", "schoolmates", or naming a specific school
+   - "congregation" for "Beth Jacob girls", "temple friends", or naming a specific synagogue/temple
+   When group_kind is set, target_name should be empty string "".
+   For classmates, include group_metadata with {{"school_name": "..."}}
+   For congregation, include group_metadata with {{"congregation_name": "..."}}
+
 IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
-
-=== SPECIAL PLACEHOLDERS ===
-
-Use these EXACT strings as target_name when appropriate:
-- "SIBLING" - For family references: twins, sister, brother, sibling, my twin, "bunk together" (for twins)
-- "LAST_YEAR_BUNKMATES" - For prior cabin references: "last year's bunk", "same cabin as 2024", "B-4 bunkmates"
-
-These placeholders will be expanded to actual names by the system later.
 
 === SIBLING DETECTION GUARDRAILS ===
 
 The requester's last name is included in the requester info above.
-- ONLY use "SIBLING" when the text explicitly mentions a family relationship
+- ONLY use group_kind="sibling" when the text explicitly mentions a family relationship
   using words like "sister", "brother", "twin", "sibling", "my twin", etc.
 - If two people are mentioned wanting to bunk together but have DIFFERENT last
   names (e.g., requester is "Johnson" but text mentions "Olivia Chen"), extract
@@ -88,7 +91,7 @@ Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context
 
 Example 4 - Historical reference:
 Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
-Output: 1 bunk_with request with target_name "LAST_YEAR_BUNKMATES", parse_notes: "2024 Session 3 B-4"
+Output: 1 bunk_with request with group_kind="last_year_bunkmates", target_name="", parse_notes: "2024 Session 3 B-4"
 
 Example 4b - Historical bunking with year:
 Input: "Same bunk as last year with Emma and Olivia - they were B4 together"
@@ -97,7 +100,7 @@ the year before the current camp season
 
 Example 5 - Complex with siblings:
 Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"
-Output: 1 not_bunk_with "SIBLING" request with context in parse_notes
+Output: 1 not_bunk_with request with group_kind="sibling", target_name="", context in parse_notes
 
 Example 6 - Age preference with name:
 Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"
@@ -136,7 +139,7 @@ IGNORE Family Camp content entirely:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name, placeholder, or age value
+- target_name: Person's name or age value ("older", "younger", "unclear")
 - confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
 - keywords_found: Priority words like "must", "important", "critical", "first choice"
 

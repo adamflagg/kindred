@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 
 from ..core.models import BunkRequest, RequestSource, RequestType
 from ..data.repositories.request_repository import RequestRepository
-from ..shared.constants import SourceField
 
 # Source priority order (higher number = higher priority)
 # Used for deduplication tiebreaker only - staff validates family input
@@ -26,9 +25,7 @@ class DuplicateGroup:
     primary: BunkRequest
     duplicates: list[BunkRequest]
     # Key: (requester_cm_id, requested_cm_id, request_type, source_field, year, session_cm_id)
-    # Includes source_field to prevent cross-field deduplication:
-    # - Different form fields (share_bunk_with vs socialize_with) may have different semantics
-    # - Staff notes vs parent form may have different timing context
+    # source_field is always "" — cross-field deduplication is intentional
     duplicate_key: tuple[int, int | None, RequestType, str, int, int]
 
 
@@ -88,36 +85,21 @@ class Deduplicator:
                 # True placeholders (non-age_preference with no target) are unique
                 key = None
             else:
-                # Key generation is source-field-specific:
-                # - socialize_with: Include source_field (preserves 1:1 age preference per child)
-                # - Other fields: Exclude source_field (dedupes across form vs notes)
+                # Cross-field dedup: merge duplicates from different form fields
+                # (e.g., same name in bunk_with AND bunking_notes) into one request,
+                # picking the higher-priority source.
                 #
                 # Note: The DB unique constraint DOES include source_field. This in-batch
-                # dedup intentionally excludes it to merge cross-field duplicates (e.g.,
-                # same name in bunk_with AND bunking_notes) into one request before saving,
-                # picking the higher-priority source field.
-                if request.source_field == SourceField.SOCIALIZE_WITH:
-                    # socialize_with is special - never dedupe across sources
-                    # This field outputs known age preference requests from dropdown values
-                    key = (
-                        request.requester_cm_id,
-                        request.requested_cm_id,
-                        request.request_type,
-                        request.source_field,  # Include source_field
-                        request.year,
-                        request.session_cm_id,
-                    )
-                else:
-                    # All other fields: dedupe across source fields
-                    # Key excludes source_field to merge cross-field duplicates
-                    key = (
-                        request.requester_cm_id,
-                        request.requested_cm_id,
-                        request.request_type,
-                        "",  # Empty string placeholder to maintain tuple structure
-                        request.year,
-                        request.session_cm_id,
-                    )
+                # dedup intentionally excludes it to merge cross-field duplicates before
+                # saving.
+                key = (
+                    request.requester_cm_id,
+                    request.requested_cm_id,
+                    request.request_type,
+                    "",  # Empty string placeholder to maintain tuple structure
+                    request.year,
+                    request.session_cm_id,
+                )
 
             # Use key as single source of truth:
             # - key=None → truly unique, add to unique_requests

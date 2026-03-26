@@ -25,7 +25,7 @@ from typing import Any
 from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, ParseRequest, ParseResult
-from ..shared.constants import VALID_PLACEHOLDERS as _VALID_PLACEHOLDERS
+from ..shared.constants import VALID_AGE_TARGETS as _VALID_AGE_TARGETS
 from .ai_service import AIProvider, AIRequestContext, ParsedResponse
 
 logger = get_logger(__name__)
@@ -120,7 +120,7 @@ def is_likely_person_name(value: str) -> bool:
     normalized = value.strip().lower()
 
     # Accept special placeholders
-    if normalized in _VALID_PLACEHOLDERS:
+    if normalized in _VALID_AGE_TARGETS:
         return True
 
     # Reject exact matches to non-name patterns

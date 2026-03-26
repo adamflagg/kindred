@@ -184,6 +184,15 @@ class Phase1ParseService:
             if req.staff_metadata:
                 additional_data["staff_metadata"] = req.staff_metadata
 
+            # Include school/congregation/city for group reference detection
+            row = req.row_data or {}
+            if row.get("school"):
+                additional_data["requester_school"] = row["school"]
+            if row.get("normalized_congregation"):
+                additional_data["requester_congregation"] = row["normalized_congregation"]
+            if row.get("city") or row.get("address_city"):
+                additional_data["requester_city"] = row.get("city") or row.get("address_city")
+
             context = self.context_builder.build_parse_only_context(
                 requester_name=req.requester_name,
                 requester_cm_id=req.requester_cm_id,

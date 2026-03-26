@@ -98,7 +98,7 @@ class TestOrchestratorSelfReferenceValidation:
         ]
 
         # Apply validation pipeline
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # All 3 requests should be kept (self-ref modified, not filtered)
         assert len(validated_requests) == 3
@@ -132,7 +132,7 @@ class TestOrchestratorSelfReferenceValidation:
             _create_bunk_request(requester_cm_id=300, requested_cm_id=400),  # Valid
         ]
 
-        orchestrator._apply_validation_pipeline(requests)
+        orchestrator._apply_validation_pipeline(requests)  # returns (list, set) tuple
 
         assert orchestrator._stats.get("self_referential_filtered", 0) == 2
 
@@ -183,7 +183,7 @@ class TestOrchestratorDeduplication:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Should have 2 unique requests (one same-source duplicate removed)
         assert len(validated_requests) == 2
@@ -212,7 +212,7 @@ class TestOrchestratorDeduplication:
             _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.FAMILY),
         ]
 
-        orchestrator._apply_validation_pipeline(requests)
+        orchestrator._apply_validation_pipeline(requests)  # returns (list, set) tuple
 
         assert orchestrator._stats.get("duplicates_removed", 0) == 2
 
@@ -248,7 +248,7 @@ class TestOrchestratorDeduplication:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Both should be kept - different types
         assert len(validated_requests) == 2
@@ -280,7 +280,7 @@ class TestOrchestratorReciprocalDetection:
             _create_bunk_request(requester_cm_id=200, requested_cm_id=100),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Both should be marked as reciprocal
         assert len(validated_requests) == 2
@@ -317,7 +317,7 @@ class TestOrchestratorReciprocalDetection:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Both should have boosted confidence (default boost is 0.1)
         for r in validated_requests:
@@ -349,7 +349,7 @@ class TestOrchestratorReciprocalDetection:
             _create_bunk_request(requester_cm_id=400, requested_cm_id=300),
         ]
 
-        orchestrator._apply_validation_pipeline(requests)
+        orchestrator._apply_validation_pipeline(requests)  # returns (list, set) tuple
 
         assert orchestrator._stats.get("reciprocal_pairs", 0) == 2
 
@@ -376,7 +376,7 @@ class TestOrchestratorReciprocalDetection:
             _create_bunk_request(requester_cm_id=300, requested_cm_id=400),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Neither should be marked as reciprocal
         assert len(validated_requests) == 2
@@ -421,7 +421,7 @@ class TestOrchestratorValidationPipelineOrder:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Both are kept - self-ref is marked, not filtered
         assert len(validated_requests) == 2
@@ -462,7 +462,7 @@ class TestOrchestratorValidationPipelineOrder:
             _create_bunk_request(requester_cm_id=200, requested_cm_id=100, source=RequestSource.STAFF),  # Dup
         ]
 
-        orchestrator._apply_validation_pipeline(requests)
+        orchestrator._apply_validation_pipeline(requests)  # returns (list, set) tuple
 
         # Should have exactly 1 reciprocal pair (not 2 or 4)
         assert orchestrator._stats.get("reciprocal_pairs", 0) == 1
@@ -501,7 +501,7 @@ class TestOrchestratorValidationPipelineIntegration:
             _create_bunk_request(requester_cm_id=600, requested_cm_id=700),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Expected: 5 requests (self-ref kept with modifications, 1 duplicate removed)
         assert len(validated_requests) == 5
@@ -590,7 +590,7 @@ class TestAIReasoningConflictsDetection:
         }
 
         # Call the internal method to create bunk requests (async)
-        requests = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
+        requests, _ = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
 
         # Should have created one request
         assert len(requests) == 1
@@ -647,7 +647,7 @@ class TestAIReasoningConflictsDetection:
             "session_cm_id": 1000002,
         }
 
-        requests = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
+        requests, _ = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
 
         assert len(requests) == 1
         request = requests[0]
@@ -702,7 +702,7 @@ class TestAIReasoningConflictsDetection:
             "session_cm_id": 1000002,
         }
 
-        requests = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
+        requests, _ = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
 
         assert len(requests) == 1
         request = requests[0]

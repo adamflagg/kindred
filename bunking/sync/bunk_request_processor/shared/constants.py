@@ -16,28 +16,23 @@ import re
 from re import Pattern
 
 # =============================================================================
-# Placeholder Constants
+# Status Constants
 # =============================================================================
 
-# Placeholder for requests to bunk with prior year bunkmates.
-# When a parent says "keep with last year's bunk", the AI returns this.
-# This placeholder is expanded to individual bunk_with requests by the orchestrator.
-LAST_YEAR_BUNKMATES_PLACEHOLDER = "LAST_YEAR_BUNKMATES"
+# CampMinder attendee status IDs — used in session enrollment filtering
+ENROLLED_STATUS_ID = 2  # Active enrolled attendee
 
-# Placeholder for sibling/twin/family member references.
-# When text says "twins", "my sister", "siblings", etc., the AI returns this.
-# This placeholder is expanded to actual sibling(s) via household_id lookup.
-SIBLING_PLACEHOLDER = "SIBLING"
+# =============================================================================
+# Placeholder Constants
+# =============================================================================
 
 # Cabin unit names — targets matching these are cabin units, not people.
 # Matches current camp's Tier 1 division entries. Update if units change.
 UNIT_NAMES: set[str] = {"nitzanim", "galil", "eilat", "haifa", "chalutzim", "carmel"}
 
-# Special placeholders accepted as valid target names.
-# Not real person names — expanded later in the pipeline.
-VALID_PLACEHOLDERS: set[str] = {
-    "last_year_bunkmates",
-    "sibling",
+# Age preference values accepted as valid target_name values.
+# Group references (sibling, bunkmates, classmates, congregation) use group_kind field instead.
+VALID_AGE_TARGETS: set[str] = {
     "older",
     "younger",
     "unclear",

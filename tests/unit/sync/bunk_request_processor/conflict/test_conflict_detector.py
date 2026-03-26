@@ -244,8 +244,8 @@ class TestConflictDetectorWithAttendeeRepo:
 
         assert not result.has_conflicts
 
-    def test_target_not_enrolled_no_conflict(self):
-        """Target not in attendee_repo at all → no conflict (can't determine session)."""
+    def test_target_not_enrolled_is_declined(self):
+        """Target with no bunking session enrollment → TARGET_NOT_ENROLLED conflict."""
         attendee_repo = make_mock_attendee_repo({})  # empty — target not enrolled
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
@@ -262,7 +262,9 @@ class TestConflictDetectorWithAttendeeRepo:
 
         result = detector.detect_conflicts(resolved_requests)
 
-        assert not result.has_conflicts
+        assert result.has_conflicts
+        assert len(result.conflicts) == 1
+        assert result.conflicts[0].conflict_type == ConflictType.TARGET_NOT_ENROLLED
 
     def test_no_attendee_repo_falls_back_to_existing_behavior(self):
         """Without attendee_repo, only detects conflicts where target is also a requester (existing behavior)."""
@@ -428,3 +430,133 @@ class TestCrossSessionNotBunkWith:
         _, resolution_info = modified[0]
         assert resolution_info.get("has_conflict") is True
         assert resolution_info.get("auto_satisfied") is None
+
+
+class TestTargetNotEnrolled:
+    """Tests for TARGET_NOT_ENROLLED conflict type."""
+
+    def test_bunk_with_target_no_bunking_enrollment_declined(self):
+        """Target with no bunking session enrollment → TARGET_NOT_ENROLLED."""
+        attendee_repo = make_mock_attendee_repo({})  # empty — target not found
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 1111,
+                    "session_cm_id": 1000010,
+                    "person_cm_id": 9999,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        modified = detector.apply_conflict_resolution(resolved_requests, result)
+        _, resolution_info = modified[0]
+
+        assert resolution_info.get("has_conflict") is True
+        assert resolution_info.get("conflict_type") == "target_not_enrolled"
+
+    def test_target_waitlisted_for_bunking_no_decline(self):
+        """Target waitlisted for a bunking session → no conflict (keep PENDING)."""
+        # Enrichment returns the session even for waitlisted (status-aware enrichment includes them)
+        attendee_repo = make_mock_attendee_repo({9999: 1000010})
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 1111,
+                    "session_cm_id": 1000010,
+                    "person_cm_id": 9999,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        assert not result.has_conflicts  # same session, no conflict
+
+    def test_not_bunk_with_target_not_enrolled_also_declined(self):
+        """NOT_BUNK_WITH with target not enrolled → TARGET_NOT_ENROLLED (no need for constraint)."""
+        attendee_repo = make_mock_attendee_repo({})
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith", request_type=RequestType.NOT_BUNK_WITH),
+                {
+                    "requester_cm_id": 1111,
+                    "session_cm_id": 1000010,
+                    "person_cm_id": 9999,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        assert result.has_conflicts
+        assert result.conflicts[0].conflict_type == ConflictType.TARGET_NOT_ENROLLED
+
+    def test_no_attendee_repo_skips_not_enrolled_check(self):
+        """Without attendee_repo, can't detect target-not-enrolled."""
+        detector = ConflictDetector()  # no attendee_repo
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 1111,
+                    "session_cm_id": 1000010,
+                    "person_cm_id": 9999,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        assert not result.has_conflicts
+
+
+class TestAGSiloCrossSession:
+    """Tests that AG sessions are treated as a separate silo for cross-session conflicts."""
+
+    def test_bunk_with_ag_target_non_ag_requester_declined(self):
+        """Requester in main session, target in AG → SESSION_MISMATCH."""
+        attendee_repo = make_mock_attendee_repo({7777: 1000099})  # AG session
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("AG Kid"),
+                {
+                    "requester_cm_id": 1111,
+                    "session_cm_id": 1000010,  # main session
+                    "person_cm_id": 7777,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        assert result.has_conflicts
+        assert result.conflicts[0].conflict_type == ConflictType.SESSION_MISMATCH
+
+    def test_not_bunk_with_ag_cross_auto_resolved(self):
+        """NOT_BUNK_WITH across AG/non-AG → CROSS_SESSION_SATISFIED."""
+        attendee_repo = make_mock_attendee_repo({7777: 1000099})  # AG session
+        detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("AG Kid", request_type=RequestType.NOT_BUNK_WITH),
+                {
+                    "requester_cm_id": 1111,
+                    "session_cm_id": 1000010,  # main session
+                    "person_cm_id": 7777,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        modified = detector.apply_conflict_resolution(resolved_requests, result)
+        _, resolution_info = modified[0]
+        assert resolution_info.get("auto_satisfied") is True

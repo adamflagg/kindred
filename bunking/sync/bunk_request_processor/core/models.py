@@ -73,6 +73,15 @@ class AgePreference(Enum):
     YOUNGER = "younger"
 
 
+class GroupKind(Enum):
+    """Types of group references that can be expanded into individual requests."""
+
+    SIBLING = "sibling"
+    LAST_YEAR_BUNKMATES = "last_year_bunkmates"
+    CLASSMATES = "classmates"
+    CONGREGATION = "congregation"
+
+
 @dataclass
 class Session:
     """Represents a camp session"""
@@ -229,6 +238,7 @@ class ParsedRequest:
     csv_position: int  # Position in the CSV field (0-based)
     metadata: dict[str, Any]
     notes: str | None = None
+    group_kind: GroupKind | None = None
 
     # Temporal conflict handling fields
     temporal_date: datetime | None = None

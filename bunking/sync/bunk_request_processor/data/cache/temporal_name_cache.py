@@ -687,6 +687,15 @@ class TemporalNameCache:
             first_name: str = getattr(db_record, "first_name", None) or ""
             last_name: str = getattr(db_record, "last_name", None) or ""
 
+            # Build metadata for resolver filtering (gender, congregation)
+            metadata: dict[str, Any] = {}
+            gender_val = getattr(db_record, "gender", None)
+            if gender_val:
+                metadata["gender"] = gender_val
+            congregation_val = getattr(db_record, "normalized_congregation", None)
+            if congregation_val:
+                metadata["normalized_congregation"] = congregation_val
+
             return Person(
                 cm_id=db_record.cm_id,
                 first_name=first_name,
@@ -700,6 +709,7 @@ class TemporalNameCache:
                 session_cm_id=None,
                 parent_names=parent_names,  # JSON of parent/guardian info
                 household_id=getattr(db_record, "household_id", None),  # For sibling lookup
+                metadata=metadata,
             )
         except Exception as e:
             logger.error(f"Error mapping person record: {e}")

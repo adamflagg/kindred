@@ -9,12 +9,16 @@ from datetime import datetime
 from typing import Any
 
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
+from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ...core.models import Person
 from ...shared import parse_date
+from ...shared.constants import ENROLLED_STATUS_ID
 from ..pocketbase_wrapper import PocketBaseWrapper
 from .person_repository import PersonRepository
+
+logger = get_logger(__name__)
 
 
 class AttendeeRepository:
@@ -135,6 +139,7 @@ class AttendeeRepository:
             return attendees
 
         except Exception:
+            logger.exception("get_session_attendees failed for session_cm_id=%s year=%s", session_cm_id, year)
             return []
 
     def clear_cache(self) -> None:
@@ -194,6 +199,7 @@ class AttendeeRepository:
             return filtered_peers
 
         except Exception:
+            logger.exception("get_age_filtered_session_peers failed for person_cm_id=%s", person_cm_id)
             return []
 
     _BULK_CHUNK_SIZE = 100
@@ -246,10 +252,13 @@ class AttendeeRepository:
             # Map to dictionary, filtering to bunking-relevant sessions only.
             # This prevents family camp / quest enrollments from overwriting
             # the correct summer session assignment.
+            # Status priority: enrolled (2) wins over all other statuses.
             sessions_dict: dict[int, int] = {}
+            sessions_status: dict[int, int] = {}  # person_cm_id → best status_id seen
             for item in items:
                 person_cm_id = getattr(item, "person_id", None)
                 session_cm_id = self._get_session_cm_id(item)
+                status_id = getattr(item, "status_id", None)
                 if not person_cm_id or not session_cm_id:
                     continue
 
@@ -259,11 +268,18 @@ class AttendeeRepository:
                 if session_type not in VALID_BUNKING_SESSION_TYPES:
                     continue
 
+                # Don't overwrite an enrolled session with a non-enrolled one
+                existing_status = sessions_status.get(person_cm_id)
+                if existing_status == ENROLLED_STATUS_ID and status_id != ENROLLED_STATUS_ID:
+                    continue
+
                 sessions_dict[person_cm_id] = session_cm_id
+                sessions_status[person_cm_id] = status_id or 0
 
             return sessions_dict
 
         except Exception:
+            logger.exception("bulk_get_sessions_chunk failed for %d person IDs (year=%d)", len(person_cm_ids), year)
             return {}
 
     def _map_attendee_record(self, db_record: Any) -> dict[str, Any]:
@@ -322,6 +338,7 @@ class AttendeeRepository:
                     }
                 )
             except Exception:
+                logger.exception("find_prior_year_bunkmates failed querying assignments for cm_id=%s", requester_cm_id)
                 return {}
 
             if not assignments:
@@ -374,6 +391,7 @@ class AttendeeRepository:
             }
 
         except Exception:
+            logger.exception("find_prior_year_bunkmates failed for cm_id=%s", requester_cm_id)
             return {}
 
     def build_person_session_mappings(
