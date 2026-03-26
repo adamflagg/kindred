@@ -326,7 +326,12 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │
     ├── 12. CONFLICT DETECTION & RESOLUTION
     │   ├─ Generate unresolved person IDs (deterministic negative MD5 hash)
-    │   ├─ Detect conflicts (bunk_with vs not_bunk_with for same pair)
+    │   ├─ ConflictDetector (enriched with AttendeeRepository for full session visibility)
+    │   │   ├─ Build session map from requester data + bulk attendee lookup for unknown targets
+    │   │   ├─ BUNK_WITH cross-session → SESSION_MISMATCH → DECLINED
+    │   │   ├─ NOT_BUNK_WITH cross-session → CROSS_SESSION_SATISFIED → auto-RESOLVED
+    │   │   └─ Session metadata (requester_session, target_session) captured for bunk staff review
+    │   ├─ Detect post-expansion conflicts (bunk_with vs not_bunk_with for same pair)
     │   └─ Apply resolution (remove losing side)
     │
     ├── 13. CREATE BUNK REQUESTS
@@ -337,7 +342,8 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   │       ├─ Negative cm_id (unresolved hash) → PENDING
     │   │       ├─ Confidence ≥ auto_resolve_threshold → RESOLVED
     │   │       ├─ Confidence < threshold → PENDING
-    │   │       └─ Has conflict → DECLINED
+    │   │       ├─ Has conflict → DECLINED
+    │   │       └─ auto_satisfied (cross-session NOT_BUNK_WITH) → RESOLVED
     │   ├─ _apply_validation_pipeline()
     │   │   ├─ Self-Reference: Detect A→A requests, flag for staff review
     │   │   ├─ Deduplication: Remove duplicates, keep highest priority
@@ -408,7 +414,7 @@ If no fast path resolved the name, try strategies in order. First confident matc
 Five-step cascade:
 
 1. **Nickname variations** (Bob→Robert, Kate→Katherine): confidence ~0.85. Sources: built-in groups, camp overrides (`config/nicknames_override.json`), `nicknames` PyPI library.
-2. **Jaro-Winkler first name similarity** (Charlie→Charlotte, Zoey→Zoe): confidence ~0.85. Threshold configurable via PB config `jaro_winkler_threshold` (default 0.85). Also checks `preferred_name`.
+2. **Jaro-Winkler first name similarity** (Charlie→Charlotte, Zoey→Zoe): confidence ~0.85. Threshold configurable via PB config `jaro_winkler_threshold` (default 0.85). Also checks `preferred_name`. Falls back to full `all_persons` pool when candidates are empty, catching last-name misspellings (Obsfeld→Obstfeld). Full-pool matches tagged `match_type: "jaro_winkler_full_pool"`.
 3. **Spelling variations** (Alexis↔Alexus, Stephine↔Stephanie): confidence ~0.85
 4. **Normalized search** (substring matching in full/preferred names): confidence ~0.80
 5. **Parent surname match**: confidence ~0.70
@@ -439,6 +445,12 @@ Used when multiple same-named candidates remain ambiguous:
 | Same school + same grade | **0.85** |
 | Same school + adjacent grade (±1) | **0.70** |
 | Same school only | **0.75** |
+
+### Post-Pipeline: Single Name Candidates
+
+**File:** `resolution/resolution_pipeline.py` (`_generate_single_name_candidates`)
+
+First-name-only targets (no last name) that went unresolved after the pipeline get session-filtered candidate lists via `find_by_first_name`, capped at 5 candidates, at confidence 0.3 with method `single_name_candidates`. These are passed to Phase 3 for AI disambiguation. 35 hits in the March 25 production run.
 
 ### Post-Pipeline: Social Graph Enhancement
 
@@ -476,8 +488,24 @@ score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
 **Worked examples:**
 ```
 Same-session exact match (correct):  0.70 × 1.0 + 0.15 × 0.85 + 0.10 × 0.8 = 0.9075 → RESOLVED
-Diff-session exact match:            0.70 × 0.7 + 0.15 × 0.85 + 0.10 × 0.8 = 0.6975 → PENDING
-With reciprocal boost (+0.1):        0.6975 + 0.10 = 0.7975 → still PENDING (below 0.85)
+Cross-session BUNK_WITH:             Score irrelevant — ConflictDetector auto-DECLINES
+Cross-session NOT_BUNK_WITH:         Score irrelevant — ConflictDetector auto-RESOLVES (satisfied)
+```
+
+**Score breakdown in traces (`confidence_factors`):**
+
+After each scoring call, `ConfidenceScorer.last_score_factors` contains the full breakdown. The orchestrator reads this into the trace's `confidence_factors` field:
+
+```json
+{
+  "formula": "bunk_with",
+  "name_score": 1.0,
+  "ai_score": 0.85,
+  "context_score": 0.8,
+  "reciprocal_score": 0.0,
+  "weights": {"name_match": 0.70, "ai_parsing": 0.15, "context": 0.10, "reciprocal_bonus": 0.05},
+  "weighted_total": 0.9075
+}
 ```
 
 ---
@@ -594,7 +622,7 @@ Non-bunking types (35 sessions): `family`, `quest`, `bmitzvah`, `hebrew`, `teen`
 
 ## Per-Stage Production Effectiveness
 
-Data from 864-trace production run (2026 season, 1014 source records → 1908 output requests).
+Data from 945-trace production run (2026 season, March 25). Status breakdown: 1157 RESOLVED (73.5%), 354 PENDING (22.5%), 65 DECLINED (4.1%). Run-over-run improvement: 14.6% → 73.5% resolved between March 18 and March 25.
 
 ### Stages with production impact
 
@@ -619,7 +647,7 @@ Data from 864-trace production run (2026 season, 1014 source records → 1908 ou
 
 ### Phase 3 AI Disambiguation
 
-643 requests sent to Phase 3, only 51 resolved (**8% success rate**). 569 came back still pending. Low ROI — improving Phase 2 resolution (nickname matching, prefix matching) would be cheaper and more effective.
+513 requests sent to Phase 3, 207 resolved (**40.3% success rate**). Significant improvement from Phase 2 resolution upgrades (PR #780) reducing the workload, and AI disambiguation improvements increasing the hit rate.
 
 ### Unresolved Names (358 "unknown" method)
 
@@ -648,8 +676,8 @@ Identified from production data analysis (2026-03-18). Pending implementation.
 7. **Conditional post-expansion conflict filter** (only when expansion happened — 0 triggers in production).
 8. **Fix Phase 3 string contract.** Phase 3 exclusion uses `rr.method != "age_preference"` (fragile string). Use `RequestType.AGE_PREFERENCE` enum.
 9. ~~**Improve Phase 2 resolution**~~ — Partially addressed by PR #780: jellyfish Jaro-Winkler matching catches close name variants (Zoey/Zoe, Kiefer/Kieffer), `nicknames` library provides broader nickname coverage (Rob→Robert), and preferred_name matching in exact strategy. Remaining gap: prefix matching (Liv→Olivia) not yet implemented.
-10. **Expand conflict detection** with attendee enrollment data for auto-decline (cross-session BUNK_WITH) and auto-approve (cross-session NOT_BUNK_WITH).
-11. **Method-aware auto-resolve thresholds.** Exact match at 0.82 is more trustworthy than phonetic at 0.87.
+10. ~~**Expand conflict detection**~~ — Addressed: ConflictDetector now receives AttendeeRepository for full session visibility. BUNK_WITH cross-session → auto-DECLINED, NOT_BUNK_WITH cross-session → auto-RESOLVED.
+11. ~~**Method-aware auto-resolve thresholds**~~ — Superseded by cross-session auto-decline. The 0.6975 PENDING cases are now correctly DECLINED (BUNK_WITH) or RESOLVED (NOT_BUNK_WITH) based on session enrollment data.
 12. **SIBLING expansion enrollment check.** Current sibling lookup doesn't verify enrollment in the same session.
 13. **Extract shared strategy methods to BaseMatchStrategy.** `_apply_session_adjustment_simple()`, `_calculate_confidence()`, and `_disambiguate_with_session()` are duplicated across `FuzzyMatchStrategy` and `PhoneticMatchStrategy`. Extract to base class to reduce ~160 lines of duplication.
 14. **Fix N+1 spread filter query in resolution pipeline.** `resolution_pipeline.py` batch-loads all persons at line 212, but re-queries `person_repo.find_by_cm_id(requester_cm_id)` inside the per-request loop at line 284 when spread filter is enabled. Should reuse the pre-loaded dict.
