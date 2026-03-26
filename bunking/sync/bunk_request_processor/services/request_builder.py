@@ -269,6 +269,10 @@ class RequestBuilder:
                 f"DECLINED: Request for {parsed_req.target_name} - {resolution_info.get('conflict_type', 'conflict')}"
             )
 
+        # Check for auto-satisfied cross-session NOT_BUNK_WITH
+        if resolution_info.get("auto_satisfied"):
+            return RequestStatus.RESOLVED
+
         return status
 
     def enrich_placeholder_metadata(

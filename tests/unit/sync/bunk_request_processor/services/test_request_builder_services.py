@@ -15,6 +15,7 @@ import pytest
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     RequestSource,
+    RequestStatus,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.services.request_builder import RequestBuilder
@@ -180,6 +181,75 @@ class TestRequestBuilderIntegration:
 
         assert bunk_request is not None
         assert bunk_request.metadata["ai_p1_reasoning"] == "Separation request based on staff input."
+
+
+class TestAutoSatisfiedStatus:
+    """Tests for auto_satisfied cross-session NOT_BUNK_WITH handling."""
+
+    def test_auto_satisfied_returns_resolved(self):
+        """auto_satisfied=True → RESOLVED regardless of confidence."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+        parsed_req = ParsedRequest(
+            raw_text="Ivy Smith",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Ivy Smith",
+            age_preference=None,
+            source_field="not_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.7,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "person_cm_id": 7777777,
+            "auto_satisfied": True,
+            "satisfaction_reason": "Automatically satisfied — different sessions",
+            "confidence": 0.7,
+            "conflict_metadata": {"requester_session": 1371793, "target_session": 1309513},
+        }
+        metadata = {}
+
+        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+
+        assert status == RequestStatus.RESOLVED
+
+    def test_has_conflict_still_declines(self):
+        """has_conflict=True still returns DECLINED (existing behavior unchanged)."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+        parsed_req = ParsedRequest(
+            raw_text="Ivy Smith",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Ivy Smith",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "person_cm_id": 7777777,
+            "has_conflict": True,
+            "conflict_description": "Session mismatch",
+            "confidence": 0.9,
+        }
+        metadata = {}
+
+        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+
+        assert status == RequestStatus.DECLINED
 
 
 if __name__ == "__main__":
