@@ -54,6 +54,7 @@ from ..services.historical_verification_service import HistoricalVerificationSer
 from ..services.phase1_parse_service import Phase1ParseService
 from ..services.phase2_resolution_service import Phase2ResolutionService
 from ..services.phase3_disambiguation_service import Phase3DisambiguationService
+from ..services.group_resolvers import build_resolver_registry
 from ..services.placeholder_expander import PlaceholderExpander
 from ..services.request_builder import RequestBuilder
 from ..services.staff_name_detector import StaffNameDetector
@@ -922,6 +923,11 @@ class RequestOrchestrator:
             person_repo=self._person_repo,
             year=self.year,
         )
+        self.resolver_registry = build_resolver_registry(
+            attendee_repo=self._attendee_repo,
+            person_repo=self._person_repo,
+            year=self.year,
+        )
         self.historical_verification_service = HistoricalVerificationService(
             temporal_name_cache=self.temporal_name_cache,
         )
@@ -1271,10 +1277,10 @@ class RequestOrchestrator:
         if stop_at_phase == "phase2":
             return {"dry_run": dry_run, "phase": "phase2"}
 
-        # Expand LAST_YEAR_BUNKMATES placeholders into individual bunk_with requests
-        # This must happen after Phase 2 resolution and before Phase 3 disambiguation
-        logger.info("=== Expanding LAST_YEAR_BUNKMATES Placeholders ===")
-        resolution_results = await self.placeholder_expander.expand(resolution_results)
+        # Expand group references (siblings, bunkmates, classmates, congregation)
+        # into individual bunk_with requests via resolver registry
+        logger.info("=== Expanding Group References ===")
+        resolution_results = await self.placeholder_expander.expand(resolution_results, self.resolver_registry)
 
         # --- Trace: Expansion results ---
         for pr, res_list in resolution_results:

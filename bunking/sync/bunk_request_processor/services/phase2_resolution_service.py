@@ -11,7 +11,6 @@ from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
-from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER, SIBLING_PLACEHOLDER
 from ..shared.name_utils import normalize_name
 from ..shared.nickname_groups import names_match_via_nicknames
 
@@ -40,12 +39,8 @@ class ResolutionCase:
         if parsed_request.request_type == RequestType.AGE_PREFERENCE:
             return False
 
-        # LAST_YEAR_BUNKMATES placeholder should NOT be resolved - it's expanded elsewhere
-        if parsed_request.target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER:
-            return False
-
-        # SIBLING placeholder should NOT be resolved - it's expanded elsewhere via household_id
-        if parsed_request.target_name == SIBLING_PLACEHOLDER:
+        # Group references are expanded by resolvers, not name-resolved
+        if parsed_request.group_kind is not None:
             return False
 
         # Bunk with/not bunk with need resolution if they have a target name
@@ -305,22 +300,14 @@ class Phase2ResolutionService:
                                 metadata={"age_preference": age_pref_value},
                             )
                         )
-                elif parsed_request.target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER:
+                elif parsed_request.group_kind is not None:
+                    # Group references get placeholder resolution — expanded later by resolvers
                     case.resolution_results.append(
                         ResolutionResult(
                             person=None,
                             confidence=1.0,
-                            method="placeholder",
-                            metadata={"placeholder": LAST_YEAR_BUNKMATES_PLACEHOLDER},
-                        )
-                    )
-                elif parsed_request.target_name == SIBLING_PLACEHOLDER:
-                    case.resolution_results.append(
-                        ResolutionResult(
-                            person=None,
-                            confidence=1.0,
-                            method="placeholder",
-                            metadata={"placeholder": SIBLING_PLACEHOLDER},
+                            method="group_reference",
+                            metadata={"group_kind": parsed_request.group_kind.value},
                         )
                     )
                 else:
@@ -512,24 +499,14 @@ class Phase2ResolutionService:
                         )
                     )
                     self._stats["age_preferences"] += 1
-                elif parsed_request.target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER:
-                    # This placeholder is expanded to individual requests elsewhere
+                elif parsed_request.group_kind is not None:
+                    # Group references are expanded by resolvers later
                     case.resolution_results.append(
                         ResolutionResult(
                             person=None,
                             confidence=1.0,
-                            method="placeholder",
-                            metadata={"placeholder": LAST_YEAR_BUNKMATES_PLACEHOLDER},
-                        )
-                    )
-                elif parsed_request.target_name == SIBLING_PLACEHOLDER:
-                    # SIBLING placeholder is expanded via household_id lookup elsewhere
-                    case.resolution_results.append(
-                        ResolutionResult(
-                            person=None,
-                            confidence=1.0,
-                            method="placeholder",
-                            metadata={"placeholder": SIBLING_PLACEHOLDER},
+                            method="group_reference",
+                            metadata={"group_kind": parsed_request.group_kind.value},
                         )
                     )
                 else:

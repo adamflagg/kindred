@@ -21,7 +21,6 @@ from ..core.models import (
     RequestType,
 )
 from ..resolution.interfaces import ResolutionResult
-from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER, SIBLING_PLACEHOLDER
 
 if TYPE_CHECKING:
     from ..data.repositories.attendee_repository import AttendeeRepository
@@ -29,12 +28,6 @@ if TYPE_CHECKING:
     from .group_resolvers import GroupResolver, ResolvedGroupMember
 
 logger = get_logger(__name__)
-
-# Map legacy placeholder strings to GroupKind for backward compat
-_PLACEHOLDER_TO_GROUP_KIND = {
-    LAST_YEAR_BUNKMATES_PLACEHOLDER: GroupKind.LAST_YEAR_BUNKMATES,
-    SIBLING_PLACEHOLDER: GroupKind.SIBLING,
-}
 
 
 class PlaceholderExpander:
@@ -110,26 +103,13 @@ class PlaceholderExpander:
     ) -> list[tuple[int, GroupKind]]:
         """Find all group references in a parse result's intents.
 
-        Checks two paths:
-        1. Modern: parsed_request.group_kind is set
-        2. Legacy: resolution metadata has placeholder string
+        Checks parsed_request.group_kind field set by AI.
         """
         groups: list[tuple[int, GroupKind]] = []
 
         for idx, parsed_req in enumerate(parse_result.parsed_requests):
-            # Modern path: group_kind field set by AI
             if parsed_req.group_kind is not None:
                 groups.append((idx, parsed_req.group_kind))
-                continue
-
-            # Legacy path: placeholder string in resolution metadata
-            if idx < len(resolution_list):
-                res = resolution_list[idx]
-                if res.metadata and res.method == "placeholder":
-                    placeholder = res.metadata.get("placeholder", "")
-                    kind = _PLACEHOLDER_TO_GROUP_KIND.get(placeholder)
-                    if kind is not None:
-                        groups.append((idx, kind))
 
         return groups
 

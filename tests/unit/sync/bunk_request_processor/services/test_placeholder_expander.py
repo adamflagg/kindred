@@ -34,10 +34,6 @@ from bunking.sync.bunk_request_processor.services.group_resolvers import (
 from bunking.sync.bunk_request_processor.services.placeholder_expander import (
     PlaceholderExpander,
 )
-from bunking.sync.bunk_request_processor.shared.constants import (
-    LAST_YEAR_BUNKMATES_PLACEHOLDER,
-    SIBLING_PLACEHOLDER,
-)
 
 # ============================================================================
 # Test Fixtures and Helpers
@@ -77,8 +73,9 @@ def _create_parse_request(
 
 
 def _create_parsed_request(
-    target_name: str = LAST_YEAR_BUNKMATES_PLACEHOLDER,
+    target_name: str = "",
     request_type: RequestType = RequestType.BUNK_WITH,
+    group_kind: GroupKind | None = GroupKind.LAST_YEAR_BUNKMATES,
 ) -> ParsedRequest:
     """Helper to create ParsedRequest objects"""
     return ParsedRequest(
@@ -91,6 +88,7 @@ def _create_parsed_request(
         confidence=0.9,
         csv_position=0,
         metadata={},
+        group_kind=group_kind,
     )
 
 
@@ -114,12 +112,12 @@ def _create_parse_result(
 
 
 def _create_placeholder_resolution() -> ResolutionResult:
-    """Helper to create a placeholder resolution result"""
+    """Helper to create a group_reference resolution result"""
     return ResolutionResult(
         person=None,
-        confidence=0.0,
-        method="placeholder",
-        metadata={"placeholder": LAST_YEAR_BUNKMATES_PLACEHOLDER},
+        confidence=1.0,
+        method="group_reference",
+        metadata={"group_kind": "last_year_bunkmates"},
     )
 
 
@@ -211,7 +209,9 @@ class TestPassThrough:
     ) -> None:
         """Results without placeholders should pass through unchanged"""
         person = _create_person()
-        parse_result = _create_parse_result(parsed_requests=[_create_parsed_request(target_name="Sarah Smith")])
+        parse_result = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Sarah Smith", group_kind=None)]
+        )
         resolution = _create_resolved_result(person)
 
         input_results = [(parse_result, [resolution])]
@@ -420,7 +420,9 @@ class TestMixedResults:
 
         # Regular result (no placeholder)
         regular_person = _create_person(cm_id=44444, first_name="Sam", last_name="Wilson")
-        regular_parse = _create_parse_result(parsed_requests=[_create_parsed_request(target_name="Sam Wilson")])
+        regular_parse = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Sam Wilson", group_kind=None)]
+        )
         regular_resolution = _create_resolved_result(regular_person)
 
         # Placeholder result
@@ -453,20 +455,20 @@ class TestMixedResults:
 
 
 def _create_sibling_placeholder_resolution() -> ResolutionResult:
-    """Helper to create a SIBLING placeholder resolution result"""
+    """Helper to create a SIBLING group_reference resolution result"""
     return ResolutionResult(
         person=None,
-        confidence=0.0,
-        method="placeholder",
-        metadata={"placeholder": SIBLING_PLACEHOLDER},
+        confidence=1.0,
+        method="group_reference",
+        metadata={"group_kind": "sibling"},
     )
 
 
 def _create_sibling_parsed_request(
-    target_name: str = SIBLING_PLACEHOLDER,
+    target_name: str = "",
     request_type: RequestType = RequestType.BUNK_WITH,
 ) -> ParsedRequest:
-    """Helper to create a ParsedRequest with SIBLING placeholder"""
+    """Helper to create a ParsedRequest with SIBLING group_kind"""
     return ParsedRequest(
         raw_text="bunk with twin",
         request_type=request_type,
@@ -477,6 +479,7 @@ def _create_sibling_parsed_request(
         confidence=0.9,
         csv_position=0,
         metadata={},
+        group_kind=GroupKind.SIBLING,
     )
 
 

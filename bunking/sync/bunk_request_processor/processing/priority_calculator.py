@@ -9,7 +9,8 @@ from typing import Any
 
 from ..core.constants import PRIORITY_KEYWORDS
 from ..core.models import ParsedRequest, RequestType
-from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER, SourceField
+from ..core.models import GroupKind
+from ..shared.constants import SourceField
 
 # Default rule priorities (used when config not provided or incomplete)
 DEFAULT_RULES = {
@@ -112,9 +113,7 @@ class PriorityCalculator:
 
         has_other_requests = len(all_requests_for_person) > 1
         has_specific_bunk_requests = any(
-            r
-            for r in non_age_requests
-            if r.request_type == RequestType.BUNK_WITH and r.target_name != LAST_YEAR_BUNKMATES_PLACEHOLDER
+            r for r in non_age_requests if r.request_type == RequestType.BUNK_WITH and r.group_kind is None
         )
 
         # Get all bunk_with requests from family source
@@ -152,11 +151,11 @@ class PriorityCalculator:
         if parsed.source_field == SourceField.NOT_BUNK_WITH and parsed.request_type == RequestType.NOT_BUNK_WITH:
             return self._get_rule_priority("staff_not_bunk_with")
 
-        if parsed.target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER and not has_specific_bunk_requests:
+        if parsed.group_kind == GroupKind.LAST_YEAR_BUNKMATES and not has_specific_bunk_requests:
             return self._get_rule_priority("last_year_bunkmates_sole")
 
         # Priority 3 cases
-        if parsed.target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER and has_specific_bunk_requests:
+        if parsed.group_kind == GroupKind.LAST_YEAR_BUNKMATES and has_specific_bunk_requests:
             return self._get_rule_priority("last_year_bunkmates_with_others")
 
         # Priority 2 cases - staff notes

@@ -32,12 +32,6 @@ VALID_PLACEHOLDERS: set[str] = {
     "unclear",
 }
 
-# Legacy placeholder strings for backward compatibility with PlaceholderExpander.
-# Group references now use group_kind field, but these are still used as
-# sentinel target_name values in priority calculation and context building.
-LAST_YEAR_BUNKMATES_PLACEHOLDER = "__LAST_YEAR_BUNKMATES__"
-SIBLING_PLACEHOLDER = "__SIBLING__"
-
 
 # =============================================================================
 # Field Name Mappings

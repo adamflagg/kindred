@@ -9,7 +9,6 @@ from bunking.logging_config import get_logger
 
 from ..core.models import Person
 from ..integration.ai_service import AIRequestContext
-from ..shared.constants import LAST_YEAR_BUNKMATES_PLACEHOLDER
 from ..shared.nickname_groups import find_nickname_variations
 
 if TYPE_CHECKING:
@@ -473,7 +472,7 @@ class ContextBuilder:
 
         This reduces the context size for historical lookups.
         """
-        if not target_name or target_name == LAST_YEAR_BUNKMATES_PLACEHOLDER:
+        if not target_name:
             # For generic "last year" requests, return bunkmates only
             return [a for a in attendees if a.get("was_bunkmate", False)]
 
