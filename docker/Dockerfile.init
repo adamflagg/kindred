@@ -19,8 +19,8 @@ FROM chainguard/wolfi-base:latest
 # hadolint ignore=DL3018
 RUN apk add --no-cache curl
 
-COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
-COPY --chmod=755 docker/init-entrypoint.sh /init-entrypoint.sh
+COPY --link --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
+COPY --link --chmod=755 docker/init-entrypoint.sh /init-entrypoint.sh
 
 USER nonroot
 
