@@ -18,7 +18,6 @@ from ..core.models import (
     GroupKind,
     ParsedRequest,
     ParseResult,
-    RequestType,
 )
 from ..resolution.interfaces import ResolutionResult
 

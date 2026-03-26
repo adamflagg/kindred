@@ -50,11 +50,11 @@ from ..processing.reciprocal_detector import ReciprocalDetector
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..services.context_builder import ContextBuilder
+from ..services.group_resolvers import build_resolver_registry
 from ..services.historical_verification_service import HistoricalVerificationService
 from ..services.phase1_parse_service import Phase1ParseService
 from ..services.phase2_resolution_service import Phase2ResolutionService
 from ..services.phase3_disambiguation_service import Phase3DisambiguationService
-from ..services.group_resolvers import build_resolver_registry
 from ..services.placeholder_expander import PlaceholderExpander
 from ..services.request_builder import RequestBuilder
 from ..services.staff_name_detector import StaffNameDetector

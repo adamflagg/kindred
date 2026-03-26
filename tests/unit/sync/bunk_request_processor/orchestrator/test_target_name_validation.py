@@ -6,7 +6,8 @@ Verifies that _validate_target_names_in_source() rejects:
 
 And preserves:
 - Names that appear in the source text (full, first-only, last-only)
-- Placeholders (SIBLING, LAST_YEAR_BUNKMATES, older, younger, unclear)
+- Age placeholders (older, younger, unclear)
+- Group references (group_kind set, target_name empty — pass through early return)
 - age_preference request types
 """
 
@@ -16,6 +17,7 @@ from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.core.models import (
     AgePreference,
+    GroupKind,
     ParsedRequest,
     ParseRequest,
     ParseResult,
@@ -43,6 +45,7 @@ def _make_parsed_request(
     target_name: str | None,
     request_type: RequestType = RequestType.BUNK_WITH,
     source_field: str = "Share Bunk With",
+    group_kind: GroupKind | None = None,
 ) -> ParsedRequest:
     """Helper to create a minimal ParsedRequest."""
     return ParsedRequest(
@@ -55,6 +58,7 @@ def _make_parsed_request(
         confidence=0.9,
         csv_position=0,
         metadata={},
+        group_kind=group_kind,
     )
 
 
@@ -144,20 +148,24 @@ class TestValidateTargetNamesInSource:
         assert rejected == 2
         assert len(result.parsed_requests) == 0
 
-    def test_exempts_sibling_placeholder(self):
+    def test_exempts_sibling_group_reference(self):
+        """Group references have empty target_name and group_kind set,
+        so they pass through the 'if not target_name' early return."""
         orchestrator = _make_orchestrator()
         result = _make_parse_result(
-            [_make_parsed_request("SIBLING", RequestType.NOT_BUNK_WITH)],
+            [_make_parsed_request("", RequestType.NOT_BUNK_WITH, group_kind=GroupKind.SIBLING)],
             request_text="their own grade/younger",
         )
         kept, rejected = orchestrator._validate_target_names_in_source([result])
         assert kept == 1
         assert rejected == 0
 
-    def test_exempts_last_year_bunkmates_placeholder(self):
+    def test_exempts_last_year_bunkmates_group_reference(self):
+        """Group references have empty target_name and group_kind set,
+        so they pass through the 'if not target_name' early return."""
         orchestrator = _make_orchestrator()
         result = _make_parse_result(
-            [_make_parsed_request("LAST_YEAR_BUNKMATES")],
+            [_make_parsed_request("", group_kind=GroupKind.LAST_YEAR_BUNKMATES)],
             request_text="same bunk as last year",
         )
         kept, rejected = orchestrator._validate_target_names_in_source([result])

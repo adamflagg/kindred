@@ -28,7 +28,6 @@ from bunking.sync.bunk_request_processor.core.models import (
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.services.group_resolvers import (
-    ResolvedGroupMember,
     build_resolver_registry,
 )
 from bunking.sync.bunk_request_processor.services.placeholder_expander import (

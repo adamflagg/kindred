@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.data.repositories.person_repository import (
     PersonRepository,
 )

@@ -377,8 +377,8 @@ class TestContextBuilderHistoricalContext:
         for attendee in relevant:
             assert attendee["person_id"] != 11111
 
-    def test_build_historical_context_handles_last_year_bunkmates(self):
-        """Special handling for generic 'last year bunkmates' request"""
+    def test_build_historical_context_handles_empty_target_name(self):
+        """Group references have empty target_name; should return bunkmates only."""
         builder = ContextBuilder()
         attendees = [
             {"person_id": 100, "first_name": "Sarah", "last_name": "Smith", "was_bunkmate": True},
@@ -388,13 +388,13 @@ class TestContextBuilderHistoricalContext:
 
         context = builder.build_historical_context(
             requester_cm_id=11111,
-            target_name="LAST_YEAR_BUNKMATES",
+            target_name="",
             session_name="Session 2",
             previous_year=2024,
             previous_attendees=attendees,
         )
 
-        # Should only include bunkmates
+        # Should only include bunkmates when target_name is empty
         relevant = context["previous_year_attendees"]
         assert len(relevant) == 2
         for attendee in relevant:

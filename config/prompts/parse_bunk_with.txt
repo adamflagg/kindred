@@ -44,8 +44,8 @@ This field commonly contains:
    - "classmates" for "kids from my school", "schoolmates", or naming a specific school
    - "congregation" for "Beth Jacob girls", "temple friends", or naming a specific synagogue/temple
    When group_kind is set, target_name should be empty string "".
-   For classmates, include group_metadata with {"school_name": "..."}
-   For congregation, include group_metadata with {"congregation_name": "..."}
+   For classmates, include group_metadata with {{"school_name": "..."}}
+   For congregation, include group_metadata with {{"congregation_name": "..."}}
 
 IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
 

@@ -9,9 +9,8 @@ from datetime import datetime
 from typing import Any
 
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
-from pocketbase import PocketBase
-
 from bunking.logging_config import get_logger
+from pocketbase import PocketBase
 
 from ...core.models import Person
 from ...shared import parse_date

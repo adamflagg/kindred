@@ -5,20 +5,14 @@ Tests define the expected behavior for expanding group references
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from bunking.sync.bunk_request_processor.core.models import (
+    Camper,
+    Gender,
     GroupKind,
     ParsedRequest,
     Person,
     RequestSource,
     RequestType,
-)
-from bunking.sync.bunk_request_processor.core.models import (
-    Camper,
-    Gender,
-    Session,
-    SessionFamily,
 )
 from bunking.sync.bunk_request_processor.services.group_resolvers import (
     BunkmateResolver,

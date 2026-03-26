@@ -15,16 +15,12 @@ from bunking.sync.bunk_request_processor.conflict.conflict_detector import (
     V2ConflictResult,
 )
 from bunking.sync.bunk_request_processor.core.models import (
-    ParsedRequest,
     Person,
-    RequestType,
 )
-from bunking.sync.bunk_request_processor.debug.trace_collector import TraceCollector
 from bunking.sync.bunk_request_processor.debug.trace_models import (
     CandidateTrace,
     Phase2FinalResult,
     Phase2IntentTrace,
-    PostPipelineTrace,
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 

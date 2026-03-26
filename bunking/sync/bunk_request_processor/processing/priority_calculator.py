@@ -8,8 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.constants import PRIORITY_KEYWORDS
-from ..core.models import ParsedRequest, RequestType
-from ..core.models import GroupKind
+from ..core.models import GroupKind, ParsedRequest, RequestType
 from ..shared.constants import SourceField
 
 # Default rule priorities (used when config not provided or incomplete)
