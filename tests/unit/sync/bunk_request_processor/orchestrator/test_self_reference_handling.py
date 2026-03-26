@@ -117,7 +117,7 @@ class TestSelfReferentialRequestsKeptForReview:
         ]
 
         # Apply validation pipeline
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Self-referential request should be KEPT (total 3, not 2)
         assert len(validated_requests) == 3, (
@@ -152,7 +152,7 @@ class TestSelfReferentialRequestsKeptForReview:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Request should exist with confidence = 0
         assert len(validated_requests) == 1
@@ -187,7 +187,7 @@ class TestSelfReferentialRequestsKeptForReview:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         assert len(validated_requests) == 1
         assert validated_requests[0].requested_cm_id is None, (
@@ -224,7 +224,7 @@ class TestSelfReferentialRequestsKeptForReview:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         assert len(validated_requests) == 1
         metadata = validated_requests[0].metadata
@@ -269,7 +269,7 @@ class TestSelfReferentialRequestsKeptForReview:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         assert len(validated_requests) == 1
         metadata = validated_requests[0].metadata
@@ -357,7 +357,7 @@ class TestFirstNameAmbiguityHandling:
             ),
         ]
 
-        validated_requests = orchestrator._apply_validation_pipeline(requests)
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
 
         # Request should be KEPT (for potential cross-session friend)
         assert len(validated_requests) == 1, (

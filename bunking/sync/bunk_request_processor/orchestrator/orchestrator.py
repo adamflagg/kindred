@@ -1263,6 +1263,7 @@ class RequestOrchestrator:
                             method=rr.method,
                             is_resolved=rr.is_resolved,
                             is_ambiguous=rr.is_ambiguous,
+                            confidence_factors=rr_meta.get("confidence_factors", {}),
                         ),
                     ),
                 )
@@ -1468,12 +1469,13 @@ class RequestOrchestrator:
             resolved_requests = self.conflict_detector.apply_conflict_resolution(resolved_requests, conflict_result)
 
         # Create bunk requests (skipped in dry_run mode)
+        deduped_keys: set[tuple[int, str]] = set()
         if dry_run:
             logger.info("=== Skipping Bunk Request Creation (dry_run=True) ===")
             created_requests: list[Any] = []
         else:
             logger.info("=== Creating Bunk Requests ===")
-            created_requests = await self._create_bunk_requests(resolved_requests)
+            created_requests, deduped_keys = await self._create_bunk_requests(resolved_requests)
         self._stats["requests_created"] = len(created_requests)
 
         # --- Trace: Post-Pipeline results ---
@@ -1510,12 +1512,20 @@ class RequestOrchestrator:
                     reciprocal_boost_amount = br_meta.get("reciprocal_boost")
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
+                # Check if this request was removed by deduplication
+                is_deduped = (requester_cm_id, target_name) in deduped_keys
+                if is_deduped:
+                    any_dedup = True
+
                 # Determine final status from BunkRequest if available
                 # Always UPPERCASE for debug traces (bunk_requests.status is lowercase,
                 # but debug_pipeline_summary.final_status uses UPPERCASE by convention)
-                final_status = "RESOLVED" if rr.is_resolved else "PENDING"
-                final_confidence = rr.confidence
-                if matched_br:
+                if is_deduped:
+                    final_status = "DEDUPED"
+                    final_confidence = rr.confidence
+                elif matched_br:
+                    final_status = "RESOLVED" if rr.is_resolved else "PENDING"
+                    final_confidence = rr.confidence
                     if hasattr(matched_br, "status") and matched_br.status:
                         raw_status = (
                             matched_br.status.value if hasattr(matched_br.status, "value") else str(matched_br.status)
@@ -1523,6 +1533,9 @@ class RequestOrchestrator:
                         final_status = raw_status.upper()
                     if hasattr(matched_br, "confidence_score"):
                         final_confidence = matched_br.confidence_score
+                else:
+                    final_status = "RESOLVED" if rr.is_resolved else "PENDING"
+                    final_confidence = rr.confidence
 
                 final_bunk_requests.append(
                     FinalBunkRequestTrace(
@@ -1543,7 +1556,17 @@ class RequestOrchestrator:
                 post_trace=PostPipelineTrace(
                     conflict_detection={
                         "has_conflict": conflict_result.has_conflicts,
-                        "details": [],
+                        "details": [
+                            {
+                                "conflict_type": c.conflict_type.value,
+                                "person_a_cm_id": c.person_a_cm_id,
+                                "person_b_cm_id": c.person_b_cm_id,
+                                "description": c.description,
+                                "severity": c.severity,
+                                "auto_resolvable": c.auto_resolvable,
+                            }
+                            for c in conflict_result.conflicts
+                        ],
                     },
                     self_reference={"detected": any_self_ref},
                     reciprocal={
@@ -2105,26 +2128,31 @@ class RequestOrchestrator:
 
     async def _create_bunk_requests(
         self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]
-    ) -> list[BunkRequest]:
+    ) -> tuple[list[BunkRequest], set[tuple[int, str]]]:
         """Create bunk request records in the database.
 
         This method:
         1. Builds BunkRequest objects from resolved requests (via RequestBuilder)
         2. Applies the validation pipeline (self-ref, dedup, reciprocal)
         3. Persists validated requests to the database
+
+        Returns:
+            Tuple of (saved_requests, deduped_keys) where deduped_keys is a set of
+            (requester_cm_id, requested_name) tuples for requests removed by dedup.
         """
         # Build BunkRequest objects using the request builder
         pending_requests = self.request_builder.build_requests(resolved_requests)
 
         # Apply validation pipeline to all requests
+        deduped_keys: set[tuple[int, str]] = set()
         if pending_requests:
             logger.info(f"=== Applying Validation Pipeline to {len(pending_requests)} requests ===")
-            validated_requests = self._apply_validation_pipeline(pending_requests)
+            validated_requests, deduped_keys = self._apply_validation_pipeline(pending_requests)
         else:
             validated_requests = []
 
         # Save validated requests to database
-        return self._save_bunk_requests(validated_requests)
+        return self._save_bunk_requests(validated_requests), deduped_keys
 
     def _save_bunk_requests(self, validated_requests: list[BunkRequest]) -> list[BunkRequest]:
         """Save validated bunk requests to the database.
@@ -2281,7 +2309,7 @@ class RequestOrchestrator:
 
         return self._save_new_request_with_source_link(request)
 
-    def _apply_validation_pipeline(self, requests: list[BunkRequest]) -> list[BunkRequest]:
+    def _apply_validation_pipeline(self, requests: list[BunkRequest]) -> tuple[list[BunkRequest], set[tuple[int, str]]]:
         """Apply the validation pipeline to a list of BunkRequest objects.
 
         This pipeline runs in order:
@@ -2293,10 +2321,11 @@ class RequestOrchestrator:
             requests: List of BunkRequest objects to validate
 
         Returns:
-            Validated and processed list of BunkRequest objects
+            Tuple of (validated_requests, deduped_keys) where deduped_keys is a set of
+            (requester_cm_id, requested_name) tuples for requests removed by dedup.
         """
         if not requests:
-            return requests
+            return requests, set()
 
         # Step 1: Handle self-referential requests
         # Unlike filtering, we KEEP them with modifications for staff review.
@@ -2334,6 +2363,12 @@ class RequestOrchestrator:
         dedup_result = self.deduplicator.deduplicate_batch(validated_requests)
         deduplicated_requests = dedup_result.kept_requests
 
+        # Build set of deduped-out request keys for trace accuracy
+        deduped_keys: set[tuple[int, str]] = set()
+        for group in dedup_result.duplicate_groups:
+            for dup in group.duplicates:
+                deduped_keys.add((dup.requester_cm_id, dup.requested_name or ""))
+
         duplicates_removed = dedup_result.statistics.get("duplicates_removed", 0)
         self._stats["duplicates_removed"] = duplicates_removed
 
@@ -2369,7 +2404,7 @@ class RequestOrchestrator:
         if reciprocal_promoted > 0:
             logger.info(f"Reciprocal boost auto-resolved {reciprocal_promoted} request(s)")
 
-        return deduplicated_requests
+        return deduplicated_requests, deduped_keys
 
     async def close(self) -> None:
         """Clean up resources held by the orchestrator.

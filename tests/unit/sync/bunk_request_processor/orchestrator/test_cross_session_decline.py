@@ -117,7 +117,7 @@ class TestCrossSessionDeclineLogic:
         resolved_requests = [(parsed_req, resolution_info)]
 
         # Directly call the method under test
-        created_requests = await orchestrator._create_bunk_requests(resolved_requests)
+        created_requests, _ = await orchestrator._create_bunk_requests(resolved_requests)
 
         # Verify results
         assert len(created_requests) == 1, "Should create exactly one request"
@@ -175,7 +175,7 @@ class TestCrossSessionDeclineLogic:
         }
 
         resolved_requests = [(parsed_req, resolution_info)]
-        created_requests = await orchestrator._create_bunk_requests(resolved_requests)
+        created_requests, _ = await orchestrator._create_bunk_requests(resolved_requests)
 
         assert len(created_requests) == 1
         request = created_requests[0]

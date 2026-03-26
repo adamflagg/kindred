@@ -163,7 +163,7 @@ class TestFullPipelineTracing:
 
         # Mock request creation
         orch._prepare_for_conflict_detection = MagicMock(return_value=[])  # type: ignore[method-assign]
-        orch._create_bunk_requests = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        orch._create_bunk_requests = AsyncMock(return_value=([], set()))  # type: ignore[method-assign]
 
         # Mock cache monitor
         orch.cache_monitor = None

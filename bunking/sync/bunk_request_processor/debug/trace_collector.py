@@ -303,13 +303,13 @@ class TraceCollector:
         return str(run_record.id)
 
     def _compute_status_breakdown(self) -> dict[str, int]:
-        breakdown: dict[str, int] = {"resolved": 0, "pending": 0, "declined": 0, "skipped": 0}
+        breakdown: dict[str, int] = {"resolved": 0, "pending": 0, "declined": 0, "skipped": 0, "deduped": 0}
         for trace_data in self._traces.values():
             if not trace_data.post_pipeline.final_bunk_requests:
                 breakdown["skipped"] += 1
                 continue
             # Determine the most significant status across all requests in this trace.
-            # Priority: pending > declined > resolved (pending is most actionable).
+            # Priority: pending > declined > deduped > resolved (pending is most actionable).
             trace_status = "resolved"
             for br in trace_data.post_pipeline.final_bunk_requests:
                 status = br.status.lower()
@@ -318,6 +318,8 @@ class TraceCollector:
                     break  # pending is highest priority, no need to check further
                 elif status == "declined" and trace_status != "pending":
                     trace_status = "declined"
+                elif status == "deduped" and trace_status not in ("pending", "declined"):
+                    trace_status = "deduped"
             if trace_status in breakdown:
                 breakdown[trace_status] += 1
         return breakdown
