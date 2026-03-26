@@ -328,8 +328,11 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   ├─ Generate unresolved person IDs (deterministic negative MD5 hash)
     │   ├─ ConflictDetector (enriched with AttendeeRepository for full session visibility)
     │   │   ├─ Build session map from requester data + bulk attendee lookup for unknown targets
+    │   │   ├─ TARGET_NOT_ENROLLED: target has no bunking enrollment → DECLINED (checked first)
     │   │   ├─ BUNK_WITH cross-session → SESSION_MISMATCH → DECLINED
     │   │   ├─ NOT_BUNK_WITH cross-session → CROSS_SESSION_SATISFIED → auto-RESOLVED
+    │   │   ├─ AG silo: AG sessions are distinct session IDs, so regular↔AG requests
+    │   │   │   are caught by cross-session detection (no special AG logic needed)
     │   │   └─ Session metadata (requester_session, target_session) captured for bunk staff review
     │   ├─ Detect post-expansion conflicts (bunk_with vs not_bunk_with for same pair)
     │   └─ Apply resolution (remove losing side)
@@ -342,7 +345,8 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   │       ├─ Negative cm_id (unresolved hash) → PENDING
     │   │       ├─ Confidence ≥ auto_resolve_threshold → RESOLVED
     │   │       ├─ Confidence < threshold → PENDING
-    │   │       ├─ Has conflict → DECLINED
+    │   │       ├─ Has conflict (SESSION_MISMATCH) → DECLINED
+    │   │       ├─ Target not enrolled (TARGET_NOT_ENROLLED) → DECLINED
     │   │       └─ auto_satisfied (cross-session NOT_BUNK_WITH) → RESOLVED
     │   ├─ _apply_validation_pipeline()
     │   │   ├─ Self-Reference: Detect A→A requests, flag for staff review
@@ -483,7 +487,15 @@ score = 0.70 × name_score + 0.15 × ai_score + 0.10 × context_score + 0.05 × 
 score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
 ```
 
-**AGE_PREFERENCE:** Returns `ai_parse_confidence` directly (typically 1.0 for dropdown, 0.85 for AI-parsed).
+**AGE_PREFERENCE:** Two resolution paths with different confidence levels:
+
+| Source | Direction | Confidence | Method |
+|---|---|---|---|
+| `socialize_with` dropdown | Directional (OLDER or YOUNGER) | **1.0** | Pre-parsed, exact dropdown match |
+| AI-parsed from `bunk_with` | Directional (OLDER or YOUNGER) | **0.90** | `age_preference` — AI extracted direction from reasoning |
+| AI-parsed, no direction | Undirected (None) | **0.50** | `age_preference_undirected` — staff review needed |
+
+Directional mapping: AI extracts OLDER/YOUNGER from reasoning (e.g., "wants to be with older kids"). When the AI recognizes an age preference but cannot determine direction, `age_preference` is None and the request goes to staff review at 0.50 confidence.
 
 **Worked examples:**
 ```
@@ -494,7 +506,7 @@ Cross-session NOT_BUNK_WITH:         Score irrelevant — ConflictDetector auto-
 
 **Score breakdown in traces (`confidence_factors`):**
 
-After each scoring call, `ConfidenceScorer.last_score_factors` contains the full breakdown. The orchestrator reads this into the trace's `confidence_factors` field:
+After each scoring call, `ConfidenceScorer.last_score_factors` contains the full breakdown. The Phase 2 service captures these factors immediately into `resolution_result.metadata["confidence_factors"]` (to avoid stale reads in batch loops). The orchestrator then reads them into both the Phase 2 trace (`Phase2FinalResult.confidence_factors`) and the request builder (`resolution_info["confidence_factors"]`):
 
 ```json
 {
@@ -820,7 +832,7 @@ The pipeline debug tool captures trace data at every phase when `collect_traces=
 | **Expansion** | `placeholder_expansion` | Triggered flag, expansion type (last_year_bunkmates/sibling), expanded count, expanded targets list with names and request types |
 | **P2.5 Historical** | `historical_verification` | Whether verification ran, boost applied flag, original confidence, boosted confidence (boost is +0.10, capped at 0.95) |
 | **P3 Disambiguation** | `phase3_disambiguation[]` | Per intent: target name, ran flag, candidates sent (top 5 with details), AI context, AI selection (person CM ID), AI reasoning + chain-of-thought, result status (not_needed/resolved/no_match/still_ambiguous), confidence before/after |
-| **Post-Pipeline** | `post_pipeline` | Conflict detection (has_conflict + details), self-reference detected, reciprocal (detected, boost applied, boost amount, pair CM ID), deduplication (was_duplicate, kept_over), final bunk requests list (requester/target CM IDs, names, request type, status, confidence, priority, resolution method, is_placeholder, declined reason) |
+| **Post-Pipeline** | `post_pipeline` | Conflict detection (has_conflict + serialized V2Conflict details with type, severity, auto_resolvable), self-reference detected, reciprocal (detected, boost applied, boost amount, pair CM ID), deduplication (was_duplicate, kept_over), final bunk requests list (requester/target CM IDs, names, request type, status [RESOLVED/PENDING/DECLINED/DEDUPED], confidence, priority, resolution method, is_placeholder, declined reason). Deduped-out requests are marked status=DEDUPED in traces rather than showing stale pre-dedup status. |
 
 ### Debug Tool UI
 
