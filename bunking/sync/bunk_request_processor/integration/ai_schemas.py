@@ -75,6 +75,12 @@ class AIBunkRequestItem(BaseModel):
     historical_year: int | None = None
     """Year of historical bunking reference (e.g., 2024 for 'same bunk last year')."""
 
+    group_kind: str | None = None
+    """Group reference type: 'sibling', 'last_year_bunkmates', 'classmates', 'congregation', or None."""
+
+    group_metadata: dict[str, str] | None = None
+    """Additional context for group references (e.g., school_name, congregation_name)."""
+
 
 class AIParseResponse(BaseModel):
     """Response from parse-only AI request.
