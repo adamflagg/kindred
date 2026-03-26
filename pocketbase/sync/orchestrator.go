@@ -485,8 +485,6 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 }
 
 // runSingleSyncInternal runs a single sync service and returns the run token.
-// Returning the token directly eliminates the race window where the goroutine
-// completes before the caller can read the token from runningJobs (issue #789).
 func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType string) (string, error) {
 	// Check if service exists
 	o.mu.RLock()
