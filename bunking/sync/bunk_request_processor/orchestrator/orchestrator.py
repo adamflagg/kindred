@@ -761,7 +761,11 @@ class RequestOrchestrator:
 
         # Create native V2 conflict detector
         conflict_config = self.ai_config.get("conflict_detection", {})
-        self.conflict_detector = ConflictDetector(conflict_config)
+        self.conflict_detector = ConflictDetector(
+            config=conflict_config,
+            attendee_repo=self._attendee_repo,
+            year=self.year,
+        )
 
         # Create priority calculator with config from ai_config.json
         priority_config = self.ai_config.get("priority", {})
