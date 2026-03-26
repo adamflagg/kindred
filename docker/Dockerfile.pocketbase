@@ -36,11 +36,11 @@ RUN mkdir -p /pb_data && chown 65532:65532 /pb_data
 FROM chainguard/static:latest
 
 # /pb_data owned by nonroot — Docker named volumes inherit this ownership
-COPY --from=dirs /pb_data /pb_data
-COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
-COPY --from=healthcheck-builder /build/healthcheck /usr/local/bin/healthcheck
-COPY pocketbase/pb_hooks /pb_hooks
-COPY pocketbase/pb_migrations /pb_migrations
+COPY --link --from=dirs /pb_data /pb_data
+COPY --link --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
+COPY --link --from=healthcheck-builder /build/healthcheck /usr/local/bin/healthcheck
+COPY --link pocketbase/pb_hooks /pb_hooks
+COPY --link pocketbase/pb_migrations /pb_migrations
 
 VOLUME /pb_data
 
