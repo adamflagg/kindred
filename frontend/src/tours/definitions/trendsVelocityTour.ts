@@ -24,7 +24,7 @@ const trendsVelocityTour: TourDefinition = {
         side: 'top',
         align: 'start',
         onPopoverRender: () => {
-          ;(document.querySelector('[data-tour="velocity-mode-gross"]') as HTMLElement)?.click()
+          document.querySelector<HTMLElement>('[data-tour="velocity-mode-gross"]')?.click()
         },
       },
     },
@@ -37,7 +37,7 @@ const trendsVelocityTour: TourDefinition = {
         side: 'top',
         align: 'start',
         onPopoverRender: () => {
-          ;(document.querySelector('[data-tour="velocity-mode-net"]') as HTMLElement)?.click()
+          document.querySelector<HTMLElement>('[data-tour="velocity-mode-net"]')?.click()
         },
       },
     },
@@ -50,7 +50,7 @@ const trendsVelocityTour: TourDefinition = {
         side: 'top',
         align: 'start',
         onPopoverRender: () => {
-          ;(document.querySelector('[data-tour="velocity-mode-delta"]') as HTMLElement)?.click()
+          document.querySelector<HTMLElement>('[data-tour="velocity-mode-delta"]')?.click()
         },
       },
     },

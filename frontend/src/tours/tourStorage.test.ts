@@ -13,17 +13,17 @@ import {
 
 // Use real localStorage for these tests (the global setup mocks it)
 const realLocalStorage = (() => {
-  const store: Record<string, string> = {}
+  const store = new Map<string, string>()
   return {
-    getItem: (key: string) => store[key] ?? null,
+    getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => {
-      store[key] = value
+      store.set(key, value)
     },
     removeItem: (key: string) => {
-      delete store[key]
+      store.delete(key)
     },
     clear: () => {
-      Object.keys(store).forEach((k) => delete store[k])
+      store.clear()
     },
     length: 0,
     key: vi.fn(),

@@ -6,9 +6,11 @@ export function getTourStorage(): TourStorageData {
   try {
     const raw = localStorage.getItem(TOUR_STORAGE_KEY)
     if (!raw) return { completed: {}, layers: {} }
-    const parsed = JSON.parse(raw) as TourStorageData
-    if (!parsed.layers) parsed.layers = {}
-    return parsed
+    const parsed = JSON.parse(raw) as Partial<TourStorageData>
+    return {
+      completed: parsed.completed ?? {},
+      layers: parsed.layers ?? {},
+    }
   } catch {
     return { completed: {}, layers: {} }
   }
@@ -57,7 +59,7 @@ export function isLayerStaleOrUnseen(
 
 /** Single-write batch: mark layers and optionally a page tour as completed */
 export function batchComplete(
-  layers: { layerId: LayerId; version: number }[],
+  layers: Array<{ layerId: LayerId; version: number }>,
   tour?: { tourId: TourId; version: number }
 ): void {
   const storage = getTourStorage()
