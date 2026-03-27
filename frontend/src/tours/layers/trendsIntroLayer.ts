@@ -10,7 +10,7 @@ const trendsIntroLayer: LayerDefinition = {
       popover: {
         title: 'Expanded Analysis',
         description:
-          'Adds detailed breakdowns below each chart — geographic top-15 lists, grade distributions, and more. Toggle it to see the difference.',
+          'Expands the trends data from 3 years to 5 years, giving a wider historical window. Toggle it to see more seasons.',
         side: 'bottom',
         align: 'end',
       },
