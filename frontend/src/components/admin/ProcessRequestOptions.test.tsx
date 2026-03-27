@@ -5,54 +5,70 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ProcessRequestOptions from './ProcessRequestOptions'
 
 // Mock PocketBase lib - data must be inline since vi.mock is hoisted
+// Generic cm_id values for testing — dropdown uses cm_id as value
 vi.mock('../../lib/pocketbase', () => ({
   pb: {
     collection: vi.fn().mockReturnValue({
       getFullList: vi.fn().mockResolvedValue([
         {
-          id: '1',
-          name: 'Taste of Camp',
+          id: 'pb1',
+          cm_id: 1000001,
+          name: 'Taste of Camp 1',
           session_type: 'main',
           year: 2025,
           start_date: '2025-06-01',
         },
         {
-          id: '2',
+          id: 'pb1b',
+          cm_id: 1000002,
+          name: 'Taste of Camp 2',
+          session_type: 'embedded',
+          year: 2025,
+          start_date: '2025-06-05',
+        },
+        {
+          id: 'pb2',
+          cm_id: 1000003,
           name: 'Session 2',
           session_type: 'main',
           year: 2025,
           start_date: '2025-06-15',
         },
         {
-          id: '3',
+          id: 'pb3',
+          cm_id: 1000004,
           name: 'Session 2a',
           session_type: 'embedded',
           year: 2025,
           start_date: '2025-06-15',
         },
         {
-          id: '4',
+          id: 'pb4',
+          cm_id: 1000005,
           name: 'Session 2b',
           session_type: 'embedded',
           year: 2025,
           start_date: '2025-06-22',
         },
         {
-          id: '5',
+          id: 'pb5',
+          cm_id: 1000006,
           name: 'Session 3',
           session_type: 'main',
           year: 2025,
           start_date: '2025-07-01',
         },
         {
-          id: '6',
+          id: 'pb6',
+          cm_id: 1000007,
           name: 'Session 3a',
           session_type: 'embedded',
           year: 2025,
           start_date: '2025-07-08',
         },
         {
-          id: '7',
+          id: 'pb7',
+          cm_id: 1000008,
           name: 'Session 4',
           session_type: 'main',
           year: 2025,
@@ -120,19 +136,17 @@ describe('ProcessRequestOptions', () => {
     expect(screen.getByText(/process requests/i)).toBeInTheDocument()
   })
 
-  it('has session selector with friendly name options including embedded sessions', async () => {
+  it('shows all sessions including both Taste of Camp 1 and 2 (no collision)', async () => {
     render(<ProcessRequestOptions {...defaultProps} />, {
       wrapper: createWrapper(),
     })
 
-    const sessionSelect = screen.getByLabelText(/session/i)
-    expect(sessionSelect).toBeInTheDocument()
-
-    // Wait for sessions to load, then check all options exist (main sessions and embedded sessions)
     expect(screen.getByRole('option', { name: /all sessions/i })).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByRole('option', { name: /taste of camp/i })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /taste of camp 1/i })).toBeInTheDocument()
     })
+    // Both ToC sessions visible — this was the bug (ToC 1 was hidden by name collision)
+    expect(screen.getByRole('option', { name: /taste of camp 2/i })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /^session 2$/i })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /session 2a/i })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /session 2b/i })).toBeInTheDocument()
@@ -141,15 +155,35 @@ describe('ProcessRequestOptions', () => {
     expect(screen.getByRole('option', { name: /session 4/i })).toBeInTheDocument()
   })
 
+  it('uses cm_id as dropdown value, not friendly name', async () => {
+    render(<ProcessRequestOptions {...defaultProps} />, {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /^session 2$/i })).toBeInTheDocument()
+    })
+
+    // Select Session 2 — value should be cm_id "1000003", not friendly name "2"
+    const sessionSelect = screen.getByLabelText(/session/i)
+    await userEvent.selectOptions(sessionSelect, '1000003')
+
+    fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
+
+    expect(defaultProps.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: '1000003',
+      })
+    )
+  })
+
   it('has source field checkboxes', () => {
     render(<ProcessRequestOptions {...defaultProps} />, {
       wrapper: createWrapper(),
     })
 
-    // Check that source fields section exists
     expect(screen.getByText(/source fields/i)).toBeInTheDocument()
 
-    // Each source field should have a checkbox
     for (const field of SOURCE_FIELD_OPTIONS) {
       expect(screen.getByLabelText(field.label)).toBeInTheDocument()
     }
@@ -185,7 +219,6 @@ describe('ProcessRequestOptions', () => {
     expect(forceCheckbox).toBeInTheDocument()
     expect(forceCheckbox).toHaveAttribute('type', 'checkbox')
 
-    // Warning should not be visible initially
     expect(screen.queryByText(/will clear processed flags/i)).not.toBeInTheDocument()
   })
 
@@ -220,6 +253,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -229,23 +263,23 @@ describe('ProcessRequestOptions', () => {
     })
   })
 
-  it('calls onSubmit with selected main session', async () => {
+  it('calls onSubmit with selected session cm_id', async () => {
     render(<ProcessRequestOptions {...defaultProps} />, {
       wrapper: createWrapper(),
     })
 
-    // Wait for sessions to load
     await waitFor(() => {
-      expect(screen.getByRole('option', { name: /session 2$/i })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /^session 2$/i })).toBeInTheDocument()
     })
 
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '2')
+    await userEvent.selectOptions(sessionSelect, '1000003')
 
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
-      session: '2',
+      session: '1000003',
+      sessionLabel: 'Session 2',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -255,23 +289,23 @@ describe('ProcessRequestOptions', () => {
     })
   })
 
-  it('calls onSubmit with selected embedded session', async () => {
+  it('calls onSubmit with selected embedded session cm_id', async () => {
     render(<ProcessRequestOptions {...defaultProps} />, {
       wrapper: createWrapper(),
     })
 
-    // Wait for sessions to load
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /session 2a/i })).toBeInTheDocument()
     })
 
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '2a')
+    await userEvent.selectOptions(sessionSelect, '1000004')
 
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
-      session: '2a',
+      session: '1000004',
+      sessionLabel: 'Session 2a',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -286,7 +320,6 @@ describe('ProcessRequestOptions', () => {
       wrapper: createWrapper(),
     })
 
-    // Select some source fields
     await userEvent.click(screen.getByLabelText('Bunk With'))
     await userEvent.click(screen.getByLabelText('Not Bunk With'))
 
@@ -297,7 +330,6 @@ describe('ProcessRequestOptions', () => {
         sourceFields: expect.arrayContaining(['bunk_with', 'not_bunk_with']),
       })
     )
-    // Verify only 2 source fields selected
     const firstCall = defaultProps.onSubmit.mock.calls[0]
     if (!firstCall) throw new Error('Expected onSubmit to be called')
     expect(firstCall[0].sourceFields).toHaveLength(2)
@@ -316,6 +348,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: 25,
       forceReprocess: false,
       sourceFields: [],
@@ -337,6 +370,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: undefined,
       forceReprocess: true,
       sourceFields: [],
@@ -351,32 +385,28 @@ describe('ProcessRequestOptions', () => {
       wrapper: createWrapper(),
     })
 
-    // Wait for sessions to load
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /session 3a/i })).toBeInTheDocument()
     })
 
-    // Select embedded session
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '3a')
+    await userEvent.selectOptions(sessionSelect, '1000007')
 
-    // Select source fields
     await userEvent.click(screen.getByLabelText('Internal Notes'))
     await userEvent.click(screen.getByLabelText('Bunking Notes'))
 
-    // Set limit
     const limitInput = screen.getByLabelText(/limit/i)
     await userEvent.clear(limitInput)
     await userEvent.type(limitInput, '15')
 
-    // Enable force reprocess
     const forceCheckbox = screen.getByLabelText(/force reprocess/i)
     await userEvent.click(forceCheckbox)
 
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
-      session: '3a',
+      session: '1000007',
+      sessionLabel: 'Session 3a',
       limit: 15,
       forceReprocess: true,
       sourceFields: expect.arrayContaining(['internal_notes', 'bunking_notes']),
@@ -412,12 +442,12 @@ describe('ProcessRequestOptions', () => {
     await userEvent.clear(limitInput)
     await userEvent.type(limitInput, '-5')
 
-    // The input should accept the value but submission should treat it as undefined
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
-      limit: undefined, // Negative values treated as no limit
+      sessionLabel: 'All Sessions',
+      limit: undefined,
       forceReprocess: false,
       sourceFields: [],
       debug: false,
@@ -443,11 +473,9 @@ describe('ProcessRequestOptions', () => {
 
     const checkbox = screen.getByLabelText('Bunk With')
 
-    // Check
     await userEvent.click(checkbox)
     expect(checkbox).toBeChecked()
 
-    // Uncheck
     await userEvent.click(checkbox)
     expect(checkbox).not.toBeChecked()
   })
@@ -457,15 +485,10 @@ describe('ProcessRequestOptions', () => {
       wrapper: createWrapper(),
     })
 
-    // Should have a heading
     expect(screen.getByRole('heading', { name: /process requests/i })).toBeInTheDocument()
-
-    // All inputs should have labels
     expect(screen.getByLabelText(/session/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/limit/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/force reprocess/i)).toBeInTheDocument()
-
-    // Should have two action buttons
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^process$/i })).toBeInTheDocument()
   })
@@ -478,99 +501,27 @@ describe('ProcessRequestOptions', () => {
     expect(screen.getByText(/process original bunk requests/i)).toBeInTheDocument()
   })
 
-  it('uses "toc" value for Taste of Camp instead of "1" to avoid key collisions', async () => {
-    render(<ProcessRequestOptions {...defaultProps} />, {
-      wrapper: createWrapper(),
-    })
-
-    // Wait for sessions to load
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /taste of camp/i })).toBeInTheDocument()
-    })
-
-    // Select Taste of Camp
-    const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, 'toc')
-
-    fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
-
-    expect(defaultProps.onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        session: 'toc',
-      })
-    )
-  })
-
   it('resets form when closed and reopened', async () => {
     const { rerender } = render(<ProcessRequestOptions {...defaultProps} />, {
       wrapper: createWrapper(),
     })
 
-    // Wait for sessions to load
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /session 3a/i })).toBeInTheDocument()
     })
 
-    // Change some values
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '3a')
+    await userEvent.selectOptions(sessionSelect, '1000007')
     const limitInput = screen.getByLabelText(/limit/i)
     await userEvent.clear(limitInput)
     await userEvent.type(limitInput, '50')
     await userEvent.click(screen.getByLabelText('Bunk With'))
 
-    // Close the modal
     rerender(<ProcessRequestOptions {...defaultProps} isOpen={false} />)
-
-    // Reopen the modal
     rerender(<ProcessRequestOptions {...defaultProps} isOpen={true} />)
 
-    // Values should be reset
     expect(screen.getByLabelText(/session/i)).toHaveValue('all')
     expect(screen.getByLabelText(/limit/i)).toHaveValue(null)
     expect(screen.getByLabelText('Bunk With')).not.toBeChecked()
-  })
-
-  // This test overrides the module mock, so it must be last
-  it('deduplicates session options with the same friendly name', async () => {
-    const { pb } = await import('../../lib/pocketbase')
-    vi.mocked(pb.collection).mockReturnValue({
-      getFullList: vi.fn().mockResolvedValue([
-        {
-          id: '1',
-          name: 'Taste of Camp',
-          session_type: 'main',
-          year: 2025,
-          start_date: '2025-06-01',
-        },
-        {
-          id: '1b',
-          name: 'Taste of Camp Extended',
-          session_type: 'embedded',
-          year: 2025,
-          start_date: '2025-06-05',
-        },
-        {
-          id: '2',
-          name: 'Session 2',
-          session_type: 'main',
-          year: 2025,
-          start_date: '2025-06-15',
-        },
-      ]),
-    } as unknown as ReturnType<typeof pb.collection>)
-
-    render(<ProcessRequestOptions {...defaultProps} />, {
-      wrapper: createWrapper(),
-    })
-
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /taste of camp$/i })).toBeInTheDocument()
-    })
-
-    // Should only have one TOC option, not two
-    const allOptions = screen.getAllByRole('option')
-    const tocOptions = allOptions.filter((opt) => opt.textContent?.match(/taste of camp/i))
-    expect(tocOptions).toHaveLength(1)
   })
 })

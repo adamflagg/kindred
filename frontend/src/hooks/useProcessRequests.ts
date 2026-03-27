@@ -27,7 +27,7 @@ export function useProcessRequests() {
       // Build query params
       const params = new URLSearchParams()
 
-      // Session is now a string (e.g., 'all', '1', '2', '2a', 'toc')
+      // Session is a cm_id string (e.g., '1000003') or 'all'
       if (options.session !== 'all') {
         params.set('session', options.session)
       }
@@ -70,13 +70,11 @@ export function useProcessRequests() {
       // Build description of what was started
       const parts: string[] = []
 
-      // Session description (string-based)
+      // Session description from label (populated by ProcessRequestOptions)
       if (options.session === 'all') {
         parts.push('all sessions')
-      } else if (options.session === '1' || options.session === 'toc') {
-        parts.push('Taste of Camp')
       } else {
-        parts.push(`Session ${options.session}`)
+        parts.push(options.sessionLabel)
       }
 
       // Add source fields if specified

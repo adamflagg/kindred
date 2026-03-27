@@ -4,7 +4,6 @@ Provides methods to query camp session data and find related sessions."""
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
@@ -229,163 +228,41 @@ class SessionRepository:
         return related_ids
 
     # =========================================================================
-    # Session Name Resolution (for CLI/API friendly names)
+    # Session Resolution
     # =========================================================================
 
-    # Regex patterns for extracting friendly session names
-    _SESSION_NAME_PATTERN = re.compile(r"Session\s+(\d+[a-z]?)", re.IGNORECASE)
-    _TOC_PATTERN = re.compile(r"Taste\s+of\s+Camp", re.IGNORECASE)
-    _AG_PATTERN = re.compile(r"All-Gender", re.IGNORECASE)
-
-    def _extract_friendly_name(self, session_name: str) -> str | None:
-        """Extract friendly name from full session name.
-
-        Parses database session names to extract short identifiers
-        used in CLI and API parameters.
-
-        Examples:
-            "Session 2" → "2"
-            "Session 2a" → "2a"
-            "Session 3A" → "3a" (lowercased)
-            "Taste of Camp" → "1"
-            "All-Gender Cabin-Session 2 (9th & 10th)" → None (AG excluded)
-
-        Args:
-            session_name: Full session name from database
-
-        Returns:
-            Friendly name string or None if not extractable
-        """
-        # Exclude AG sessions - they are auto-included with parent main session
-        if self._AG_PATTERN.search(session_name):
-            return None
-
-        # Check for Taste of Camp (maps to "1")
-        if self._TOC_PATTERN.search(session_name):
-            return "1"
-
-        # Try to extract "Session X" or "Session Xa" pattern
-        match = self._SESSION_NAME_PATTERN.search(session_name)
-        if match:
-            # Return lowercase to normalize "3A" → "3a"
-            return match.group(1).lower()
-
-        return None
-
-    def get_valid_session_names(self, year: int) -> dict[str, tuple[int, bool]]:
-        """Get all valid session friendly names for a year.
-
-        Dynamically queries the database to build a mapping of friendly
-        session names to their CampMinder IDs. This adapts automatically
-        when sessions change between years (e.g., 2026 adds "4a").
-
-        Args:
-            year: The year to get sessions for
-
-        Returns:
-            Dict mapping friendly name → (cm_id, is_main_session)
-            Example: {"1": (1000001, True), "2a": (1000021, False)}
-            - is_main_session=True means AG sessions should be included
-            - is_main_session=False means standalone (embedded sessions)
-        """
-        if not self.pb:
-            return {}
-
-        sessions = self.get_all_for_year(year)
-
-        # Filter to main and embedded only (AG sessions are auto-included with main)
-        summer_sessions = [s for s in sessions if s["session_type"] in ("main", "embedded")]
-
-        name_map: dict[str, tuple[int, bool]] = {}
-        for session in summer_sessions:
-            friendly = self._extract_friendly_name(session["name"])
-            if friendly:
-                is_main = session["session_type"] == "main"
-                name_map[friendly] = (session["cm_id"], is_main)
-
-        # Add "toc" alias for Taste of Camp (if session 1 exists)
-        if "1" in name_map:
-            name_map["toc"] = name_map["1"]
-
-        return name_map
-
-    def resolve_session_name(self, name: str, year: int) -> tuple[int | None, bool]:
-        """Resolve a friendly session name to CampMinder ID.
-
-        Dynamically queries database for valid sessions - no hardcoded lists.
-        Automatically adapts when sessions change between years.
-
-        Args:
-            name: Session identifier (e.g., "2", "2a", "all", "toc", "0")
-            year: Year to look up sessions for
-
-        Returns:
-            Tuple of (cm_id or None for all, should_include_ag)
-            - Main sessions (1, 2, 3, 4) return True for include_ag
-            - Embedded sessions (2a, 2b, 3a) return False for include_ag
-            - "all" or "0" returns (None, False)
-
-        Raises:
-            ValueError: If session name not recognized for this year
-
-        Examples:
-            >>> repo.resolve_session_name("2", 2025)
-            (1000002, True)  # Main session 2 + AG children
-            >>> repo.resolve_session_name("2a", 2025)
-            (1000021, False)  # Embedded session 2a only
-            >>> repo.resolve_session_name("all", 2025)
-            (None, False)  # All sessions
-        """
-        normalized = name.lower().strip()
-
-        # Special cases for "all sessions"
-        if normalized in ("all", "0"):
-            return (None, False)
-
-        # Get valid sessions for this year from database
-        valid_sessions = self.get_valid_session_names(year)
-
-        if normalized not in valid_sessions:
-            valid_list = sorted(valid_sessions.keys())
-            raise ValueError(f"Unknown session '{name}' for {year}. Valid options: all, {', '.join(valid_list)}")
-
-        return valid_sessions[normalized]
-
     def resolve_session_cm_ids(self, session_name: str, year: int) -> list[int]:
-        """Resolve a session name to a deduplicated list of CampMinder session IDs.
+        """Resolve a session identifier to CampMinder session IDs.
 
-        Handles three cases:
-        - Specific session without AG: returns [cm_id]
-        - Specific session with AG: returns cm_id + related AG session IDs
-        - All sessions (name resolves to None): expands main sessions
-          with their AG children, includes embedded sessions as-is
+        Accepts "all" for all valid bunking sessions, or a numeric cm_id string
+        for a specific session. The old friendly-name system (_extract_friendly_name,
+        resolve_session_name) was removed — it caused name collisions when multiple
+        sessions mapped to the same short name (e.g., Taste of Camp 1 and 2 both
+        mapped to "1") and pulled in cross-year AG ghost sessions.
 
         Args:
-            session_name: User-friendly session identifier (e.g., "1", "2a", "all")
+            session_name: "all" for all bunking sessions, or a cm_id string
             year: The year to resolve sessions for
 
         Returns:
-            Deduplicated list of CampMinder session IDs
+            List of CampMinder session IDs
+
+        Raises:
+            ValueError: If session_name is not "all" or a valid integer
         """
-        main_session_id, include_ag = self.resolve_session_name(session_name, year)
+        normalized = session_name.strip().lower()
 
-        if main_session_id is not None:
-            if include_ag:
-                return self.get_related_session_ids(main_session_id)
-            return [main_session_id]
+        # "0" is a legacy alias for "all" (used by documented data-reset commands)
+        if normalized in ("all", "0"):
+            return list(self.get_valid_bunking_session_ids(year))
 
-        # All sessions path
-        all_session_ids: list[int] = []
-        valid_sessions = self.get_valid_session_names(year)
-        seen_cm_ids: set[int] = set()
-        for cm_id, is_main in valid_sessions.values():
-            if cm_id not in seen_cm_ids:
-                seen_cm_ids.add(cm_id)
-                if is_main:
-                    all_session_ids.extend(self.get_related_session_ids(cm_id))
-                else:
-                    all_session_ids.append(cm_id)
-        return list(set(all_session_ids))
+        try:
+            cm_id = int(normalized)
+        except ValueError:
+            raise ValueError(f"Invalid session '{session_name}'. Use 'all' for all sessions or a numeric cm_id.")
+
+        # Expand main sessions to include their AG children
+        return self.get_related_session_ids(cm_id)
 
 
 # Module-level async function for backward compatibility with solver_service_v2
