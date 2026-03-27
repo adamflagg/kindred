@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
     SessionRepository,
 )
@@ -312,59 +314,24 @@ class TestIsValidBunkingSession:
 
 
 class TestResolveSessionCmIds:
-    """Tests for SessionRepository.resolve_session_cm_ids()."""
+    """Tests for SessionRepository.resolve_session_cm_ids() — cm_id based."""
 
-    def test_specific_session_without_ag(self):
-        """Embedded session returns just its own ID."""
+    def test_all_delegates_to_valid_bunking_session_ids(self):
+        """'all' uses get_valid_bunking_session_ids, no name parsing."""
         repo = SessionRepository(MagicMock())
-        with patch.object(repo, "resolve_session_name", return_value=(1000021, False)):
-            result = repo.resolve_session_cm_ids("2a", 2026)
-        assert result == [1000021]
-
-    def test_specific_session_with_ag(self):
-        """Main session with include_ag returns self + AG children."""
-        repo = SessionRepository(MagicMock())
-        with (
-            patch.object(repo, "resolve_session_name", return_value=(1000001, True)),
-            patch.object(repo, "get_related_session_ids", return_value=[1000001, 1000011]),
-        ):
-            result = repo.resolve_session_cm_ids("1", 2026)
-        assert set(result) == {1000001, 1000011}
-
-    def test_all_sessions_expands_main_keeps_embedded(self):
-        """'all' expands main sessions, keeps embedded as-is, deduplicates."""
-        repo = SessionRepository(MagicMock())
-        with (
-            patch.object(repo, "resolve_session_name", return_value=(None, False)),
-            patch.object(
-                repo,
-                "get_valid_session_names",
-                return_value={
-                    "1": (1000001, True),
-                    "2a": (1000021, False),
-                },
-            ),
-            patch.object(repo, "get_related_session_ids", return_value=[1000001, 1000011]),
-        ):
+        with patch.object(repo, "get_valid_bunking_session_ids", return_value={100, 200, 300}):
             result = repo.resolve_session_cm_ids("all", 2026)
-        assert 1000001 in result
-        assert 1000011 in result
-        assert 1000021 in result
+        assert set(result) == {100, 200, 300}
 
-    def test_all_sessions_deduplicates(self):
-        """Duplicate cm_ids across aliases are deduplicated."""
+    def test_cm_id_string_expands_via_related(self):
+        """Numeric string is parsed as cm_id and expanded with AG children."""
         repo = SessionRepository(MagicMock())
-        with (
-            patch.object(repo, "resolve_session_name", return_value=(None, False)),
-            patch.object(
-                repo,
-                "get_valid_session_names",
-                return_value={
-                    "1": (1000001, True),
-                    "toc": (1000001, True),
-                },
-            ),
-            patch.object(repo, "get_related_session_ids", return_value=[1000001, 1000011]),
-        ):
-            result = repo.resolve_session_cm_ids("all", 2026)
-        assert sorted(result) == [1000001, 1000011]
+        with patch.object(repo, "get_related_session_ids", return_value=[1235404, 9999]):
+            result = repo.resolve_session_cm_ids("1235404", 2026)
+        assert set(result) == {1235404, 9999}
+
+    def test_invalid_string_raises_error(self):
+        """Non-numeric, non-'all' raises ValueError."""
+        repo = SessionRepository(MagicMock())
+        with pytest.raises(ValueError, match="Invalid session"):
+            repo.resolve_session_cm_ids("toc", 2026)

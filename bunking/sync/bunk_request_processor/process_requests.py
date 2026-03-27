@@ -299,10 +299,7 @@ def main() -> None:
         "--session",
         type=str,
         required=True,
-        help=(
-            "Session to process. Accepts: all, 1, 2, 2a, 2b, 3, 3a, 4, toc "
-            "(or 0-4 for backward compat). Main sessions include their AG sessions."
-        ),
+        help=("Session to process. Use 'all' for all bunking sessions, or a numeric cm_id for a specific session."),
     )
     parser.add_argument(
         "--source-field",

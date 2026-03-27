@@ -420,8 +420,8 @@ func TestStatusResponseFormat(t *testing.T) {
 }
 
 // TestSessionParameterPassthrough verifies session parameter is passed through to Python
-// Note: Actual session validation happens in Python via SessionRepository.resolve_session_name()
-// which dynamically queries the camp_sessions table. Go just passes the string through.
+// Note: Actual session validation happens in Python via SessionRepository.resolve_session_cm_ids()
+// which accepts "all" or a numeric cm_id string. Go just passes the string through.
 func TestSessionParameterPassthrough(t *testing.T) {
 	tests := []struct {
 		name        string

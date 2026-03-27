@@ -145,7 +145,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// - ?trace=true (enable very verbose trace logging in Python processor)
 	e.Router.POST("/api/custom/sync/process-requests",
 		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-			// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
+			// Parse optional session parameter (accepts "all" or a numeric cm_id)
 			session := e.Request.URL.Query().Get("session")
 			if session == "" {
 				session = DefaultSession
