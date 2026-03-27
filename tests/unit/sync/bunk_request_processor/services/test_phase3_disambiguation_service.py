@@ -322,6 +322,45 @@ class TestPhase3DisambiguationServiceBatchDisambiguate:
         assert len(call_kwargs["candidates"]) <= 5  # Top 5 only
 
     @pytest.mark.asyncio
+    async def test_batch_disambiguate_passes_context_objects_not_dicts(self):
+        """Phase 3 must pass AIRequestContext objects to batch processor, not dicts."""
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        ambiguous = _create_ambiguous_resolution()
+        parse_result = _create_parse_result()
+
+        cases = [
+            (parse_result, [ambiguous]),
+        ]
+
+        await service.batch_disambiguate(cases)
+
+        # Verify batch_processor was called
+        batch_processor.batch_disambiguate.assert_called_once()
+        call_kwargs = batch_processor.batch_disambiguate.call_args
+        disambiguation_requests = call_kwargs.kwargs.get(
+            "disambiguation_requests", call_kwargs.args[0] if call_kwargs.args else []
+        )
+
+        # Each request tuple must be (ParsedRequest, AIRequestContext) — NOT dict
+        for parsed_req, context in disambiguation_requests:
+            assert isinstance(parsed_req, ParsedRequest), f"Expected ParsedRequest, got {type(parsed_req)}"
+            assert isinstance(context, AIRequestContext), (
+                f"Expected AIRequestContext, got {type(context)}. Phase 3 should not convert context to dict."
+            )
+
+    @pytest.mark.asyncio
     async def test_batch_disambiguate_handles_empty_input(self):
         """batch_disambiguate handles empty input gracefully"""
         ai_provider = Mock()

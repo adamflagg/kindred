@@ -9,7 +9,7 @@ from bunking.logging_config import get_logger
 
 from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult
-from ..integration.ai_service import AIProvider
+from ..integration.ai_service import AIProvider, AIRequestContext
 from ..integration.batch_processor import BatchProcessor
 from ..resolution.interfaces import ResolutionResult
 from .context_builder import ContextBuilder
@@ -159,7 +159,7 @@ class Phase3DisambiguationService:
 
     def _prepare_individual_disambiguation_requests(
         self, cases: list[DisambiguationCase]
-    ) -> tuple[list[tuple[ParsedRequest, dict[str, Any]]], dict[int, tuple[DisambiguationCase, int]]]:
+    ) -> tuple[list[tuple[ParsedRequest, AIRequestContext]], dict[int, tuple[DisambiguationCase, int]]]:
         """Prepare individual disambiguation requests for each ambiguous name"""
         requests = []
         case_mapping = {}  # Maps request index to (case, ambiguous_index)
@@ -212,16 +212,7 @@ class Phase3DisambiguationService:
                     if "networkx_enhanced" in resolution.metadata:
                         context.additional_context["social_signals_available"] = True
 
-                # Convert AIRequestContext to dict for batch processor
-                context_dict = {
-                    "requester_name": context.requester_name,
-                    "requester_cm_id": context.requester_cm_id,
-                    "session_cm_id": context.session_cm_id,
-                    "year": context.year,
-                    **context.additional_context,  # Includes candidates, target_name, etc.
-                }
-
-                requests.append((parsed_req, context_dict))
+                requests.append((parsed_req, context))
                 case_mapping[request_idx] = (case, ambiguous_idx)
                 request_idx += 1
 

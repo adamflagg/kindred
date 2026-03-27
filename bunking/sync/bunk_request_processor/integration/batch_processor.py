@@ -285,7 +285,7 @@ class BatchProcessor:
 
     async def batch_disambiguate(
         self,
-        disambiguation_requests: list[tuple[ParsedRequest, dict[str, Any]]],
+        disambiguation_requests: list[tuple[ParsedRequest, AIRequestContext]],
         progress_callback: Callable[..., Any] | None = None,
     ) -> list[ParsedResponse]:
         """Process disambiguation requests in batches.
@@ -462,7 +462,7 @@ class BatchProcessor:
                     # Process disambiguation batch
                     results = []
                     for parsed_request, context in batch:
-                        result = await self.ai_provider.parse_request(context.request_text, context)
+                        result = await self.ai_provider.parse_request(parsed_request.target_name, context)
                         results.append(result)
                 else:
                     # Process parse batch
