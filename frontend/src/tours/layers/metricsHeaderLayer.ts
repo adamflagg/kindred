@@ -19,7 +19,7 @@ const metricsHeaderLayer: LayerDefinition = {
       popover: {
         title: 'Session Filter',
         description:
-          'Filter by type (At Camp, Quests, All Summer), then by duration or individual session. Applies across most tabs.',
+          'Filter by session type, duration, a specific session, or view all. Applies across most tabs.',
         side: 'bottom',
         align: 'end',
       },
