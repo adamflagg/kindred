@@ -32,7 +32,7 @@ class TestBatchStatus:
 
     def test_all_statuses_defined(self):
         """All expected batch statuses are defined."""
-        expected = {"PENDING", "PROCESSING", "COMPLETED", "FAILED", "RATE_LIMITED"}
+        expected = {"PENDING", "PROCESSING", "COMPLETED", "FAILED", "RATE_LIMITED", "PARTIAL"}
         actual = {s.name for s in BatchStatus}
         assert actual == expected
 
@@ -583,9 +583,11 @@ class TestLogStatistics:
             "total_batches": 10,
             "successful_batches": 8,
             "failed_batches": 2,
+            "partial_batches": 0,
             "rate_limited_batches": 1,
             "total_items": 100,
             "total_retries": 3,
+            "transient_item_failures": 0,
             "total_time": 15.5,
         }
 
