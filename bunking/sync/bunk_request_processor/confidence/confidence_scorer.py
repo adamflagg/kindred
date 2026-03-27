@@ -195,7 +195,7 @@ class ConfidenceScorer:
         # Resolution signals if available
         if resolution_result:
             if resolution_result.is_resolved:
-                signals.match_certainty = "exact" if resolution_result.confidence > 0.9 else "partial"
+                signals.match_certainty = "exact" if resolution_result.confidence >= 0.9 else "partial"
                 signals.name_match_exact = resolution_result.method == "exact_match"
                 signals.name_match_unique = resolution_result.method in ["exact_match", "unique_fuzzy"]
                 signals.name_disambiguation_score = resolution_result.confidence
