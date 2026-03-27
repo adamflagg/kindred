@@ -412,16 +412,21 @@ jobs:
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
         DOCKERFILES=("docker/Dockerfile.caddy" "docker/Dockerfile.pocketbase" "docker/Dockerfile.api" "docker/Dockerfile.init")
 
+        NO_CACHE_FLAG=""
+        USE_CACHE=true
+        if [ "$INPUT_NO_CACHE" == "true" ]; then
+          NO_CACHE_FLAG="--no-cache"
+          USE_CACHE=false
+        fi
+
         for i in "${!IMAGES[@]}"; do
           echo "=== Building ${IMAGES[$i]} ==="
 
-          CACHE_FROM="--cache-from type=gha,scope=${IMAGES[$i]}"
-          CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGES[$i]}"
-          NO_CACHE_FLAG=""
-          if [ "$INPUT_NO_CACHE" == "true" ]; then
-            NO_CACHE_FLAG="--no-cache"
-            CACHE_FROM=""
+          CACHE_FROM=""
+          if [ "$USE_CACHE" == "true" ]; then
+            CACHE_FROM="--cache-from type=gha,scope=${IMAGES[$i]}"
           fi
+          CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGES[$i]}"
 
           docker buildx build \
             -f "${DOCKERFILES[$i]}" \
