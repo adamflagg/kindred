@@ -398,6 +398,10 @@ jobs:
         echo "Version: $VERSION"
         echo "Build Date: $BUILD_DATE"
 
+    - name: Set up Docker Buildx
+      if: steps.check.outputs.build == 'true'
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+
     - name: Build all Docker images (local only)
       if: steps.check.outputs.build == 'true'
       env:
@@ -408,19 +412,26 @@ jobs:
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
         DOCKERFILES=("docker/Dockerfile.caddy" "docker/Dockerfile.pocketbase" "docker/Dockerfile.api" "docker/Dockerfile.init")
 
-        NO_CACHE_FLAG=""
-        if [ "$INPUT_NO_CACHE" == "true" ]; then
-          NO_CACHE_FLAG="--no-cache"
-        fi
-
         for i in "${!IMAGES[@]}"; do
           echo "=== Building ${IMAGES[$i]} ==="
-          docker build \
+
+          CACHE_FROM="--cache-from type=gha,scope=${IMAGES[$i]}"
+          CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGES[$i]}"
+          NO_CACHE_FLAG=""
+          if [ "$INPUT_NO_CACHE" == "true" ]; then
+            NO_CACHE_FLAG="--no-cache"
+            CACHE_FROM=""
+          fi
+
+          docker buildx build \
             -f "${DOCKERFILES[$i]}" \
             -t "${REGISTRY}/${USERNAME}/${IMAGES[$i]}:test" \
             --build-arg VERSION="$BUILD_VERSION" \
             --build-arg BUILD_DATE="$BUILD_DATE" \
+            $CACHE_FROM \
+            $CACHE_TO \
             $NO_CACHE_FLAG \
+            --load \
             .
           echo "${IMAGES[$i]} built"
         done
