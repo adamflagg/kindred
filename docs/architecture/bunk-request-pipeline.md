@@ -481,7 +481,7 @@ score = 0.70 × name_score + 0.15 × ai_score + 0.10 × context_score + 0.05 × 
 
 | Signal | Source | Values |
 |---|---|---|
-| `name_score` | `match_certainty` from `resolution_result.confidence > 0.9` | "exact"=1.0, "partial"=0.7, "ambiguous"=0.4, "none"=0.0 |
+| `name_score` | `match_certainty` from `resolution_result.confidence > 0.9` | "exact"=1.0, "partial"=0.7, "ambiguous"=0.4, "none"=0.0. **Known bug:** uses `> 0.9` (strictly greater), so resolution confidence of exactly 0.90 (no-session-info exact match, parent surname match) classifies as "partial" instead of "exact". See "Known Issues". |
 | `ai_score` | Phase 1 AI parse confidence | Typically 0.85 |
 | `context_score` | Attendee enrollment lookup | found_in_current_year=0.8, previous_year_only=0.4, base=0.5. Social bonuses: in_ego_network +0.1, social_distance≤2 +0.1 |
 | `reciprocal_score` | Reciprocal pair detection | Hardcoded 0.0 in formula (not implemented). Reciprocal boost (+0.1) applied separately by `reciprocal_detector.py` after request building. |
@@ -504,6 +504,9 @@ Directional mapping: AI extracts OLDER/YOUNGER from reasoning (e.g., "wants to b
 **Worked examples:**
 ```
 Same-session exact match (correct):  0.70 × 1.0 + 0.15 × 0.85 + 0.10 × 0.8 = 0.9075 → RESOLVED
+No-session-info exact match (bug):   0.70 × 0.7 + 0.15 × 0.85 + 0.10 × 0.8 = 0.6975 → PENDING (should be 0.9075)
+  (resolution returns 0.90, but 0.90 is NOT > 0.9, so name_score = 0.7 "partial" instead of 1.0 "exact")
+With reciprocal boost:               0.6975 + 0.10 = 0.7975 → still PENDING (threshold is 0.85)
 Cross-session BUNK_WITH:             Score irrelevant — ConflictDetector auto-DECLINES
 Cross-session NOT_BUNK_WITH:         Score irrelevant — ConflictDetector auto-RESOLVES (satisfied)
 ```
@@ -705,9 +708,11 @@ The system has **two layers of delta detection**:
 | `internal_notes` | Staff notes | Yes | AI extracts names + context | BUNK_WITH or NOT_BUNK_WITH |
 | `socialize_with` | Parent dropdown | No | Direct mapping | AGE_PREFERENCE (OLDER/YOUNGER) |
 
-**Production data (2026, 1014 source records → 1908 output requests):**
+**Production data (2026, v3.11 March 26 — 1226 source OBRs → 1630 output requests):**
 
-`bunk_with` dominates at 90% of source records. AI-parsed age preferences from `bunk_with` (63) outnumber the `socialize_with` dropdown (13) by 5:1. `bunk_with` also produces NOT_BUNK_WITH requests (4) when parents express negative preferences in the free text. `bunking_notes` generates both BUNK_WITH (30) and NOT_BUNK_WITH (32) from staff notes. The `not_bunk_with` field has only 1 source record — parents overwhelmingly express negative requests within `bunk_with` text rather than using the separate field.
+`bunk_with` dominates at 78% of source OBRs (958/1226). AI-parsed age preferences from `bunk_with` outnumber the `socialize_with` dropdown by ~5:1. `bunk_with` also produces NOT_BUNK_WITH requests when parents express negative preferences in free text. `bunking_notes` generates both BUNK_WITH and NOT_BUNK_WITH from staff notes. The `not_bunk_with` field has only 2 source records — parents overwhelmingly express negative requests within `bunk_with` text rather than using the separate field.
+
+**Note:** The v3.11 output count (1630) is lower than expected (~1830) due to OpenAI transient failures (30+ server 500 errors, 2 read timeouts) that silently dropped ~145 OBRs. See "Known Issues" section.
 
 ---
 
@@ -755,44 +760,84 @@ Non-bunking types (35 sessions): `family`, `quest`, `bmitzvah`, `hebrew`, `teen`
 
 ## Per-Stage Production Effectiveness
 
-Data from 945-trace production run (2026 season, March 25). Status breakdown: 1157 RESOLVED (73.5%), 354 PENDING (22.5%), 65 DECLINED (4.1%). Run-over-run improvement: 14.6% → 73.5% resolved between March 18 and March 25.
+### Run History
 
-### Stages with production impact
+| Run | Version | Date | Source OBRs | Output BRs | Resolved | Pending | Declined | Notes |
+|---|---|---|---|---|---|---|---|---|
+| March 18 | v3.7.1 | 2026-03-18 | 1014 | 1908 | 293 (15.4%) | 1364 (71.5%) | 251 (13.2%) | Session matching bug caused mass misclassification |
+| March 25 | v3.9 | 2026-03-25 | ~1014 | ~1576 | 1157 (73.5%) | 354 (22.5%) | 65 (4.1%) | Session bug fixed, cross-session detection added |
+| March 26 | v3.11 | 2026-03-26 | 1226 | 1630 | 1109 (68.0%) | 408 (25.0%) | 113 (6.9%) | Newer CSV, ~145 OBRs lost to OpenAI failures. Phase 3 broken by code bug. |
+
+**v3.11 note:** The lower resolved percentage vs March 25 is misleading — the newer CSV has more registrations (1226 vs ~1014 OBRs), and ~145 OBRs with real content were never processed due to OpenAI 500/timeout errors. The actual auto-resolve rate for successfully-processed requests is comparable.
+
+### v3.11 Resolution Method Distribution
+
+| Method | Count | Resolved | Pending | Declined | Avg Conf |
+|---|---|---|---|---|---|
+| exact_match | 1021 | 891 | 39 | 91 | 0.931 |
+| *(age_preference, no method)* | 213 | 198 | 15 | 0 | 0.879 |
+| fuzzy_match | 161 | 1 | 143 | 17 | 0.721 |
+| unknown (unresolved) | 159 | 0 | 159 | 0 | 0.000 |
+| single_name_candidates | 37 | 0 | 37 | 0 | 0.300 |
+| prior_bunkmate_exact | 13 | 13 | 0 | 0 | 0.958 |
+| phonetic_match | 13 | 0 | 11 | 2 | 0.724 |
+| prior_bunkmate_first_name | 5 | 5 | 0 | 0 | 0.960 |
+| school_disambiguation | 4 | 0 | 1 | 3 | 0.698 |
+| placeholder_expansion_failed | 3 | 0 | 3 | 0 | 0.000 |
+| sibling_household_lookup | 1 | 1 | 0 | 0 | 0.950 |
+
+### v3.11 Confidence Value Clusters (exact_match)
+
+| Confidence | Status | Count | Explanation |
+|---|---|---|---|
+| 1.0000 | resolved | 538 | Same-session exact match (0.9075) + reciprocal boost (+0.1), capped at 1.0 |
+| 0.9075 | resolved | 277 | Same-session exact match, no reciprocal pair |
+| 0.9275 | resolved | 59 | Same-session + social signal bonuses |
+| 0.6975 | declined | 90 | Cross-session — declined by ConflictDetector. Low confidence due to `> 0.9` bug but irrelevant since declined. |
+| 0.6975 | pending | 30 | No-session-info exact matches stuck by `> 0.9` threshold bug |
+| 0.7975 | pending | 8 | Same as above + reciprocal boost (+0.1), still below 0.85 threshold |
+
+### Stages with production impact (v3.11)
 
 | Stage | Fires | Useful | Notes |
 |---|---|---|---|
-| No-preference detection | 50× | 50× | All in `bunk_with`. Correctly skips "n/a", "none", etc. |
-| NA prefix stripping | 7× | 7× | All in `bunk_with`. Preserves age preferences after "N/A;" prefix. |
-| Phase 1 text dedup | ~24× | ~24× | Saves ~24 AI calls (mostly sibling pairs). 50 of 66 "duplicates" are no-pref values skipped before AI. |
-| Type validation | All | Safety net | Enforces not_bunk_with → NOT_BUNK_WITH. Critical safety check. |
-| Reciprocal detection | 560× (280 pairs) | 560× | 29% of requests are reciprocal. Boost effective once base confidence is correct. |
+| No-preference detection | ~50× | ~50× | All in `bunk_with`. Correctly skips "n/a", "none", etc. |
+| NA prefix stripping | ~7× | ~7× | All in `bunk_with`. Preserves age preferences after "N/A;" prefix. **Gap:** 3 ambiguous entries like "None. Preference for own grade/older" are currently caught by no-preference detection, dropping the trailing age preference. |
+| Phase 1 text dedup | ~24× | ~24× | Saves ~24 AI calls (mostly sibling pairs). |
+| Type validation | All | Safety net | Enforces not_bunk_with → NOT_BUNK_WITH. 46 invalid requests rejected (group refs with empty target_name). |
+| Reciprocal detection | 620× (310 pairs) | 543 resolved | 38% of requests are reciprocal. 543/620 boosted past threshold. 77 still pending (base 0.6975 from `> 0.9` bug). |
+| Unit name validation | All | **2 rejections** | Nitzanim and Carmel correctly caught. Previously reported as 0 — now working. |
+| Hallucination detection | All | **2 rejections** | Safety net working. |
 
-### Stages with low/zero production impact
+### Stages with low/zero production impact (v3.11)
 
 | Stage | Fires | Useful | Notes |
 |---|---|---|---|
-| Temporal conflict filter | 1500× | **0×** | Zero `is_superseded` or `temporal_date` in 2026 data. Only relevant for notes fields. |
-| Source text validation (unit names) | All | **0 rejections** | Unit names appear as person last names ("Chen-Carmel") but resolve correctly. Risk of false positive for camper named "Eilat". |
-| Phase 2.5 historical verification | 832× | **0×** | `historical_year` was never set in 2026 data. PR #780 wires AI extraction of `historical_year` → Phase 2.5 — re-measure after next production run. |
-| Group reference expansion | All | **0 triggers** | 395 `prior_year_bunkmate` requests came from Phase 2's prior bunkmate shortcut, not group expansion. Classmate/congregation expansion is new. |
+| Temporal conflict filter | All | **0×** | Zero `is_superseded` or `temporal_date` in 2026 data. Only relevant for notes fields. |
+| Phase 2.5 historical verification | All resolved | **6 failures, 0 boosts** | `historical_year=0` in bunk_request metadata despite 6 verification attempts logged. AI may be setting it inconsistently. |
+| Group reference expansion (GroupKind) | All | **0 triggers** | `group_kind=0` in bunk_request metadata. AI is not setting `group_kind` field despite schema support (PR #786). Prior bunkmate requests come from Phase 2's fast path, not group expansion. |
 | Self-reference detection | All | **0 hits** | Free safety net, no production matches. |
-| Staff name detection | All rows | **1 hit** | Low value but cheap. Only reads notes fields. |
+| Staff name detection | All rows | **1 hit + false positives** | Detected "Maya" as staff. Also matched sentence fragments: 'Also add', 'Director', 'Eve to', 'I just', 'This was'. Heuristic needs tightening. |
 
-### Phase 3 AI Disambiguation
+### Phase 3 AI Disambiguation (v3.11)
 
-513 requests sent to Phase 3, 207 resolved (**40.3% success rate**). Significant improvement from Phase 2 resolution upgrades (PR #780) reducing the workload, and AI disambiguation improvements increasing the hit rate.
+**0% success — completely broken.** All 14 disambiguation cases failed with `'dict' object has no attribute 'request_text'` — a dataclass/dict mismatch bug in the batch processor's disambiguation path. This is a code bug, not an AI quality issue. See "Known Issues".
 
-### Unresolved Names (358 "unknown" method)
+Prior run (March 25, v3.9): 513 sent to Phase 3, 207 resolved (40.3% success rate).
 
-68 names exist in the `persons` table but the resolution pipeline failed to match them. Known gaps:
+### Unresolved Names (159 "unknown" + 37 "single_name_candidates" in v3.11)
 
-- **Nickname-to-full-name prefix matching**: "Liv Garcia" → Olivia Garcia exists but `preferred_name` is "Olivia" not "Liv". No prefix matching strategy.
-- **Parenthetical nicknames**: "Liam (Nickname)" — nickname in parentheses not stripped before matching.
-- **Single-letter spelling variations**: "Emma Kniffen" vs "Emma Kniffin" — close enough for fuzzy but not caught.
-- **Input normalization**: " Noah Johnson" (leading whitespace), "EMMA CHEN" (all-caps).
-- **AI misparses from notes**: "AG-identified campers", "ALL-GENDER CABIN" — staff shorthand parsed as person names.
+159 names don't match any person — misspellings, not-yet-enrolled, or non-camper references. 37 first-name-only targets generated candidate lists at confidence 0.3 for Phase 3 (which then failed due to the dict bug).
 
-323 names don't match any person — misspellings, not-yet-enrolled, or non-camper references.
+Known resolution gaps (unchanged from prior analysis):
+
+- **Nickname-to-full-name prefix matching**: "Viv Cooper" → Vivienne Cooper exists but `preferred_name` is "Vivienne" not "Viv". No prefix matching strategy.
+- **Parenthetical nicknames**: "Adam (Tatertot)" — nickname in parentheses not stripped before matching.
+- **Single-letter spelling variations**: "Addy Kniffen" vs "Addy Kniffin" — close enough for fuzzy but not always caught.
+- **Input normalization**: " Isaiah Matthew" (leading whitespace), "ARI BEN ONI" (all-caps).
+- **AI misparses from notes**: "AG-identified campers" — staff shorthand parsed as person names.
+- **NOT_BUNK_WITH misparses**: "transgender kids", "trans campers" (×4) parsed as person target names from bunking_notes. These are category references, not individuals.
+- **Parent surname index empty**: 0 unique surnames loaded in v3.11 run. The parent surname fallback path in ExactMatchStrategy is effectively dead code. Likely a cache initialization bug.
 
 ---
 
@@ -963,3 +1008,49 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 - **Drill-down**: Click a row → React Flow canvas with 8 phase nodes. Click any node → detail panel showing all captured data for that phase
 - **New Trace**: Pick a specific camper → run their requests through the pipeline (optionally stop at any phase) → see results immediately
 - **Re-execution**: "Run Again" (single phase, dry-run) or "Run From Here →" (cascade through remaining phases)
+
+---
+
+## Known Issues (as of v3.11, 2026-03-26)
+
+### P0: Critical
+
+**Phase 3 dict/dataclass mismatch.** `BatchProcessor._process_batch_with_retry()` passes a dict to the disambiguation path where a dataclass with `.request_text` is expected. All Phase 3 AI disambiguation fails with `'dict' object has no attribute 'request_text'`. 14/14 cases crashed in v3.11. Phase 3 was working in v3.9 (March 25) — likely a regression from PR #786.
+
+**PB Go-side timeout shorter than API processing time.** The Go sync caller (`process_requests.go`) uses a 35-minute timeout. The v3.11 full-force run took ~2.3 hours. PocketBase logs `context deadline exceeded` and thinks the run failed, but the FastAPI API continues processing as an orphan and completes successfully. Data is written but the Go caller doesn't know.
+
+### P1: High
+
+**OpenAI transient failures silently drop requests.** `BatchProcessor` only retries 429 rate limit errors. OpenAI 500 server errors (30+ in v3.11) and read timeouts (2 in v3.11) fail immediately with no retry. `openai_provider.parse_request()` swallows the error and returns an empty `ParsedResponse` — indistinguishable from "AI found no requests." **~145 OBRs with real content were never processed.** Fix in progress: retry/backoff/reconciliation PR.
+
+**Confidence threshold `> 0.9` should be `>= 0.9`.** `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
+
+**PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Classmates expansion returned 0 results for all 3 attempts for person 3459039. Need to chunk bulk lookups into smaller batches.
+
+**Parent surname index always empty.** `Built parent surname index with 0 unique surnames` logged in v3.11. The entire parent surname fallback resolution path in ExactMatchStrategy is dead code — `_try_parent_surname_match()` can never match anyone. Likely a cache initialization bug where parent data isn't loaded.
+
+**OBR processed flag doesn't distinguish success vs error.** When AI fails for an OBR (timeout, 500), the OBR is still marked `processed` with a timestamp — indistinguishable from a successful parse. On re-run without `force=true`, these are skipped as "already processed." The camper's requests are silently lost unless someone manually forces a reprocess. Need either: a separate `processed_error` state, or don't set `processed` timestamp when AI returns zero results due to transient failure.
+
+### P2: Medium
+
+**AI response logging at INFO.** Every AI response with full request text and parsed output (~800+ lines per run). Single biggest log noise source. Should be DEBUG.
+
+**API key partially logged.** `AI config: provider=openai, model=gpt-5-nano, api_key=sk-svcac...yUsA` at INFO level. Even truncated, should be masked entirely.
+
+**Staff name detection false positives.** Heuristic matches sentence fragments as staff names: 'Also add', 'Director', 'Eve to', 'I just', 'This was'. Needs tighter matching (minimum word count, name-like pattern check).
+
+**NOT_BUNK_WITH AI misparses.** Category references from bunking_notes parsed as person names: "transgender kids", "trans campers" (×4). These are group/category descriptors, not individuals.
+
+**N/A entries with trailing age preferences.** No-preference detection catches entries like "None. Preference for own grade/older" and "N/A\nOwn Grade/Younger", dropping the trailing age preference content. These should be parsed for the age preference after stripping the N/A prefix.
+
+**GROUP_REFERENCE and historical_year not activating.** Despite PR #786 adding `group_kind` and `historical_year` to the AI schema, v3.11 shows 0 records with either field populated in bunk_request metadata. AI is not setting these fields. May need prompt tuning or model-specific configuration.
+
+### P3: Low
+
+**32 records escape force-clear.** Force mode cleared 802 processed flags but 32 already-processed records were skipped. These have a different field pattern that escapes the clear filter.
+
+**Reciprocal formula slot dead.** `reciprocal_score = 0.0` hardcoded in `confidence_scorer.py:321` with 0.05 weight. The actual reciprocal boost (+0.1) is applied separately by `reciprocal_detector.apply_reciprocal_boost()`. The formula slot should be removed or unified with the detector.
+
+**Log level audit needed.** Multiple INFO-level messages should be DEBUG: "Processing batch request X/Y", "AI parsed RequestType.AGE_PREFERENCE from bunk_with field", "Created unresolved request for...", "Invalid RequestType.BUNK_WITH request without target name", session graph build stats, cache building details, individual name resolution matches.
+
+**Fuzzy matches near threshold.** 12 fuzzy matches at confidence 0.8175, just below the 0.85 auto-resolve threshold. Method-aware thresholds (e.g., exact_match at 0.82 trusted more than phonetic at 0.87) would rescue these.
