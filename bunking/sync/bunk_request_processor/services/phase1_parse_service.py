@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -57,54 +58,70 @@ class Phase1ParseService:
             "needs_historical": 0,
             "suspicious_inputs": 0,
             "high_risk_inputs": 0,
+            "phase_retry_rounds": 0,
+            "recovered_in_retry": 0,
+            "permanently_failed": 0,
         }
         self._first_failure_reason: str | None = None
 
     async def batch_parse(
         self, requests: list[ParseRequest], progress_callback: Callable[..., None] | None = None
     ) -> list[ParseResult]:
-        """Parse requests in batch without ID resolution.
+        """Parse requests in batch with phase-level retry rounds.
 
-        This is Phase 1 of the three-phase approach. The AI extracts
-        request structure without attempting to match names to person IDs.
-        Uses V1's sophisticated batch processing with rate limiting and retries.
-
-        Args:
-            requests: List of parse requests to process
-            progress_callback: Optional callback for progress updates
-
-        Returns:
-            List of parse results
+        Phase 1 must be as complete as possible before Phase 2 starts.
+        After the initial batch completes, transient failures are collected,
+        and up to MAX_PHASE_RETRY_ROUNDS retry rounds are attempted with
+        increasing delays.
         """
+        from ..integration.batch_processor import MAX_PHASE_RETRY_ROUNDS, PHASE_RETRY_DELAYS_SECONDS
+
         if not requests:
             return []
 
         logger.info(f"Phase 1: Starting batch parse of {len(requests)} requests")
 
-        # Sanitize inputs before AI processing (security: prompt injection protection)
+        # Sanitize inputs before AI processing
         requests, _security_metadata = self._sanitize_requests(requests)
 
         # Build parse-only contexts for all requests
         contexts = self._build_contexts(requests)
 
-        # Use batch processor for sophisticated batching
-        try:
-            results = await self.batch_processor.batch_parse_requests(
-                requests=requests, contexts=contexts, progress_callback=progress_callback
-            )
+        # Initial batch parse
+        results = await self._run_batch(requests, contexts, progress_callback)
 
-            # Get batch processing statistics
-            batch_stats = self.batch_processor.get_statistics()
-            logger.info(
-                f"Batch processing stats: {batch_stats.get('successful_batches', 0)} successful, "
-                f"{batch_stats.get('failed_batches', 0)} failed, "
-                f"{batch_stats.get('total_retries', 0)} retries"
-            )
+        # Phase-level retry rounds for transient failures
+        for round_num in range(MAX_PHASE_RETRY_ROUNDS):
+            failed_indices = [i for i, r in enumerate(results) if self._is_transient_failure(r)]
 
-        except Exception as e:
-            logger.error(f"Phase 1 batch processing failed: {e}")
-            # Return failed results for all requests
-            results = [self._create_failed_result(req, str(e)) for req in requests]
+            if not failed_indices:
+                break
+
+            delay = PHASE_RETRY_DELAYS_SECONDS[round_num]
+            logger.warning(
+                f"Phase 1 retry round {round_num + 1}/{MAX_PHASE_RETRY_ROUNDS}: "
+                f"{len(failed_indices)} failed items, waiting {delay}s"
+            )
+            self._stats["phase_retry_rounds"] += 1
+            await asyncio.sleep(delay)
+
+            # Re-submit only failed items
+            failed_requests = [requests[i] for i in failed_indices]
+            failed_contexts = [contexts[i] for i in failed_indices]
+            retry_results = await self._run_batch(failed_requests, failed_contexts, progress_callback)
+
+            # Merge successful retries back
+            for idx, retry_result in zip(failed_indices, retry_results, strict=True):
+                if not self._is_transient_failure(retry_result):
+                    results[idx] = retry_result
+                    self._stats["recovered_in_retry"] += 1
+
+        # Count permanently failed
+        final_failed = [r for r in results if self._is_transient_failure(r)]
+        self._stats["permanently_failed"] = len(final_failed)
+
+        # Log reconciliation
+        self._log_reconciliation(requests, results, final_failed)
 
         # Update statistics
         self._update_stats(results)
@@ -116,6 +133,67 @@ class Phase1ParseService:
         )
 
         return results
+
+    async def _run_batch(
+        self,
+        requests: list[ParseRequest],
+        contexts: list[AIRequestContext],
+        progress_callback: Callable[..., None] | None,
+    ) -> list[ParseResult]:
+        """Run a single batch through BatchProcessor."""
+        try:
+            results = await self.batch_processor.batch_parse_requests(
+                requests=requests, contexts=contexts, progress_callback=progress_callback
+            )
+            batch_stats = self.batch_processor.get_statistics()
+            logger.info(
+                f"Batch stats: {batch_stats.get('successful_batches', 0)} successful, "
+                f"{batch_stats.get('failed_batches', 0)} failed, "
+                f"{batch_stats.get('total_retries', 0)} retries"
+            )
+            return results
+        except Exception as e:
+            logger.error(f"Phase 1 batch processing failed: {e}")
+            return [self._create_failed_result(req, str(e)) for req in requests]
+
+    @staticmethod
+    def _is_transient_failure(result: ParseResult) -> bool:
+        """Check if a ParseResult represents a transient failure that should be retried."""
+        if result.is_valid:
+            return False
+        failure_reason = result.metadata.get("failure_reason", "")
+        return result.metadata.get("transient_error", False) or any(
+            pat in failure_reason.lower()
+            for pat in ("timeout", "timed out", "500", "internal server error", "apiconnectionerror")
+        )
+
+    def _log_reconciliation(
+        self,
+        requests: list[ParseRequest],
+        results: list[ParseResult],
+        final_failed: list[ParseResult],
+    ) -> None:
+        """Log end-of-phase reconciliation summary."""
+        total = len(requests)
+        succeeded = total - len(final_failed)
+
+        if not final_failed:
+            logger.info(f"Phase 1 reconciliation: {total}/{total} parsed successfully")
+            return
+
+        logger.warning(
+            f"Phase 1 reconciliation: {succeeded}/{total} parsed successfully, "
+            f"{len(final_failed)} failed after all retries"
+        )
+        for result in final_failed[:10]:  # Cap at 10 to avoid log spam
+            req = result.parse_request
+            req_text = req.request_text[:60] if req else "unknown"
+            req_info = f"cm_id={req.requester_cm_id}" if req else "unknown"
+            reason = result.metadata.get("failure_reason", "unknown")
+            logger.warning(f'  Failed: "{req_text}" ({req_info}) — {reason}')
+
+        if len(final_failed) > 10:
+            logger.warning(f"  ... and {len(final_failed) - 10} more")
 
     def _sanitize_requests(self, requests: list[ParseRequest]) -> tuple[list[ParseRequest], dict[int, dict[str, Any]]]:
         """Sanitize all request texts before AI processing.
@@ -254,5 +332,8 @@ class Phase1ParseService:
             "needs_historical": 0,
             "suspicious_inputs": 0,
             "high_risk_inputs": 0,
+            "phase_retry_rounds": 0,
+            "recovered_in_retry": 0,
+            "permanently_failed": 0,
         }
         self._first_failure_reason = None
