@@ -62,7 +62,6 @@ const trendsVelocityTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="velocity-controls"]') !== null,
 }
 
 export default trendsVelocityTour

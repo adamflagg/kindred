@@ -36,7 +36,6 @@ const trendsOverviewTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="trends-summary"]') !== null,
 }
 
 export default trendsOverviewTour

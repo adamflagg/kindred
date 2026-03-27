@@ -37,7 +37,6 @@ const registrationGeoTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-geo-layers"]') !== null,
 }
 
 export default registrationGeoTour

@@ -36,7 +36,6 @@ const mockTourDefinition: TourDefinition = {
   steps: [
     { element: '[data-tour="debug-header"]', popover: { title: 'Test', description: 'Step 1' } },
   ],
-  isReady: () => true,
 }
 
 const mockLayerDefinition: LayerDefinition = {
@@ -72,8 +71,7 @@ describe('useTour', () => {
     vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
     vi.mocked(tourRegistry.loadLayerDefinition).mockResolvedValue(mockLayerDefinition)
-    vi.mocked(tourStorage.isLayerSeen).mockReturnValue(true)
-    vi.mocked(tourStorage.isLayerStaleOrUnseen).mockReturnValue(false)
+    vi.mocked(tourStorage.getTourStorage).mockReturnValue({ completed: {}, layers: {} })
     mockDrive.mockClear()
     mockDestroy.mockClear()
   })
@@ -138,14 +136,7 @@ describe('useTour', () => {
   })
 
   it('does not start tour when first step element is not in DOM', async () => {
-    // The readiness check uses first step's element selector
     // Since we're in a test env with no DOM, querySelector returns null
-    const defWithElement: TourDefinition = {
-      ...mockTourDefinition,
-      isReady: () => false,
-    }
-    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(defWithElement)
-
     const { result } = renderHook(() => useTour())
 
     await flushAndAdvance(1000)
@@ -161,12 +152,6 @@ describe('useTour', () => {
   })
 
   it('destroys driver instance when readiness timeout is exhausted', async () => {
-    const neverReadyDef: TourDefinition = {
-      ...mockTourDefinition,
-      isReady: () => false,
-    }
-    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(neverReadyDef)
-
     const { result } = renderHook(() => useTour())
 
     await flushAndAdvance(1000)
@@ -205,7 +190,8 @@ describe('useTour', () => {
       }
       vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('retention-overview')
       vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(tourWithLayers)
-      vi.mocked(tourStorage.isLayerSeen).mockReturnValue(false)
+      // Storage has no layer records → unseen
+      vi.mocked(tourStorage.getTourStorage).mockReturnValue({ completed: {}, layers: {} })
 
       // Mock querySelector to return a truthy element for readiness
       const mockElement = document.createElement('div')
@@ -238,7 +224,17 @@ describe('useTour', () => {
       }
       vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('retention-overview')
       vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(tourWithLayers)
-      vi.mocked(tourStorage.isLayerSeen).mockReturnValue(true)
+      // Storage has the layer record → seen
+      vi.mocked(tourStorage.getTourStorage).mockReturnValue({
+        completed: {},
+        layers: {
+          'metrics-header': {
+            layerId: 'metrics-header',
+            completedVersion: 1,
+            completedAt: '2026-01-01T00:00:00Z',
+          },
+        },
+      })
 
       renderHook(() => useTour())
 

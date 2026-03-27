@@ -25,8 +25,4 @@ describe('retentionFlowTour', () => {
       }
     }
   })
-
-  it('has isReady function', () => {
-    expect(typeof retentionFlowTour.isReady).toBe('function')
-  })
 })

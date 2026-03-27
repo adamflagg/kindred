@@ -43,9 +43,6 @@ const debugTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="debug-header"]') !== null
-  },
 }
 
 export default debugTour

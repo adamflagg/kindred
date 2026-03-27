@@ -94,7 +94,6 @@ describe('tourRegistry', () => {
       expect(definition.id).toBe('debug')
       expect(definition.version).toBeGreaterThanOrEqual(1)
       expect(definition.steps.length).toBeGreaterThan(0)
-      expect(typeof definition.isReady).toBe('function')
       expect(Array.isArray(definition.layers)).toBe(true)
     })
 

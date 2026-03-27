@@ -26,7 +26,6 @@ const trendsCancellationsTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="cancel-velocity-controls"]') !== null,
 }
 
 export default trendsCancellationsTour

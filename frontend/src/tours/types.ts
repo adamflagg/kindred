@@ -62,6 +62,4 @@ export interface TourDefinition {
   /** Ordered layer chain to prepend (e.g. ['metrics-header', 'registration-intro']) */
   layers: LayerId[]
   steps: TourStep[]
-  /** Check if the page is ready for the tour (key elements rendered) */
-  isReady: () => boolean
 }

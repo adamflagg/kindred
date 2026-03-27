@@ -23,9 +23,6 @@ const retentionFlowTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="retention-flow-sankey"]') !== null
-  },
 }
 
 export default retentionFlowTour

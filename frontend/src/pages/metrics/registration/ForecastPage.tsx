@@ -271,7 +271,7 @@ export default function ForecastPage() {
       </div>
 
       {/* Section tables */}
-      <div data-tour="reg-forecast-table">
+      <div className="space-y-6" data-tour="reg-forecast-table">
         {sections.map((section) => {
           const showSectionTotal = section.sessions.length >= 2
           return (

@@ -49,7 +49,6 @@ describe('tour types', () => {
       version: 1,
       layers: ['metrics-header', 'registration-intro'],
       steps: [],
-      isReady: () => true,
     }
     expect(def.layers).toEqual(['metrics-header', 'registration-intro'])
   })

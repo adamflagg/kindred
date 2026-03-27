@@ -251,9 +251,12 @@ export default function RegistrationOverview() {
   )
 
   return (
-    <div className="space-y-6" data-tour="reg-overview-summary">
+    <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div
+        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5"
+        data-tour="reg-overview-summary"
+      >
         <MetricCard
           title="Total Enrolled"
           value={data.total_enrolled}
@@ -333,7 +336,7 @@ export default function RegistrationOverview() {
       </div>
 
       {/* Charts Row 1: Gender + Gender by Grade */}
-      <div data-tour="reg-overview-demographics">
+      <div className="space-y-6" data-tour="reg-overview-demographics">
         {compareYear !== null && compData ? (
           <>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

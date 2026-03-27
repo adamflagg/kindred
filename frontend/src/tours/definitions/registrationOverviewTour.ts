@@ -36,7 +36,6 @@ const registrationOverviewTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-overview-summary"]') !== null,
 }
 
 export default registrationOverviewTour

@@ -27,7 +27,6 @@ const registrationForecastTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-forecast-snapshot"]') !== null,
 }
 
 export default registrationForecastTour

@@ -34,9 +34,6 @@ const retentionStaffTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="retention-staff-table"]') !== null
-  },
 }
 
 export default retentionStaffTour

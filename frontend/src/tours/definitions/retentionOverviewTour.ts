@@ -35,9 +35,6 @@ const retentionOverviewTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="retention-summary-cards"]') !== null
-  },
 }
 
 export default retentionOverviewTour

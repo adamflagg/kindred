@@ -16,7 +16,6 @@ const registrationDay1Tour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-day1-summary"]') !== null,
 }
 
 export default registrationDay1Tour

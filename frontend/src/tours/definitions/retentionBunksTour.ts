@@ -31,9 +31,6 @@ const retentionBunksTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="retention-bunks-heatmap"]') !== null
-  },
 }
 
 export default retentionBunksTour

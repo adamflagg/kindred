@@ -14,13 +14,6 @@ export function getTourStorage(): TourStorageData {
   }
 }
 
-export function isTourCompleted(tourId: TourId, currentVersion: number): boolean {
-  const storage = getTourStorage()
-  const record = storage.completed[tourId]
-  if (!record) return false
-  return record.completedVersion >= currentVersion
-}
-
 export function markTourCompleted(tourId: TourId, version: number): void {
   const storage = getTourStorage()
   storage.completed[tourId] = {
@@ -60,6 +53,26 @@ export function isLayerStaleOrUnseen(
   if (record.completedVersion < version) return true
   const daysSince = (Date.now() - new Date(record.completedAt).getTime()) / 86_400_000
   return daysSince >= staleDays
+}
+
+/** Single-write batch: mark layers and optionally a page tour as completed */
+export function batchComplete(
+  layers: { layerId: LayerId; version: number }[],
+  tour?: { tourId: TourId; version: number }
+): void {
+  const storage = getTourStorage()
+  const now = new Date().toISOString()
+  for (const { layerId, version } of layers) {
+    storage.layers[layerId] = { layerId, completedVersion: version, completedAt: now }
+  }
+  if (tour) {
+    storage.completed[tour.tourId] = {
+      tourId: tour.tourId,
+      completedVersion: tour.version,
+      completedAt: now,
+    }
+  }
+  localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
 }
 
 export function resetTour(tourId: TourId): void {

@@ -26,7 +26,6 @@ const registrationAvailabilityTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-availability-heatmap"]') !== null,
 }
 
 export default registrationAvailabilityTour

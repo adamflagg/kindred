@@ -3,6 +3,7 @@ import {
   getTourStorage,
   markTourCompleted,
   markLayerCompleted,
+  batchComplete,
   getLayerCompletion,
   isLayerSeen,
   isLayerStaleOrUnseen,
@@ -115,6 +116,29 @@ describe('tourStorage', () => {
       }
       localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
       expect(isLayerStaleOrUnseen('metrics-header', 1, 30)).toBe(true)
+    })
+  })
+
+  describe('batchComplete', () => {
+    it('writes layers and tour in a single localStorage write', () => {
+      batchComplete(
+        [
+          { layerId: 'metrics-header', version: 1 },
+          { layerId: 'registration-intro', version: 1 },
+        ],
+        { tourId: 'debug', version: 2 }
+      )
+      const storage = getTourStorage()
+      expect(storage.layers['metrics-header']?.completedVersion).toBe(1)
+      expect(storage.layers['registration-intro']?.completedVersion).toBe(1)
+      expect(storage.completed.debug?.completedVersion).toBe(2)
+    })
+
+    it('works with layers only (no tour)', () => {
+      batchComplete([{ layerId: 'metrics-header', version: 1 }])
+      const storage = getTourStorage()
+      expect(storage.layers['metrics-header']).toBeDefined()
+      expect(Object.keys(storage.completed)).toHaveLength(0)
     })
   })
 

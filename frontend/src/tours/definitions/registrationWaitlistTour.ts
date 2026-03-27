@@ -26,7 +26,6 @@ const registrationWaitlistTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-waitlist-summary"]') !== null,
 }
 
 export default registrationWaitlistTour

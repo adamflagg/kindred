@@ -4,13 +4,15 @@ import { driver, type Driver } from 'driver.js'
 import 'driver.js/dist/driver.css'
 import '../styles/tour.css'
 import { getTourIdForRoute, loadTourDefinition, loadLayerDefinition } from '../tours/tourRegistry'
-import {
-  markTourCompleted,
-  markLayerCompleted,
-  isLayerSeen,
-  isLayerStaleOrUnseen,
-} from '../tours/tourStorage'
-import type { TourDefinition, TourId, TourStep, LayerId, LayerDefinition } from '../tours/types'
+import { getTourStorage, batchComplete } from '../tours/tourStorage'
+import type {
+  TourDefinition,
+  TourId,
+  TourStep,
+  LayerId,
+  LayerDefinition,
+  TourStorageData,
+} from '../tours/types'
 import { useSolverConfigValue } from './useSolverConfig'
 
 /** Delay before checking readiness (ms) */
@@ -96,11 +98,13 @@ export function useTour() {
       const def = definitionRef.current
       if (!def) return
 
-      const { steps, layerBoundaries, pageStepsIncluded } = assembleSteps(
+      const storage = getTourStorage()
+      const { steps, layerBoundaries } = assembleSteps(
         def,
         layerDefsRef.current,
         mode,
-        staleDays
+        staleDays,
+        storage
       )
 
       if (steps.length === 0) return
@@ -124,31 +128,28 @@ export function useTour() {
           }
         },
         onDestroyed: () => {
-          // Mark fully-traversed layers
-          for (const boundary of layerBoundaries) {
-            if (highestStepReached >= boundary.endIndex) {
-              markLayerCompleted(boundary.layerId, boundary.version)
-            }
-          }
-          // Mark page tour if manual and fully completed
-          if (pageStepsIncluded && highestStepReached >= steps.length - 1) {
-            markTourCompleted(def.id, def.version)
+          const completedLayers = layerBoundaries
+            .filter((b) => highestStepReached >= b.endIndex)
+            .map((b) => ({ layerId: b.layerId, version: b.version }))
+          const completedTour =
+            mode === 'manual' && highestStepReached >= steps.length - 1
+              ? { tourId: def.id, version: def.version }
+              : undefined
+          if (completedLayers.length > 0 || completedTour) {
+            batchComplete(completedLayers, completedTour)
           }
         },
       })
 
       driverRef.current = d
 
-      // Readiness check: use first step's element (layer steps target shared header)
-      const readyCheck = () => {
-        const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
-        if (firstSelector) return document.querySelector(firstSelector) !== null
-        return def.isReady()
-      }
+      // Readiness: check first step's element exists in DOM (computed once, polled)
+      const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
 
       let retries = 0
       const checkReady = () => {
-        if (readyCheck()) {
+        const ready = firstSelector ? document.querySelector(firstSelector) !== null : true
+        if (ready) {
           d.drive()
           return
         }
@@ -172,7 +173,8 @@ export function useTour() {
     if (definitionRef.current.layers.length === 0) return
     if (layerDefsRef.current.length === 0) return
 
-    const hasUnseenLayers = definitionRef.current.layers.some((id) => !isLayerSeen(id))
+    const storage = getTourStorage()
+    const hasUnseenLayers = definitionRef.current.layers.some((id) => !storage.layers[id])
     if (!hasUnseenLayers) return
 
     autoPlayFiredRef.current = loadedPath
@@ -204,20 +206,23 @@ function assembleSteps(
   def: TourDefinition,
   layerDefs: LayerDefinition[],
   mode: 'auto' | 'manual',
-  staleDays: number
+  staleDays: number,
+  storage: TourStorageData
 ): {
   steps: TourStep[]
   layerBoundaries: LayerBoundary[]
-  pageStepsIncluded: boolean
 } {
   const steps: TourStep[] = []
   const layerBoundaries: LayerBoundary[] = []
 
   for (const layerDef of layerDefs) {
+    const record = storage.layers[layerDef.id]
     const include =
       mode === 'auto'
-        ? !isLayerSeen(layerDef.id)
-        : isLayerStaleOrUnseen(layerDef.id, layerDef.version, staleDays)
+        ? !record
+        : !record ||
+          record.completedVersion < layerDef.version ||
+          (Date.now() - new Date(record.completedAt).getTime()) / 86_400_000 >= staleDays
 
     if (include) {
       steps.push(...layerDef.steps)
@@ -229,11 +234,9 @@ function assembleSteps(
     }
   }
 
-  let pageStepsIncluded = false
   if (mode === 'manual') {
     steps.push(...def.steps)
-    pageStepsIncluded = true
   }
 
-  return { steps, layerBoundaries, pageStepsIncluded }
+  return { steps, layerBoundaries }
 }
