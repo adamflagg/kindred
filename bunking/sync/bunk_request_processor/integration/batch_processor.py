@@ -27,7 +27,7 @@ from bunking.logging_config import get_logger
 from ..core.models import ParsedRequest, ParseRequest, ParseResult
 from ..shared.constants import VALID_AGE_TARGETS as _VALID_AGE_TARGETS
 from .ai_service import AIProvider, AIRequestContext, ParsedResponse
-from .openai_provider import TRANSIENT_ERRORS
+from .openai_provider import TRANSIENT_ERRORS, is_transient_error_string
 
 logger = get_logger(__name__)
 
@@ -187,7 +187,6 @@ class FailedItem:
     requester_info: str
     error_type: str
     error_message: str
-    attempts: int
 
 
 class BatchProcessor:
@@ -486,7 +485,6 @@ class BatchProcessor:
                                 requester_info=f"batch {batch_id}, item {idx}",
                                 error_type=r.metadata.get("error_type", "unknown"),
                                 error_message=r.metadata.get("error", ""),
-                                attempts=1,
                             )
                         )
 
@@ -514,20 +512,13 @@ class BatchProcessor:
                 )
 
             except Exception as e:
-                is_transient = isinstance(e, TRANSIENT_ERRORS)
-
-                if not is_transient:
-                    # Also check string patterns as fallback for wrapped errors
-                    error_str = str(e)
-                    is_transient = any(
-                        pat in error_str.lower()
-                        for pat in ("rate_limit", "429", "timeout", "timed out", "500", "internal server error")
-                    )
+                error_str = str(e)
+                is_transient = isinstance(e, TRANSIENT_ERRORS) or is_transient_error_string(error_str)
 
                 if is_transient:
                     retry_count += 1
                     # Track rate limits specifically for monitoring
-                    error_str_lower = str(e).lower()
+                    error_str_lower = error_str.lower()
                     if "rate_limit" in error_str_lower or "429" in error_str_lower:
                         self.stats["rate_limited_batches"] += 1
 

@@ -63,10 +63,9 @@ class TestFailedItemDataclass:
             requester_info="cm_id=12345",
             error_type="APITimeoutError",
             error_message="Request timed out.",
-            attempts=3,
         )
         assert item.request_text == "Emma Smith"
-        assert item.attempts == 3
+        assert item.error_type == "APITimeoutError"
 
 
 class TestBatchRetryOnTransientErrors:

@@ -1045,6 +1045,12 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 **GROUP_REFERENCE and historical_year not activating.** Despite PR #786 adding `group_kind` and `historical_year` to the AI schema, v3.11 shows 0 records with either field populated in bunk_request metadata. AI is not setting these fields. May need prompt tuning or model-specific configuration.
 
+**`_estimate_batch_size` uses midpoint average, not actual batch sizes.** When a batch fails, `batch_parse_requests` estimates the failed batch's size as `(MIN_BATCH_SIZE + MAX_BATCH_SIZE) // 2` = 27, but actual batch sizes vary with dynamic sizing. This can silently skip items or double-count them in the failure path. Should track actual batch sizes alongside batch results instead of re-estimating.
+
+**`batch_disambiguate` failure fallback uses wrong size estimate.** Uses `len(disambiguation_requests) // max(1, len(batch_results))` (floor division) to estimate failed batch size. Wrong whenever batches are unequal in size (which is the normal case with dynamic batching). Same root cause as `_estimate_batch_size` — actual sizes aren't preserved.
+
+**Duplicate `_create_failed_result` in two classes.** `BatchProcessor._create_failed_result` and `Phase1ParseService._create_failed_result` are identical — same signature, same `ParseResult` construction, same metadata shape. Should be extracted to a shared utility in `core/models.py` or Phase1 should delegate to `self.batch_processor._create_failed_result()`.
+
 ### P3: Low
 
 **32 records escape force-clear.** Force mode cleared 802 processed flags but 32 already-processed records were skipped. These have a different field pattern that escapes the clear filter.

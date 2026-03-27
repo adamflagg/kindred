@@ -34,6 +34,24 @@ from .ai_types import AIProvider, AIRequestContext, ParsedResponse, TokenUsage
 # Non-transient errors (400 bad request, auth failures) are swallowed into empty responses.
 TRANSIENT_ERRORS = (APITimeoutError, InternalServerError, RateLimitError, APIConnectionError)
 
+# String patterns for detecting transient errors in wrapped/stringified exceptions.
+# Used as fallback when isinstance checks aren't possible (e.g., error stored as string in metadata).
+TRANSIENT_ERROR_PATTERNS = (
+    "rate_limit",
+    "429",
+    "timeout",
+    "timed out",
+    "500",
+    "internal server error",
+    "apiconnectionerror",
+)
+
+
+def is_transient_error_string(error_str: str) -> bool:
+    """Check if an error string indicates a transient failure."""
+    return any(pat in error_str.lower() for pat in TRANSIENT_ERROR_PATTERNS)
+
+
 _GROUP_KIND_MAP: dict[str, GroupKind] = {
     "sibling": GroupKind.SIBLING,
     "last_year_bunkmates": GroupKind.LAST_YEAR_BUNKMATES,

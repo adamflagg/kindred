@@ -11,7 +11,8 @@ from bunking.logging_config import get_logger
 
 from ..core.models import ParseRequest, ParseResult
 from ..integration.ai_service import AIProvider, AIRequestContext
-from ..integration.batch_processor import BatchProcessor
+from ..integration.batch_processor import MAX_PHASE_RETRY_ROUNDS, PHASE_RETRY_DELAYS_SECONDS, BatchProcessor
+from ..integration.openai_provider import is_transient_error_string
 from ..security import RiskLevel, SecureSanitizer, create_secure_sanitizer
 from .context_builder import ContextBuilder
 
@@ -74,8 +75,6 @@ class Phase1ParseService:
         and up to MAX_PHASE_RETRY_ROUNDS retry rounds are attempted with
         increasing delays.
         """
-        from ..integration.batch_processor import MAX_PHASE_RETRY_ROUNDS, PHASE_RETRY_DELAYS_SECONDS
-
         if not requests:
             return []
 
@@ -163,10 +162,7 @@ class Phase1ParseService:
         if result.is_valid:
             return False
         failure_reason = result.metadata.get("failure_reason", "")
-        return result.metadata.get("transient_error", False) or any(
-            pat in failure_reason.lower()
-            for pat in ("timeout", "timed out", "500", "internal server error", "apiconnectionerror")
-        )
+        return result.metadata.get("transient_error", False) or is_transient_error_string(failure_reason)
 
     def _log_reconciliation(
         self,
@@ -182,19 +178,22 @@ class Phase1ParseService:
             logger.info(f"Phase 1 reconciliation: {total}/{total} parsed successfully")
             return
 
-        still_transient = [r for r in all_failed if self._is_transient_failure(r)]
-        permanent = [r for r in all_failed if not self._is_transient_failure(r)]
+        transient_count = 0
+        for r in all_failed:
+            if self._is_transient_failure(r):
+                transient_count += 1
+        permanent_count = len(all_failed) - transient_count
 
         logger.warning(
             f"Phase 1 reconciliation: {succeeded}/{total} parsed successfully, "
-            f"{len(all_failed)} failed ({len(still_transient)} transient, {len(permanent)} permanent)"
+            f"{len(all_failed)} failed ({transient_count} transient, {permanent_count} permanent)"
         )
         for result in all_failed[:10]:  # Cap at 10 to avoid log spam
             req = result.parse_request
             req_text = req.request_text[:60] if req else "unknown"
             req_info = f"cm_id={req.requester_cm_id}" if req else "unknown"
             reason = result.metadata.get("failure_reason", "unknown")
-            kind = "transient" if self._is_transient_failure(result) else "permanent"
+            kind = "transient" if result.metadata.get("transient_error") else "permanent"
             logger.warning(f'  Failed ({kind}): "{req_text}" ({req_info}) — {reason}')
 
         if len(all_failed) > 10:
