@@ -15,7 +15,7 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestSource,
     RequestType,
 )
-from bunking.sync.bunk_request_processor.integration.ai_types import AIRequestContext
+from bunking.sync.bunk_request_processor.integration.ai_service import AIRequestContext
 from bunking.sync.bunk_request_processor.integration.batch_processor import BatchProcessor
 
 
