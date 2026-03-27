@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // TestGetSessionNamePattern tests the session name pattern generation
@@ -239,5 +240,49 @@ func TestCallAPIProcessor_CollectTracesField(t *testing.T) {
 	}
 	if stats.Created != 2 {
 		t.Errorf("expected 2 created, got %d", stats.Created)
+	}
+}
+
+func TestGetProcessRequestsTimeout(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		want     time.Duration
+	}{
+		{
+			name:     "default when env not set",
+			envValue: "",
+			want:     45 * time.Minute,
+		},
+		{
+			name:     "custom value from env",
+			envValue: "60",
+			want:     60 * time.Minute,
+		},
+		{
+			name:     "invalid value falls back to default",
+			envValue: "not-a-number",
+			want:     45 * time.Minute,
+		},
+		{
+			name:     "zero falls back to default",
+			envValue: "0",
+			want:     45 * time.Minute,
+		},
+		{
+			name:     "negative falls back to default",
+			envValue: "-5",
+			want:     45 * time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PROCESS_REQUESTS_TIMEOUT_MINUTES", tt.envValue)
+			got := getProcessRequestsTimeout()
+			if got != tt.want {
+				t.Errorf("getProcessRequestsTimeout() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

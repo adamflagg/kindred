@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -134,6 +136,23 @@ type apiProcessorResponse struct {
 	Phase1Failed     int      `json:"phase1_failed"`
 }
 
+// getProcessRequestsTimeout returns the HTTP timeout for process-requests calls.
+// Reads PROCESS_REQUESTS_TIMEOUT_MINUTES env var, defaults to 45 minutes.
+func getProcessRequestsTimeout() time.Duration {
+	const defaultTimeout = 45 * time.Minute
+	envVal := os.Getenv("PROCESS_REQUESTS_TIMEOUT_MINUTES")
+	if envVal == "" {
+		return defaultTimeout
+	}
+	minutes, err := strconv.Atoi(envVal)
+	if err != nil || minutes <= 0 {
+		slog.Warn("Invalid PROCESS_REQUESTS_TIMEOUT_MINUTES, using default",
+			"value", envVal, "default_minutes", int(defaultTimeout.Minutes()))
+		return defaultTimeout
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
 // callAPIProcessor calls the FastAPI process-requests endpoint
 func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorRequest) (Stats, error) {
 	bodyBytes, err := json.Marshal(req)
@@ -141,8 +160,7 @@ func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorReques
 		return Stats{}, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	// Use a long timeout — processing can take up to 30 minutes
-	client := &http.Client{Timeout: 35 * time.Minute}
+	client := &http.Client{Timeout: getProcessRequestsTimeout()}
 
 	endpoint := apiURL + "/api/internal/process-requests"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))

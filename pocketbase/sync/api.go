@@ -226,7 +226,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 			// Run in background with panic recovery
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				ctx, cancel := context.WithTimeout(context.Background(), getProcessRequestsTimeout())
 				defer cancel()
 
 				defer func() {
@@ -821,7 +821,7 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 						slog.Warn("Could not mark process_requests running (may already be running)", "error", markErr)
 					} else {
 						// Fresh context — don't share the upload's shorter timeout
-						processCtx, processCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+						processCtx, processCancel := context.WithTimeout(context.Background(), getProcessRequestsTimeout())
 						defer processCancel()
 
 						processor := NewRequestProcessor(scheduler.app)
