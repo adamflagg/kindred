@@ -27,6 +27,7 @@ from bunking.logging_config import get_logger
 from ..core.models import ParsedRequest, ParseRequest, ParseResult
 from ..shared.constants import VALID_AGE_TARGETS as _VALID_AGE_TARGETS
 from .ai_service import AIProvider, AIRequestContext, ParsedResponse
+from .openai_provider import TRANSIENT_ERRORS
 
 logger = get_logger(__name__)
 
@@ -47,11 +48,15 @@ MAX_TOKENS_PER_BATCH = 8000
 MIN_BATCH_SIZE = 5
 MAX_BATCH_SIZE = 50
 
-# Rate limit retry with exponential backoff
-RATE_LIMIT_MAX_RETRIES = 5
+# Transient-error retry with exponential backoff
+MAX_TRANSIENT_RETRIES = 5
 RATE_LIMIT_INITIAL_DELAY_MS = 1000
 RATE_LIMIT_MAX_DELAY_MS = 60000
 RATE_LIMIT_EXPONENTIAL_BASE = 2
+
+# Phase-level retry rounds (used by Phase1ParseService)
+MAX_PHASE_RETRY_ROUNDS = 3
+PHASE_RETRY_DELAYS_SECONDS = [30, 60, 60]
 
 # ============================================================================
 # NAME VALIDATION
@@ -158,6 +163,7 @@ class BatchStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     RATE_LIMITED = "rate_limited"
+    PARTIAL = "partial"  # Some items in the batch had transient failures
 
 
 @dataclass
@@ -170,6 +176,18 @@ class BatchResult:
     error: str | None = None
     retry_count: int = 0
     processing_time: float = 0.0
+    failed_items: list[FailedItem] | None = None
+
+
+@dataclass
+class FailedItem:
+    """Tracks a per-item failure within a batch for reconciliation logging."""
+
+    request_text: str
+    requester_info: str
+    error_type: str
+    error_message: str
+    attempts: int
 
 
 class BatchProcessor:
@@ -206,9 +224,11 @@ class BatchProcessor:
             "total_batches": 0,
             "successful_batches": 0,
             "failed_batches": 0,
+            "partial_batches": 0,
             "rate_limited_batches": 0,
             "total_items": 0,
             "total_retries": 0,
+            "transient_item_failures": 0,
             "total_time": 0.0,
         }
 
@@ -242,7 +262,7 @@ class BatchProcessor:
         item_index = 0
 
         for batch_result in batch_results:
-            if batch_result.status == BatchStatus.COMPLETED and batch_result.results:
+            if batch_result.status in (BatchStatus.COMPLETED, BatchStatus.PARTIAL) and batch_result.results:
                 # Process successful batch results
                 for parsed_response in batch_result.results:
                     if item_index < len(requests):
@@ -289,7 +309,7 @@ class BatchProcessor:
         # Extract results
         results = []
         for batch_result in batch_results:
-            if batch_result.status == BatchStatus.COMPLETED and batch_result.results:
+            if batch_result.status in (BatchStatus.COMPLETED, BatchStatus.PARTIAL) and batch_result.results:
                 results.extend(batch_result.results)
             else:
                 # Add None for failed items
@@ -429,7 +449,7 @@ class BatchProcessor:
     ) -> BatchResult:
         """Process a batch with retry logic (using hardcoded retry settings)"""
         retry_count = 0
-        max_retries = RATE_LIMIT_MAX_RETRIES
+        max_retries = MAX_TRANSIENT_RETRIES
 
         while retry_count <= max_retries:
             try:
@@ -452,9 +472,32 @@ class BatchProcessor:
 
                 processing_time = time.time() - start_time
 
+                # Track per-item transient failures from the provider
+                item_failures = []
+                for idx, r in enumerate(results):
+                    if hasattr(r, "metadata") and r.metadata.get("transient_error"):
+                        self.stats["transient_item_failures"] += 1
+                        req_text = (
+                            batch[idx][0].request_text if hasattr(batch[idx][0], "request_text") else str(batch[idx][0])
+                        )
+                        item_failures.append(
+                            FailedItem(
+                                request_text=req_text[:80],
+                                requester_info=f"batch {batch_id}, item {idx}",
+                                error_type=r.metadata.get("error_type", "unknown"),
+                                error_message=r.metadata.get("error", ""),
+                                attempts=1,
+                            )
+                        )
+
+                batch_status = BatchStatus.PARTIAL if item_failures else BatchStatus.COMPLETED
+                if item_failures:
+                    self.stats["partial_batches"] += 1
+                else:
+                    self.stats["successful_batches"] += 1
+
                 # Update stats
                 self.stats["total_batches"] += 1
-                self.stats["successful_batches"] += 1
                 self.stats["total_items"] += len(batch)
                 self.stats["total_time"] += processing_time
 
@@ -463,43 +506,48 @@ class BatchProcessor:
 
                 return BatchResult(
                     batch_id=batch_id,
-                    status=BatchStatus.COMPLETED,
+                    status=batch_status,
                     results=results,
                     retry_count=retry_count,
                     processing_time=processing_time,
+                    failed_items=item_failures if item_failures else None,
                 )
 
             except Exception as e:
-                error_str = str(e)
+                is_transient = isinstance(e, TRANSIENT_ERRORS)
 
-                # Check if rate limited
-                if "rate_limit" in error_str.lower() or "429" in error_str:
+                if not is_transient:
+                    # Also check string patterns as fallback for wrapped errors
+                    error_str = str(e)
+                    is_transient = any(
+                        pat in error_str.lower()
+                        for pat in ("rate_limit", "429", "timeout", "timed out", "500", "internal server error")
+                    )
+
+                if is_transient:
                     retry_count += 1
-                    self.stats["rate_limited_batches"] += 1
+                    # Track rate limits specifically for monitoring
+                    error_str_lower = str(e).lower()
+                    if "rate_limit" in error_str_lower or "429" in error_str_lower:
+                        self.stats["rate_limited_batches"] += 1
 
                     if retry_count <= max_retries:
-                        # Calculate delay with exponential backoff
                         delay = self._calculate_retry_delay(retry_count)
                         logger.warning(
-                            f"Batch {batch_id} rate limited, retrying in {delay:.1f}s "
-                            f"(attempt {retry_count}/{max_retries})"
+                            f"Batch {batch_id} transient error ({type(e).__name__}), "
+                            f"retrying in {delay:.1f}s (attempt {retry_count}/{max_retries})"
                         )
-
                         await _call_callback(progress_callback, batch_id, len(batch), "rate_limited")
-
                         await asyncio.sleep(delay)
                         self.stats["total_retries"] += 1
                         continue
 
-                # Other error or max retries exceeded
-                logger.error(f"Batch {batch_id} failed after {retry_count} retries: {error_str}")
+                # Non-transient error or max retries exceeded
+                logger.error(f"Batch {batch_id} failed after {retry_count} retries: {e}")
                 self.stats["failed_batches"] += 1
-
                 await _call_callback(progress_callback, batch_id, len(batch), "failed")
 
-                return BatchResult(
-                    batch_id=batch_id, status=BatchStatus.FAILED, error=error_str, retry_count=retry_count
-                )
+                return BatchResult(batch_id=batch_id, status=BatchStatus.FAILED, error=str(e), retry_count=retry_count)
 
         # Should never reach here, but satisfy mypy
         return BatchResult(
@@ -568,9 +616,13 @@ class BatchProcessor:
             # No valid response - check for error details in metadata
             error = parsed_response.metadata.get("error")
             error_type = parsed_response.metadata.get("error_type")
+            is_transient = parsed_response.metadata.get("transient_error", False)
             reason = f"AI parse failed ({error_type}): {error}" if error else "AI returned no valid parsed requests"
 
-            return self._create_failed_result(parse_request, reason)
+            result = self._create_failed_result(parse_request, reason)
+            if is_transient:
+                result.metadata["transient_error"] = True
+            return result
 
     def _create_failed_result(self, parse_request: ParseRequest, reason: str) -> ParseResult:
         """Create a failed parse result"""
@@ -603,8 +655,10 @@ class BatchProcessor:
         logger.info(f"""Batch Processing Statistics:
 - Total batches: {self.stats["total_batches"]}
 - Successful: {self.stats["successful_batches"]} ({success_rate:.1f}%)
+- Partial: {self.stats["partial_batches"]}
 - Failed: {self.stats["failed_batches"]}
 - Rate limited: {self.stats["rate_limited_batches"]}
+- Transient item failures: {self.stats["transient_item_failures"]}
 - Total items processed: {self.stats["total_items"]}
 - Total retries: {self.stats["total_retries"]}
 - Average time per batch: {avg_time:.2f}s
