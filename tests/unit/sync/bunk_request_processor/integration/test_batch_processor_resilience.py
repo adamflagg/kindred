@@ -17,10 +17,10 @@ from bunking.sync.bunk_request_processor.integration.ai_types import (
     ParsedResponse,
 )
 from bunking.sync.bunk_request_processor.integration.batch_processor import (
-    TRANSIENT_ERRORS,
     BatchProcessor,
     FailedItem,
 )
+from bunking.sync.bunk_request_processor.integration.openai_provider import TRANSIENT_ERRORS
 
 
 def _make_parse_request(text: str = "Emma Smith") -> ParseRequest:
@@ -80,7 +80,7 @@ class TestBatchRetryOnTransientErrors:
 
         success_response = ParsedResponse(requests=[], confidence=0.85, metadata={"mock": True})
         mock_provider.batch_parse_requests.side_effect = [
-            APITimeoutError(request=None),
+            APITimeoutError(request=MagicMock()),
             [success_response],
         ]
 

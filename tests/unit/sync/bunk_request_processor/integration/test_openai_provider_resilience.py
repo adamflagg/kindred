@@ -6,7 +6,7 @@ to callers instead of being swallowed into empty responses.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
@@ -52,7 +52,7 @@ class TestParseRequestTransientErrors:
         provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
 
         with patch.object(provider, "_call_with_structured_output", new_callable=AsyncMock) as mock_call:
-            mock_call.side_effect = APITimeoutError(request=None)
+            mock_call.side_effect = APITimeoutError(request=MagicMock())
             with pytest.raises(APITimeoutError):
                 await provider.parse_request("Emma Smith", _make_context())
 
@@ -94,7 +94,7 @@ class TestBatchParseTransientErrors:
             nonlocal call_count
             call_count += 1
             if call_count == 2:
-                raise APITimeoutError(request=None)
+                raise APITimeoutError(request=MagicMock())
             from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
 
             return ParsedResponse(requests=[], confidence=0.85, metadata={"mock": True})
