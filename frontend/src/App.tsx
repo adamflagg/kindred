@@ -397,7 +397,7 @@ function App() {
                               element={<Navigate to="/analytics/registration" replace />}
                             />
 
-                            {/* Metrics layout with nested routes */}
+                            {/* Camp Analytics layout with nested routes */}
                             <Route
                               element={
                                 <ErrorBoundary>
