@@ -5,14 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ProcessRequestOptions from './ProcessRequestOptions'
 
 // Mock PocketBase lib - data must be inline since vi.mock is hoisted
-// cm_id values match real CampMinder IDs — dropdown uses cm_id as value
+// Generic cm_id values for testing — dropdown uses cm_id as value
 vi.mock('../../lib/pocketbase', () => ({
   pb: {
     collection: vi.fn().mockReturnValue({
       getFullList: vi.fn().mockResolvedValue([
         {
           id: 'pb1',
-          cm_id: 1378702,
+          cm_id: 1000001,
           name: 'Taste of Camp 1',
           session_type: 'main',
           year: 2025,
@@ -20,7 +20,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb1b',
-          cm_id: 1378703,
+          cm_id: 1000002,
           name: 'Taste of Camp 2',
           session_type: 'embedded',
           year: 2025,
@@ -28,7 +28,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb2',
-          cm_id: 1235404,
+          cm_id: 1000003,
           name: 'Session 2',
           session_type: 'main',
           year: 2025,
@@ -36,7 +36,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb3',
-          cm_id: 1356533,
+          cm_id: 1000004,
           name: 'Session 2a',
           session_type: 'embedded',
           year: 2025,
@@ -44,7 +44,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb4',
-          cm_id: 1356534,
+          cm_id: 1000005,
           name: 'Session 2b',
           session_type: 'embedded',
           year: 2025,
@@ -52,7 +52,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb5',
-          cm_id: 1235405,
+          cm_id: 1000006,
           name: 'Session 3',
           session_type: 'main',
           year: 2025,
@@ -60,7 +60,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb6',
-          cm_id: 1344555,
+          cm_id: 1000007,
           name: 'Session 3a',
           session_type: 'embedded',
           year: 2025,
@@ -68,7 +68,7 @@ vi.mock('../../lib/pocketbase', () => ({
         },
         {
           id: 'pb7',
-          cm_id: 1235406,
+          cm_id: 1000008,
           name: 'Session 4',
           session_type: 'main',
           year: 2025,
@@ -164,15 +164,15 @@ describe('ProcessRequestOptions', () => {
       expect(screen.getByRole('option', { name: /^session 2$/i })).toBeInTheDocument()
     })
 
-    // Select Session 2 — value should be cm_id "1235404", not friendly name "2"
+    // Select Session 2 — value should be cm_id "1000003", not friendly name "2"
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '1235404')
+    await userEvent.selectOptions(sessionSelect, '1000003')
 
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        session: '1235404',
+        session: '1000003',
       })
     )
   })
@@ -253,6 +253,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -272,12 +273,13 @@ describe('ProcessRequestOptions', () => {
     })
 
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '1235404')
+    await userEvent.selectOptions(sessionSelect, '1000003')
 
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
-      session: '1235404',
+      session: '1000003',
+      sessionLabel: 'Session 2',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -297,12 +299,13 @@ describe('ProcessRequestOptions', () => {
     })
 
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '1356533')
+    await userEvent.selectOptions(sessionSelect, '1000004')
 
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
-      session: '1356533',
+      session: '1000004',
+      sessionLabel: 'Session 2a',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -345,6 +348,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: 25,
       forceReprocess: false,
       sourceFields: [],
@@ -366,6 +370,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: undefined,
       forceReprocess: true,
       sourceFields: [],
@@ -385,7 +390,7 @@ describe('ProcessRequestOptions', () => {
     })
 
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '1344555')
+    await userEvent.selectOptions(sessionSelect, '1000007')
 
     await userEvent.click(screen.getByLabelText('Internal Notes'))
     await userEvent.click(screen.getByLabelText('Bunking Notes'))
@@ -400,7 +405,8 @@ describe('ProcessRequestOptions', () => {
     fireEvent.click(screen.getByRole('button', { name: /^process$/i }))
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
-      session: '1344555',
+      session: '1000007',
+      sessionLabel: 'Session 3a',
       limit: 15,
       forceReprocess: true,
       sourceFields: expect.arrayContaining(['internal_notes', 'bunking_notes']),
@@ -440,6 +446,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith({
       session: 'all',
+      sessionLabel: 'All Sessions',
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
@@ -504,7 +511,7 @@ describe('ProcessRequestOptions', () => {
     })
 
     const sessionSelect = screen.getByLabelText(/session/i)
-    await userEvent.selectOptions(sessionSelect, '1344555')
+    await userEvent.selectOptions(sessionSelect, '1000007')
     const limitInput = screen.getByLabelText(/limit/i)
     await userEvent.clear(limitInput)
     await userEvent.type(limitInput, '50')

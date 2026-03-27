@@ -35,15 +35,25 @@ class TestResolveSessionCmIds:
         repo = SessionRepository(MagicMock())
         # Simulate: ToC 1 (main), ToC 2 (embedded), Session 2 (main), AG session
         repo.get_valid_bunking_session_ids = Mock(  # type: ignore[method-assign]
-            return_value={1378702, 1378703, 1235404, 1378704}
+            return_value={1000001, 1000002, 1000003, 1000011}
         )
 
         result = repo.resolve_session_cm_ids("all", 2026)
 
-        assert 1378702 in result  # Taste of Camp 1 — was missing before
-        assert 1378703 in result  # Taste of Camp 2
-        assert 1235404 in result  # Session 2
-        assert 1378704 in result  # AG session
+        assert 1000001 in result  # Taste of Camp 1 — was missing before
+        assert 1000002 in result  # Taste of Camp 2
+        assert 1000003 in result  # Session 2
+        assert 1000011 in result  # AG session
+
+    def test_zero_is_alias_for_all(self):
+        """'0' is a legacy alias for 'all' (backward compat for documented commands)."""
+        repo = SessionRepository(MagicMock())
+        repo.get_valid_bunking_session_ids = Mock(return_value={1000001, 1000002})  # type: ignore[method-assign]
+
+        result = repo.resolve_session_cm_ids("0", 2026)
+
+        repo.get_valid_bunking_session_ids.assert_called_once_with(2026)
+        assert set(result) == {1000001, 1000002}
 
     def test_all_does_not_include_cross_year_sessions(self):
         """'all' only returns sessions for the requested year — no stale AG expansion."""
@@ -59,21 +69,21 @@ class TestResolveSessionCmIds:
     def test_cm_id_string_expands_ag_children(self):
         """A numeric cm_id expands to include AG children via get_related_session_ids."""
         repo = SessionRepository(MagicMock())
-        repo.get_related_session_ids = Mock(return_value=[1235404, 1378704])  # type: ignore[method-assign]
+        repo.get_related_session_ids = Mock(return_value=[1000003, 1000011])  # type: ignore[method-assign]
 
-        result = repo.resolve_session_cm_ids("1235404", 2026)
+        result = repo.resolve_session_cm_ids("1000003", 2026)
 
-        repo.get_related_session_ids.assert_called_once_with(1235404)
-        assert set(result) == {1235404, 1378704}
+        repo.get_related_session_ids.assert_called_once_with(1000003)
+        assert set(result) == {1000003, 1000011}
 
     def test_cm_id_string_large_number(self):
         """CampMinder IDs can be 7+ digits."""
         repo = SessionRepository(MagicMock())
-        repo.get_related_session_ids = Mock(return_value=[1378702])  # type: ignore[method-assign]
+        repo.get_related_session_ids = Mock(return_value=[1000001])  # type: ignore[method-assign]
 
-        result = repo.resolve_session_cm_ids("1378702", 2026)
+        result = repo.resolve_session_cm_ids("1000001", 2026)
 
-        assert result == [1378702]
+        assert result == [1000001]
 
     def test_invalid_string_raises_error(self):
         """Non-numeric, non-'all' string raises ValueError."""

@@ -326,9 +326,9 @@ class TestResolveSessionCmIds:
     def test_cm_id_string_expands_via_related(self):
         """Numeric string is parsed as cm_id and expanded with AG children."""
         repo = SessionRepository(MagicMock())
-        with patch.object(repo, "get_related_session_ids", return_value=[1235404, 9999]):
-            result = repo.resolve_session_cm_ids("1235404", 2026)
-        assert set(result) == {1235404, 9999}
+        with patch.object(repo, "get_related_session_ids", return_value=[1000003, 9999]):
+            result = repo.resolve_session_cm_ids("1000003", 2026)
+        assert set(result) == {1000003, 9999}
 
     def test_invalid_string_raises_error(self):
         """Non-numeric, non-'all' raises ValueError."""

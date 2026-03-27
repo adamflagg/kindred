@@ -252,7 +252,8 @@ class SessionRepository:
         """
         normalized = session_name.strip().lower()
 
-        if normalized == "all":
+        # "0" is a legacy alias for "all" (used by documented data-reset commands)
+        if normalized in ("all", "0"):
             return list(self.get_valid_bunking_session_ids(year))
 
         try:

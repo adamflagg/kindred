@@ -8,6 +8,7 @@ import { queryKeys, syncDataOptions } from '../../utils/queryKeys'
 
 export interface ProcessRequestOptionsState {
   session: string
+  sessionLabel: string
   limit: number | undefined
   forceReprocess: boolean
   sourceFields: string[]
@@ -103,8 +104,10 @@ export default function ProcessRequestOptions({
     const parsedLimit = parseInt(limitValue, 10)
     const limit = !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined
 
+    const selectedOption = sessionOptions.find((opt) => opt.value === session)
     onSubmit({
       session,
+      sessionLabel: selectedOption?.label ?? session,
       limit,
       forceReprocess,
       sourceFields,
