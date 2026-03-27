@@ -2,11 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useTour } from './useTour'
 import * as tourRegistry from '../tours/tourRegistry'
-import type { TourDefinition } from '../tours/types'
+import * as tourStorage from '../tours/tourStorage'
+import type { TourDefinition, LayerDefinition } from '../tours/types'
 
 // Mock the modules
 vi.mock('../tours/tourStorage')
 vi.mock('../tours/tourRegistry')
+vi.mock('./useSolverConfig', () => ({
+  useSolverConfigValue: vi.fn(() => 30),
+  useSolverConfig: vi.fn(() => ({ data: undefined })),
+}))
 vi.mock('react-router', () => ({
   useLocation: vi.fn(() => ({ pathname: '/summer/debug' })),
 }))
@@ -27,10 +32,22 @@ vi.mock('driver.js', () => ({
 const mockTourDefinition: TourDefinition = {
   id: 'debug',
   version: 1,
+  layers: [],
   steps: [
     { element: '[data-tour="debug-header"]', popover: { title: 'Test', description: 'Step 1' } },
   ],
   isReady: () => true,
+}
+
+const mockLayerDefinition: LayerDefinition = {
+  id: 'metrics-header',
+  version: 1,
+  steps: [
+    {
+      element: '[data-tour="metrics-header"]',
+      popover: { title: 'Metrics', description: 'Header layer step' },
+    },
+  ],
 }
 
 /** Flush microtasks (resolved promises) and advance fake timers */
@@ -54,6 +71,9 @@ describe('useTour', () => {
     vi.useFakeTimers()
     vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
+    vi.mocked(tourRegistry.loadLayerDefinition).mockResolvedValue(mockLayerDefinition)
+    vi.mocked(tourStorage.isLayerSeen).mockReturnValue(true)
+    vi.mocked(tourStorage.isLayerStaleOrUnseen).mockReturnValue(false)
     mockDrive.mockClear()
     mockDestroy.mockClear()
   })
@@ -80,7 +100,7 @@ describe('useTour', () => {
     expect(result.current.tourId).toBeNull()
   })
 
-  it('does not auto-start tour on route change', async () => {
+  it('does not auto-start tour when tour has no layers', async () => {
     renderHook(() => useTour())
 
     await flushAndAdvance(1000)
@@ -88,13 +108,21 @@ describe('useTour', () => {
     expect(mockDrive).not.toHaveBeenCalled()
   })
 
-  it('provides a replay function that starts the tour', async () => {
+  it('provides a replay function that starts the tour in manual mode', async () => {
+    // Mock querySelector so readiness check passes for the first step element
+    const mockElement = document.createElement('div')
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="debug-header"]') return mockElement
+      return originalQuerySelector(selector)
+    })
+
     const { result } = renderHook(() => useTour())
 
     // Let the definition load
     await flushAndAdvance(1000)
 
-    // Tour should NOT have auto-started
+    // Tour should NOT have auto-started (no layers)
     expect(mockDrive).not.toHaveBeenCalled()
 
     // Now replay
@@ -105,14 +133,18 @@ describe('useTour', () => {
     await flushAndAdvance(1000)
 
     expect(mockDrive).toHaveBeenCalled()
+
+    vi.mocked(document.querySelector).mockRestore()
   })
 
-  it('does not start tour when isReady() never returns true', async () => {
-    const neverReadyDef: TourDefinition = {
+  it('does not start tour when first step element is not in DOM', async () => {
+    // The readiness check uses first step's element selector
+    // Since we're in a test env with no DOM, querySelector returns null
+    const defWithElement: TourDefinition = {
       ...mockTourDefinition,
       isReady: () => false,
     }
-    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(neverReadyDef)
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(defWithElement)
 
     const { result } = renderHook(() => useTour())
 
@@ -128,7 +160,7 @@ describe('useTour', () => {
     expect(mockDrive).not.toHaveBeenCalled()
   })
 
-  it('destroys driver instance when isReady() timeout is exhausted', async () => {
+  it('destroys driver instance when readiness timeout is exhausted', async () => {
     const neverReadyDef: TourDefinition = {
       ...mockTourDefinition,
       isReady: () => false,
@@ -162,5 +194,57 @@ describe('useTour', () => {
     unmount()
 
     expect(mockDestroy).toHaveBeenCalled()
+  })
+
+  describe('layer auto-play', () => {
+    it('auto-plays when tour has unseen layers', async () => {
+      const tourWithLayers: TourDefinition = {
+        ...mockTourDefinition,
+        id: 'retention-overview',
+        layers: ['metrics-header'],
+      }
+      vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('retention-overview')
+      vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(tourWithLayers)
+      vi.mocked(tourStorage.isLayerSeen).mockReturnValue(false)
+
+      // Mock querySelector to return a truthy element for readiness
+      const mockElement = document.createElement('div')
+      const originalQuerySelector = document.querySelector.bind(document)
+      vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+        if (selector === '[data-tour="metrics-header"]') return mockElement
+        return originalQuerySelector(selector)
+      })
+
+      renderHook(() => useTour())
+
+      // Flush promises for loadTourDefinition + loadLayerDefinition chain + setLoadedPath re-render
+      await flushAndAdvance(0)
+      await flushAndAdvance(0)
+      await flushAndAdvance(0)
+
+      // Advance past readiness check timer (AUTO_START_DELAY = 300ms)
+      await flushAndAdvance(1000)
+
+      expect(mockDrive).toHaveBeenCalled()
+
+      vi.mocked(document.querySelector).mockRestore()
+    })
+
+    it('does not auto-play when all layers are seen', async () => {
+      const tourWithLayers: TourDefinition = {
+        ...mockTourDefinition,
+        id: 'retention-overview',
+        layers: ['metrics-header'],
+      }
+      vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('retention-overview')
+      vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(tourWithLayers)
+      vi.mocked(tourStorage.isLayerSeen).mockReturnValue(true)
+
+      renderHook(() => useTour())
+
+      await flushAndAdvance(2000)
+
+      expect(mockDrive).not.toHaveBeenCalled()
+    })
   })
 })
