@@ -509,7 +509,7 @@ class TestMatchCertaintyThreshold:
 
     ExactMatchStrategy returns 0.90 for no-session-info and parent-surname
     matches. These must be classified as "exact" (name_score=1.0) to produce
-    final confidence 0.9075 (above the 0.85 auto-resolve threshold).
+    a final confidence above the 0.85 auto-resolve threshold.
     """
 
     def test_confidence_exactly_0_90_classified_as_exact(self):
