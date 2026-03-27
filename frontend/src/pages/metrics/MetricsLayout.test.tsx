@@ -59,7 +59,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
         <MemoryRouter initialEntries={[initialPath]}>
           <CurrentYearContext.Provider value={mockYearContext}>
             <Routes>
-              <Route path="/metrics/*" element={<MetricsLayout />}>
+              <Route path="/analytics/*" element={<MetricsLayout />}>
                 <Route path="registration/*" element={<TestChild text={childText} />} />
                 <Route path="retention" element={<TestChild text="Retention" />} />
                 <Route path="retention/flow" element={<TestChild text="Session Flow" />} />
@@ -76,7 +76,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
 
 describe('MetricsLayout', () => {
   it('renders primary navigation tabs', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     expect(screen.getByRole('link', { name: /registration/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument()
@@ -84,13 +84,13 @@ describe('MetricsLayout', () => {
   })
 
   it('renders child content via Outlet', () => {
-    renderWithRouter('/metrics/registration/overview', 'Registration Content')
+    renderWithRouter('/analytics/registration/overview', 'Registration Content')
 
     expect(screen.getByTestId('child')).toHaveTextContent('Registration Content')
   })
 
   it('renders sub-nav for registration routes', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     // Sub-nav items for registration (synagogue removed — data lives in geo tab)
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
@@ -100,7 +100,7 @@ describe('MetricsLayout', () => {
   })
 
   it('renders sub-nav with Overview, Session Flow, and Bunk Analysis links for retention routes', () => {
-    renderWithRouter('/metrics/retention')
+    renderWithRouter('/analytics/retention')
 
     // Retention sub-nav should show Overview, Session Flow, and Bunk Analysis
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
@@ -108,8 +108,8 @@ describe('MetricsLayout', () => {
     expect(screen.getByRole('link', { name: /bunk analysis/i })).toBeInTheDocument()
   })
 
-  it('highlights Overview sub-nav on /metrics/retention', () => {
-    renderWithRouter('/metrics/retention')
+  it('highlights Overview sub-nav on /analytics/retention', () => {
+    renderWithRouter('/analytics/retention')
 
     const overviewLink = screen.getByRole('link', { name: /overview/i })
     const sessionFlowLink = screen.getByRole('link', { name: /session flow/i })
@@ -118,8 +118,8 @@ describe('MetricsLayout', () => {
     expect(sessionFlowLink).not.toHaveClass('bg-primary')
   })
 
-  it('highlights Session Flow sub-nav on /metrics/retention/flow', () => {
-    renderWithRouter('/metrics/retention/flow')
+  it('highlights Session Flow sub-nav on /analytics/retention/flow', () => {
+    renderWithRouter('/analytics/retention/flow')
 
     const overviewLink = screen.getByRole('link', { name: /overview/i })
     const sessionFlowLink = screen.getByRole('link', { name: /session flow/i })
@@ -128,8 +128,8 @@ describe('MetricsLayout', () => {
     expect(overviewLink).not.toHaveClass('bg-primary')
   })
 
-  it('highlights Bunk Analysis sub-nav on /metrics/retention/bunks', () => {
-    renderWithRouter('/metrics/retention/bunks')
+  it('highlights Bunk Analysis sub-nav on /analytics/retention/bunks', () => {
+    renderWithRouter('/analytics/retention/bunks')
 
     const bunkRetentionLink = screen.getByRole('link', { name: /bunk analysis/i })
     const overviewLink = screen.getByRole('link', { name: /overview/i })
@@ -141,7 +141,7 @@ describe('MetricsLayout', () => {
   })
 
   it('renders sub-nav for trends routes', () => {
-    renderWithRouter('/metrics/trends')
+    renderWithRouter('/analytics/trends')
 
     expect(screen.getByRole('link', { name: /trends/i })).toBeInTheDocument()
     // Trends now has its own sub-nav with Overview
@@ -149,21 +149,21 @@ describe('MetricsLayout', () => {
   })
 
   it('renders page header with title for registration', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
-    expect(screen.getByText('Registration Metrics')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Registration' })).toBeInTheDocument()
     expect(screen.getByText(/analyze registration data/i)).toBeInTheDocument()
   })
 
   it('renders page header with title for retention', () => {
-    renderWithRouter('/metrics/retention')
+    renderWithRouter('/analytics/retention')
 
-    expect(screen.getByText('Retention Metrics')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Retention' })).toBeInTheDocument()
     expect(screen.getByText(/prior year.*current year.*returning/i)).toBeInTheDocument()
   })
 
   it('renders sticky nav container', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     // The nav container should have sticky positioning class
     const stickyContainer = document.querySelector('.sticky')
@@ -171,7 +171,7 @@ describe('MetricsLayout', () => {
   })
 
   it('highlights correct primary tab based on route', () => {
-    renderWithRouter('/metrics/retention')
+    renderWithRouter('/analytics/retention')
 
     const retentionLink = screen.getByRole('link', { name: /^retention$/i })
     const registrationLink = screen.getByRole('link', {
@@ -184,7 +184,7 @@ describe('MetricsLayout', () => {
 
   describe('MetricsSessionProvider integration', () => {
     it('renders session selector via MetricsSessionProvider', () => {
-      renderWithRouter('/metrics/registration/overview')
+      renderWithRouter('/analytics/registration/overview')
 
       // The session selector should be rendered (via MetricsTypeTabs)
       expect(screen.getByText('At Camp')).toBeInTheDocument()
@@ -192,7 +192,7 @@ describe('MetricsLayout', () => {
 
     it('session selector is present on all metric tabs', () => {
       // Test that it's present on registration
-      renderWithRouter('/metrics/registration/overview')
+      renderWithRouter('/analytics/registration/overview')
       expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
   })

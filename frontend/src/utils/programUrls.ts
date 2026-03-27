@@ -4,15 +4,11 @@ import type { Program } from '../contexts/ProgramContext'
  * Generate a program-specific URL
  */
 export function getProgramUrl(path: string, program: Program): string {
-  // Remove leading slash if present
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
-
-  // Don't add prefix for shared routes
   const sharedRoutes = ['user', 'users', 'campers', 'camper', 'admin']
   if (sharedRoutes.some((route) => cleanPath.startsWith(route))) {
     return `/${cleanPath}`
   }
-
   return `/${program}/${cleanPath}`
 }
 
@@ -20,7 +16,9 @@ export function getProgramUrl(path: string, program: Program): string {
  * Check if a path is a program-specific route
  */
 export function isProgramRoute(path: string): boolean {
-  return path.startsWith('/summer/') || path.startsWith('/family/') || path.startsWith('/metrics')
+  return (
+    path.startsWith('/summer/') || path.startsWith('/weekend/') || path.startsWith('/analytics')
+  )
 }
 
 /**
@@ -28,8 +26,8 @@ export function isProgramRoute(path: string): boolean {
  */
 export function getProgramFromPath(path: string): Program | null {
   if (path.startsWith('/summer/')) return 'summer'
-  if (path.startsWith('/family/')) return 'family'
-  if (path.startsWith('/metrics')) return 'metrics'
+  if (path.startsWith('/weekend/')) return 'weekend'
+  if (path.startsWith('/analytics')) return 'analytics'
   return null
 }
 
@@ -38,35 +36,33 @@ export function getProgramFromPath(path: string): Program | null {
  */
 export function removeProgramPrefix(path: string): string {
   if (path.startsWith('/summer/')) return path.slice(7)
-  if (path.startsWith('/family/')) return path.slice(7)
-  if (path.startsWith('/metrics/')) return path.slice(8)
-  if (path === '/metrics') return '/'
+  if (path.startsWith('/weekend/')) return path.slice(8)
+  if (path.startsWith('/analytics/')) return path.slice(10)
+  if (path === '/analytics') return '/'
   return path
 }
 
 /**
- * Generate a summer camp specific URL
+ * Generate a summer bunking URL
  */
 export function getSummerUrl(path: string): string {
-  // Remove leading slash if present
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
   return `/summer/${cleanPath}`
 }
 
 /**
- * Generate a family camp specific URL
+ * Generate a weekend housing URL
  */
-export function getFamilyUrl(path: string): string {
-  // Remove leading slash if present
+export function getWeekendUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
-  return `/family/${cleanPath}`
+  return `/weekend/${cleanPath}`
 }
 
 /**
- * Generate a metrics URL
+ * Generate a camp analytics URL
  */
-export function getMetricsUrl(): string {
-  return '/metrics'
+export function getAnalyticsUrl(): string {
+  return '/analytics'
 }
 
 /**
@@ -77,44 +73,26 @@ export function getSessionUrl(sessionId: string, tab?: string): string {
   return tab ? `${baseUrl}/${tab}` : baseUrl
 }
 
-/**
- * Generate URL for a camper detail view
- */
 export function getCamperUrl(camperId: string | number): string {
   return `/camper/${camperId}`
 }
 
-/**
- * Generate URL for the all campers view
- */
 export function getAllCampersUrl(): string {
   return '/campers'
 }
 
-/**
- * Generate URL for the admin page
- */
 export function getAdminUrl(): string {
   return '/admin'
 }
 
-/**
- * Generate URL for the users list
- */
 export function getUsersUrl(): string {
   return '/users'
 }
 
-/**
- * Generate URL for the user profile
- */
 export function getUserUrl(): string {
   return '/user'
 }
 
-/**
- * Generate URL for the sessions list
- */
 export function getSessionsListUrl(): string {
   return '/summer/sessions'
 }

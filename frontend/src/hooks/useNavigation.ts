@@ -10,7 +10,7 @@ import {
   getUsersUrl,
   getUserUrl,
   getSummerUrl,
-  getFamilyUrl,
+  getWeekendUrl,
 } from '../utils/programUrls'
 
 /**
@@ -25,10 +25,10 @@ export function useNavigation() {
   // Determine active program from URL or context
   const activeProgram = location.pathname.startsWith('/summer')
     ? 'summer'
-    : location.pathname.startsWith('/family')
-      ? 'family'
-      : location.pathname.startsWith('/metrics')
-        ? 'metrics'
+    : location.pathname.startsWith('/weekend')
+      ? 'weekend'
+      : location.pathname.startsWith('/analytics')
+        ? 'analytics'
         : (currentProgram ?? 'summer')
 
   // Navigate to a session
@@ -78,7 +78,7 @@ export function useNavigation() {
       if (activeProgram === 'summer') {
         void navigate(getSummerUrl(path))
       } else {
-        void navigate(getFamilyUrl(path))
+        void navigate(getWeekendUrl(path))
       }
     },
     [navigate, activeProgram]
@@ -86,13 +86,13 @@ export function useNavigation() {
 
   // Switch to a different program
   const switchProgram = useCallback(
-    (program: 'summer' | 'family' | 'metrics') => {
+    (program: 'summer' | 'weekend' | 'analytics') => {
       if (program === 'summer') {
         void navigate('/summer/sessions')
-      } else if (program === 'family') {
-        void navigate('/family/')
+      } else if (program === 'weekend') {
+        void navigate('/weekend/')
       } else {
-        void navigate('/metrics')
+        void navigate('/analytics')
       }
     },
     [navigate]
@@ -118,6 +118,6 @@ export function useNavigation() {
     getUsersUrl,
     getUserUrl,
     getSummerUrl,
-    getFamilyUrl,
+    getWeekendUrl,
   }
 }

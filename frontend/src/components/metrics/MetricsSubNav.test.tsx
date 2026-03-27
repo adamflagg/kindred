@@ -16,25 +16,25 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
     id: 'overview',
     label: 'Overview',
     icon: LayoutDashboard,
-    path: '/metrics/registration/overview',
+    path: '/analytics/registration/overview',
   },
   {
     id: 'geo',
     label: 'Geographic',
     icon: Globe,
-    path: '/metrics/registration/geo',
+    path: '/analytics/registration/geo',
   },
   {
     id: 'synagogue',
     label: 'Synagogue',
     icon: Building2,
-    path: '/metrics/registration/synagogue',
+    path: '/analytics/registration/synagogue',
   },
   {
     id: 'waitlist',
     label: 'Waitlist',
     icon: Clock,
-    path: '/metrics/registration/waitlist',
+    path: '/analytics/registration/waitlist',
   },
 ]
 
@@ -59,7 +59,7 @@ const renderWithRouter = (
 
 describe('MetricsSubNav', () => {
   it('renders all provided sub-nav items', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /geographic/i })).toBeInTheDocument()
@@ -68,7 +68,7 @@ describe('MetricsSubNav', () => {
   })
 
   it('renders icons for each item', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     const links = screen.getAllByRole('link')
     expect(links).toHaveLength(4)
@@ -80,7 +80,7 @@ describe('MetricsSubNav', () => {
   })
 
   it('highlights active item based on exact path match', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     const overviewLink = screen.getByRole('link', { name: /overview/i })
     const geoLink = screen.getByRole('link', { name: /geographic/i })
@@ -90,7 +90,7 @@ describe('MetricsSubNav', () => {
   })
 
   it('highlights geo tab when on geo route', () => {
-    renderWithRouter('/metrics/registration/geo')
+    renderWithRouter('/analytics/registration/geo')
 
     const geoLink = screen.getByRole('link', { name: /geographic/i })
     const overviewLink = screen.getByRole('link', { name: /overview/i })
@@ -100,28 +100,28 @@ describe('MetricsSubNav', () => {
   })
 
   it('links to correct paths', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     expect(screen.getByRole('link', { name: /overview/i })).toHaveAttribute(
       'href',
-      '/metrics/registration/overview'
+      '/analytics/registration/overview'
     )
     expect(screen.getByRole('link', { name: /geographic/i })).toHaveAttribute(
       'href',
-      '/metrics/registration/geo'
+      '/analytics/registration/geo'
     )
     expect(screen.getByRole('link', { name: /synagogue/i })).toHaveAttribute(
       'href',
-      '/metrics/registration/synagogue'
+      '/analytics/registration/synagogue'
     )
     expect(screen.getByRole('link', { name: /waitlist/i })).toHaveAttribute(
       'href',
-      '/metrics/registration/waitlist'
+      '/analytics/registration/waitlist'
     )
   })
 
   it('renders segmented control container with proper styling', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     const container = screen.getByRole('navigation')
     // The inner div should have the segmented control styling
@@ -130,13 +130,13 @@ describe('MetricsSubNav', () => {
   })
 
   it('uses nav element for accessibility', () => {
-    renderWithRouter('/metrics/registration/overview')
+    renderWithRouter('/analytics/registration/overview')
 
     expect(screen.getByRole('navigation')).toBeInTheDocument()
   })
 
   it('renders empty when no items provided', () => {
-    renderWithRouter('/metrics/registration/overview', [])
+    renderWithRouter('/analytics/registration/overview', [])
 
     // Nav should still be present but empty
     const nav = screen.getByRole('navigation')
@@ -149,18 +149,18 @@ describe('MetricsSubNav', () => {
         id: 'overview',
         label: 'Overview',
         icon: LayoutDashboard,
-        path: '/metrics/registration/overview',
+        path: '/analytics/registration/overview',
       },
       {
         id: 'forecast',
         label: 'Forecast',
         icon: Clock,
-        path: '/metrics/registration/forecast',
+        path: '/analytics/registration/forecast',
         permission: 'metrics.financial',
       },
     ]
 
-    renderWithRouter('/metrics/registration/overview', itemsWithPermission, {
+    renderWithRouter('/analytics/registration/overview', itemsWithPermission, {
       is_admin: false,
       cached_permissions: [],
     })
@@ -175,18 +175,18 @@ describe('MetricsSubNav', () => {
         id: 'overview',
         label: 'Overview',
         icon: LayoutDashboard,
-        path: '/metrics/registration/overview',
+        path: '/analytics/registration/overview',
       },
       {
         id: 'forecast',
         label: 'Forecast',
         icon: Clock,
-        path: '/metrics/registration/forecast',
+        path: '/analytics/registration/forecast',
         permission: 'metrics.financial',
       },
     ]
 
-    renderWithRouter('/metrics/registration/overview', itemsWithPermission, {
+    renderWithRouter('/analytics/registration/overview', itemsWithPermission, {
       is_admin: false,
       cached_permissions: ['metrics.financial'],
     })
@@ -201,17 +201,17 @@ describe('MetricsSubNav', () => {
         id: 'overview',
         label: 'Overview',
         icon: LayoutDashboard,
-        path: '/metrics/registration/overview',
+        path: '/analytics/registration/overview',
       },
       {
         id: 'geo',
         label: 'Geographic',
         icon: Globe,
-        path: '/metrics/registration/geo',
+        path: '/analytics/registration/geo',
       },
     ]
 
-    renderWithRouter('/metrics/registration/overview', twoItems)
+    renderWithRouter('/analytics/registration/overview', twoItems)
 
     expect(screen.getAllByRole('link')).toHaveLength(2)
   })

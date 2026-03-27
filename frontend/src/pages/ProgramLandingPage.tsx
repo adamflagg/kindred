@@ -8,14 +8,14 @@ export default function ProgramLandingPage() {
   const navigate = useNavigate()
   const { setProgram } = useProgram()
 
-  const handleProgramSelect = (program: 'summer' | 'family' | 'metrics') => {
+  const handleProgramSelect = (program: 'summer' | 'weekend' | 'analytics') => {
     setProgram(program)
     if (program === 'summer') {
       void navigate('/summer/sessions')
-    } else if (program === 'family') {
-      void navigate('/family/')
+    } else if (program === 'weekend') {
+      void navigate('/weekend/')
     } else {
-      void navigate('/metrics')
+      void navigate('/analytics')
     }
   }
 
@@ -77,7 +77,7 @@ export default function ProgramLandingPage() {
 
           {/* Program Selection Cards */}
           <div className="mx-auto grid max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
-            {/* Summer Camp Card */}
+            {/* Summer Bunking Card */}
             <button
               onClick={() => handleProgramSelect('summer')}
               className="group animate-slide-up stagger-1 relative"
@@ -99,7 +99,7 @@ export default function ProgramLandingPage() {
 
                 {/* Content */}
                 <h2 className="font-display text-foreground group-hover:text-primary mb-2 text-xl font-bold transition-colors lg:text-2xl">
-                  Summer Camp
+                  Summer Bunking
                 </h2>
 
                 <p className="text-muted-foreground mb-5 text-sm leading-relaxed">
@@ -123,15 +123,15 @@ export default function ProgramLandingPage() {
 
                 {/* CTA */}
                 <div className="text-primary flex items-center gap-2 text-sm font-semibold">
-                  <span>Enter Summer Camp</span>
+                  <span>Enter Summer Bunking</span>
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>
               </div>
             </button>
 
-            {/* Family Camp Card */}
+            {/* Weekend Housing Card */}
             <button
-              onClick={() => handleProgramSelect('family')}
+              onClick={() => handleProgramSelect('weekend')}
               className="group animate-slide-up stagger-2 relative"
               style={{ animationFillMode: 'both' }}
             >
@@ -151,11 +151,11 @@ export default function ProgramLandingPage() {
 
                 {/* Content */}
                 <h2 className="font-display text-foreground dark:group-hover:text-accent mb-2 text-xl font-bold transition-colors group-hover:text-amber-600 lg:text-2xl">
-                  Family Camp
+                  Weekend Housing
                 </h2>
 
                 <p className="text-muted-foreground mb-5 text-sm leading-relaxed">
-                  Family programs and adult retreats
+                  Family and weekend program housing
                 </p>
 
                 {/* Features */}
@@ -175,15 +175,15 @@ export default function ProgramLandingPage() {
 
                 {/* CTA */}
                 <div className="dark:text-accent flex items-center gap-2 text-sm font-semibold text-amber-600">
-                  <span>Enter Family Camp</span>
+                  <span>Enter Weekend Housing</span>
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>
               </div>
             </button>
 
-            {/* Metrics Card */}
+            {/* Camp Analytics Card */}
             <button
-              onClick={() => handleProgramSelect('metrics')}
+              onClick={() => handleProgramSelect('analytics')}
               className="group animate-slide-up stagger-3 relative"
               style={{ animationFillMode: 'both' }}
             >
@@ -203,7 +203,7 @@ export default function ProgramLandingPage() {
 
                 {/* Content */}
                 <h2 className="font-display text-foreground mb-2 text-xl font-bold transition-colors group-hover:text-sky-600 lg:text-2xl dark:group-hover:text-sky-400">
-                  Metrics
+                  Camp Analytics
                 </h2>
 
                 <p className="text-muted-foreground mb-5 text-sm leading-relaxed">
@@ -227,7 +227,7 @@ export default function ProgramLandingPage() {
 
                 {/* CTA */}
                 <div className="flex items-center gap-2 text-sm font-semibold text-sky-600 dark:text-sky-400">
-                  <span>View Metrics</span>
+                  <span>View Analytics</span>
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>
               </div>

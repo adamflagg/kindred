@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { useProgram } from '../contexts/ProgramContext'
 import { Home, Users, FileText, Settings, ArrowLeft, Sparkles, Calendar } from 'lucide-react'
 
-export default function FamilyCampDashboard() {
+export default function WeekendHousingDashboard() {
   const { clearProgram } = useProgram()
 
   return (
@@ -19,9 +19,9 @@ export default function FamilyCampDashboard() {
         </Link>
 
         <h1 className="font-display text-foreground mb-2 text-3xl font-bold sm:text-4xl">
-          Family Camp
+          Weekend Housing
         </h1>
-        <p className="text-muted-foreground">Bunking management for family programs</p>
+        <p className="text-muted-foreground">Housing management for weekend and family programs</p>
       </div>
 
       {/* Coming Soon Card */}
@@ -41,11 +41,11 @@ export default function FamilyCampDashboard() {
           </div>
 
           <h2 className="font-display text-foreground mb-4 text-2xl font-bold sm:text-3xl">
-            Family Camp Module
+            Weekend Housing Module
           </h2>
 
           <p className="text-muted-foreground mb-8 leading-relaxed">
-            We're building a streamlined cabin assignment system for family camps, adult retreats,
+            We're building a streamlined housing assignment system for family camps, adult retreats,
             and multi-generational programs. Focus on family groupings and relationship mapping
             without the complexity of youth session constraints.
           </p>
@@ -74,14 +74,14 @@ export default function FamilyCampDashboard() {
           {/* Season indicator */}
           <div className="text-muted-foreground/70 flex items-center justify-center gap-2 text-sm">
             <Calendar className="h-4 w-4" />
-            <span>Family programs run Fall, Winter, and Spring</span>
+            <span>Weekend programs run Fall, Winter, and Spring</span>
           </div>
         </div>
       </div>
 
       {/* Switch program hint */}
       <p className="text-muted-foreground mt-6 text-center text-sm">
-        Working on Summer Camp instead?{' '}
+        Working on Summer Bunking instead?{' '}
         <Link
           to="/"
           onClick={() => clearProgram()}

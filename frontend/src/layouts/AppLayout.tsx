@@ -116,15 +116,15 @@ export const AppLayout = () => {
     void navigate('/login')
   }
 
-  const handleProgramSwitch = (program: 'summer' | 'family' | 'metrics') => {
+  const handleProgramSwitch = (program: 'summer' | 'weekend' | 'analytics') => {
     setProgram(program)
     setIsProgramMenuOpen(false)
     if (program === 'summer') {
       void navigate('/summer/sessions')
-    } else if (program === 'family') {
-      void navigate('/family/')
+    } else if (program === 'weekend') {
+      void navigate('/weekend/')
     } else {
-      void navigate('/metrics')
+      void navigate('/analytics')
     }
   }
 
@@ -163,10 +163,10 @@ export const AppLayout = () => {
               {/* Logo with subtle white outline for visibility on dark nav */}
               <Link
                 to={
-                  activeProgram === 'metrics'
-                    ? '/metrics'
-                    : activeProgram === 'family'
-                      ? '/family/'
+                  activeProgram === 'analytics'
+                    ? '/analytics'
+                    : activeProgram === 'weekend'
+                      ? '/weekend/'
                       : '/summer/sessions'
                 }
                 className="flex flex-shrink-0 items-center"
@@ -188,15 +188,15 @@ export const AppLayout = () => {
                       <TreePine className="h-4 w-4 text-amber-400" />
                       <span className="hidden sm:inline">Summer</span>
                     </>
-                  ) : activeProgram === 'family' ? (
+                  ) : activeProgram === 'weekend' ? (
                     <>
                       <Home className="h-4 w-4 text-amber-400" />
-                      <span className="hidden sm:inline">Family</span>
+                      <span className="hidden sm:inline">Weekend</span>
                     </>
                   ) : (
                     <>
                       <BarChart3 className="h-4 w-4 text-sky-400" />
-                      <span className="hidden sm:inline">Metrics</span>
+                      <span className="hidden sm:inline">Analytics</span>
                     </>
                   )}
                   <ChevronDown
@@ -215,29 +215,29 @@ export const AppLayout = () => {
                       }`}
                     >
                       <TreePine className="h-4 w-4" />
-                      Summer Camp
+                      Summer Bunking
                     </button>
                     <button
-                      onClick={() => handleProgramSwitch('family')}
+                      onClick={() => handleProgramSwitch('weekend')}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                        activeProgram === 'family'
+                        activeProgram === 'weekend'
                           ? 'bg-accent/10 dark:text-accent text-amber-600'
                           : 'hover:bg-muted/50 text-foreground'
                       }`}
                     >
                       <Home className="h-4 w-4" />
-                      Family Camp
+                      Weekend Housing
                     </button>
                     <button
-                      onClick={() => handleProgramSwitch('metrics')}
+                      onClick={() => handleProgramSwitch('analytics')}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                        activeProgram === 'metrics'
+                        activeProgram === 'analytics'
                           ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
                           : 'hover:bg-muted/50 text-foreground'
                       }`}
                     >
                       <BarChart3 className="h-4 w-4" />
-                      Metrics
+                      Camp Analytics
                     </button>
                     <div className="bg-border my-2 h-px" />
                     <button
@@ -265,10 +265,10 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && (
+                {activeProgram === 'analytics' && (
                   <Link
-                    to="/metrics"
-                    className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
+                    to="/analytics"
+                    className={`nav-link-lodge ${isActiveRoute('/analytics') ? 'active' : ''}`}
                   >
                     Dashboard
                   </Link>
@@ -477,26 +477,26 @@ export const AppLayout = () => {
                     Summer
                   </button>
                   <button
-                    onClick={() => handleProgramSwitch('family')}
+                    onClick={() => handleProgramSwitch('weekend')}
                     className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                      activeProgram === 'family'
+                      activeProgram === 'weekend'
                         ? 'bg-accent text-accent-foreground'
                         : 'bg-muted/50 text-foreground hover:bg-muted'
                     }`}
                   >
                     <Home className="h-4 w-4" />
-                    Family
+                    Weekend
                   </button>
                   <button
-                    onClick={() => handleProgramSwitch('metrics')}
+                    onClick={() => handleProgramSwitch('analytics')}
                     className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                      activeProgram === 'metrics'
+                      activeProgram === 'analytics'
                         ? 'bg-sky-500 text-white'
                         : 'bg-muted/50 text-foreground hover:bg-muted'
                     }`}
                   >
                     <BarChart3 className="h-4 w-4" />
-                    Metrics
+                    Analytics
                   </button>
                 </div>
               </div>
@@ -550,11 +550,11 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {activeProgram === 'metrics' && (
+                {activeProgram === 'analytics' && (
                   <Link
-                    to="/metrics"
+                    to="/analytics"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      isActiveRoute('/metrics')
+                      isActiveRoute('/analytics')
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted/50'
                     }`}

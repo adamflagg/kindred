@@ -7,7 +7,7 @@ export function ProgramRoute() {
 
   // If a program is already selected, redirect to it
   if (currentProgram) {
-    const redirectPath = currentProgram === 'summer' ? '/summer/sessions' : '/family/'
+    const redirectPath = currentProgram === 'summer' ? '/summer/sessions' : '/weekend/'
     return <Navigate to={redirectPath} state={{ from: location }} replace />
   }
 

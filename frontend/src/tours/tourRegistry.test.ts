@@ -24,20 +24,20 @@ describe('tourRegistry', () => {
     })
 
     // Retention sub-page route mappings
-    it('returns "retention-overview" for /metrics/retention', () => {
-      expect(getTourIdForRoute('/metrics/retention')).toBe('retention-overview')
+    it('returns "retention-overview" for /analytics/retention', () => {
+      expect(getTourIdForRoute('/analytics/retention')).toBe('retention-overview')
     })
 
-    it('returns "retention-flow" for /metrics/retention/flow', () => {
-      expect(getTourIdForRoute('/metrics/retention/flow')).toBe('retention-flow')
+    it('returns "retention-flow" for /analytics/retention/flow', () => {
+      expect(getTourIdForRoute('/analytics/retention/flow')).toBe('retention-flow')
     })
 
-    it('returns "retention-bunks" for /metrics/retention/bunks', () => {
-      expect(getTourIdForRoute('/metrics/retention/bunks')).toBe('retention-bunks')
+    it('returns "retention-bunks" for /analytics/retention/bunks', () => {
+      expect(getTourIdForRoute('/analytics/retention/bunks')).toBe('retention-bunks')
     })
 
-    it('returns "retention-staff" for /metrics/retention/staff', () => {
-      expect(getTourIdForRoute('/metrics/retention/staff')).toBe('retention-staff')
+    it('returns "retention-staff" for /analytics/retention/staff', () => {
+      expect(getTourIdForRoute('/analytics/retention/staff')).toBe('retention-staff')
     })
   })
 
