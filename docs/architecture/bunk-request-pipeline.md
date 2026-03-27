@@ -831,10 +831,10 @@ Prior run (March 25, v3.9): 513 sent to Phase 3, 207 resolved (40.3% success rat
 
 Known resolution gaps (unchanged from prior analysis):
 
-- **Nickname-to-full-name prefix matching**: "Viv Cooper" → Vivienne Cooper exists but `preferred_name` is "Vivienne" not "Viv". No prefix matching strategy.
-- **Parenthetical nicknames**: "Adam (Tatertot)" — nickname in parentheses not stripped before matching.
-- **Single-letter spelling variations**: "Addy Kniffen" vs "Addy Kniffin" — close enough for fuzzy but not always caught.
-- **Input normalization**: " Isaiah Matthew" (leading whitespace), "ARI BEN ONI" (all-caps).
+- **Nickname-to-full-name prefix matching**: "Liv Garcia" → Olivia Garcia exists but `preferred_name` is "Olivia" not "Liv". No prefix matching strategy.
+- **Parenthetical nicknames**: "Liam (Nickname)" — nickname in parentheses not stripped before matching.
+- **Single-letter spelling variations**: "Emma Kniffen" vs "Emma Kniffin" — close enough for fuzzy but not always caught.
+- **Input normalization**: " Noah Johnson" (leading whitespace), "EMMA CHEN" (all-caps).
 - **AI misparses from notes**: "AG-identified campers" — staff shorthand parsed as person names.
 - **NOT_BUNK_WITH misparses**: "transgender kids", "trans campers" (×4) parsed as person target names from bunking_notes. These are category references, not individuals.
 - **Parent surname index empty**: 0 unique surnames loaded in v3.11 run. The parent surname fallback path in ExactMatchStrategy is effectively dead code. Likely a cache initialization bug.
@@ -1025,7 +1025,7 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 **Confidence threshold `> 0.9` should be `>= 0.9`.** `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
 
-**PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Classmates expansion returned 0 results for all 3 attempts for person 3459039. Need to chunk bulk lookups into smaller batches.
+**PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Classmates expansion returned 0 results for all 3 attempts for person 1000001. Need to chunk bulk lookups into smaller batches.
 
 **Parent surname index always empty.** `Built parent surname index with 0 unique surnames` logged in v3.11. The entire parent surname fallback resolution path in ExactMatchStrategy is dead code — `_try_parent_surname_match()` can never match anyone. Likely a cache initialization bug where parent data isn't loaded.
 

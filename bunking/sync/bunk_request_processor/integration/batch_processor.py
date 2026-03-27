@@ -2,7 +2,7 @@
 
 Provides sophisticated batch processing with:
 - Dynamic batch sizing based on token estimation
-- Rate limit handling with exponential backoff
+- Transient error handling with exponential backoff
 - Concurrent processing with semaphore control
 - Progress callbacks for monitoring
 - Comprehensive statistics tracking
@@ -537,7 +537,7 @@ class BatchProcessor:
                             f"Batch {batch_id} transient error ({type(e).__name__}), "
                             f"retrying in {delay:.1f}s (attempt {retry_count}/{max_retries})"
                         )
-                        await _call_callback(progress_callback, batch_id, len(batch), "rate_limited")
+                        await _call_callback(progress_callback, batch_id, len(batch), "retrying")
                         await asyncio.sleep(delay)
                         self.stats["total_retries"] += 1
                         continue

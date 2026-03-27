@@ -114,14 +114,15 @@ class Phase1ParseService:
             for idx, retry_result in zip(failed_indices, retry_results, strict=True):
                 if not self._is_transient_failure(retry_result):
                     results[idx] = retry_result
-                    self._stats["recovered_in_retry"] += 1
+                    if retry_result.is_valid:
+                        self._stats["recovered_in_retry"] += 1
 
-        # Count permanently failed
-        final_failed = [r for r in results if self._is_transient_failure(r)]
-        self._stats["permanently_failed"] = len(final_failed)
+        # Count all failures (transient and permanent) after retries
+        all_failed = [r for r in results if not r.is_valid]
+        self._stats["permanently_failed"] = len(all_failed)
 
         # Log reconciliation
-        self._log_reconciliation(requests, results, final_failed)
+        self._log_reconciliation(requests, results, all_failed)
 
         # Update statistics
         self._update_stats(results)
@@ -171,29 +172,33 @@ class Phase1ParseService:
         self,
         requests: list[ParseRequest],
         results: list[ParseResult],
-        final_failed: list[ParseResult],
+        all_failed: list[ParseResult],
     ) -> None:
         """Log end-of-phase reconciliation summary."""
         total = len(requests)
-        succeeded = total - len(final_failed)
+        succeeded = total - len(all_failed)
 
-        if not final_failed:
+        if not all_failed:
             logger.info(f"Phase 1 reconciliation: {total}/{total} parsed successfully")
             return
 
+        still_transient = [r for r in all_failed if self._is_transient_failure(r)]
+        permanent = [r for r in all_failed if not self._is_transient_failure(r)]
+
         logger.warning(
             f"Phase 1 reconciliation: {succeeded}/{total} parsed successfully, "
-            f"{len(final_failed)} failed after all retries"
+            f"{len(all_failed)} failed ({len(still_transient)} transient, {len(permanent)} permanent)"
         )
-        for result in final_failed[:10]:  # Cap at 10 to avoid log spam
+        for result in all_failed[:10]:  # Cap at 10 to avoid log spam
             req = result.parse_request
             req_text = req.request_text[:60] if req else "unknown"
             req_info = f"cm_id={req.requester_cm_id}" if req else "unknown"
             reason = result.metadata.get("failure_reason", "unknown")
-            logger.warning(f'  Failed: "{req_text}" ({req_info}) — {reason}')
+            kind = "transient" if self._is_transient_failure(result) else "permanent"
+            logger.warning(f'  Failed ({kind}): "{req_text}" ({req_info}) — {reason}')
 
-        if len(final_failed) > 10:
-            logger.warning(f"  ... and {len(final_failed) - 10} more")
+        if len(all_failed) > 10:
+            logger.warning(f"  ... and {len(all_failed) - 10} more")
 
     def _sanitize_requests(self, requests: list[ParseRequest]) -> tuple[list[ParseRequest], dict[int, dict[str, Any]]]:
         """Sanitize all request texts before AI processing.
