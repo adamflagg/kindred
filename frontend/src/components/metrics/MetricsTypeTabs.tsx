@@ -58,7 +58,7 @@ export default function MetricsTypeTabs() {
     <nav className="border-border/50 border-b py-2">
       <div className="flex items-center justify-between">
         {/* Tab Pills - Left side */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5" data-tour="metrics-section-tabs">
           {METRIC_TYPES.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
@@ -83,20 +83,25 @@ export default function MetricsTypeTabs() {
         {!RETENTION_SUB_NAV.filter((item) => item.id === 'bunks' || item.id === 'staff').some(
           (item) => item.path === location.pathname
         ) && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" data-tour="metrics-session-selector">
             {activeTab === 'registration' &&
               !location.pathname.endsWith('/forecast') &&
               !location.pathname.endsWith('/availability') && (
-                <CompareYearSelector
-                  primaryYear={currentYear}
-                  compareYear={compareYear}
-                  onCompareYearChange={setCompareYear}
-                  onClear={() => setCompareYear(null)}
-                  availableYears={availableYears}
-                />
+                <div data-tour="metrics-compare-year">
+                  <CompareYearSelector
+                    primaryYear={currentYear}
+                    compareYear={compareYear}
+                    onCompareYearChange={setCompareYear}
+                    onClear={() => setCompareYear(null)}
+                    availableYears={availableYears}
+                  />
+                </div>
               )}
             {activeTab === 'trends' && !location.pathname.includes('/velocity') && (
-              <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+              <label
+                className="flex cursor-pointer items-center gap-1.5 text-sm"
+                data-tour="metrics-expanded-analysis"
+              >
                 <input
                   type="checkbox"
                   checked={expandedRetention}

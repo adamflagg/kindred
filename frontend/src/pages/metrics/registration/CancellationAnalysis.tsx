@@ -159,7 +159,10 @@ export default function CancellationAnalysis() {
         return (
           <div className="space-y-6">
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <div
+              className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
+              data-tour="reg-cancel-summary"
+            >
               <MetricCard
                 title="Total Cancelled"
                 value={data.total_cancelled}
@@ -286,7 +289,7 @@ export default function CancellationAnalysis() {
 
             {/* Cancellation Timing Insights */}
             {(data.session_swap_count != null || data.avg_days_to_cancellation != null) && (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" data-tour="reg-cancel-timing">
                 {data.session_swap_count != null && data.session_swap_count > 0 && (
                   <div className="border-border bg-card rounded-lg border p-4">
                     <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">

@@ -333,13 +333,15 @@ export default function CancellationVelocityPage() {
   return (
     <div className="space-y-6">
       {/* Controls — no extraControls (no viewMode toggle for cancellation) */}
-      <VelocityControls
-        priorYearOptions={controls.priorYearOptions}
-        selectedPriorYears={controls.selectedPriorYears}
-        splitByGender={controls.splitByGender}
-        onTogglePriorYear={controls.togglePriorYear}
-        onToggleGender={controls.handleGenderToggle}
-      />
+      <div data-tour="cancel-velocity-controls">
+        <VelocityControls
+          priorYearOptions={controls.priorYearOptions}
+          selectedPriorYears={controls.selectedPriorYears}
+          splitByGender={controls.splitByGender}
+          onTogglePriorYear={controls.togglePriorYear}
+          onToggleGender={controls.handleGenderToggle}
+        />
+      </div>
 
       {/* Summary Cards (4 cards, inverted colors) */}
       {summaryCards && hasPriorYear && (
@@ -396,7 +398,7 @@ export default function CancellationVelocityPage() {
         )}
 
       {/* Cancellation Velocity Chart */}
-      <div className="card-lodge p-4">
+      <div data-tour="cancel-velocity-chart" className="card-lodge p-4">
         <h3 className="text-foreground mb-2 text-base font-semibold">
           Cancellation Velocity - {currentYear}
         </h3>

@@ -25,8 +25,4 @@ describe('retentionBunksTour', () => {
       }
     }
   })
-
-  it('has isReady function', () => {
-    expect(typeof retentionBunksTour.isReady).toBe('function')
-  })
 })

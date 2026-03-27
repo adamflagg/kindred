@@ -3,6 +3,7 @@ import type { TourDefinition } from '../types'
 const retentionStaffTour: TourDefinition = {
   id: 'retention-staff',
   version: 1,
+  layers: ['metrics-header'],
   steps: [
     {
       element: '[data-tour="retention-staff-table"]',
@@ -33,9 +34,6 @@ const retentionStaffTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="retention-staff-table"]') !== null
-  },
 }
 
 export default retentionStaffTour

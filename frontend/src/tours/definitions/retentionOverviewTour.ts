@@ -3,6 +3,7 @@ import type { TourDefinition } from '../types'
 const retentionOverviewTour: TourDefinition = {
   id: 'retention-overview',
   version: 2,
+  layers: ['metrics-header'],
   steps: [
     {
       element: '[data-tour="retention-summary-cards"]',
@@ -34,9 +35,6 @@ const retentionOverviewTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="retention-summary-cards"]') !== null
-  },
 }
 
 export default retentionOverviewTour

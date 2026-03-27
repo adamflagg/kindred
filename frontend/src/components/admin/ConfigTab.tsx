@@ -25,6 +25,7 @@ export function ConfigTab() {
       solver: [],
       processing: [],
       history: [],
+      general: [],
     }
 
     sections.forEach((section) => {

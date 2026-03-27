@@ -223,7 +223,10 @@ export default function TrendsOverview() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div
+        data-tour="trends-summary"
+        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
+      >
         <MetricCard
           title="Years Analyzed"
           value={data.years.length}
@@ -250,7 +253,7 @@ export default function TrendsOverview() {
       </div>
 
       {/* Line Charts */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div data-tour="trends-charts" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <TrendLineChart
           title="Total Enrollment Over Time"
           data={data.years}
@@ -292,7 +295,7 @@ export default function TrendsOverview() {
       </div>
 
       {/* Data Table */}
-      <div className="card-lodge overflow-hidden">
+      <div data-tour="trends-table" className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
           <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
         </div>

@@ -3,6 +3,7 @@ import type { TourDefinition } from '../types'
 const debugTour: TourDefinition = {
   id: 'debug',
   version: 2,
+  layers: [],
   steps: [
     {
       element: '[data-tour="debug-header"]',
@@ -42,9 +43,6 @@ const debugTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => {
-    return document.querySelector('[data-tour="debug-header"]') !== null
-  },
 }
 
 export default debugTour

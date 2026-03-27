@@ -252,43 +252,47 @@ export default function GeoAnalysis() {
               />
 
               {/* Layer Toggles */}
-              <GeoLayerToggles
-                activeLayers={activeLayers}
-                onToggleLayer={handleToggleLayer}
-                counts={{
-                  city: geoData.city.length,
-                  school: geoData.school.length,
-                  synagogue: geoData.synagogue.length,
-                  region: geoData.region.length,
-                }}
-                showRegions={showRegions}
-                onToggleRegions={() => setShowRegions((v) => !v)}
-              />
+              <div data-tour="reg-geo-layers">
+                <GeoLayerToggles
+                  activeLayers={activeLayers}
+                  onToggleLayer={handleToggleLayer}
+                  counts={{
+                    city: geoData.city.length,
+                    school: geoData.school.length,
+                    synagogue: geoData.synagogue.length,
+                    region: geoData.region.length,
+                  }}
+                  showRegions={showRegions}
+                  onToggleRegions={() => setShowRegions((v) => !v)}
+                />
+              </div>
 
               {/* Map - hidden in comparison mode */}
-              {isComparing ? (
-                <div className="card-lodge p-6 text-center">
-                  <p className="text-muted-foreground text-sm">
-                    Map view is available in single-year mode. Showing comparison tables below.
-                  </p>
-                </div>
-              ) : (
-                <GeoMap
-                  layers={(['city', 'school', 'synagogue'] as const)
-                    .filter((cat) => activeLayers.has(cat) && geoData[cat].length > 0)
-                    .map((cat): GeoMapLayer => ({ category: cat, data: geoData[cat] }))}
-                  selectedItem={selectedItem}
-                  onMarkerClick={handleItemClick}
-                  onDrilldown={setFilter}
-                  height={575}
-                  showRegions={showRegions}
-                  overrideCoords={overrideCoords}
-                />
-              )}
+              <div data-tour="reg-geo-map">
+                {isComparing ? (
+                  <div className="card-lodge p-6 text-center">
+                    <p className="text-muted-foreground text-sm">
+                      Map view is available in single-year mode. Showing comparison tables below.
+                    </p>
+                  </div>
+                ) : (
+                  <GeoMap
+                    layers={(['city', 'school', 'synagogue'] as const)
+                      .filter((cat) => activeLayers.has(cat) && geoData[cat].length > 0)
+                      .map((cat): GeoMapLayer => ({ category: cat, data: geoData[cat] }))}
+                    selectedItem={selectedItem}
+                    onMarkerClick={handleItemClick}
+                    onDrilldown={setFilter}
+                    height={575}
+                    showRegions={showRegions}
+                    overrideCoords={overrideCoords}
+                  />
+                )}
+              </div>
 
               {/* Detail Lists - comparison or single year */}
               {compareYear !== null && compGeoData ? (
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2" data-tour="reg-geo-details">
                   {activeLayers.has('city') &&
                     (geoData.city.length > 0 || compGeoData.city.length > 0) && (
                       <GeoComparisonDetailList
@@ -339,7 +343,7 @@ export default function GeoAnalysis() {
                     )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2" data-tour="reg-geo-details">
                   {activeLayers.has('city') && geoData.city.length > 0 && (
                     <GeoDetailList
                       data={geoData.city}

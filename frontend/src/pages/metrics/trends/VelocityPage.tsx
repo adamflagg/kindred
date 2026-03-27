@@ -204,6 +204,7 @@ export default function VelocityPage() {
       {(['gross', 'net', 'delta'] as VelocityViewMode[]).map((mode) => (
         <button
           key={mode}
+          data-tour={`velocity-mode-${mode}`}
           onClick={() => {
             setViewMode(mode)
             weeklyZoom.resetZoom()
@@ -376,14 +377,16 @@ export default function VelocityPage() {
   return (
     <div className="space-y-6">
       {/* Controls */}
-      <VelocityControls
-        priorYearOptions={controls.priorYearOptions}
-        selectedPriorYears={controls.selectedPriorYears}
-        splitByGender={controls.splitByGender}
-        onTogglePriorYear={controls.togglePriorYear}
-        onToggleGender={controls.handleGenderToggle}
-        extraControls={viewModeToggle}
-      />
+      <div data-tour="velocity-controls">
+        <VelocityControls
+          priorYearOptions={controls.priorYearOptions}
+          selectedPriorYears={controls.selectedPriorYears}
+          splitByGender={controls.splitByGender}
+          onTogglePriorYear={controls.togglePriorYear}
+          onToggleGender={controls.handleGenderToggle}
+          extraControls={viewModeToggle}
+        />
+      </div>
 
       {/* Summary Comparison Cards */}
       {summaryCards && hasPriorYear && (
@@ -436,7 +439,7 @@ export default function VelocityPage() {
       )}
 
       {/* Enrollment Velocity Chart */}
-      <div className="card-lodge p-4">
+      <div data-tour="velocity-chart" className="card-lodge p-4">
         <h3 className="text-foreground mb-2 text-base font-semibold">
           {VIEW_MODE_LABELS[viewMode]} Enrollment - {currentYear}
         </h3>

@@ -25,8 +25,4 @@ describe('retentionOverviewTour', () => {
       }
     }
   })
-
-  it('has isReady function', () => {
-    expect(typeof retentionOverviewTour.isReady).toBe('function')
-  })
 })

@@ -25,8 +25,4 @@ describe('retentionStaffTour', () => {
       }
     }
   })
-
-  it('has isReady function', () => {
-    expect(typeof retentionStaffTour.isReady).toBe('function')
-  })
 })

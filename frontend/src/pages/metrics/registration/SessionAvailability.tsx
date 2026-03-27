@@ -246,7 +246,10 @@ function AGSessionRow({
 
 function Legend() {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+    <div
+      className="mt-4 flex flex-wrap items-center gap-3 text-xs"
+      data-tour="reg-availability-legend"
+    >
       <span className="flex items-center gap-1">
         <span className="border-border/50 h-5 w-5 rounded border bg-emerald-100 dark:bg-emerald-900/40" />
         Open Space
@@ -476,7 +479,7 @@ export default function SessionAvailability() {
               </p>
             </div>
 
-            <div className="card-lodge p-4">
+            <div className="card-lodge p-4" data-tour="reg-availability-heatmap">
               <div className="space-y-6">
                 {/* Camp sessions matrix (main + embedded) */}
                 {campSessions.length > 0 && (
