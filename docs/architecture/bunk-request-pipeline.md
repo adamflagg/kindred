@@ -275,7 +275,11 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   └─ phase1_service.batch_parse(parse_requests)
     │       ├─ Input sanitization (detect injection attempts, confidence penalties)
     │       ├─ Context building (row data + staff metadata + school/congregation/city)
-    │       ├─ Batch AI processing (rate-limited, with retries)
+    │       ├─ Batch AI processing (transient error retry + exponential backoff)
+    │       │   ├─ Batch-level: up to 5 retries per batch for transient errors
+    │       │   ├─ Item-level: individual failures tagged, batch continues
+    │       │   └─ Phase-level: up to 3 retry rounds (30s/60s/60s delays)
+    │       │       with reconciliation logging (transient vs permanent)
     │       └─ Returns list[ParseResult], each containing:
     │           ├─ parsed_requests: list[ParsedRequest] — one per extracted name
     │           │   Each: target_name, request_type, confidence, age_preference,
@@ -873,7 +877,7 @@ Input: original_bunk_requests rows
   │   ├─ socialize_with ──→ direct parse ──→ HOLD
   │   └─ AI fields ──→ Prepare parse requests (NA strip, no-pref)
   │                      │
-  │                      ├─ Phase 1: AI Parse (with text dedup)
+  │                      ├─ Phase 1: AI Parse (with text dedup, retry rounds)
   │                      ├─ Type validation
   │                      ├─ [if notes fields]: Temporal conflict filter
   │                      ├─ Source text validation
@@ -1021,7 +1025,7 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 ### P1: High
 
-**OpenAI transient failures silently drop requests.** `BatchProcessor` only retries 429 rate limit errors. OpenAI 500 server errors (30+ in v3.11) and read timeouts (2 in v3.11) fail immediately with no retry. `openai_provider.parse_request()` swallows the error and returns an empty `ParsedResponse` — indistinguishable from "AI found no requests." **~145 OBRs with real content were never processed.** Fix in progress: retry/backoff/reconciliation PR.
+**~~OpenAI transient failures silently drop requests.~~** Fixed in PR #794. `BatchProcessor` now retries all transient errors (timeout, 500, rate limit, connection) with exponential backoff at the batch level (up to 5 retries). `openai_provider.parse_request()` re-raises transient errors for callers to retry. Individual item failures within a batch are tagged and the batch continues. Phase 1 adds up to 3 retry rounds (30s/60s/60s) with reconciliation logging showing transient vs permanent failures.
 
 **Confidence threshold `> 0.9` should be `>= 0.9`.** `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
 
@@ -1029,7 +1033,7 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 **Parent surname index always empty.** `Built parent surname index with 0 unique surnames` logged in v3.11. The entire parent surname fallback resolution path in ExactMatchStrategy is dead code — `_try_parent_surname_match()` can never match anyone. Likely a cache initialization bug where parent data isn't loaded.
 
-**OBR processed flag doesn't distinguish success vs error.** When AI fails for an OBR (timeout, 500), the OBR is still marked `processed` with a timestamp — indistinguishable from a successful parse. On re-run without `force=true`, these are skipped as "already processed." The camper's requests are silently lost unless someone manually forces a reprocess. Need either: a separate `processed_error` state, or don't set `processed` timestamp when AI returns zero results due to transient failure.
+**OBR processed flag doesn't distinguish success vs error.** When AI fails for an OBR (timeout, 500), the OBR is still marked `processed` with a timestamp — indistinguishable from a successful parse. On re-run without `force=true`, these are skipped as "already processed." PR #794 mitigates this by retrying transient failures (so fewer OBRs silently fail), but does not change the processed-flag logic. Need either: a separate `processed_error` state, or don't set `processed` timestamp when AI returns zero results due to transient failure.
 
 ### P2: Medium
 
