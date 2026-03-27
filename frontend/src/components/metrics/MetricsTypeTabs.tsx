@@ -25,15 +25,15 @@ const METRIC_TYPES: MetricTypeTab[] = [
     id: 'registration',
     label: 'Registration',
     icon: BarChart3,
-    path: '/metrics/registration',
+    path: '/analytics/registration',
   },
   {
     id: 'retention',
     label: 'Retention',
     icon: Users,
-    path: '/metrics/retention',
+    path: '/analytics/retention',
   },
-  { id: 'trends', label: 'Trends', icon: TrendingUp, path: '/metrics/trends' },
+  { id: 'trends', label: 'Trends', icon: TrendingUp, path: '/analytics/trends' },
 ]
 
 export default function MetricsTypeTabs() {

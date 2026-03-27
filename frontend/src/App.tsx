@@ -10,6 +10,7 @@ import { LockGroupProvider } from './contexts/LockGroupContext'
 import { ProgramProvider, useProgram } from './contexts/ProgramContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { queryClient } from './utils/queryClient'
+import { getProgramHomeUrl } from './utils/programUrls'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
@@ -54,11 +55,11 @@ const ManageRegistrationPage = lazy(() =>
     default: m.ManageRegistrationPage,
   }))
 )
-const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'))
+const WeekendHousingDashboard = lazy(() => import('./pages/WeekendHousingDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
 const PromptEditorPage = lazy(() => import('./pages/summer/PromptEditorPage'))
-// Metrics module - hierarchical navigation
+// Camp Analytics module - hierarchical navigation
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
 const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'))
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
@@ -115,14 +116,8 @@ function RootRedirect() {
   const { currentProgram } = useProgram()
 
   // If user has a saved program preference, go directly there
-  if (currentProgram === 'summer') {
-    return <Navigate to="/summer/sessions" replace />
-  }
-  if (currentProgram === 'family') {
-    return <Navigate to="/family" replace />
-  }
-  if (currentProgram === 'metrics') {
-    return <Navigate to="/metrics" replace />
+  if (currentProgram) {
+    return <Navigate to={getProgramHomeUrl(currentProgram)} replace />
   }
 
   // First-time users see the program picker
@@ -389,15 +384,15 @@ function App() {
                             </Route>
                           </Route>
 
-                          {/* Metrics routes - hierarchical navigation */}
-                          <Route path="/metrics" element={<AppLayout />}>
-                            {/* Redirect /metrics to /metrics/registration */}
+                          {/* Camp Analytics routes - hierarchical navigation */}
+                          <Route path="/analytics" element={<AppLayout />}>
+                            {/* Redirect /analytics to /analytics/registration */}
                             <Route
                               index
-                              element={<Navigate to="/metrics/registration" replace />}
+                              element={<Navigate to="/analytics/registration" replace />}
                             />
 
-                            {/* Metrics layout with nested routes */}
+                            {/* Camp Analytics layout with nested routes */}
                             <Route
                               element={
                                 <ErrorBoundary>
@@ -410,7 +405,7 @@ function App() {
                               {/* Registration section */}
                               <Route
                                 path="registration"
-                                element={<Navigate to="/metrics/registration/overview" replace />}
+                                element={<Navigate to="/analytics/registration/overview" replace />}
                               />
                               <Route
                                 path="registration/overview"
@@ -529,7 +524,7 @@ function App() {
                               {/* Redirect old retention sub-routes */}
                               <Route
                                 path="retention/overview"
-                                element={<Navigate to="/metrics/retention" replace />}
+                                element={<Navigate to="/analytics/retention" replace />}
                               />
 
                               {/* Trends section */}
@@ -570,14 +565,14 @@ function App() {
                             <Route path="users" element={<Navigate to="/users" replace />} />
                           </Route>
 
-                          {/* Family Camp routes - with app layout */}
-                          <Route path="/family" element={<AppLayout />}>
+                          {/* Weekend Housing routes - with app layout */}
+                          <Route path="/weekend" element={<AppLayout />}>
                             <Route
                               index
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>
-                                    <FamilyCampDashboard />
+                                    <WeekendHousingDashboard />
                                   </Suspense>
                                 </ErrorBoundary>
                               }

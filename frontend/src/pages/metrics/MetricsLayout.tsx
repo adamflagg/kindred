@@ -15,13 +15,13 @@ export default function MetricsLayout() {
 
   // Determine which sub-nav to show based on current section
   const getSubNavItems = (): SubNavItem[] => {
-    if (location.pathname.startsWith('/metrics/registration')) {
+    if (location.pathname.startsWith('/analytics/registration')) {
       return REGISTRATION_SUB_NAV
     }
-    if (location.pathname.startsWith('/metrics/retention')) {
+    if (location.pathname.startsWith('/analytics/retention')) {
       return RETENTION_SUB_NAV
     }
-    if (location.pathname.startsWith('/metrics/trends')) {
+    if (location.pathname.startsWith('/analytics/trends')) {
       return TRENDS_SUB_NAV
     }
     return []
@@ -31,17 +31,17 @@ export default function MetricsLayout() {
 
   // Dynamic header based on section
   const getHeader = () => {
-    if (location.pathname.startsWith('/metrics/retention')) {
+    if (location.pathname.startsWith('/analytics/retention')) {
       return {
-        title: 'Retention Metrics',
+        title: 'Retention',
         subtitle: 'Prior year → current year returning analysis',
       }
     }
-    if (location.pathname.startsWith('/metrics/trends')) {
+    if (location.pathname.startsWith('/analytics/trends')) {
       return { title: 'Trend Analysis', subtitle: 'Long-term enrollment and registration trends' }
     }
     return {
-      title: 'Registration Metrics',
+      title: 'Registration',
       subtitle: 'Analyze registration data and enrollment patterns',
     }
   }

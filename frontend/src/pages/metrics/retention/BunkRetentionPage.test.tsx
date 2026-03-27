@@ -47,10 +47,10 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/metrics/retention/bunks']}>
+      <MemoryRouter initialEntries={['/analytics/retention/bunks']}>
         <CurrentYearContext.Provider value={mockYearContext}>
           <Routes>
-            <Route path="/metrics/retention/bunks" element={<BunkRetentionPage />} />
+            <Route path="/analytics/retention/bunks" element={<BunkRetentionPage />} />
           </Routes>
         </CurrentYearContext.Provider>
       </MemoryRouter>

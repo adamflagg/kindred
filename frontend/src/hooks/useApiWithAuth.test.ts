@@ -33,7 +33,7 @@ describe('fetchWithAuth 401 handling', () => {
   beforeEach(() => {
     mockClear.mockClear()
     // Mock window.location
-    mockLocation = { pathname: '/metrics/retention', href: '' }
+    mockLocation = { pathname: '/analytics/retention', href: '' }
     Object.defineProperty(window, 'location', {
       value: mockLocation,
       writable: true,

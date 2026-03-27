@@ -107,7 +107,7 @@ function UrlParamViewer() {
 }
 
 // Helper to create test wrapper
-function createWrapper(initialPath: string = '/metrics/registration') {
+function createWrapper(initialPath: string = '/analytics/registration') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -137,7 +137,7 @@ describe('MetricsSessionContext', () => {
   describe('initial state', () => {
     it('should default to null (all sessions) when no URL param', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration'),
+        wrapper: createWrapper('/analytics/registration'),
       })
 
       expect(screen.getByTestId('selectedSessionCmId')).toHaveTextContent('null')
@@ -146,7 +146,7 @@ describe('MetricsSessionContext', () => {
 
     it('should read session from URL param on init', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?session=1001'),
+        wrapper: createWrapper('/analytics/registration?session=1001'),
       })
 
       expect(screen.getByTestId('selectedSessionCmId')).toHaveTextContent('1001')
@@ -206,7 +206,7 @@ describe('MetricsSessionContext', () => {
           <TestSetter sessionCmId={null} />
           <UrlParamViewer />
         </>,
-        { wrapper: createWrapper('/metrics/registration?session=1001') }
+        { wrapper: createWrapper('/analytics/registration?session=1001') }
       )
 
       expect(screen.getByTestId('url-session')).toHaveTextContent('1001')
@@ -226,7 +226,7 @@ describe('MetricsSessionContext', () => {
           <TestConsumer />
           <TestClearer />
         </>,
-        { wrapper: createWrapper('/metrics/registration?session=1001') }
+        { wrapper: createWrapper('/analytics/registration?session=1001') }
       )
 
       expect(screen.getByTestId('selectedSessionCmId')).toHaveTextContent('1001')
@@ -245,7 +245,7 @@ describe('MetricsSessionContext', () => {
           <UrlParamViewer />
         </>,
         {
-          wrapper: createWrapper('/metrics/registration?session=1001&year=2026'),
+          wrapper: createWrapper('/analytics/registration?session=1001&year=2026'),
         }
       )
 
@@ -262,7 +262,7 @@ describe('MetricsSessionContext', () => {
   describe('selectedSession lookup', () => {
     it('should find session by cm_id when selected', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?session=1003'),
+        wrapper: createWrapper('/analytics/registration?session=1003'),
       })
 
       expect(screen.getByTestId('selectedSessionName')).toHaveTextContent('Session 2a')
@@ -270,7 +270,7 @@ describe('MetricsSessionContext', () => {
 
     it('should return undefined when session cm_id not found', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?session=9999'),
+        wrapper: createWrapper('/analytics/registration?session=9999'),
       })
 
       // Should still have the cm_id but no matching session
@@ -282,7 +282,7 @@ describe('MetricsSessionContext', () => {
   describe('URL param edge cases', () => {
     it('should handle invalid session param gracefully', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?session=invalid'),
+        wrapper: createWrapper('/analytics/registration?session=invalid'),
       })
 
       // Invalid param should be ignored, default to null
@@ -307,7 +307,7 @@ describe('MetricsSessionContext', () => {
 
       render(
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={['/metrics/registration?year=2025']}>
+          <MemoryRouter initialEntries={['/analytics/registration?year=2025']}>
             <CurrentYearContext.Provider value={mockYearContext}>
               <MetricsSessionProvider>
                 <TestSetter sessionCmId={1001} />
@@ -379,7 +379,7 @@ describe('MetricsSessionContext viewMode', () => {
   describe('initial state', () => {
     it('should default to sessions viewMode when no URL param', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration'),
+        wrapper: createWrapper('/analytics/registration'),
       })
 
       expect(screen.getByTestId('viewMode')).toHaveTextContent('sessions')
@@ -387,7 +387,7 @@ describe('MetricsSessionContext viewMode', () => {
 
     it('should read viewMode from URL ?view=quests param', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=quests'),
+        wrapper: createWrapper('/analytics/registration?view=quests'),
       })
 
       expect(screen.getByTestId('viewMode')).toHaveTextContent('quests')
@@ -395,7 +395,7 @@ describe('MetricsSessionContext viewMode', () => {
 
     it('should default to sessions for invalid view param', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=invalid'),
+        wrapper: createWrapper('/analytics/registration?view=invalid'),
       })
 
       expect(screen.getByTestId('viewMode')).toHaveTextContent('sessions')
@@ -405,7 +405,7 @@ describe('MetricsSessionContext viewMode', () => {
   describe('activeSessionTypes', () => {
     it('should return camp session types in sessions mode', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration'),
+        wrapper: createWrapper('/analytics/registration'),
       })
 
       expect(screen.getByTestId('activeSessionTypes')).toHaveTextContent('main,embedded,ag')
@@ -413,7 +413,7 @@ describe('MetricsSessionContext viewMode', () => {
 
     it('should return quest session types in quests mode', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=quests'),
+        wrapper: createWrapper('/analytics/registration?view=quests'),
       })
 
       expect(screen.getByTestId('activeSessionTypes')).toHaveTextContent('quest')
@@ -421,7 +421,7 @@ describe('MetricsSessionContext viewMode', () => {
 
     it('should return all session types when specific session selected', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?session=1001'),
+        wrapper: createWrapper('/analytics/registration?session=1001'),
       })
 
       expect(screen.getByTestId('activeSessionTypes')).toHaveTextContent('main,embedded,ag,quest')
@@ -431,7 +431,7 @@ describe('MetricsSessionContext viewMode', () => {
   describe('sessionTypesParam', () => {
     it('should be comma-joined activeSessionTypes for sessions mode', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration'),
+        wrapper: createWrapper('/analytics/registration'),
       })
 
       expect(screen.getByTestId('sessionTypesParam')).toHaveTextContent('main,embedded,ag')
@@ -439,7 +439,7 @@ describe('MetricsSessionContext viewMode', () => {
 
     it('should be "quest" for quests mode', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=quests'),
+        wrapper: createWrapper('/analytics/registration?view=quests'),
       })
 
       expect(screen.getByTestId('sessionTypesParam')).toHaveTextContent('quest')
@@ -489,7 +489,7 @@ describe('MetricsSessionContext viewMode', () => {
           <TestViewModeSetter mode="quests" />
           <UrlParamViewer />
         </>,
-        { wrapper: createWrapper('/metrics/registration?session=1001') }
+        { wrapper: createWrapper('/analytics/registration?session=1001') }
       )
 
       expect(screen.getByTestId('url-session')).toHaveTextContent('1001')
@@ -515,7 +515,7 @@ describe('MetricsSessionContext viewMode', () => {
           <TestSetter sessionCmId={1001} />
           <ViewParamViewer />
         </>,
-        { wrapper: createWrapper('/metrics/registration?view=quests') }
+        { wrapper: createWrapper('/analytics/registration?view=quests') }
       )
 
       expect(screen.getByTestId('url-view')).toHaveTextContent('quests')
@@ -534,7 +534,7 @@ describe('MetricsSessionContext "all" viewMode', () => {
   describe('initial state', () => {
     it('should read viewMode "all" from URL ?view=all param', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=all'),
+        wrapper: createWrapper('/analytics/registration?view=all'),
       })
 
       expect(screen.getByTestId('viewMode')).toHaveTextContent('all')
@@ -544,7 +544,7 @@ describe('MetricsSessionContext "all" viewMode', () => {
   describe('activeSessionTypes', () => {
     it('should return all session types in "all" mode', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=all'),
+        wrapper: createWrapper('/analytics/registration?view=all'),
       })
 
       expect(screen.getByTestId('activeSessionTypes')).toHaveTextContent('main,embedded,ag,quest')
@@ -554,7 +554,7 @@ describe('MetricsSessionContext "all" viewMode', () => {
   describe('sessionTypesParam', () => {
     it('should be all types comma-joined in "all" mode', () => {
       render(<TestConsumer />, {
-        wrapper: createWrapper('/metrics/registration?view=all'),
+        wrapper: createWrapper('/analytics/registration?view=all'),
       })
 
       expect(screen.getByTestId('sessionTypesParam')).toHaveTextContent('main,embedded,ag,quest')
@@ -594,7 +594,7 @@ describe('MetricsSessionContext "all" viewMode', () => {
           <TestViewModeSetter mode="all" />
           <UrlParamViewer />
         </>,
-        { wrapper: createWrapper('/metrics/registration?session=1001') }
+        { wrapper: createWrapper('/analytics/registration?session=1001') }
       )
 
       expect(screen.getByTestId('url-session')).toHaveTextContent('1001')

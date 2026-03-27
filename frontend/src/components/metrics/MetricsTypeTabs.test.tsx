@@ -59,7 +59,7 @@ const renderWithRouter = (initialPath: string) => {
 
 describe('MetricsTypeTabs', () => {
   it('renders all three metric type tabs', () => {
-    renderWithRouter('/metrics/registration')
+    renderWithRouter('/analytics/registration')
 
     expect(screen.getByRole('link', { name: /registration/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument()
@@ -67,7 +67,7 @@ describe('MetricsTypeTabs', () => {
   })
 
   it('renders icons for each tab', () => {
-    renderWithRouter('/metrics/registration')
+    renderWithRouter('/analytics/registration')
 
     // Each tab should have an icon (rendered as svg)
     const links = screen.getAllByRole('link')
@@ -80,7 +80,7 @@ describe('MetricsTypeTabs', () => {
   })
 
   it('highlights registration tab when on registration route', () => {
-    renderWithRouter('/metrics/registration')
+    renderWithRouter('/analytics/registration')
 
     const registrationLink = screen.getByRole('link', {
       name: /registration/i,
@@ -93,7 +93,7 @@ describe('MetricsTypeTabs', () => {
   })
 
   it('highlights registration tab when on registration sub-route', () => {
-    renderWithRouter('/metrics/registration/geo')
+    renderWithRouter('/analytics/registration/geo')
 
     const registrationLink = screen.getByRole('link', {
       name: /registration/i,
@@ -102,7 +102,7 @@ describe('MetricsTypeTabs', () => {
   })
 
   it('highlights retention tab when on retention route', () => {
-    renderWithRouter('/metrics/retention')
+    renderWithRouter('/analytics/retention')
 
     const retentionLink = screen.getByRole('link', { name: /retention/i })
     const registrationLink = screen.getByRole('link', {
@@ -114,42 +114,45 @@ describe('MetricsTypeTabs', () => {
   })
 
   it('highlights trends tab when on trends route', () => {
-    renderWithRouter('/metrics/trends')
+    renderWithRouter('/analytics/trends')
 
     const trendsLink = screen.getByRole('link', { name: /trends/i })
     expect(trendsLink).toHaveClass('bg-primary')
   })
 
   it('links to correct paths', () => {
-    renderWithRouter('/metrics/registration')
+    renderWithRouter('/analytics/registration')
 
     expect(screen.getByRole('link', { name: /registration/i })).toHaveAttribute(
       'href',
-      '/metrics/registration'
+      '/analytics/registration'
     )
     expect(screen.getByRole('link', { name: /retention/i })).toHaveAttribute(
       'href',
-      '/metrics/retention'
+      '/analytics/retention'
     )
-    expect(screen.getByRole('link', { name: /trends/i })).toHaveAttribute('href', '/metrics/trends')
+    expect(screen.getByRole('link', { name: /trends/i })).toHaveAttribute(
+      'href',
+      '/analytics/trends'
+    )
   })
 
   it('uses nav element for accessibility', () => {
-    renderWithRouter('/metrics/registration')
+    renderWithRouter('/analytics/registration')
 
     expect(screen.getByRole('navigation')).toBeInTheDocument()
   })
 
   describe('session selector integration', () => {
     it('should render session selector on the right side', () => {
-      renderWithRouter('/metrics/registration')
+      renderWithRouter('/analytics/registration')
 
       // Session selector should be present with "At Camp" default
       expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
 
     it('should render session selector with calendar icon', () => {
-      renderWithRouter('/metrics/registration')
+      renderWithRouter('/analytics/registration')
 
       // Should have at least 2 buttons - one for the dropdown, others for tab links
       const buttons = screen.getAllByRole('button')
@@ -157,7 +160,7 @@ describe('MetricsTypeTabs', () => {
     })
 
     it('should layout tabs and selector with flex justify-between', () => {
-      renderWithRouter('/metrics/registration')
+      renderWithRouter('/analytics/registration')
 
       const nav = screen.getByRole('navigation')
       // The nav should have justify-between class for proper layout
@@ -165,14 +168,14 @@ describe('MetricsTypeTabs', () => {
     })
 
     it('hides session selector on bunk analysis route', () => {
-      renderWithRouter('/metrics/retention/bunks')
+      renderWithRouter('/analytics/retention/bunks')
 
       // Session selector should NOT be visible — bunk analysis uses unfiltered data
       expect(screen.queryByText('At Camp')).not.toBeInTheDocument()
     })
 
     it('shows session selector on other retention routes', () => {
-      renderWithRouter('/metrics/retention/flow')
+      renderWithRouter('/analytics/retention/flow')
 
       // Session selector should be present on non-bunk retention routes
       expect(screen.getByText('At Camp')).toBeInTheDocument()

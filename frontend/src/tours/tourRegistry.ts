@@ -5,10 +5,10 @@ const routeToTour: Record<string, TourId> = {
   '/summer/debug': 'debug',
   '/summer/debug/pipeline': 'debug',
   '/summer/debug/prompts': 'debug',
-  '/metrics/retention': 'retention-overview',
-  '/metrics/retention/flow': 'retention-flow',
-  '/metrics/retention/bunks': 'retention-bunks',
-  '/metrics/retention/staff': 'retention-staff',
+  '/analytics/retention': 'retention-overview',
+  '/analytics/retention/flow': 'retention-flow',
+  '/analytics/retention/bunks': 'retention-bunks',
+  '/analytics/retention/staff': 'retention-staff',
 }
 
 /** Look up the tour ID for a given route pathname */

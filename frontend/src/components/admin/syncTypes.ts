@@ -202,7 +202,7 @@ export const YEAR_SYNC_TYPES = [
   },
   {
     id: 'family_camp_derived',
-    name: 'Family Camp',
+    name: 'Weekend Programs',
     icon: Home,
     color: 'text-orange-500',
     phase: 'transform' as SyncPhase,

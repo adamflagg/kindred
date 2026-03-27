@@ -26,7 +26,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   staff: 'Staff', // Year-scoped staff records
   camper_history: 'Camper History', // Computed retention metrics
   financial_transactions: 'Financial Transactions', // Year-scoped financial data
-  family_camp_derived: 'Family Camp Derived', // Computed from custom values
+  family_camp_derived: 'Weekend Programs Derived', // Computed from custom values
   staff_skills: 'Staff Skills', // Derived from person_custom_values Skills- fields
   financial_aid_applications: 'FA Applications', // Derived from person_custom_values FA- fields
   household_demographics: 'Household Demographics', // Computed from HH- fields

@@ -37,7 +37,7 @@ const SESSION_TYPE_OPTIONS = [
   { id: 'main', label: 'Main' },
   { id: 'embedded', label: 'Embedded' },
   { id: 'ag', label: 'All-Gender' },
-  { id: 'family', label: 'Family Camp' },
+  { id: 'family', label: 'Weekend' },
 ] as const
 
 interface CheckboxGroupProps {
