@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, InternalServerError, RateLimitError
 from openai.types.shared_params import Reasoning, ReasoningEffort
 
 from bunking.logging_config import get_logger
@@ -29,6 +29,10 @@ from .ai_schemas import (
     AIParseResponse,
 )
 from .ai_types import AIProvider, AIRequestContext, ParsedResponse, TokenUsage
+
+# Transient errors that should propagate for retry by callers.
+# Non-transient errors (400 bad request, auth failures) are swallowed into empty responses.
+TRANSIENT_ERRORS = (APITimeoutError, InternalServerError, RateLimitError, APIConnectionError)
 
 _GROUP_KIND_MAP: dict[str, GroupKind] = {
     "sibling": GroupKind.SIBLING,
@@ -146,6 +150,10 @@ class OpenAIProvider(AIProvider):
                 metadata={"error": "Unexpected response type for parse request"},
             )
 
+        except TRANSIENT_ERRORS:
+            # Re-raise transient errors so callers (BatchProcessor) can retry
+            raise
+
         except Exception as e:
             import traceback
 
@@ -160,15 +168,31 @@ class OpenAIProvider(AIProvider):
         self,
         requests: list[tuple[str, AIRequestContext]],
     ) -> list[ParsedResponse]:
-        """Parse multiple requests sequentially.
+        """Parse multiple requests sequentially, tagging transient failures per-item.
 
-        TODO: Implement true batch processing for better performance.
+        Individual transient errors (timeout, 500) are caught and tagged in the
+        response metadata so BatchProcessor can identify retryable failures.
+        The batch continues past individual failures.
         """
         responses = []
         for i, (text, context) in enumerate(requests):
             logger.info(f"Processing batch request {i + 1}/{len(requests)}")
-            response = await self.parse_request(text, context)
-            responses.append(response)
+            try:
+                response = await self.parse_request(text, context)
+                responses.append(response)
+            except TRANSIENT_ERRORS as e:
+                logger.warning(f"Transient error on batch item {i + 1}/{len(requests)}: {type(e).__name__}: {e}")
+                responses.append(
+                    ParsedResponse(
+                        requests=[],
+                        confidence=0.0,
+                        metadata={
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "transient_error": True,
+                        },
+                    )
+                )
         return responses
 
     def get_token_usage(self) -> TokenUsage:
