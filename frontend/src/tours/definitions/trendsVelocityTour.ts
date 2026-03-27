@@ -3,7 +3,7 @@ import type { TourDefinition } from '../types'
 const trendsVelocityTour: TourDefinition = {
   id: 'trends-velocity',
   version: 1,
-  layers: ['metrics-header', 'trends-intro'],
+  layers: ['metrics-header'],
   steps: [
     {
       element: '[data-tour="velocity-controls"]',

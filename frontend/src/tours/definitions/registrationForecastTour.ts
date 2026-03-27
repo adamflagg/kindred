@@ -3,7 +3,7 @@ import type { TourDefinition } from '../types'
 const registrationForecastTour: TourDefinition = {
   id: 'registration-forecast',
   version: 1,
-  layers: ['metrics-header', 'registration-intro'],
+  layers: ['metrics-header'],
   steps: [
     {
       element: '[data-tour="reg-forecast-snapshot"]',

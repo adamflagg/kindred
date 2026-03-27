@@ -26,7 +26,9 @@ const registrationCancellationsTour: TourDefinition = {
       },
     },
   ],
-  isReady: () => document.querySelector('[data-tour="reg-cancel-summary"]') !== null,
+  isReady: () =>
+    document.querySelector('[data-tour="reg-cancel-summary"]') !== null &&
+    document.querySelector('[data-tour="reg-cancel-timing"]') !== null,
 }
 
 export default registrationCancellationsTour

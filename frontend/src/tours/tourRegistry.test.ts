@@ -117,7 +117,7 @@ describe('tourRegistry', () => {
       const definition = await loadTourDefinition('trends-velocity')
       expect(definition).toBeDefined()
       expect(definition.id).toBe('trends-velocity')
-      expect(definition.layers).toEqual(['metrics-header', 'trends-intro'])
+      expect(definition.layers).toEqual(['metrics-header'])
     })
   })
 

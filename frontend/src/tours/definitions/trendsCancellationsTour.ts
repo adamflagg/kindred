@@ -10,7 +10,7 @@ const trendsCancellationsTour: TourDefinition = {
       popover: {
         title: 'Cancellation Controls',
         description:
-          'Same controls as enrollment velocity — prior year comparison and gender split. Here they track cancellation patterns.',
+          'Overlay prior years to compare cancellation pace, or split by gender to see if patterns differ. Unlike enrollment velocity, there are no view modes — the chart always shows cumulative cancellations.',
         side: 'bottom',
         align: 'start',
       },
@@ -18,44 +18,11 @@ const trendsCancellationsTour: TourDefinition = {
     {
       element: '[data-tour="cancel-velocity-chart"]',
       popover: {
-        title: 'Gross Cancellations',
-        description: 'Total cancellations from season start. Shows the raw cancellation volume.',
-        side: 'top',
-        align: 'start',
-        onPopoverRender: () => {
-          ;(
-            document.querySelector('[data-tour="cancel-velocity-mode-gross"]') as HTMLElement
-          )?.click()
-        },
-      },
-    },
-    {
-      element: '[data-tour="cancel-velocity-chart"]',
-      popover: {
-        title: 'Net Cancellations',
-        description: 'Cancellations adjusted for re-enrollments. The default view.',
-        side: 'top',
-        align: 'start',
-        onPopoverRender: () => {
-          ;(
-            document.querySelector('[data-tour="cancel-velocity-mode-net"]') as HTMLElement
-          )?.click()
-        },
-      },
-    },
-    {
-      element: '[data-tour="cancel-velocity-chart"]',
-      popover: {
-        title: 'Weekly Delta',
+        title: 'Cancellation Velocity',
         description:
-          'Week-over-week cancellation changes. Colors are inverted here — red means more cancellations (bad), green means fewer.',
+          'Cumulative cancellations over the season. Drag the range handles at the bottom to zoom into a specific time window. Prior year lines overlay when selected above.',
         side: 'top',
         align: 'start',
-        onPopoverRender: () => {
-          ;(
-            document.querySelector('[data-tour="cancel-velocity-mode-delta"]') as HTMLElement
-          )?.click()
-        },
       },
     },
   ],
