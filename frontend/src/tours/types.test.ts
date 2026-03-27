@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import type {
-  LayerId,
   LayerDefinition,
   LayerCompletionRecord,
   TourDefinition,
