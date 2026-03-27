@@ -1,14 +1,16 @@
-import type { TourId, TourStorageData } from './types'
+import type { TourId, TourStorageData, LayerId } from './types'
 
 export const TOUR_STORAGE_KEY = 'kindred_tours'
 
 export function getTourStorage(): TourStorageData {
   try {
     const raw = localStorage.getItem(TOUR_STORAGE_KEY)
-    if (!raw) return { completed: {} }
-    return JSON.parse(raw) as TourStorageData
+    if (!raw) return { completed: {}, layers: {} }
+    const parsed = JSON.parse(raw) as TourStorageData
+    if (!parsed.layers) parsed.layers = {}
+    return parsed
   } catch {
-    return { completed: {} }
+    return { completed: {}, layers: {} }
   }
 }
 
@@ -27,6 +29,37 @@ export function markTourCompleted(tourId: TourId, version: number): void {
     completedAt: new Date().toISOString(),
   }
   localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
+}
+
+export function getLayerCompletion(layerId: LayerId) {
+  const storage = getTourStorage()
+  return storage.layers[layerId] ?? null
+}
+
+export function markLayerCompleted(layerId: LayerId, version: number): void {
+  const storage = getTourStorage()
+  storage.layers[layerId] = {
+    layerId,
+    completedVersion: version,
+    completedAt: new Date().toISOString(),
+  }
+  localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
+}
+
+export function isLayerSeen(layerId: LayerId): boolean {
+  return getLayerCompletion(layerId) !== null
+}
+
+export function isLayerStaleOrUnseen(
+  layerId: LayerId,
+  version: number,
+  staleDays: number
+): boolean {
+  const record = getLayerCompletion(layerId)
+  if (!record) return true
+  if (record.completedVersion < version) return true
+  const daysSince = (Date.now() - new Date(record.completedAt).getTime()) / 86_400_000
+  return daysSince >= staleDays
 }
 
 export function resetTour(tourId: TourId): void {

@@ -3,6 +3,7 @@ import type { TourDefinition } from '../types'
 const retentionBunksTour: TourDefinition = {
   id: 'retention-bunks',
   version: 1,
+  layers: ['metrics-header'],
   steps: [
     {
       element: '[data-tour="retention-bunks-heatmap"]',

@@ -251,7 +251,7 @@ export default function RegistrationOverview() {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="reg-overview-summary">
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <MetricCard
@@ -333,11 +333,66 @@ export default function RegistrationOverview() {
       </div>
 
       {/* Charts Row 1: Gender + Gender by Grade */}
-      {compareYear !== null && compData ? (
-        <>
+      <div data-tour="reg-overview-demographics">
+        {compareYear !== null && compData ? (
+          <>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <BreakdownChart
+                title={`${currentYear} Gender`}
+                data={genderChartData}
+                showPercentage
+                height={250}
+                breakdownType="gender"
+                onSegmentClick={setFilter}
+                colorMap={GENDER_COLORS}
+              />
+              <BreakdownChart
+                title={`${compareYear} Gender`}
+                data={transformGenderData(compData.by_gender)}
+                showPercentage
+                height={250}
+                colorMap={GENDER_COLORS}
+              />
+            </div>
+            <ComparisonSummaryTable
+              title="Gender Comparison"
+              primaryYear={currentYear}
+              compareYear={compareYear}
+              primaryData={genderChartData}
+              compareData={transformGenderData(compData.by_gender)}
+            />
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <CssVerticalStackedBarChart
+                key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
+                title={`${currentYear} Gender by Grade`}
+                data={transformGenderByGrade(data.by_gender_grade)}
+                segments={[
+                  { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                  { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                ]}
+                height={250}
+                onBarClick={(item) => {
+                  const grade = item['grade']
+                  const value = grade !== null ? String(grade) : 'null'
+                  const label = grade !== null ? `Grade ${String(grade)}` : 'Unknown'
+                  setFilter({ type: 'grade', value, label })
+                }}
+              />
+              <CssVerticalStackedBarChart
+                title={`${compareYear} Gender by Grade`}
+                data={transformGenderByGrade(compData.by_gender_grade)}
+                segments={[
+                  { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                  { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                ]}
+                height={250}
+              />
+            </div>
+          </>
+        ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <BreakdownChart
-              title={`${currentYear} Gender`}
+              title="Enrollment by Gender"
               data={genderChartData}
               showPercentage
               height={250}
@@ -345,25 +400,9 @@ export default function RegistrationOverview() {
               onSegmentClick={setFilter}
               colorMap={GENDER_COLORS}
             />
-            <BreakdownChart
-              title={`${compareYear} Gender`}
-              data={transformGenderData(compData.by_gender)}
-              showPercentage
-              height={250}
-              colorMap={GENDER_COLORS}
-            />
-          </div>
-          <ComparisonSummaryTable
-            title="Gender Comparison"
-            primaryYear={currentYear}
-            compareYear={compareYear}
-            primaryData={genderChartData}
-            compareData={transformGenderData(compData.by_gender)}
-          />
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <CssVerticalStackedBarChart
               key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
-              title={`${currentYear} Gender by Grade`}
+              title="Gender by Grade"
               data={transformGenderByGrade(data.by_gender_grade)}
               segments={[
                 { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
@@ -377,46 +416,9 @@ export default function RegistrationOverview() {
                 setFilter({ type: 'grade', value, label })
               }}
             />
-            <CssVerticalStackedBarChart
-              title={`${compareYear} Gender by Grade`}
-              data={transformGenderByGrade(compData.by_gender_grade)}
-              segments={[
-                { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-                { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-              ]}
-              height={250}
-            />
           </div>
-        </>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <BreakdownChart
-            title="Enrollment by Gender"
-            data={genderChartData}
-            showPercentage
-            height={250}
-            breakdownType="gender"
-            onSegmentClick={setFilter}
-            colorMap={GENDER_COLORS}
-          />
-          <CssVerticalStackedBarChart
-            key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
-            title="Gender by Grade"
-            data={transformGenderByGrade(data.by_gender_grade)}
-            segments={[
-              { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-              { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-            ]}
-            height={250}
-            onBarClick={(item) => {
-              const grade = item['grade']
-              const value = grade !== null ? String(grade) : 'null'
-              const label = grade !== null ? `Grade ${String(grade)}` : 'Unknown'
-              setFilter({ type: 'grade', value, label })
-            }}
-          />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Charts Row 2: New vs Returning + Grade */}
       {compareYear !== null && compData ? (
@@ -768,7 +770,7 @@ export default function RegistrationOverview() {
       )}
 
       {/* Session Details Table */}
-      <div className="card-lodge overflow-hidden">
+      <div className="card-lodge overflow-hidden" data-tour="reg-overview-session-table">
         <div className="border-border border-b px-4 py-3">
           <h3 className="text-foreground text-base font-semibold">Session Details</h3>
         </div>

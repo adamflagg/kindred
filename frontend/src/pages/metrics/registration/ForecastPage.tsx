@@ -238,7 +238,7 @@ export default function ForecastPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div data-tour="reg-forecast-snapshot">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h2 className="text-lg font-semibold">Enrollment Forecast</h2>
           {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
@@ -271,44 +271,46 @@ export default function ForecastPage() {
       </div>
 
       {/* Section tables */}
-      {sections.map((section) => {
-        const showSectionTotal = section.sessions.length >= 2
-        return (
-          <div key={section.key}>
-            {showSectionHeadings && (
-              <h3 className="text-muted-foreground mb-2 text-sm font-semibold uppercase">
-                {section.label}
-              </h3>
-            )}
-            <div className="border-border overflow-x-auto rounded-xl border">
-              <table className="w-full border-collapse">
-                <ForecastTableHeader />
-                <tbody>
-                  {section.sessions.map((s) => (
-                    <SessionRow key={s.session_cm_id} session={s} />
-                  ))}
-                </tbody>
-                {showSectionTotal && (
-                  <tfoot>
-                    <SessionRow session={section.total} isTotal />
-                  </tfoot>
-                )}
-              </table>
+      <div data-tour="reg-forecast-table">
+        {sections.map((section) => {
+          const showSectionTotal = section.sessions.length >= 2
+          return (
+            <div key={section.key}>
+              {showSectionHeadings && (
+                <h3 className="text-muted-foreground mb-2 text-sm font-semibold uppercase">
+                  {section.label}
+                </h3>
+              )}
+              <div className="border-border overflow-x-auto rounded-xl border">
+                <table className="w-full border-collapse">
+                  <ForecastTableHeader />
+                  <tbody>
+                    {section.sessions.map((s) => (
+                      <SessionRow key={s.session_cm_id} session={s} />
+                    ))}
+                  </tbody>
+                  {showSectionTotal && (
+                    <tfoot>
+                      <SessionRow session={section.total} isTotal />
+                    </tfoot>
+                  )}
+                </table>
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
 
-      {/* Grand total (standalone row when 2+ sections visible) */}
-      {showGrandTotal && (
-        <div className="border-border overflow-x-auto rounded-xl border">
-          <table className="w-full border-collapse">
-            <tbody>
-              <SessionRow session={grand_total} isTotal />
-            </tbody>
-          </table>
-        </div>
-      )}
+        {/* Grand total (standalone row when 2+ sections visible) */}
+        {showGrandTotal && (
+          <div className="border-border overflow-x-auto rounded-xl border">
+            <table className="w-full border-collapse">
+              <tbody>
+                <SessionRow session={grand_total} isTotal />
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

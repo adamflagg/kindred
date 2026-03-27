@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { RefreshCw, Sliders, Workflow, Database } from 'lucide-react'
+import { RefreshCw, Sliders, Workflow, Database, Settings2 } from 'lucide-react'
 
 export interface AdminTabConfig {
   id: 'sync' | 'config'
@@ -56,5 +56,12 @@ export const CONFIG_CATEGORIES: ConfigCategoryDef[] = [
     path: '/admin/config/history',
     icon: Database,
     description: 'Historical context & tracking',
+  },
+  {
+    id: 'general',
+    name: 'General',
+    path: '/admin/config/general',
+    icon: Settings2,
+    description: 'UI and display preferences',
   },
 ]

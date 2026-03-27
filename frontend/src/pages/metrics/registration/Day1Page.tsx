@@ -339,7 +339,7 @@ export default function Day1Page() {
         {(day1Data) => (
           <div className="space-y-6">
             {/* Hero cards */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3" data-tour="reg-day1-summary">
               {day1Data.tiers.map((tier) => (
                 <HeroCard key={tier.tier} tier={tier} priorYears={day1Data.prior_years} />
               ))}

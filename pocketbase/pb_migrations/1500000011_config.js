@@ -156,6 +156,10 @@ migrate((app) => {
     if (['ai', 'smart_local_resolution', 'spread'].includes(category)) {
       return 'processing';
     }
+    // General/UI configs
+    if (['tour'].includes(category)) {
+      return 'general';
+    }
     // Default
     return 'processing';
   };

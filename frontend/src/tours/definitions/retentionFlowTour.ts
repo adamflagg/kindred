@@ -3,6 +3,7 @@ import type { TourDefinition } from '../types'
 const retentionFlowTour: TourDefinition = {
   id: 'retention-flow',
   version: 1,
+  layers: ['metrics-header'],
   steps: [
     {
       element: '[data-tour="retention-flow-sankey"]',

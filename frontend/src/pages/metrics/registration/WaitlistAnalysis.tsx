@@ -156,7 +156,10 @@ export default function WaitlistAnalysis() {
         return (
           <div className="space-y-6">
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <div
+              className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+              data-tour="reg-waitlist-summary"
+            >
               <MetricCard
                 title="Total Waitlisted"
                 value={data.total_waitlisted}
@@ -290,7 +293,7 @@ export default function WaitlistAnalysis() {
 
             {/* Session Chart */}
             {data.by_session.length > 0 && primarySession && (
-              <>
+              <div data-tour="reg-waitlist-sessions">
                 <div className={isComparing ? 'grid grid-cols-1 gap-6 lg:grid-cols-2' : ''}>
                   <CssStackedHorizontalBarChart
                     data={primarySession.data}
@@ -338,7 +341,7 @@ export default function WaitlistAnalysis() {
                     categoryLabel="Session"
                   />
                 )}
-              </>
+              </div>
             )}
 
             {/* Grade + Gender Charts Row */}
