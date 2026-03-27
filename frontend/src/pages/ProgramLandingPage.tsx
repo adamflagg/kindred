@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router'
 import { useProgram } from '../contexts/ProgramContext'
+import { getProgramHomeUrl } from '../utils/programUrls'
 import { BrandedLogo } from '../components/BrandedLogo'
 import { getCampName } from '../config/branding'
 import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3 } from 'lucide-react'
@@ -10,13 +11,7 @@ export default function ProgramLandingPage() {
 
   const handleProgramSelect = (program: 'summer' | 'weekend' | 'analytics') => {
     setProgram(program)
-    if (program === 'summer') {
-      void navigate('/summer/sessions')
-    } else if (program === 'weekend') {
-      void navigate('/weekend/')
-    } else {
-      void navigate('/analytics')
-    }
+    void navigate(getProgramHomeUrl(program))
   }
 
   return (

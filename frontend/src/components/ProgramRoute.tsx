@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router'
 import { useProgram } from '../contexts/ProgramContext'
+import { getProgramHomeUrl } from '../utils/programUrls'
 
 export function ProgramRoute() {
   const { currentProgram } = useProgram()
@@ -7,13 +8,7 @@ export function ProgramRoute() {
 
   // If a program is already selected, redirect to it
   if (currentProgram) {
-    const redirectPath =
-      currentProgram === 'summer'
-        ? '/summer/sessions'
-        : currentProgram === 'analytics'
-          ? '/analytics'
-          : '/weekend/'
-    return <Navigate to={redirectPath} state={{ from: location }} replace />
+    return <Navigate to={getProgramHomeUrl(currentProgram)} state={{ from: location }} replace />
   }
 
   // Otherwise, show the program selection page

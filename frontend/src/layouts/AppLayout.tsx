@@ -34,7 +34,7 @@ import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 import { formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
-import { getProgramFromPath } from '../utils/programUrls'
+import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
 import { MANAGE_TABS } from '../config/manageTabs'
@@ -119,13 +119,7 @@ export const AppLayout = () => {
   const handleProgramSwitch = (program: 'summer' | 'weekend' | 'analytics') => {
     setProgram(program)
     setIsProgramMenuOpen(false)
-    if (program === 'summer') {
-      void navigate('/summer/sessions')
-    } else if (program === 'weekend') {
-      void navigate('/weekend/')
-    } else {
-      void navigate('/analytics')
-    }
+    void navigate(getProgramHomeUrl(program))
   }
 
   // Refresh bunking mutation

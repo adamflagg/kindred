@@ -31,13 +31,26 @@ export function getProgramFromPath(path: string): Program | null {
   return null
 }
 
+/** Home URL for each program — single source of truth for redirects and navigation */
+const PROGRAM_HOME: Record<Program, string> = {
+  summer: '/summer/sessions',
+  weekend: '/weekend/',
+  analytics: '/analytics',
+}
+
+export function getProgramHomeUrl(program: Program): string {
+  return PROGRAM_HOME[program]
+}
+
+const PROGRAM_PREFIXES = ['/summer/', '/weekend/', '/analytics/'] as const
+
 /**
  * Remove program prefix from a path
  */
 export function removeProgramPrefix(path: string): string {
-  if (path.startsWith('/summer/')) return path.slice(7)
-  if (path.startsWith('/weekend/')) return path.slice(8)
-  if (path.startsWith('/analytics/')) return path.slice(10)
+  for (const prefix of PROGRAM_PREFIXES) {
+    if (path.startsWith(prefix)) return path.slice(prefix.length - 1)
+  }
   if (path === '/analytics') return '/'
   return path
 }

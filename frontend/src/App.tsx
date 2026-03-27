@@ -10,6 +10,7 @@ import { LockGroupProvider } from './contexts/LockGroupContext'
 import { ProgramProvider, useProgram } from './contexts/ProgramContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { queryClient } from './utils/queryClient'
+import { getProgramHomeUrl } from './utils/programUrls'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
@@ -115,14 +116,8 @@ function RootRedirect() {
   const { currentProgram } = useProgram()
 
   // If user has a saved program preference, go directly there
-  if (currentProgram === 'summer') {
-    return <Navigate to="/summer/sessions" replace />
-  }
-  if (currentProgram === 'weekend') {
-    return <Navigate to="/weekend" replace />
-  }
-  if (currentProgram === 'analytics') {
-    return <Navigate to="/analytics" replace />
+  if (currentProgram) {
+    return <Navigate to={getProgramHomeUrl(currentProgram)} replace />
   }
 
   // First-time users see the program picker

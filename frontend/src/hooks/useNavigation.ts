@@ -11,6 +11,8 @@ import {
   getUserUrl,
   getSummerUrl,
   getWeekendUrl,
+  getProgramFromPath,
+  getProgramHomeUrl,
 } from '../utils/programUrls'
 
 /**
@@ -23,13 +25,7 @@ export function useNavigation() {
   const { currentProgram } = useProgram()
 
   // Determine active program from URL or context
-  const activeProgram = location.pathname.startsWith('/summer')
-    ? 'summer'
-    : location.pathname.startsWith('/weekend')
-      ? 'weekend'
-      : location.pathname.startsWith('/analytics')
-        ? 'analytics'
-        : (currentProgram ?? 'summer')
+  const activeProgram = getProgramFromPath(location.pathname) ?? currentProgram ?? 'summer'
 
   // Navigate to a session
   const navigateToSession = useCallback(
@@ -87,13 +83,7 @@ export function useNavigation() {
   // Switch to a different program
   const switchProgram = useCallback(
     (program: 'summer' | 'weekend' | 'analytics') => {
-      if (program === 'summer') {
-        void navigate('/summer/sessions')
-      } else if (program === 'weekend') {
-        void navigate('/weekend/')
-      } else {
-        void navigate('/analytics')
-      }
+      void navigate(getProgramHomeUrl(program))
     },
     [navigate]
   )
