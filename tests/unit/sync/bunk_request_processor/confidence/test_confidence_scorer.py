@@ -502,3 +502,90 @@ class TestConfidenceFactorsOnMetadata:
         # weighted_total must match the actual returned score (including ai_boost)
         assert factors["weighted_total"] == round(returned_score, 4)
         assert "ai_boost" in factors
+
+
+class TestMatchCertaintyThreshold:
+    """Test the exact/partial boundary at resolution confidence 0.90.
+
+    ExactMatchStrategy returns 0.90 for no-session-info and parent-surname
+    matches. These must be classified as "exact" (name_score=1.0) to produce
+    final confidence 0.9075 (above the 0.85 auto-resolve threshold).
+    """
+
+    def test_confidence_exactly_0_90_classified_as_exact(self):
+        """Resolution confidence of exactly 0.90 should be 'exact', not 'partial'."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=Mock())
+
+        parsed = make_parsed_request()
+        resolution = ResolutionResult(
+            person=Person(cm_id=2001, first_name="Bob", last_name="Jones"),
+            confidence=0.90,
+            method="exact_match",
+            metadata={},
+        )
+
+        score = scorer.score_resolution(
+            parsed_request=parsed,
+            resolution_result=resolution,
+            requester_cm_id=1001,
+            year=2025,
+        )
+
+        # 0.70 * 1.0 (exact) + 0.15 * 0.9 (ai) + 0.10 * 0.5 (base context) = 0.885
+        # Must be above 0.85 auto-resolve threshold
+        assert score >= 0.85, f"Score {score} below auto-resolve threshold 0.85"
+
+        # Verify match_certainty was "exact" via the score factors
+        factors = scorer.last_score_factors
+        assert factors["name_score"] == 1.0, (
+            f"name_score {factors['name_score']} indicates 'partial' classification — "
+            f"resolution confidence 0.90 should be classified as 'exact'"
+        )
+
+    def test_confidence_0_89_classified_as_partial(self):
+        """Resolution confidence below 0.90 should remain 'partial'."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=Mock())
+
+        parsed = make_parsed_request()
+        resolution = ResolutionResult(
+            person=Person(cm_id=2001, first_name="Bob", last_name="Jones"),
+            confidence=0.89,
+            method="fuzzy_match",
+            metadata={},
+        )
+
+        score = scorer.score_resolution(
+            parsed_request=parsed,
+            resolution_result=resolution,
+            requester_cm_id=1001,
+            year=2025,
+        )
+
+        assert score < 0.85, f"Score {score} should be below auto-resolve threshold 0.85 for partial match"
+
+        factors = scorer.last_score_factors
+        assert factors["name_score"] == 0.7, "confidence 0.89 should be classified as 'partial'"
+
+    def test_confidence_0_95_still_exact(self):
+        """Confidence well above 0.90 should still be 'exact' (regression guard)."""
+        scorer = ConfidenceScorer(config={}, attendee_repo=None, person_repo=Mock())
+
+        parsed = make_parsed_request()
+        resolution = ResolutionResult(
+            person=Person(cm_id=2001, first_name="Bob", last_name="Jones"),
+            confidence=0.95,
+            method="exact_match",
+            metadata={},
+        )
+
+        score = scorer.score_resolution(
+            parsed_request=parsed,
+            resolution_result=resolution,
+            requester_cm_id=1001,
+            year=2025,
+        )
+
+        assert score >= 0.85, f"Score {score} should be above auto-resolve threshold 0.85 for exact match"
+
+        factors = scorer.last_score_factors
+        assert factors["name_score"] == 1.0, "confidence 0.95 should be classified as 'exact'"
