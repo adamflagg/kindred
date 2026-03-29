@@ -216,6 +216,35 @@ class TestExactMatchStrategy:
         # Lower confidence without year context
         assert result.confidence == 0.90
 
+    def test_multi_match_disambiguation_uses_session_cm_ids(self, strategy):
+        """Multi-match disambiguation should check session_cm_ids, not just session_cm_id."""
+        target_a = Person(cm_id=2000001, first_name="Erez", last_name="Costello")
+        target_b = Person(cm_id=2000002, first_name="Erez", last_name="Costello")
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            2000001: {
+                "session_cm_id": 1000020,
+                "session_cm_ids": [1000020, 1000010],
+            },
+            2000002: {
+                "session_cm_id": 1000030,
+                "session_cm_ids": [1000030],
+            },
+        }
+
+        result = strategy.resolve_with_context(
+            name="Erez Costello",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target_a, target_b],
+            attendee_info=attendee_info,
+        )
+
+        assert result.confidence == 0.95
+        assert result.person.cm_id == 2000001
+        assert result.metadata.get("session_match") == "exact"
+
 
 class TestExactMatchParentSurname:
     """Test parent surname matching in ExactMatchStrategy"""

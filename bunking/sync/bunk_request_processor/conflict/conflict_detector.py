@@ -128,13 +128,14 @@ class ConflictDetector:
         conflicts.extend(inactive_conflicts)
         inactive_indices = {idx for c in inactive_conflicts for idx in c.affected_request_indices}
 
-        # Detect inactive requesters (cancelled/dismissed/withdrawn)
-        requester_conflicts = self._detect_inactive_requesters(resolved_requests, session_maps)
+        # Detect inactive requesters (cancelled/dismissed/withdrawn) — skip already-flagged
+        target_skip_indices = not_enrolled_indices | inactive_indices
+        requester_conflicts = self._detect_inactive_requesters(resolved_requests, session_maps, target_skip_indices)
         conflicts.extend(requester_conflicts)
         requester_inactive_indices = {idx for c in requester_conflicts for idx in c.affected_request_indices}
 
         # Combined skip set for session conflict detection
-        skip_indices = not_enrolled_indices | inactive_indices | requester_inactive_indices
+        skip_indices = target_skip_indices | requester_inactive_indices
 
         # Detect session mismatches (BUNK_WITH) — skip already-declined
         session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps, skip_indices)
@@ -316,7 +317,10 @@ class ConflictDetector:
         return conflicts
 
     def _detect_inactive_requesters(
-        self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
+        self,
+        resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]],
+        maps: dict[str, Any],
+        skip_indices: set[int] | None = None,
     ) -> list[V2Conflict]:
         """Detect requests where requester has inactive enrollment (cancelled/dismissed/withdrawn)."""
         conflicts: list[V2Conflict] = []
@@ -328,6 +332,8 @@ class ConflictDetector:
 
         for request_map_key in ("positive_requests", "negative_requests"):
             for (requester, target), (idx, session_info) in maps[request_map_key].items():
+                if skip_indices and idx in skip_indices:
+                    continue
                 if requester in inactive:
                     info = requester_enrollment.get(requester)
                     status_id = info.status_id if info else None

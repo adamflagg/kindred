@@ -252,7 +252,10 @@ class ResolutionPipeline:
                 for person_id, session_id in person_sessions_from_db.items():
                     attendee_info_by_person_year[(person_id, year)] = session_id
                     if person_id not in attendee_info:
-                        attendee_info[person_id] = {"session_cm_id": session_id}
+                        attendee_info[person_id] = {
+                            "session_cm_id": session_id,
+                            "session_cm_ids": [session_id],
+                        }
 
         # Add person details (school, grade, city, state) from loaded Person objects
         for cm_id, person in all_persons_by_cm_id.items():

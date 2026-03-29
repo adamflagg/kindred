@@ -471,10 +471,15 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 metadata={"ambiguity_reason": "multiple_matches_no_session", "match_count": len(matches)},
             )
 
-        # Filter by same session using pre-loaded data
-        same_session_matches = [
-            m for m in matches if attendee_info.get(m.cm_id, {}).get("session_cm_id") == session_cm_id
-        ]
+        # Filter by same session using pre-loaded data (check session_cm_ids first for multi-enrolled)
+        def _is_same_session(m: Person) -> bool:
+            info = attendee_info.get(m.cm_id, {})
+            match_sessions = info.get("session_cm_ids", [])
+            if match_sessions:
+                return session_cm_id in match_sessions
+            return info.get("session_cm_id") == session_cm_id
+
+        same_session_matches = [m for m in matches if _is_same_session(m)]
 
         if len(same_session_matches) == 1:
             # Unique match in same session
