@@ -151,6 +151,12 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 		"skipped", s.Stats.Skipped,
 	)
 
+	// Purge OBRs and BRs for persons no longer in the CSV (cancelled/unenrolled)
+	if err := s.purgeOrphanedRequests(currentYear); err != nil {
+		slog.Error("Failed to purge orphaned requests", "error", err)
+		// Non-fatal — don't fail the entire sync for cleanup
+	}
+
 	s.SyncSuccessful = true
 	s.LogSyncComplete("bunk_requests")
 	return nil
@@ -286,6 +292,110 @@ func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, 
 		}
 	}
 
+	return nil
+}
+
+// findOrphanedPersonIDs returns person CampMinder IDs that have existing OBRs
+// but are not present in the current CSV (i.e., no longer enrolled).
+func findOrphanedPersonIDs(csvPersonIDs map[int]bool, existingOBRPersonIDs []int) []int {
+	var orphaned []int
+	for _, personID := range existingOBRPersonIDs {
+		if !csvPersonIDs[personID] {
+			orphaned = append(orphaned, personID)
+		}
+	}
+	return orphaned
+}
+
+// purgeOrphanedRequests deletes OBRs and BRs for persons no longer in the CSV.
+// Called after CSV sync to clean up data from campers who have cancelled/unenrolled.
+func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
+	if len(s.csvPersonIDs) == 0 {
+		slog.Info("No CSV persons tracked, skipping orphan purge")
+		return nil
+	}
+
+	// Query all OBRs for this year
+	existingOBRs, err := s.App.FindRecordsByFilter(
+		"original_bunk_requests",
+		fmt.Sprintf("year = %d", year),
+		"",
+		0,
+		0,
+	)
+	if err != nil {
+		return fmt.Errorf("querying existing OBRs for orphan purge: %w", err)
+	}
+
+	// Expand requester relation to get cm_id
+	if errs := s.App.ExpandRecords(existingOBRs, []string{"requester"}, nil); len(errs) > 0 {
+		slog.Warn("Some requester expansions failed during orphan purge", "errors", errs)
+	}
+
+	// Collect unique requester cm_ids from existing OBRs
+	obrsByPerson := make(map[int][]*core.Record)
+	for _, obr := range existingOBRs {
+		requester := obr.ExpandedOne("requester")
+		if requester == nil {
+			continue
+		}
+		personCMID, _ := requester.Get("cm_id").(float64)
+		if personCMID <= 0 {
+			continue
+		}
+		cmID := int(personCMID)
+		obrsByPerson[cmID] = append(obrsByPerson[cmID], obr)
+	}
+
+	// Find persons not in the CSV
+	existingPersonIDs := make([]int, 0, len(obrsByPerson))
+	for cmID := range obrsByPerson {
+		existingPersonIDs = append(existingPersonIDs, cmID)
+	}
+	orphanedIDs := findOrphanedPersonIDs(s.csvPersonIDs, existingPersonIDs)
+
+	if len(orphanedIDs) == 0 {
+		slog.Info("No orphaned requests to purge")
+		return nil
+	}
+
+	// Delete OBRs and BRs for orphaned persons
+	totalOBRs := 0
+	totalBRs := 0
+	for _, cmID := range orphanedIDs {
+		// Delete OBRs
+		for _, obr := range obrsByPerson[cmID] {
+			if err := s.App.Delete(obr); err != nil {
+				slog.Error("Failed to delete orphaned OBR", "person_cm_id", cmID, "error", err)
+				continue
+			}
+			totalOBRs++
+		}
+
+		// Delete BRs for this person
+		brs, err := s.App.FindRecordsByFilter(
+			"bunk_requests",
+			fmt.Sprintf("requester_id = %d && year = %d", cmID, year),
+			"", 0, 0,
+		)
+		if err != nil {
+			slog.Error("Failed to query BRs for orphaned person", "person_cm_id", cmID, "error", err)
+			continue
+		}
+		for _, br := range brs {
+			if err := s.App.Delete(br); err != nil {
+				slog.Error("Failed to delete orphaned BR", "person_cm_id", cmID, "error", err)
+				continue
+			}
+			totalBRs++
+		}
+	}
+
+	slog.Info("Purged orphaned requests",
+		"persons", len(orphanedIDs),
+		"obrs_deleted", totalOBRs,
+		"brs_deleted", totalBRs,
+	)
 	return nil
 }
 

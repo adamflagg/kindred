@@ -4,6 +4,60 @@ import (
 	"testing"
 )
 
+func TestBunkRequestsSync_PurgeOrphanedRequests_Logic(t *testing.T) {
+	tests := []struct {
+		name               string
+		csvPersonIDs       map[int]bool
+		existingOBRPersons []int
+		expectPurged       []int
+	}{
+		{
+			name:               "no orphans — all OBR persons in CSV",
+			csvPersonIDs:       map[int]bool{1001: true, 1002: true},
+			existingOBRPersons: []int{1001, 1002},
+			expectPurged:       []int{},
+		},
+		{
+			name:               "one orphan — person 1003 not in CSV",
+			csvPersonIDs:       map[int]bool{1001: true, 1002: true},
+			existingOBRPersons: []int{1001, 1002, 1003},
+			expectPurged:       []int{1003},
+		},
+		{
+			name:               "multiple orphans",
+			csvPersonIDs:       map[int]bool{1001: true},
+			existingOBRPersons: []int{1001, 1002, 1003, 1004},
+			expectPurged:       []int{1002, 1003, 1004},
+		},
+		{
+			name:               "empty CSV — all existing are orphans",
+			csvPersonIDs:       map[int]bool{},
+			existingOBRPersons: []int{1001, 1002},
+			expectPurged:       []int{1001, 1002},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			purged := findOrphanedPersonIDs(tt.csvPersonIDs, tt.existingOBRPersons)
+
+			if len(purged) != len(tt.expectPurged) {
+				t.Fatalf("got %d purged, want %d: %v", len(purged), len(tt.expectPurged), purged)
+			}
+
+			purgedSet := make(map[int]bool)
+			for _, id := range purged {
+				purgedSet[id] = true
+			}
+			for _, expected := range tt.expectPurged {
+				if !purgedSet[expected] {
+					t.Errorf("expected person %d to be purged, but wasn't", expected)
+				}
+			}
+		})
+	}
+}
+
 func TestBunkRequestsSync_TrackCSVPersonIDs(t *testing.T) {
 	tests := []struct {
 		name           string
