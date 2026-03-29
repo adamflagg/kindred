@@ -2,8 +2,8 @@
 
 Detects session conflicts (BUNK_WITH across sessions → DECLINED,
 NOT_BUNK_WITH across sessions → auto-RESOLVED) and enrollment conflicts
-(TARGET_NOT_ENROLLED → DECLINED). All other constraint checking is
-delegated to the solver where it belongs."""
+(TARGET_NOT_ENROLLED, TARGET_NOT_ATTENDING, REQUESTER_NOT_ATTENDING → DECLINED).
+All other constraint checking is delegated to the solver where it belongs."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ class ConflictType(Enum):
     CROSS_SESSION_SATISFIED = "cross_session_satisfied"  # NOT_BUNK_WITH auto-satisfied by different sessions
     TARGET_NOT_ENROLLED = "target_not_enrolled"  # Target has no bunking enrollment at all
     TARGET_NOT_ATTENDING = "target_not_attending"  # Target enrolled but cancelled/dismissed/withdrawn
+    REQUESTER_NOT_ATTENDING = "requester_not_attending"  # Requester cancelled/dismissed/withdrawn
 
 
 @dataclass
@@ -61,11 +62,12 @@ class V2ConflictResult:
 class ConflictDetector:
     """Native V2 implementation of conflict detection.
 
-    Detects four conflict types:
+    Detects five conflict types:
     - SESSION_MISMATCH: BUNK_WITH across sessions → auto-DECLINED
     - CROSS_SESSION_SATISFIED: NOT_BUNK_WITH across sessions → auto-RESOLVED
     - TARGET_NOT_ENROLLED: target has no bunking enrollment → auto-DECLINED
     - TARGET_NOT_ATTENDING: target enrolled but cancelled/dismissed/withdrawn → auto-DECLINED
+    - REQUESTER_NOT_ATTENDING: requester cancelled/dismissed/withdrawn → auto-DECLINED
 
     All other constraint checking (reciprocal requests, circular dependencies,
     capacity, etc.) is delegated to the solver where it belongs.
@@ -95,6 +97,7 @@ class ConflictDetector:
             "cross_session_satisfied": 0,
             "target_not_enrolled": 0,
             "target_not_attending": 0,
+            "requester_not_attending": 0,
         }
 
     def detect_conflicts(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> V2ConflictResult:
@@ -125,8 +128,13 @@ class ConflictDetector:
         conflicts.extend(inactive_conflicts)
         inactive_indices = {idx for c in inactive_conflicts for idx in c.affected_request_indices}
 
+        # Detect inactive requesters (cancelled/dismissed/withdrawn)
+        requester_conflicts = self._detect_inactive_requesters(resolved_requests, session_maps)
+        conflicts.extend(requester_conflicts)
+        requester_inactive_indices = {idx for c in requester_conflicts for idx in c.affected_request_indices}
+
         # Combined skip set for session conflict detection
-        skip_indices = not_enrolled_indices | inactive_indices
+        skip_indices = not_enrolled_indices | inactive_indices | requester_inactive_indices
 
         # Detect session mismatches (BUNK_WITH) — skip already-declined
         session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps, skip_indices)
@@ -218,6 +226,27 @@ class ConflictDetector:
             except (AttributeError, TypeError):
                 logger.debug("bulk_get_enrollment_for_persons not available; skipping enrollment-aware detection")
 
+        # Enrich requester enrollment status
+        maps["inactive_requesters"] = set()
+        maps["requester_enrollment_info"] = {}
+        all_requesters: set[int] = set()
+        for requester, target in maps["positive_requests"]:
+            all_requesters.add(requester)
+        for requester, target in maps["negative_requests"]:
+            all_requesters.add(requester)
+
+        if self.attendee_repo and self.year and all_requesters:
+            try:
+                requester_enrollment = self.attendee_repo.bulk_get_enrollment_for_persons(
+                    list(all_requesters), self.year
+                )
+                maps["requester_enrollment_info"] = requester_enrollment
+                maps["inactive_requesters"] = {
+                    cm_id for cm_id, info in requester_enrollment.items() if info.is_inactive
+                }
+            except (AttributeError, TypeError):
+                logger.debug("bulk_get_enrollment_for_persons not available; skipping requester enrollment check")
+
         return maps
 
     def _detect_target_not_enrolled(
@@ -280,6 +309,43 @@ class ConflictDetector:
                         metadata={
                             "requester_session": session_info["requester_session"],
                             "target_status_id": status_id,
+                        },
+                    )
+                    conflicts.append(conflict)
+
+        return conflicts
+
+    def _detect_inactive_requesters(
+        self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
+    ) -> list[V2Conflict]:
+        """Detect requests where requester has inactive enrollment (cancelled/dismissed/withdrawn)."""
+        conflicts: list[V2Conflict] = []
+        inactive = maps.get("inactive_requesters", set())
+        if not inactive:
+            return conflicts
+
+        requester_enrollment = maps.get("requester_enrollment_info", {})
+
+        for request_map_key in ("positive_requests", "negative_requests"):
+            for (requester, target), (idx, session_info) in maps[request_map_key].items():
+                if requester in inactive:
+                    info = requester_enrollment.get(requester)
+                    status_id = info.status_id if info else None
+                    conflict = V2Conflict(
+                        conflict_type=ConflictType.REQUESTER_NOT_ATTENDING,
+                        person_a_cm_id=requester,
+                        person_b_cm_id=target,
+                        description=(
+                            f"Requester {requester} has inactive enrollment status "
+                            f"(status_id={status_id}, target was {target})"
+                        ),
+                        severity="high",
+                        auto_resolvable=True,
+                        resolution_suggestion="Requester is no longer attending (cancelled/dismissed/withdrawn)",
+                        affected_request_indices=[idx],
+                        metadata={
+                            "requester_session": session_info["requester_session"],
+                            "requester_status_id": status_id,
                         },
                     )
                     conflicts.append(conflict)
@@ -385,7 +451,7 @@ class ConflictDetector:
                         resolution_info["auto_satisfied"] = True
                         resolution_info["satisfaction_reason"] = conflict.resolution_suggestion
                     else:
-                        # SESSION_MISMATCH, TARGET_NOT_ENROLLED, TARGET_NOT_ATTENDING
+                        # SESSION_MISMATCH, TARGET_NOT_ENROLLED, TARGET_NOT_ATTENDING, REQUESTER_NOT_ATTENDING
                         resolution_info["has_conflict"] = True
                         resolution_info["conflict_type"] = conflict.conflict_type.value
                         resolution_info["conflict_description"] = conflict.description
@@ -417,6 +483,9 @@ class ConflictDetector:
         satisfied = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.CROSS_SESSION_SATISFIED]
         not_enrolled = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ENROLLED]
         not_attending = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ATTENDING]
+        requester_not_attending = [
+            c for c in conflict_result.conflicts if c.conflict_type == ConflictType.REQUESTER_NOT_ATTENDING
+        ]
 
         summary_lines = [f"Detected {len(conflict_result.conflicts)} conflict(s):"]
         if mismatches:
@@ -425,6 +494,8 @@ class ConflictDetector:
             summary_lines.append(f"  {len(not_enrolled)} target not enrolled → DECLINED")
         if not_attending:
             summary_lines.append(f"  {len(not_attending)} target not attending → DECLINED")
+        if requester_not_attending:
+            summary_lines.append(f"  {len(requester_not_attending)} requester not attending → DECLINED")
         if satisfied:
             summary_lines.append(f"  {len(satisfied)} auto-satisfied NOT_BUNK_WITH → RESOLVED")
         summary_lines.append("")
@@ -452,3 +523,5 @@ class ConflictDetector:
                 self._stats["target_not_enrolled"] += 1
             elif c.conflict_type == ConflictType.TARGET_NOT_ATTENDING:
                 self._stats["target_not_attending"] += 1
+            elif c.conflict_type == ConflictType.REQUESTER_NOT_ATTENDING:
+                self._stats["requester_not_attending"] += 1

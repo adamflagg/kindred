@@ -236,7 +236,10 @@ class ResolutionPipeline:
                     for year in years:
                         attendee_info_by_person_year[(person_id, year)] = session_id
                     if person_id not in attendee_info:
-                        attendee_info[person_id] = {"session_cm_id": session_id}
+                        attendee_info[person_id] = {
+                            "session_cm_id": session_id,
+                            "session_cm_ids": list(sessions),
+                        }
         else:
             # Fallback for non-orchestrator callers (tests, CLI tools).
             # Cache session lookups to avoid duplicate bulk_get_sessions_for_persons calls.

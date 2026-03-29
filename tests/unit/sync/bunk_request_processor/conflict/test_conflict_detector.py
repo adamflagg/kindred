@@ -821,3 +821,91 @@ class TestEnrollmentAwareConflicts:
         assert resolution_info.get("has_conflict") is True
         assert resolution_info.get("conflict_type") == "target_not_attending"
         assert resolution_info.get("auto_resolvable") is True
+
+    def test_cancelled_requester_creates_not_attending_conflict(self):
+        """Requester with cancelled enrollment -> REQUESTER_NOT_ATTENDING conflict."""
+        from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
+
+        enrollment_map = {
+            1000001: EnrollmentInfo(session_cm_id=1000010, status_id=32),  # requester cancelled
+            1234567: EnrollmentInfo(session_cm_id=1000010, status_id=2),  # target enrolled
+        }
+        sessions_map = {1000001: 1000010, 1234567: 1000010}
+        repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
+        detector = ConflictDetector(attendee_repo=repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Olivia Chen"),
+                {
+                    "requester_cm_id": 1000001,
+                    "person_cm_id": 1234567,
+                    "session_cm_id": 1000010,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        requester_conflicts = [c for c in result.conflicts if c.conflict_type == ConflictType.REQUESTER_NOT_ATTENDING]
+        assert len(requester_conflicts) == 1
+        assert requester_conflicts[0].person_a_cm_id == 1000001
+        assert requester_conflicts[0].auto_resolvable is True
+
+    def test_enrolled_requester_no_conflict(self):
+        """Enrolled requester -> no REQUESTER_NOT_ATTENDING conflict."""
+        from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
+
+        enrollment_map = {
+            1000001: EnrollmentInfo(session_cm_id=1000010, status_id=2),  # requester enrolled
+            1234567: EnrollmentInfo(session_cm_id=1000010, status_id=2),  # target enrolled
+        }
+        sessions_map = {1000001: 1000010, 1234567: 1000010}
+        repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
+        detector = ConflictDetector(attendee_repo=repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Olivia Chen"),
+                {
+                    "requester_cm_id": 1000001,
+                    "person_cm_id": 1234567,
+                    "session_cm_id": 1000010,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        requester_conflicts = [c for c in result.conflicts if c.conflict_type == ConflictType.REQUESTER_NOT_ATTENDING]
+        assert len(requester_conflicts) == 0
+
+    def test_ghost_record_both_sides_not_attending(self):
+        """Neither requester nor target enrolled -> both conflict types fire."""
+        from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
+
+        enrollment_map = {
+            1000001: EnrollmentInfo(session_cm_id=1000010, status_id=32),  # requester cancelled
+            1234567: EnrollmentInfo(session_cm_id=1000010, status_id=32),  # target cancelled
+        }
+        sessions_map = {1000001: 1000010, 1234567: 1000010}
+        repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
+        detector = ConflictDetector(attendee_repo=repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Olivia Chen"),
+                {
+                    "requester_cm_id": 1000001,
+                    "person_cm_id": 1234567,
+                    "session_cm_id": 1000010,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        requester_conflicts = [c for c in result.conflicts if c.conflict_type == ConflictType.REQUESTER_NOT_ATTENDING]
+        target_conflicts = [c for c in result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ATTENDING]
+        assert len(requester_conflicts) == 1
+        assert len(target_conflicts) == 1

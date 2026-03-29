@@ -356,6 +356,15 @@ class ExactMatchStrategy(BaseMatchStrategy):
         # Filter out self-references
         matches = self._filter_self_references(matches, requester_cm_id)
 
+        # Deduplicate by cm_id — person records may have duplicates across years
+        seen_cm_ids: set[int] = set()
+        unique_matches: list[Person] = []
+        for m in matches:
+            if m.cm_id not in seen_cm_ids:
+                seen_cm_ids.add(m.cm_id)
+                unique_matches.append(m)
+        matches = unique_matches
+
         if not matches:
             # Try matching via parent surname with pre-loaded candidates (or all_persons for fallback)
             parent_pool = candidates if candidates else all_persons
@@ -376,11 +385,13 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     session_cm_id = requester_info.get("session_cm_id")
 
                 if session_cm_id:
-                    # Check match's session
+                    # Check match's session — use all sessions if available,
+                    # fall back to single session for backward compatibility
                     match_info = attendee_info.get(matches[0].cm_id, {})
+                    match_sessions = match_info.get("session_cm_ids", [])
                     match_session = match_info.get("session_cm_id")
 
-                    if match_session == session_cm_id:
+                    if (match_sessions and session_cm_id in match_sessions) or (match_session == session_cm_id):
                         return ResolutionResult(
                             person=matches[0],
                             confidence=0.95,

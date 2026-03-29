@@ -482,6 +482,77 @@ class TestResolveWithContextSessionHandling:
         assert result.confidence == 0.85
         assert result.metadata.get("session_match") == "different"
 
+    def test_duplicate_person_records_deduplicated_by_cm_id(self, strategy):
+        """Multiple person records with same cm_id → treated as single match."""
+        # Emily Shapiro has 8 person records (one per year attended), all cm_id=11444631
+        target1 = Person(cm_id=11444631, first_name="Emily", last_name="Shapiro")
+        target2 = Person(cm_id=11444631, first_name="Emily", last_name="Shapiro")
+        target3 = Person(cm_id=11444631, first_name="Emily", last_name="Shapiro")
+        attendee_info = {
+            1000001: {"session_cm_id": 1235405},
+            11444631: {"session_cm_id": 1235405, "session_cm_ids": [1235405]},
+        }
+
+        result = strategy.resolve_with_context(
+            name="Emily Shapiro",
+            requester_cm_id=1000001,
+            session_cm_id=1235405,
+            year=2026,
+            candidates=[target1, target2, target3],
+            attendee_info=attendee_info,
+        )
+
+        # Should be single match (0.95), not multiple-match ambiguous (0.50)
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+        assert result.person.cm_id == 11444631
+
+    def test_multi_session_target_matches_any_session(self, strategy):
+        """Target enrolled in multiple sessions → matches if requester's session is ANY of them."""
+        target = Person(cm_id=1234567, first_name="Erez", last_name="Costello")
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            1234567: {
+                "session_cm_id": 1000020,  # primary is different session
+                "session_cm_ids": [1000020, 1000010],  # but also enrolled in requester's session
+            },
+        }
+
+        result = strategy.resolve_with_context(
+            name="Erez Costello",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target],
+            attendee_info=attendee_info,
+        )
+
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+
+    def test_multi_session_target_no_overlap_returns_different(self, strategy):
+        """Target in multiple sessions but none match requester → still 'different'."""
+        target = Person(cm_id=1234567, first_name="Erez", last_name="Costello")
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            1234567: {
+                "session_cm_id": 1000020,
+                "session_cm_ids": [1000020, 1000030],  # neither matches 1000010
+            },
+        }
+
+        result = strategy.resolve_with_context(
+            name="Erez Costello",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target],
+            attendee_info=attendee_info,
+        )
+
+        assert result.confidence == 0.85
+        assert result.metadata.get("session_match") == "different"
+
     def test_no_attendee_info_at_all_unchanged(self, strategy):
         """No attendee_info provided → confidence 0.90 (existing behavior)."""
         target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
