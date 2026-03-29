@@ -30,7 +30,10 @@ func TestBunkRequestsSync_PurgeOrphanedRequests_Logic(t *testing.T) {
 			expectPurged:       []int{1002, 1003, 1004},
 		},
 		{
-			name:               "empty CSV — all existing are orphans",
+			// Note: tests findOrphanedPersonIDs only. purgeOrphanedRequests has an
+			// intentional safety guard that skips when csvPersonIDs is empty (protects
+			// against wiping all OBRs on fresh deploy or missing CSV).
+			name:               "empty CSV — all existing are orphans (pure function)",
 			csvPersonIDs:       map[int]bool{},
 			existingOBRPersons: []int{1001, 1002},
 			expectPurged:       []int{1001, 1002},
