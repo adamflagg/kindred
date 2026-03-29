@@ -586,7 +586,7 @@ class TestEnrollmentAwareConflicts:
 
         resolved_requests = [
             (
-                make_parsed_request("Charlotte Thakral"),
+                make_parsed_request("Emma Johnson"),
                 {
                     "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,
@@ -616,7 +616,7 @@ class TestEnrollmentAwareConflicts:
 
         resolved_requests = [
             (
-                make_parsed_request("Helen Dubreuil"),
+                make_parsed_request("Olivia Chen"),
                 {
                     "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,
@@ -722,7 +722,7 @@ class TestEnrollmentAwareConflicts:
 
         resolved_requests = [
             (
-                make_parsed_request("Charlotte Thakral"),
+                make_parsed_request("Emma Johnson"),
                 {
                     "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,
@@ -777,7 +777,7 @@ class TestEnrollmentAwareConflicts:
 
         resolved_requests = [
             (
-                make_parsed_request("Helen Dubreuil"),
+                make_parsed_request("Olivia Chen"),
                 {
                     "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,
@@ -805,7 +805,7 @@ class TestEnrollmentAwareConflicts:
 
         resolved_requests = [
             (
-                make_parsed_request("Charlotte Thakral"),
+                make_parsed_request("Emma Johnson"),
                 {
                     "requester_cm_id": 1000001,
                     "person_cm_id": 1234567,

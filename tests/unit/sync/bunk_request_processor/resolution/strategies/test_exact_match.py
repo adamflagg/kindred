@@ -422,14 +422,14 @@ class TestResolveWithContextSessionHandling:
 
     def test_target_not_in_attendee_info_returns_unknown(self, strategy):
         """Target absent from enrolled-only attendee_info → confidence 0.90, session_match='unknown'."""
-        target = Person(cm_id=16714060, first_name="Charlotte", last_name="Thakral")
+        target = Person(cm_id=1234568, first_name="Emma", last_name="Johnson")
         attendee_info = {
             1000001: {"session_cm_id": 1000010},  # requester present
-            # 16714060 NOT present — cancelled target absent from enrolled-only map
+            # 1234568 NOT present — cancelled target absent from enrolled-only map
         }
 
         result = strategy.resolve_with_context(
-            name="Charlotte Thakral",
+            name="Emma Johnson",
             requester_cm_id=1000001,
             session_cm_id=1000010,
             year=2026,
@@ -440,7 +440,7 @@ class TestResolveWithContextSessionHandling:
         assert result.is_resolved
         assert result.confidence == 0.90
         assert result.metadata.get("session_match") == "unknown"
-        assert result.person.cm_id == 16714060
+        assert result.person.cm_id == 1234568
 
     def test_target_in_same_session_returns_exact(self, strategy):
         """Target in same session → confidence 0.95, session_match='exact' (unchanged)."""

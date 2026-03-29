@@ -266,9 +266,9 @@ class TestEnrollmentDispositionStatus:
         )
 
         parsed_req = ParsedRequest(
-            raw_text="Charlotte Thakral",
+            raw_text="Emma Johnson",
             request_type=RequestType.BUNK_WITH,
-            target_name="Charlotte Thakral",
+            target_name="Emma Johnson",
             age_preference=None,
             source_field="bunk_with",
             source=RequestSource.FAMILY,
@@ -300,9 +300,9 @@ class TestEnrollmentDispositionStatus:
         )
 
         parsed_req = ParsedRequest(
-            raw_text="Helen Dubreuil",
+            raw_text="Olivia Chen",
             request_type=RequestType.BUNK_WITH,
-            target_name="Helen Dubreuil",
+            target_name="Olivia Chen",
             age_preference=None,
             source_field="bunk_with",
             source=RequestSource.FAMILY,
