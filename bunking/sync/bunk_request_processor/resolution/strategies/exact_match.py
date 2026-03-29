@@ -7,13 +7,14 @@ from __future__ import annotations
 from typing import Any
 
 from bunking.logging_config import get_logger
-from ...core.models import Person
 
-logger = get_logger(__name__)
+from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import last_name_matches, parse_name
 from ..interfaces import ResolutionResult
 from .base_match_strategy import BaseMatchStrategy
+
+logger = get_logger(__name__)
 
 
 class ExactMatchStrategy(BaseMatchStrategy):
