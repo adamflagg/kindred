@@ -253,5 +253,76 @@ class TestAutoSatisfiedStatus:
         assert status == RequestStatus.DECLINED
 
 
+class TestEnrollmentDispositionStatus:
+    """Tests for enrollment-aware disposition in request builder."""
+
+    def test_not_attending_conflict_declines(self):
+        """has_conflict + target_not_attending → DECLINED with reason."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+        parsed_req = ParsedRequest(
+            raw_text="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "person_cm_id": 1234567,
+            "has_conflict": True,
+            "conflict_type": "target_not_attending",
+            "conflict_description": "Target 1234567 has inactive enrollment status (status_id=32)",
+            "confidence": 0.90,
+        }
+        metadata: dict[str, Any] = {}
+
+        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+
+        assert status == RequestStatus.DECLINED
+        assert "inactive enrollment" in metadata.get("declined_reason", "")
+
+    def test_waitlisted_target_stays_pending(self):
+        """target_waitlisted=True → PENDING even with high confidence."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+        parsed_req = ParsedRequest(
+            raw_text="Olivia Chen",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Olivia Chen",
+            age_preference=None,
+            source_field="bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        # High confidence (0.91 > 0.85) would normally RESOLVE, but waitlisted overrides
+        resolution_info = {
+            "person_cm_id": 1234567,
+            "target_waitlisted": True,
+            "confidence": 0.91,
+        }
+        metadata: dict[str, Any] = {}
+
+        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+
+        assert status == RequestStatus.PENDING
+        assert metadata.get("pending_reason") == "target_waitlisted"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -401,5 +401,102 @@ class TestExactMatchPreferredName:
         assert not result.is_resolved
 
 
+class TestResolveWithContextSessionHandling:
+    """Tests for resolve_with_context: unknown vs different session distinction."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        mock_attendee_repo.get_by_person_and_year.return_value = None
+        mock_attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        mock_person_repo.name_cache = None
+        mock_person_repo.find_by_first_and_parent_surname.return_value = []
+        mock_person_repo.get_all_for_phonetic_matching.return_value = []
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        return ExactMatchStrategy(person_repo, attendee_repo)
+
+    def test_target_not_in_attendee_info_returns_unknown(self, strategy):
+        """Target absent from enrolled-only attendee_info → confidence 0.90, session_match='unknown'."""
+        target = Person(cm_id=1234568, first_name="Emma", last_name="Johnson")
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},  # requester present
+            # 1234568 NOT present — cancelled target absent from enrolled-only map
+        }
+
+        result = strategy.resolve_with_context(
+            name="Emma Johnson",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90
+        assert result.metadata.get("session_match") == "unknown"
+        assert result.person.cm_id == 1234568
+
+    def test_target_in_same_session_returns_exact(self, strategy):
+        """Target in same session → confidence 0.95, session_match='exact' (unchanged)."""
+        target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            1234567: {"session_cm_id": 1000010},  # same session
+        }
+
+        result = strategy.resolve_with_context(
+            name="Ivy Smith",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target],
+            attendee_info=attendee_info,
+        )
+
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+
+    def test_target_in_different_session_returns_different(self, strategy):
+        """Target in different session → confidence 0.85, session_match='different' (unchanged)."""
+        target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            1234567: {"session_cm_id": 1000020},  # different session
+        }
+
+        result = strategy.resolve_with_context(
+            name="Ivy Smith",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target],
+            attendee_info=attendee_info,
+        )
+
+        assert result.confidence == 0.85
+        assert result.metadata.get("session_match") == "different"
+
+    def test_no_attendee_info_at_all_unchanged(self, strategy):
+        """No attendee_info provided → confidence 0.90 (existing behavior)."""
+        target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
+
+        result = strategy.resolve_with_context(
+            name="Ivy Smith",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[target],
+            attendee_info=None,
+        )
+
+        assert result.confidence == 0.90
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

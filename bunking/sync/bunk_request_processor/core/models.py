@@ -10,6 +10,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from ..shared.constants import (
+    ACTIVE_ENROLLMENT_STATUSES,
+    INACTIVE_ENROLLMENT_STATUSES,
+    PENDING_ENROLLMENT_STATUSES,
+)
+
 
 class RequestType(Enum):
     """Types of bunk requests"""
@@ -80,6 +86,33 @@ class GroupKind(Enum):
     LAST_YEAR_BUNKMATES = "last_year_bunkmates"
     CLASSMATES = "classmates"
     CONGREGATION = "congregation"
+
+
+@dataclass(frozen=True)
+class EnrollmentInfo:
+    """Enrollment data for a person in a specific year.
+
+    Captures both the bunking session and the CampMinder enrollment status,
+    enabling disposition decisions (decline cancelled, keep waitlisted pending).
+    """
+
+    session_cm_id: int
+    status_id: int
+
+    @property
+    def is_active(self) -> bool:
+        """Target is actively enrolled (status_id=2)."""
+        return self.status_id in ACTIVE_ENROLLMENT_STATUSES
+
+    @property
+    def is_pending_enrollment(self) -> bool:
+        """Target is waitlisted, applied, or inquiry — may enroll later."""
+        return self.status_id in PENDING_ENROLLMENT_STATUSES
+
+    @property
+    def is_inactive(self) -> bool:
+        """Target is cancelled, dismissed, withdrawn, etc. — not attending."""
+        return self.status_id in INACTIVE_ENROLLMENT_STATUSES
 
 
 @dataclass

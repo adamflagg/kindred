@@ -22,6 +22,26 @@ from re import Pattern
 # CampMinder attendee status IDs — used in session enrollment filtering
 ENROLLED_STATUS_ID = 2  # Active enrolled attendee
 
+# All CampMinder attendee StatusID values (from docs/api/external/campminder/specs/sessions.yaml)
+# Used by EnrollmentInfo for disposition decisions
+STATUS_NONE = 1
+STATUS_ENROLLED = 2
+STATUS_APPLIED = 4
+STATUS_WAITLISTED = 8
+STATUS_LEFT_EARLY = 16
+STATUS_CANCELLED = 32
+STATUS_DISMISSED = 64
+STATUS_INQUIRY = 128
+STATUS_WITHDRAWN = 256
+STATUS_INCOMPLETE = 512
+
+# Groupings for disposition logic
+ACTIVE_ENROLLMENT_STATUSES: frozenset[int] = frozenset({STATUS_ENROLLED})
+PENDING_ENROLLMENT_STATUSES: frozenset[int] = frozenset({STATUS_WAITLISTED, STATUS_APPLIED, STATUS_INQUIRY})
+INACTIVE_ENROLLMENT_STATUSES: frozenset[int] = frozenset(
+    {STATUS_CANCELLED, STATUS_DISMISSED, STATUS_WITHDRAWN, STATUS_INCOMPLETE, STATUS_NONE, STATUS_LEFT_EARLY}
+)
+
 # =============================================================================
 # Placeholder Constants
 # =============================================================================

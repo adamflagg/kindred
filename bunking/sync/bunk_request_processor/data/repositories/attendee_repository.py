@@ -12,9 +12,9 @@ from api.utils.session_metrics import get_person_from_expand, get_session_from_e
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-from ...core.models import Person
+from ...core.models import EnrollmentInfo, Person
 from ...shared import parse_date
-from ...shared.constants import ENROLLED_STATUS_ID
+from ...shared.constants import ACTIVE_ENROLLMENT_STATUSES, ENROLLED_STATUS_ID, PENDING_ENROLLMENT_STATUSES
 from ..pocketbase_wrapper import PocketBaseWrapper
 from .person_repository import PersonRepository
 
@@ -281,6 +281,86 @@ class AttendeeRepository:
         except Exception:
             logger.exception("bulk_get_sessions_chunk failed for %d person IDs (year=%d)", len(person_cm_ids), year)
             return {}
+
+    def bulk_get_enrollment_for_persons(self, person_cm_ids: list[int], year: int) -> dict[int, EnrollmentInfo]:
+        """Get enrollment info including status_id for each person.
+
+        Unlike bulk_get_sessions_for_persons (which returns only session_cm_id),
+        this returns full EnrollmentInfo including status for disposition decisions.
+        Filters to bunking session types only.
+        Status priority: enrolled > waitlisted/applied > cancelled/other.
+        """
+        if not person_cm_ids:
+            return {}
+
+        enrollment_dict: dict[int, EnrollmentInfo] = {}
+        for i in range(0, len(person_cm_ids), self._BULK_CHUNK_SIZE):
+            chunk = person_cm_ids[i : i + self._BULK_CHUNK_SIZE]
+            chunk_result = self._bulk_get_enrollment_chunk(chunk, year)
+            enrollment_dict.update(chunk_result)
+
+        return enrollment_dict
+
+    def _bulk_get_enrollment_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, EnrollmentInfo]:
+        """Get enrollment info for a single chunk of person IDs."""
+        from .session_repository import VALID_BUNKING_SESSION_TYPES
+
+        try:
+            or_conditions = [f"person_id = {cm_id}" for cm_id in person_cm_ids]
+            or_clause = " || ".join(or_conditions)
+
+            items = self.pb.collection("attendees").get_full_list(
+                query_params={
+                    "filter": f"({or_clause}) && year = {year}",
+                    "expand": "session",
+                },
+            )
+
+            enrollment_dict: dict[int, EnrollmentInfo] = {}
+            best_priority: dict[int, int] = {}
+
+            for item in items:
+                person_cm_id = getattr(item, "person_id", None)
+                session_cm_id = self._get_session_cm_id(item)
+                status_id = getattr(item, "status_id", None)
+                if not person_cm_id or not session_cm_id:
+                    continue
+
+                session = get_session_from_expand(item)
+                session_type = getattr(session, "session_type", None) if session else None
+                if session_type not in VALID_BUNKING_SESSION_TYPES:
+                    continue
+
+                # Status priority: enrolled (2) > pending (1) > inactive (0)
+                new_priority = self._enrollment_priority(status_id or 0)
+                existing_priority = best_priority.get(person_cm_id, -1)
+                if existing_priority > new_priority:
+                    continue
+
+                enrollment_dict[person_cm_id] = EnrollmentInfo(
+                    session_cm_id=session_cm_id,
+                    status_id=status_id or 0,
+                )
+                best_priority[person_cm_id] = new_priority
+
+            return enrollment_dict
+
+        except Exception:
+            logger.exception(
+                "bulk_get_enrollment_chunk failed for %d person IDs (year=%d)",
+                len(person_cm_ids),
+                year,
+            )
+            return {}
+
+    @staticmethod
+    def _enrollment_priority(status_id: int) -> int:
+        """Return priority for enrollment status: enrolled (2) > pending (1) > inactive (0)."""
+        if status_id in ACTIVE_ENROLLMENT_STATUSES:
+            return 2
+        if status_id in PENDING_ENROLLMENT_STATUSES:
+            return 1
+        return 0
 
     def _map_attendee_record(self, db_record: Any) -> dict[str, Any]:
         """Map database record to dictionary
