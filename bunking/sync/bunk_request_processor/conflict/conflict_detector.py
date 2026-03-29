@@ -27,6 +27,7 @@ class ConflictType(Enum):
     SESSION_MISMATCH = "session_mismatch"  # Requests across different sessions - only real processing error
     CROSS_SESSION_SATISFIED = "cross_session_satisfied"  # NOT_BUNK_WITH auto-satisfied by different sessions
     TARGET_NOT_ENROLLED = "target_not_enrolled"  # Target has no bunking enrollment at all
+    TARGET_NOT_ATTENDING = "target_not_attending"  # Target enrolled but cancelled/dismissed/withdrawn
 
 
 @dataclass
@@ -60,10 +61,11 @@ class V2ConflictResult:
 class ConflictDetector:
     """Native V2 implementation of conflict detection.
 
-    Detects three conflict types:
+    Detects four conflict types:
     - SESSION_MISMATCH: BUNK_WITH across sessions → auto-DECLINED
     - CROSS_SESSION_SATISFIED: NOT_BUNK_WITH across sessions → auto-RESOLVED
     - TARGET_NOT_ENROLLED: target has no bunking enrollment → auto-DECLINED
+    - TARGET_NOT_ATTENDING: target enrolled but cancelled/dismissed/withdrawn → auto-DECLINED
 
     All other constraint checking (reciprocal requests, circular dependencies,
     capacity, etc.) is delegated to the solver where it belongs.
@@ -92,6 +94,7 @@ class ConflictDetector:
             "session_mismatches": 0,
             "cross_session_satisfied": 0,
             "target_not_enrolled": 0,
+            "target_not_attending": 0,
         }
 
     def detect_conflicts(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> V2ConflictResult:
@@ -117,14 +120,20 @@ class ConflictDetector:
         conflicts.extend(not_enrolled_conflicts)
         not_enrolled_indices = {idx for c in not_enrolled_conflicts for idx in c.affected_request_indices}
 
-        # Detect session mismatches (BUNK_WITH) — skip already-declined not-enrolled
-        session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps, not_enrolled_indices)
+        # Detect inactive targets (cancelled/dismissed/withdrawn) — after not-enrolled
+        inactive_conflicts = self._detect_inactive_targets(resolved_requests, session_maps)
+        conflicts.extend(inactive_conflicts)
+        inactive_indices = {idx for c in inactive_conflicts for idx in c.affected_request_indices}
+
+        # Combined skip set for session conflict detection
+        skip_indices = not_enrolled_indices | inactive_indices
+
+        # Detect session mismatches (BUNK_WITH) — skip already-declined
+        session_conflicts = self._detect_session_conflicts(resolved_requests, session_maps, skip_indices)
         conflicts.extend(session_conflicts)
 
-        # Detect cross-session satisfied (NOT_BUNK_WITH) — skip already-declined not-enrolled
-        satisfied_conflicts = self._detect_cross_session_satisfied(
-            resolved_requests, session_maps, not_enrolled_indices
-        )
+        # Detect cross-session satisfied (NOT_BUNK_WITH) — skip already-declined
+        satisfied_conflicts = self._detect_cross_session_satisfied(resolved_requests, session_maps, skip_indices)
         conflicts.extend(satisfied_conflicts)
 
         # Collect affected request indices
@@ -189,6 +198,20 @@ class ConflictDetector:
         # Track which targets were requested but not found (no bunking enrollment)
         maps["unenrolled_targets"] = all_targets_requested - set(maps["person_to_session"].keys())
 
+        # Enrich with enrollment status info (cancelled/dismissed/withdrawn detection)
+        maps["enrollment_info"] = {}
+        maps["inactive_targets"] = set()
+        if self.attendee_repo and self.year and all_targets_requested:
+            try:
+                enrollment_info = self.attendee_repo.bulk_get_enrollment_for_persons(
+                    list(all_targets_requested), self.year
+                )
+                if isinstance(enrollment_info, dict):
+                    maps["enrollment_info"] = enrollment_info
+                    maps["inactive_targets"] = {cm_id for cm_id, info in enrollment_info.items() if info.is_inactive}
+            except (AttributeError, TypeError):
+                pass  # Method not available on this repo instance
+
         return maps
 
     def _detect_target_not_enrolled(
@@ -214,6 +237,44 @@ class ConflictDetector:
                         resolution_suggestion="Target is not enrolled in any bunking session",
                         affected_request_indices=[idx],
                         metadata={"requester_session": session_info["requester_session"]},
+                    )
+                    conflicts.append(conflict)
+
+        return conflicts
+
+    def _detect_inactive_targets(
+        self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]], maps: dict[str, Any]
+    ) -> list[V2Conflict]:
+        """Detect requests where target has an inactive enrollment (cancelled/dismissed/withdrawn)."""
+        conflicts: list[V2Conflict] = []
+        inactive = maps.get("inactive_targets", set())
+        if not inactive:
+            return conflicts
+
+        enrollment_info = maps.get("enrollment_info", {})
+
+        # Check both positive and negative requests
+        for request_map_key in ("positive_requests", "negative_requests"):
+            for (requester, target), (idx, session_info) in maps[request_map_key].items():
+                if target in inactive:
+                    info = enrollment_info.get(target)
+                    status_id = info.status_id if info else None
+                    conflict = V2Conflict(
+                        conflict_type=ConflictType.TARGET_NOT_ATTENDING,
+                        person_a_cm_id=requester,
+                        person_b_cm_id=target,
+                        description=(
+                            f"Target {target} has inactive enrollment status "
+                            f"(status_id={status_id}, requested by {requester})"
+                        ),
+                        severity="high",
+                        auto_resolvable=True,
+                        resolution_suggestion="Target is no longer attending (cancelled/dismissed/withdrawn)",
+                        affected_request_indices=[idx],
+                        metadata={
+                            "requester_session": session_info["requester_session"],
+                            "target_status_id": status_id,
+                        },
                     )
                     conflicts.append(conflict)
 
@@ -344,12 +405,15 @@ class ConflictDetector:
         mismatches = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.SESSION_MISMATCH]
         satisfied = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.CROSS_SESSION_SATISFIED]
         not_enrolled = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ENROLLED]
+        not_attending = [c for c in conflict_result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ATTENDING]
 
         summary_lines = [f"Detected {len(conflict_result.conflicts)} conflict(s):"]
         if mismatches:
             summary_lines.append(f"  {len(mismatches)} session mismatch(es) → DECLINED")
         if not_enrolled:
             summary_lines.append(f"  {len(not_enrolled)} target not enrolled → DECLINED")
+        if not_attending:
+            summary_lines.append(f"  {len(not_attending)} target not attending → DECLINED")
         if satisfied:
             summary_lines.append(f"  {len(satisfied)} auto-satisfied NOT_BUNK_WITH → RESOLVED")
         summary_lines.append("")
@@ -375,3 +439,5 @@ class ConflictDetector:
                 self._stats["cross_session_satisfied"] += 1
             elif c.conflict_type == ConflictType.TARGET_NOT_ENROLLED:
                 self._stats["target_not_enrolled"] += 1
+            elif c.conflict_type == ConflictType.TARGET_NOT_ATTENDING:
+                self._stats["target_not_attending"] += 1
