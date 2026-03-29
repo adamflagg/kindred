@@ -387,12 +387,23 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             method=self.name,
                             metadata={"match_type": "unique", "session_match": "exact"},
                         )
-                    else:
+                    elif match_session is not None:
+                        # Target enrolled in a different bunking session
                         return ResolutionResult(
                             person=matches[0],
                             confidence=0.85,  # Lower confidence for different session
                             method=self.name,
                             metadata={"match_type": "unique", "session_match": "different"},
+                        )
+                    else:
+                        # No session data for target in enrolled-only map.
+                        # Could be cancelled, waitlisted, or not enrolled.
+                        # Disposition handled by ConflictDetector.
+                        return ResolutionResult(
+                            person=matches[0],
+                            confidence=0.90,
+                            method=self.name,
+                            metadata={"match_type": "unique", "session_match": "unknown"},
                         )
                 else:
                     # No session context available
