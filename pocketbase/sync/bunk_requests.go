@@ -35,6 +35,7 @@ var csvFieldMap = map[string]string{
 type BunkRequestsSync struct {
 	BaseSyncService
 	validPersonIDs map[int]string // Maps CampMinder person ID to PocketBase person ID
+	csvPersonIDs   map[int]bool   // Tracks all enrolled person IDs seen in the CSV
 }
 
 // NewBunkRequestsSync creates a new sync service
@@ -50,6 +51,7 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 	// Reset stats for this run
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
+	s.csvPersonIDs = make(map[int]bool)
 
 	slog.Info("Starting bunk requests sync from CSV", "path", csvPath)
 	s.LogSyncStart("bunk_requests")
@@ -203,6 +205,9 @@ func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, 
 		s.Stats.Skipped++
 		return nil
 	}
+
+	// Track this person as present in the CSV
+	s.csvPersonIDs[personID] = true
 
 	// Process each CSV field that maps to our field options
 	for csvColumn, fieldName := range csvFieldMap {
