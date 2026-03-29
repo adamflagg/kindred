@@ -356,6 +356,15 @@ class ExactMatchStrategy(BaseMatchStrategy):
         # Filter out self-references
         matches = self._filter_self_references(matches, requester_cm_id)
 
+        # Deduplicate by cm_id — person records may have duplicates across years
+        seen_cm_ids: set[int] = set()
+        unique_matches: list[Person] = []
+        for m in matches:
+            if m.cm_id not in seen_cm_ids:
+                seen_cm_ids.add(m.cm_id)
+                unique_matches.append(m)
+        matches = unique_matches
+
         if not matches:
             # Try matching via parent surname with pre-loaded candidates (or all_persons for fallback)
             parent_pool = candidates if candidates else all_persons
