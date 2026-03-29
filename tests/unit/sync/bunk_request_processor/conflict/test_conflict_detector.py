@@ -658,8 +658,8 @@ class TestEnrollmentAwareConflicts:
 
     def test_unenrolled_target_still_detected(self):
         """Target with no bunking enrollment -> TARGET_NOT_ENROLLED (existing behavior preserved)."""
-        enrollment_map = {}
-        sessions_map = {}
+        enrollment_map: dict[int, object] = {}
+        sessions_map: dict[int, int] = {}
         repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
         detector = ConflictDetector(attendee_repo=repo, year=2026)
 
