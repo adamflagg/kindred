@@ -2,8 +2,8 @@
 
 Detects session conflicts (BUNK_WITH across sessions → DECLINED,
 NOT_BUNK_WITH across sessions → auto-RESOLVED) and enrollment conflicts
-(TARGET_NOT_ENROLLED → DECLINED). All other constraint checking is
-delegated to the solver where it belongs."""
+(TARGET_NOT_ENROLLED, TARGET_NOT_ATTENDING, REQUESTER_NOT_ATTENDING → DECLINED).
+All other constraint checking is delegated to the solver where it belongs."""
 
 from __future__ import annotations
 
