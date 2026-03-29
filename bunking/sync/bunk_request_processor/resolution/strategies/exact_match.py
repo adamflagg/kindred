@@ -6,7 +6,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from bunking.logging_config import get_logger
 from ...core.models import Person
+
+logger = get_logger(__name__)
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import last_name_matches, parse_name
 from ..interfaces import ResolutionResult
@@ -376,11 +379,25 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     session_cm_id = requester_info.get("session_cm_id")
 
                 if session_cm_id:
-                    # Check match's session
+                    # Check match's session — use all sessions if available,
+                    # fall back to single session for backward compatibility
                     match_info = attendee_info.get(matches[0].cm_id, {})
+                    match_sessions = match_info.get("session_cm_ids", [])
                     match_session = match_info.get("session_cm_id")
 
-                    if match_session == session_cm_id:
+                    # DEBUG TRACE: session match investigation (remove before merge)
+                    if match_sessions and session_cm_id not in match_sessions:
+                        logger.debug(
+                            "Session mismatch: target=%s cm_id=%s requester_session=%s "
+                            "target_sessions=%s target_primary=%s",
+                            name,
+                            matches[0].cm_id,
+                            session_cm_id,
+                            match_sessions,
+                            match_session,
+                        )
+
+                    if (match_sessions and session_cm_id in match_sessions) or (match_session == session_cm_id):
                         return ResolutionResult(
                             person=matches[0],
                             confidence=0.95,
