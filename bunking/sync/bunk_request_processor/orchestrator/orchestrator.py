@@ -1471,8 +1471,9 @@ class RequestOrchestrator:
 
         if conflict_result.has_conflicts:
             logger.info(self.conflict_detector.get_conflict_summary(conflict_result))
-            # Apply conflict resolution
-            resolved_requests = self.conflict_detector.apply_conflict_resolution(resolved_requests, conflict_result)
+
+        # Always apply — even without conflicts, this annotates pending enrollment (waitlisted targets)
+        resolved_requests = self.conflict_detector.apply_conflict_resolution(resolved_requests, conflict_result)
 
         # Create bunk requests (skipped in dry_run mode)
         deduped_keys: set[tuple[int, str]] = set()
