@@ -747,5 +747,140 @@ class TestBulkGetSessionsStatusPriority:
         assert 1000002 in sessions
 
 
+class TestBulkGetEnrollmentForPersons:
+    """Tests for bulk_get_enrollment_for_persons — returns EnrollmentInfo with status_id."""
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_attendees_collection = Mock()
+        mock_sessions_collection = Mock()
+
+        def collection_side_effect(name):
+            if name == "attendees":
+                return mock_attendees_collection
+            elif name == "camp_sessions":
+                return mock_sessions_collection
+            return Mock()
+
+        mock_client.collection.side_effect = collection_side_effect
+        return mock_client, mock_attendees_collection, mock_sessions_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _, _ = mock_pb_client
+        return AttendeeRepository(mock_client)
+
+    def _make_attendee(self, person_id, session_cm_id, status_id, session_type="main"):
+        mock = Mock()
+        mock.person_id = person_id
+        mock.status_id = status_id
+        session_mock = Mock()
+        session_mock.cm_id = session_cm_id
+        session_mock.session_type = session_type
+        mock.expand = {"session": session_mock}
+        return mock
+
+    def test_returns_enrollment_info_for_enrolled(self, repository, mock_pb_client):
+        """Enrolled camper returns EnrollmentInfo with status_id=2."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 2, "main"),
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([12345], 2026)
+
+        assert 12345 in result
+        assert result[12345].session_cm_id == 1000010
+        assert result[12345].status_id == 2
+        assert result[12345].is_active is True
+
+    def test_returns_cancelled_enrollment(self, repository, mock_pb_client):
+        """Cancelled camper returns EnrollmentInfo with status_id=32."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 32, "main"),
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([12345], 2026)
+
+        assert 12345 in result
+        assert result[12345].status_id == 32
+        assert result[12345].is_inactive is True
+
+    def test_returns_waitlisted_enrollment(self, repository, mock_pb_client):
+        """Waitlisted camper returns EnrollmentInfo with status_id=8."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 8, "main"),
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([12345], 2026)
+
+        assert 12345 in result
+        assert result[12345].status_id == 8
+        assert result[12345].is_pending_enrollment is True
+
+    def test_filters_non_bunking_sessions(self, repository, mock_pb_client):
+        """Family-camp-only camper excluded (same as bulk_get_sessions_for_persons)."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(99999, 1309514, 2, "family"),
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([99999], 2026)
+
+        assert 99999 not in result
+
+    def test_enrolled_wins_over_cancelled(self, repository, mock_pb_client):
+        """When person has enrolled + cancelled bunking sessions, enrolled wins."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 2, "main"),  # enrolled
+            self._make_attendee(12345, 1000011, 32, "embedded"),  # cancelled
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([12345], 2026)
+
+        assert result[12345].status_id == 2
+        assert result[12345].session_cm_id == 1000010
+
+    def test_cancelled_only_still_returned(self, repository, mock_pb_client):
+        """Person with ONLY cancelled bunking enrollment is still returned (not suppressed)."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 32, "main"),
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([12345], 2026)
+
+        assert 12345 in result
+        assert result[12345].status_id == 32
+
+    def test_empty_input_returns_empty(self, repository, mock_pb_client):
+        """Empty person list returns empty dict without DB call."""
+        _, mock_attendees, _ = mock_pb_client
+
+        result = repository.bulk_get_enrollment_for_persons([], 2026)
+
+        assert result == {}
+        mock_attendees.get_full_list.assert_not_called()
+
+    def test_multiple_persons(self, repository, mock_pb_client):
+        """Multiple persons with different statuses returned correctly."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(100, 1000010, 2, "main"),  # enrolled
+            self._make_attendee(200, 1000010, 32, "main"),  # cancelled
+            self._make_attendee(300, 1000010, 8, "main"),  # waitlisted
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([100, 200, 300], 2026)
+
+        assert result[100].is_active is True
+        assert result[200].is_inactive is True
+        assert result[300].is_pending_enrollment is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
