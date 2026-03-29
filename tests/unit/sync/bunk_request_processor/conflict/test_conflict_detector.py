@@ -881,7 +881,7 @@ class TestEnrollmentAwareConflicts:
         assert len(requester_conflicts) == 0
 
     def test_ghost_record_both_sides_not_attending(self):
-        """Neither requester nor target enrolled -> both conflict types fire."""
+        """Neither requester nor target enrolled -> target conflict wins, no double-conflict."""
         from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
 
         enrollment_map = {
@@ -907,5 +907,6 @@ class TestEnrollmentAwareConflicts:
 
         requester_conflicts = [c for c in result.conflicts if c.conflict_type == ConflictType.REQUESTER_NOT_ATTENDING]
         target_conflicts = [c for c in result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ATTENDING]
-        assert len(requester_conflicts) == 1
+        # Target is detected first, so requester detection skips this already-flagged index
         assert len(target_conflicts) == 1
+        assert len(requester_conflicts) == 0

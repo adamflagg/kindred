@@ -391,6 +391,8 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
 		}
 	}
 
+	s.Stats.Deleted += totalOBRs + totalBRs
+
 	slog.Info("Purged orphaned requests",
 		"persons", len(orphanedIDs),
 		"obrs_deleted", totalOBRs,
