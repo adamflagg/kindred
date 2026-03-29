@@ -14,7 +14,7 @@ from pocketbase import PocketBase
 
 from ...core.models import EnrollmentInfo, Person
 from ...shared import parse_date
-from ...shared.constants import ENROLLED_STATUS_ID
+from ...shared.constants import ACTIVE_ENROLLMENT_STATUSES, ENROLLED_STATUS_ID, PENDING_ENROLLMENT_STATUSES
 from ..pocketbase_wrapper import PocketBaseWrapper
 from .person_repository import PersonRepository
 
@@ -317,7 +317,7 @@ class AttendeeRepository:
             )
 
             enrollment_dict: dict[int, EnrollmentInfo] = {}
-            best_status: dict[int, int] = {}
+            best_priority: dict[int, int] = {}
 
             for item in items:
                 person_cm_id = getattr(item, "person_id", None)
@@ -331,15 +331,17 @@ class AttendeeRepository:
                 if session_type not in VALID_BUNKING_SESSION_TYPES:
                     continue
 
-                existing_status = best_status.get(person_cm_id)
-                if existing_status == ENROLLED_STATUS_ID and status_id != ENROLLED_STATUS_ID:
+                # Status priority: enrolled (2) > pending (1) > inactive (0)
+                new_priority = self._enrollment_priority(status_id or 0)
+                existing_priority = best_priority.get(person_cm_id, -1)
+                if existing_priority > new_priority:
                     continue
 
                 enrollment_dict[person_cm_id] = EnrollmentInfo(
                     session_cm_id=session_cm_id,
                     status_id=status_id or 0,
                 )
-                best_status[person_cm_id] = status_id or 0
+                best_priority[person_cm_id] = new_priority
 
             return enrollment_dict
 
@@ -350,6 +352,15 @@ class AttendeeRepository:
                 year,
             )
             return {}
+
+    @staticmethod
+    def _enrollment_priority(status_id: int) -> int:
+        """Return priority for enrollment status: enrolled (2) > pending (1) > inactive (0)."""
+        if status_id in ACTIVE_ENROLLMENT_STATUSES:
+            return 2
+        if status_id in PENDING_ENROLLMENT_STATUSES:
+            return 1
+        return 0
 
     def _map_attendee_record(self, db_record: Any) -> dict[str, Any]:
         """Map database record to dictionary

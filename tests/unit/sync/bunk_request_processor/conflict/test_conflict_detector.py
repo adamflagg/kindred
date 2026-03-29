@@ -736,3 +736,88 @@ class TestEnrollmentAwareConflicts:
         conflict = result.conflicts[0]
         assert conflict.auto_resolvable is True
         assert conflict.metadata["target_status_id"] == 32
+
+    def test_applied_target_no_conflict(self):
+        """Applied target (status_id=4) -> no enrollment-related conflict, same as waitlisted."""
+        from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
+
+        enrollment_map = {
+            1234567: EnrollmentInfo(session_cm_id=1000010, status_id=4),  # applied
+        }
+        sessions_map = {1234567: 1000010}
+        repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
+        detector = ConflictDetector(attendee_repo=repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Ivy Smith"),
+                {
+                    "requester_cm_id": 1000001,
+                    "person_cm_id": 1234567,
+                    "session_cm_id": 1000010,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+
+        not_attending = [c for c in result.conflicts if c.conflict_type == ConflictType.TARGET_NOT_ATTENDING]
+        assert len(not_attending) == 0
+
+    def test_waitlisted_target_annotated_after_apply(self):
+        """Waitlisted target gets target_waitlisted=True metadata after apply_conflict_resolution."""
+        from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
+
+        enrollment_map = {
+            1234567: EnrollmentInfo(session_cm_id=1000010, status_id=8),  # waitlisted
+        }
+        sessions_map = {1234567: 1000010}
+        repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
+        detector = ConflictDetector(attendee_repo=repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Helen Dubreuil"),
+                {
+                    "requester_cm_id": 1000001,
+                    "person_cm_id": 1234567,
+                    "session_cm_id": 1000010,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        modified = detector.apply_conflict_resolution(resolved_requests, result)
+        _, resolution_info = modified[0]
+
+        assert resolution_info.get("target_waitlisted") is True
+
+    def test_apply_conflict_resolution_not_attending_auto_resolvable(self):
+        """TARGET_NOT_ATTENDING resolution_info preserves auto_resolvable=True."""
+        from bunking.sync.bunk_request_processor.core.models import EnrollmentInfo
+
+        enrollment_map = {
+            1234567: EnrollmentInfo(session_cm_id=1000010, status_id=32),  # cancelled
+        }
+        sessions_map = {1234567: 1000010}
+        repo = self._make_mock_attendee_repo(enrollment_map=enrollment_map, sessions_map=sessions_map)
+        detector = ConflictDetector(attendee_repo=repo, year=2026)
+
+        resolved_requests = [
+            (
+                make_parsed_request("Charlotte Thakral"),
+                {
+                    "requester_cm_id": 1000001,
+                    "person_cm_id": 1234567,
+                    "session_cm_id": 1000010,
+                },
+            ),
+        ]
+
+        result = detector.detect_conflicts(resolved_requests)
+        modified = detector.apply_conflict_resolution(resolved_requests, result)
+        _, resolution_info = modified[0]
+
+        assert resolution_info.get("has_conflict") is True
+        assert resolution_info.get("conflict_type") == "target_not_attending"
+        assert resolution_info.get("auto_resolvable") is True

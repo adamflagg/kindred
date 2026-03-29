@@ -273,6 +273,11 @@ class RequestBuilder:
         if resolution_info.get("auto_satisfied"):
             return RequestStatus.RESOLVED
 
+        # Waitlisted/applied targets stay PENDING regardless of confidence
+        if resolution_info.get("target_waitlisted") and status != RequestStatus.DECLINED:
+            metadata["pending_reason"] = "target_waitlisted"
+            return RequestStatus.PENDING
+
         return status
 
     def enrich_placeholder_metadata(

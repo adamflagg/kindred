@@ -143,6 +143,9 @@ class ConflictDetector:
         auto_resolvable = sum(1 for c in conflicts if c.auto_resolvable)
         manual_review = len(conflicts) - auto_resolvable
 
+        # Store maps for use by apply_conflict_resolution (pending enrollment annotation)
+        self._session_maps = session_maps
+
         # Update statistics
         self._update_stats(conflicts)
 
@@ -201,16 +204,19 @@ class ConflictDetector:
         # Enrich with enrollment status info (cancelled/dismissed/withdrawn detection)
         maps["enrollment_info"] = {}
         maps["inactive_targets"] = set()
+        maps["pending_enrollment_targets"] = set()
         if self.attendee_repo and self.year and all_targets_requested:
             try:
                 enrollment_info = self.attendee_repo.bulk_get_enrollment_for_persons(
                     list(all_targets_requested), self.year
                 )
-                if isinstance(enrollment_info, dict):
-                    maps["enrollment_info"] = enrollment_info
-                    maps["inactive_targets"] = {cm_id for cm_id, info in enrollment_info.items() if info.is_inactive}
+                maps["enrollment_info"] = enrollment_info
+                maps["inactive_targets"] = {cm_id for cm_id, info in enrollment_info.items() if info.is_inactive}
+                maps["pending_enrollment_targets"] = {
+                    cm_id for cm_id, info in enrollment_info.items() if info.is_pending_enrollment
+                }
             except (AttributeError, TypeError):
-                pass  # Method not available on this repo instance
+                logger.debug("bulk_get_enrollment_for_persons not available; skipping enrollment-aware detection")
 
         return maps
 
@@ -366,10 +372,7 @@ class ConflictDetector:
         Returns:
             Modified resolved requests with conflict flags
         """
-        if not conflict_result.has_conflicts:
-            return resolved_requests
-
-        # Create a modified copy
+        # Create a modified copy (even without conflicts, we may annotate pending enrollment)
         modified_requests = resolved_requests.copy()
 
         # Apply conflict information to affected requests
@@ -382,18 +385,26 @@ class ConflictDetector:
                         resolution_info["auto_satisfied"] = True
                         resolution_info["satisfaction_reason"] = conflict.resolution_suggestion
                     else:
-                        # SESSION_MISMATCH, TARGET_NOT_ENROLLED, and any future types
+                        # SESSION_MISMATCH, TARGET_NOT_ENROLLED, TARGET_NOT_ATTENDING
                         resolution_info["has_conflict"] = True
                         resolution_info["conflict_type"] = conflict.conflict_type.value
                         resolution_info["conflict_description"] = conflict.description
                         resolution_info["conflict_severity"] = conflict.severity
-                        resolution_info["auto_resolvable"] = False
+                        resolution_info["auto_resolvable"] = conflict.auto_resolvable
                         resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
 
                     # Add conflict metadata
                     if "conflict_metadata" not in resolution_info:
                         resolution_info["conflict_metadata"] = {}
                     resolution_info["conflict_metadata"].update(conflict.metadata)
+
+        # Annotate pending enrollment targets (waitlisted/applied/inquiry)
+        pending_targets = getattr(self, "_session_maps", {}).get("pending_enrollment_targets", set())
+        if pending_targets:
+            for idx, (_parsed_req, resolution_info) in enumerate(modified_requests):
+                target = resolution_info.get("person_cm_id")
+                if target in pending_targets and not resolution_info.get("has_conflict"):
+                    resolution_info["target_waitlisted"] = True
 
         return modified_requests
 

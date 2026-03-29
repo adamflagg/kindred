@@ -857,6 +857,19 @@ class TestBulkGetEnrollmentForPersons:
         assert 12345 in result
         assert result[12345].status_id == 32
 
+    def test_waitlisted_wins_over_cancelled(self, repository, mock_pb_client):
+        """When person has waitlisted + cancelled bunking sessions, waitlisted wins."""
+        _, mock_attendees, _ = mock_pb_client
+        mock_attendees.get_full_list.return_value = [
+            self._make_attendee(12345, 1000010, 32, "main"),  # cancelled
+            self._make_attendee(12345, 1000011, 8, "embedded"),  # waitlisted
+        ]
+
+        result = repository.bulk_get_enrollment_for_persons([12345], 2026)
+
+        assert result[12345].status_id == 8
+        assert result[12345].session_cm_id == 1000011
+
     def test_empty_input_returns_empty(self, repository, mock_pb_client):
         """Empty person list returns empty dict without DB call."""
         _, mock_attendees, _ = mock_pb_client
