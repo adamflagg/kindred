@@ -43,6 +43,7 @@ func NewBunkRequestsSync(app core.App, client *campminder.Client) *BunkRequestsS
 	return &BunkRequestsSync{
 		BaseSyncService: NewBaseSyncService(app, client),
 		validPersonIDs:  make(map[int]string),
+		csvPersonIDs:    make(map[int]bool),
 	}
 }
 

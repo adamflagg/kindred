@@ -25,7 +25,7 @@ func TestBunkRequestsSync_TrackCSVPersonIDs(t *testing.T) {
 			csvRows: [][]string{
 				{"9999", "Greene", "Penelope", "wants to bunk with Ada", "", "", "", ""},
 			},
-			expectTracked: map[int]bool{},
+			expectTracked: map[int]bool{9999: false},
 		},
 		{
 			name:           "multiple enrolled persons tracked",
