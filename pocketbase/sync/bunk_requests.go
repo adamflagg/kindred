@@ -137,8 +137,8 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 		rowNumber++
 
 		// Process row
-		if err := s.processRow(row, columnIndex, currentYear); err != nil {
-			slog.Error("Error processing row", "row", rowNumber, "error", err)
+		if rowErr := s.processRow(row, columnIndex, currentYear); rowErr != nil {
+			slog.Error("Error processing row", "row", rowNumber, "error", rowErr)
 			s.Stats.Errors++
 		}
 	}
@@ -159,8 +159,10 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 	}
 
 	// Sweep zombie BRs — requesters whose OBRs were already purged in a prior run
-	if err := s.purgeZombieBRs(currentYear, obrPersonIDs); err != nil {
-		slog.Error("Failed to purge zombie BRs", "error", err)
+	if obrPersonIDs != nil {
+		if err := s.purgeZombieBRs(currentYear, obrPersonIDs); err != nil {
+			slog.Error("Failed to purge zombie BRs", "error", err)
+		}
 	}
 
 	s.SyncSuccessful = true
