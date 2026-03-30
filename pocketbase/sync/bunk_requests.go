@@ -127,12 +127,12 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 	// Process rows
 	rowNumber := 1 // Start at 1 since we already read headers
 	for {
-		row, err := reader.Read()
-		if err != nil {
-			if err.Error() == "EOF" {
+		row, readErr := reader.Read()
+		if readErr != nil {
+			if readErr.Error() == "EOF" {
 				break
 			}
-			return fmt.Errorf("reading row %d: %w", rowNumber+1, err)
+			return fmt.Errorf("reading row %d: %w", rowNumber+1, readErr)
 		}
 		rowNumber++
 
@@ -420,7 +420,7 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) (map[int]bool, error)
 // findZombieBRPersonIDs returns requester cm_ids that have BRs but no OBRs and are not in the CSV.
 // These are "zombie" BRs — their OBRs were already purged in a prior run, so the OBR-based purge
 // can't see them. They persist forever unless explicitly swept.
-func findZombieBRPersonIDs(csvPersonIDs map[int]bool, obrPersonIDs map[int]bool, brRequesterIDs []int) []int {
+func findZombieBRPersonIDs(csvPersonIDs, obrPersonIDs map[int]bool, brRequesterIDs []int) []int {
 	seen := make(map[int]bool)
 	var zombies []int
 	for _, cmID := range brRequesterIDs {
