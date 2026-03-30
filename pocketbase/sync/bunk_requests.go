@@ -152,9 +152,15 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 	)
 
 	// Purge OBRs and BRs for persons no longer in the CSV (cancelled/unenrolled)
-	if err := s.purgeOrphanedRequests(currentYear); err != nil {
+	obrPersonIDs, err := s.purgeOrphanedRequests(currentYear)
+	if err != nil {
 		slog.Error("Failed to purge orphaned requests", "error", err)
 		// Non-fatal — don't fail the entire sync for cleanup
+	}
+
+	// Sweep zombie BRs — requesters whose OBRs were already purged in a prior run
+	if err := s.purgeZombieBRs(currentYear, obrPersonIDs); err != nil {
+		slog.Error("Failed to purge zombie BRs", "error", err)
 	}
 
 	s.SyncSuccessful = true
@@ -309,10 +315,11 @@ func findOrphanedPersonIDs(csvPersonIDs map[int]bool, existingOBRPersonIDs []int
 
 // purgeOrphanedRequests deletes OBRs and BRs for persons no longer in the CSV.
 // Called after CSV sync to clean up data from campers who have cancelled/unenrolled.
-func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
+// Returns the set of OBR person cm_ids (post-purge) for use by the zombie BR sweep.
+func (s *BunkRequestsSync) purgeOrphanedRequests(year int) (map[int]bool, error) {
 	if len(s.csvPersonIDs) == 0 {
 		slog.Info("No CSV persons tracked, skipping orphan purge")
-		return nil
+		return nil, nil
 	}
 
 	// Query all OBRs for this year
@@ -324,7 +331,7 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
 		0,
 	)
 	if err != nil {
-		return fmt.Errorf("querying existing OBRs for orphan purge: %w", err)
+		return nil, fmt.Errorf("querying existing OBRs for orphan purge: %w", err)
 	}
 
 	// Expand requester relation to get cm_id
@@ -347,6 +354,12 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
 		obrsByPerson[cmID] = append(obrsByPerson[cmID], obr)
 	}
 
+	// Build the OBR person set (returned for zombie sweep)
+	obrPersonIDs := make(map[int]bool, len(obrsByPerson))
+	for cmID := range obrsByPerson {
+		obrPersonIDs[cmID] = true
+	}
+
 	// Find persons not in the CSV
 	existingPersonIDs := make([]int, 0, len(obrsByPerson))
 	for cmID := range obrsByPerson {
@@ -356,7 +369,7 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
 
 	if len(orphanedIDs) == 0 {
 		slog.Info("No orphaned requests to purge")
-		return nil
+		return obrPersonIDs, nil
 	}
 
 	// Delete OBRs and BRs for orphaned persons
@@ -389,6 +402,9 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
 			}
 			totalBRs++
 		}
+
+		// Remove purged persons from the OBR set
+		delete(obrPersonIDs, cmID)
 	}
 
 	s.Stats.Deleted += totalOBRs + totalBRs
@@ -396,6 +412,78 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) error {
 	slog.Info("Purged orphaned requests",
 		"persons", len(orphanedIDs),
 		"obrs_deleted", totalOBRs,
+		"brs_deleted", totalBRs,
+	)
+	return obrPersonIDs, nil
+}
+
+// findZombieBRPersonIDs returns requester cm_ids that have BRs but no OBRs and are not in the CSV.
+// These are "zombie" BRs — their OBRs were already purged in a prior run, so the OBR-based purge
+// can't see them. They persist forever unless explicitly swept.
+func findZombieBRPersonIDs(csvPersonIDs map[int]bool, obrPersonIDs map[int]bool, brRequesterIDs []int) []int {
+	seen := make(map[int]bool)
+	var zombies []int
+	for _, cmID := range brRequesterIDs {
+		if seen[cmID] {
+			continue
+		}
+		seen[cmID] = true
+		if !csvPersonIDs[cmID] && !obrPersonIDs[cmID] {
+			zombies = append(zombies, cmID)
+		}
+	}
+	return zombies
+}
+
+// purgeZombieBRs deletes BRs whose requesters have no OBRs and are not in the CSV.
+// This runs AFTER the OBR-based purge to catch BRs that survived because their OBRs
+// were already deleted in a prior purge cycle.
+func (s *BunkRequestsSync) purgeZombieBRs(year int, obrPersonIDs map[int]bool) error {
+	// Query all BR requester_ids for this year
+	brs, err := s.App.FindRecordsByFilter(
+		"bunk_requests",
+		fmt.Sprintf("year = %d", year),
+		"",
+		0,
+		0,
+	)
+	if err != nil {
+		return fmt.Errorf("querying BRs for zombie sweep: %w", err)
+	}
+
+	// Collect unique requester cm_ids
+	var brRequesterIDs []int
+	brsByRequester := make(map[int][]*core.Record)
+	for _, br := range brs {
+		cmID, _ := br.Get("requester_id").(float64)
+		if cmID <= 0 {
+			continue
+		}
+		id := int(cmID)
+		brRequesterIDs = append(brRequesterIDs, id)
+		brsByRequester[id] = append(brsByRequester[id], br)
+	}
+
+	zombieIDs := findZombieBRPersonIDs(s.csvPersonIDs, obrPersonIDs, brRequesterIDs)
+	if len(zombieIDs) == 0 {
+		return nil
+	}
+
+	totalBRs := 0
+	for _, cmID := range zombieIDs {
+		for _, br := range brsByRequester[cmID] {
+			if err := s.App.Delete(br); err != nil {
+				slog.Error("Failed to delete zombie BR", "requester_cm_id", cmID, "error", err)
+				continue
+			}
+			totalBRs++
+		}
+	}
+
+	s.Stats.Deleted += totalBRs
+
+	slog.Info("Purged zombie BRs (requesters with no OBRs, not in CSV)",
+		"persons", len(zombieIDs),
 		"brs_deleted", totalBRs,
 	)
 	return nil

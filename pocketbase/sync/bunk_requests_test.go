@@ -61,6 +61,72 @@ func TestBunkRequestsSync_PurgeOrphanedRequests_Logic(t *testing.T) {
 	}
 }
 
+func TestFindZombieBRPersonIDs(t *testing.T) {
+	tests := []struct {
+		name           string
+		csvPersonIDs   map[int]bool
+		obrPersonIDs   map[int]bool
+		brRequesterIDs []int
+		expectZombies  []int
+	}{
+		{
+			name:           "no zombies — all BR requesters in CSV",
+			csvPersonIDs:   map[int]bool{1001: true, 1002: true},
+			obrPersonIDs:   map[int]bool{1001: true, 1002: true},
+			brRequesterIDs: []int{1001, 1002},
+			expectZombies:  []int{},
+		},
+		{
+			name:           "zombie — BR requester has no OBRs and not in CSV",
+			csvPersonIDs:   map[int]bool{1001: true, 1002: true},
+			obrPersonIDs:   map[int]bool{1001: true, 1002: true},
+			brRequesterIDs: []int{1001, 1002, 1003},
+			expectZombies:  []int{1003},
+		},
+		{
+			name:           "not a zombie — BR requester still has OBRs (handled by OBR purge)",
+			csvPersonIDs:   map[int]bool{1001: true},
+			obrPersonIDs:   map[int]bool{1001: true, 1003: true},
+			brRequesterIDs: []int{1001, 1003},
+			expectZombies:  []int{},
+		},
+		{
+			name:           "multiple zombies from cancelled families",
+			csvPersonIDs:   map[int]bool{1001: true},
+			obrPersonIDs:   map[int]bool{1001: true},
+			brRequesterIDs: []int{1001, 1002, 1003, 1004},
+			expectZombies:  []int{1002, 1003, 1004},
+		},
+		{
+			name:           "BR requester in CSV but no OBRs — not a zombie (CSV is authoritative)",
+			csvPersonIDs:   map[int]bool{1001: true, 1002: true},
+			obrPersonIDs:   map[int]bool{1001: true},
+			brRequesterIDs: []int{1001, 1002},
+			expectZombies:  []int{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			zombies := findZombieBRPersonIDs(tt.csvPersonIDs, tt.obrPersonIDs, tt.brRequesterIDs)
+
+			if len(zombies) != len(tt.expectZombies) {
+				t.Fatalf("got %d zombies, want %d: %v", len(zombies), len(tt.expectZombies), zombies)
+			}
+
+			zombieSet := make(map[int]bool)
+			for _, id := range zombies {
+				zombieSet[id] = true
+			}
+			for _, expected := range tt.expectZombies {
+				if !zombieSet[expected] {
+					t.Errorf("expected person %d to be zombie, but wasn't", expected)
+				}
+			}
+		})
+	}
+}
+
 func TestBunkRequestsSync_TrackCSVPersonIDs(t *testing.T) {
 	tests := []struct {
 		name           string
