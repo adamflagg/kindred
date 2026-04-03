@@ -221,64 +221,52 @@ class RequestBuilder:
     def determine_request_status(
         self, parsed_req: ParsedRequest, resolution_info: dict[str, Any], metadata: dict[str, Any]
     ) -> RequestStatus:
-        """Determine the status of a bunk request based on resolution results.
+        """Determine the status of a bunk request using disposition rules.
 
-        Args:
-            parsed_req: The parsed request
-            resolution_info: Resolution context from Phase 2/3
-            metadata: Request metadata (may be modified with declined_reason)
-
-        Returns:
-            The appropriate RequestStatus (RESOLVED, PENDING, or DECLINED)
+        Unresolved names (no person or negative ID) are always PENDING.
+        Resolved matches go through disposition rules (business gates + quality).
         """
+        from ..disposition.disposition_rules import determine_disposition
+
         person_cm_id = resolution_info.get("person_cm_id")
 
         # No person ID cases
         if person_cm_id is None:
             if parsed_req.request_type == RequestType.AGE_PREFERENCE:
-                # Age preferences don't have target persons
                 if parsed_req.age_preference is not None:
                     return RequestStatus.RESOLVED
-                # "unclear" from AI - keep pending for staff review
                 return RequestStatus.PENDING
-            # Non-age-preference with no person ID (edge case)
             return RequestStatus.PENDING
 
         # Negative ID means unresolved name
         if person_cm_id < 0:
             return RequestStatus.PENDING
 
-        # Positive ID - check confidence for auto-resolve
-        final_confidence = resolution_info.get("confidence", parsed_req.confidence)
+        # Resolved match — apply disposition rules
+        disposition = determine_disposition(
+            parsed_req.request_type,
+            resolution_method=resolution_info.get("resolution_method", "unknown"),
+            match_confidence=resolution_info.get("confidence", parsed_req.confidence),
+            is_reciprocal=resolution_info.get("is_reciprocal", False),
+            target_is_inactive=resolution_info.get("conflict_type")
+            in ("target_not_attending", "requester_not_attending"),
+            target_has_bunking_session=resolution_info.get("conflict_type") not in ("target_not_enrolled",),
+            target_waitlisted=resolution_info.get("target_waitlisted", False),
+            session_match=resolution_info.get("conflict_type") not in ("session_mismatch",),
+            age_direction=parsed_req.age_preference.value if parsed_req.age_preference else None,
+        )
 
-        status = RequestStatus.RESOLVED if final_confidence >= self.auto_resolve_threshold else RequestStatus.PENDING
+        metadata["disposition_reason"] = disposition.reason
+        metadata["disposition_rule_id"] = disposition.rule_id
 
-        # Check for AI-detected conflicts
-        ai_reasoning = parsed_req.metadata.get("ai_reasoning", {})
-        if isinstance(ai_reasoning, dict):
-            conflicts = ai_reasoning.get("conflicts", [])
-            if conflicts:
-                logger.info(f"AI conflicts detected, keeping PENDING: {conflicts}")
-                status = RequestStatus.PENDING
+        if disposition.status == RequestStatus.DECLINED:
+            metadata["declined_reason"] = resolution_info.get("conflict_description", disposition.reason)
 
-        # Check for resolution-level conflicts
-        if resolution_info.get("has_conflict"):
-            status = RequestStatus.DECLINED
-            metadata["declined_reason"] = resolution_info.get("conflict_description", "Session mismatch conflict")
-            logger.debug(
-                f"DECLINED: Request for {parsed_req.target_name} - {resolution_info.get('conflict_type', 'conflict')}"
-            )
-
-        # Check for auto-satisfied cross-session NOT_BUNK_WITH
+        # Auto-satisfied cross-session NOT_BUNK_WITH (from conflict detector)
         if resolution_info.get("auto_satisfied"):
             return RequestStatus.RESOLVED
 
-        # Waitlisted/applied targets stay PENDING regardless of confidence
-        if resolution_info.get("target_waitlisted") and status != RequestStatus.DECLINED:
-            metadata["pending_reason"] = "target_waitlisted"
-            return RequestStatus.PENDING
-
-        return status
+        return disposition.status
 
     def enrich_placeholder_metadata(
         self, metadata: dict[str, Any], requester_cm_id: int, session_cm_id: int, target_name: str | None

@@ -238,7 +238,6 @@ class Phase3DisambiguationService:
                 continue
 
             try:
-                parsed_req = case.parse_result.parsed_requests[ambiguous_idx]
                 resolution = case.resolution_results[ambiguous_idx]
 
                 if hasattr(result, "selected_person_id") and result.selected_person_id:
@@ -254,22 +253,6 @@ class Phase3DisambiguationService:
                         # Create disambiguated result
                         confidence = getattr(result, "confidence", 0.8)
 
-                        # Apply confidence scoring if available
-                        if self.confidence_scorer and parsed_req and case.parse_result.parse_request:
-                            # Create a temporary result for scoring
-                            temp_result = ResolutionResult(
-                                person=selected_person,
-                                confidence=confidence,
-                                method="ai_disambiguation",
-                                candidates=resolution.candidates[:5] if resolution.candidates else None,
-                            )
-                            confidence = self.confidence_scorer.score_resolution(
-                                parsed_request=parsed_req,
-                                resolution_result=temp_result,
-                                requester_cm_id=case.parse_result.parse_request.requester_cm_id,
-                                year=case.parse_result.parse_request.year,
-                            )
-
                         num_candidates = len(resolution.candidates) if resolution.candidates else 0
                         disambiguation_metadata: dict[str, Any] = {
                             "ai_confidence": getattr(result, "confidence", confidence),
@@ -277,8 +260,6 @@ class Phase3DisambiguationService:
                             "original_method": resolution.method,
                             "candidates_considered": num_candidates,
                         }
-                        if self.confidence_scorer:
-                            disambiguation_metadata["confidence_factors"] = self.confidence_scorer.last_score_factors
                         case.disambiguated_results[ambiguous_idx] = ResolutionResult(
                             person=selected_person,
                             confidence=confidence,

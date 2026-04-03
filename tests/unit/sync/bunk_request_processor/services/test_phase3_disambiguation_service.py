@@ -545,52 +545,12 @@ class TestPhase3DisambiguationServiceContextBuilding:
         # Note: grade is passed via row_data, not as a direct kwarg
 
 
-class TestPhase3DisambiguationServiceConfidenceScoring:
-    """Tests for confidence scoring integration"""
+class TestPhase3DisambiguationServiceConfidencePassthrough:
+    """Tests that AI confidence passes through without formula rescoring."""
 
     @pytest.mark.asyncio
-    async def test_rescores_disambiguated_results(self):
-        """Confidence scorer is applied to disambiguated results"""
-        ai_provider = Mock()
-        context_builder = Mock()
-        context_builder.build_disambiguation_context.return_value = _create_mock_context()
-
-        selected_person = _create_person(cm_id=111)
-
-        ai_result = Mock()
-        ai_result.selected_person_id = 111
-        ai_result.confidence = 0.80
-
-        batch_processor = Mock()
-        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
-
-        # Confidence scorer that returns higher confidence
-        # Note: Implementation uses score_resolution, not create_signals_for_disambiguation
-        scorer = Mock()
-        scorer.score_resolution = Mock(return_value=0.90)
-        scorer.scorer = Mock()
-        scorer.scorer.calculate_confidence = Mock(return_value=0.90)
-        scorer._map_request_type = Mock(return_value="bunk_with")
-
-        service = Phase3DisambiguationService(
-            ai_provider=ai_provider,
-            context_builder=context_builder,
-            batch_processor=batch_processor,
-            confidence_scorer=scorer,
-        )
-
-        candidates = [selected_person, _create_person(cm_id=222)]
-        ambiguous = _create_ambiguous_resolution(candidates=candidates)
-        parse_result = _create_parse_result()
-
-        await service.batch_disambiguate([(parse_result, [ambiguous])])
-
-        # Scorer should be called (uses score_resolution method)
-        scorer.score_resolution.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_preserves_ai_confidence_if_no_scorer(self):
-        """Without scorer, AI confidence is preserved"""
+    async def test_ai_confidence_preserved(self):
+        """AI-reported confidence is used directly without rescoring."""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
@@ -609,7 +569,7 @@ class TestPhase3DisambiguationServiceConfidenceScoring:
             ai_provider=ai_provider,
             context_builder=context_builder,
             batch_processor=batch_processor,
-            confidence_scorer=None,  # No scorer
+            confidence_scorer=None,
         )
 
         candidates = [selected_person, _create_person(cm_id=222)]

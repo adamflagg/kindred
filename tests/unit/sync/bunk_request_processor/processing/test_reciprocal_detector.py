@@ -203,37 +203,6 @@ class TestReciprocalDetector:
         assert pairs[1].request1.requester_cm_id == 300
         assert pairs[1].request2.requester_cm_id == 400
 
-    def test_apply_confidence_boost(self, detector, base_request):
-        """Test applying confidence boost to reciprocal pairs"""
-        reciprocal = BunkRequest(
-            requester_cm_id=67890,
-            requested_cm_id=12345,
-            request_type=RequestType.BUNK_WITH,
-            session_cm_id=1000002,
-            priority=3,
-            confidence_score=0.80,
-            source=RequestSource.FAMILY,
-            source_field="share_bunk_with",
-            csv_position=0,
-            year=2025,
-            status=RequestStatus.RESOLVED,
-            is_placeholder=False,
-            metadata={},
-        )
-
-        requests = [base_request, reciprocal]
-        detector.apply_reciprocal_boost(requests)
-
-        # Check that confidence was boosted
-        assert base_request.confidence_score == min(1.0, 0.95 + 0.1)  # 1.0 max
-        assert reciprocal.confidence_score == 0.80 + 0.1  # 0.90
-
-        # Check metadata was updated
-        assert base_request.metadata["is_reciprocal"] is True
-        assert base_request.metadata["reciprocal_with"] == 67890
-        assert reciprocal.metadata["is_reciprocal"] is True
-        assert reciprocal.metadata["reciprocal_with"] == 12345
-
     def test_no_duplicate_pairs(self, detector):
         """Test that pairs are not duplicated (A->B and B->A are the same pair)"""
         requests = [
@@ -335,49 +304,6 @@ class TestReciprocalDetector:
         pairs = detector.detect_reciprocals(requests)
 
         assert len(pairs) == 0
-
-    def test_custom_confidence_boost(self, detector):
-        """Test using custom confidence boost value"""
-        detector = ReciprocalDetector(confidence_boost=0.2)
-
-        request1 = BunkRequest(
-            requester_cm_id=100,
-            requested_cm_id=200,
-            request_type=RequestType.BUNK_WITH,
-            session_cm_id=1000002,
-            priority=3,
-            confidence_score=0.70,
-            source=RequestSource.FAMILY,
-            source_field="share_bunk_with",
-            csv_position=0,
-            year=2025,
-            status=RequestStatus.RESOLVED,
-            is_placeholder=False,
-            metadata={},
-        )
-
-        request2 = BunkRequest(
-            requester_cm_id=200,
-            requested_cm_id=100,
-            request_type=RequestType.BUNK_WITH,
-            session_cm_id=1000002,
-            priority=3,
-            confidence_score=0.70,
-            source=RequestSource.FAMILY,
-            source_field="share_bunk_with",
-            csv_position=0,
-            year=2025,
-            status=RequestStatus.RESOLVED,
-            is_placeholder=False,
-            metadata={},
-        )
-
-        requests = [request1, request2]
-        detector.apply_reciprocal_boost(requests)
-
-        # Check custom boost was applied
-        assert abs(request1.confidence_score - 0.90) < 0.001  # 0.70 + 0.20
-        assert abs(request2.confidence_score - 0.90) < 0.001  # 0.70 + 0.20
 
 
 if __name__ == "__main__":

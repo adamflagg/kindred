@@ -97,27 +97,3 @@ class ReciprocalDetector:
                     processed_pairs.add(pair_id)
 
         return pairs
-
-    def apply_reciprocal_boost(self, requests: list[BunkRequest]) -> None:
-        """Apply confidence boost to reciprocal pairs and update metadata.
-
-        This modifies the requests in-place.
-
-        Args:
-            requests: List of bunk requests to process
-        """
-        pairs = self.detect_reciprocals(requests)
-
-        for pair in pairs:
-            # Boost confidence (cap at 1.0)
-            pair.request1.confidence_score = min(1.0, pair.request1.confidence_score + self.confidence_boost)
-            pair.request2.confidence_score = min(1.0, pair.request2.confidence_score + self.confidence_boost)
-
-            # Update metadata
-            pair.request1.metadata["is_reciprocal"] = True
-            pair.request1.metadata["reciprocal_with"] = pair.request2.requester_cm_id
-            pair.request1.metadata["reciprocal_boost"] = self.confidence_boost
-
-            pair.request2.metadata["is_reciprocal"] = True
-            pair.request2.metadata["reciprocal_with"] = pair.request1.requester_cm_id
-            pair.request2.metadata["reciprocal_boost"] = self.confidence_boost

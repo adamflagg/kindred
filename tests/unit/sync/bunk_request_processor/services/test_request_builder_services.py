@@ -220,8 +220,8 @@ class TestAutoSatisfiedStatus:
 
         assert status == RequestStatus.RESOLVED
 
-    def test_has_conflict_still_declines(self):
-        """has_conflict=True still returns DECLINED (existing behavior unchanged)."""
+    def test_session_mismatch_declines(self):
+        """Session mismatch conflict_type triggers DECLINED via disposition rules."""
         builder = RequestBuilder(
             priority_calculator=Mock(),
             temporal_name_cache=None,
@@ -243,6 +243,7 @@ class TestAutoSatisfiedStatus:
         resolution_info = {
             "person_cm_id": 7777777,
             "has_conflict": True,
+            "conflict_type": "session_mismatch",
             "conflict_description": "Session mismatch",
             "confidence": 0.9,
         }
@@ -355,7 +356,7 @@ class TestEnrollmentDispositionStatus:
         status = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
         assert status == RequestStatus.PENDING
-        assert metadata.get("pending_reason") == "target_waitlisted"
+        assert metadata.get("disposition_reason") == "target_waitlisted"
 
 
 if __name__ == "__main__":

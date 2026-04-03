@@ -1418,6 +1418,45 @@ class RequestOrchestrator:
         # Store phase3_processed for later use
         self._phase3_indices = phase3_processed
 
+        # --- Batch Signal Detection (reciprocal + household co-request) ---
+        from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
+        from ..processing.batch_signals import detect_batch_signals
+
+        batch_requests = []
+        for pr, resolution_list in resolution_results:
+            if not pr.parsed_requests or not pr.parse_request:
+                continue
+            for rr_idx, rr in enumerate(resolution_list):
+                if rr.is_resolved and rr.person:
+                    parsed_req = pr.parsed_requests[rr_idx] if rr_idx < len(pr.parsed_requests) else None
+                    batch_requests.append(
+                        BSResolvedRequest(
+                            requester_cm_id=pr.parse_request.requester_cm_id,
+                            target_cm_id=rr.person.cm_id,
+                            request_type=parsed_req.request_type if parsed_req else RequestType.BUNK_WITH,
+                            session_cm_id=pr.parse_request.session_cm_id,
+                            household_id=None,
+                        )
+                    )
+
+        batch_signals = detect_batch_signals(batch_requests)
+
+        # Annotate resolution results with batch signals
+        for pr, resolution_list in resolution_results:
+            if not pr.parse_request:
+                continue
+            for rr in resolution_list:
+                if rr.is_resolved and rr.person:
+                    key = (pr.parse_request.requester_cm_id, rr.person.cm_id, pr.parse_request.session_cm_id)
+                    if key in batch_signals:
+                        if rr.metadata is None:
+                            rr.metadata = {}
+                        rr.metadata["is_reciprocal"] = batch_signals[key].is_reciprocal
+                        rr.metadata["reciprocal_with"] = batch_signals[key].reciprocal_with
+                        rr.metadata["household_co_request"] = batch_signals[key].household_co_request
+
+        self._stats["reciprocal_pairs"] = sum(1 for s in batch_signals.values() if s.is_reciprocal) // 2
+
         # --- Trace: Phase 3 results ---
         for idx, (pr, res_list) in enumerate(resolution_results):
             trace_key = _get_trace_key(pr)
@@ -2055,6 +2094,10 @@ class RequestOrchestrator:
                     # Pass along resolution metadata (includes Phase 3 reasoning if applicable)
                     if resolution_result.metadata:
                         resolution_info["resolution_metadata"] = resolution_result.metadata
+                    # Thread batch signals to request_builder
+                    resolution_info["is_reciprocal"] = (
+                        resolution_result.metadata.get("is_reciprocal", False) if resolution_result.metadata else False
+                    )
                 elif parsed_req.request_type == RequestType.AGE_PREFERENCE:
                     # Age preferences don't need person resolution
                     resolution_info["person_cm_id"] = None
@@ -2334,7 +2377,6 @@ class RequestOrchestrator:
         This pipeline runs in order:
         1. Self-reference validation (mark and modify, keep for staff review)
         2. Deduplication (remove duplicate requests, keep highest priority)
-        3. Reciprocal detection (mark reciprocal pairs and boost confidence)
 
         Args:
             requests: List of BunkRequest objects to validate
@@ -2394,34 +2436,8 @@ class RequestOrchestrator:
         if duplicates_removed > 0:
             logger.info(f"Removed {duplicates_removed} duplicate request(s)")
 
-        # Step 3: Detect and mark reciprocal requests
-        reciprocal_pairs = self.reciprocal_detector.detect_reciprocals(deduplicated_requests)
-        self._stats["reciprocal_pairs"] = len(reciprocal_pairs)
-
-        # Apply confidence boost to reciprocal pairs
-        self.reciprocal_detector.apply_reciprocal_boost(deduplicated_requests)
-
-        if reciprocal_pairs:
-            logger.info(f"Detected {len(reciprocal_pairs)} reciprocal pair(s)")
-
-        # Step 4: Re-check status for reciprocal-boosted requests
-        # After reciprocal boost bumps confidence, requests that now cross
-        # the auto-resolve threshold should be promoted from PENDING to RESOLVED.
-        threshold = self._get_auto_resolve_threshold()
-        reciprocal_promoted = 0
-        for req in deduplicated_requests:
-            if (
-                req.metadata.get("reciprocal_boost")
-                and req.status == RequestStatus.PENDING
-                and req.confidence_score >= threshold
-                and req.requested_cm_id is not None
-                and req.requested_cm_id > 0
-            ):
-                req.status = RequestStatus.RESOLVED
-                reciprocal_promoted += 1
-        self._stats["reciprocal_promoted"] = reciprocal_promoted
-        if reciprocal_promoted > 0:
-            logger.info(f"Reciprocal boost auto-resolved {reciprocal_promoted} request(s)")
+        # Reciprocal detection now happens in batch_signals stage before request building.
+        # Stats are recorded there.
 
         return deduplicated_requests, deduped_keys
 
