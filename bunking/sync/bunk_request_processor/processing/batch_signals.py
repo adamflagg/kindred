@@ -74,8 +74,8 @@ def detect_batch_signals(
         # Group requesters by household_id
         household_members: dict[int, list[ResolvedRequest]] = defaultdict(list)
         for req in requesters:
-            assert req.household_id is not None  # guaranteed by filter at line 70
-            household_members[req.household_id].append(req)
+            if req.household_id is not None:  # guaranteed by filter above, but narrow for mypy
+                household_members[req.household_id].append(req)
 
         for members in household_members.values():
             # Need 2+ DIFFERENT requesters from same household

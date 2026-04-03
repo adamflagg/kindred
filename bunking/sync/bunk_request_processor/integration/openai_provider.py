@@ -530,24 +530,25 @@ class OpenAIProvider(AIProvider):
     async def disambiguate(
         self,
         parsed_request: ParsedRequest,
-        context: dict[str, Any],
+        context: AIRequestContext,
     ) -> ParsedResponse:
         """Phase 3: AI-assisted disambiguation with minimal context.
 
         Loads prompt template from config/prompts/disambiguate.txt.
         Uses structured output to select from candidate matches.
         """
-        candidates_text = self._format_candidates(context.get("candidates", []))
+        ctx = context.additional_context or {}
+        candidates_text = self._format_candidates(ctx.get("candidates", []))
 
         prompt = format_prompt(
             "disambiguate",
             target_name=parsed_request.target_name or "",
-            requester_name=context.get("requester_name", "Unknown"),
-            requester_cm_id=str(context.get("requester_cm_id", 0)),
-            requester_school=context.get("requester_school", "Unknown"),
+            requester_name=ctx.get("requester_name", "Unknown"),
+            requester_cm_id=str(ctx.get("requester_cm_id", 0)),
+            requester_school=ctx.get("requester_school", "Unknown"),
             candidates_text=candidates_text,
-            local_confidence=str(context.get("local_confidence", 0)),
-            ambiguity_reason=context.get("ambiguity_reason", "multiple matches"),
+            local_confidence=str(ctx.get("local_confidence", 0)),
+            ambiguity_reason=ctx.get("ambiguity_reason", "multiple matches"),
         )
 
         try:

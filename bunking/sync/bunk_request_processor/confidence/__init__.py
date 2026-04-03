@@ -4,4 +4,4 @@ from __future__ import annotations
 
 from .social_graph_signals import NetworkXSocialGraphSignals, SocialGraphSignals
 
-__all__ = ["SocialGraphSignals", "NetworkXSocialGraphSignals"]
+__all__ = ["NetworkXSocialGraphSignals", "SocialGraphSignals"]

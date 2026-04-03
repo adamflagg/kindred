@@ -47,7 +47,7 @@ class TestBatchProcessorDisambiguation:
             "rate_limited_batches": 0,
             "total_retries": 0,
         }
-        processor._check_rate_limits = AsyncMock()
+        processor._check_rate_limits = AsyncMock()  # type: ignore[method-assign]
 
         parsed_req = ParsedRequest(
             raw_text="Emma",

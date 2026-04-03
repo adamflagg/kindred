@@ -1416,12 +1416,14 @@ class RequestOrchestrator:
                 continue
             for rr_idx, rr in enumerate(resolution_list):
                 if rr.is_resolved and rr.person:
-                    parsed_req = pr.parsed_requests[rr_idx] if rr_idx < len(pr.parsed_requests) else None
+                    req_type = RequestType.BUNK_WITH
+                    if rr_idx < len(pr.parsed_requests):
+                        req_type = pr.parsed_requests[rr_idx].request_type
                     batch_requests.append(
                         BSResolvedRequest(
                             requester_cm_id=pr.parse_request.requester_cm_id,
                             target_cm_id=rr.person.cm_id,
-                            request_type=parsed_req.request_type if parsed_req else RequestType.BUNK_WITH,
+                            request_type=req_type,
                             session_cm_id=pr.parse_request.session_cm_id,
                             household_id=None,
                         )

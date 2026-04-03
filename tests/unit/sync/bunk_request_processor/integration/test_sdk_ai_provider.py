@@ -370,14 +370,18 @@ class TestReasoningEffort:
             )
             await provider.disambiguate(
                 parsed_req,
-                {
-                    "requester_name": "Test User",
-                    "requester_cm_id": 12345,
-                    "candidates": [
-                        {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
-                        {"name": "Emma Garcia", "person_id": 888, "school": "Oak Valley Middle"},
-                    ],
-                },
+                AIRequestContext(
+                    requester_name="Test User",
+                    requester_cm_id=12345,
+                    session_cm_id=1000002,
+                    year=2025,
+                    additional_context={
+                        "candidates": [
+                            {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
+                            {"name": "Emma Garcia", "person_id": 888, "school": "Oak Valley Middle"},
+                        ],
+                    },
+                ),
             )
 
         call_kwargs = mock_openai_client.responses.parse.call_args.kwargs
@@ -543,13 +547,17 @@ class TestReasoningOutputParsing:
             )
             result = await provider.disambiguate(
                 parsed_req,
-                {
-                    "requester_name": "Test User",
-                    "requester_cm_id": 12345,
-                    "candidates": [
-                        {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
-                    ],
-                },
+                AIRequestContext(
+                    requester_name="Test User",
+                    requester_cm_id=12345,
+                    session_cm_id=1000002,
+                    year=2025,
+                    additional_context={
+                        "candidates": [
+                            {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
+                        ],
+                    },
+                ),
             )
 
         assert result.requests[0].metadata["target_person_id"] == 999
@@ -666,13 +674,17 @@ class TestReasoningOutputParsing:
             )
             result = await provider.disambiguate(
                 parsed_req,
-                {
-                    "requester_name": "Test User",
-                    "requester_cm_id": 12345,
-                    "candidates": [
-                        {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
-                    ],
-                },
+                AIRequestContext(
+                    requester_name="Test User",
+                    requester_cm_id=12345,
+                    session_cm_id=1000002,
+                    year=2025,
+                    additional_context={
+                        "candidates": [
+                            {"name": "Emma Johnson", "person_id": 999, "school": "Riverside Elementary"},
+                        ],
+                    },
+                ),
             )
 
         assert result.metadata.get("ai_reasoning_summary") == "Emma Johnson attends same school as requester."

@@ -10,8 +10,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 project_root = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -68,7 +66,7 @@ class TestPersonRepositoryMapping:
         record = MagicMock()
         for key, val in defaults.items():
             setattr(record, key, val)
-        record.__class__ = type("PBRecord", (), {k: None for k in defaults})
+        record.__class__ = type("PBRecord", (), dict.fromkeys(defaults))
         for key, val in defaults.items():
             setattr(record, key, val)
         return record
@@ -77,42 +75,49 @@ class TestPersonRepositoryMapping:
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(normalized_city="Oakland", address_city="Oakland (raw)")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.city == "Oakland"
 
     def test_city_falls_back_to_address_city(self):
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(normalized_city=None, address_city="San Francisco")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.city == "San Francisco"
 
     def test_state_reads_address_state(self):
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(address_state="CA")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.state == "CA"
 
     def test_school_reads_normalized_school(self):
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(normalized_school="Hillcrest ES", school="Hillcrest Elementary School")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.school == "Hillcrest ES"
 
     def test_school_falls_back_to_raw(self):
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(normalized_school=None, school="Hillcrest Elementary School")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.school == "Hillcrest Elementary School"
 
     def test_gender_is_first_class_field(self):
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(gender="F")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.gender == "F"
 
     def test_congregation_is_first_class_field(self):
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(normalized_congregation="Temple Beth El")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.congregation == "Temple Beth El"
 
     def test_city_not_from_deleted_address_json(self):
@@ -121,5 +126,6 @@ class TestPersonRepositoryMapping:
         repo = PersonRepository.__new__(PersonRepository)
         record = self._make_db_record(normalized_city="Oakland", address_state="CA")
         person = repo._map_to_person(record)
+        assert person is not None
         assert person.city == "Oakland"
         assert person.state == "CA"

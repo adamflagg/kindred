@@ -111,6 +111,11 @@ class AIProvider(ABC):
         pass
 
     @abstractmethod
+    async def disambiguate(self, parsed_request: ParsedRequest, context: AIRequestContext) -> ParsedResponse:
+        """Disambiguate a target name among candidates"""
+        pass
+
+    @abstractmethod
     async def batch_parse_requests(self, requests: list[tuple[str, AIRequestContext]]) -> list[ParsedResponse]:
         """Parse multiple requests efficiently"""
         pass

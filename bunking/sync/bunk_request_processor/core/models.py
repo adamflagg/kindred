@@ -246,7 +246,6 @@ class Camper(Person):
     """Represents a camper with additional camp-specific attributes"""
 
     session: Session | None = None
-    gender: Gender | None = None
     grade_completed: int | None = None  # Grade they just completed
     campminder_age: Any | None = None  # CampMinderAge instance
     bunk: str | None = None
