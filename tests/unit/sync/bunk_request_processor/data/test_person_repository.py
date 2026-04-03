@@ -44,6 +44,12 @@ class TestPersonRepository:
         birthdate="2010-05-15",
         grade=8,
         school="Lincoln Middle",
+        normalized_school=None,
+        normalized_city=None,
+        address_city=None,
+        address_state=None,
+        gender=None,
+        normalized_congregation=None,
     ):
         """Helper to create a properly structured person mock"""
         mock = Mock()
@@ -54,6 +60,12 @@ class TestPersonRepository:
         mock.birthdate = birthdate
         mock.grade = grade
         mock.school = school
+        mock.normalized_school = normalized_school
+        mock.normalized_city = normalized_city
+        mock.address_city = address_city
+        mock.address_state = address_state
+        mock.gender = gender
+        mock.normalized_congregation = normalized_congregation
         return mock
 
     def test_find_by_cm_id(self, repository, mock_pb_client):

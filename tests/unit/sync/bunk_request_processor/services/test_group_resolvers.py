@@ -487,7 +487,7 @@ class TestCongregationResolver:
             "Johnson",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
         peer = _make_camper(
             2001,
@@ -495,7 +495,7 @@ class TestCongregationResolver:
             "Chen",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
 
         resolver, _, _ = self._setup_resolver(requester, [peer])
@@ -513,7 +513,7 @@ class TestCongregationResolver:
             "Johnson",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
         peer = _make_camper(
             2001,
@@ -521,7 +521,7 @@ class TestCongregationResolver:
             "Chen",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Congregation Shalom"},
+            congregation="Congregation Shalom",
         )
 
         resolver, _, _ = self._setup_resolver(requester, [peer])
@@ -539,7 +539,7 @@ class TestCongregationResolver:
             "Chen",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
 
         resolver, _, _ = self._setup_resolver(requester, [peer])
@@ -556,7 +556,7 @@ class TestCongregationResolver:
             "Johnson",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
         peer = _make_camper(
             2001,
@@ -564,7 +564,7 @@ class TestCongregationResolver:
             "Garcia",
             Gender.MALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
 
         resolver, _, _ = self._setup_resolver(requester, [peer])
@@ -581,7 +581,7 @@ class TestCongregationResolver:
             "Johnson",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
         peer = _make_camper(
             2001,
@@ -589,7 +589,7 @@ class TestCongregationResolver:
             "Chen",
             Gender.FEMALE,
             grade=7,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
 
         resolver, _, _ = self._setup_resolver(requester, [peer])
@@ -606,7 +606,7 @@ class TestCongregationResolver:
             "Johnson",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
         peer = _make_camper(
             2001,
@@ -614,7 +614,7 @@ class TestCongregationResolver:
             "Chen",
             Gender.FEMALE,
             grade=5,
-            metadata={"normalized_congregation": "Temple Beth El"},
+            congregation="Temple Beth El",
         )
 
         resolver, _, _ = self._setup_resolver(requester, [peer])

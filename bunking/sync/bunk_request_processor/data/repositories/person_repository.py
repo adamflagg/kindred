@@ -466,25 +466,14 @@ class PersonRepository(Repository):
             if hasattr(db_record, "birthdate") and db_record.birthdate:
                 birth_date = parse_date(db_record.birthdate)
 
-            # Parse address JSON to extract city and state
-            # Address format: {"city": "Oakland", "state": "CA"}
-            city = None
-            state = None
-            if hasattr(db_record, "address") and db_record.address:
-                addr = db_record.address
-                # Handle both dict (already parsed) and string (JSON) formats
-                if isinstance(addr, dict):
-                    city = addr.get("city")
-                    state = addr.get("state")
-                elif isinstance(addr, str) and addr.strip():
-                    try:
-                        import json
+            # Read city/state from normalized columns (address JSON was deleted in migration 1500000054)
+            city = getattr(db_record, "normalized_city", None) or getattr(db_record, "address_city", None) or None
+            state = getattr(db_record, "address_state", None) or None
 
-                        addr_dict = json.loads(addr)
-                        city = addr_dict.get("city")
-                        state = addr_dict.get("state")
-                    except (json.JSONDecodeError, TypeError):
-                        pass  # Invalid JSON, leave city/state as None
+            # Prefer normalized school over raw
+            school = getattr(db_record, "normalized_school", None) or (
+                db_record.school if hasattr(db_record, "school") else None
+            )
 
             # Parse CampMinder age (years.months format, e.g., 10.03)
             cm_age = None
@@ -507,14 +496,12 @@ class PersonRepository(Repository):
                 except (ValueError, TypeError):
                     pass
 
-            # Build metadata for resolver filtering (gender, congregation)
+            # Promote gender and congregation to first-class fields
+            gender = getattr(db_record, "gender", None) or None
+            congregation = getattr(db_record, "normalized_congregation", None) or None
+
+            # Keep metadata for any remaining resolver-specific data
             metadata: dict[str, Any] = {}
-            gender_val = getattr(db_record, "gender", None)
-            if gender_val:
-                metadata["gender"] = gender_val
-            congregation_val = getattr(db_record, "normalized_congregation", None)
-            if congregation_val:
-                metadata["normalized_congregation"] = congregation_val
 
             return Person(
                 cm_id=db_record.cm_id,
@@ -523,13 +510,15 @@ class PersonRepository(Repository):
                 preferred_name=db_record.preferred_name if hasattr(db_record, "preferred_name") else None,
                 birth_date=birth_date,
                 grade=db_record.grade if hasattr(db_record, "grade") else None,
-                school=db_record.school if hasattr(db_record, "school") else None,
+                school=school,
                 city=city,
                 state=state,
                 session_cm_id=None,  # Will be set from attendee data if needed
                 age=cm_age,  # CampMinder's authoritative age field
                 parent_names=parent_names,  # JSON of parent/guardian info
                 household_id=household_id,  # For sibling lookups
+                gender=gender,
+                congregation=congregation,
                 metadata=metadata,
             )
         except Exception as e:

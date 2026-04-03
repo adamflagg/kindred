@@ -143,6 +143,8 @@ class Person:
     age: float | None = None  # CampMinder's years.months format (e.g., 10.03 = 10 years, 3 months)
     parent_names: str | None = None  # JSON array of parent/guardian info
     household_id: int | None = None  # CampMinder household ID for sibling relationships
+    gender: str | None = None  # "M", "F", "Other" — promoted from metadata
+    congregation: str | None = None  # Normalized congregation name — promoted from metadata
     metadata: dict[str, Any] = field(default_factory=dict)  # Additional metadata for social graph etc.
 
     @property

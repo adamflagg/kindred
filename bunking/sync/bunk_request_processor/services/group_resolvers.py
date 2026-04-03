@@ -217,13 +217,8 @@ class _SchoolCongregationBaseResolver:
         return 0.85
 
     def _get_gender(self, person: Person) -> str | None:
-        """Get gender as a string, handling both Camper.gender (enum) and metadata['gender'] (str)."""
-        # Camper objects have gender as a Gender enum attribute
-        gender_attr = getattr(person, "gender", None)
-        if gender_attr is not None:
-            return gender_attr.value if hasattr(gender_attr, "value") else str(gender_attr)
-        # Person objects from DB store gender in metadata
-        return person.metadata.get("gender") if person.metadata else None
+        """Get gender from Person, checking first-class field."""
+        return person.gender
 
     def _get_field_value(self, person: Person) -> str | None:
         """Get the field value to match on (school or congregation).
@@ -355,7 +350,7 @@ class CongregationResolver(_SchoolCongregationBaseResolver):
     """
 
     def _get_field_value(self, person: Person) -> str | None:
-        return person.metadata.get("normalized_congregation") if person.metadata else None
+        return person.congregation
 
     def _expanded_from_label(self) -> str:
         return "congregation"

@@ -662,23 +662,12 @@ class TemporalNameCache:
             if hasattr(db_record, "birthdate") and db_record.birthdate:
                 birth_date = parse_date(db_record.birthdate)
 
-            # Parse address JSON to extract city and state
-            city = None
-            state = None
-            if hasattr(db_record, "address") and db_record.address:
-                addr = db_record.address
-                if isinstance(addr, dict):
-                    city = addr.get("city")
-                    state = addr.get("state")
-                elif isinstance(addr, str) and addr.strip():
-                    try:
-                        import json
+            # Read city/state from normalized columns (address JSON deleted in migration 1500000054)
+            city = getattr(db_record, "normalized_city", None) or getattr(db_record, "address_city", None) or None
+            state = getattr(db_record, "address_state", None) or None
 
-                        addr_dict = json.loads(addr)
-                        city = addr_dict.get("city")
-                        state = addr_dict.get("state")
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+            # Prefer normalized school over raw
+            school = getattr(db_record, "normalized_school", None) or getattr(db_record, "school", None) or None
 
             # Get parent_names JSON (for name resolution via parent surnames)
             parent_names = getattr(db_record, "parent_names", None)
@@ -687,14 +676,9 @@ class TemporalNameCache:
             first_name: str = getattr(db_record, "first_name", None) or ""
             last_name: str = getattr(db_record, "last_name", None) or ""
 
-            # Build metadata for resolver filtering (gender, congregation)
+            gender = getattr(db_record, "gender", None) or None
+            congregation = getattr(db_record, "normalized_congregation", None) or None
             metadata: dict[str, Any] = {}
-            gender_val = getattr(db_record, "gender", None)
-            if gender_val:
-                metadata["gender"] = gender_val
-            congregation_val = getattr(db_record, "normalized_congregation", None)
-            if congregation_val:
-                metadata["normalized_congregation"] = congregation_val
 
             return Person(
                 cm_id=db_record.cm_id,
@@ -703,12 +687,14 @@ class TemporalNameCache:
                 preferred_name=getattr(db_record, "preferred_name", None),
                 birth_date=birth_date,
                 grade=getattr(db_record, "grade", None),
-                school=getattr(db_record, "school", None),
+                school=school,
                 city=city,
                 state=state,
                 session_cm_id=None,
                 parent_names=parent_names,  # JSON of parent/guardian info
                 household_id=getattr(db_record, "household_id", None),  # For sibling lookup
+                gender=gender,
+                congregation=congregation,
                 metadata=metadata,
             )
         except Exception as e:
