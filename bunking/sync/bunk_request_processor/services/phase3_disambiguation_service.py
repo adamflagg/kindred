@@ -7,7 +7,6 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
-from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult
 from ..integration.ai_service import AIProvider, AIRequestContext
 from ..integration.batch_processor import BatchProcessor
@@ -46,7 +45,6 @@ class Phase3DisambiguationService:
         ai_provider: AIProvider,
         context_builder: ContextBuilder,
         batch_processor: BatchProcessor | None = None,
-        confidence_scorer: ConfidenceScorer | None = None,
         spread_filter: Any | None = None,
         cache_manager: Any | None = None,
     ):
@@ -56,13 +54,11 @@ class Phase3DisambiguationService:
             ai_provider: AI provider for disambiguation
             context_builder: Context builder for creating minimal contexts
             batch_processor: Optional batch processor for sophisticated batching
-            confidence_scorer: Optional confidence scorer for result scoring
             spread_filter: Optional spread filter for age/grade validation
             cache_manager: Optional cache manager for caching disambiguation results
         """
         self.ai_provider = ai_provider
         self.context_builder = context_builder
-        self.confidence_scorer = confidence_scorer
         self.spread_filter = spread_filter
         self.cache_manager = cache_manager
 

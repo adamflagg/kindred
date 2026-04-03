@@ -7,7 +7,6 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
-from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
@@ -59,7 +58,6 @@ class Phase2ResolutionService:
         self,
         resolution_pipeline: ResolutionPipeline,
         networkx_analyzer: Any | None = None,
-        confidence_scorer: ConfidenceScorer | None = None,
         staff_name_filter: Callable[[str], bool] | None = None,
         attendee_repository: Any | None = None,
         person_repository: Any | None = None,
@@ -69,7 +67,6 @@ class Phase2ResolutionService:
         Args:
             resolution_pipeline: The V2 resolution pipeline with all strategies
             networkx_analyzer: Optional NetworkX analyzer for social graph enhancement
-            confidence_scorer: Optional confidence scorer for result scoring
             staff_name_filter: Optional callable that returns True if a name is a detected
                 staff/parent name that should be filtered from resolution.
             attendee_repository: Optional repository for prior bunkmate lookups
@@ -77,13 +74,9 @@ class Phase2ResolutionService:
         """
         self.resolution_pipeline = resolution_pipeline
         self.networkx_analyzer = networkx_analyzer
-        self.confidence_scorer = confidence_scorer
         self.staff_name_filter = staff_name_filter
         self.attendee_repository = attendee_repository
         self.person_repository = person_repository
-
-        # Note: ConfidenceScorer uses social graph signals interface
-        # which is set up in the orchestrator
 
         self._stats = {
             "total_processed": 0,

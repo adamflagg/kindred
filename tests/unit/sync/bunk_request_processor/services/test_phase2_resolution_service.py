@@ -148,16 +148,6 @@ class TestPhase2ResolutionServiceInit:
         )
         assert service.networkx_analyzer == analyzer
 
-    def test_init_with_optional_confidence_scorer(self):
-        """Service accepts optional confidence_scorer"""
-        pipeline = Mock()
-        scorer = Mock()
-        service = Phase2ResolutionService(
-            resolution_pipeline=pipeline,
-            confidence_scorer=scorer,
-        )
-        assert service.confidence_scorer == scorer
-
     def test_init_stats_are_zero(self):
         """Stats should start at zero"""
         pipeline = Mock()

@@ -326,7 +326,7 @@ class DiagnosticRunner:
             pipeline = ResolutionPipeline(person_repo, attendee_repo)
             pipeline.add_strategy(ExactMatchStrategy(person_repo, attendee_repo))
 
-            phase2 = Phase2ResolutionService(resolution_pipeline=pipeline, confidence_scorer=None)
+            phase2 = Phase2ResolutionService(resolution_pipeline=pipeline)
 
             self.log("Phase 2 service created")
 

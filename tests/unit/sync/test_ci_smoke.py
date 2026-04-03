@@ -31,11 +31,9 @@ class TestCoreImports:
 
     def test_bunk_request_processor_imports(self):
         """Ensure bunk request processor modules can be imported"""
-        from bunking.sync.bunk_request_processor.confidence.confidence_scorer import ConfidenceScorer
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
 
         assert RequestOrchestrator is not None
-        assert ConfidenceScorer is not None
 
     def test_config_imports(self):
         """Ensure configuration system can be imported"""
@@ -75,16 +73,6 @@ class TestBasicInstantiation:
 
         bunk = DirectBunk(id="test_bunk", campminder_id=100, name="Test Bunk", capacity=12, gender="M", session_cm_id=1)
         assert bunk.capacity == 12
-
-    def test_create_confidence_scorer(self):
-        """Ensure ConfidenceScorer can be created"""
-        from bunking.sync.bunk_request_processor.confidence.confidence_scorer import ConfidenceScorer
-
-        scorer = ConfidenceScorer()
-        assert scorer is not None
-        # Test basic methods exist
-        assert hasattr(scorer, "score_parsed_request")
-        assert hasattr(scorer, "score_resolution")
 
 
 class TestCriticalPaths:

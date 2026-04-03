@@ -1,7 +1,7 @@
-"""Confidence scoring module for V2 architecture"""
+"""Confidence scoring module — social graph signals only"""
 
 from __future__ import annotations
 
-from .confidence_scorer import ConfidenceScorer, V2ConfidenceSignals
+from .social_graph_signals import NetworkXSocialGraphSignals, SocialGraphSignals
 
-__all__ = ["ConfidenceScorer", "V2ConfidenceSignals"]
+__all__ = ["SocialGraphSignals", "NetworkXSocialGraphSignals"]

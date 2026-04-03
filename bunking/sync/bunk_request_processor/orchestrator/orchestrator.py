@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         DataAccessContext,
     )
 
-from ..confidence.confidence_scorer import ConfidenceScorer
 from ..conflict.conflict_detector import ConflictDetector
 from ..core.models import (
     AgePreference,
@@ -775,17 +774,9 @@ class RequestOrchestrator:
         )
 
     def _init_scoring_components(self) -> None:
-        """Initialize confidence scorer, conflict detector, and priority calculator."""
+        """Initialize conflict detector and priority calculator."""
         # Social graph signals will be linked after social graph init
         self.social_graph_signals: SocialGraphSignalsAdapter | None = None
-
-        # Create native V2 confidence scorer
-        self.confidence_scorer = ConfidenceScorer(
-            config=self.ai_config,
-            attendee_repo=self._attendee_repo,
-            social_graph_signals=None,  # Will be linked after social graph init
-            person_repo=self._person_repo,
-        )
 
         # Create native V2 conflict detector
         conflict_config = self.ai_config.get("conflict_detection", {})
@@ -835,7 +826,6 @@ class RequestOrchestrator:
         )
         # SocialGraphSignalsAdapter implements SocialGraphSignals interface via duck typing
         self.social_graph_signals = signals_adapter
-        self.confidence_scorer.social_graph_signals = signals_adapter  # type: ignore[assignment]
 
     def _init_resolution_pipeline(self) -> None:
         """Initialize resolution pipeline with strategies."""
@@ -878,7 +868,6 @@ class RequestOrchestrator:
         self.phase2_service = Phase2ResolutionService(
             resolution_pipeline=self.resolution_pipeline,
             networkx_analyzer=self.social_graph,  # SocialGraph has compatible interface
-            confidence_scorer=self.confidence_scorer,
             staff_name_filter=self.is_staff_name,  # Filter detected staff names from resolution
             attendee_repository=self._attendee_repo,  # For prior bunkmate resolution
             person_repository=self._person_repo,  # For prior bunkmate name matching
@@ -888,7 +877,6 @@ class RequestOrchestrator:
             ai_provider=self.ai_provider,
             context_builder=self.context_builder,
             batch_processor=self.batch_processor,
-            confidence_scorer=self.confidence_scorer,
             spread_filter=self.spread_filter,
             cache_manager=self.cache_manager,
         )
@@ -1540,7 +1528,6 @@ class RequestOrchestrator:
             # Track post-pipeline enrichments across all intents for this trace
             any_self_ref = False
             any_reciprocal = False
-            reciprocal_boost_amount: float | None = None
             reciprocal_pair_cm_id: int | None = None
             any_dedup = False
             for req_idx, (parsed_req, rr) in enumerate(zip(pr.parsed_requests, res_list, strict=False)):
@@ -1555,7 +1542,6 @@ class RequestOrchestrator:
                     any_self_ref = True
                 if br_meta.get("is_reciprocal"):
                     any_reciprocal = True
-                    reciprocal_boost_amount = br_meta.get("reciprocal_boost")
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
                 # Check if this request was removed by deduplication
@@ -1629,8 +1615,6 @@ class RequestOrchestrator:
                     self_reference={"detected": any_self_ref},
                     reciprocal={
                         "detected": any_reciprocal,
-                        "boost_applied": any_reciprocal and reciprocal_boost_amount is not None,
-                        "boost_amount": reciprocal_boost_amount,
                         "pair_cm_id": reciprocal_pair_cm_id,
                     },
                     deduplication={

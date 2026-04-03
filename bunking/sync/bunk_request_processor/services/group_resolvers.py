@@ -345,8 +345,8 @@ class CongregationResolver(_SchoolCongregationBaseResolver):
     """Resolves congregation group references by matching normalized_congregation.
 
     Finds campers in the same congregation, in the same session,
-    within +-1 grade, matching gender. Reads normalized_congregation
-    from person.metadata (populated by _map_to_person).
+    within +-1 grade, matching gender. Uses person.congregation
+    (first-class field populated by _map_to_person).
     """
 
     def _get_field_value(self, person: Person) -> str | None:

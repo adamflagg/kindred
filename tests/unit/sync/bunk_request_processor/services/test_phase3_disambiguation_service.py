@@ -179,18 +179,6 @@ class TestPhase3DisambiguationServiceInit:
         )
         assert service.context_builder == context_builder
 
-    def test_init_with_optional_confidence_scorer(self):
-        """Service accepts optional confidence_scorer"""
-        ai_provider = Mock()
-        context_builder = Mock()
-        scorer = Mock()
-        service = Phase3DisambiguationService(
-            ai_provider=ai_provider,
-            context_builder=context_builder,
-            confidence_scorer=scorer,
-        )
-        assert service.confidence_scorer == scorer
-
     def test_init_with_optional_spread_filter(self):
         """Service accepts optional spread_filter"""
         ai_provider = Mock()
@@ -569,7 +557,6 @@ class TestPhase3DisambiguationServiceConfidencePassthrough:
             ai_provider=ai_provider,
             context_builder=context_builder,
             batch_processor=batch_processor,
-            confidence_scorer=None,
         )
 
         candidates = [selected_person, _create_person(cm_id=222)]
