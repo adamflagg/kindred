@@ -241,12 +241,12 @@ class Phase3DisambiguationService:
                 parsed_req = case.parse_result.parsed_requests[ambiguous_idx]
                 resolution = case.resolution_results[ambiguous_idx]
 
-                if hasattr(result, "person_cm_id") and result.person_cm_id:
+                if hasattr(result, "selected_person_id") and result.selected_person_id:
                     # AI selected a specific person
                     selected_person = None
                     if resolution.candidates:
                         for candidate in resolution.candidates[:5]:  # Top 5 only
-                            if candidate.cm_id == result.person_cm_id:
+                            if candidate.cm_id == result.selected_person_id:
                                 selected_person = candidate
                                 break
 
@@ -295,7 +295,7 @@ class Phase3DisambiguationService:
                         case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
                         if "selected_ids" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["selected_ids"] = {}
-                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = result.person_cm_id
+                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = result.selected_person_id
 
                 elif hasattr(result, "no_match") and result.no_match:
                     # AI explicitly said no match

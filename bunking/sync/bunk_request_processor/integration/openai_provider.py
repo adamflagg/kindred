@@ -591,13 +591,19 @@ class OpenAIProvider(AIProvider):
             details = []
             if candidate.get("school"):
                 details.append(f"School: {candidate['school']}")
-            if candidate.get("grade"):
+            if candidate.get("grade") is not None:
                 details.append(f"Grade: {candidate['grade']}")
-            if candidate.get("age"):
+            if candidate.get("age") is not None:
                 details.append(f"Age: {candidate['age']}")
+            if candidate.get("city"):
+                details.append(f"City: {candidate['city']}")
+            if candidate.get("congregation"):
+                details.append(f"Congregation: {candidate['congregation']}")
+            if candidate.get("parents"):
+                details.append(f"Parents: {candidate['parents']}")
             if candidate.get("social_distance") is not None:
                 details.append(f"Social distance: {candidate['social_distance']}")
-            if candidate.get("mutual_connections"):
+            if candidate.get("mutual_connections") is not None:
                 details.append(f"Mutual friends: {candidate['mutual_connections']}")
 
             if details:

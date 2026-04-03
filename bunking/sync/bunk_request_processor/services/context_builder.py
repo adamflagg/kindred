@@ -441,6 +441,8 @@ class ContextBuilder:
                 "school": candidate.school,
                 "grade": candidate.grade,
                 "age": self._calculate_age(candidate.birth_date) if candidate.birth_date else None,
+                "city": candidate.city,
+                "congregation": candidate.congregation,
             }
 
             # Add parent/guardian names if available

@@ -389,7 +389,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         # AI returns a result selecting person 111
         ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.85
         ai_result.reason = "Best match based on context"
 
@@ -426,7 +426,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         # AI returns ambiguous (no person selected)
         ai_result = Mock()
-        ai_result.person_cm_id = None
+        ai_result.selected_person_id = None
         ai_result.no_match = False
         ai_result.reason = "Could not distinguish between candidates"
 
@@ -459,7 +459,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         # AI returns no_match
         ai_result = Mock()
-        ai_result.person_cm_id = None
+        ai_result.selected_person_id = None
         ai_result.no_match = True
         ai_result.reason = "None of the candidates match the request"
 
@@ -558,7 +558,7 @@ class TestPhase3DisambiguationServiceConfidenceScoring:
         selected_person = _create_person(cm_id=111)
 
         ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.80
 
         batch_processor = Mock()
@@ -598,7 +598,7 @@ class TestPhase3DisambiguationServiceConfidenceScoring:
         selected_person = _create_person(cm_id=111)
 
         ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.85
         ai_result.reason = "Best match"
 
@@ -634,7 +634,7 @@ class TestPhase3DisambiguationServiceStatistics:
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
         ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.85
 
         batch_processor = Mock()
@@ -668,13 +668,13 @@ class TestPhase3DisambiguationServiceStatistics:
 
         # First result: success
         success_result = Mock()
-        success_result.person_cm_id = 111
+        success_result.selected_person_id = 111
         success_result.confidence = 0.85
 
         # Second result: still ambiguous (AI couldn't decide)
         # Note: Implementation counts this as "failed" since no disambiguated_result is created
         ambiguous_result = Mock()
-        ambiguous_result.person_cm_id = None
+        ambiguous_result.selected_person_id = None
         ambiguous_result.no_match = False
         ambiguous_result.reason = "Could not decide"
 
@@ -704,7 +704,7 @@ class TestPhase3DisambiguationServiceStatistics:
 
         stats = service.get_stats()
         assert stats["successfully_disambiguated"] == 1
-        # When AI returns no person_cm_id and no_match=False, it's counted as "failed"
+        # When AI returns no selected_person_id and no_match=False, it's counted as "failed"
         # because no disambiguated_result is created
         assert stats["failed"] == 1
 
