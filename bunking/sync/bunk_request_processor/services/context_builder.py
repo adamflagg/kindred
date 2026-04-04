@@ -470,8 +470,6 @@ class ContextBuilder:
                     candidate_data["mutual_connections"] = candidate.metadata["mutual_connections"]
                 if "found_by" in candidate.metadata:
                     candidate_data["found_by"] = candidate.metadata["found_by"]
-                if "in_same_session" in candidate.metadata:
-                    candidate_data["in_same_session"] = candidate.metadata["in_same_session"]
 
             formatted.append(candidate_data)
 

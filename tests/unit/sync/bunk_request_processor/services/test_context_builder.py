@@ -270,7 +270,6 @@ class TestContextBuilderDisambiguationContext:
             "social_distance": 2,
             "mutual_connections": 3,
             "found_by": "exact_match",
-            "in_same_session": True,
         }
 
         context = builder.build_disambiguation_context(
@@ -291,7 +290,40 @@ class TestContextBuilderDisambiguationContext:
         assert candidates_data[0].get("social_distance") == 2
         assert candidates_data[0].get("mutual_connections") == 3
         assert candidates_data[0].get("found_by") == "exact_match"
-        assert candidates_data[0].get("in_same_session") is True
+
+    def test_build_disambiguation_context_excludes_session_info_from_candidates(self):
+        """in_same_session must NOT be sent to LLM to avoid biasing toward same-session candidates"""
+        builder = ContextBuilder()
+        candidate = _create_person(cm_id=111)
+        # Metadata includes in_same_session but it should be stripped from output
+        candidate.metadata = {
+            "social_distance": 2,
+            "mutual_connections": 3,
+            "found_by": "exact_match",
+            "in_same_session": True,
+        }
+
+        context = builder.build_disambiguation_context(
+            target_name="Sarah Smith",
+            candidates=[candidate],
+            requester_name="John Doe",
+            requester_cm_id=11111,
+            requester_school=None,
+            session_cm_id=1000002,
+            session_name="Session 2",
+            year=2025,
+            ambiguity_reason="Multiple matches",
+            local_confidence=0.5,
+        )
+
+        candidates_data = context.additional_context.get("candidates")
+        assert candidates_data is not None
+        # in_same_session should NOT appear in candidate data sent to AI
+        assert "in_same_session" not in candidates_data[0]
+        # Other metadata should still be present
+        assert candidates_data[0].get("social_distance") == 2
+        assert candidates_data[0].get("mutual_connections") == 3
+        assert candidates_data[0].get("found_by") == "exact_match"
 
     def test_build_disambiguation_context_handles_needs_historical(self):
         """Context includes historical flag when needed"""

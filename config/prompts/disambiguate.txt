@@ -19,5 +19,7 @@ Consider:
 - Social connections (mutual friends increase likelihood)
 - Parent names (requests sometimes use parent surnames instead of child's)
 - Name spelling (fuzzy matches may indicate typos)
+- Family references (target may refer to household members by last name)
 
 If no match seems confident, select the closest match but set confidence appropriately low.
+If none of the candidates are a plausible match, set selected_person_id to 0.
