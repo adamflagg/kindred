@@ -307,7 +307,7 @@ class Phase3DisambiguationService:
                             f"AI selected cm_id={selected_person_id} not in candidates"
                         )
 
-                elif hasattr(result, "no_match") and result.no_match:
+                elif getattr(result, "no_match", False):
                     # AI explicitly said no match (legacy path)
                     if "status" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["status"] = {}
