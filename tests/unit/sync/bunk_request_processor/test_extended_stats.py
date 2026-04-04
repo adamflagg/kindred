@@ -78,11 +78,13 @@ class TestExtendedStatsInitialization:
 
         assert "declined_cross_session" in orchestrator._stats
         assert "declined_not_attending" in orchestrator._stats
+        assert "declined_not_enrolled" in orchestrator._stats
         assert "declined_other" in orchestrator._stats
 
         # All should start at 0
         assert orchestrator._stats["declined_cross_session"] == 0
         assert orchestrator._stats["declined_not_attending"] == 0
+        assert orchestrator._stats["declined_not_enrolled"] == 0
         assert orchestrator._stats["declined_other"] == 0
 
     def test_stats_include_ai_quality_fields(self, mock_pb, mock_factory, mock_social_graph):
@@ -428,7 +430,7 @@ class TestDeclinedReasonTracking:
         return orch
 
     def test_tracks_cross_session_declined(self, orchestrator):
-        """Counts requests declined due to cross-session mismatch."""
+        """Counts requests declined due to cross-session mismatch via disposition_reason."""
         requests = [
             BunkRequest(
                 requester_cm_id=100,
@@ -443,7 +445,8 @@ class TestDeclinedReasonTracking:
                 year=2025,
                 status=RequestStatus.DECLINED,
                 is_placeholder=False,
-                metadata={"declined_reason": "Session mismatch conflict"},
+                metadata={},
+                disposition_reason="session_mismatch",
             ),
         ]
 
@@ -453,7 +456,7 @@ class TestDeclinedReasonTracking:
         assert orchestrator._stats["declined_cross_session"] == 1
 
     def test_tracks_not_attending_declined(self, orchestrator):
-        """Counts requests declined because target not attending."""
+        """Counts requests declined because target not attending via disposition_reason."""
         requests = [
             BunkRequest(
                 requester_cm_id=100,
@@ -468,7 +471,8 @@ class TestDeclinedReasonTracking:
                 year=2025,
                 status=RequestStatus.DECLINED,
                 is_placeholder=False,
-                metadata={"declined_reason": "Target not attending this session"},
+                metadata={},
+                disposition_reason="target_not_attending",
             ),
         ]
 
@@ -477,8 +481,8 @@ class TestDeclinedReasonTracking:
 
         assert orchestrator._stats["declined_not_attending"] == 1
 
-    def test_tracks_other_declined(self, orchestrator):
-        """Counts requests declined for other reasons."""
+    def test_tracks_not_enrolled_declined(self, orchestrator):
+        """Counts requests declined because target not enrolled via disposition_reason."""
         requests = [
             BunkRequest(
                 requester_cm_id=100,
@@ -493,7 +497,34 @@ class TestDeclinedReasonTracking:
                 year=2025,
                 status=RequestStatus.DECLINED,
                 is_placeholder=False,
-                metadata={"declined_reason": "Some other reason"},
+                metadata={},
+                disposition_reason="target_not_enrolled",
+            ),
+        ]
+
+        for req in requests:
+            orchestrator._track_request_stats(req)
+
+        assert orchestrator._stats["declined_not_enrolled"] == 1
+
+    def test_tracks_other_declined(self, orchestrator):
+        """Counts requests declined for unrecognized reasons."""
+        requests = [
+            BunkRequest(
+                requester_cm_id=100,
+                requested_cm_id=200,
+                request_type=RequestType.BUNK_WITH,
+                session_cm_id=1,
+                priority=2,
+                confidence_score=0.9,
+                source=RequestSource.FAMILY,
+                source_field="bunk_with",
+                csv_position=1,
+                year=2025,
+                status=RequestStatus.DECLINED,
+                is_placeholder=False,
+                metadata={},
+                disposition_reason="some_unknown_reason",
             ),
         ]
 
