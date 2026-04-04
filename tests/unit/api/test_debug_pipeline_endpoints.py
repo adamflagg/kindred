@@ -109,8 +109,8 @@ def _make_pb_summary_record(
         ai_reasoning_summary="",
         pre_p1_action="parsed",
         year=2025,
-        disposition_reason="exact_match",
-        is_reciprocal=False,
+        disposition_reason=disposition_reason,
+        is_reciprocal=is_reciprocal,
     )
 
 

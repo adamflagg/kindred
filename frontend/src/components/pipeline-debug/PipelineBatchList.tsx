@@ -80,8 +80,9 @@ const RESOLVED_REASONS = new Set([
   'high_confidence_match',
   'auto_resolved',
   'cross_session_satisfied',
+  'directional_preference',
 ])
-const PENDING_REASONS = new Set(['needs_review'])
+const PENDING_REASONS = new Set(['needs_review', 'target_waitlisted', 'undirected_preference'])
 const DECLINED_REASONS = new Set([
   'session_mismatch',
   'target_not_attending',
