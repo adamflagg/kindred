@@ -678,7 +678,6 @@ class TemporalNameCache:
 
             gender = getattr(db_record, "gender", None) or None
             congregation = getattr(db_record, "normalized_congregation", None) or None
-            metadata: dict[str, Any] = {}
 
             return Person(
                 cm_id=db_record.cm_id,
@@ -695,7 +694,6 @@ class TemporalNameCache:
                 household_id=getattr(db_record, "household_id", None),  # For sibling lookup
                 gender=gender,
                 congregation=congregation,
-                metadata=metadata,
             )
         except Exception as e:
             logger.error(f"Error mapping person record: {e}")

@@ -500,9 +500,6 @@ class PersonRepository(Repository):
             gender = getattr(db_record, "gender", None) or None
             congregation = getattr(db_record, "normalized_congregation", None) or None
 
-            # Keep metadata for any remaining resolver-specific data
-            metadata: dict[str, Any] = {}
-
             return Person(
                 cm_id=db_record.cm_id,
                 first_name=db_record.first_name,
@@ -519,7 +516,6 @@ class PersonRepository(Repository):
                 household_id=household_id,  # For sibling lookups
                 gender=gender,
                 congregation=congregation,
-                metadata=metadata,
             )
         except Exception as e:
             logger.error("Error mapping person record: %s", e)

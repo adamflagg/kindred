@@ -45,7 +45,6 @@ from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator
 from ..processing.priority_calculator import PriorityCalculator
-from ..processing.reciprocal_detector import ReciprocalDetector
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..services.context_builder import ContextBuilder
@@ -887,10 +886,6 @@ class RequestOrchestrator:
         self.source_link_repository = SourceLinkRepository(self.pb)
         self.self_reference_rule = SelfReferenceRule()
         self.deduplicator = Deduplicator(self.request_repository)
-        self.reciprocal_detector = ReciprocalDetector(
-            confidence_boost=self.ai_config.get("reciprocal_confidence_boost", 0.1)
-        )
-
         # Create request builder for constructing BunkRequest objects
         self.request_builder = RequestBuilder(
             priority_calculator=self.priority_calculator,

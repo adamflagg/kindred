@@ -428,18 +428,17 @@ class TestOrchestratorSourceLinkInitialization:
             with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestRepository"):
                 with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SelfReferenceRule"):
                     with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.Deduplicator"):
-                        with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ReciprocalDetector"):
-                            with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestBuilder"):
-                                # Create orchestrator instance manually
-                                orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
-                                orchestrator.pb = mock_pb_client
-                                orchestrator.ai_config = {"reciprocal_confidence_boost": 0.1}
-                                orchestrator.temporal_name_cache = Mock()
-                                orchestrator.priority_calculator = Mock()
-                                orchestrator.year = 2025
+                        with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestBuilder"):
+                            # Create orchestrator instance manually
+                            orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
+                            orchestrator.pb = mock_pb_client
+                            orchestrator.ai_config = {}
+                            orchestrator.temporal_name_cache = Mock()
+                            orchestrator.priority_calculator = Mock()
+                            orchestrator.year = 2025
 
-                                # Call the method that should init SourceLinkRepository
-                                orchestrator._init_validation_components()
+                            # Call the method that should init SourceLinkRepository
+                            orchestrator._init_validation_components()
 
             # Should have created SourceLinkRepository with pb_client
             mock_slr_class.assert_called_once_with(mock_pb_client)
