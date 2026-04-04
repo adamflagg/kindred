@@ -119,8 +119,8 @@ class RequestBuilder:
         # Build metadata
         metadata = self.build_request_metadata(parsed_req, resolution_info, ai_parsed)
 
-        # Determine status
-        status = self.determine_request_status(parsed_req, resolution_info, metadata)
+        # Determine status and disposition reason
+        status, disposition_reason = self.determine_request_status(parsed_req, resolution_info, metadata)
 
         # Determine is_placeholder (only for true placeholders, not unresolved names)
         # True placeholders: person_cm_id is None (e.g., age_preference requests)
@@ -151,6 +151,8 @@ class RequestBuilder:
             is_placeholder=is_placeholder,
             metadata=metadata,
             requested_name=requested_name,
+            resolution_method=resolution_info.get("resolution_method", ""),
+            disposition_reason=disposition_reason,
         )
 
     def get_requested_name(self, parsed_req: ParsedRequest, resolution_info: dict[str, Any]) -> str | None:
@@ -203,8 +205,6 @@ class RequestBuilder:
             else {},
             "ai_parsed": ai_parsed,
             "locally_resolved": not ai_parsed,
-            "resolution_method": resolution_info.get("resolution_method", ""),
-            "match_type": resolution_info.get("resolution_method", ""),
             "confidence_factors": resolution_info.get("confidence_factors", []),
         }
 
@@ -220,11 +220,12 @@ class RequestBuilder:
 
     def determine_request_status(
         self, parsed_req: ParsedRequest, resolution_info: dict[str, Any], metadata: dict[str, Any]
-    ) -> RequestStatus:
-        """Determine the status of a bunk request using disposition rules.
+    ) -> tuple[RequestStatus, str]:
+        """Determine the status and disposition reason for a bunk request.
 
-        Unresolved names (no person or negative ID) are always PENDING.
-        Resolved matches go through disposition rules (business gates + quality).
+        Returns:
+            Tuple of (status, disposition_reason). Unresolved names return (PENDING, "").
+            Resolved matches go through disposition rules (business gates + quality).
         """
         from ..disposition.disposition_rules import determine_disposition
 
@@ -234,13 +235,13 @@ class RequestBuilder:
         if person_cm_id is None:
             if parsed_req.request_type == RequestType.AGE_PREFERENCE:
                 if parsed_req.age_preference is not None:
-                    return RequestStatus.RESOLVED
-                return RequestStatus.PENDING
-            return RequestStatus.PENDING
+                    return RequestStatus.RESOLVED, "directional_preference"
+                return RequestStatus.PENDING, ""
+            return RequestStatus.PENDING, ""
 
         # Negative ID means unresolved name
         if person_cm_id < 0:
-            return RequestStatus.PENDING
+            return RequestStatus.PENDING, ""
 
         # Resolved match — apply disposition rules
         disposition = determine_disposition(
@@ -256,17 +257,14 @@ class RequestBuilder:
             age_direction=parsed_req.age_preference.value if parsed_req.age_preference else None,
         )
 
-        metadata["disposition_reason"] = disposition.reason
-        metadata["disposition_rule_id"] = disposition.rule_id
-
         if disposition.status == RequestStatus.DECLINED:
             metadata["declined_reason"] = resolution_info.get("conflict_description", disposition.reason)
 
         # Auto-satisfied cross-session NOT_BUNK_WITH (from conflict detector)
         if resolution_info.get("auto_satisfied"):
-            return RequestStatus.RESOLVED
+            return RequestStatus.RESOLVED, "cross_session_satisfied"
 
-        return disposition.status
+        return disposition.status, disposition.reason
 
     def enrich_placeholder_metadata(
         self, metadata: dict[str, Any], requester_cm_id: int, session_cm_id: int, target_name: str | None

@@ -295,6 +295,17 @@ class RequestRepository:
             if "age_preference" in request.metadata:
                 data["age_preference_target"] = request.metadata["age_preference"]
 
+        # Write promoted fields from BunkRequest (not metadata)
+        data["disposition_reason"] = request.disposition_reason
+        data["resolution_method"] = request.resolution_method
+
+        # Clean legacy keys from metadata if present (old records may have them)
+        if request.metadata:
+            for key in ("disposition_reason", "disposition_rule_id", "resolution_method", "match_type"):
+                request.metadata.pop(key, None)
+            # Re-serialize metadata after cleanup
+            data["metadata"] = json.dumps(request.metadata)
+
         # Add optional fields
         if hasattr(request, "resolution_notes") and request.resolution_notes:
             data["resolution_notes"] = request.resolution_notes

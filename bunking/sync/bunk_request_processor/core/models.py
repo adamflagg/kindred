@@ -317,6 +317,10 @@ class BunkRequest:
     is_placeholder: bool  # True for LAST_YEAR_BUNKMATES
     metadata: dict[str, Any]  # All tracking info
 
+    # Promoted fields — written directly, not via metadata
+    resolution_method: str = ""  # "exact_match", "fuzzy_match", "phonetic_match", etc.
+    disposition_reason: str = ""  # "exact_match", "reciprocal_match", "needs_review", etc.
+
     # Additional fields for business logic
     requester_name: str | None = None
     requested_name: str | None = None
