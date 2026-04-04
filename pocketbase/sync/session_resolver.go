@@ -3,12 +3,13 @@ package sync
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// SessionResolver handles resolving friendly session names to CampMinder session IDs
+// SessionResolver handles resolving session cm_ids to related CampMinder session IDs
 type SessionResolver struct {
 	app core.App
 }
@@ -18,107 +19,82 @@ func NewSessionResolver(app core.App) *SessionResolver {
 	return &SessionResolver{app: app}
 }
 
-// sessionNameMap maps friendly session names to session numbers/types
-// Frontend sends 'toc' for Taste of Camp; Python uses '1' internally with a 'toc' alias
-var sessionNameMap = map[string]string{
-	"1":   "1",
-	"2":   "2",
-	"2a":  "2a",
-	"2b":  "2b",
-	"3":   "3",
-	"3a":  "3a",
-	"3b":  "3b",
-	"4":   "4",
-	"toc": "1", // Taste of Camp is session 1
-}
-
-// GetSessionNamePattern returns the name pattern to match for a given session number.
-// Session 1 is "Taste of Camp", sessions 2-4 are "Session N".
-func GetSessionNamePattern(sessionNum string) string {
-	if sessionNum == "1" {
-		return "Taste of Camp"
-	}
-	return fmt.Sprintf("Session %s", sessionNum)
-}
-
-// IsEmbeddedSession returns true if the session number indicates an embedded session (2a, 2b, 3a, etc.)
-func IsEmbeddedSession(sessionNum string) bool {
-	return strings.Contains(sessionNum, "a") || strings.Contains(sessionNum, "b")
-}
-
-// IsValidSession returns true if the session string is a valid session identifier
+// IsValidSession returns true if the session string is a valid session identifier.
+// Accepts empty string, DefaultSession ("all"), or a positive numeric cm_id.
 func IsValidSession(session string) bool {
 	if session == "" || session == DefaultSession {
 		return true
 	}
-	_, ok := sessionNameMap[strings.ToLower(session)]
-	return ok
+	n, err := strconv.Atoi(session)
+	return err == nil && n > 0
 }
 
-// ResolveSessionCMIDs resolves a friendly session name to CampMinder session IDs.
-// For main sessions (1, 2, 3, 4), also includes related AG sessions.
-// Returns empty slice for "all" or empty session.
+// ResolveSessionCMIDs resolves a session cm_id string to CampMinder session IDs.
+// For main sessions, also includes related AG child sessions.
+// For AG sessions, also includes the parent main session.
+// For embedded sessions, returns just the session itself.
+// Returns nil for "all" or empty session (caller handles the unfiltered case).
 func (r *SessionResolver) ResolveSessionCMIDs(session string, year int) ([]int, error) {
 	if session == "" || session == DefaultSession {
 		return nil, nil
 	}
 
-	sessionNum, ok := sessionNameMap[strings.ToLower(session)]
-	if !ok {
-		return nil, fmt.Errorf("unknown session: %s", session)
+	cmID, err := strconv.Atoi(session)
+	if err != nil {
+		return nil, fmt.Errorf("invalid session '%s': must be 'all' or a numeric cm_id", session)
 	}
 
-	var cmIDs []int
 	yearStr := fmt.Sprintf("%d", year)
 
-	// Check if it's an embedded session or main session
-	if IsEmbeddedSession(sessionNum) {
-		// Embedded session - just get that specific session
-		filter := fmt.Sprintf("year = %s && session_type = 'embedded' && name ~ '%s'", yearStr, sessionNum)
-		sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
-		if err != nil {
-			return nil, fmt.Errorf("querying sessions: %w", err)
-		}
-		for _, s := range sessions {
-			if cmID, ok := s.Get("cm_id").(float64); ok {
-				cmIDs = append(cmIDs, int(cmID))
-			}
-		}
-	} else {
-		// Main session - get main + AG children
-		namePattern := GetSessionNamePattern(sessionNum)
-		filter := fmt.Sprintf("year = %s && session_type = 'main' && name ~ '%s'", yearStr, namePattern)
-		sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
-		if err != nil {
-			return nil, fmt.Errorf("querying main session: %w", err)
-		}
+	// Look up the session by cm_id
+	filter := fmt.Sprintf("cm_id = %d && year = %s", cmID, yearStr)
+	sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
+	if err != nil {
+		return nil, fmt.Errorf("querying session cm_id=%d: %w", cmID, err)
+	}
+	if len(sessions) == 0 {
+		return nil, fmt.Errorf("session cm_id=%d not found for year %d", cmID, year)
+	}
 
-		if len(sessions) > 0 {
-			mainSession := sessions[0]
-			if mainCMID, ok := mainSession.Get("cm_id").(float64); ok {
-				cmIDs = append(cmIDs, int(mainCMID))
+	mainRecord := sessions[0]
+	sessionType := mainRecord.GetString("session_type")
+	parentID := 0
+	if pid, ok := mainRecord.Get("parent_id").(float64); ok {
+		parentID = int(pid)
+	}
 
-				// Find AG children (parent_id matches main session's cm_id)
-				agFilter := fmt.Sprintf("year = %s && session_type = 'ag' && parent_id = %d", yearStr, int(mainCMID))
-				agSessions, err := r.app.FindRecordsByFilter("camp_sessions", agFilter, "", 0, 0)
-				if err != nil {
-					slog.Warn("Failed to find AG sessions", "error", err)
-				} else {
-					for _, ag := range agSessions {
-						if agCMID, ok := ag.Get("cm_id").(float64); ok {
-							cmIDs = append(cmIDs, int(agCMID))
-						}
+	relatedIDs := []int{cmID}
+
+	switch sessionType {
+	case "main":
+		// Main session -> find AG children (parent_id matches this session's cm_id)
+		agFilter := fmt.Sprintf("year = %s && session_type = 'ag' && parent_id = %d", yearStr, cmID)
+		agSessions, err := r.app.FindRecordsByFilter("camp_sessions", agFilter, "", 0, 0)
+		if err != nil {
+			slog.Warn("Failed to find AG sessions", "error", err)
+		} else {
+			for _, ag := range agSessions {
+				if agCMID, ok := ag.Get("cm_id").(float64); ok {
+					agIDInt := int(agCMID)
+					if agIDInt != cmID {
+						relatedIDs = append(relatedIDs, agIDInt)
 					}
 				}
 			}
 		}
+
+	case "ag":
+		// AG session -> add parent main session
+		if parentID > 0 && parentID != cmID {
+			relatedIDs = append(relatedIDs, parentID)
+		}
+
+	// "embedded" or anything else -> just self (independent)
+	default:
+		// No related sessions to add
 	}
 
-	if len(cmIDs) == 0 {
-		return nil, fmt.Errorf("session %s not found for year %d", session, year)
-	}
-
-	return cmIDs, nil
+	return relatedIDs, nil
 }
 
 // GetPersonIDsForSession returns CampMinder person IDs for persons enrolled in the specified session.

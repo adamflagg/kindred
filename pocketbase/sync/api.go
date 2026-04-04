@@ -1566,7 +1566,7 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	// Validate session parameter
 	if !IsValidSession(session) {
 		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "Invalid session parameter. Must be 'all', '1', '2', '2a', '2b', '3', '3a', '3b', '4', or 'toc'.",
+			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
 		})
 	}
 
@@ -1642,7 +1642,7 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	// Validate session parameter
 	if !IsValidSession(session) {
 		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "Invalid session parameter. Must be 'all', '1', '2', '2a', '2b', '3', '3a', '3b', '4', or 'toc'.",
+			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
 		})
 	}
 
