@@ -246,6 +246,9 @@ class Phase3DisambiguationService:
                 ai_confidence: float = 0.8
                 ai_reason: str = "AI selected"
 
+                if result and not isinstance(result, ParsedResponse) and not hasattr(result, "selected_person_id"):
+                    logger.warning(f"Phase 3 unexpected result type: {type(result).__name__} for case idx={idx}")
+
                 if isinstance(result, ParsedResponse):
                     # Unwrap ParsedResponse from AI provider
                     ai_confidence = result.confidence
@@ -286,6 +289,11 @@ class Phase3DisambiguationService:
                         if "status" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["status"] = {}
                         case.disambiguation_metadata["status"][ambiguous_idx] = "success"
+                        logger.info(
+                            f"Phase 3 disambiguated '{resolution.target_name}' → "
+                            f"{selected_person.first_name} {selected_person.last_name} "
+                            f"(cm_id={selected_person_id}, confidence={ai_confidence:.2f})"
+                        )
                     else:
                         # AI selected unknown person (not in candidates)
                         if "status" not in case.disambiguation_metadata:
@@ -294,6 +302,10 @@ class Phase3DisambiguationService:
                         if "selected_ids" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["selected_ids"] = {}
                         case.disambiguation_metadata["selected_ids"][ambiguous_idx] = selected_person_id
+                        logger.info(
+                            f"Phase 3 no match for '{resolution.target_name}' — "
+                            f"AI selected cm_id={selected_person_id} not in candidates"
+                        )
 
                 elif hasattr(result, "no_match") and result.no_match:
                     # AI explicitly said no match (legacy path)
@@ -315,6 +327,11 @@ class Phase3DisambiguationService:
                         case.disambiguation_metadata["reasons"] = {}
                     case.disambiguation_metadata["reasons"][ambiguous_idx] = (
                         ai_reason if ai_reason != "AI selected" else "No suitable match"
+                    )
+                    reasoning = ai_reason if ai_reason != "AI selected" else None
+                    logger.info(
+                        f"Phase 3 no selection for '{resolution.target_name}' — "
+                        f"{reasoning or 'AI returned no selection'}"
                     )
 
             except Exception as e:
