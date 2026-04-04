@@ -262,5 +262,113 @@ class TestSelfReferenceRule:
         assert result.is_valid
 
 
+class TestSelfReferenceNicknameMatching:
+    """Tests for #829: Self-reference validation should use nickname matching.
+
+    When a first-name-only target matches the requester's first name via nicknames
+    (e.g., "Lena" -> "Zelena"), the self-reference check should catch it just like
+    an exact first-name match.
+    """
+
+    @pytest.fixture
+    def rule(self):
+        return SelfReferenceRule()
+
+    @pytest.fixture
+    def base_request(self):
+        return BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=3,
+            confidence_score=0.0,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.PENDING,
+            is_placeholder=True,
+            metadata={},
+        )
+
+    def test_nickname_variant_detected_as_self_reference(self, rule, base_request):
+        """Target 'Mike' should match requester first name 'Michael' via nicknames.
+
+        When no session peers share the name, this is unresolvable self-reference.
+        """
+        base_request.metadata = {
+            "raw_target_name": "Mike",
+            "requester_first_name": "Michael",
+            "requester_full_name": "Michael Johnson",
+            "session_peers_with_same_first_name": 0,
+        }
+
+        result = rule.validate(base_request)
+
+        assert not result.is_valid
+        assert result.metadata["self_ref_type"] == "unresolvable_first_name"
+
+    def test_nickname_variant_with_peers_passes(self, rule, base_request):
+        """Target 'Mike' matching requester 'Michael' should pass when peers exist.
+
+        Other session members also named Michael/Mike means the target could
+        be someone else, not necessarily self-referential.
+        """
+        base_request.metadata = {
+            "raw_target_name": "Mike",
+            "requester_first_name": "Michael",
+            "requester_full_name": "Michael Johnson",
+            "session_peers_with_same_first_name": 2,
+        }
+
+        result = rule.validate(base_request)
+
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_reverse_nickname_variant_detected(self, rule, base_request):
+        """Target 'Elizabeth' should match requester 'Liz' via nicknames."""
+        base_request.metadata = {
+            "raw_target_name": "Elizabeth",
+            "requester_first_name": "Liz",
+            "requester_full_name": "Liz Garcia",
+            "session_peers_with_same_first_name": 0,
+        }
+
+        result = rule.validate(base_request)
+
+        assert not result.is_valid
+        assert result.metadata["self_ref_type"] == "unresolvable_first_name"
+
+    def test_unrelated_names_still_pass(self, rule, base_request):
+        """Names that are NOT nickname variants should not trigger self-reference."""
+        base_request.metadata = {
+            "raw_target_name": "Emma",
+            "requester_first_name": "Michael",
+            "requester_full_name": "Michael Johnson",
+            "session_peers_with_same_first_name": 0,
+        }
+
+        result = rule.validate(base_request)
+
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_nickname_match_without_peer_metadata_passes(self, rule, base_request):
+        """Conservative: nickname match without peer metadata should pass (no false positives)."""
+        base_request.metadata = {
+            "raw_target_name": "Mike",
+            "requester_first_name": "Michael",
+            "requester_full_name": "Michael Johnson",
+            # session_peers_with_same_first_name NOT provided
+        }
+
+        result = rule.validate(base_request)
+
+        # Conservative — allow when metadata missing
+        assert result.is_valid
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
