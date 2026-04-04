@@ -147,9 +147,9 @@ class OpenAIProvider(AIProvider):
             if self.debug and isinstance(parsed_response, AIParseResponse):
                 target_names = [r.target_name for r in parsed_response.requests]
                 request_types = [r.request_type for r in parsed_response.requests]
-                logger.info(f"[AI-PARSE] Output: targets={target_names} request_types={request_types}")
+                logger.debug(f"[AI-PARSE] Output: targets={target_names} request_types={request_types}")
                 if reasoning_summary:
-                    logger.info(f"[AI-PARSE] Reasoning: {reasoning_summary}")
+                    logger.debug(f"[AI-PARSE] Reasoning: {reasoning_summary}")
 
             # Log response for debugging
             preview = request_text if len(request_text) <= 200 else f"{request_text[:200]}..."

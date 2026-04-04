@@ -429,6 +429,7 @@ jobs:
           CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGES[$i]}"
 
           docker buildx build \
+            --platform linux/amd64 \
             -f "${DOCKERFILES[$i]}" \
             -t "${REGISTRY}/${USERNAME}/${IMAGES[$i]}:test" \
             --build-arg VERSION="$BUILD_VERSION" \

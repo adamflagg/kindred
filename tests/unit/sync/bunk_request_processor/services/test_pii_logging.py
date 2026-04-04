@@ -29,6 +29,7 @@ from bunking.sync.bunk_request_processor.core.models import (
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.services.group_resolvers import (
     BunkmateResolver,
+    ClassmateResolver,
     SiblingResolver,
 )
 from bunking.sync.bunk_request_processor.services.placeholder_expander import PlaceholderExpander
@@ -211,7 +212,7 @@ class TestStaffNameDetectorPiiLogging:
         """INFO log should contain count of detected names, not the names themselves."""
         detector = StaffNameDetector(staff_list_path=None)
 
-        notes = [
+        notes: list[str | None] = [
             "Sarah Smith called to discuss bunking preferences",
             "Mom spoke with us about cabin assignment",
         ]
@@ -278,3 +279,70 @@ class TestPhase2ResolutionStaffFilterPiiLogging:
 
         # DEBUG should contain the filtered staff name
         assert any("Jordan" in msg for msg in debug_messages)
+
+
+class TestPeerResolverPiiLogging:
+    """Peer (classmate/congregation) resolver must log names at DEBUG only, counts at INFO."""
+
+    def test_info_log_contains_count_only(self, caplog):
+        """INFO log should contain peer count but NOT names."""
+        person_repo = MagicMock()
+        attendee_repo = MagicMock()
+
+        # Requester: grade 5, school "Riverside Elementary"
+        requester = Person(cm_id=1001, first_name="Emma", last_name="Johnson", grade=5, school="Riverside Elementary")
+
+        # Peer: same school, same grade
+        peer = Person(cm_id=2001, first_name="Liam", last_name="Garcia", grade=5, school="Riverside Elementary")
+
+        person_repo.find_by_cm_id.return_value = requester
+        attendee_repo.get_session_attendees.return_value = [
+            {"person_cm_id": 2001},
+        ]
+        person_repo.bulk_find_by_cm_ids.return_value = {2001: peer}
+
+        resolver = ClassmateResolver(
+            person_repo=person_repo,
+            attendee_repo=attendee_repo,
+            year=2025,
+        )
+        parsed_req = _make_parsed_req(raw_text="bunk with classmates")
+
+        with caplog.at_level(logging.DEBUG):
+            resolver.resolve(requester_cm_id=1001, parsed_request=parsed_req, session_cm_id=5001)
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+
+        # INFO should mention count but NOT individual names or cm_ids
+        assert any("1" in msg and "peer" in msg.lower() for msg in info_messages)
+        assert not any("Liam Garcia" in msg for msg in info_messages)
+        assert not any("Emma Johnson" in msg for msg in info_messages)
+        assert not any("1001" in msg for msg in info_messages)
+
+        # DEBUG should contain the detailed names
+        assert any("Liam Garcia" in msg for msg in debug_messages)
+
+    def test_no_peers_logs_no_names(self, caplog):
+        """When no peers found, no camper names appear in INFO."""
+        person_repo = MagicMock()
+        attendee_repo = MagicMock()
+
+        requester = Person(cm_id=1001, first_name="Emma", last_name="Johnson", grade=5, school="Riverside Elementary")
+
+        person_repo.find_by_cm_id.return_value = requester
+        attendee_repo.get_session_attendees.return_value = []
+
+        resolver = ClassmateResolver(
+            person_repo=person_repo,
+            attendee_repo=attendee_repo,
+            year=2025,
+        )
+        parsed_req = _make_parsed_req(raw_text="bunk with classmates")
+
+        with caplog.at_level(logging.DEBUG):
+            resolver.resolve(requester_cm_id=1001, parsed_request=parsed_req, session_cm_id=5001)
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert not any("Emma Johnson" in msg for msg in info_messages)
+        assert not any("1001" in msg for msg in info_messages)
