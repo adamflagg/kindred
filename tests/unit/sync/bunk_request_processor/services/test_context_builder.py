@@ -186,10 +186,10 @@ class TestContextBuilderDisambiguationContext:
         assert context.additional_context.get("parse_only") is False
 
     def test_build_disambiguation_context_limits_candidates(self):
-        """Context should limit to top 5 candidates"""
+        """Context should limit to top 10 candidates"""
         builder = ContextBuilder()
-        # Create 7 candidates
-        candidates = [_create_person(cm_id=100 + i) for i in range(7)]
+        # Create 12 candidates to verify truncation at 10
+        candidates = [_create_person(cm_id=100 + i) for i in range(12)]
 
         context = builder.build_disambiguation_context(
             target_name="Sarah Smith",
@@ -206,7 +206,7 @@ class TestContextBuilderDisambiguationContext:
 
         candidates_data = context.additional_context.get("candidates")
         assert candidates_data is not None
-        assert len(candidates_data) == 5
+        assert len(candidates_data) == 10
 
     def test_build_disambiguation_context_includes_candidate_details(self):
         """Candidate data should include relevant details"""

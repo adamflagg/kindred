@@ -109,7 +109,7 @@ class ContextBuilder:
         )
 
         # Format candidates with relevant details
-        candidates_data = self._format_candidates(final_candidates[:5])  # Top 5 only
+        candidates_data = self._format_candidates(final_candidates[:10])  # Top 10 only
 
         additional_context: dict[str, Any] = {
             "parse_only": False,  # We want ID matching now

@@ -1435,8 +1435,8 @@ class TestSingleNameCandidateGeneration:
             return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
         )
 
-        # Create 8 people named "Emma"
-        emmas = [_create_person(cm_id=100 + i, first_name="Emma", last_name=f"Last{i}") for i in range(8)]
+        # Create 12 people named "Emma" to verify truncation
+        emmas = [_create_person(cm_id=100 + i, first_name="Emma", last_name=f"Last{i}") for i in range(12)]
 
         person_repo = Mock()
         person_repo.find_by_first_name = Mock(return_value=emmas)
@@ -1467,7 +1467,7 @@ class TestSingleNameCandidateGeneration:
 
         assert result.is_ambiguous
         assert result.candidates is not None
-        assert len(result.candidates) <= 10, "Candidates should be capped at 10"
+        assert len(result.candidates) == 10, "Candidates should be capped at exactly 10"
 
     @pytest.mark.asyncio
     async def test_full_name_not_affected(self):

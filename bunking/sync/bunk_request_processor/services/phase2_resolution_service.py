@@ -396,8 +396,15 @@ class Phase2ResolutionService:
                 # Skip already-resolved or already-ambiguous results
                 if result.is_resolved or result.is_ambiguous:
                     continue
-                # Skip age_preference results
-                if result.method == "age_preference":
+                # Skip results that should not have candidates generated
+                skip_candidate_generation = {
+                    "age_preference",
+                    "staff_filtered",
+                    "age_preference_undirected",
+                    "group_reference",
+                    "no_resolution_needed",
+                }
+                if result.method in skip_candidate_generation:
                     continue
 
                 parsed = case.parsed_requests[idx] if idx < len(case.parsed_requests) else None
@@ -460,13 +467,21 @@ class Phase2ResolutionService:
                     },
                 )
 
-                logger.info(
+                logger.debug(
                     f"Generated {len(candidates)} disambiguation candidate(s) for '{target}' (strategy={strategy})"
                 )
 
     @staticmethod
     def _is_family_reference(target: str) -> bool:
-        """Detect family/household references by marker tokens."""
+        """Detect family/household references by marker tokens.
+
+        The " and " check is intentionally broad — it catches "Johnson and Smith families"
+        but also matches "Emma and Olivia". This is acceptable because false positives
+        (two first names joined by "and") will simply fail to find matching last-name
+        candidates and fall through to other resolution paths. The cost of a false positive
+        is low (wasted lookup), while the cost of missing a real family reference is high
+        (unresolved request).
+        """
         lower = target.lower()
         return "/" in lower or "family" in lower or "families" in lower or " and " in lower
 
@@ -629,7 +644,7 @@ class Phase2ResolutionService:
                                 },
                             )
                             self._stats["smart_resolved"] += 1
-                            logger.info(
+                            logger.debug(
                                 f"Smart resolved '{parsed_request.target_name}' to "
                                 f"{resolved_person.first_name} {resolved_person.last_name} "
                                 f"(cm_id={resolved_cm_id}, confidence={confidence:.2f})"
@@ -826,7 +841,7 @@ class Phase2ResolutionService:
 
                 # Check full name match (0.95 confidence)
                 if normalized_target == person_normalized:
-                    logger.info(
+                    logger.debug(
                         f"Found exact match in last year's bunk: {target_name} -> {person_full} (ID: {bunkmate_id})"
                     )
                     return ResolutionResult(
@@ -843,7 +858,7 @@ class Phase2ResolutionService:
                 if " " not in normalized_target:  # Single name
                     person_first_normalized = normalize_name(person.first_name or "")
                     if normalized_target == person_first_normalized:
-                        logger.info(
+                        logger.debug(
                             f"Found first name match in last year's bunk: "
                             f"{target_name} -> {person_full} (ID: {bunkmate_id})"
                         )
@@ -993,7 +1008,7 @@ class Phase2ResolutionService:
 
         if best_match and best_score > 0.5:
             confidence = min(0.75, best_score)
-            logger.info(
+            logger.debug(
                 f"Resolved via AI candidate list: {parsed_request.target_name} -> "
                 f"{best_match.first_name} {best_match.last_name} (cm_id={best_match.cm_id}, "
                 f"confidence={confidence:.2f})"
@@ -1084,7 +1099,7 @@ class Phase2ResolutionService:
 
             if target_normalized == person_normalized:
                 # Normalized names match - accept with high confidence
-                logger.info(
+                logger.debug(
                     f"AI match validated after normalization: "
                     f"'{parsed_request.target_name}' == '{person_name}' "
                     f"(ID: {target_cm_id})"

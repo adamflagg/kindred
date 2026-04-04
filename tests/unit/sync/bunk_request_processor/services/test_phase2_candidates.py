@@ -392,6 +392,26 @@ class TestCandidateCapAndFiltering:
         assert case.resolution_results[0] is not None
         assert case.resolution_results[0].method == "age_preference"
 
+    def test_skips_staff_filtered_results(self):
+        """Results with method='staff_filtered' should be skipped — not overwritten by candidate generation."""
+        repo = Mock()
+        repo.find_by_first_name.return_value = [_person(901)]
+        repo.find_by_last_name.return_value = []
+
+        staff_result = ResolutionResult(person=None, confidence=0.0, method="staff_filtered")
+        case = _make_case(["Coach"], results=[staff_result])
+        svc = _service(person_repo=repo)
+
+        with patch(
+            "bunking.sync.bunk_request_processor.services.phase2_resolution_service.find_nickname_variations",
+            return_value=[],
+        ):
+            svc._generate_disambiguation_candidates([case])
+
+        # Should remain unchanged — staff_filtered result not overwritten
+        assert case.resolution_results[0] is not None
+        assert case.resolution_results[0].method == "staff_filtered"
+
     def test_no_session_filter_attendee_repo_not_called(self):
         """Candidate generation must NOT use attendee_repository for session filtering."""
         person_repo = Mock()
