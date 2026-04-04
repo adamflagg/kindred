@@ -372,7 +372,7 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 						}
 					}
 				}
-			} else if sessionData.SessionType == "main" && bunkIsAG {
+			} else if sessionData.SessionType == sessionTypeMain && bunkIsAG {
 				// Main session should not include AG bunks (they go through AG sessions)
 				s.skippedAGPlans++
 				continue

@@ -66,7 +66,7 @@ func (r *SessionResolver) ResolveSessionCMIDs(session string, year int) ([]int, 
 	relatedIDs := []int{cmID}
 
 	switch sessionType {
-	case "main":
+	case sessionTypeMain:
 		// Main session -> find AG children (parent_id matches this session's cm_id)
 		agFilter := fmt.Sprintf("year = %s && session_type = 'ag' && parent_id = %d", yearStr, cmID)
 		agSessions, err := r.app.FindRecordsByFilter("camp_sessions", agFilter, "", 0, 0)
