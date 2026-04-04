@@ -268,6 +268,8 @@ class TraceCollector:
                     "ai_reasoning_summary": trace_data.phase1_parse.ai_reasoning_summary or "",
                     "pre_p1_action": trace_data.pre_phase1.action,
                     "year": meta.get("year", 0),
+                    "disposition_reason": br.disposition_reason or "",
+                    "is_reciprocal": br.is_reciprocal,
                 }
                 summary_tasks.append(
                     asyncio.to_thread(pb_client.collection("debug_pipeline_summary").create, summary_data)

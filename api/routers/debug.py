@@ -1192,6 +1192,8 @@ def _pb_record_to_summary_item(record: Any) -> PipelineSummaryItem:
         ai_reasoning_summary=getattr(record, "ai_reasoning_summary", ""),
         pre_p1_action=getattr(record, "pre_p1_action", ""),
         year=getattr(record, "year", 0),
+        disposition_reason=getattr(record, "disposition_reason", ""),
+        is_reciprocal=getattr(record, "is_reciprocal", False),
     )
 
 

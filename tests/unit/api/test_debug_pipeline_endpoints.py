@@ -87,6 +87,8 @@ def _make_pb_summary_record(
     final_status: str = "RESOLVED",
     final_confidence: float = 0.95,
     resolution_method: str = "exact_match",
+    disposition_reason: str = "exact_match",
+    is_reciprocal: bool = False,
 ) -> MagicMock:
     return _make_mock_pb_record(
         id=record_id,
@@ -107,6 +109,8 @@ def _make_pb_summary_record(
         ai_reasoning_summary="",
         pre_p1_action="parsed",
         year=2025,
+        disposition_reason="exact_match",
+        is_reciprocal=False,
     )
 
 

@@ -38,6 +38,8 @@ const mockItems: PipelineSummaryItem[] = [
     ai_reasoning_summary: 'Clear request for named camper with exact match found in roster.',
     pre_p1_action: 'parsed',
     year: 2026,
+    disposition_reason: 'exact_match',
+    is_reciprocal: true,
   },
   {
     id: 'sum2',
@@ -58,6 +60,8 @@ const mockItems: PipelineSummaryItem[] = [
     ai_reasoning_summary: 'Fuzzy match found but confidence below threshold. Multiple candidates.',
     pre_p1_action: 'parsed',
     year: 2026,
+    disposition_reason: 'needs_review',
+    is_reciprocal: false,
   },
   {
     id: 'sum3',
@@ -78,6 +82,8 @@ const mockItems: PipelineSummaryItem[] = [
     ai_reasoning_summary: 'No matching camper found in any session roster.',
     pre_p1_action: 'parsed',
     year: 2026,
+    disposition_reason: 'target_not_attending',
+    is_reciprocal: false,
   },
 ]
 
@@ -140,7 +146,8 @@ describe('PipelineBatchList', () => {
     it('shows resolution method', () => {
       render(<PipelineBatchList {...defaultProps} />)
 
-      expect(screen.getByText('exact_match')).toBeInTheDocument()
+      // "exact_match" appears in both disposition_reason badge and resolution_method cell
+      expect(screen.getAllByText('exact_match').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('fuzzy')).toBeInTheDocument()
     })
 
@@ -349,6 +356,57 @@ describe('PipelineBatchList', () => {
       sortableHeader.focus()
       await userEvent.keyboard(' ')
       expect(defaultProps.onFiltersChange).toHaveBeenCalled()
+    })
+  })
+
+  describe('disposition columns', () => {
+    it('renders disposition_reason column with color-coded badges', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const rows = document.querySelectorAll('tbody tr')
+
+      // Helper: find the inner badge span (leaf node, exact text match)
+      const findBadge = (row: Element, text: string): Element | null => {
+        const spans = Array.from(row.querySelectorAll('span'))
+        return spans.find((s) => s.children.length === 0 && s.textContent?.trim() === text) ?? null
+      }
+
+      const [row0, row1, row2] = [rows[0] as Element, rows[1] as Element, rows[2] as Element]
+
+      // First row: "exact_match" — resolved (green)
+      const dispositionBadge = findBadge(row0, 'exact_match')
+      expect(dispositionBadge).not.toBeNull()
+      expect(dispositionBadge!.className).toMatch(/emerald/)
+
+      // Second row: "needs_review" — pending (amber)
+      const pendingBadge = findBadge(row1, 'needs_review')
+      expect(pendingBadge).not.toBeNull()
+      expect(pendingBadge!.className).toMatch(/amber/)
+
+      // Third row: "target_not_attending" — declined (red)
+      const declinedBadge = findBadge(row2, 'target_not_attending')
+      expect(declinedBadge).not.toBeNull()
+      expect(declinedBadge!.className).toMatch(/rose/)
+    })
+
+    it('renders is_reciprocal indicator when true', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const rows = document.querySelectorAll('tbody tr')
+
+      // First row has is_reciprocal=true — should show "Recip" badge
+      expect((rows[0] as Element).textContent ?? '').toMatch(/recip/i)
+
+      // Second row has is_reciprocal=false — no "recip" indicator
+      const secondRowRecip = Array.from((rows[1] as Element).querySelectorAll('td')).find(
+        (td) => td.textContent?.toLowerCase().includes('recip') ?? false
+      )
+      expect(secondRowRecip).toBeFalsy()
+    })
+
+    it('renders Reason column header', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const headers = document.querySelectorAll('thead th')
+      const headerTexts = Array.from(headers).map((h) => h.textContent?.trim())
+      expect(headerTexts).toContain('Reason')
     })
   })
 })

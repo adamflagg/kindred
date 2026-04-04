@@ -24,6 +24,7 @@ const SORTABLE_COLUMNS: Array<{
   { label: 'Target', field: 'target_name' },
   { label: 'Source', field: 'source_field' },
   { label: 'Status', field: 'final_status' },
+  { label: 'Reason', field: 'disposition_reason' },
   { label: 'Confidence', field: 'final_confidence' },
   { label: 'Method', field: 'resolution_method' },
   { label: 'P3', field: 'phase3_triggered' },
@@ -71,6 +72,32 @@ function getConfidenceClasses(confidence: number): string {
     return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
   }
   return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
+}
+
+const RESOLVED_REASONS = new Set([
+  'exact_match',
+  'reciprocal_match',
+  'high_confidence_match',
+  'auto_resolved',
+  'cross_session_satisfied',
+])
+const PENDING_REASONS = new Set(['needs_review'])
+const DECLINED_REASONS = new Set([
+  'session_mismatch',
+  'target_not_attending',
+  'target_not_enrolled',
+  'requester_not_attending',
+])
+
+/** Get Tailwind classes for disposition reason badge. */
+function getDispositionClasses(reason: string): string {
+  if (RESOLVED_REASONS.has(reason))
+    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+  if (PENDING_REASONS.has(reason))
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+  if (DECLINED_REASONS.has(reason))
+    return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
+  return 'bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300'
 }
 
 export function PipelineBatchList({
@@ -348,6 +375,24 @@ export function PipelineBatchList({
                         className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getStatusClasses(item.final_status)}`}
                       >
                         {item.final_status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1">
+                        {item.disposition_reason ? (
+                          <span
+                            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
+                          >
+                            {item.disposition_reason}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">{'\u2014'}</span>
+                        )}
+                        {item.is_reciprocal && (
+                          <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                            Recip
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-3 py-2">

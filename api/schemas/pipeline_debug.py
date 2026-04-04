@@ -77,6 +77,8 @@ class PipelineSummaryItem(BaseModel):
     ai_reasoning_summary: str = Field(default="", description="Short AI reasoning excerpt")
     pre_p1_action: str = Field(default="", description="Pre-Phase 1 action taken")
     year: int = Field(default=0, description="Camp year")
+    disposition_reason: str = Field(default="", description="Why this request was resolved/pending/declined")
+    is_reciprocal: bool = Field(default=False, description="Whether a reciprocal match was found")
 
 
 class PipelineSummaryResponse(BaseModel):
