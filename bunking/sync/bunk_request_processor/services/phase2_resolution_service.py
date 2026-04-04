@@ -11,7 +11,7 @@ from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..shared.name_utils import normalize_name
-from ..shared.nickname_groups import names_match_via_nicknames
+from ..shared.nickname_groups import find_nickname_variations, names_match_via_nicknames
 
 logger = get_logger(__name__)
 
@@ -363,18 +363,22 @@ class Phase2ResolutionService:
             else:
                 logger.debug(f"Failed to resolve '{parsed.target_name}'")
 
-        # Post-process: generate candidates for unresolved single-name targets
-        self._generate_single_name_candidates(cases)
+        # Post-process: generate candidates for all unresolved names
+        self._generate_disambiguation_candidates(cases)
 
-    def _generate_single_name_candidates(self, cases: list[ResolutionCase]) -> None:
-        """Generate candidate lists for unresolved single-name targets.
+    # Family/household marker tokens
+    _FAMILY_MARKERS = frozenset({"family", "families", "and", "/"})
 
-        When Phase 2 receives a first-name-only target (e.g., "Lily") that the
-        resolution pipeline cannot resolve, query for persons with matching
-        first_name or preferred_name in the session and return them as ambiguous
-        candidates so Phase 3 can disambiguate.
+    def _generate_disambiguation_candidates(self, cases: list[ResolutionCase]) -> None:
+        """Generate candidate lists for all unresolved name targets.
 
-        Candidates are filtered to the requester's session and capped at 5.
+        Handles three name patterns:
+        1. Single-word  — first-name lookup + nickname expansion
+        2. Multi-word   — extract first word, then same as single-word
+        3. Family/household — extract last-name tokens, search by last name
+
+        Candidates are searched across all attendees for the year (no session
+        filter) and capped at 10.
         """
         if not self.person_repository:
             return
@@ -384,7 +388,6 @@ class Phase2ResolutionService:
                 continue
 
             parse_request = case.parse_result.parse_request
-            session_cm_id = parse_request.session_cm_id
             year = parse_request.year
 
             for idx, result in enumerate(case.resolution_results):
@@ -393,51 +396,110 @@ class Phase2ResolutionService:
                 # Skip already-resolved or already-ambiguous results
                 if result.is_resolved or result.is_ambiguous:
                     continue
+                # Skip age_preference results
+                if result.method == "age_preference":
+                    continue
 
                 parsed = case.parsed_requests[idx] if idx < len(case.parsed_requests) else None
                 if not parsed or not parsed.target_name:
                     continue
 
-                # Only apply to single-word names (first name only)
                 target = parsed.target_name.strip()
-                if " " in target:
+                if not target:
                     continue
 
-                # Query for persons matching first name
-                candidates = self.person_repository.find_by_first_name(target, year=year)
+                # Detect pattern and collect candidates (deduplicated by cm_id)
+                seen_cm_ids: set[int] = set()
+                candidates: list[Person] = []
+
+                strategy: str
+                if self._is_family_reference(target):
+                    # Pattern 3: family/household reference — last-name lookup
+                    strategy = "family"
+                    last_names = self._extract_family_last_names(target)
+                    for ln in last_names:
+                        for p in self.person_repository.find_by_last_name(ln, year=year):
+                            if p.cm_id not in seen_cm_ids:
+                                seen_cm_ids.add(p.cm_id)
+                                candidates.append(p)
+                else:
+                    # Pattern 1 (single word) or 2 (multi-word, no family markers)
+                    first_name = target.split()[0] if " " in target else target
+                    strategy = "multi_word" if " " in target else "single_word"
+
+                    # Direct first-name lookup
+                    for p in self.person_repository.find_by_first_name(first_name, year=year):
+                        if p.cm_id not in seen_cm_ids:
+                            seen_cm_ids.add(p.cm_id)
+                            candidates.append(p)
+
+                    # Nickname expansion
+                    for variant in find_nickname_variations(first_name):
+                        for p in self.person_repository.find_by_first_name(variant, year=year):
+                            if p.cm_id not in seen_cm_ids:
+                                seen_cm_ids.add(p.cm_id)
+                                candidates.append(p)
 
                 if not candidates:
                     continue
 
-                # Filter to session attendees if we have session info and attendee repo
-                if session_cm_id is not None and self.attendee_repository and year:
-                    candidate_cm_ids = [p.cm_id for p in candidates]
-                    session_map = self.attendee_repository.bulk_get_sessions_for_persons(candidate_cm_ids, year)
-                    candidates = [p for p in candidates if session_map.get(p.cm_id) == session_cm_id]
-
-                if not candidates:
-                    continue
-
-                # Cap at 5 candidates
-                candidates = candidates[:5]
+                # Cap at 10 candidates
+                candidates = candidates[:10]
 
                 # Replace the unresolved result with an ambiguous result
                 case.resolution_results[idx] = ResolutionResult(
                     person=None,
                     confidence=0.3,
-                    method="single_name_candidates",
+                    method="disambiguation_candidates",
                     candidates=candidates,
                     target_name=target,
                     metadata={
-                        "single_name_lookup": True,
+                        "disambiguation_lookup": True,
+                        "strategy": strategy,
                         "candidate_count": len(candidates),
                     },
                 )
 
                 logger.info(
-                    f"Generated {len(candidates)} single-name candidate(s) for '{target}' in session {session_cm_id}"
+                    f"Generated {len(candidates)} disambiguation candidate(s) for '{target}' (strategy={strategy})"
                 )
-                # Note: ambiguous stat counting happens later in _update_stats
+
+    @staticmethod
+    def _is_family_reference(target: str) -> bool:
+        """Detect family/household references by marker tokens."""
+        lower = target.lower()
+        return "/" in lower or "family" in lower or "families" in lower or " and " in lower
+
+    @staticmethod
+    def _extract_family_last_names(target: str) -> list[str]:
+        """Extract last-name tokens from a family/household reference.
+
+        Examples:
+            "Burke/Kurlaender families" → ["Burke", "Kurlaender"]
+            "Lizzy Diamond and Harper" → ["Diamond", "Harper"]
+        """
+        # Strip family/families suffix
+        cleaned = target.strip()
+        for suffix in ("families", "family"):
+            if cleaned.lower().endswith(suffix):
+                cleaned = cleaned[: -len(suffix)].strip()
+
+        # Split on "/" and " and "
+        parts: list[str] = []
+        for segment in cleaned.split("/"):
+            for sub in segment.split(" and "):
+                sub = sub.strip()
+                if sub:
+                    parts.append(sub)
+
+        # Take last word of each part as the last name
+        last_names: list[str] = []
+        for part in parts:
+            words = part.split()
+            if words:
+                last_names.append(words[-1])
+
+        return last_names
 
     def _handle_no_resolution_cases(self, cases: list[ResolutionCase]) -> None:
         """Handle cases that don't need resolution"""
