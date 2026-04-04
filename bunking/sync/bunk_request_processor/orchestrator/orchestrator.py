@@ -2001,7 +2001,8 @@ class RequestOrchestrator:
         self.staff_name_detector.detected_staff_names = detected
 
         if detected:
-            logger.info(f"Detected {len(detected)} likely staff/parent names: {sorted(detected)}")
+            logger.info(f"Detected {len(detected)} likely staff/parent name(s)")
+            logger.debug(f"Detected {len(detected)} likely staff/parent names: {sorted(detected)}")
 
     def is_staff_name(self, name: str | None) -> bool:
         """Check if a name matches a detected staff/parent name.

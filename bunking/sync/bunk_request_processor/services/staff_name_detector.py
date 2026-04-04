@@ -176,7 +176,8 @@ class StaffNameDetector:
                 combined_set.update(extracted)
 
         if combined_set:
-            logger.info(f"Detected likely staff/parent names: {sorted(combined_set)}")
+            logger.info(f"Detected {len(combined_set)} likely staff/parent name(s)")
+            logger.debug(f"Detected likely staff/parent names: {sorted(combined_set)}")
 
         return combined_set
 
