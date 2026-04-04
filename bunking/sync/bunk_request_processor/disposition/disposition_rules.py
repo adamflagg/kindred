@@ -39,6 +39,7 @@ def determine_disposition(
     resolution_method: str = "unknown",
     match_confidence: float = 0.0,
     is_reciprocal: bool = False,
+    requester_is_inactive: bool = False,
     target_is_inactive: bool = False,
     target_has_bunking_session: bool = True,
     target_waitlisted: bool = False,
@@ -50,6 +51,10 @@ def determine_disposition(
 
     Args are keyword-only to make call sites self-documenting.
     """
+    # Requester not attending takes priority over all other rules
+    if requester_is_inactive:
+        return Disposition(RequestStatus.DECLINED, "requester_not_attending", 0)
+
     if request_type == RequestType.AGE_PREFERENCE:
         return _age_preference_rules(age_direction)
     if request_type == RequestType.NOT_BUNK_WITH:

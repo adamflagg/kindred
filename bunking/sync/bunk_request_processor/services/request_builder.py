@@ -243,16 +243,18 @@ class RequestBuilder:
             return RequestStatus.PENDING, ""
 
         # Resolved match — apply disposition rules
+        conflict_type = resolution_info.get("conflict_type")
+
         disposition = determine_disposition(
             parsed_req.request_type,
             resolution_method=resolution_info.get("resolution_method", "unknown"),
             match_confidence=resolution_info.get("confidence", parsed_req.confidence),
             is_reciprocal=resolution_info.get("is_reciprocal", False),
-            target_is_inactive=resolution_info.get("conflict_type")
-            in ("target_not_attending", "requester_not_attending"),
-            target_has_bunking_session=resolution_info.get("conflict_type") not in ("target_not_enrolled",),
+            requester_is_inactive=conflict_type == "requester_not_attending",
+            target_is_inactive=conflict_type == "target_not_attending",
+            target_has_bunking_session=conflict_type not in ("target_not_enrolled",),
             target_waitlisted=resolution_info.get("target_waitlisted", False),
-            session_match=resolution_info.get("conflict_type") not in ("session_mismatch", "cross_session_satisfied"),
+            session_match=conflict_type not in ("session_mismatch", "cross_session_satisfied"),
             age_direction=parsed_req.age_preference.value if parsed_req.age_preference else None,
             auto_resolve_threshold=self.auto_resolve_threshold,
         )
