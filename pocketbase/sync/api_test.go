@@ -1781,3 +1781,29 @@ func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
 
 	t.Log("YearSetter interface is implemented by year-aware services")
 }
+
+// TestNormalizeSession verifies session "0" normalizes to DefaultSession ("all"),
+// matching the behavior of the other two endpoints that already handle this case.
+// Regression test for #806.
+func TestNormalizeSession(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"empty string normalizes to all", "", DefaultSession},
+		{"zero normalizes to all", "0", DefaultSession},
+		{"all stays all", "all", "all"},
+		{"numeric cm_id stays as-is", "12345", "12345"},
+		{"whitespace stays as-is", " ", " "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeSession(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeSession(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

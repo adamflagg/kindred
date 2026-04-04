@@ -28,6 +28,15 @@ import (
 // DefaultSession is the default value for session parameter meaning "all sessions"
 const DefaultSession = "all"
 
+// normalizeSession normalizes the session query parameter.
+// Empty string and "0" both map to DefaultSession ("all").
+func normalizeSession(session string) string {
+	if session == "" || session == "0" {
+		return DefaultSession
+	}
+	return session
+}
+
 // DefaultService is the default value for service parameter meaning "all services"
 const DefaultService = "all"
 
@@ -146,10 +155,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	e.Router.POST("/api/custom/sync/process-requests",
 		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
 			// Parse optional session parameter (accepts "all" or a numeric cm_id)
-			session := e.Request.URL.Query().Get("session")
-			if session == "" {
-				session = DefaultSession
-			}
+			session := normalizeSession(e.Request.URL.Query().Get("session"))
 
 			// Parse optional source_field parameter (comma-separated)
 			sourceFieldParam := e.Request.URL.Query().Get("source_field")
@@ -1554,11 +1560,8 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	// Note: "already running" check is handled by MarkSyncRunning below,
 	// which returns an error if the sync is already in progress
 
-	// Parse session filter (accepts string: all, 1, 2, 2a, 3, 4, etc.)
-	session := e.Request.URL.Query().Get("session")
-	if session == "" || session == "0" {
-		session = DefaultSession
-	}
+	// Parse session filter (accepts "all" or a numeric cm_id)
+	session := normalizeSession(e.Request.URL.Query().Get("session"))
 
 	// Validate session parameter
 	if !IsValidSession(session) {
@@ -1633,11 +1636,8 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	// Note: "already running" check is handled by MarkSyncRunning below,
 	// which returns an error if the sync is already in progress
 
-	// Parse session filter (accepts string: all, 1, 2, 2a, 3, 4, etc.)
-	session := e.Request.URL.Query().Get("session")
-	if session == "" || session == "0" {
-		session = DefaultSession
-	}
+	// Parse session filter (accepts "all" or a numeric cm_id)
+	session := normalizeSession(e.Request.URL.Query().Get("session"))
 
 	// Validate session parameter
 	if !IsValidSession(session) {
