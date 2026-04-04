@@ -496,7 +496,7 @@ class TestFindByLastName:
         mock.cm_id = cm_id
         mock.first_name = first_name
         mock.last_name = last_name
-        mock.preferred_name = kwargs.get("preferred_name", None)
+        mock.preferred_name = kwargs.get("preferred_name")
         mock.birthdate = kwargs.get("birthdate", "2010-05-15")
         mock.grade = kwargs.get("grade", 8)
         mock.school = kwargs.get("school", "Lincoln Middle")
