@@ -3222,3 +3222,26 @@ func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerateRunToken verifies the extracted helper returns non-empty, unique tokens.
+// Regression test for #791 — two inline fmt.Sprintf("%d", time.Now().UnixNano()) calls
+// are consolidated into this single helper.
+func TestGenerateRunToken(t *testing.T) {
+	t.Run("returns non-empty string", func(t *testing.T) {
+		token := generateRunToken()
+		if token == "" {
+			t.Error("generateRunToken() returned empty string")
+		}
+	})
+
+	t.Run("returns unique values on successive calls", func(t *testing.T) {
+		seen := make(map[string]bool)
+		for i := 0; i < 100; i++ {
+			token := generateRunToken()
+			if seen[token] {
+				t.Errorf("duplicate token on iteration %d: %s", i, token)
+			}
+			seen[token] = true
+		}
+	})
+}
