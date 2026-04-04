@@ -473,5 +473,134 @@ class TestPersonRepository:
         assert "preferred_name" in filter_str, f"Filter should include preferred_name check but was: {filter_str}"
 
 
+class TestFindByLastName:
+    """Tests for PersonRepository.find_by_last_name"""
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        """Create a mock PocketBase client"""
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        """Create a PersonRepository with mocked client"""
+        mock_client, _ = mock_pb_client
+        return PersonRepository(mock_client)
+
+    def _create_person_mock(self, cm_id, first_name, last_name, **kwargs):
+        """Minimal person mock for last-name tests"""
+        mock = Mock()
+        mock.cm_id = cm_id
+        mock.first_name = first_name
+        mock.last_name = last_name
+        mock.preferred_name = kwargs.get("preferred_name", None)
+        mock.birthdate = kwargs.get("birthdate", "2010-05-15")
+        mock.grade = kwargs.get("grade", 8)
+        mock.school = kwargs.get("school", "Lincoln Middle")
+        mock.normalized_school = None
+        mock.normalized_city = None
+        mock.address_city = None
+        mock.address_state = None
+        mock.gender = None
+        mock.normalized_congregation = None
+        return mock
+
+    def test_finds_by_last_name(self, repository, mock_pb_client):
+        """find_by_last_name returns all persons matching the given last_name."""
+        mock_client, mock_collection = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_person_mock(cm_id=111, first_name="Emma", last_name="Johnson"),
+            self._create_person_mock(cm_id=222, first_name="Liam", last_name="Johnson"),
+        ]
+        mock_collection.get_list.return_value = mock_result
+
+        people = repository.find_by_last_name("Johnson")
+
+        assert len(people) == 2
+        assert all(p.last_name == "Johnson" for p in people)
+        # Verify the PocketBase query includes last_name
+        args = mock_collection.get_list.call_args[1]
+        assert "last_name = 'Johnson'" in args["query_params"]["filter"]
+
+    def test_queries_last_name_column(self, repository, mock_pb_client):
+        """find_by_last_name queries the last_name column in PocketBase."""
+        mock_client, mock_collection = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = [
+            self._create_person_mock(cm_id=333, first_name="Olivia", last_name="Garcia"),
+        ]
+        mock_collection.get_list.return_value = mock_result
+
+        people = repository.find_by_last_name("Garcia")
+
+        assert len(people) == 1
+        args = mock_collection.get_list.call_args[1]
+        filter_str = args["query_params"]["filter"]
+        assert "last_name = 'Garcia'" in filter_str
+
+    def test_empty_for_no_match(self, repository, mock_pb_client):
+        """find_by_last_name returns empty list when no records match."""
+        mock_client, mock_collection = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = []
+        mock_collection.get_list.return_value = mock_result
+
+        people = repository.find_by_last_name("NonExistentLastName")
+
+        assert people == []
+
+    def test_filters_by_year_when_provided(self, repository, mock_pb_client):
+        """find_by_last_name adds year filter when year is given."""
+        mock_client, mock_collection = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = []
+        mock_collection.get_list.return_value = mock_result
+
+        repository.find_by_last_name("Smith", year=2025)
+
+        args = mock_collection.get_list.call_args[1]
+        filter_str = args["query_params"]["filter"]
+        assert "year = 2025" in filter_str
+
+    def test_uses_name_cache_when_available(self, repository, mock_pb_client):
+        """find_by_last_name delegates to name_cache when available."""
+        from unittest.mock import Mock as UMock
+
+        mock_client, mock_collection = mock_pb_client
+        mock_cache = UMock()
+        expected = [
+            Mock(cm_id=999, first_name="Test", last_name="Garcia"),
+        ]
+        mock_cache.find_by_last_name.return_value = expected
+
+        repo_with_cache = PersonRepository.__new__(PersonRepository)
+        repo_with_cache.pb = mock_client
+        repo_with_cache.cache = None
+        repo_with_cache.name_cache = mock_cache
+
+        result = repo_with_cache.find_by_last_name("Garcia", year=2025)
+
+        mock_cache.find_by_last_name.assert_called_once_with("Garcia", 2025)
+        assert result == expected
+        mock_collection.get_list.assert_not_called()
+
+    def test_returns_empty_list_on_error(self, repository, mock_pb_client):
+        """find_by_last_name returns empty list if PocketBase raises an exception."""
+        mock_client, mock_collection = mock_pb_client
+        mock_collection.get_list.side_effect = Exception("DB error")
+
+        people = repository.find_by_last_name("Smith")
+
+        assert people == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
