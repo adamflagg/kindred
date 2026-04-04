@@ -266,6 +266,7 @@ class RequestOrchestrator:
             "type_age_preference": 0,
             "declined_cross_session": 0,
             "declined_not_attending": 0,
+            "declined_not_enrolled": 0,
             "declined_other": 0,
             "ai_high_confidence": 0,
             "ai_manual_review": 0,
@@ -340,15 +341,15 @@ class RequestOrchestrator:
         elif request.request_type == RequestType.AGE_PREFERENCE:
             self._stats["type_age_preference"] += 1
 
-        # Track declined reasons (only for declined requests)
+        # Track declined reasons using the structured disposition_reason field
         if request.status == RequestStatus.DECLINED:
-            declined_reason = request.metadata.get("declined_reason", "") if request.metadata else ""
-            declined_reason_lower = declined_reason.lower()
-            # Check "not attending" FIRST since it's more specific than "session"
-            if "not attending" in declined_reason_lower or "not enrolled" in declined_reason_lower:
-                self._stats["declined_not_attending"] += 1
-            elif "session mismatch" in declined_reason_lower or "cross-session" in declined_reason_lower:
+            reason = request.disposition_reason
+            if reason == "session_mismatch":
                 self._stats["declined_cross_session"] += 1
+            elif reason == "target_not_attending":
+                self._stats["declined_not_attending"] += 1
+            elif reason == "target_not_enrolled":
+                self._stats["declined_not_enrolled"] += 1
             else:
                 self._stats["declined_other"] += 1
 
@@ -1656,6 +1657,7 @@ class RequestOrchestrator:
                     f"Declined reasons: "
                     f"cross_session={self._stats['declined_cross_session']}, "
                     f"not_attending={self._stats['declined_not_attending']}, "
+                    f"not_enrolled={self._stats['declined_not_enrolled']}, "
                     f"other={self._stats['declined_other']}"
                 )
             logger.info(

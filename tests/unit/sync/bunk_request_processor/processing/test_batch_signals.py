@@ -1,5 +1,6 @@
 """Tests for batch signal detection on resolution results."""
 
+import logging
 import sys
 from pathlib import Path
 
@@ -116,3 +117,65 @@ class TestHouseholdCoRequest:
         signals = detect_batch_signals(requests)
         assert signals[(1001, 3001, 5001)].is_reciprocal is True
         assert signals[(1001, 3001, 5001)].household_co_request is True
+
+
+class TestBatchSignalLogging:
+    """Tests for batch signal detection logging output."""
+
+    def test_logs_summary_with_reciprocal_and_household_counts(self, caplog):
+        """detect_batch_signals logs INFO summary with reciprocal pair and household co-request counts."""
+        requests = [
+            _req(1001, 2001, session=5001),  # A -> B
+            _req(2001, 1001, session=5001),  # B -> A (reciprocal)
+            _req(3001, 4001, household=9001, session=5001),  # sibling C -> target
+            _req(5001, 4001, household=9001, session=5001),  # sibling D -> target
+        ]
+        with caplog.at_level(logging.INFO):
+            detect_batch_signals(requests)
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert any("Batch signals:" in msg for msg in info_messages), (
+            f"Expected INFO log with 'Batch signals:' but got: {info_messages}"
+        )
+        summary = next(msg for msg in info_messages if "Batch signals:" in msg)
+        assert "1 reciprocal" in summary
+        assert "2 household" in summary
+
+    def test_logs_zero_counts_when_no_signals(self, caplog):
+        """detect_batch_signals logs INFO summary even when no signals found."""
+        requests = [
+            _req(1001, 2001, session=5001),
+            _req(3001, 4001, session=5001),
+        ]
+        with caplog.at_level(logging.INFO):
+            detect_batch_signals(requests)
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert any("Batch signals:" in msg for msg in info_messages)
+        summary = next(msg for msg in info_messages if "Batch signals:" in msg)
+        assert "0 reciprocal" in summary
+        assert "0 household" in summary
+
+    def test_no_log_for_empty_input(self, caplog):
+        """detect_batch_signals does not log when given empty input."""
+        with caplog.at_level(logging.DEBUG):
+            detect_batch_signals([])
+
+        assert len(caplog.records) == 0
+
+    def test_logs_debug_reciprocal_pair_detail(self, caplog):
+        """detect_batch_signals logs DEBUG detail for each reciprocal pair."""
+        requests = [
+            _req(1001, 2001, session=5001),
+            _req(2001, 1001, session=5001),
+        ]
+        with caplog.at_level(logging.DEBUG):
+            detect_batch_signals(requests)
+
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        assert any("Reciprocal pair:" in msg for msg in debug_messages), (
+            f"Expected DEBUG log with 'Reciprocal pair:' but got: {debug_messages}"
+        )
+        detail = next(msg for msg in debug_messages if "Reciprocal pair:" in msg)
+        assert "1001" in detail
+        assert "2001" in detail

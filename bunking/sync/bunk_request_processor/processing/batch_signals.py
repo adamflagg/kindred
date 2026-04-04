@@ -10,7 +10,11 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from bunking.logging_config import get_logger
+
 from ..core.models import RequestType
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -90,5 +94,34 @@ def detect_batch_signals(
                             if other.requester_cm_id != req.requester_cm_id:
                                 signals[key].household_co_requester = other.requester_cm_id
                                 break
+
+    # Log summary if any requests were processed
+    if resolved_requests:
+        reciprocal_pairs = sum(1 for s in signals.values() if s.is_reciprocal) // 2
+        household_co_requests = sum(1 for s in signals.values() if s.household_co_request)
+
+        logger.info(
+            "Batch signals: detected %d reciprocal pair%s, %d household co-request%s",
+            reciprocal_pairs,
+            "" if reciprocal_pairs == 1 else "s",
+            household_co_requests,
+            "" if household_co_requests == 1 else "s",
+        )
+
+        # Log detail for each reciprocal pair (only one direction to avoid duplicates)
+        seen_pairs: set[tuple[int, int]] = set()
+        for key, signal in signals.items():
+            if signal.is_reciprocal and signal.reciprocal_with:
+                a, b = sorted((key[0], signal.reciprocal_with))
+                pair = (a, b)
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    logger.debug(
+                        "Reciprocal pair: person_%d requested person_%d AND person_%d requested person_%d",
+                        pair[0],
+                        pair[1],
+                        pair[1],
+                        pair[0],
+                    )
 
     return signals
