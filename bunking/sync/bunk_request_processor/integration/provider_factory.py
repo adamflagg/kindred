@@ -116,6 +116,10 @@ class MockProvider(AIProvider):
 
         return ParsedResponse(requests=requests, confidence=0.85 if requests else 0.0, metadata={"mock": True})
 
+    async def disambiguate(self, parsed_request: ParsedRequest, context: AIRequestContext) -> ParsedResponse:
+        """Mock disambiguation"""
+        return ParsedResponse(requests=[], confidence=0.5, metadata={"mock": True})
+
     async def batch_parse_requests(self, requests: list[tuple[str, AIRequestContext]]) -> list[ParsedResponse]:
         """Parse multiple requests"""
         responses = []

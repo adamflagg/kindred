@@ -384,8 +384,8 @@ class TestCrossSessionNotBunkWith:
 
         assert not result.has_conflicts
 
-    def test_apply_conflict_resolution_sets_auto_satisfied(self):
-        """apply_conflict_resolution sets auto_satisfied for CROSS_SESSION_SATISFIED conflicts."""
+    def test_apply_conflict_resolution_sets_conflict_type_for_cross_session(self):
+        """apply_conflict_resolution sets conflict_type for CROSS_SESSION_SATISFIED conflicts."""
         attendee_repo = make_mock_attendee_repo({7777777: 1000020})
         detector = ConflictDetector(attendee_repo=attendee_repo, year=2026)
 
@@ -404,7 +404,8 @@ class TestCrossSessionNotBunkWith:
         modified = detector.apply_conflict_resolution(resolved_requests, result)
 
         _, resolution_info = modified[0]
-        assert resolution_info.get("auto_satisfied") is True
+        assert resolution_info.get("has_conflict") is True
+        assert resolution_info.get("conflict_type") == "cross_session_satisfied"
         assert "requester_session" in resolution_info.get("conflict_metadata", {})
         assert "target_session" in resolution_info.get("conflict_metadata", {})
 
@@ -429,7 +430,7 @@ class TestCrossSessionNotBunkWith:
 
         _, resolution_info = modified[0]
         assert resolution_info.get("has_conflict") is True
-        assert resolution_info.get("auto_satisfied") is None
+        assert resolution_info.get("conflict_type") == "session_mismatch"
 
 
 class TestTargetNotEnrolled:
@@ -559,7 +560,8 @@ class TestAGSiloCrossSession:
         result = detector.detect_conflicts(resolved_requests)
         modified = detector.apply_conflict_resolution(resolved_requests, result)
         _, resolution_info = modified[0]
-        assert resolution_info.get("auto_satisfied") is True
+        assert resolution_info.get("has_conflict") is True
+        assert resolution_info.get("conflict_type") == "cross_session_satisfied"
 
 
 class TestEnrollmentAwareConflicts:

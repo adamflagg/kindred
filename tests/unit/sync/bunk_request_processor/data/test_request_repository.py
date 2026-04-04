@@ -8,6 +8,7 @@ Updated for new PocketBase schema:
 
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, call
 
 import pytest
@@ -291,6 +292,7 @@ class TestRequestRepository:
             status=RequestStatus.RESOLVED,
             is_placeholder=False,
             metadata=metadata,
+            resolution_method="fuzzy_match",
         )
 
         mock_collection.create.return_value = Mock(id="abc123")
@@ -302,11 +304,15 @@ class TestRequestRepository:
         create_args = mock_collection.create.call_args[0][0]
         assert isinstance(create_args["metadata"], str)
 
-        # Verify it can be deserialized back
+        # resolution_method is promoted to a top-level DB field
+        assert create_args["resolution_method"] == "fuzzy_match"
+
+        # Verify promoted fields are removed from metadata JSON
         import json
 
         deserialized = json.loads(create_args["metadata"])
-        assert deserialized["resolution_method"] == "fuzzy_match"
+        assert "resolution_method" not in deserialized
+        assert "match_type" not in deserialized
         assert len(deserialized["alternate_matches"]) == 2
 
 
@@ -665,6 +671,89 @@ class TestClearBySourceFieldsPagination:
 
         # Should delete ALL 600 records even with session filter
         assert count == 600, f"Should delete all 600 records, but only deleted {count}"
+
+
+class TestMapToDbDispositionFields:
+    """Test that _map_to_db writes disposition_reason and resolution_method
+    to top-level DB fields from BunkRequest fields (not metadata)."""
+
+    @pytest.fixture
+    def repository(self):
+        mock_client = Mock()
+        mock_client.collection.return_value = Mock()
+        return RequestRepository(mock_client)
+
+    def _make_request(
+        self,
+        metadata: dict[str, Any],
+        resolution_method: str = "",
+        disposition_reason: str = "",
+    ) -> BunkRequest:
+        return BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata=metadata,
+            resolution_method=resolution_method,
+            disposition_reason=disposition_reason,
+        )
+
+    def test_writes_resolution_method_from_field(self, repository: RequestRepository) -> None:
+        """resolution_method DB column comes from BunkRequest.resolution_method, not metadata."""
+        request = self._make_request({}, resolution_method="fuzzy_match")
+        data = repository._map_to_db(request)
+        assert data["resolution_method"] == "fuzzy_match"
+
+    def test_writes_disposition_reason_from_field(self, repository: RequestRepository) -> None:
+        """disposition_reason DB column comes from BunkRequest.disposition_reason, not metadata."""
+        request = self._make_request({}, disposition_reason="exact_match")
+        data = repository._map_to_db(request)
+        assert data["disposition_reason"] == "exact_match"
+
+    def test_empty_fields_write_empty_string(self, repository: RequestRepository) -> None:
+        """Default empty-string fields produce empty DB values."""
+        request = self._make_request({})
+        data = repository._map_to_db(request)
+        assert data["disposition_reason"] == ""
+        assert data["resolution_method"] == ""
+
+    def test_legacy_metadata_keys_cleaned(self, repository: RequestRepository) -> None:
+        """If metadata still has legacy keys from old records, pop them during serialization."""
+        import json
+
+        request = self._make_request(
+            {
+                "resolution_method": "should_be_removed",
+                "match_type": "should_be_removed",
+                "disposition_reason": "should_be_removed",
+                "disposition_rule_id": 5,
+                "other_field": "keep_me",
+            },
+            resolution_method="fuzzy_match",
+            disposition_reason="reciprocal_match",
+        )
+        data = repository._map_to_db(request)
+
+        # Top-level comes from BunkRequest fields
+        assert data["resolution_method"] == "fuzzy_match"
+        assert data["disposition_reason"] == "reciprocal_match"
+
+        # Legacy keys removed from metadata JSON
+        meta = json.loads(data["metadata"])
+        assert "resolution_method" not in meta
+        assert "match_type" not in meta
+        assert "disposition_reason" not in meta
+        assert "disposition_rule_id" not in meta
+        assert meta["other_field"] == "keep_me"
 
 
 if __name__ == "__main__":

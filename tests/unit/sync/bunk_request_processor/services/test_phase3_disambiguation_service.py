@@ -179,18 +179,6 @@ class TestPhase3DisambiguationServiceInit:
         )
         assert service.context_builder == context_builder
 
-    def test_init_with_optional_confidence_scorer(self):
-        """Service accepts optional confidence_scorer"""
-        ai_provider = Mock()
-        context_builder = Mock()
-        scorer = Mock()
-        service = Phase3DisambiguationService(
-            ai_provider=ai_provider,
-            context_builder=context_builder,
-            confidence_scorer=scorer,
-        )
-        assert service.confidence_scorer == scorer
-
     def test_init_with_optional_spread_filter(self):
         """Service accepts optional spread_filter"""
         ai_provider = Mock()
@@ -389,7 +377,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         # AI returns a result selecting person 111
         ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.85
         ai_result.reason = "Best match based on context"
 
@@ -426,7 +414,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         # AI returns ambiguous (no person selected)
         ai_result = Mock()
-        ai_result.person_cm_id = None
+        ai_result.selected_person_id = None
         ai_result.no_match = False
         ai_result.reason = "Could not distinguish between candidates"
 
@@ -459,7 +447,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         # AI returns no_match
         ai_result = Mock()
-        ai_result.person_cm_id = None
+        ai_result.selected_person_id = None
         ai_result.no_match = True
         ai_result.reason = "None of the candidates match the request"
 
@@ -545,12 +533,12 @@ class TestPhase3DisambiguationServiceContextBuilding:
         # Note: grade is passed via row_data, not as a direct kwarg
 
 
-class TestPhase3DisambiguationServiceConfidenceScoring:
-    """Tests for confidence scoring integration"""
+class TestPhase3DisambiguationServiceConfidencePassthrough:
+    """Tests that AI confidence passes through without formula rescoring."""
 
     @pytest.mark.asyncio
-    async def test_rescores_disambiguated_results(self):
-        """Confidence scorer is applied to disambiguated results"""
+    async def test_ai_confidence_preserved(self):
+        """AI-reported confidence is used directly without rescoring."""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
@@ -558,47 +546,7 @@ class TestPhase3DisambiguationServiceConfidenceScoring:
         selected_person = _create_person(cm_id=111)
 
         ai_result = Mock()
-        ai_result.person_cm_id = 111
-        ai_result.confidence = 0.80
-
-        batch_processor = Mock()
-        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
-
-        # Confidence scorer that returns higher confidence
-        # Note: Implementation uses score_resolution, not create_signals_for_disambiguation
-        scorer = Mock()
-        scorer.score_resolution = Mock(return_value=0.90)
-        scorer.scorer = Mock()
-        scorer.scorer.calculate_confidence = Mock(return_value=0.90)
-        scorer._map_request_type = Mock(return_value="bunk_with")
-
-        service = Phase3DisambiguationService(
-            ai_provider=ai_provider,
-            context_builder=context_builder,
-            batch_processor=batch_processor,
-            confidence_scorer=scorer,
-        )
-
-        candidates = [selected_person, _create_person(cm_id=222)]
-        ambiguous = _create_ambiguous_resolution(candidates=candidates)
-        parse_result = _create_parse_result()
-
-        await service.batch_disambiguate([(parse_result, [ambiguous])])
-
-        # Scorer should be called (uses score_resolution method)
-        scorer.score_resolution.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_preserves_ai_confidence_if_no_scorer(self):
-        """Without scorer, AI confidence is preserved"""
-        ai_provider = Mock()
-        context_builder = Mock()
-        context_builder.build_disambiguation_context.return_value = _create_mock_context()
-
-        selected_person = _create_person(cm_id=111)
-
-        ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.85
         ai_result.reason = "Best match"
 
@@ -609,7 +557,6 @@ class TestPhase3DisambiguationServiceConfidenceScoring:
             ai_provider=ai_provider,
             context_builder=context_builder,
             batch_processor=batch_processor,
-            confidence_scorer=None,  # No scorer
         )
 
         candidates = [selected_person, _create_person(cm_id=222)]
@@ -634,7 +581,7 @@ class TestPhase3DisambiguationServiceStatistics:
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
         ai_result = Mock()
-        ai_result.person_cm_id = 111
+        ai_result.selected_person_id = 111
         ai_result.confidence = 0.85
 
         batch_processor = Mock()
@@ -668,13 +615,13 @@ class TestPhase3DisambiguationServiceStatistics:
 
         # First result: success
         success_result = Mock()
-        success_result.person_cm_id = 111
+        success_result.selected_person_id = 111
         success_result.confidence = 0.85
 
         # Second result: still ambiguous (AI couldn't decide)
         # Note: Implementation counts this as "failed" since no disambiguated_result is created
         ambiguous_result = Mock()
-        ambiguous_result.person_cm_id = None
+        ambiguous_result.selected_person_id = None
         ambiguous_result.no_match = False
         ambiguous_result.reason = "Could not decide"
 
@@ -704,7 +651,7 @@ class TestPhase3DisambiguationServiceStatistics:
 
         stats = service.get_stats()
         assert stats["successfully_disambiguated"] == 1
-        # When AI returns no person_cm_id and no_match=False, it's counted as "failed"
+        # When AI returns no selected_person_id and no_match=False, it's counted as "failed"
         # because no disambiguated_result is created
         assert stats["failed"] == 1
 

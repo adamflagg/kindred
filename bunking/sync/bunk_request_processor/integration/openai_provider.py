@@ -530,24 +530,25 @@ class OpenAIProvider(AIProvider):
     async def disambiguate(
         self,
         parsed_request: ParsedRequest,
-        context: dict[str, Any],
+        context: AIRequestContext,
     ) -> ParsedResponse:
         """Phase 3: AI-assisted disambiguation with minimal context.
 
         Loads prompt template from config/prompts/disambiguate.txt.
         Uses structured output to select from candidate matches.
         """
-        candidates_text = self._format_candidates(context.get("candidates", []))
+        ctx = context.additional_context or {}
+        candidates_text = self._format_candidates(ctx.get("candidates", []))
 
         prompt = format_prompt(
             "disambiguate",
             target_name=parsed_request.target_name or "",
-            requester_name=context.get("requester_name", "Unknown"),
-            requester_cm_id=str(context.get("requester_cm_id", 0)),
-            requester_school=context.get("requester_school", "Unknown"),
+            requester_name=context.requester_name or "Unknown",
+            requester_cm_id=str(context.requester_cm_id),
+            requester_school=ctx.get("requester_school", "Unknown"),
             candidates_text=candidates_text,
-            local_confidence=str(context.get("local_confidence", 0)),
-            ambiguity_reason=context.get("ambiguity_reason", "multiple matches"),
+            local_confidence=str(ctx.get("local_confidence", 0)),
+            ambiguity_reason=ctx.get("ambiguity_reason", "multiple matches"),
         )
 
         try:
@@ -591,13 +592,19 @@ class OpenAIProvider(AIProvider):
             details = []
             if candidate.get("school"):
                 details.append(f"School: {candidate['school']}")
-            if candidate.get("grade"):
+            if candidate.get("grade") is not None:
                 details.append(f"Grade: {candidate['grade']}")
-            if candidate.get("age"):
+            if candidate.get("age") is not None:
                 details.append(f"Age: {candidate['age']}")
+            if candidate.get("city"):
+                details.append(f"City: {candidate['city']}")
+            if candidate.get("congregation"):
+                details.append(f"Congregation: {candidate['congregation']}")
+            if candidate.get("parents"):
+                details.append(f"Parents: {candidate['parents']}")
             if candidate.get("social_distance") is not None:
                 details.append(f"Social distance: {candidate['social_distance']}")
-            if candidate.get("mutual_connections"):
+            if candidate.get("mutual_connections") is not None:
                 details.append(f"Mutual friends: {candidate['mutual_connections']}")
 
             if details:

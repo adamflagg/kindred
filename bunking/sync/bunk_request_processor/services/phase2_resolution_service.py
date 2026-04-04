@@ -7,7 +7,6 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
-from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
@@ -59,7 +58,6 @@ class Phase2ResolutionService:
         self,
         resolution_pipeline: ResolutionPipeline,
         networkx_analyzer: Any | None = None,
-        confidence_scorer: ConfidenceScorer | None = None,
         staff_name_filter: Callable[[str], bool] | None = None,
         attendee_repository: Any | None = None,
         person_repository: Any | None = None,
@@ -69,7 +67,6 @@ class Phase2ResolutionService:
         Args:
             resolution_pipeline: The V2 resolution pipeline with all strategies
             networkx_analyzer: Optional NetworkX analyzer for social graph enhancement
-            confidence_scorer: Optional confidence scorer for result scoring
             staff_name_filter: Optional callable that returns True if a name is a detected
                 staff/parent name that should be filtered from resolution.
             attendee_repository: Optional repository for prior bunkmate lookups
@@ -77,13 +74,9 @@ class Phase2ResolutionService:
         """
         self.resolution_pipeline = resolution_pipeline
         self.networkx_analyzer = networkx_analyzer
-        self.confidence_scorer = confidence_scorer
         self.staff_name_filter = staff_name_filter
         self.attendee_repository = attendee_repository
         self.person_repository = person_repository
-
-        # Note: ConfidenceScorer uses social graph signals interface
-        # which is set up in the orchestrator
 
         self._stats = {
             "total_processed": 0,
@@ -357,26 +350,6 @@ class Phase2ResolutionService:
                 result.metadata["historical_year"] = parsed_meta["historical_year"]
 
             case.resolution_results[req_idx] = result
-
-            # Apply confidence scoring if available and resolved
-            if self.confidence_scorer and result.is_resolved and case.parse_result.parse_request:
-                # Add year to parsed request metadata for confidence scorer
-                if not parsed.metadata:
-                    parsed.metadata = {}
-                parsed.metadata["year"] = case.parse_result.parse_request.year
-
-                scored_confidence = self.confidence_scorer.score_resolution(
-                    parsed_request=parsed,
-                    resolution_result=result,
-                    requester_cm_id=case.parse_result.parse_request.requester_cm_id,
-                    year=case.parse_result.parse_request.year,
-                )
-                # Update confidence with scored value
-                result.confidence = scored_confidence
-                # Capture factors immediately — reading scorer.last_score_factors later
-                # in a batch loop would give every request the last-scored factors
-                if result.metadata is not None:
-                    result.metadata["confidence_factors"] = self.confidence_scorer.last_score_factors
 
             # Log resolution details
             if result.is_resolved and result.person:

@@ -33,14 +33,6 @@ class SessionFamily(Enum):
     FAMILY = "family"
 
 
-class Gender(Enum):
-    """Gender options"""
-
-    MALE = "M"
-    FEMALE = "F"
-    OTHER = "O"
-
-
 class RequestSource(Enum):
     """Sources of bunk requests - simplified to two categories.
 
@@ -143,6 +135,8 @@ class Person:
     age: float | None = None  # CampMinder's years.months format (e.g., 10.03 = 10 years, 3 months)
     parent_names: str | None = None  # JSON array of parent/guardian info
     household_id: int | None = None  # CampMinder household ID for sibling relationships
+    gender: str | None = None  # "M", "F", "Other" — promoted from metadata
+    congregation: str | None = None  # Normalized congregation name — promoted from metadata
     metadata: dict[str, Any] = field(default_factory=dict)  # Additional metadata for social graph etc.
 
     @property
@@ -244,7 +238,6 @@ class Camper(Person):
     """Represents a camper with additional camp-specific attributes"""
 
     session: Session | None = None
-    gender: Gender | None = None
     grade_completed: int | None = None  # Grade they just completed
     campminder_age: Any | None = None  # CampMinderAge instance
     bunk: str | None = None
@@ -315,6 +308,10 @@ class BunkRequest:
     status: RequestStatus
     is_placeholder: bool  # True for LAST_YEAR_BUNKMATES
     metadata: dict[str, Any]  # All tracking info
+
+    # Promoted fields — written directly, not via metadata
+    resolution_method: str = ""  # "exact_match", "fuzzy_match", "phonetic_match", etc.
+    disposition_reason: str = ""  # "exact_match", "reciprocal_match", "needs_review", etc.
 
     # Additional fields for business logic
     requester_name: str | None = None

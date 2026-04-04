@@ -318,23 +318,6 @@ class TestRequestOrchestratorComponents:
 
     @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
     @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
-    def test_confidence_scorer_is_created(self, mock_social_graph, mock_factory):
-        """Confidence scorer should be initialized"""
-        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
-            RequestOrchestrator,
-        )
-
-        mock_factory.return_value.create_provider.return_value = Mock()
-        mock_social_graph.return_value = Mock()
-        mock_social_graph.return_value.initialize = AsyncMock()
-
-        pb = _create_mock_pocketbase()
-        orchestrator = RequestOrchestrator(pb=pb, year=2025)
-
-        assert orchestrator.confidence_scorer is not None
-
-    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
-    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
     def test_cache_manager_is_created(self, mock_social_graph, mock_factory):
         """Cache manager should be initialized"""
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (

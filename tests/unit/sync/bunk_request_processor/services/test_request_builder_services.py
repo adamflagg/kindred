@@ -14,6 +14,7 @@ from unittest.mock import Mock
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
+    BunkRequest,
     ParsedRequest,
     RequestSource,
     RequestStatus,
@@ -184,11 +185,44 @@ class TestRequestBuilderIntegration:
         assert bunk_request.metadata["ai_p1_reasoning"] == "Separation request based on staff input."
 
 
-class TestAutoSatisfiedStatus:
-    """Tests for auto_satisfied cross-session NOT_BUNK_WITH handling."""
+class TestCrossSessionSatisfied:
+    """Tests for cross-session NOT_BUNK_WITH disposition via disposition rules."""
 
-    def test_auto_satisfied_returns_resolved(self):
-        """auto_satisfied=True → RESOLVED regardless of confidence."""
+    def test_cross_session_high_confidence_resolves(self):
+        """Cross-session NOT_BUNK_WITH with high confidence → RESOLVED."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+        parsed_req = ParsedRequest(
+            raw_text="Ivy Smith",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Ivy Smith",
+            age_preference=None,
+            source_field="not_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "person_cm_id": 7777777,
+            "conflict_type": "cross_session_satisfied",
+            "confidence": 0.9,
+            "conflict_metadata": {"requester_session": 1000010, "target_session": 1000020},
+        }
+        metadata: dict[str, Any] = {}
+
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
+
+        assert status == RequestStatus.RESOLVED
+        assert reason == "cross_session_satisfied"
+
+    def test_cross_session_low_confidence_pending(self):
+        """Cross-session NOT_BUNK_WITH with low confidence → PENDING for staff review."""
         builder = RequestBuilder(
             priority_calculator=Mock(),
             temporal_name_cache=None,
@@ -209,19 +243,19 @@ class TestAutoSatisfiedStatus:
         )
         resolution_info = {
             "person_cm_id": 7777777,
-            "auto_satisfied": True,
-            "satisfaction_reason": "Automatically satisfied — different sessions",
+            "conflict_type": "cross_session_satisfied",
             "confidence": 0.7,
             "conflict_metadata": {"requester_session": 1000010, "target_session": 1000020},
         }
         metadata: dict[str, Any] = {}
 
-        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
-        assert status == RequestStatus.RESOLVED
+        assert status == RequestStatus.PENDING
+        assert reason == "needs_review"
 
-    def test_has_conflict_still_declines(self):
-        """has_conflict=True still returns DECLINED (existing behavior unchanged)."""
+    def test_session_mismatch_declines(self):
+        """Session mismatch conflict_type triggers DECLINED via disposition rules."""
         builder = RequestBuilder(
             priority_calculator=Mock(),
             temporal_name_cache=None,
@@ -243,12 +277,13 @@ class TestAutoSatisfiedStatus:
         resolution_info = {
             "person_cm_id": 7777777,
             "has_conflict": True,
+            "conflict_type": "session_mismatch",
             "conflict_description": "Session mismatch",
             "confidence": 0.9,
         }
         metadata: dict[str, Any] = {}
 
-        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
         assert status == RequestStatus.DECLINED
 
@@ -285,7 +320,7 @@ class TestEnrollmentDispositionStatus:
         }
         metadata: dict[str, Any] = {}
 
-        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
         assert status == RequestStatus.DECLINED
         assert "inactive enrollment" in metadata.get("declined_reason", "")
@@ -319,7 +354,7 @@ class TestEnrollmentDispositionStatus:
         }
         metadata: dict[str, Any] = {}
 
-        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
         assert status == RequestStatus.DECLINED
         assert "inactive enrollment" in metadata.get("declined_reason", "")
@@ -352,10 +387,292 @@ class TestEnrollmentDispositionStatus:
         }
         metadata: dict[str, Any] = {}
 
-        status = builder.determine_request_status(parsed_req, resolution_info, metadata)
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
         assert status == RequestStatus.PENDING
-        assert metadata.get("pending_reason") == "target_waitlisted"
+        assert reason == "target_waitlisted"
+
+
+class TestBunkRequestDispositionFields:
+    """BunkRequest must carry disposition_reason and resolution_method as first-class fields."""
+
+    def test_bunk_request_has_resolution_method_field(self):
+        """resolution_method is a direct field, not buried in metadata."""
+        br = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+            resolution_method="exact_match",
+        )
+        assert br.resolution_method == "exact_match"
+
+    def test_bunk_request_has_disposition_reason_field(self):
+        """disposition_reason is a direct field, not buried in metadata."""
+        br = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+            disposition_reason="exact_match",
+        )
+        assert br.disposition_reason == "exact_match"
+
+    def test_fields_default_to_empty_string(self):
+        """Both fields default to empty string when not provided."""
+        br = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+        assert br.resolution_method == ""
+        assert br.disposition_reason == ""
+
+
+class TestResolutionMethodDirect:
+    """resolution_method must be set on BunkRequest, not in metadata."""
+
+    def test_build_single_request_sets_resolution_method(self):
+        """build_single_request() sets resolution_method from resolution_info."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+        builder.priority_calculator.calculate_priority.return_value = 3
+
+        parsed_req = ParsedRequest(
+            raw_text="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "person_cm_id": 67890,
+            "person_name": "Emma Johnson",
+            "session_cm_id": 1000002,
+            "confidence": 0.95,
+            "resolution_method": "exact_match",
+        }
+
+        br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
+
+        assert br is not None
+        assert br.resolution_method == "exact_match"
+
+    def test_resolution_method_not_in_metadata(self):
+        """resolution_method must NOT be stored in metadata dict."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+        builder.priority_calculator.calculate_priority.return_value = 3
+
+        parsed_req = ParsedRequest(
+            raw_text="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "person_cm_id": 67890,
+            "person_name": "Emma Johnson",
+            "session_cm_id": 1000002,
+            "confidence": 0.95,
+            "resolution_method": "fuzzy_match",
+        }
+
+        br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
+
+        assert br is not None
+        assert "resolution_method" not in br.metadata
+        assert "match_type" not in br.metadata
+
+
+class TestDispositionReasonDirect:
+    """disposition_reason must be set on BunkRequest, not in metadata."""
+
+    def test_build_single_request_sets_disposition_reason(self):
+        """Resolved exact match sets disposition_reason='exact_match' on BunkRequest."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+        builder.priority_calculator.calculate_priority.return_value = 3
+
+        parsed_req = ParsedRequest(
+            raw_text="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "person_cm_id": 67890,
+            "session_cm_id": 1000002,
+            "confidence": 0.95,
+            "resolution_method": "exact_match",
+        }
+
+        br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
+
+        assert br is not None
+        assert br.disposition_reason == "exact_match"
+
+    def test_disposition_reason_not_in_metadata(self):
+        """disposition_reason must NOT be stored in metadata dict."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+        builder.priority_calculator.calculate_priority.return_value = 3
+
+        parsed_req = ParsedRequest(
+            raw_text="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "person_cm_id": 67890,
+            "session_cm_id": 1000002,
+            "confidence": 0.95,
+            "resolution_method": "exact_match",
+        }
+
+        br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
+
+        assert br is not None
+        assert "disposition_reason" not in br.metadata
+        assert "disposition_rule_id" not in br.metadata
+
+    def test_cross_session_satisfied_sets_disposition_reason(self):
+        """Cross-session conflict with high confidence sets disposition_reason='cross_session_satisfied'."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+        builder.priority_calculator.calculate_priority.return_value = 3
+
+        parsed_req = ParsedRequest(
+            raw_text="Ivy Smith",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Ivy Smith",
+            age_preference=None,
+            source_field="not_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "person_cm_id": 7777777,
+            "session_cm_id": 1000002,
+            "conflict_type": "cross_session_satisfied",
+            "confidence": 0.9,
+        }
+
+        br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
+
+        assert br is not None
+        assert br.disposition_reason == "cross_session_satisfied"
+        assert br.status == RequestStatus.RESOLVED
+
+    def test_unresolved_name_has_empty_disposition(self):
+        """Negative person_cm_id (unresolved) has no disposition — it's PENDING before rules."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+        builder.priority_calculator.calculate_priority.return_value = 3
+
+        parsed_req = ParsedRequest(
+            raw_text="Sophia",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Sophia",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.5,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "person_cm_id": -787442027,
+            "session_cm_id": 1000002,
+            "confidence": 0.5,
+            "resolution_method": "fuzzy_match",
+        }
+
+        br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
+
+        assert br is not None
+        assert br.disposition_reason == ""
+        assert br.status == RequestStatus.PENDING
 
 
 if __name__ == "__main__":

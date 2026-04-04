@@ -7,9 +7,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from bunking.sync.bunk_request_processor.confidence.confidence_scorer import (
-    ConfidenceScorer,
-)
 from bunking.sync.bunk_request_processor.conflict.conflict_detector import (
     ConflictDetector,
 )
@@ -67,62 +64,6 @@ class TestNativeV2Modules:
         assert detector.max_requests_per_person == 3  # type: ignore[attr-defined]
         assert detector.reciprocal_weight == 1.5  # type: ignore[attr-defined]
         assert detector.age_preference_strict is False  # type: ignore[attr-defined]
-
-    def test_confidence_scorer_bunk_with(self):
-        """Test ConfidenceScorer for bunk_with requests"""
-        mock_attendee_repo = Mock()
-        mock_attendee_repo.get_by_person_and_year.return_value = Mock(person_cm_id=10002, year=2025)
-
-        scorer = ConfidenceScorer(config={"confidence_scoring": {}}, attendee_repo=mock_attendee_repo)
-
-        # Create test request and resolution
-        parsed_req = ParsedRequest(
-            raw_text="John Doe",
-            request_type=RequestType.BUNK_WITH,
-            target_name="John Doe",
-            age_preference=None,
-            source=RequestSource.FAMILY,
-            confidence=0.9,
-            csv_position=1,
-            source_field="share_bunk_with",
-            metadata={"ai_parsed": True},
-        )
-
-        resolution = ResolutionResult(
-            person=Mock(cm_id=10002, full_name="John Doe"), confidence=0.85, method="exact_match"
-        )
-
-        # Score the resolution
-        score = scorer.score_resolution(
-            parsed_request=parsed_req, resolution_result=resolution, requester_cm_id=10001, year=2025
-        )
-
-        # Should get good score for exact match with found attendee
-        assert score > 0.7
-        assert score <= 1.0
-
-    def test_confidence_scorer_age_preference(self):
-        """Test ConfidenceScorer for age preference requests"""
-        scorer = ConfidenceScorer()
-
-        # Create age preference request
-        from bunking.sync.bunk_request_processor.core.models import AgePreference
-
-        parsed_req = ParsedRequest(
-            raw_text="Kids their own grade and one grade above",
-            request_type=RequestType.AGE_PREFERENCE,
-            target_name=None,
-            age_preference=AgePreference.OLDER,
-            source=RequestSource.FAMILY,
-            confidence=1.0,
-            csv_position=1,
-            source_field="ret_parent_socialize_with_best",
-            metadata={"ai_parsed": False, "pre_parsed": True},
-        )
-
-        # Score should equal AI confidence for age preferences
-        score = scorer.score_parsed_request(parsed_req)
-        assert score == 1.0
 
     @pytest.mark.asyncio
     async def test_social_graph_initialization(self):

@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         DataAccessContext,
     )
 
-from ..confidence.confidence_scorer import ConfidenceScorer
 from ..conflict.conflict_detector import ConflictDetector
 from ..core.models import (
     AgePreference,
@@ -46,7 +45,6 @@ from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator
 from ..processing.priority_calculator import PriorityCalculator
-from ..processing.reciprocal_detector import ReciprocalDetector
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..services.context_builder import ContextBuilder
@@ -775,17 +773,9 @@ class RequestOrchestrator:
         )
 
     def _init_scoring_components(self) -> None:
-        """Initialize confidence scorer, conflict detector, and priority calculator."""
+        """Initialize conflict detector and priority calculator."""
         # Social graph signals will be linked after social graph init
         self.social_graph_signals: SocialGraphSignalsAdapter | None = None
-
-        # Create native V2 confidence scorer
-        self.confidence_scorer = ConfidenceScorer(
-            config=self.ai_config,
-            attendee_repo=self._attendee_repo,
-            social_graph_signals=None,  # Will be linked after social graph init
-            person_repo=self._person_repo,
-        )
 
         # Create native V2 conflict detector
         conflict_config = self.ai_config.get("conflict_detection", {})
@@ -828,14 +818,13 @@ class RequestOrchestrator:
         # SocialGraph expects PocketBase - use the underlying client
         self.social_graph = SocialGraph(pb=self.pb, year=self.year, session_cm_ids=self.session_cm_ids)  # type: ignore[arg-type]
 
-        # Create adapter that wraps SocialGraph for confidence scorer
+        # Create adapter that wraps SocialGraph for social signal lookups
         # Pass a getter so adapter always sees current _person_sessions
         signals_adapter = SocialGraphSignalsAdapter(
             self.social_graph, person_sessions_getter=lambda: self._person_sessions
         )
         # SocialGraphSignalsAdapter implements SocialGraphSignals interface via duck typing
         self.social_graph_signals = signals_adapter
-        self.confidence_scorer.social_graph_signals = signals_adapter  # type: ignore[assignment]
 
     def _init_resolution_pipeline(self) -> None:
         """Initialize resolution pipeline with strategies."""
@@ -878,7 +867,6 @@ class RequestOrchestrator:
         self.phase2_service = Phase2ResolutionService(
             resolution_pipeline=self.resolution_pipeline,
             networkx_analyzer=self.social_graph,  # SocialGraph has compatible interface
-            confidence_scorer=self.confidence_scorer,
             staff_name_filter=self.is_staff_name,  # Filter detected staff names from resolution
             attendee_repository=self._attendee_repo,  # For prior bunkmate resolution
             person_repository=self._person_repo,  # For prior bunkmate name matching
@@ -888,7 +876,6 @@ class RequestOrchestrator:
             ai_provider=self.ai_provider,
             context_builder=self.context_builder,
             batch_processor=self.batch_processor,
-            confidence_scorer=self.confidence_scorer,
             spread_filter=self.spread_filter,
             cache_manager=self.cache_manager,
         )
@@ -899,10 +886,6 @@ class RequestOrchestrator:
         self.source_link_repository = SourceLinkRepository(self.pb)
         self.self_reference_rule = SelfReferenceRule()
         self.deduplicator = Deduplicator(self.request_repository)
-        self.reciprocal_detector = ReciprocalDetector(
-            confidence_boost=self.ai_config.get("reciprocal_confidence_boost", 0.1)
-        )
-
         # Create request builder for constructing BunkRequest objects
         self.request_builder = RequestBuilder(
             priority_calculator=self.priority_calculator,
@@ -1271,7 +1254,6 @@ class RequestOrchestrator:
                             method=rr.method,
                             is_resolved=rr.is_resolved,
                             is_ambiguous=rr.is_ambiguous,
-                            confidence_factors=rr_meta.get("confidence_factors", {}),
                         ),
                     ),
                 )
@@ -1418,6 +1400,53 @@ class RequestOrchestrator:
         # Store phase3_processed for later use
         self._phase3_indices = phase3_processed
 
+        # --- Batch Signal Detection (reciprocal + household co-request) ---
+        from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
+        from ..processing.batch_signals import detect_batch_signals
+
+        batch_requests = []
+        for pr, resolution_list in resolution_results:
+            if not pr.parsed_requests or not pr.parse_request:
+                continue
+            requester_person = (
+                self.temporal_name_cache.get_person(pr.parse_request.requester_cm_id)
+                if self.temporal_name_cache
+                else None
+            )
+            requester_household_id = requester_person.household_id if requester_person else None
+            for rr_idx, rr in enumerate(resolution_list):
+                if rr.is_resolved and rr.person:
+                    req_type = RequestType.BUNK_WITH
+                    if rr_idx < len(pr.parsed_requests):
+                        req_type = pr.parsed_requests[rr_idx].request_type
+                    batch_requests.append(
+                        BSResolvedRequest(
+                            requester_cm_id=pr.parse_request.requester_cm_id,
+                            target_cm_id=rr.person.cm_id,
+                            request_type=req_type,
+                            session_cm_id=pr.parse_request.session_cm_id,
+                            household_id=requester_household_id,
+                        )
+                    )
+
+        batch_signals = detect_batch_signals(batch_requests)
+
+        # Annotate resolution results with batch signals
+        for pr, resolution_list in resolution_results:
+            if not pr.parse_request:
+                continue
+            for rr in resolution_list:
+                if rr.is_resolved and rr.person:
+                    key = (pr.parse_request.requester_cm_id, rr.person.cm_id, pr.parse_request.session_cm_id)
+                    if key in batch_signals:
+                        if rr.metadata is None:
+                            rr.metadata = {}
+                        rr.metadata["is_reciprocal"] = batch_signals[key].is_reciprocal
+                        rr.metadata["reciprocal_with"] = batch_signals[key].reciprocal_with
+                        rr.metadata["household_co_request"] = batch_signals[key].household_co_request
+
+        self._stats["reciprocal_pairs"] = sum(1 for s in batch_signals.values() if s.is_reciprocal) // 2
+
         # --- Trace: Phase 3 results ---
         for idx, (pr, res_list) in enumerate(resolution_results):
             trace_key = _get_trace_key(pr)
@@ -1501,7 +1530,6 @@ class RequestOrchestrator:
             # Track post-pipeline enrichments across all intents for this trace
             any_self_ref = False
             any_reciprocal = False
-            reciprocal_boost_amount: float | None = None
             reciprocal_pair_cm_id: int | None = None
             any_dedup = False
             for req_idx, (parsed_req, rr) in enumerate(zip(pr.parsed_requests, res_list, strict=False)):
@@ -1516,7 +1544,6 @@ class RequestOrchestrator:
                     any_self_ref = True
                 if br_meta.get("is_reciprocal"):
                     any_reciprocal = True
-                    reciprocal_boost_amount = br_meta.get("reciprocal_boost")
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
                 # Check if this request was removed by deduplication
@@ -1590,8 +1617,6 @@ class RequestOrchestrator:
                     self_reference={"detected": any_self_ref},
                     reciprocal={
                         "detected": any_reciprocal,
-                        "boost_applied": any_reciprocal and reciprocal_boost_amount is not None,
-                        "boost_amount": reciprocal_boost_amount,
                         "pair_cm_id": reciprocal_pair_cm_id,
                     },
                     deduplication={
@@ -2049,12 +2074,13 @@ class RequestOrchestrator:
                     resolution_info["person_cm_id"] = resolution_result.person.cm_id
                     resolution_info["person_name"] = resolution_result.person.full_name
                     resolution_info["resolution_method"] = resolution_result.method
-                    resolution_info["confidence_factors"] = (
-                        resolution_result.metadata.get("confidence_factors", {}) if resolution_result.metadata else {}
-                    )
                     # Pass along resolution metadata (includes Phase 3 reasoning if applicable)
                     if resolution_result.metadata:
                         resolution_info["resolution_metadata"] = resolution_result.metadata
+                    # Thread batch signals to request_builder
+                    resolution_info["is_reciprocal"] = (
+                        resolution_result.metadata.get("is_reciprocal", False) if resolution_result.metadata else False
+                    )
                 elif parsed_req.request_type == RequestType.AGE_PREFERENCE:
                     # Age preferences don't need person resolution
                     resolution_info["person_cm_id"] = None
@@ -2334,7 +2360,6 @@ class RequestOrchestrator:
         This pipeline runs in order:
         1. Self-reference validation (mark and modify, keep for staff review)
         2. Deduplication (remove duplicate requests, keep highest priority)
-        3. Reciprocal detection (mark reciprocal pairs and boost confidence)
 
         Args:
             requests: List of BunkRequest objects to validate
@@ -2394,34 +2419,8 @@ class RequestOrchestrator:
         if duplicates_removed > 0:
             logger.info(f"Removed {duplicates_removed} duplicate request(s)")
 
-        # Step 3: Detect and mark reciprocal requests
-        reciprocal_pairs = self.reciprocal_detector.detect_reciprocals(deduplicated_requests)
-        self._stats["reciprocal_pairs"] = len(reciprocal_pairs)
-
-        # Apply confidence boost to reciprocal pairs
-        self.reciprocal_detector.apply_reciprocal_boost(deduplicated_requests)
-
-        if reciprocal_pairs:
-            logger.info(f"Detected {len(reciprocal_pairs)} reciprocal pair(s)")
-
-        # Step 4: Re-check status for reciprocal-boosted requests
-        # After reciprocal boost bumps confidence, requests that now cross
-        # the auto-resolve threshold should be promoted from PENDING to RESOLVED.
-        threshold = self._get_auto_resolve_threshold()
-        reciprocal_promoted = 0
-        for req in deduplicated_requests:
-            if (
-                req.metadata.get("reciprocal_boost")
-                and req.status == RequestStatus.PENDING
-                and req.confidence_score >= threshold
-                and req.requested_cm_id is not None
-                and req.requested_cm_id > 0
-            ):
-                req.status = RequestStatus.RESOLVED
-                reciprocal_promoted += 1
-        self._stats["reciprocal_promoted"] = reciprocal_promoted
-        if reciprocal_promoted > 0:
-            logger.info(f"Reciprocal boost auto-resolved {reciprocal_promoted} request(s)")
+        # Reciprocal detection now happens in batch_signals stage before request building.
+        # Stats are recorded there.
 
         return deduplicated_requests, deduped_keys
 

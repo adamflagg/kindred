@@ -14,7 +14,10 @@ Select the most likely match based on available information.
 Consider:
 - School proximity (same school = more likely to know each other)
 - Grade similarity (campers usually request peers within 1-2 grades)
+- City proximity (same city = more likely to know each other outside camp)
+- Congregation (shared temple/synagogue = community connection)
 - Social connections (mutual friends increase likelihood)
+- Parent names (requests sometimes use parent surnames instead of child's)
 - Name spelling (fuzzy matches may indicate typos)
 
 If no match seems confident, select the closest match but set confidence appropriately low.

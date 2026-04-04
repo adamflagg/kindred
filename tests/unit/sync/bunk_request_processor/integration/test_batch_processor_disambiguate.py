@@ -1,12 +1,11 @@
 """Tests for BatchProcessor disambiguation path.
 
-Verifies that batch_disambiguate correctly passes (target_name, context)
-to the AI provider — the code path that has been broken since initial commit
-due to dict conversion + missing attribute access."""
+Verifies that batch_disambiguate correctly calls ai_provider.disambiguate()
+with (parsed_request, context) — not parse_request() with (target_name, context)."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -52,15 +51,16 @@ class TestBatchProcessorDisambiguate:
     """Test the disambiguation code path in BatchProcessor."""
 
     @pytest.mark.asyncio
-    async def test_disambiguate_calls_ai_with_target_name_and_context(self):
-        """batch_disambiguate must pass (target_name, AIRequestContext) to ai_provider."""
-        mock_response = Mock()
-        mock_response.person_cm_id = 12345
+    async def test_disambiguate_calls_disambiguate_not_parse_request(self):
+        """batch_disambiguate must call ai_provider.disambiguate(), not parse_request()."""
+        mock_response = MagicMock()
+        mock_response.selected_person_id = 12345
         mock_response.confidence = 0.8
-        mock_response.reason = "Best match"
+        mock_response.reasoning = "Best match"
 
         ai_provider = Mock()
-        ai_provider.parse_request = AsyncMock(return_value=mock_response)
+        ai_provider.disambiguate = AsyncMock(return_value=mock_response)
+        ai_provider.parse_request = AsyncMock()
 
         processor = BatchProcessor(ai_provider=ai_provider, config={})
 
@@ -71,27 +71,29 @@ class TestBatchProcessorDisambiguate:
             disambiguation_requests=[(parsed_req, context)],
         )
 
-        # AI provider must be called with target_name as request_text
-        ai_provider.parse_request.assert_called_once()
-        call_args = ai_provider.parse_request.call_args
-        assert call_args[0][0] == "Sarah Smith", (
-            f"Expected target_name 'Sarah Smith' as first arg, got {call_args[0][0]!r}"
+        # Must call disambiguate(), not parse_request()
+        ai_provider.disambiguate.assert_called_once()
+        ai_provider.parse_request.assert_not_called()
+        call_args = ai_provider.disambiguate.call_args
+        # First arg is ParsedRequest
+        assert isinstance(call_args[0][0], ParsedRequest), (
+            f"Expected ParsedRequest as first arg, got {type(call_args[0][0])}"
         )
+        # Second arg is AIRequestContext
         assert isinstance(call_args[0][1], AIRequestContext), (
             f"Expected AIRequestContext as second arg, got {type(call_args[0][1])}"
         )
 
     @pytest.mark.asyncio
     async def test_disambiguate_does_not_crash_on_real_context(self):
-        """Regression: the old code converted AIRequestContext to dict,
-        then tried attribute access (.request_text) on the dict — AttributeError."""
-        mock_response = Mock()
-        mock_response.person_cm_id = None
+        """Regression: old code converted AIRequestContext to dict, causing AttributeError."""
+        mock_response = MagicMock()
+        mock_response.selected_person_id = None
         mock_response.confidence = 0.0
-        mock_response.reason = "No match"
+        mock_response.reasoning = "No match"
 
         ai_provider = Mock()
-        ai_provider.parse_request = AsyncMock(return_value=mock_response)
+        ai_provider.disambiguate = AsyncMock(return_value=mock_response)
 
         processor = BatchProcessor(ai_provider=ai_provider, config={})
 

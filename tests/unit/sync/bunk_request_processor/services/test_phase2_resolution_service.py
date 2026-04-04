@@ -148,16 +148,6 @@ class TestPhase2ResolutionServiceInit:
         )
         assert service.networkx_analyzer == analyzer
 
-    def test_init_with_optional_confidence_scorer(self):
-        """Service accepts optional confidence_scorer"""
-        pipeline = Mock()
-        scorer = Mock()
-        service = Phase2ResolutionService(
-            resolution_pipeline=pipeline,
-            confidence_scorer=scorer,
-        )
-        assert service.confidence_scorer == scorer
-
     def test_init_stats_are_zero(self):
         """Stats should start at zero"""
         pipeline = Mock()
@@ -425,39 +415,6 @@ class TestPhase2ResolutionServiceNetworkX:
         _, resolutions = results[0]
         # Should still be ambiguous without NetworkX
         assert resolutions[0].is_ambiguous
-
-
-class TestPhase2ResolutionServiceConfidenceScoring:
-    """Tests for confidence scoring integration"""
-
-    @pytest.mark.asyncio
-    async def test_confidence_scorer_applied_to_resolved_results(self):
-        """Confidence scorer is applied to resolved results"""
-        pipeline = Mock()
-        resolved_person = _create_person()
-        pipeline.batch_resolve = Mock(
-            return_value=[
-                _create_resolution_result(
-                    person=resolved_person,
-                    confidence=0.9,  # Original confidence
-                    method="exact",
-                )
-            ]
-        )
-
-        scorer = Mock()
-        scorer.score_resolution = Mock(return_value=0.95)  # Scored confidence
-
-        service = Phase2ResolutionService(
-            resolution_pipeline=pipeline,
-            confidence_scorer=scorer,
-        )
-
-        results = await service.batch_resolve([_create_parse_result()])
-
-        scorer.score_resolution.assert_called_once()
-        _, resolutions = results[0]
-        assert resolutions[0].confidence == 0.95
 
 
 class TestPhase2ResolutionServiceMetadata:

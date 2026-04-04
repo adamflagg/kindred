@@ -113,6 +113,8 @@ class TestProviderFactory:
             async def parse_request(self, request_text: str, context: AIRequestContext) -> ParsedResponse:  # type: ignore[empty-body]
                 ...
 
+            async def disambiguate(self, parsed_request, context): ...
+
             async def batch_parse_requests(self, requests):
                 pass
 

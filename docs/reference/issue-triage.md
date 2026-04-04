@@ -1,11 +1,80 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-03-20 (2 open issues; #728 closed by PR #731, #453 closed by PR #729).
+Last updated: 2026-04-03 (20 open issues, excluding 6 PR #823 follow-ups).
 
 ---
 
 ## Remaining Open Issues
+
+### Group 25: Sync Fixes (#806, #807, #791)
+
+**Priority: Medium** — One bug fix, two cleanup refactors
+
+| # | Title | Type | Status |
+|---|-------|------|--------|
+| 806 | fix(sync): normalize session "0" → "all" in Go process-requests handler | bug | Ready — one-liner fix |
+| 807 | refactor(sync): update session_resolver.go to use cm_ids instead of friendly names | enhancement | Ready |
+| 791 | refactor(sync): extract shared generateRunToken helper | refactor | Ready |
+
+**Interplay:** Independent. #806 is a trivial consistency fix (other endpoints already handle "0"). #807 and #791 are standalone refactors.
+
+### Group 26: Solver Bugs & Performance (#788, #792, #809)
+
+**Priority: Medium** — Trace correctness + query optimization
+
+| # | Title | Type | Status |
+|---|-------|------|--------|
+| 788 | fix(solver): dedup trace key collision — (requester_cm_id, target_name) can match both kept and removed requests | bug | Ready — trace-only impact |
+| 792 | perf(solver): cache PersonRepository.bulk_find_by_cm_ids to avoid redundant DB fetches | performance | Ready |
+| 809 | perf(solver): skip get_related_session_ids query for embedded sessions | performance | Ready |
+
+**Interplay:** Independent. #788 is trace-correctness only (no impact on actual bunk requests). #792 and #809 are independent perf optimizations.
+
+### Group 27: Solver Logging Cleanup (#787, #815)
+
+**Priority: Low** — Log level adjustments
+
+| # | Title | Type | Status |
+|---|-------|------|--------|
+| 787 | fix(solver): move camper name/ID logging from INFO to DEBUG | cleanup | Ready |
+| 815 | fix(solver): move AI prompt/response text from DEBUG to TRACE | cleanup | Ready |
+
+**Interplay:** Independent. Both are log-level changes, no functional impact.
+
+### Group 28: Metrics Tech Debt (#770, #771, #772, #773)
+
+**Priority: Low** — Date-stripping deduplication and helper extraction
+
+| # | Title | Type | Status |
+|---|-------|------|--------|
+| 770 | refactor(metrics): make _get_enrollment_date public across modules | tech-debt | Ready |
+| 771 | refactor(metrics): replace 13 inline date-stripping patterns with parse_date_only in velocity_service.py | tech-debt | Ready |
+| 772 | refactor(metrics): replace inline date-stripping in session_metrics.py with parse_date_only | tech-debt | Ready |
+| 773 | refactor(metrics): extract shared bucket-write helper in reconstruct_daily_multi | tech-debt | Ready |
+
+**Interplay:** #770 should land first (makes helper public), then #771/#772 consume it. #773 is independent.
+
+### Group 29: Frontend Cleanup (#796, #797, #798, #808, #810)
+
+**Priority: Low** — Dead code removal, deduplication, config updates
+
+| # | Title | Type | Status |
+|---|-------|------|--------|
+| 796 | chore(frontend): remove localStorage program migration shim | cleanup | Ready |
+| 797 | chore(frontend): clean up dead export getAnalyticsUrl and inconsistent trailing-slash handling | cleanup | Ready |
+| 798 | refactor(frontend): data-drive program switcher buttons in AppLayout | refactor | Ready |
+| 808 | refactor(frontend): deduplicate SOURCE_FIELD_OPTIONS and fieldLabels | cleanup | Ready |
+| 810 | cleanup(frontend): update SESSION_NAME_TO_URL for Taste of Camp 1/2 | cleanup | Ready |
+
+**Interplay:** Independent. All are safe standalone changes.
+
+### Standalone Issues
+
+| # | Title | Type | Priority | Status |
+|---|-------|------|----------|--------|
+| 754 | feat(solver): support manual pairing of AG cabins across years | enhancement | Medium | Needs design decisions |
+| 801 | fix(ci): add explicit --platform linux/amd64 to CD docker buildx build | bug | Low | Ready — no functional impact today |
 
 ### Frontend Tech Debt (Remnants of Group 23)
 
@@ -20,6 +89,14 @@ Last updated: 2026-03-20 (2 open issues; #728 closed by PR #731, #453 closed by 
 
 ---
 
+## Excluded from Triage
+
+| # | Reason |
+|---|--------|
+| 824–829 | Follow-ups from PR #823 (scoring reform phase 2) — triaged separately |
+
+---
+
 ## Blocked
 
 | # | Title | Blocked on |
@@ -31,8 +108,15 @@ Last updated: 2026-03-20 (2 open issues; #728 closed by PR #731, #453 closed by 
 ## Suggested Attack Order
 
 1–24. ~~**Groups 1–24**~~ — All complete (see completed groups below)
-25. **#604** — Low priority, needs design decisions on recharts 3.8 API adoption
-26. **#697** — Blocked on upstream `--use-const` merge
+25. **Group 25** (#806, #807, #791) — Sync fixes, includes a bug
+26. **Group 26** (#788, #792, #809) — Solver trace bug + perf wins
+27. **#754** — AG cabin pairing feature (needs design)
+28. **Group 27** (#787, #815) — Solver log cleanup, quick
+29. **Group 28** (#770–773) — Metrics date-stripping dedup (do #770 first)
+30. **Group 29** (#796–798, #808, #810) — Frontend cleanup batch
+31. **#801** — CI platform flag, low priority
+32. **#604** — recharts 3.8 adoption, needs design decisions
+33. **#697** — Blocked on upstream `--use-const` merge
 
 ## Completed Groups (recent)
 

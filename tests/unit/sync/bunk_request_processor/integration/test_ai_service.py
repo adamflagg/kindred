@@ -357,6 +357,9 @@ class TestAIProvider:
             async def parse_request(self, request_text: str, context: AIRequestContext) -> ParsedResponse:
                 raise NotImplementedError
 
+            async def disambiguate(self, parsed_request, context):
+                raise NotImplementedError
+
             async def batch_parse_requests(self, requests: list[tuple[str, AIRequestContext]]) -> list[ParsedResponse]:
                 raise NotImplementedError
 

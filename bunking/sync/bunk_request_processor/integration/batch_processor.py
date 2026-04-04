@@ -459,10 +459,10 @@ class BatchProcessor:
                 start_time = time.time()
 
                 if is_disambiguation:
-                    # Process disambiguation batch
+                    # Process disambiguation batch — use disambiguate(), not parse_request()
                     results = []
                     for parsed_request, context in batch:
-                        result = await self.ai_provider.parse_request(parsed_request.target_name, context)
+                        result = await self.ai_provider.disambiguate(parsed_request, context)
                         results.append(result)
                 else:
                     # Process parse batch

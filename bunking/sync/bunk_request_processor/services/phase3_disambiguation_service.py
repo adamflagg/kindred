@@ -7,7 +7,6 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
-from ..confidence.confidence_scorer import ConfidenceScorer
 from ..core.models import ParsedRequest, ParseResult
 from ..integration.ai_service import AIProvider, AIRequestContext
 from ..integration.batch_processor import BatchProcessor
@@ -46,7 +45,6 @@ class Phase3DisambiguationService:
         ai_provider: AIProvider,
         context_builder: ContextBuilder,
         batch_processor: BatchProcessor | None = None,
-        confidence_scorer: ConfidenceScorer | None = None,
         spread_filter: Any | None = None,
         cache_manager: Any | None = None,
     ):
@@ -56,13 +54,11 @@ class Phase3DisambiguationService:
             ai_provider: AI provider for disambiguation
             context_builder: Context builder for creating minimal contexts
             batch_processor: Optional batch processor for sophisticated batching
-            confidence_scorer: Optional confidence scorer for result scoring
             spread_filter: Optional spread filter for age/grade validation
             cache_manager: Optional cache manager for caching disambiguation results
         """
         self.ai_provider = ai_provider
         self.context_builder = context_builder
-        self.confidence_scorer = confidence_scorer
         self.spread_filter = spread_filter
         self.cache_manager = cache_manager
 
@@ -238,37 +234,20 @@ class Phase3DisambiguationService:
                 continue
 
             try:
-                parsed_req = case.parse_result.parsed_requests[ambiguous_idx]
                 resolution = case.resolution_results[ambiguous_idx]
 
-                if hasattr(result, "person_cm_id") and result.person_cm_id:
+                if hasattr(result, "selected_person_id") and result.selected_person_id:
                     # AI selected a specific person
                     selected_person = None
                     if resolution.candidates:
                         for candidate in resolution.candidates[:5]:  # Top 5 only
-                            if candidate.cm_id == result.person_cm_id:
+                            if candidate.cm_id == result.selected_person_id:
                                 selected_person = candidate
                                 break
 
                     if selected_person:
                         # Create disambiguated result
                         confidence = getattr(result, "confidence", 0.8)
-
-                        # Apply confidence scoring if available
-                        if self.confidence_scorer and parsed_req and case.parse_result.parse_request:
-                            # Create a temporary result for scoring
-                            temp_result = ResolutionResult(
-                                person=selected_person,
-                                confidence=confidence,
-                                method="ai_disambiguation",
-                                candidates=resolution.candidates[:5] if resolution.candidates else None,
-                            )
-                            confidence = self.confidence_scorer.score_resolution(
-                                parsed_request=parsed_req,
-                                resolution_result=temp_result,
-                                requester_cm_id=case.parse_result.parse_request.requester_cm_id,
-                                year=case.parse_result.parse_request.year,
-                            )
 
                         num_candidates = len(resolution.candidates) if resolution.candidates else 0
                         disambiguation_metadata: dict[str, Any] = {
@@ -277,8 +256,6 @@ class Phase3DisambiguationService:
                             "original_method": resolution.method,
                             "candidates_considered": num_candidates,
                         }
-                        if self.confidence_scorer:
-                            disambiguation_metadata["confidence_factors"] = self.confidence_scorer.last_score_factors
                         case.disambiguated_results[ambiguous_idx] = ResolutionResult(
                             person=selected_person,
                             confidence=confidence,
@@ -295,7 +272,7 @@ class Phase3DisambiguationService:
                         case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
                         if "selected_ids" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["selected_ids"] = {}
-                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = result.person_cm_id
+                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = result.selected_person_id
 
                 elif hasattr(result, "no_match") and result.no_match:
                     # AI explicitly said no match
