@@ -9,6 +9,7 @@ from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, ParseResult
 from ..integration.ai_service import AIProvider, AIRequestContext
+from ..integration.ai_types import ParsedResponse
 from ..integration.batch_processor import BatchProcessor
 from ..resolution.interfaces import ResolutionResult
 from .context_builder import ContextBuilder
@@ -176,7 +177,7 @@ class Phase3DisambiguationService:
                 # Build disambiguation context for this specific name
                 context = self.context_builder.build_disambiguation_context(
                     target_name=parsed_req.target_name,
-                    candidates=resolution.candidates[:5],  # Top 5 candidates
+                    candidates=resolution.candidates[:10],  # Top 10 candidates
                     requester_name=case.parse_result.parse_request.requester_name,
                     requester_cm_id=case.parse_result.parse_request.requester_cm_id,
                     requester_school=case.parse_result.parse_request.row_data.get("school")
@@ -236,29 +237,48 @@ class Phase3DisambiguationService:
             try:
                 resolution = case.resolution_results[ambiguous_idx]
 
-                if hasattr(result, "selected_person_id") and result.selected_person_id:
-                    # AI selected a specific person
+                # Extract selected_person_id from the result.
+                # The AI provider returns ParsedResponse with target_person_id in
+                # result.requests[0].metadata. Legacy AIDisambiguationResponse has
+                # selected_person_id as a direct attribute.
+                selected_person_id: int | None = None
+                ai_confidence: float = 0.8
+                ai_reason: str = "AI selected"
+
+                if isinstance(result, ParsedResponse):
+                    # Unwrap ParsedResponse from AI provider
+                    ai_confidence = result.confidence
+                    if result.requests:
+                        req_metadata = result.requests[0].metadata or {}
+                        selected_person_id = req_metadata.get("target_person_id")
+                        ai_reason = req_metadata.get("reason", "AI selected")
+                elif hasattr(result, "selected_person_id"):
+                    # Legacy path: direct AIDisambiguationResponse (defensive)
+                    selected_person_id = result.selected_person_id
+                    ai_confidence = getattr(result, "confidence", 0.8)
+                    ai_reason = getattr(result, "reason", "AI selected")
+
+                if selected_person_id:
+                    # AI selected a specific person — find them in candidates
                     selected_person = None
                     if resolution.candidates:
-                        for candidate in resolution.candidates[:5]:  # Top 5 only
-                            if candidate.cm_id == result.selected_person_id:
+                        for candidate in resolution.candidates[:10]:  # Top 10
+                            if candidate.cm_id == selected_person_id:
                                 selected_person = candidate
                                 break
 
                     if selected_person:
                         # Create disambiguated result
-                        confidence = getattr(result, "confidence", 0.8)
-
                         num_candidates = len(resolution.candidates) if resolution.candidates else 0
                         disambiguation_metadata: dict[str, Any] = {
-                            "ai_confidence": getattr(result, "confidence", confidence),
-                            "disambiguation_reason": getattr(result, "reason", "AI selected"),
+                            "ai_confidence": ai_confidence,
+                            "disambiguation_reason": ai_reason,
                             "original_method": resolution.method,
                             "candidates_considered": num_candidates,
                         }
                         case.disambiguated_results[ambiguous_idx] = ResolutionResult(
                             person=selected_person,
-                            confidence=confidence,
+                            confidence=ai_confidence,
                             method="ai_disambiguation",
                             metadata=disambiguation_metadata,
                         )
@@ -266,16 +286,16 @@ class Phase3DisambiguationService:
                             case.disambiguation_metadata["status"] = {}
                         case.disambiguation_metadata["status"][ambiguous_idx] = "success"
                     else:
-                        # AI selected unknown person
+                        # AI selected unknown person (not in candidates)
                         if "status" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["status"] = {}
                         case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
                         if "selected_ids" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["selected_ids"] = {}
-                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = result.selected_person_id
+                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = selected_person_id
 
                 elif hasattr(result, "no_match") and result.no_match:
-                    # AI explicitly said no match
+                    # AI explicitly said no match (legacy path)
                     if "status" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["status"] = {}
                     case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
@@ -286,14 +306,14 @@ class Phase3DisambiguationService:
                     )
 
                 else:
-                    # Still ambiguous
+                    # No selection and no legacy no_match flag — mark as no_match
                     if "status" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["status"] = {}
-                    case.disambiguation_metadata["status"][ambiguous_idx] = "still_ambiguous"
+                    case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
                     if "reasons" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["reasons"] = {}
-                    case.disambiguation_metadata["reasons"][ambiguous_idx] = getattr(
-                        result, "reason", "Could not disambiguate"
+                    case.disambiguation_metadata["reasons"][ambiguous_idx] = (
+                        ai_reason if ai_reason != "AI selected" else "No suitable match"
                     )
 
             except Exception as e:
