@@ -690,6 +690,53 @@ class TestPhase3DisambiguationServiceStatistics:
         assert stats2["total_processed"] == 0
 
 
+class TestPhase3Eligibility:
+    """Tests for Phase 3 eligibility — which ResolutionResults enter the disambiguation loop."""
+
+    def test_single_candidate_is_eligible(self):
+        """Single-candidate unresolved result should be in ambiguous_indices (not just 2+ candidates)."""
+        single_candidate = _create_resolution_result(
+            person=None,
+            confidence=0.5,
+            method="single_match",
+            candidates=[_create_person(cm_id=111)],
+        )
+        parse_result = _create_parse_result()
+        case = DisambiguationCase(parse_result, [single_candidate])
+
+        assert 0 in case.ambiguous_indices, (
+            "Single-candidate unresolved result should enter Phase 3 (not just 2+ candidate cases)"
+        )
+
+    def test_zero_candidates_not_eligible(self):
+        """Zero-candidate result should NOT be in ambiguous_indices."""
+        no_candidates = _create_resolution_result(
+            person=None,
+            confidence=0.0,
+            method="no_match",
+            candidates=[],
+        )
+        parse_result = _create_parse_result()
+        case = DisambiguationCase(parse_result, [no_candidates])
+
+        assert 0 not in case.ambiguous_indices, (
+            "Zero-candidate result has nothing to disambiguate, should not enter Phase 3"
+        )
+
+    def test_resolved_not_eligible(self):
+        """Resolved result (person is not None) should NOT be in ambiguous_indices."""
+        resolved = _create_resolution_result(
+            person=_create_person(cm_id=111),
+            confidence=0.95,
+            method="exact_match",
+            candidates=[_create_person(cm_id=111)],
+        )
+        parse_result = _create_parse_result()
+        case = DisambiguationCase(parse_result, [resolved])
+
+        assert 0 not in case.ambiguous_indices, "Already-resolved result should not be re-disambiguated in Phase 3"
+
+
 class TestDisambiguationCase:
     """Tests for DisambiguationCase helper class"""
 

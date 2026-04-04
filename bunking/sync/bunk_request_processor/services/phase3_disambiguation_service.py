@@ -27,9 +27,10 @@ class DisambiguationCase:
         self.disambiguated_results: list[ResolutionResult | None] = [None] * len(resolution_results)
         self.disambiguation_metadata: dict[str, Any] = {}
 
-        # Identify which resolutions are ambiguous
+        # Identify which resolutions need disambiguation:
+        # any unresolved result with at least one candidate (includes single-candidate cases)
         for idx, rr in enumerate(resolution_results):
-            if rr.is_ambiguous and rr.candidates:
+            if not rr.is_resolved and rr.candidates:
                 self.ambiguous_indices.append(idx)
 
     @property
