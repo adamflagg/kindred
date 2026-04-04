@@ -5,6 +5,7 @@ Detects and flags requests where a camper is requesting themselves."""
 from __future__ import annotations
 
 from ...core.models import BunkRequest
+from ...shared.nickname_groups import names_match_via_nicknames
 from ..interfaces import ValidationResult, ValidationRule
 
 
@@ -64,7 +65,7 @@ class SelfReferenceRule(ValidationRule):
 
             # Check if this is a first-name-only target (no space)
             if raw_name and " " not in raw_name and requester_first_name:
-                if raw_name == requester_first_name:
+                if raw_name == requester_first_name or names_match_via_nicknames(raw_name, requester_first_name):
                     # First name matches - check for ambiguity via session peers
                     peers_with_same_first_name = request.metadata.get("session_peers_with_same_first_name")
 

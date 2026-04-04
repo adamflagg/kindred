@@ -326,7 +326,11 @@ class TestEnrollmentDispositionStatus:
         assert "inactive enrollment" in metadata.get("declined_reason", "")
 
     def test_requester_not_attending_conflict_declines(self):
-        """has_conflict + requester_not_attending → DECLINED with reason."""
+        """has_conflict + requester_not_attending → DECLINED with 'requester_not_attending' reason.
+
+        Bug #830: Previously this produced 'target_not_attending' because the
+        conflict types were conflated into a single target_is_inactive boolean.
+        """
         builder = RequestBuilder(
             priority_calculator=Mock(),
             temporal_name_cache=None,
@@ -357,6 +361,7 @@ class TestEnrollmentDispositionStatus:
         status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
         assert status == RequestStatus.DECLINED
+        assert reason == "requester_not_attending"
         assert "inactive enrollment" in metadata.get("declined_reason", "")
 
     def test_waitlisted_target_stays_pending(self):

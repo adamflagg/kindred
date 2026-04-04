@@ -149,3 +149,60 @@ class TestAgePreference:
     def test_undirected_pending(self):
         d = determine_disposition(RequestType.AGE_PREFERENCE, age_direction=None)
         assert d.status == RequestStatus.PENDING
+
+
+class TestRequesterNotAttending:
+    """Tests for #830: requester_not_attending must be a distinct disposition reason.
+
+    Previously requester_not_attending was conflated with target_is_inactive,
+    causing a misleading "target_not_attending" reason when the REQUESTER is
+    the one not attending.
+    """
+
+    def test_requester_inactive_declined_with_correct_reason(self):
+        """BUNK_WITH where the requester is inactive should produce 'requester_not_attending'."""
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            requester_is_inactive=True,
+        )
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "requester_not_attending"
+
+    def test_target_inactive_still_target_not_attending(self):
+        """BUNK_WITH where the target is inactive should still produce 'target_not_attending'."""
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            target_is_inactive=True,
+        )
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "target_not_attending"
+
+    def test_requester_inactive_overrides_resolution_quality(self):
+        """requester_is_inactive should take priority over high confidence match."""
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            requester_is_inactive=True,
+            resolution_method="exact_match",
+            match_confidence=1.0,
+        )
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "requester_not_attending"
+
+    def test_not_bunk_with_requester_inactive(self):
+        """NOT_BUNK_WITH where the requester is inactive should produce 'requester_not_attending'."""
+        d = determine_disposition(
+            RequestType.NOT_BUNK_WITH,
+            requester_is_inactive=True,
+        )
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "requester_not_attending"
+
+    def test_both_inactive_requester_takes_priority(self):
+        """If both are inactive, requester_not_attending should take priority."""
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            requester_is_inactive=True,
+            target_is_inactive=True,
+        )
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "requester_not_attending"
