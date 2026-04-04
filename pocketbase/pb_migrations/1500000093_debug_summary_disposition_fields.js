@@ -16,10 +16,7 @@ migrate(
       new Field({
         type: "text",
         name: "disposition_reason",
-        required: false,
-        min: 0,
         max: 100,
-        pattern: "",
       })
     );
 

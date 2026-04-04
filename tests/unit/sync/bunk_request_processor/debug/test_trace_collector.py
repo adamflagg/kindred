@@ -98,10 +98,10 @@ class TestNoOpTraceCollector:
 
 
 class TestSummaryDataDispositionFields:
-    """Test that disposition_reason and is_reciprocal are included in summary data."""
+    """Test that disposition_reason and is_reciprocal are stored on trace objects."""
 
-    def test_summary_data_includes_disposition_fields(self):
-        """Verify that flush() builds summary_data dicts with disposition_reason and is_reciprocal."""
+    def test_trace_stores_disposition_fields(self):
+        """Verify that trace objects retain disposition_reason and is_reciprocal after setup."""
         tc = TraceCollector(run_id="test-disp", enabled=True)
         key = "req-001"
         tc.record_pre_phase1(

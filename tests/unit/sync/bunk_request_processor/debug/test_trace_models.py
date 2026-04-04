@@ -66,22 +66,6 @@ class TestTraceData:
 class TestFinalBunkRequestTraceDispositionFields:
     """Tests for disposition_reason and is_reciprocal on FinalBunkRequestTrace."""
 
-    def test_disposition_reason_defaults_empty(self):
-        trace = FinalBunkRequestTrace()
-        assert trace.disposition_reason == ""
-
-    def test_disposition_reason_set(self):
-        trace = FinalBunkRequestTrace(disposition_reason="reciprocal_match")
-        assert trace.disposition_reason == "reciprocal_match"
-
-    def test_is_reciprocal_defaults_false(self):
-        trace = FinalBunkRequestTrace()
-        assert trace.is_reciprocal is False
-
-    def test_is_reciprocal_set_true(self):
-        trace = FinalBunkRequestTrace(is_reciprocal=True)
-        assert trace.is_reciprocal is True
-
     def test_disposition_fields_in_model_dump(self):
         trace = FinalBunkRequestTrace(
             bunk_request_id="br-001",

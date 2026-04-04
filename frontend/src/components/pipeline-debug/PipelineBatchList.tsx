@@ -49,29 +49,32 @@ interface PipelineBatchListProps {
   error?: Error | null
 }
 
+const BADGE_COLORS = {
+  success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+  danger: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
+  neutral: 'bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300',
+} as const
+
 /** Get Tailwind classes for status badge color coding. */
 function getStatusClasses(status: string): string {
   switch (status.toUpperCase()) {
     case 'RESOLVED':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+      return BADGE_COLORS.success
     case 'PENDING':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+      return BADGE_COLORS.warning
     case 'DECLINED':
-      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
+      return BADGE_COLORS.danger
     default:
-      return 'bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300'
+      return BADGE_COLORS.neutral
   }
 }
 
 /** Get Tailwind classes for confidence value color coding. */
 function getConfidenceClasses(confidence: number): string {
-  if (confidence >= 0.85) {
-    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-  }
-  if (confidence >= 0.7) {
-    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-  }
-  return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
+  if (confidence >= 0.85) return BADGE_COLORS.success
+  if (confidence >= 0.7) return BADGE_COLORS.warning
+  return BADGE_COLORS.danger
 }
 
 const RESOLVED_REASONS = new Set([
@@ -92,13 +95,10 @@ const DECLINED_REASONS = new Set([
 
 /** Get Tailwind classes for disposition reason badge. */
 function getDispositionClasses(reason: string): string {
-  if (RESOLVED_REASONS.has(reason))
-    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-  if (PENDING_REASONS.has(reason))
-    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-  if (DECLINED_REASONS.has(reason))
-    return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-  return 'bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300'
+  if (RESOLVED_REASONS.has(reason)) return BADGE_COLORS.success
+  if (PENDING_REASONS.has(reason)) return BADGE_COLORS.warning
+  if (DECLINED_REASONS.has(reason)) return BADGE_COLORS.danger
+  return BADGE_COLORS.neutral
 }
 
 export function PipelineBatchList({
