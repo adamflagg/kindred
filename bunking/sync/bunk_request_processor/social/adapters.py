@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 
 
 class SocialGraphSignalsAdapter:
-    """Adapter that wraps SocialGraph for confidence scorer.
+    """Adapter that wraps SocialGraph for social signal lookups.
 
-    Provides a get_signals() interface that the confidence scorer expects,
+    Provides a get_signals() interface for social graph queries,
     bridging to the underlying SocialGraph implementation.
 
     The adapter determines the appropriate session for signal lookup based

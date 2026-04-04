@@ -75,7 +75,6 @@ class Phase2FinalResult(BaseModel):
     method: str = ""
     is_resolved: bool = False
     is_ambiguous: bool = False
-    confidence_factors: dict[str, Any] = Field(default_factory=dict)
 
 
 class SocialGraphDetails(BaseModel):

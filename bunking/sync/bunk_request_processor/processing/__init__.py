@@ -2,16 +2,15 @@
 
 This module contains components for processing parsed requests:
 - Priority calculation
-- Request building
 - Reciprocal detection
-- Special request handlers"""
+- Batch signal detection
+- Deduplication"""
 
 from __future__ import annotations
 
 from .deduplicator import DeduplicationResult, Deduplicator, DuplicateGroup
 from .priority_calculator import PriorityCalculator
 from .reciprocal_detector import ReciprocalDetector, ReciprocalPair
-from .request_builder import RequestBuilder, RequestBuilderOptions
 
 __all__ = [
     "DeduplicationResult",
@@ -20,6 +19,4 @@ __all__ = [
     "PriorityCalculator",
     "ReciprocalDetector",
     "ReciprocalPair",
-    "RequestBuilder",
-    "RequestBuilderOptions",
 ]

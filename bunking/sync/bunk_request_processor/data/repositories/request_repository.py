@@ -301,10 +301,12 @@ class RequestRepository:
 
         # Clean legacy keys from metadata if present (old records may have them)
         if request.metadata:
-            for key in ("disposition_reason", "disposition_rule_id", "resolution_method", "match_type"):
-                request.metadata.pop(key, None)
-            # Re-serialize metadata after cleanup
-            data["metadata"] = json.dumps(request.metadata)
+            cleaned = {
+                k: v
+                for k, v in request.metadata.items()
+                if k not in ("disposition_reason", "disposition_rule_id", "resolution_method", "match_type")
+            }
+            data["metadata"] = json.dumps(cleaned)
 
         # Add optional fields
         if hasattr(request, "resolution_notes") and request.resolution_notes:

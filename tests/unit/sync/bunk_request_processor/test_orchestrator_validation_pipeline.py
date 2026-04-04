@@ -3,7 +3,8 @@
 Tests that the orchestrator correctly wires up the validation components:
 1. SelfReferenceRule - filters out self-referential requests
 2. Deduplicator - removes duplicate requests
-3. ReciprocalDetector - marks reciprocal request pairs
+
+Note: Reciprocal detection now occurs in the batch_signals stage before request building.
 
 These tests define the expected behavior. The implementation must make them pass."""
 

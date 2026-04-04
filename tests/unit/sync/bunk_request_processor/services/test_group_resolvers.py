@@ -448,7 +448,7 @@ class TestCongregationResolver:
 
     CongregationResolver finds campers in the same congregation, in the same session,
     within +-1 grade, matching gender, excluding self. Congregation data comes from
-    person.metadata['normalized_congregation'].
+    person.congregation (first-class field).
     """
 
     def _setup_resolver(self, requester, session_peers):

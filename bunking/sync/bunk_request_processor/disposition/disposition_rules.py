@@ -44,6 +44,7 @@ def determine_disposition(
     target_waitlisted: bool = False,
     session_match: bool = True,
     age_direction: str | None = None,
+    auto_resolve_threshold: float = AUTO_RESOLVE_THRESHOLD,
 ) -> Disposition:
     """Apply priority-ordered disposition rules to a resolved match.
 
@@ -67,6 +68,7 @@ def determine_disposition(
         target_has_bunking_session=target_has_bunking_session,
         target_waitlisted=target_waitlisted,
         session_match=session_match,
+        auto_resolve_threshold=auto_resolve_threshold,
     )
 
 
@@ -79,6 +81,7 @@ def _bunk_with_rules(
     target_has_bunking_session: bool,
     target_waitlisted: bool,
     session_match: bool,
+    auto_resolve_threshold: float = AUTO_RESOLVE_THRESHOLD,
 ) -> Disposition:
     # Business gates (priority order)
     if target_is_inactive:
@@ -95,7 +98,7 @@ def _bunk_with_rules(
         return Disposition(RequestStatus.RESOLVED, "exact_match", 5)
     if is_reciprocal:
         return Disposition(RequestStatus.RESOLVED, "reciprocal_match", 6)
-    if match_confidence >= AUTO_RESOLVE_THRESHOLD:
+    if match_confidence >= auto_resolve_threshold:
         return Disposition(RequestStatus.RESOLVED, "high_confidence_match", 7)
 
     # Catch-all

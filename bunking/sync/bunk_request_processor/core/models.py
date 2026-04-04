@@ -33,14 +33,6 @@ class SessionFamily(Enum):
     FAMILY = "family"
 
 
-class Gender(Enum):
-    """Gender options"""
-
-    MALE = "M"
-    FEMALE = "F"
-    OTHER = "O"
-
-
 class RequestSource(Enum):
     """Sources of bunk requests - simplified to two categories.
 

@@ -205,7 +205,6 @@ class RequestBuilder:
             else {},
             "ai_parsed": ai_parsed,
             "locally_resolved": not ai_parsed,
-            "confidence_factors": resolution_info.get("confidence_factors", []),
         }
 
         # Set source_detail based on source type
@@ -253,16 +252,13 @@ class RequestBuilder:
             in ("target_not_attending", "requester_not_attending"),
             target_has_bunking_session=resolution_info.get("conflict_type") not in ("target_not_enrolled",),
             target_waitlisted=resolution_info.get("target_waitlisted", False),
-            session_match=resolution_info.get("conflict_type") not in ("session_mismatch",),
+            session_match=resolution_info.get("conflict_type") not in ("session_mismatch", "cross_session_satisfied"),
             age_direction=parsed_req.age_preference.value if parsed_req.age_preference else None,
+            auto_resolve_threshold=self.auto_resolve_threshold,
         )
 
         if disposition.status == RequestStatus.DECLINED:
             metadata["declined_reason"] = resolution_info.get("conflict_description", disposition.reason)
-
-        # Auto-satisfied cross-session NOT_BUNK_WITH (from conflict detector)
-        if resolution_info.get("auto_satisfied"):
-            return RequestStatus.RESOLVED, "cross_session_satisfied"
 
         return disposition.status, disposition.reason
 

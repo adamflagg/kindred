@@ -819,7 +819,7 @@ class RequestOrchestrator:
         # SocialGraph expects PocketBase - use the underlying client
         self.social_graph = SocialGraph(pb=self.pb, year=self.year, session_cm_ids=self.session_cm_ids)  # type: ignore[arg-type]
 
-        # Create adapter that wraps SocialGraph for confidence scorer
+        # Create adapter that wraps SocialGraph for social signal lookups
         # Pass a getter so adapter always sees current _person_sessions
         signals_adapter = SocialGraphSignalsAdapter(
             self.social_graph, person_sessions_getter=lambda: self._person_sessions
@@ -1259,7 +1259,6 @@ class RequestOrchestrator:
                             method=rr.method,
                             is_resolved=rr.is_resolved,
                             is_ambiguous=rr.is_ambiguous,
-                            confidence_factors=rr_meta.get("confidence_factors", {}),
                         ),
                     ),
                 )
@@ -1414,6 +1413,12 @@ class RequestOrchestrator:
         for pr, resolution_list in resolution_results:
             if not pr.parsed_requests or not pr.parse_request:
                 continue
+            requester_person = (
+                self.temporal_name_cache.get_person(pr.parse_request.requester_cm_id)
+                if self.temporal_name_cache
+                else None
+            )
+            requester_household_id = requester_person.household_id if requester_person else None
             for rr_idx, rr in enumerate(resolution_list):
                 if rr.is_resolved and rr.person:
                     req_type = RequestType.BUNK_WITH
@@ -1425,7 +1430,7 @@ class RequestOrchestrator:
                             target_cm_id=rr.person.cm_id,
                             request_type=req_type,
                             session_cm_id=pr.parse_request.session_cm_id,
-                            household_id=None,
+                            household_id=requester_household_id,
                         )
                     )
 
@@ -2074,9 +2079,6 @@ class RequestOrchestrator:
                     resolution_info["person_cm_id"] = resolution_result.person.cm_id
                     resolution_info["person_name"] = resolution_result.person.full_name
                     resolution_info["resolution_method"] = resolution_result.method
-                    resolution_info["confidence_factors"] = (
-                        resolution_result.metadata.get("confidence_factors", {}) if resolution_result.metadata else {}
-                    )
                     # Pass along resolution metadata (includes Phase 3 reasoning if applicable)
                     if resolution_result.metadata:
                         resolution_info["resolution_metadata"] = resolution_result.metadata

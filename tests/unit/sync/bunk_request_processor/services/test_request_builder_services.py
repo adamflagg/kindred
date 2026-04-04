@@ -185,11 +185,44 @@ class TestRequestBuilderIntegration:
         assert bunk_request.metadata["ai_p1_reasoning"] == "Separation request based on staff input."
 
 
-class TestAutoSatisfiedStatus:
-    """Tests for auto_satisfied cross-session NOT_BUNK_WITH handling."""
+class TestCrossSessionSatisfied:
+    """Tests for cross-session NOT_BUNK_WITH disposition via disposition rules."""
 
-    def test_auto_satisfied_returns_resolved(self):
-        """auto_satisfied=True → RESOLVED regardless of confidence."""
+    def test_cross_session_high_confidence_resolves(self):
+        """Cross-session NOT_BUNK_WITH with high confidence → RESOLVED."""
+        builder = RequestBuilder(
+            priority_calculator=Mock(),
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+        parsed_req = ParsedRequest(
+            raw_text="Ivy Smith",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Ivy Smith",
+            age_preference=None,
+            source_field="not_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "person_cm_id": 7777777,
+            "conflict_type": "cross_session_satisfied",
+            "confidence": 0.9,
+            "conflict_metadata": {"requester_session": 1000010, "target_session": 1000020},
+        }
+        metadata: dict[str, Any] = {}
+
+        status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
+
+        assert status == RequestStatus.RESOLVED
+        assert reason == "cross_session_satisfied"
+
+    def test_cross_session_low_confidence_pending(self):
+        """Cross-session NOT_BUNK_WITH with low confidence → PENDING for staff review."""
         builder = RequestBuilder(
             priority_calculator=Mock(),
             temporal_name_cache=None,
@@ -210,8 +243,7 @@ class TestAutoSatisfiedStatus:
         )
         resolution_info = {
             "person_cm_id": 7777777,
-            "auto_satisfied": True,
-            "satisfaction_reason": "Automatically satisfied — different sessions",
+            "conflict_type": "cross_session_satisfied",
             "confidence": 0.7,
             "conflict_metadata": {"requester_session": 1000010, "target_session": 1000020},
         }
@@ -219,7 +251,8 @@ class TestAutoSatisfiedStatus:
 
         status, reason = builder.determine_request_status(parsed_req, resolution_info, metadata)
 
-        assert status == RequestStatus.RESOLVED
+        assert status == RequestStatus.PENDING
+        assert reason == "needs_review"
 
     def test_session_mismatch_declines(self):
         """Session mismatch conflict_type triggers DECLINED via disposition rules."""
@@ -571,8 +604,8 @@ class TestDispositionReasonDirect:
         assert "disposition_reason" not in br.metadata
         assert "disposition_rule_id" not in br.metadata
 
-    def test_auto_satisfied_sets_cross_session_satisfied(self):
-        """auto_satisfied override sets disposition_reason='cross_session_satisfied' on BunkRequest."""
+    def test_cross_session_satisfied_sets_disposition_reason(self):
+        """Cross-session conflict with high confidence sets disposition_reason='cross_session_satisfied'."""
         builder = RequestBuilder(
             priority_calculator=Mock(),
             temporal_name_cache=None,
@@ -588,7 +621,7 @@ class TestDispositionReasonDirect:
             age_preference=None,
             source_field="not_bunk_with",
             source=RequestSource.FAMILY,
-            confidence=0.7,
+            confidence=0.9,
             csv_position=0,
             metadata={},
         )
@@ -596,8 +629,8 @@ class TestDispositionReasonDirect:
             "requester_cm_id": 12345,
             "person_cm_id": 7777777,
             "session_cm_id": 1000002,
-            "auto_satisfied": True,
-            "confidence": 0.7,
+            "conflict_type": "cross_session_satisfied",
+            "confidence": 0.9,
         }
 
         br = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)

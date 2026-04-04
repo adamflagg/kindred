@@ -453,17 +453,13 @@ class ConflictDetector:
                 if idx < len(modified_requests):
                     _parsed_req, resolution_info = modified_requests[idx]
 
-                    if conflict.conflict_type == ConflictType.CROSS_SESSION_SATISFIED:
-                        resolution_info["auto_satisfied"] = True
-                        resolution_info["satisfaction_reason"] = conflict.resolution_suggestion
-                    else:
-                        # SESSION_MISMATCH, TARGET_NOT_ENROLLED, TARGET_NOT_ATTENDING, REQUESTER_NOT_ATTENDING
-                        resolution_info["has_conflict"] = True
-                        resolution_info["conflict_type"] = conflict.conflict_type.value
-                        resolution_info["conflict_description"] = conflict.description
-                        resolution_info["conflict_severity"] = conflict.severity
-                        resolution_info["auto_resolvable"] = conflict.auto_resolvable
-                        resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
+                    # All conflict types set the same fields for disposition rules
+                    resolution_info["has_conflict"] = True
+                    resolution_info["conflict_type"] = conflict.conflict_type.value
+                    resolution_info["conflict_description"] = conflict.description
+                    resolution_info["conflict_severity"] = conflict.severity
+                    resolution_info["auto_resolvable"] = conflict.auto_resolvable
+                    resolution_info["resolution_suggestion"] = conflict.resolution_suggestion
 
                     # Add conflict metadata
                     if "conflict_metadata" not in resolution_info:

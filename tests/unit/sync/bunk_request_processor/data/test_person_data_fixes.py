@@ -66,9 +66,6 @@ class TestPersonRepositoryMapping:
         record = MagicMock()
         for key, val in defaults.items():
             setattr(record, key, val)
-        record.__class__ = type("PBRecord", (), dict.fromkeys(defaults))
-        for key, val in defaults.items():
-            setattr(record, key, val)
         return record
 
     def test_city_reads_normalized_city(self):

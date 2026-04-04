@@ -543,8 +543,8 @@ class OpenAIProvider(AIProvider):
         prompt = format_prompt(
             "disambiguate",
             target_name=parsed_request.target_name or "",
-            requester_name=ctx.get("requester_name", "Unknown"),
-            requester_cm_id=str(ctx.get("requester_cm_id", 0)),
+            requester_name=context.requester_name or "Unknown",
+            requester_cm_id=str(context.requester_cm_id),
             requester_school=ctx.get("requester_school", "Unknown"),
             candidates_text=candidates_text,
             local_confidence=str(ctx.get("local_confidence", 0)),
