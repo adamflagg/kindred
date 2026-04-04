@@ -11,7 +11,7 @@ from typing import Any
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, InternalServerError, RateLimitError
 from openai.types.shared_params import Reasoning, ReasoningEffort
 
-from bunking.logging_config import get_logger
+from bunking.logging_config import TRACE, get_logger
 
 from ..core.models import (
     AgePreference,
@@ -128,7 +128,7 @@ class OpenAIProvider(AIProvider):
             # Build the prompt (without JSON format instructions - schema handles that)
             prompt = self._build_prompt(request_text, context)
 
-            logger.debug(f"AI prompt: {prompt[:500]}..." if len(prompt) > 500 else f"AI prompt: {prompt}")
+            logger.log(TRACE, f"AI prompt: {prompt[:500]}..." if len(prompt) > 500 else f"AI prompt: {prompt}")
 
             # Debug logging: show exact AI input
             if self.debug:
@@ -153,7 +153,9 @@ class OpenAIProvider(AIProvider):
 
             # Log response for debugging
             preview = request_text if len(request_text) <= 200 else f"{request_text[:200]}..."
-            logger.info(f"AI response for '{preview}': {parsed_response}")
+            logger.log(TRACE, f"AI response for '{preview}': {parsed_response}")
+            if isinstance(parsed_response, AIParseResponse):
+                logger.debug(f"AI parsed {len(parsed_response.requests)} target(s) for '{preview}'")
 
             # Convert to internal format (parsed_response is AIParseResponse here)
             if isinstance(parsed_response, AIParseResponse):
