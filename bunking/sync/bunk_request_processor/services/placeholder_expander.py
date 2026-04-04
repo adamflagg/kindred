@@ -137,7 +137,7 @@ class PlaceholderExpander:
         requester_cm_id = original_parse_request.requester_cm_id
         session_cm_id = original_parse_request.session_cm_id
 
-        logger.info(f"Expanding {group_kind.value} for requester {requester_cm_id}")
+        logger.debug(f"Expanding {group_kind.value} for requester {requester_cm_id}")
 
         members = resolver.resolve(
             requester_cm_id=requester_cm_id,
@@ -204,7 +204,7 @@ class PlaceholderExpander:
             )
 
             expanded_results.append((new_parse_result, [new_resolution]))
-            logger.info(
+            logger.debug(
                 f"  - Created {member.request_type.value} request for {member_name} (ID: {member.person.cm_id})"
             )
 

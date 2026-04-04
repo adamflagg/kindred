@@ -397,7 +397,8 @@ class PersonRepository(Repository):
 
             siblings = [p for p in (self._map_to_person(item) for item in result.items) if p is not None]
 
-            logger.info(
+            logger.info("Found %d sibling(s)", len(siblings))
+            logger.debug(
                 f"Found {len(siblings)} sibling(s) for person {cm_id} "
                 f"(household {person.household_id}): {[s.full_name for s in siblings]}"
             )

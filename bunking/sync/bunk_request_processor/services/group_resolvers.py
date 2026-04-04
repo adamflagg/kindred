@@ -115,7 +115,8 @@ class SiblingResolver:
             )
             result.append(member)
 
-        logger.info(
+        logger.info("Resolved %d sibling(s)", len(result))
+        logger.debug(
             "Resolved %d sibling(s) for person %s: %s",
             len(result),
             requester_cm_id,
@@ -189,7 +190,8 @@ class BunkmateResolver:
             )
             result.append(member)
 
-        logger.info(
+        logger.info("Resolved %d bunkmate(s)", len(result))
+        logger.debug(
             "Resolved %d bunkmate(s) for person %s from %s (year %s): %s",
             len(result),
             requester_cm_id,
@@ -316,7 +318,8 @@ class _SchoolCongregationBaseResolver:
             )
             result.append(member)
 
-        logger.info(
+        logger.info("Resolved %d %s peer(s)", len(result), self._expanded_from_label())
+        logger.debug(
             "Resolved %d %s peer(s) for person %s (%s): %s",
             len(result),
             self._expanded_from_label(),

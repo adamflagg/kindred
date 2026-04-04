@@ -96,7 +96,7 @@ class TestOrchestratorStaffNameDetection:
         assert orchestrator.is_staff_name("Emily") is False
 
     def test_detect_staff_names_logs_detected(self):
-        """Detection should log the detected names."""
+        """Detection should log the detected names (via StaffNameDetector)."""
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
@@ -106,10 +106,10 @@ class TestOrchestratorStaffNameDetection:
 
         raw_requests = [{"bunking_notes": "Mom called", "internal_notes": "Per Jordan, okay"}]
 
-        with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.logger") as mock_logger:
+        with patch("bunking.sync.bunk_request_processor.services.staff_name_detector.logger") as mock_logger:
             orchestrator._detect_staff_names(raw_requests)
 
-            # Should log that staff names were detected
+            # Should log that staff names were detected (logged by StaffNameDetector.build_global_set)
             log_calls = [str(call) for call in mock_logger.info.call_args_list]
             assert any("staff" in call.lower() for call in log_calls)
 

@@ -2021,12 +2021,9 @@ class RequestOrchestrator:
             if combined:
                 notes_texts.append(combined)
 
-        # Build global set of detected staff names
+        # Build global set of detected staff names (build_global_set logs internally)
         detected = self.staff_name_detector.build_global_set(notes_texts)
         self.staff_name_detector.detected_staff_names = detected
-
-        if detected:
-            logger.info(f"Detected {len(detected)} likely staff/parent names: {sorted(detected)}")
 
     def is_staff_name(self, name: str | None) -> bool:
         """Check if a name matches a detected staff/parent name.

@@ -168,7 +168,7 @@ class Phase2ResolutionService:
 
                 # Check if target name is a detected staff name
                 if self.staff_name_filter and parsed.target_name and self.staff_name_filter(parsed.target_name):
-                    logger.info(f"Filtered out staff name from request: {parsed.target_name}")
+                    logger.debug(f"Filtered out staff name from request: {parsed.target_name}")
                     staff_filtered_map.append((case_idx, req_idx))
                     self._stats["staff_filtered"] += 1
                     continue
