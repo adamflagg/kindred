@@ -307,7 +307,7 @@ class TestPhase3DisambiguationServiceBatchDisambiguate:
         context_builder.build_disambiguation_context.assert_called_once()
         call_kwargs = context_builder.build_disambiguation_context.call_args[1]
         assert "candidates" in call_kwargs
-        assert len(call_kwargs["candidates"]) <= 5  # Top 5 only
+        assert len(call_kwargs["candidates"]) <= 10  # Top 10
 
     @pytest.mark.asyncio
     async def test_batch_disambiguate_passes_context_objects_not_dicts(self):
@@ -407,12 +407,12 @@ class TestPhase3DisambiguationServiceResultHandling:
 
     @pytest.mark.asyncio
     async def test_still_ambiguous_after_ai_marked(self):
-        """Cases still ambiguous after AI are marked appropriately"""
+        """Cases where AI returns no selection are marked as no_match"""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        # AI returns ambiguous (no person selected)
+        # AI returns no selection (no person selected, no explicit no_match)
         ai_result = Mock()
         ai_result.selected_person_id = None
         ai_result.no_match = False
@@ -433,10 +433,10 @@ class TestPhase3DisambiguationServiceResultHandling:
         results = await service.batch_disambiguate([(parse_result, [ambiguous])])
 
         _, resolution_list = results[0]
-        # Should still be ambiguous (original resolution kept)
+        # AI tried but couldn't select — marked as no_match (original resolution kept)
         assert resolution_list[0].is_ambiguous
         assert resolution_list[0].metadata is not None
-        assert resolution_list[0].metadata.get("disambiguation_status") == "still_ambiguous"
+        assert resolution_list[0].metadata.get("disambiguation_status") == "no_match"
 
     @pytest.mark.asyncio
     async def test_no_match_from_ai_handled(self):
@@ -474,8 +474,8 @@ class TestPhase3DisambiguationServiceContextBuilding:
     """Tests for context building"""
 
     @pytest.mark.asyncio
-    async def test_builds_context_with_top_5_candidates(self):
-        """Context is built with at most 5 candidates"""
+    async def test_builds_context_with_top_10_candidates(self):
+        """Context is built with at most 10 candidates"""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
@@ -496,9 +496,9 @@ class TestPhase3DisambiguationServiceContextBuilding:
 
         await service.batch_disambiguate([(parse_result, [ambiguous])])
 
-        # Context builder should receive at most 5 candidates
+        # Context builder should receive all 7 candidates (under cap of 10)
         call_kwargs = context_builder.build_disambiguation_context.call_args[1]
-        assert len(call_kwargs["candidates"]) == 5
+        assert len(call_kwargs["candidates"]) == 7
 
     @pytest.mark.asyncio
     async def test_context_includes_requester_info(self):
@@ -690,6 +690,53 @@ class TestPhase3DisambiguationServiceStatistics:
         assert stats2["total_processed"] == 0
 
 
+class TestPhase3Eligibility:
+    """Tests for Phase 3 eligibility — which ResolutionResults enter the disambiguation loop."""
+
+    def test_single_candidate_is_eligible(self):
+        """Single-candidate unresolved result should be in disambiguation_indices (not just 2+ candidates)."""
+        single_candidate = _create_resolution_result(
+            person=None,
+            confidence=0.5,
+            method="single_match",
+            candidates=[_create_person(cm_id=111)],
+        )
+        parse_result = _create_parse_result()
+        case = DisambiguationCase(parse_result, [single_candidate])
+
+        assert 0 in case.disambiguation_indices, (
+            "Single-candidate unresolved result should enter Phase 3 (not just 2+ candidate cases)"
+        )
+
+    def test_zero_candidates_not_eligible(self):
+        """Zero-candidate result should NOT be in disambiguation_indices."""
+        no_candidates = _create_resolution_result(
+            person=None,
+            confidence=0.0,
+            method="no_match",
+            candidates=[],
+        )
+        parse_result = _create_parse_result()
+        case = DisambiguationCase(parse_result, [no_candidates])
+
+        assert 0 not in case.disambiguation_indices, (
+            "Zero-candidate result has nothing to disambiguate, should not enter Phase 3"
+        )
+
+    def test_resolved_not_eligible(self):
+        """Resolved result (person is not None) should NOT be in disambiguation_indices."""
+        resolved = _create_resolution_result(
+            person=_create_person(cm_id=111),
+            confidence=0.95,
+            method="exact_match",
+            candidates=[_create_person(cm_id=111)],
+        )
+        parse_result = _create_parse_result()
+        case = DisambiguationCase(parse_result, [resolved])
+
+        assert 0 not in case.disambiguation_indices, "Already-resolved result should not be re-disambiguated in Phase 3"
+
+
 class TestDisambiguationCase:
     """Tests for DisambiguationCase helper class"""
 
@@ -702,9 +749,9 @@ class TestDisambiguationCase:
 
         case = DisambiguationCase(parse_result, [resolved, ambiguous])
 
-        assert case.has_ambiguous
-        assert len(case.ambiguous_indices) == 1
-        assert 1 in case.ambiguous_indices  # Second resolution is ambiguous
+        assert case.has_disambiguation_candidates
+        assert len(case.disambiguation_indices) == 1
+        assert 1 in case.disambiguation_indices  # Second resolution is ambiguous
 
     def test_no_ambiguous_when_all_resolved(self):
         """DisambiguationCase correctly identifies no ambiguous when all resolved"""
@@ -714,5 +761,165 @@ class TestDisambiguationCase:
 
         case = DisambiguationCase(parse_result, [resolved])
 
-        assert not case.has_ambiguous
-        assert len(case.ambiguous_indices) == 0
+        assert not case.has_disambiguation_candidates
+        assert len(case.disambiguation_indices) == 0
+
+
+class TestPhase3ReturnTypeUnwrapping:
+    """Tests that Phase 3 correctly unwraps ParsedResponse objects from the AI provider.
+
+    The AI provider's disambiguate() method returns ParsedResponse (not AIDisambiguationResponse).
+    The selected person ID is in result.requests[0].metadata["target_person_id"], not
+    result.selected_person_id. These tests verify the unwrapping logic.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unwraps_parsed_response_with_target_person_id(self):
+        """ParsedResponse with target_person_id in metadata is correctly unwrapped to a successful disambiguation."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        selected_person = _create_person(cm_id=111, first_name="Sarah", last_name="Smith")
+
+        # Real ParsedResponse as returned by the AI provider
+        ai_result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={"target_person_id": 111},
+                )
+            ],
+            confidence=0.9,
+            metadata={},
+        )
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        candidates = [selected_person, _create_person(cm_id=222, first_name="Sarah", last_name="Jones")]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        parse_result = _create_parse_result()
+
+        results = await service.batch_disambiguate([(parse_result, [ambiguous])])
+
+        _, resolution_list = results[0]
+        assert resolution_list[0].is_resolved, "ParsedResponse with target_person_id should resolve successfully"
+        assert resolution_list[0].person is not None
+        assert resolution_list[0].person.cm_id == 111
+        assert resolution_list[0].method == "ai_disambiguation"
+
+    @pytest.mark.asyncio
+    async def test_unwraps_parsed_response_no_match(self):
+        """ParsedResponse without target_person_id in metadata results in no_match."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        # ParsedResponse with no target_person_id — AI couldn't select anyone
+        ai_result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.5,
+                    csv_position=0,
+                    metadata={},  # No target_person_id
+                )
+            ],
+            confidence=0.5,
+            metadata={},
+        )
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        parse_result = _create_parse_result()
+
+        results = await service.batch_disambiguate([(parse_result, [ambiguous])])
+
+        _, resolution_list = results[0]
+        assert resolution_list[0].metadata is not None
+        assert resolution_list[0].metadata.get("disambiguation_status") == "no_match"
+
+    @pytest.mark.asyncio
+    async def test_unwraps_parsed_response_unknown_person_id(self):
+        """ParsedResponse with target_person_id not in candidates results in no_match."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        # AI selects person 999 which is NOT in the candidate list
+        ai_result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.85,
+                    csv_position=0,
+                    metadata={"target_person_id": 999},  # Not in candidates
+                )
+            ],
+            confidence=0.85,
+            metadata={},
+        )
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        parse_result = _create_parse_result()
+
+        results = await service.batch_disambiguate([(parse_result, [ambiguous])])
+
+        _, resolution_list = results[0]
+        assert resolution_list[0].metadata is not None
+        assert resolution_list[0].metadata.get("disambiguation_status") == "no_match"

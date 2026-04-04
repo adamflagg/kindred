@@ -199,6 +199,42 @@ class PersonRepository(Repository):
             logger.error("Error finding people by first name %s: %s", first_name, e)
             return []
 
+    def find_by_last_name(self, last_name: str, year: int | None = None) -> list[Person]:
+        """Find all people with the given last name (or whose parents have this last name).
+
+        Checks name_cache first for O(1) lookup, then falls back to PocketBase query.
+
+        Args:
+            last_name: Last name to search for
+            year: Optional year filter. If provided, only returns persons from that year.
+
+        Returns:
+            List of matching Person objects, empty list on error or no match.
+        """
+        if self.name_cache and hasattr(self.name_cache, "find_by_last_name"):
+            result: list[Person] = self.name_cache.find_by_last_name(last_name, year)
+            return result
+
+        try:
+            escaped_last = _escape_filter_value(last_name)
+
+            filter_str = f"last_name = '{escaped_last}'"
+            if year is not None:
+                filter_str += f" && year = {year}"
+
+            pb_result = self.pb.collection("persons").get_list(
+                query_params={
+                    "filter": filter_str,
+                    "perPage": 100,
+                }
+            )
+
+            return [p for p in (self._map_to_person(item) for item in pb_result.items) if p is not None]
+
+        except Exception as e:
+            logger.error("Error finding people by last name %s: %s", last_name, e)
+            return []
+
     def find_by_first_and_parent_surname(
         self, first_name: str, parent_surname: str, year: int | None = None
     ) -> list[Person]:

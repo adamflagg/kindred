@@ -109,7 +109,7 @@ class ContextBuilder:
         )
 
         # Format candidates with relevant details
-        candidates_data = self._format_candidates(final_candidates[:5])  # Top 5 only
+        candidates_data = self._format_candidates(final_candidates[:10])  # Top 10 only
 
         additional_context: dict[str, Any] = {
             "parse_only": False,  # We want ID matching now
@@ -470,8 +470,6 @@ class ContextBuilder:
                     candidate_data["mutual_connections"] = candidate.metadata["mutual_connections"]
                 if "found_by" in candidate.metadata:
                     candidate_data["found_by"] = candidate.metadata["found_by"]
-                if "in_same_session" in candidate.metadata:
-                    candidate_data["in_same_session"] = candidate.metadata["in_same_session"]
 
             formatted.append(candidate_data)
 

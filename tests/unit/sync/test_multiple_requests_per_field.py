@@ -192,7 +192,7 @@ class TestMultipleRequestsPerField:
         assert resolution_list[1].person is not None
         assert resolution_list[1].person.name == "Rana Jones"  # type: ignore[attr-defined]
 
-    def test_phase3_disambiguation_case_tracks_ambiguous_indices(self):
+    def test_phase3_disambiguation_case_tracks_disambiguation_indices(self):
         """Test that DisambiguationCase properly tracks which resolutions are ambiguous"""
         # Create test data
         parse_result = ParseResult(
@@ -224,8 +224,8 @@ class TestMultipleRequestsPerField:
         case = DisambiguationCase(parse_result, resolution_results)
 
         # Verify
-        assert case.has_ambiguous
-        assert case.ambiguous_indices == [0, 2]  # Sara and Avery are ambiguous
+        assert case.has_disambiguation_candidates
+        assert case.disambiguation_indices == [0, 2]  # Sara and Avery are ambiguous
         assert len(case.disambiguated_results) == 3
         assert all(r is None for r in case.disambiguated_results)
 

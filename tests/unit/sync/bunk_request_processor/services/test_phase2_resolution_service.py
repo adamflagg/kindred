@@ -1422,21 +1422,21 @@ class TestSingleNameCandidateGeneration:
         assert result.candidates is not None
         assert len(result.candidates) == 2
         assert result.confidence == 0.3
-        assert result.method == "single_name_candidates"
+        assert result.method == "disambiguation_candidates"
         # Should include both Lilys
         candidate_ids = {c.cm_id for c in result.candidates}
         assert candidate_ids == {100, 200}
 
     @pytest.mark.asyncio
-    async def test_single_name_caps_at_five(self):
-        """At most 5 candidates returned for single-name targets."""
+    async def test_single_name_caps_at_ten(self):
+        """At most 10 candidates returned for single-name targets."""
         pipeline = Mock()
         pipeline.batch_resolve = Mock(
             return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
         )
 
-        # Create 8 people named "Emma"
-        emmas = [_create_person(cm_id=100 + i, first_name="Emma", last_name=f"Last{i}") for i in range(8)]
+        # Create 12 people named "Emma" to verify truncation
+        emmas = [_create_person(cm_id=100 + i, first_name="Emma", last_name=f"Last{i}") for i in range(12)]
 
         person_repo = Mock()
         person_repo.find_by_first_name = Mock(return_value=emmas)
@@ -1467,7 +1467,7 @@ class TestSingleNameCandidateGeneration:
 
         assert result.is_ambiguous
         assert result.candidates is not None
-        assert len(result.candidates) <= 5, "Candidates should be capped at 5"
+        assert len(result.candidates) == 10, "Candidates should be capped at exactly 10"
 
     @pytest.mark.asyncio
     async def test_full_name_not_affected(self):
@@ -1545,14 +1545,14 @@ class TestSingleNameCandidateGeneration:
         assert not result.is_resolved
 
     @pytest.mark.asyncio
-    async def test_single_name_filters_to_session_attendees(self):
-        """Only persons enrolled in the target session appear as candidates."""
+    async def test_single_name_no_session_filter(self):
+        """Candidates from all sessions are included (no session filter)."""
         pipeline = Mock()
         pipeline.batch_resolve = Mock(
             return_value=[_create_resolution_result(person=None, confidence=0.0, method="no_match")]
         )
 
-        # Two Lilys found by first name, but only one in session
+        # Two Lilys found by first name, in different sessions
         lily_in_session = _create_person(cm_id=100, first_name="Lily", last_name="Chen")
         lily_other_session = _create_person(cm_id=200, first_name="Lily", last_name="Garcia")
 
@@ -1560,10 +1560,6 @@ class TestSingleNameCandidateGeneration:
         person_repo.find_by_first_name = Mock(return_value=[lily_in_session, lily_other_session])
 
         attendee_repo = Mock()
-        # cm_id 100 is in session 1000002, cm_id 200 is in session 1000003
-        attendee_repo.bulk_get_sessions_for_persons = Mock(
-            side_effect=lambda cm_ids, year: {cid: (1000002 if cid == 100 else 1000003) for cid in cm_ids}
-        )
 
         service = Phase2ResolutionService(
             resolution_pipeline=pipeline,
@@ -1583,7 +1579,10 @@ class TestSingleNameCandidateGeneration:
         _, resolutions = results[0]
         result = resolutions[0]
 
-        # Only the in-session Lily should be a candidate
+        # Both Lilys should be candidates (no session filtering)
         assert result.candidates is not None
-        assert len(result.candidates) == 1
-        assert result.candidates[0].cm_id == 100
+        assert len(result.candidates) == 2
+        candidate_ids = {c.cm_id for c in result.candidates}
+        assert candidate_ids == {100, 200}
+        # attendee_repository should NOT be called
+        attendee_repo.bulk_get_sessions_for_persons.assert_not_called()

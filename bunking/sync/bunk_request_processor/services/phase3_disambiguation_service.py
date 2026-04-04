@@ -9,6 +9,7 @@ from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, ParseResult
 from ..integration.ai_service import AIProvider, AIRequestContext
+from ..integration.ai_types import ParsedResponse
 from ..integration.batch_processor import BatchProcessor
 from ..resolution.interfaces import ResolutionResult
 from .context_builder import ContextBuilder
@@ -22,19 +23,20 @@ class DisambiguationCase:
     def __init__(self, parse_result: ParseResult, resolution_results: list[ResolutionResult]):
         self.parse_result = parse_result
         self.resolution_results = resolution_results  # List of resolutions, some may be ambiguous
-        self.ambiguous_indices: list[int] = []  # Indices of ambiguous resolutions
+        self.disambiguation_indices: list[int] = []  # Indices of ambiguous resolutions
         self.disambiguated_results: list[ResolutionResult | None] = [None] * len(resolution_results)
         self.disambiguation_metadata: dict[str, Any] = {}
 
-        # Identify which resolutions are ambiguous
+        # Identify which resolutions need disambiguation:
+        # any unresolved result with at least one candidate (includes single-candidate cases)
         for idx, rr in enumerate(resolution_results):
-            if rr.is_ambiguous and rr.candidates:
-                self.ambiguous_indices.append(idx)
+            if not rr.is_resolved and rr.candidates:
+                self.disambiguation_indices.append(idx)
 
     @property
-    def has_ambiguous(self) -> bool:
+    def has_disambiguation_candidates(self) -> bool:
         """Whether this case has any ambiguous resolutions"""
-        return len(self.ambiguous_indices) > 0
+        return len(self.disambiguation_indices) > 0
 
 
 class Phase3DisambiguationService:
@@ -84,7 +86,7 @@ class Phase3DisambiguationService:
         """Disambiguate ambiguous cases using AI with minimal context.
 
         This is Phase 3 of the three-phase approach. We send ambiguous
-        names together (if from same field) with top 5 candidates each
+        names together (if from same field) with top 10 candidates each
         to the AI for final disambiguation.
 
         Args:
@@ -102,7 +104,7 @@ class Phase3DisambiguationService:
         cases = []
         for pr, resolution_list in ambiguous_cases:
             case = DisambiguationCase(pr, resolution_list)
-            if case.has_ambiguous:
+            if case.has_disambiguation_candidates:
                 cases.append(case)
 
         if not cases:
@@ -110,7 +112,7 @@ class Phase3DisambiguationService:
             return ambiguous_cases
 
         # Count total ambiguous resolutions across all cases
-        total_ambiguous = sum(len(case.ambiguous_indices) for case in cases)
+        total_ambiguous = sum(len(case.disambiguation_indices) for case in cases)
         logger.info(
             f"Phase 3: Starting disambiguation for {len(cases)} cases with {total_ambiguous} ambiguous resolutions"
         )
@@ -166,7 +168,7 @@ class Phase3DisambiguationService:
             if case.parse_result.parse_request is None:
                 continue
 
-            for ambiguous_idx in case.ambiguous_indices:
+            for ambiguous_idx in case.disambiguation_indices:
                 parsed_req = case.parse_result.parsed_requests[ambiguous_idx]
                 resolution = case.resolution_results[ambiguous_idx]
 
@@ -176,7 +178,7 @@ class Phase3DisambiguationService:
                 # Build disambiguation context for this specific name
                 context = self.context_builder.build_disambiguation_context(
                     target_name=parsed_req.target_name,
-                    candidates=resolution.candidates[:5],  # Top 5 candidates
+                    candidates=resolution.candidates[:10],  # Top 10 candidates
                     requester_name=case.parse_result.parse_request.requester_name,
                     requester_cm_id=case.parse_result.parse_request.requester_cm_id,
                     requester_school=case.parse_result.parse_request.row_data.get("school")
@@ -236,46 +238,77 @@ class Phase3DisambiguationService:
             try:
                 resolution = case.resolution_results[ambiguous_idx]
 
-                if hasattr(result, "selected_person_id") and result.selected_person_id:
-                    # AI selected a specific person
+                # Extract selected_person_id from the result.
+                # The AI provider returns ParsedResponse with target_person_id in
+                # result.requests[0].metadata. Legacy AIDisambiguationResponse has
+                # selected_person_id as a direct attribute.
+                selected_person_id: int | None = None
+                ai_confidence: float = 0.8
+                ai_reason: str = "AI selected"
+
+                if result and not isinstance(result, ParsedResponse) and not hasattr(result, "selected_person_id"):
+                    logger.warning(f"Phase 3 unexpected result type: {type(result).__name__} for case idx={idx}")
+
+                if isinstance(result, ParsedResponse):
+                    # Unwrap ParsedResponse from AI provider
+                    ai_confidence = result.confidence
+                    if result.requests:
+                        req_metadata = result.requests[0].metadata or {}
+                        selected_person_id = req_metadata.get("target_person_id")
+                        ai_reason = req_metadata.get("reason", "AI selected")
+                elif hasattr(result, "selected_person_id"):
+                    # Legacy path: direct AIDisambiguationResponse (defensive)
+                    selected_person_id = result.selected_person_id
+                    ai_confidence = getattr(result, "confidence", 0.8)
+                    ai_reason = getattr(result, "reason", "AI selected")
+
+                if selected_person_id:
+                    # AI selected a specific person — find them in candidates
                     selected_person = None
                     if resolution.candidates:
-                        for candidate in resolution.candidates[:5]:  # Top 5 only
-                            if candidate.cm_id == result.selected_person_id:
+                        for candidate in resolution.candidates[:10]:  # Top 10
+                            if candidate.cm_id == selected_person_id:
                                 selected_person = candidate
                                 break
 
                     if selected_person:
                         # Create disambiguated result
-                        confidence = getattr(result, "confidence", 0.8)
-
                         num_candidates = len(resolution.candidates) if resolution.candidates else 0
                         disambiguation_metadata: dict[str, Any] = {
-                            "ai_confidence": getattr(result, "confidence", confidence),
-                            "disambiguation_reason": getattr(result, "reason", "AI selected"),
+                            "ai_confidence": ai_confidence,
+                            "disambiguation_reason": ai_reason,
                             "original_method": resolution.method,
                             "candidates_considered": num_candidates,
                         }
                         case.disambiguated_results[ambiguous_idx] = ResolutionResult(
                             person=selected_person,
-                            confidence=confidence,
+                            confidence=ai_confidence,
                             method="ai_disambiguation",
                             metadata=disambiguation_metadata,
                         )
                         if "status" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["status"] = {}
                         case.disambiguation_metadata["status"][ambiguous_idx] = "success"
+                        logger.debug(
+                            f"Phase 3 disambiguated '{resolution.target_name}' → "
+                            f"{selected_person.first_name} {selected_person.last_name} "
+                            f"(cm_id={selected_person_id}, confidence={ai_confidence:.2f})"
+                        )
                     else:
-                        # AI selected unknown person
+                        # AI selected unknown person (not in candidates)
                         if "status" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["status"] = {}
                         case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
                         if "selected_ids" not in case.disambiguation_metadata:
                             case.disambiguation_metadata["selected_ids"] = {}
-                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = result.selected_person_id
+                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = selected_person_id
+                        logger.debug(
+                            f"Phase 3 no match for '{resolution.target_name}' — "
+                            f"AI selected cm_id={selected_person_id} not in candidates"
+                        )
 
-                elif hasattr(result, "no_match") and result.no_match:
-                    # AI explicitly said no match
+                elif getattr(result, "no_match", False):
+                    # AI explicitly said no match (legacy path)
                     if "status" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["status"] = {}
                     case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
@@ -286,14 +319,19 @@ class Phase3DisambiguationService:
                     )
 
                 else:
-                    # Still ambiguous
+                    # No selection and no legacy no_match flag — mark as no_match
                     if "status" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["status"] = {}
-                    case.disambiguation_metadata["status"][ambiguous_idx] = "still_ambiguous"
+                    case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
                     if "reasons" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["reasons"] = {}
-                    case.disambiguation_metadata["reasons"][ambiguous_idx] = getattr(
-                        result, "reason", "Could not disambiguate"
+                    case.disambiguation_metadata["reasons"][ambiguous_idx] = (
+                        ai_reason if ai_reason != "AI selected" else "No suitable match"
+                    )
+                    reasoning = ai_reason if ai_reason != "AI selected" else None
+                    logger.debug(
+                        f"Phase 3 no selection for '{resolution.target_name}' — "
+                        f"{reasoning or 'AI returned no selection'}"
                     )
 
             except Exception as e:
@@ -331,13 +369,13 @@ class Phase3DisambiguationService:
                         disambig_result = case.disambiguated_results[idx]
                     else:
                         disambig_result = None
-                    if idx in case.ambiguous_indices and disambig_result is not None:
+                    if idx in case.disambiguation_indices and disambig_result is not None:
                         # Use the disambiguated result
                         final_resolutions.append(disambig_result)
                     else:
                         # Keep original (either not ambiguous or disambiguation failed)
                         # But add disambiguation metadata if it was attempted
-                        if idx in case.ambiguous_indices:
+                        if idx in case.disambiguation_indices:
                             original_resolution.metadata = original_resolution.metadata or {}
                             original_resolution.metadata["disambiguation_attempted"] = True
 
@@ -363,12 +401,12 @@ class Phase3DisambiguationService:
     def _update_stats(self, cases: list[DisambiguationCase]) -> None:
         """Update disambiguation statistics"""
         # Count total ambiguous resolutions processed, not just cases
-        total_ambiguous = sum(len(case.ambiguous_indices) for case in cases)
+        total_ambiguous = sum(len(case.disambiguation_indices) for case in cases)
         self._stats["total_processed"] += total_ambiguous
 
         for case in cases:
             # Count successful disambiguations per resolution
-            for idx in case.ambiguous_indices:
+            for idx in case.disambiguation_indices:
                 if idx < len(case.disambiguated_results):
                     result = case.disambiguated_results[idx]
                 else:
