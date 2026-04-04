@@ -497,7 +497,7 @@ func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType
 	}
 
 	// Generate a unique token for this run
-	runToken := fmt.Sprintf("%d", time.Now().UnixNano())
+	runToken := generateRunToken()
 
 	// Check if status was pre-marked by MarkSyncRunning
 	// If so, reuse it; otherwise create a new status
@@ -628,7 +628,7 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 		StartTime: time.Now(),
 		Summary:   Stats{},
 		Year:      o.currentSyncYear,
-		RunToken:  fmt.Sprintf("%d", time.Now().UnixNano()),
+		RunToken:  generateRunToken(),
 	}
 
 	o.mu.Lock()
@@ -1410,6 +1410,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 // =============================================================================
 // Unified Sync Queue Methods
 // =============================================================================
+
+// generateRunToken generates a unique token for tracking a sync run.
+// Used by runSingleSyncInternal and MarkSyncRunning.
+func generateRunToken() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
 
 // generateQueueID generates a unique ID for a queued sync
 func generateQueueID() string {
