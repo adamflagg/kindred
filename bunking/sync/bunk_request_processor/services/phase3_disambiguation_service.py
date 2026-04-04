@@ -86,7 +86,7 @@ class Phase3DisambiguationService:
         """Disambiguate ambiguous cases using AI with minimal context.
 
         This is Phase 3 of the three-phase approach. We send ambiguous
-        names together (if from same field) with top 5 candidates each
+        names together (if from same field) with top 10 candidates each
         to the AI for final disambiguation.
 
         Args:

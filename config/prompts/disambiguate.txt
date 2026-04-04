@@ -21,5 +21,5 @@ Consider:
 - Name spelling (fuzzy matches may indicate typos)
 - Family references (target may refer to household members by last name)
 
-If no match seems confident, select the closest match but set confidence appropriately low.
+If one candidate is plausible but uncertain, select it with low confidence.
 If none of the candidates are a plausible match, set selected_person_id to 0.
