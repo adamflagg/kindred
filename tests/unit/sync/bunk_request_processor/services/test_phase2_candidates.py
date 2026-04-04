@@ -117,7 +117,7 @@ def _make_case(
 
     # Override resolution_results (normally populated by resolve_cases)
     if results is not None:
-        case.resolution_results = results
+        case.resolution_results = list(results)
     else:
         case.resolution_results = [_unresolved_result() for _ in target_names]
 
@@ -159,7 +159,9 @@ class TestSingleWordCandidates:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
         assert result.method == "disambiguation_candidates"
+        assert result.candidates is not None
         assert len(result.candidates) == 2
         candidate_ids = {c.cm_id for c in result.candidates}
         assert candidate_ids == {101, 102}
@@ -192,7 +194,9 @@ class TestSingleWordCandidates:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
         assert result.method == "disambiguation_candidates"
+        assert result.candidates is not None
         candidate_ids = {c.cm_id for c in result.candidates}
         assert candidate_ids == {201, 202}
 
@@ -224,7 +228,9 @@ class TestMultiWordCandidates:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
         assert result.method == "disambiguation_candidates"
+        assert result.candidates is not None
         candidate_ids = {c.cm_id for c in result.candidates}
         assert candidate_ids == {301, 302}
 
@@ -260,7 +266,9 @@ class TestFamilyReferenceCandidates:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
         assert result.method == "disambiguation_candidates"
+        assert result.candidates is not None
         candidate_ids = {c.cm_id for c in result.candidates}
         assert candidate_ids == {401, 402}
 
@@ -287,7 +295,9 @@ class TestFamilyReferenceCandidates:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
         assert result.method == "disambiguation_candidates"
+        assert result.candidates is not None
         candidate_ids = {c.cm_id for c in result.candidates}
         assert candidate_ids == {501, 502}
 
@@ -317,6 +327,8 @@ class TestCandidateCapAndFiltering:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
+        assert result.candidates is not None
         assert len(result.candidates) == 10
 
     def test_skips_already_resolved(self):
@@ -336,7 +348,9 @@ class TestCandidateCapAndFiltering:
             svc._generate_disambiguation_candidates([case])
 
         # Should remain unchanged
+        assert case.resolution_results[0] is not None
         assert case.resolution_results[0].is_resolved
+        assert case.resolution_results[0].person is not None
         assert case.resolution_results[0].person.cm_id == 999
 
     def test_skips_already_ambiguous(self):
@@ -355,6 +369,7 @@ class TestCandidateCapAndFiltering:
         ):
             svc._generate_disambiguation_candidates([case])
 
+        assert case.resolution_results[0] is not None
         assert case.resolution_results[0].method == "fuzzy"
 
     def test_skips_age_preference_results(self):
@@ -374,6 +389,7 @@ class TestCandidateCapAndFiltering:
             svc._generate_disambiguation_candidates([case])
 
         # Should remain unchanged — age_preference result not overwritten
+        assert case.resolution_results[0] is not None
         assert case.resolution_results[0].method == "age_preference"
 
     def test_no_session_filter_attendee_repo_not_called(self):
@@ -421,8 +437,10 @@ class TestCandidateCapAndFiltering:
             svc._generate_disambiguation_candidates([case])
 
         result = case.resolution_results[0]
+        assert result is not None
         # Even though find_by_first_name is called twice (Lily + lillian),
         # same cm_id should only appear once
+        assert result.candidates is not None
         cm_ids = [c.cm_id for c in result.candidates]
         assert cm_ids.count(1101) == 1
 
@@ -433,4 +451,5 @@ class TestCandidateCapAndFiltering:
         svc._generate_disambiguation_candidates([case])
 
         # Result should remain the original unresolved result
+        assert case.resolution_results[0] is not None
         assert case.resolution_results[0].method == "unknown"

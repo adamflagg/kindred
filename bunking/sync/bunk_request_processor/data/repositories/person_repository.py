@@ -212,7 +212,8 @@ class PersonRepository(Repository):
             List of matching Person objects, empty list on error or no match.
         """
         if self.name_cache and hasattr(self.name_cache, "find_by_last_name"):
-            return self.name_cache.find_by_last_name(last_name, year)
+            result: list[Person] = self.name_cache.find_by_last_name(last_name, year)
+            return result
 
         try:
             escaped_last = _escape_filter_value(last_name)
@@ -221,14 +222,14 @@ class PersonRepository(Repository):
             if year is not None:
                 filter_str += f" && year = {year}"
 
-            result = self.pb.collection("persons").get_list(
+            pb_result = self.pb.collection("persons").get_list(
                 query_params={
                     "filter": filter_str,
                     "perPage": 100,
                 }
             )
 
-            return [p for p in (self._map_to_person(item) for item in result.items) if p is not None]
+            return [p for p in (self._map_to_person(item) for item in pb_result.items) if p is not None]
 
         except Exception as e:
             logger.error("Error finding people by last name %s: %s", last_name, e)
