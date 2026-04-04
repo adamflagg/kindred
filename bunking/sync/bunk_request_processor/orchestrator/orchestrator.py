@@ -1586,6 +1586,8 @@ class RequestOrchestrator:
                         priority=getattr(matched_br, "priority", 0) if matched_br else 0,
                         resolution_method=rr.method,
                         declined_reason=br_meta.get("declined_reason"),
+                        disposition_reason=getattr(matched_br, "disposition_reason", "") if matched_br else "",
+                        is_reciprocal=bool(br_meta.get("is_reciprocal", False)),
                     )
                 )
             # Filter conflicts relevant to this requester's targets

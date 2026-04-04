@@ -137,6 +137,8 @@ class FinalBunkRequestTrace(BaseModel):
     resolution_method: str = ""
     is_placeholder: bool = False
     declined_reason: str | None = None
+    disposition_reason: str = ""
+    is_reciprocal: bool = False
 
 
 class PostPipelineTrace(BaseModel):

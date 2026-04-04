@@ -2,6 +2,7 @@
 
 from bunking.sync.bunk_request_processor.debug.trace_models import (
     SCHEMA_VERSION,
+    FinalBunkRequestTrace,
     HistoricalVerificationTrace,
     Phase1Trace,
     PlaceholderExpansionTrace,
@@ -60,3 +61,40 @@ class TestTraceData:
 
     def test_schema_version(self):
         assert SCHEMA_VERSION == 1
+
+
+class TestFinalBunkRequestTraceDispositionFields:
+    """Tests for disposition_reason and is_reciprocal on FinalBunkRequestTrace."""
+
+    def test_disposition_fields_in_model_dump(self):
+        trace = FinalBunkRequestTrace(
+            bunk_request_id="br-001",
+            status="RESOLVED",
+            confidence=0.95,
+            resolution_method="exact_match",
+            disposition_reason="reciprocal_match",
+            is_reciprocal=True,
+        )
+        d = trace.model_dump()
+        assert d["disposition_reason"] == "reciprocal_match"
+        assert d["is_reciprocal"] is True
+        assert d["resolution_method"] == "exact_match"
+
+    def test_post_pipeline_final_requests_include_disposition(self):
+        post = PostPipelineTrace(
+            final_bunk_requests=[
+                FinalBunkRequestTrace(
+                    status="RESOLVED",
+                    disposition_reason="high_confidence_match",
+                    is_reciprocal=False,
+                ),
+                FinalBunkRequestTrace(
+                    status="DECLINED",
+                    disposition_reason="target_not_attending",
+                    is_reciprocal=False,
+                ),
+            ]
+        )
+        d = post.model_dump()
+        assert d["final_bunk_requests"][0]["disposition_reason"] == "high_confidence_match"
+        assert d["final_bunk_requests"][1]["disposition_reason"] == "target_not_attending"

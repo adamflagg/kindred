@@ -159,6 +159,8 @@ export interface FinalBunkRequestTrace {
   resolution_method: string
   is_placeholder: boolean
   declined_reason: string | null
+  disposition_reason: string
+  is_reciprocal: boolean
 }
 
 export interface PostPipelineTrace {
@@ -269,6 +271,8 @@ export interface PipelineSummaryItem {
   ai_reasoning_summary: string
   pre_p1_action: string
   year: number
+  disposition_reason: string
+  is_reciprocal: boolean
 }
 
 export interface PipelineSummaryResponse {

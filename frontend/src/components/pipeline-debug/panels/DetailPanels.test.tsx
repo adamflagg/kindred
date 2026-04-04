@@ -219,6 +219,8 @@ const postPipeline: PostPipelineTrace = {
       resolution_method: 'exact_match',
       is_placeholder: false,
       declined_reason: null,
+      disposition_reason: 'exact_match',
+      is_reciprocal: true,
     },
     {
       bunk_request_id: 'req2',
@@ -232,6 +234,8 @@ const postPipeline: PostPipelineTrace = {
       resolution_method: 'fuzzy_match',
       is_placeholder: false,
       declined_reason: null,
+      disposition_reason: 'high_confidence_match',
+      is_reciprocal: false,
     },
   ],
 }

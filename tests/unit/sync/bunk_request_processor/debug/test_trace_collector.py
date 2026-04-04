@@ -4,6 +4,10 @@ from bunking.sync.bunk_request_processor.debug.trace_collector import (
     NoOpTraceCollector,
     TraceCollector,
 )
+from bunking.sync.bunk_request_processor.debug.trace_models import (
+    FinalBunkRequestTrace,
+    PostPipelineTrace,
+)
 
 
 class TestTraceCollector:
@@ -91,3 +95,49 @@ class TestNoOpTraceCollector:
     def test_enabled_false(self):
         noop = NoOpTraceCollector()
         assert noop.enabled is False
+
+
+class TestSummaryDataDispositionFields:
+    """Test that disposition_reason and is_reciprocal are stored on trace objects."""
+
+    def test_trace_stores_disposition_fields(self):
+        """Verify that trace objects retain disposition_reason and is_reciprocal after setup."""
+        tc = TraceCollector(run_id="test-disp", enabled=True)
+        key = "req-001"
+        tc.record_pre_phase1(
+            key=key,
+            action="parsed",
+            original_text="bunk with Liam",
+            requester_cm_id=1001,
+            year=2025,
+            session_cm_id=100,
+            source_field="bunk_with",
+        )
+        # Manually set post_pipeline with disposition fields
+        trace = tc._traces[key]
+        trace.post_pipeline = PostPipelineTrace(
+            final_bunk_requests=[
+                FinalBunkRequestTrace(
+                    bunk_request_id="br-001",
+                    status="RESOLVED",
+                    confidence=0.95,
+                    resolution_method="exact_match",
+                    disposition_reason="reciprocal_match",
+                    is_reciprocal=True,
+                    request_type="BUNK_WITH",
+                ),
+            ]
+        )
+        tc._trace_metadata[key] = {
+            "original_request_id": "orig-001",
+            "requester_cm_id": 1001,
+            "year": 2025,
+            "session_cm_id": 100,
+            "source_field": "bunk_with",
+        }
+
+        # Verify the trace data contains disposition fields
+        trace_data = tc._traces[key]
+        for br in trace_data.post_pipeline.final_bunk_requests:
+            assert br.disposition_reason == "reciprocal_match"
+            assert br.is_reciprocal is True

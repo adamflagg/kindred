@@ -274,6 +274,8 @@ const postPipelineSuccess: PostPipelineTrace = {
       resolution_method: 'exact_match',
       is_placeholder: false,
       declined_reason: null,
+      disposition_reason: 'exact_match',
+      is_reciprocal: false,
     },
   ],
 }
@@ -290,6 +292,8 @@ const postPipelineError: PostPipelineTrace = {
       ...postPipelineSuccess.final_bunk_requests[0]!,
       status: 'DECLINED',
       declined_reason: 'Duplicate request',
+      disposition_reason: 'needs_review',
+      is_reciprocal: false,
     },
   ],
 }
