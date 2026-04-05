@@ -26,7 +26,7 @@ from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     ENROLLMENT_STATUSES,
-    _get_enrollment_date,
+    get_enrollment_date,
     reconstruct_daily_multi,
 )
 from api.utils.session_metrics import (
@@ -1622,7 +1622,7 @@ class VelocityService:
             if gender not in ("M", "F"):
                 continue
 
-            enroll_date_str = _get_enrollment_date(att)
+            enroll_date_str = get_enrollment_date(att)
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
