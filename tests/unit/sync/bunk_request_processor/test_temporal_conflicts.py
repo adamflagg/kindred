@@ -12,6 +12,7 @@ from datetime import datetime
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.core.models import (
+    ParseRequest,
     ParsedRequest,
     ParseResult,
     RequestSource,
