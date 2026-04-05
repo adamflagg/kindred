@@ -13,9 +13,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from bunking.sync.bunk_request_processor.core.models import (
+    ParsedRequest,
     ParseRequest,
     ParseResult,
-    ParsedRequest,
     RequestSource,
     RequestType,
 )
@@ -84,7 +84,7 @@ def _run_current_trace_logic(
         phase3_processed_indices = {0}
 
     resolution_results = [(parse_result, [resolution_result])]
-    pre_phase3_confidences: dict = {}
+    pre_phase3_confidences: dict[str, list[float]] = {}
     recorded_traces: list[Phase3IntentTrace] = []
 
     for idx, (pr, res_list) in enumerate(resolution_results):
