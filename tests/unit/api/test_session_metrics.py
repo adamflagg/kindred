@@ -741,6 +741,27 @@ class TestGetSessionLengthCategory:
 
         assert get_session_length_category("", "") == "unknown"
 
+    def test_uses_parse_date_only_for_date_stripping(self) -> None:
+        """get_session_length_category should delegate to parse_date_only, not inline date-stripping."""
+        from unittest.mock import patch
+
+        from api.utils.session_metrics import get_session_length_category
+
+        with patch(
+            "api.services.reconstruction.parse_date_only", side_effect=lambda v: v.split("T")[0].split(" ")[0]
+        ) as mock_parse:
+            result = get_session_length_category("2025-06-01T00:00:00Z", "2025-06-14T23:59:59Z")
+            assert result == "2-week"
+            assert mock_parse.call_count == 2
+            mock_parse.assert_any_call("2025-06-01T00:00:00Z")
+            mock_parse.assert_any_call("2025-06-14T23:59:59Z")
+
+    def test_handles_datetime_with_space_via_parse_date_only(self) -> None:
+        """Datetime strings with spaces (e.g. '2025-06-01 00:00:00') should work via parse_date_only."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert get_session_length_category("2025-06-01 00:00:00", "2025-06-07 23:59:59") == "1-week"
+
 
 # ============================================================================
 # resolve_duration_sessions() Tests

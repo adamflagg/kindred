@@ -203,12 +203,14 @@ def get_session_length_category(start_date: str, end_date: str) -> str:
     """
     from datetime import datetime
 
+    from api.services.reconstruction import parse_date_only
+
     if not start_date or not end_date:
         return "unknown"
 
     try:
-        start_str = start_date.split(" ")[0].split("T")[0]
-        end_str = end_date.split(" ")[0].split("T")[0]
+        start_str = parse_date_only(start_date)
+        end_str = parse_date_only(end_date)
 
         start = datetime.strptime(start_str, "%Y-%m-%d")
         end = datetime.strptime(end_str, "%Y-%m-%d")
