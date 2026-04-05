@@ -201,6 +201,21 @@ const phase3Intents: Phase3IntentTrace[] = [
   },
 ]
 
+const phase3InvalidAI: Phase3IntentTrace[] = [
+  {
+    target_name: 'Emma Johnson',
+    ran: true,
+    candidates_sent: [{ person_cm_id: 67890, name: 'Emma Johnson', grade: 5 }],
+    ai_context: { session: '1' },
+    ai_selection: null,
+    ai_reasoning: null,
+    ai_reasoning_summary: null,
+    result: 'invalid_ai_output',
+    confidence_before: 0.5,
+    confidence_after: 0.2,
+  },
+]
+
 const postPipeline: PostPipelineTrace = {
   conflict_detection: { has_conflict: false, details: [] },
   self_reference: { detected: false },
@@ -403,6 +418,13 @@ describe('Phase3Detail', () => {
     render(<Phase3Detail data={phase3Intents} {...defaultActions} />)
     expect(screen.getByText(/0\.5/)).toBeInTheDocument()
     expect(screen.getByText(/0\.9/)).toBeInTheDocument()
+  })
+
+  it('renders invalid_ai_output badge with amber color', () => {
+    render(<Phase3Detail data={phase3InvalidAI} {...defaultActions} />)
+    const badge = screen.getByText('invalid_ai_output')
+    expect(badge).toBeInTheDocument()
+    expect(badge.className).toMatch(/amber/)
   })
 })
 

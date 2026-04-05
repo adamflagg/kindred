@@ -29,6 +29,8 @@ function resultColor(result: string): 'green' | 'amber' | 'red' | 'gray' {
       return 'amber'
     case 'no_match':
       return 'red'
+    case 'invalid_ai_output':
+      return 'amber'
     default:
       return 'gray'
   }

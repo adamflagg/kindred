@@ -407,7 +407,7 @@ class TestPhase3DisambiguationServiceResultHandling:
 
     @pytest.mark.asyncio
     async def test_still_ambiguous_after_ai_marked(self):
-        """Cases where AI returns no selection are marked as no_match"""
+        """Cases where AI returns no selection are marked as invalid_ai_output"""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
@@ -433,10 +433,10 @@ class TestPhase3DisambiguationServiceResultHandling:
         results = await service.batch_disambiguate([(parse_result, [ambiguous])])
 
         _, resolution_list = results[0]
-        # AI tried but couldn't select — marked as no_match (original resolution kept)
+        # AI tried but returned invalid/no output — marked as invalid_ai_output (original resolution kept)
         assert resolution_list[0].is_ambiguous
         assert resolution_list[0].metadata is not None
-        assert resolution_list[0].metadata.get("disambiguation_status") == "no_match"
+        assert resolution_list[0].metadata.get("disambiguation_status") == "invalid_ai_output"
 
     @pytest.mark.asyncio
     async def test_no_match_from_ai_handled(self):
@@ -618,8 +618,7 @@ class TestPhase3DisambiguationServiceStatistics:
         success_result.selected_person_id = 111
         success_result.confidence = 0.85
 
-        # Second result: still ambiguous (AI couldn't decide)
-        # Note: Implementation counts this as "failed" since no disambiguated_result is created
+        # Second result: AI returned no selection and no no_match flag — invalid_ai_output
         ambiguous_result = Mock()
         ambiguous_result.selected_person_id = None
         ambiguous_result.no_match = False
@@ -651,9 +650,9 @@ class TestPhase3DisambiguationServiceStatistics:
 
         stats = service.get_stats()
         assert stats["successfully_disambiguated"] == 1
-        # When AI returns no selected_person_id and no_match=False, it's counted as "failed"
-        # because no disambiguated_result is created
-        assert stats["failed"] == 1
+        # When AI returns no selected_person_id and no_match=False, it's counted as "invalid_ai_output"
+        assert stats["invalid_ai_output"] == 1
+        assert stats["failed"] == 0
 
     def test_reset_stats_clears_counters(self):
         """reset_stats sets all counters to zero"""
@@ -826,7 +825,7 @@ class TestPhase3ReturnTypeUnwrapping:
 
     @pytest.mark.asyncio
     async def test_unwraps_parsed_response_no_match(self):
-        """ParsedResponse without target_person_id in metadata results in no_match."""
+        """ParsedResponse without target_person_id in metadata results in invalid_ai_output."""
         from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
 
         ai_provider = Mock()
@@ -872,7 +871,7 @@ class TestPhase3ReturnTypeUnwrapping:
 
         _, resolution_list = results[0]
         assert resolution_list[0].metadata is not None
-        assert resolution_list[0].metadata.get("disambiguation_status") == "no_match"
+        assert resolution_list[0].metadata.get("disambiguation_status") == "invalid_ai_output"
 
     @pytest.mark.asyncio
     async def test_unwraps_parsed_response_unknown_person_id(self):
@@ -923,3 +922,52 @@ class TestPhase3ReturnTypeUnwrapping:
         _, resolution_list = results[0]
         assert resolution_list[0].metadata is not None
         assert resolution_list[0].metadata.get("disambiguation_status") == "no_match"
+
+
+class TestPhase3InvalidAIOutput:
+    """Tests for the invalid_ai_output status — AI returned unparseable/no-selection output."""
+
+    @pytest.mark.asyncio
+    async def test_catch_all_path_sets_invalid_ai_output_status(self):
+        """When AI returns no selected_person_id and no no_match flag, status is invalid_ai_output."""
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        # Legacy Mock path: no person selected, no explicit no_match — the catch-all else branch
+        ai_result = Mock()
+        ai_result.selected_person_id = None
+        ai_result.no_match = False
+        ai_result.reason = "Could not distinguish between candidates"
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        ambiguous = _create_ambiguous_resolution()
+        parse_result = _create_parse_result()
+
+        results = await service.batch_disambiguate([(parse_result, [ambiguous])])
+
+        _, resolution_list = results[0]
+        assert resolution_list[0].metadata is not None
+        assert resolution_list[0].metadata.get("disambiguation_status") == "invalid_ai_output", (
+            "Catch-all path (no selection, no no_match flag) should be 'invalid_ai_output', not 'no_match'"
+        )
+
+    def test_init_stats_include_invalid_ai_output(self):
+        """Stats dict should have an 'invalid_ai_output' key initialized to 0."""
+        ai_provider = Mock()
+        context_builder = Mock()
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+        )
+        stats = service.get_stats()
+        assert "invalid_ai_output" in stats, "get_stats() must contain 'invalid_ai_output' key"
+        assert stats["invalid_ai_output"] == 0

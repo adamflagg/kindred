@@ -4,7 +4,7 @@
  * States:
  * - success: resolved
  * - warning: still_ambiguous
- * - error: no_match
+ * - error: no_match or invalid_ai_output
  * - skipped: not_needed or ran=false for all intents
  */
 
@@ -22,7 +22,9 @@ function getState(intents: Phase3IntentTrace[]): NodeState {
   if (intents.length === 0) return 'skipped'
   const allNotNeeded = intents.every((i) => i.result === 'not_needed' || !i.ran)
   if (allNotNeeded) return 'skipped'
-  const hasNoMatch = intents.some((i) => i.ran && i.result === 'no_match')
+  const hasNoMatch = intents.some(
+    (i) => i.ran && (i.result === 'no_match' || i.result === 'invalid_ai_output')
+  )
   if (hasNoMatch) return 'error'
   const hasAmbiguous = intents.some((i) => i.ran && i.result === 'still_ambiguous')
   if (hasAmbiguous) return 'warning'

@@ -76,6 +76,7 @@ class Phase3DisambiguationService:
             "still_ambiguous": 0,
             "failed": 0,
             "no_match": 0,
+            "invalid_ai_output": 0,
         }
 
     async def batch_disambiguate(
@@ -150,6 +151,7 @@ class Phase3DisambiguationService:
             f"{self._stats['successfully_disambiguated']} disambiguated, "
             f"{self._stats['still_ambiguous']} still ambiguous, "
             f"{self._stats['no_match']} no match, "
+            f"{self._stats['invalid_ai_output']} invalid AI output, "
             f"{self._stats['failed']} failed"
         )
 
@@ -319,10 +321,10 @@ class Phase3DisambiguationService:
                     )
 
                 else:
-                    # No selection and no legacy no_match flag — mark as no_match
+                    # No selection and no legacy no_match flag — AI output was invalid/unparseable
                     if "status" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["status"] = {}
-                    case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
+                    case.disambiguation_metadata["status"][ambiguous_idx] = "invalid_ai_output"
                     if "reasons" not in case.disambiguation_metadata:
                         case.disambiguation_metadata["reasons"] = {}
                     case.disambiguation_metadata["reasons"][ambiguous_idx] = (
@@ -330,7 +332,7 @@ class Phase3DisambiguationService:
                     )
                     reasoning = ai_reason if ai_reason != "AI selected" else None
                     logger.debug(
-                        f"Phase 3 no selection for '{resolution.target_name}' — "
+                        f"Phase 3 invalid AI output for '{resolution.target_name}' — "
                         f"{reasoning or 'AI returned no selection'}"
                     )
 
@@ -417,9 +419,19 @@ class Phase3DisambiguationService:
                     elif result.metadata and result.metadata.get("no_match"):
                         self._stats["no_match"] += 1
                     else:
+                        # Reached when Phase 3 returns a non-resolved ResolutionResult
+                        # (e.g. candidates present but no match selected by AI)
                         self._stats["still_ambiguous"] += 1
                 else:
-                    self._stats["failed"] += 1
+                    # Check disambiguation metadata for specific status
+                    statuses = case.disambiguation_metadata.get("status", {})
+                    status = statuses.get(idx, "")
+                    if status == "no_match":
+                        self._stats["no_match"] += 1
+                    elif status == "invalid_ai_output":
+                        self._stats["invalid_ai_output"] += 1
+                    else:
+                        self._stats["failed"] += 1
 
     def get_stats(self) -> dict[str, Any]:
         """Get disambiguation statistics"""
@@ -433,4 +445,5 @@ class Phase3DisambiguationService:
             "still_ambiguous": 0,
             "failed": 0,
             "no_match": 0,
+            "invalid_ai_output": 0,
         }

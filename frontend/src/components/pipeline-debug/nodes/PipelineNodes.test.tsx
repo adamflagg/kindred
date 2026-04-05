@@ -241,6 +241,21 @@ const phase3NotNeeded: Phase3IntentTrace[] = [
   },
 ]
 
+const phase3InvalidAI: Phase3IntentTrace[] = [
+  {
+    target_name: 'Emma Johnson',
+    ran: true,
+    candidates_sent: [],
+    ai_context: {},
+    ai_selection: null,
+    ai_reasoning: null,
+    ai_reasoning_summary: null,
+    result: 'invalid_ai_output',
+    confidence_before: 0.4,
+    confidence_after: 0.2,
+  },
+]
+
 const phase3Failed: Phase3IntentTrace[] = [
   {
     target_name: 'Emma Johnson',
@@ -524,6 +539,12 @@ describe('Phase3Node', () => {
 
   it('renders error state for no_match result', () => {
     renderNode(<Phase3Node {...makeNodeProps({ phase3: phase3Failed })} />)
+    expect(screen.getByTestId('node-status-error')).toBeInTheDocument()
+  })
+
+  it('renders error state for invalid_ai_output result', () => {
+    renderNode(<Phase3Node {...makeNodeProps({ phase3: phase3InvalidAI })} />)
+    expect(screen.getByText('Phase 3 Disambig')).toBeInTheDocument()
     expect(screen.getByTestId('node-status-error')).toBeInTheDocument()
   })
 })

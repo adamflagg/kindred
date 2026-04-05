@@ -38,6 +38,8 @@ class BatchSignals:
     household_co_requester: int | None = None
 
 
+# NOTE: is_reciprocal is a detection signal (input to disposition rules),
+# not a disposition itself. See disposition_rules.py for how it's consumed.
 def detect_batch_signals(
     resolved_requests: list[ResolvedRequest],
 ) -> dict[tuple[int, int, int], BatchSignals]:

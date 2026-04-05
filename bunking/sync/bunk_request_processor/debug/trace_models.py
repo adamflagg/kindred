@@ -120,7 +120,7 @@ class Phase3IntentTrace(BaseModel):
     ai_selection: int | None = None
     ai_reasoning: str | None = None
     ai_reasoning_summary: str | None = None
-    result: str = "not_needed"  # not_needed | resolved | no_match | still_ambiguous
+    result: str = "not_needed"  # not_needed | resolved | no_match | invalid_ai_output | still_ambiguous
     confidence_before: float | None = None
     confidence_after: float | None = None
 

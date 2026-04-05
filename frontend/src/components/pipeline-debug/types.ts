@@ -142,7 +142,7 @@ export interface Phase3IntentTrace {
   ai_selection: number | null
   ai_reasoning: string | null
   ai_reasoning_summary: string | null
-  result: 'not_needed' | 'resolved' | 'no_match' | 'still_ambiguous'
+  result: 'not_needed' | 'resolved' | 'no_match' | 'invalid_ai_output' | 'still_ambiguous'
   confidence_before: number | null
   confidence_after: number | null
 }
