@@ -10,6 +10,7 @@ ADR 8: Phase 3 exclusion uses RequestType enum instead of raw string.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.core.models import (
@@ -72,18 +73,17 @@ def _make_orchestrator():
         RequestOrchestrator,
     )
 
-    orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
-    orchestrator._logger = Mock()
-    return orchestrator
+    return RequestOrchestrator.__new__(RequestOrchestrator)
 
 
-def _make_person(cm_id: int = 12345, name: str = "Emma"):
+def _make_person(cm_id: int = 12345, name: str = "Emma") -> Any:
+    """Create a minimal Person for testing."""
     from bunking.sync.bunk_request_processor.core.models import Person
 
     return Person(cm_id=cm_id, first_name=name, last_name="Johnson")
 
 
-def _make_resolution(person=None, method: str = "exact_match") -> ResolutionResult:
+def _make_resolution(person: Any = None, method: str = "exact_match") -> ResolutionResult:
     return ResolutionResult(
         person=person,
         confidence=0.95 if person else 0.0,
@@ -307,7 +307,7 @@ class TestADR6StaffDetectionNotesGuard:
             is_valid=True,
         )
 
-    def _tracking_staff_filter(self, staff_calls: list, match_name: str):
+    def _tracking_staff_filter(self, staff_calls: list[str], match_name: str) -> object:
         """Create a staff filter that tracks calls and matches a specific name."""
 
         def staff_filter(name: str) -> bool:
