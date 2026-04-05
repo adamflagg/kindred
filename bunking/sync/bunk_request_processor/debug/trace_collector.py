@@ -11,7 +11,6 @@ from typing import Any
 from bunking.logging_config import get_logger
 
 from .trace_models import (
-    SCHEMA_VERSION,
     HistoricalVerificationTrace,
     Phase1Trace,
     Phase2IntentTrace,
@@ -236,7 +235,6 @@ class TraceCollector:
                 "source_field": meta.get("source_field", ""),
                 "trace_data": trace_data.model_dump(),
                 "pinned": False,
-                "schema_version": SCHEMA_VERSION,
             }
             record = await asyncio.to_thread(pb_client.collection("debug_pipeline_traces").create, data)
             return key, record.id

@@ -239,7 +239,6 @@ export interface PipelineTrace {
   source_field: string
   trace_data: TraceData
   pinned: boolean
-  schema_version: number
   created: string
 }
 

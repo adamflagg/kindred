@@ -1,7 +1,6 @@
 """Tests for pipeline debug trace data models."""
 
 from bunking.sync.bunk_request_processor.debug.trace_models import (
-    SCHEMA_VERSION,
     FinalBunkRequestTrace,
     HistoricalVerificationTrace,
     Phase1Trace,
@@ -58,9 +57,6 @@ class TestTraceData:
         d = td.model_dump()
         assert d["pre_phase1"]["action"] == "parsed"
         assert d["phase1_parse"]["ran"] is True
-
-    def test_schema_version(self):
-        assert SCHEMA_VERSION == 1
 
 
 class TestFinalBunkRequestTraceDispositionFields:

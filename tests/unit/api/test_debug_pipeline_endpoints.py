@@ -130,7 +130,6 @@ def _make_pb_trace_record(
         source_field="bunk_with",
         trace_data=trace_data or {"pre_phase1": {"action": "parsed"}},
         pinned=False,
-        schema_version=1,
         created="2025-06-15T10:00:00Z",
     )
 

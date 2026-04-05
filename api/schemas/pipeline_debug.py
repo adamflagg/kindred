@@ -107,7 +107,6 @@ class PipelineTraceItem(BaseModel):
     source_field: str = Field(default="", description="Source field")
     trace_data: dict[str, Any] = Field(default_factory=dict, description="Full trace JSON")
     pinned: bool = Field(default=False, description="Whether this trace is pinned")
-    schema_version: int = Field(default=1, description="Trace schema version")
     created: datetime | None = Field(default=None, description="When captured")
 
 
