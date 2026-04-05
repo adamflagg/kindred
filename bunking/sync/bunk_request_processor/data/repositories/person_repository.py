@@ -67,6 +67,7 @@ class PersonRepository(Repository):
         self.pb = pb_client
         self.cache = cache
         self.name_cache = name_cache
+        self._bulk_cache: dict[int, Person] = {}
 
     def find_by_id(self, id: int) -> Person | None:
         """Find person by CM ID"""
@@ -373,34 +374,45 @@ class PersonRepository(Repository):
 
         # Use name_cache for O(1) lookups if available
         if self.name_cache:
-            result = {}
+            cached = {}
             for cm_id in cm_ids:
                 person = self.name_cache.get_person(cm_id)
                 if person:
-                    result[cm_id] = person
+                    cached[cm_id] = person
+            return cached
+
+        # Fall back to DB query with per-ID caching
+        result: dict[int, Person] = {}
+        uncached_ids: list[int] = []
+
+        for cm_id in cm_ids:
+            if cm_id in self._bulk_cache:
+                result[cm_id] = self._bulk_cache[cm_id]
+            else:
+                uncached_ids.append(cm_id)
+
+        # All requested IDs were cached — skip DB entirely
+        if not uncached_ids:
             return result
 
-        # Fall back to DB query
         try:
-            # Build the IN clause
-            cm_ids_str = ", ".join(map(str, cm_ids))
+            cm_ids_str = ", ".join(map(str, uncached_ids))
 
             query_result = self.pb.collection("persons").get_list(
-                query_params={"filter": f"cm_id IN ({cm_ids_str})", "perPage": len(cm_ids)}
+                query_params={"filter": f"cm_id IN ({cm_ids_str})", "perPage": len(uncached_ids)}
             )
 
-            # Map to dictionary keyed by CM ID
-            persons_dict: dict[int, Person] = {}
             for item in query_result.items:
                 person = self._map_to_person(item)
                 if person:
-                    persons_dict[person.cm_id] = person
+                    self._bulk_cache[person.cm_id] = person
+                    result[person.cm_id] = person
 
-            return persons_dict
+            return result
 
         except Exception as e:
             logger.error("Error bulk finding people by CM IDs: %s", e)
-            return {}
+            return result
 
     def find_siblings(self, cm_id: int, year: int) -> list[Person]:
         """Find siblings of a person by matching household_id.

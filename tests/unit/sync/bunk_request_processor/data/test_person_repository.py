@@ -602,5 +602,162 @@ class TestFindByLastName:
         assert people == []
 
 
+class TestBulkFindByCmIdsCaching:
+    """Tests that bulk_find_by_cm_ids caches results to avoid redundant DB queries.
+
+    When name_cache is not available, repeated calls with overlapping cm_id sets
+    should only query the database for uncached IDs. This saves redundant round-trips
+    when multiple resolvers need the same person data.
+    """
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        mock_client, _ = mock_pb_client
+        PersonRepository._from_factory = True
+        repo = PersonRepository(mock_client)
+        PersonRepository._from_factory = False
+        return repo
+
+    def _create_person_mock(self, cm_id, first_name, last_name, **kwargs):
+        """Create a mock DB record that _map_to_person can process."""
+        mock = Mock()
+        mock.cm_id = cm_id
+        mock.first_name = first_name
+        mock.last_name = last_name
+        mock.preferred_name = kwargs.get("preferred_name")
+        mock.birthdate = kwargs.get("birthdate", "2012-03-15")
+        mock.grade = kwargs.get("grade", 5)
+        mock.school = kwargs.get("school")
+        mock.normalized_school = kwargs.get("normalized_school")
+        mock.normalized_city = kwargs.get("normalized_city")
+        mock.address_city = kwargs.get("address_city")
+        mock.address_state = kwargs.get("address_state")
+        mock.gender = kwargs.get("gender")
+        mock.normalized_congregation = kwargs.get("normalized_congregation")
+        mock.parent_names = kwargs.get("parent_names")
+        mock.household_id = kwargs.get("household_id")
+        mock.age = kwargs.get("age", 12.05)
+        return mock
+
+    def test_second_call_same_ids_uses_cache_no_db_hit(self, repository, mock_pb_client):
+        """Calling bulk_find_by_cm_ids twice with the same cm_ids should only hit the DB once."""
+        _, mock_collection = mock_pb_client
+
+        emma = self._create_person_mock(1001, "Emma", "Johnson")
+        liam = self._create_person_mock(1002, "Liam", "Garcia")
+
+        mock_result = Mock()
+        mock_result.items = [emma, liam]
+        mock_collection.get_list.return_value = mock_result
+
+        # First call — should hit DB
+        result1 = repository.bulk_find_by_cm_ids([1001, 1002])
+        assert len(result1) == 2
+        assert result1[1001].first_name == "Emma"
+        assert result1[1002].first_name == "Liam"
+        assert mock_collection.get_list.call_count == 1
+
+        # Second call with same IDs — should use cache, NOT hit DB again
+        result2 = repository.bulk_find_by_cm_ids([1001, 1002])
+        assert len(result2) == 2
+        assert result2[1001].first_name == "Emma"
+        assert result2[1002].first_name == "Liam"
+        # DB should still have been called only once
+        assert mock_collection.get_list.call_count == 1
+
+    def test_partial_overlap_only_queries_uncached_ids(self, repository, mock_pb_client):
+        """When called with partially overlapping cm_ids, only uncached IDs should be queried."""
+        _, mock_collection = mock_pb_client
+
+        emma = self._create_person_mock(1001, "Emma", "Johnson")
+        liam = self._create_person_mock(1002, "Liam", "Garcia")
+        olivia = self._create_person_mock(1003, "Olivia", "Chen")
+
+        # First call fetches Emma and Liam
+        mock_result_1 = Mock()
+        mock_result_1.items = [emma, liam]
+        mock_collection.get_list.return_value = mock_result_1
+
+        result1 = repository.bulk_find_by_cm_ids([1001, 1002])
+        assert len(result1) == 2
+        assert mock_collection.get_list.call_count == 1
+
+        # Second call with [1002, 1003] — 1002 is cached, only 1003 should be queried
+        mock_result_2 = Mock()
+        mock_result_2.items = [olivia]
+        mock_collection.get_list.return_value = mock_result_2
+
+        result2 = repository.bulk_find_by_cm_ids([1002, 1003])
+        assert len(result2) == 2
+        assert result2[1002].first_name == "Liam"
+        assert result2[1003].first_name == "Olivia"
+        assert mock_collection.get_list.call_count == 2
+
+        # Verify the second DB query only asked for the uncached ID (1003)
+        second_call_args = mock_collection.get_list.call_args_list[1]
+        filter_str = second_call_args[1]["query_params"]["filter"]
+        assert "1003" in filter_str
+        assert "1002" not in filter_str
+
+    def test_all_cached_skips_db_entirely(self, repository, mock_pb_client):
+        """When all requested cm_ids are already cached, no DB query should be made."""
+        _, mock_collection = mock_pb_client
+
+        emma = self._create_person_mock(1001, "Emma", "Johnson")
+        liam = self._create_person_mock(1002, "Liam", "Garcia")
+
+        mock_result = Mock()
+        mock_result.items = [emma, liam]
+        mock_collection.get_list.return_value = mock_result
+
+        # First call to populate cache
+        repository.bulk_find_by_cm_ids([1001, 1002])
+        assert mock_collection.get_list.call_count == 1
+
+        # Second call with subset — all cached
+        result = repository.bulk_find_by_cm_ids([1001])
+        assert len(result) == 1
+        assert result[1001].first_name == "Emma"
+        # No additional DB call
+        assert mock_collection.get_list.call_count == 1
+
+    def test_cached_results_match_uncached(self, repository, mock_pb_client):
+        """Cached results should be identical to the original fetched results."""
+        _, mock_collection = mock_pb_client
+
+        emma = self._create_person_mock(1001, "Emma", "Johnson", grade=7, gender="F")
+
+        mock_result = Mock()
+        mock_result.items = [emma]
+        mock_collection.get_list.return_value = mock_result
+
+        # First call
+        result1 = repository.bulk_find_by_cm_ids([1001])
+        # Second call (from cache)
+        result2 = repository.bulk_find_by_cm_ids([1001])
+
+        # Results should be identical Person objects
+        assert result1[1001].cm_id == result2[1001].cm_id
+        assert result1[1001].first_name == result2[1001].first_name
+        assert result1[1001].last_name == result2[1001].last_name
+        assert result1[1001].grade == result2[1001].grade
+        assert result1[1001].gender == result2[1001].gender
+
+    def test_empty_ids_returns_empty_no_db_hit(self, repository, mock_pb_client):
+        """Empty cm_ids list should return empty dict without hitting DB (existing behavior)."""
+        _, mock_collection = mock_pb_client
+
+        result = repository.bulk_find_by_cm_ids([])
+        assert result == {}
+        mock_collection.get_list.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
