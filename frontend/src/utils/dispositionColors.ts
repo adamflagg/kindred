@@ -4,6 +4,11 @@
  * RequestReviewPanel and other components.
  */
 
+// Confidence thresholds (must match backend config)
+export const CONFIDENCE_AUTO_ACCEPT = 0.95
+export const CONFIDENCE_RESOLVED = 0.85
+export const CONFIDENCE_WARNING = 0.7
+
 const BADGE_COLORS = {
   success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
   warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
@@ -57,7 +62,15 @@ export function getStatusClasses(status: string): string {
 
 /** Get Tailwind classes for a confidence value badge. */
 export function getConfidenceClasses(confidence: number): string {
-  if (confidence >= 0.85) return BADGE_COLORS.success
-  if (confidence >= 0.7) return BADGE_COLORS.warning
+  if (confidence >= CONFIDENCE_RESOLVED) return BADGE_COLORS.success
+  if (confidence >= CONFIDENCE_WARNING) return BADGE_COLORS.warning
   return BADGE_COLORS.danger
+}
+
+/** Sort rank for disposition reasons: declined (0) < pending (1) < resolved (2) < unknown (3). */
+export function getDispositionSortRank(reason: string): number {
+  if (DECLINED_REASONS.has(reason)) return 0
+  if (PENDING_REASONS.has(reason)) return 1
+  if (RESOLVED_REASONS.has(reason)) return 2
+  return 3
 }

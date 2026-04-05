@@ -8,9 +8,13 @@ import {
   getDispositionClasses,
   getStatusClasses,
   getConfidenceClasses,
+  getDispositionSortRank,
   RESOLVED_REASONS,
   PENDING_REASONS,
   DECLINED_REASONS,
+  CONFIDENCE_RESOLVED,
+  CONFIDENCE_WARNING,
+  CONFIDENCE_AUTO_ACCEPT,
 } from './dispositionColors'
 
 describe('getDispositionClasses', () => {
@@ -123,5 +127,41 @@ describe('reason sets', () => {
       expect(RESOLVED_REASONS.has(reason)).toBe(false)
       expect(PENDING_REASONS.has(reason)).toBe(false)
     }
+  })
+})
+
+describe('getDispositionSortRank', () => {
+  it('returns 0 for declined reasons', () => {
+    expect(getDispositionSortRank('session_mismatch')).toBe(0)
+    expect(getDispositionSortRank('target_not_attending')).toBe(0)
+    expect(getDispositionSortRank('requester_not_attending')).toBe(0)
+  })
+
+  it('returns 1 for pending reasons', () => {
+    expect(getDispositionSortRank('needs_review')).toBe(1)
+    expect(getDispositionSortRank('target_waitlisted')).toBe(1)
+  })
+
+  it('returns 2 for resolved reasons', () => {
+    expect(getDispositionSortRank('exact_match')).toBe(2)
+    expect(getDispositionSortRank('reciprocal_match')).toBe(2)
+  })
+
+  it('returns 3 for unknown reasons', () => {
+    expect(getDispositionSortRank('unknown_reason')).toBe(3)
+    expect(getDispositionSortRank('')).toBe(3)
+  })
+})
+
+describe('confidence constants', () => {
+  it('exports expected threshold values', () => {
+    expect(CONFIDENCE_AUTO_ACCEPT).toBe(0.95)
+    expect(CONFIDENCE_RESOLVED).toBe(0.85)
+    expect(CONFIDENCE_WARNING).toBe(0.7)
+  })
+
+  it('thresholds are in descending order', () => {
+    expect(CONFIDENCE_AUTO_ACCEPT).toBeGreaterThan(CONFIDENCE_RESOLVED)
+    expect(CONFIDENCE_RESOLVED).toBeGreaterThan(CONFIDENCE_WARNING)
   })
 })

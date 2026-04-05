@@ -30,7 +30,12 @@ import type {
   BunkRequestsStatusOptions,
 } from '../types/pocketbase-types'
 import clsx from 'clsx'
-import { getDispositionClasses } from '../utils/dispositionColors'
+import {
+  getDispositionClasses,
+  getDispositionSortRank,
+  CONFIDENCE_AUTO_ACCEPT,
+  CONFIDENCE_RESOLVED,
+} from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
@@ -45,10 +50,6 @@ interface RequestReviewPanelProps {
   relatedSessionIds?: number[] // Additional session IDs to include (sub-sessions, AG sessions)
   year: number
 }
-
-// Confidence thresholds (must match backend config)
-const CONFIDENCE_AUTO_ACCEPT = 0.95
-const CONFIDENCE_RESOLVED = 0.85
 
 type ResolvedConfidenceFilter = 'all' | 'high' | 'spot-check'
 
@@ -91,24 +92,15 @@ export default function RequestReviewPanel({
   })
   const [filtersExpanded, setFiltersExpanded] = useState(false)
 
-  // Query key excludes searchQuery since search filtering happens client-side using personMap
+  // Query key only includes server-side filters (sent to PocketBase).
+  // Client-side filters (confidence, review, search) are applied in filteredRequests memo.
   const queryKeyFilters = useMemo(
     () => ({
-      lowConfidenceOnly: filters.lowConfidenceOnly,
-      needsReviewOnly: filters.needsReviewOnly,
       requestTypes: filters.requestTypes,
       statuses: filters.statuses,
       showResolved: filters.showResolved,
-      resolvedConfidenceFilter: filters.resolvedConfidenceFilter,
     }),
-    [
-      filters.lowConfidenceOnly,
-      filters.needsReviewOnly,
-      filters.requestTypes,
-      filters.statuses,
-      filters.showResolved,
-      filters.resolvedConfidenceFilter,
-    ]
+    [filters.requestTypes, filters.statuses, filters.showResolved]
   )
 
   // Fetch bunk requests
@@ -137,40 +129,10 @@ export default function RequestReviewPanel({
         filterStr += ` && (${typeFilter})`
       }
 
-      const result = await pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
+      return await pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: filterStr,
         sort: '-confidence_score,priority',
       })
-
-      // Apply confidence/review filters on client side
-      let filtered = result
-
-      if (filters.lowConfidenceOnly) {
-        filtered = filtered.filter((r) => r.confidence_score < CONFIDENCE_RESOLVED)
-      }
-
-      if (filters.needsReviewOnly) {
-        filtered = filtered.filter((r) => r.requires_manual_review === true)
-      }
-
-      // Apply resolved confidence filter when showing resolved requests
-      if (filters.showResolved && filters.resolvedConfidenceFilter !== 'all') {
-        filtered = filtered.filter((r) => {
-          if (r.status !== 'resolved') return true // Keep non-resolved as-is
-          if (filters.resolvedConfidenceFilter === 'high') {
-            return r.confidence_score >= CONFIDENCE_AUTO_ACCEPT
-          } else if (filters.resolvedConfidenceFilter === 'spot-check') {
-            return (
-              r.confidence_score >= CONFIDENCE_RESOLVED &&
-              r.confidence_score < CONFIDENCE_AUTO_ACCEPT
-            )
-          }
-          return true
-        })
-      }
-
-      // Search filtering moved to sortedRequests useMemo for instant client-side filtering
-      return filtered
     },
     staleTime: 30000,
     enabled: !!user,
@@ -332,11 +294,34 @@ export default function RequestReviewPanel({
     return requests.filter((r: BunkRequestsResponse) => r.status === 'pending').length
   }, [requests])
 
-  // Filter and sort requests - search filtering happens here for instant client-side response
+  // Client-side filtering (confidence, review, resolved confidence, search)
   const sortedRequests = useMemo(() => {
     let filtered = [...requests]
 
-    // Client-side search filtering using already-fetched personMap
+    // Confidence / review filters
+    if (filters.lowConfidenceOnly) {
+      filtered = filtered.filter((r) => r.confidence_score < CONFIDENCE_RESOLVED)
+    }
+    if (filters.needsReviewOnly) {
+      filtered = filtered.filter((r) => r.requires_manual_review === true)
+    }
+
+    // Resolved confidence filter
+    if (filters.showResolved && filters.resolvedConfidenceFilter !== 'all') {
+      filtered = filtered.filter((r) => {
+        if (r.status !== 'resolved') return true
+        if (filters.resolvedConfidenceFilter === 'high') {
+          return r.confidence_score >= CONFIDENCE_AUTO_ACCEPT
+        } else if (filters.resolvedConfidenceFilter === 'spot-check') {
+          return (
+            r.confidence_score >= CONFIDENCE_RESOLVED && r.confidence_score < CONFIDENCE_AUTO_ACCEPT
+          )
+        }
+        return true
+      })
+    }
+
+    // Search filtering using already-fetched personMap
     if (filters.searchQuery && personMap.size > 0) {
       const searchLower = filters.searchQuery.toLowerCase()
       filtered = filtered.filter((r) => {
@@ -376,10 +361,18 @@ export default function RequestReviewPanel({
             : b.parse_notes || ''
           break
         }
-        case 'disposition':
-          aValue = a.disposition_reason ?? ''
-          bValue = b.disposition_reason ?? ''
+        case 'disposition': {
+          const aRank = getDispositionSortRank(a.disposition_reason ?? '')
+          const bRank = getDispositionSortRank(b.disposition_reason ?? '')
+          if (aRank !== bRank) {
+            aValue = aRank
+            bValue = bRank
+          } else {
+            aValue = a.disposition_reason ?? ''
+            bValue = b.disposition_reason ?? ''
+          }
           break
+        }
         case 'priority':
           aValue = a.priority
           bValue = b.priority
@@ -404,7 +397,17 @@ export default function RequestReviewPanel({
     })
 
     return sorted
-  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
+  }, [
+    requests,
+    sortBy,
+    sortOrder,
+    personMap,
+    filters.searchQuery,
+    filters.lowConfidenceOnly,
+    filters.needsReviewOnly,
+    filters.showResolved,
+    filters.resolvedConfidenceFilter,
+  ])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
@@ -863,6 +866,7 @@ export default function RequestReviewPanel({
               </span>
               <div className="bg-muted/50 dark:bg-muted/30 border-border/50 flex items-center gap-1 rounded-xl border p-1">
                 <button
+                  aria-pressed={!filters.lowConfidenceOnly && !filters.needsReviewOnly}
                   onClick={() =>
                     setFilters((prev) => ({
                       ...prev,
@@ -880,6 +884,7 @@ export default function RequestReviewPanel({
                   All
                 </button>
                 <button
+                  aria-pressed={filters.lowConfidenceOnly}
                   onClick={() =>
                     setFilters((prev) => ({
                       ...prev,
@@ -897,6 +902,7 @@ export default function RequestReviewPanel({
                   Low Confidence
                 </button>
                 <button
+                  aria-pressed={filters.needsReviewOnly}
                   onClick={() =>
                     setFilters((prev) => ({
                       ...prev,
