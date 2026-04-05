@@ -176,6 +176,7 @@ export function TrendLineChart({
               name="Total Enrolled"
               stroke={COLORS.total}
               strokeWidth={2}
+              strokeLinecap="round"
               dot={{ fill: COLORS.total, strokeWidth: 2 }}
               activeDot={{ r: 6 }}
             >
@@ -199,6 +200,7 @@ export function TrendLineChart({
                 name="New Campers"
                 stroke={COLORS.new}
                 strokeWidth={2}
+                strokeLinecap="round"
                 dot={{ fill: COLORS.new, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
               >
@@ -218,6 +220,7 @@ export function TrendLineChart({
                 name="Returning Campers"
                 stroke={COLORS.returning}
                 strokeWidth={2}
+                strokeLinecap="round"
                 dot={{ fill: COLORS.returning, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
               >
@@ -242,6 +245,7 @@ export function TrendLineChart({
                 name="Male"
                 stroke={COLORS.male}
                 strokeWidth={2}
+                strokeLinecap="round"
                 dot={{ fill: COLORS.male, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
               >
@@ -261,6 +265,7 @@ export function TrendLineChart({
                 name="Female"
                 stroke={COLORS.female}
                 strokeWidth={2}
+                strokeLinecap="round"
                 dot={{ fill: COLORS.female, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
               >
@@ -284,6 +289,7 @@ export function TrendLineChart({
               name="Cancellation Rate %"
               stroke={COLORS.cancellation_rate}
               strokeWidth={2}
+              strokeLinecap="round"
               dot={{ fill: COLORS.cancellation_rate, strokeWidth: 2 }}
               activeDot={{ r: 6 }}
             >
