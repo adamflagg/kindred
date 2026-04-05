@@ -1586,3 +1586,30 @@ class TestSingleNameCandidateGeneration:
         assert candidate_ids == {100, 200}
         # attendee_repository should NOT be called
         attendee_repo.bulk_get_sessions_for_persons.assert_not_called()
+
+
+class TestAgePreferenceMethodConstant:
+    """ADR-8: Verify age_preference method codes use RequestType.AGE_PREFERENCE.value."""
+
+    def test_age_preference_value_is_string_age_preference(self):
+        """RequestType.AGE_PREFERENCE.value must equal the literal string 'age_preference'."""
+        assert RequestType.AGE_PREFERENCE.value == "age_preference"
+
+    def test_handle_no_resolution_cases_uses_age_preference_constant(self):
+        """_handle_no_resolution_cases sets method=RequestType.AGE_PREFERENCE.value for age prefs."""
+        pipeline = Mock()
+        service = Phase2ResolutionService(resolution_pipeline=pipeline)
+
+        parsed_request = _create_parsed_request(
+            target_name=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            age_preference=AgePreference.OLDER,
+        )
+        parse_result = _create_parse_result(parsed_requests=[parsed_request])
+        case = ResolutionCase(parse_result)
+
+        service._handle_no_resolution_cases([case])
+
+        assert len(case.resolution_results) == 1
+        result = case.resolution_results[0]
+        assert result.method == RequestType.AGE_PREFERENCE.value

@@ -1364,7 +1364,7 @@ class RequestOrchestrator:
         total_unresolved = 0
         for idx, (pr, resolution_list) in enumerate(resolution_results):
             unresolved_in_this = sum(
-                1 for rr in resolution_list if not rr.is_resolved and rr.method != "age_preference"
+                1 for rr in resolution_list if not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value
             )
             if unresolved_in_this > 0:
                 total_unresolved += unresolved_in_this
@@ -1377,7 +1377,9 @@ class RequestOrchestrator:
         for idx, (pr, resolution_list) in enumerate(resolution_results):
             # Check if any resolutions in this ParseResult are unresolved
             # Skip pre-parsed requests (like age preferences from dropdowns)
-            has_unresolved = any(not rr.is_resolved and rr.method != "age_preference" for rr in resolution_list)
+            has_unresolved = any(
+                not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value for rr in resolution_list
+            )
             if has_unresolved:
                 unresolved_cases.append((pr, resolution_list))
                 unresolved_indices.append(idx)
