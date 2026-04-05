@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TrendLineChart } from './TrendLineChart'
 import type { YearMetrics } from '../../types/metrics'
@@ -65,18 +65,17 @@ describe('TrendLineChart', () => {
   })
 
   describe('animation', () => {
-    it('passes strokeLinecap="round" to Line for total metric', () => {
+    beforeEach(() => {
       capturedStrokeLinecaps = []
-      render(<TrendLineChart data={sampleData} title="Test" metric="total" />)
-      expect(capturedStrokeLinecaps.length).toBeGreaterThan(0)
-      expect(capturedStrokeLinecaps.every((v) => v === 'round')).toBe(true)
     })
 
-    it('passes strokeLinecap="round" to Line for gender metric', () => {
-      capturedStrokeLinecaps = []
-      render(<TrendLineChart data={sampleData} title="Test" metric="gender" />)
-      expect(capturedStrokeLinecaps.length).toBeGreaterThan(0)
-      expect(capturedStrokeLinecaps.every((v) => v === 'round')).toBe(true)
-    })
+    it.each(['total', 'gender', 'new_vs_returning', 'cancellation_rate'] as const)(
+      'passes strokeLinecap="round" to Line for %s metric',
+      (metric) => {
+        render(<TrendLineChart data={sampleData} title="Test" metric={metric} />)
+        expect(capturedStrokeLinecaps.length).toBeGreaterThan(0)
+        expect(capturedStrokeLinecaps.every((v) => v === 'round')).toBe(true)
+      }
+    )
   })
 })

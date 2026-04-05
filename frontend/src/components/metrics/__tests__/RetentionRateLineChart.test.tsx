@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { RetentionRateLineChart } from '../RetentionRateLineChart'
 import type { RetentionRateBarItem } from '../../../types/metrics'
@@ -53,6 +53,11 @@ const sampleData: RetentionRateBarItem[] = [
 ]
 
 describe('RetentionRateLineChart', () => {
+  beforeEach(() => {
+    capturedActiveDotClick = undefined
+    capturedStrokeLinecap = undefined
+  })
+
   it('renders the title', () => {
     render(<RetentionRateLineChart data={sampleData} title="Retention by Grade" />)
     expect(screen.getByText('Retention by Grade')).toBeInTheDocument()
@@ -81,7 +86,6 @@ describe('RetentionRateLineChart', () => {
 
   describe('onDotClick', () => {
     it('passes activeDot onClick to Line when onDotClick is provided', () => {
-      capturedActiveDotClick = undefined
       const onDotClick = vi.fn()
       render(
         <RetentionRateLineChart data={sampleData} title="Clickable Line" onDotClick={onDotClick} />
@@ -92,7 +96,6 @@ describe('RetentionRateLineChart', () => {
     })
 
     it('does not set activeDot click handler when onDotClick is not provided', () => {
-      capturedActiveDotClick = undefined
       render(<RetentionRateLineChart data={sampleData} title="Non-Clickable" />)
 
       // When no onDotClick, the Line should not have activeDot.onClick
@@ -102,7 +105,6 @@ describe('RetentionRateLineChart', () => {
 
   describe('animation', () => {
     it('passes strokeLinecap="round" to Line for flicker prevention', () => {
-      capturedStrokeLinecap = undefined
       render(<RetentionRateLineChart data={sampleData} title="Animation Test" />)
       expect(capturedStrokeLinecap).toBe('round')
     })
