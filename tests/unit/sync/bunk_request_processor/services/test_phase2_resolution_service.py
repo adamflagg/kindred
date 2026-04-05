@@ -1612,4 +1612,5 @@ class TestAgePreferenceMethodConstant:
 
         assert len(case.resolution_results) == 1
         result = case.resolution_results[0]
+        assert result is not None
         assert result.method == RequestType.AGE_PREFERENCE.value
