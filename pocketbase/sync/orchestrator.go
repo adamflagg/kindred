@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strconv"
 	"sync"
@@ -1414,7 +1415,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 // generateRunToken generates a unique token for tracking a sync run.
 // Used by runSingleSyncInternal and MarkSyncRunning.
 func generateRunToken() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return fmt.Sprintf("%d-%04x", time.Now().UnixNano(), rand.IntN(0xFFFF))
 }
 
 // generateQueueID generates a unique ID for a queued sync

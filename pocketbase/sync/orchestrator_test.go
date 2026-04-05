@@ -3244,4 +3244,23 @@ func TestGenerateRunToken(t *testing.T) {
 			seen[token] = true
 		}
 	})
+
+	t.Run("contains random hex suffix", func(t *testing.T) {
+		token := generateRunToken()
+		// Token format should be "{nanoseconds}-{4-char hex}"
+		parts := strings.SplitN(token, "-", 2)
+		if len(parts) != 2 {
+			t.Fatalf("expected token format 'nanos-hex', got %q", token)
+		}
+		hexPart := parts[1]
+		if len(hexPart) != 4 {
+			t.Errorf("expected 4-char hex suffix, got %q (len %d)", hexPart, len(hexPart))
+		}
+		// Verify it's valid hex
+		for _, c := range hexPart {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				t.Errorf("non-hex character %q in suffix %q", string(c), hexPart)
+			}
+		}
+	})
 }
