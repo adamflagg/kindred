@@ -1320,7 +1320,7 @@ class RequestOrchestrator:
             if post_filtered > 0:
                 logger.info(f"Post-expansion conflict filter: kept {post_kept}, filtered {post_filtered}")
         else:
-            post_kept = sum(len(res_list) for _, res_list in resolution_results)
+            post_kept = 0
             post_filtered = 0
 
         # Phase 2.5: Historical Group Verification
