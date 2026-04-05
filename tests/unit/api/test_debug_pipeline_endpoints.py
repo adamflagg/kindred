@@ -307,3 +307,65 @@ class TestGetTracesByCamper:
         data = response.json()
         assert data["total"] == 0
         assert data["items"] == []
+
+
+class TestPbRecordToSummaryItem:
+    """Tests for _pb_record_to_summary_item null handling."""
+
+    def test_none_string_fields_coalesced_to_empty(self) -> None:
+        """String attributes that are None should become empty strings."""
+        from api.routers.debug import _pb_record_to_summary_item
+
+        record = _make_mock_pb_record(
+            id=None,
+            run_id=None,
+            trace=None,
+            original_request=None,
+            bunk_request=None,
+            requester_cm_id=None,
+            requester_name=None,
+            target_name=None,
+            source_field=None,
+            session_cm_id=None,
+            request_type=None,
+            final_status=None,
+            final_confidence=None,
+            resolution_method=None,
+            phase3_triggered=None,
+            ai_reasoning_summary=None,
+            pre_p1_action=None,
+            year=None,
+            disposition_reason=None,
+            is_reciprocal=None,
+        )
+        item = _pb_record_to_summary_item(record)
+
+        # String fields should be empty string, not None
+        assert item.id == ""
+        assert item.run_id == ""
+        assert item.trace_id == ""
+        assert item.original_request_id == ""
+        assert item.requester_name == ""
+        assert item.target_name == ""
+        assert item.source_field == ""
+        assert item.request_type == ""
+        assert item.final_status == ""
+        assert item.resolution_method == ""
+        assert item.ai_reasoning_summary == ""
+        assert item.pre_p1_action == ""
+        assert item.disposition_reason == ""
+
+        # Int fields should be 0, not None
+        assert item.requester_cm_id == 0
+        assert item.session_cm_id == 0
+        assert item.year == 0
+
+        # Float fields should be 0.0, not None
+        assert item.final_confidence == 0.0
+
+        # Bool fields should be False, not None
+        assert item.phase3_triggered is False
+        assert item.is_reciprocal is False
+
+        # Nullable field stays None
+        assert item.bunk_request_id is None
