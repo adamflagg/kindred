@@ -472,7 +472,11 @@ class TestNaPrefixStrippingInPrepare:
 
     @pytest.mark.asyncio
     async def test_na_prefix_stripped_stat_tracked(self):
-        """Orchestrator should track count of N/A-stripped fields."""
+        """Orchestrator should track count of N/A-stripped fields.
+
+        ADR-5: NA-prefix stripping is scoped to bunk_with only.
+        not_bunk_with with "N/A- same age" should NOT be stripped — it passes as-is.
+        """
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
@@ -496,4 +500,132 @@ class TestNaPrefixStrippingInPrepare:
 
         await orchestrator._prepare_parse_requests(raw_requests)
 
-        assert orchestrator._stats.get("na_prefix_stripped", 0) == 2
+        # Only bunk_with gets NA-prefix stripped (ADR-5); not_bunk_with passes unchanged
+        assert orchestrator._stats.get("na_prefix_stripped", 0) == 1
+
+
+class TestNAStrippingScopedToBunkWith:
+    """NA-stripping and bare-NA skip should only apply to bunk_with, not notes fields."""
+
+    @pytest.mark.asyncio
+    async def test_na_prefix_stripped_for_bunk_with(self):
+        """N/A prefix in bunk_with should be stripped before AI."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Emma",
+                "last_name": "Johnson",
+                "bunk_with": "N/A;Emma Johnson",
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 1
+        assert parse_requests[0].request_text == "Emma Johnson"
+
+    @pytest.mark.asyncio
+    async def test_na_prefix_not_stripped_for_bunking_notes(self):
+        """N/A prefix in bunking_notes should NOT be stripped — it is a legitimate note."""
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Emma",
+                "last_name": "Johnson",
+                "bunk_with": "",
+                "not_bunk_with": "",
+                "bunking_notes": "N/A;special diet",
+                "internal_notes": "",
+                "socialize_with": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 1
+        assert parse_requests[0].request_text == "N/A;special diet"
+
+    @pytest.mark.asyncio
+    async def test_na_with_punctuation_skips_for_bunk_with(self):
+        """'N/A -' (N/A with trailing punctuation) in bunk_with should produce no parse request.
+
+        The elif re.match(r'^n/?a[\\s\\W]*$') block skips these for bunk_with.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Emma",
+                "last_name": "Johnson",
+                "bunk_with": "N/A -",
+                "not_bunk_with": "",
+                "bunking_notes": "",
+                "internal_notes": "",
+                "socialize_with": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 0
+
+    @pytest.mark.asyncio
+    async def test_bare_na_with_punctuation_not_skipped_for_bunking_notes(self):
+        """'N/A -' (N/A with trailing punctuation) in bunking_notes should NOT be skipped.
+
+        The elif re.match(r'^n/?a[\\s\\W]*$') block in _prepare_parse_requests catches patterns
+        like 'N/A -', 'NA.' etc. ADR-5 scopes that block to bunk_with only, so notes fields
+        with such patterns should pass through to AI parsing unchanged.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        pb = Mock()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025, session_cm_ids=[1234567])
+        orchestrator._person_sessions = {12345: [1234567]}
+
+        raw_requests = [
+            {
+                "requester_cm_id": 12345,
+                "first_name": "Emma",
+                "last_name": "Johnson",
+                "bunk_with": "",
+                "not_bunk_with": "",
+                "bunking_notes": "N/A -",
+                "internal_notes": "",
+                "socialize_with": "",
+            }
+        ]
+
+        parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
+
+        assert len(parse_requests) == 1
+        assert parse_requests[0].request_text == "N/A -"

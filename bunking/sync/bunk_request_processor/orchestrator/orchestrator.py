@@ -1834,30 +1834,32 @@ class RequestOrchestrator:
                         )
                     continue
 
-                # Strip N/A prefix if present (e.g., "N/A; their grade" -> "their grade")
-                stripped = strip_na_prefix(request_text)
-                if stripped is not None:
-                    logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
-                    self._stats["na_prefix_stripped"] += 1
-                    request_text = stripped
-                    na_stripped = True
-                elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
-                    # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
-                    self._stats["no_preference_skipped"] += 1
-                    if trace_key:
-                        self.trace_collector.record_pre_phase1(
-                            key=trace_key,
-                            action="skipped_na_only",
-                            original_text=original_text,
-                            requester_cm_id=requester_cm_id,
-                            year=self.year,
-                            session_cm_id=0,
-                            source_field=field_name,
-                            skip_reason="na_only",
-                            requester_name=requester_name,
-                            requester_grade=requester_grade,
-                        )
-                    continue
+                # Strip N/A prefix and skip bare N/A only for bunk_with.
+                # In notes fields, "N/A" and "N/A;..." are legitimate free-form content.
+                if field_name == SourceField.BUNK_WITH:
+                    stripped = strip_na_prefix(request_text)
+                    if stripped is not None:
+                        logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
+                        self._stats["na_prefix_stripped"] += 1
+                        request_text = stripped
+                        na_stripped = True
+                    elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
+                        # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
+                        self._stats["no_preference_skipped"] += 1
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="skipped_na_only",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=0,
+                                source_field=field_name,
+                                skip_reason="na_only",
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
+                        continue
 
                 # Extract staff signatures from bunking_notes before AI parsing
                 # bunking_notes has STAFFNAME (DATETIME) patterns; internal_notes does not
