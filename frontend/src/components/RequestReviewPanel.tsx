@@ -1796,24 +1796,38 @@ export default function RequestReviewPanel({
             <AlertCircle className="text-forest-600 dark:text-forest-400 mt-0.5 h-5 w-5 flex-shrink-0" />
             <div className="text-forest-800 dark:text-forest-200 space-y-3 text-sm">
               <div>
-                <p className="mb-1 font-medium">Confidence Indicators:</p>
-                <ul className="text-forest-700 dark:text-forest-300 ml-2 list-inside list-disc space-y-1">
-                  <li>
-                    <span className="inline-flex items-center">
-                      <CheckCheck className="mr-1 h-3 w-3" /> <strong>95%+</strong>
-                    </span>{' '}
-                    — High confidence, auto-resolved, typically no review needed
-                  </li>
-                  <li>
-                    <span className="inline-flex items-center">
-                      <CheckCircle className="mr-1 h-3 w-3" /> <strong>85-94%</strong>
-                    </span>{' '}
-                    — Standard confidence, resolved but may want to spot-check
-                  </li>
-                  <li>
-                    <strong>&lt;85%</strong> — Lower confidence, requires manual review
-                  </li>
-                </ul>
+                <p className="mb-1.5 font-medium">Confidence:</p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-forest-700 bg-forest-50 dark:text-forest-300 dark:bg-forest-900/30 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
+                    <CheckCheck className="mr-1 h-3 w-3" /> 95%+ Auto-resolved
+                  </span>
+                  <span className="text-forest-600 bg-forest-50/70 dark:text-forest-400 dark:bg-forest-900/20 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
+                    <CheckCircle className="mr-1 h-3 w-3" /> 85-94% Spot-check
+                  </span>
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    &lt;85% Review needed
+                  </span>
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 font-medium">Disposition Reasons:</p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                    exact match
+                  </span>
+                  <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                    needs review
+                  </span>
+                  <span className="inline-flex rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-400">
+                    target not attending
+                  </span>
+                  <span className="bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold">
+                    other
+                  </span>
+                  <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                    Recip
+                  </span>
+                </div>
               </div>
               <div>
                 <p className="mb-1 font-medium">Review Guidelines:</p>
@@ -1828,20 +1842,13 @@ export default function RequestReviewPanel({
                 <p className="mb-1 font-medium">Action Meanings:</p>
                 <ul className="text-forest-700 dark:text-forest-300 ml-2 list-inside list-disc space-y-1">
                   <li>
-                    <strong className="text-forest-800 dark:text-forest-200">Approve (✓):</strong>{' '}
-                    Confirms the request is valid and the requested person has been correctly
-                    identified. Approved requests are automatically protected from sync updates.
+                    <strong>Approve (✓):</strong> Confirms match, auto-protects from sync
                   </li>
                   <li>
-                    <strong className="text-forest-800 dark:text-forest-200">Reject (✗):</strong>{' '}
-                    Marks request as invalid (e.g., person not attending this session, incorrect
-                    name match, or typo)
+                    <strong>Reject (✗):</strong> Marks as invalid (wrong match, not attending, etc.)
                   </li>
                   <li>
-                    <strong className="text-forest-800 dark:text-forest-200">
-                      Protected (🛡️):
-                    </strong>{' '}
-                    Resolved requests are automatically protected to preserve manual approvals
+                    <strong>Protected (🛡️):</strong> Preserves manual approvals across syncs
                   </li>
                 </ul>
               </div>
