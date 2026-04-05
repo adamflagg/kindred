@@ -308,9 +308,10 @@ describe('RequestReviewPanel', () => {
     })
 
     it('should calculate active filter count correctly', () => {
-      // Active filters: non-default confidence threshold, selected request types, non-default statuses
+      // Active filters: confidence/review filter, selected request types, non-default statuses
       const filters = {
-        confidenceThreshold: 50, // non-default (0 is default)
+        lowConfidenceOnly: true, // non-default (false is default)
+        needsReviewOnly: false,
         requestTypes: ['bunk_with', 'not_bunk_with'], // 2 types selected
         statuses: ['pending'], // 1 status (default has 3)
         searchQuery: '',
@@ -319,11 +320,11 @@ describe('RequestReviewPanel', () => {
       }
 
       // Count active filters:
-      // - confidenceThreshold !== 0 = 1
+      // - lowConfidenceOnly || needsReviewOnly = 1
       // - requestTypes.length > 0 = 1 (counts as 1 regardless of how many types)
       // - statuses differ from default = 1
       let activeCount = 0
-      if (filters.confidenceThreshold !== 0) activeCount++
+      if (filters.lowConfidenceOnly || filters.needsReviewOnly) activeCount++
       if (filters.requestTypes.length > 0) activeCount++
       if (filters.statuses.length !== 3 || filters.showResolved) activeCount++
 
