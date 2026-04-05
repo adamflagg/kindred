@@ -27,6 +27,7 @@ from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     ENROLLMENT_STATUSES,
     get_enrollment_date,
+    parse_date_only,
     reconstruct_daily_multi,
 )
 from api.utils.session_metrics import (
@@ -153,7 +154,7 @@ def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | No
     for key in ("priority_reg_date", "early_reg_date"):
         date_str = reg_dates.get(key)
         if date_str:
-            return datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            return datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
     return None
 
 
@@ -365,7 +366,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             snap_dt = snap.snapshot_datetime
-            date_str = snap_dt.split("T")[0].split(" ")[0]
+            date_str = parse_date_only(snap_dt)
             key = (raw_sid, date_str)
             if key not in raw_gender_dt or snap_dt > raw_gender_dt[key]:
                 raw_gender[key] = (
@@ -771,7 +772,7 @@ class VelocityService:
         """Find the earliest snapshot_datetime >= season_start across all snapshots."""
         earliest: datetime | None = None
         for snap in snapshots:
-            dt = datetime.strptime(snap.snapshot_datetime.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            dt = datetime.strptime(parse_date_only(snap.snapshot_datetime), "%Y-%m-%d")
             if dt.date() < season_start.date():
                 continue
             if earliest is None or dt < earliest:
@@ -1147,7 +1148,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             snap_dt = snap.snapshot_datetime
-            date_str = snap_dt.split("T")[0].split(" ")[0]
+            date_str = parse_date_only(snap_dt)
             key = (raw_sid, date_str)
             if key not in raw_latest_dt or snap_dt > raw_latest_dt[key]:
                 raw_latest[key] = (
@@ -1233,7 +1234,7 @@ class VelocityService:
         weekly_cancelled: dict[str, int] = {}
 
         for date_str, counts in sorted(date_data.items()):
-            dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
             if dt.date() < ctx.season_start.date():
                 continue
             if dt.date() > ctx.season_end.date():
@@ -1299,7 +1300,7 @@ class VelocityService:
         combined_dates: dict[str, dict[str, int]] = defaultdict(lambda: {"enrolled": 0, "cancelled": 0})
         for sid, date_data in session_date_data.items():
             for date_str, counts in date_data.items():
-                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 if dt.date() < season_start:
                     continue
                 if dt.date() > season_end.date():
@@ -1307,7 +1308,7 @@ class VelocityService:
                 combined_dates[date_str]["enrolled"] += counts.get("enrolled", 0)
             # Add cancelled data
             for date_str, canc in session_date_cancelled.get(sid, {}).items():
-                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 if dt.date() < season_start:
                     continue
                 if dt.date() > season_end.date():
@@ -1366,7 +1367,7 @@ class VelocityService:
         for sid, date_data in session_date_data.items():
             session_dates: dict[str, dict[str, int]] = {}
             for date_str, counts in date_data.items():
-                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 if dt.date() < season_start or dt.date() > season_end.date():
                     continue
                 clean_date = dt.strftime("%Y-%m-%d")
@@ -1853,7 +1854,7 @@ class VelocityService:
         for snap in snapshots:
             raw_sid = int(snap.session_cm_id)
             snap_dt = snap.snapshot_datetime
-            date_str = snap_dt.split("T")[0].split(" ")[0]
+            date_str = parse_date_only(snap_dt)
             cancelled = int(getattr(snap, "cancelled_count", 0) or 0)
             key = (raw_sid, date_str)
             if key not in raw_cancelled_dt or snap_dt > raw_cancelled_dt[key]:
@@ -1876,7 +1877,7 @@ class VelocityService:
         for sid, date_data in session_date_cancelled.items():
             weekly_data: dict[str, int] = {}
             for date_str, cancelled in sorted(date_data.items()):
-                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
                     continue
                 bucket = _week_start(dt, ctx.season_start)
@@ -2007,7 +2008,7 @@ class VelocityService:
             if session_cm_id is not None and effective_sid != session_cm_id:
                 continue
 
-            dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            dt = datetime.strptime(parse_date_only(cancel.detected_at), "%Y-%m-%d")
             if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
                 continue
             bucket = _week_start(dt, ctx.season_start)
@@ -2148,7 +2149,7 @@ class VelocityService:
             if gender not in ("M", "F"):
                 continue
 
-            dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            dt = datetime.strptime(parse_date_only(cancel.detected_at), "%Y-%m-%d")
             if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
                 continue
             date_key = dt.strftime("%Y-%m-%d")
@@ -2248,7 +2249,7 @@ class VelocityService:
         for config_key, (phase, label) in PHASE_KEY_MAP.items():
             date_str = reg_dates.get(config_key)
             if date_str:
-                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 wn = _week_number(dt, season_start)
                 markers.append(PhaseMarker(phase=phase, date=dt.strftime("%Y-%m-%d"), label=label, week_number=wn))
 
