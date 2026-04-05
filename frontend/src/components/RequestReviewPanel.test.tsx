@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '../test/testUtils'
 import RequestReviewPanel from './RequestReviewPanel'
+import type { BunkRequestsResponse } from '../types/pocketbase-types'
 
 // Mock the pocketbase module
 vi.mock('../lib/pocketbase', () => ({
@@ -857,6 +858,36 @@ describe('RequestReviewPanel', () => {
         getSourceLinks('req2')
         expect(fetchCount).toBe(2)
       })
+    })
+  })
+
+  describe('EditableRequestType onChange payload', () => {
+    it('includes requestee_id: 0 when switching to age_preference', () => {
+      const updates: Partial<BunkRequestsResponse> = {
+        request_type: 'age_preference' as BunkRequestsResponse['request_type'],
+      }
+      const newType: string = 'age_preference'
+      if (newType === 'age_preference') {
+        updates.requestee_id = 0
+      } else {
+        updates.age_preference_target = ''
+      }
+      expect(updates).toHaveProperty('requestee_id', 0)
+      expect(updates).not.toHaveProperty('age_preference_target')
+    })
+
+    it('includes age_preference_target: "" when switching to bunk_with', () => {
+      const updates: Partial<BunkRequestsResponse> = {
+        request_type: 'bunk_with' as BunkRequestsResponse['request_type'],
+      }
+      const newType: string = 'bunk_with'
+      if (newType === 'age_preference') {
+        updates.requestee_id = 0
+      } else {
+        updates.age_preference_target = ''
+      }
+      expect(updates).toHaveProperty('age_preference_target', '')
+      expect(updates).not.toHaveProperty('requestee_id')
     })
   })
 })
