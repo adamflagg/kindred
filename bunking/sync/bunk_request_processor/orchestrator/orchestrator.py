@@ -1506,7 +1506,7 @@ class RequestOrchestrator:
         resolved_requests = self.conflict_detector.apply_conflict_resolution(resolved_requests, conflict_result)
 
         # Create bunk requests (skipped in dry_run mode)
-        deduped_keys: set[tuple[int, str]] = set()
+        deduped_keys: set[tuple[int, int | None, str]] = set()
         if dry_run:
             logger.info("=== Skipping Bunk Request Creation (dry_run=True) ===")
             created_requests: list[Any] = []
@@ -1516,10 +1516,11 @@ class RequestOrchestrator:
         self._stats["requests_created"] = len(created_requests)
 
         # --- Trace: Post-Pipeline results ---
-        # Build a map from (requester_cm_id, target_name) to created BunkRequest for trace linking
-        created_by_key: dict[tuple[int, str], Any] = {}
+        # Build a map from (requester_cm_id, requested_cm_id, target_name) to created BunkRequest for trace linking
+        # Key includes requested_cm_id to avoid collisions when different targets share the same name (#788)
+        created_by_key: dict[tuple[int, int | None, str], Any] = {}
         for req in created_requests:
-            req_key = (req.requester_cm_id, getattr(req, "requested_name", "") or "")
+            req_key = (req.requester_cm_id, req.requested_cm_id, getattr(req, "requested_name", "") or "")
             created_by_key.setdefault(req_key, req)
 
         for pr, res_list in resolution_results:
@@ -1536,7 +1537,8 @@ class RequestOrchestrator:
             for req_idx, (parsed_req, rr) in enumerate(zip(pr.parsed_requests, res_list, strict=False)):
                 # Find the matching created BunkRequest (if any)
                 target_name = parsed_req.target_name or ""
-                matched_br = created_by_key.get((requester_cm_id, target_name))
+                resolved_cm_id = rr.person.cm_id if rr.person else None
+                matched_br = created_by_key.get((requester_cm_id, resolved_cm_id, target_name))
                 br_meta = matched_br.metadata if matched_br and hasattr(matched_br, "metadata") else {}
                 br_meta = br_meta or {}
 
@@ -1548,9 +1550,10 @@ class RequestOrchestrator:
                     reciprocal_pair_cm_id = matched_br.requested_cm_id if matched_br else None
 
                 # Check if this request was removed by deduplication
-                # Use resolved name to match deduped_keys (built from BunkRequest.requested_name)
+                # Key includes requested_cm_id to avoid collisions when different targets share the
+                # same name (#788) — without it, a surviving request could be marked as DEDUPED
                 resolved_name = rr.person.full_name if rr.person and hasattr(rr.person, "full_name") else target_name
-                is_deduped = (requester_cm_id, resolved_name or "") in deduped_keys
+                is_deduped = (requester_cm_id, resolved_cm_id, resolved_name or "") in deduped_keys
                 if is_deduped:
                     any_dedup = True
 
@@ -2174,7 +2177,7 @@ class RequestOrchestrator:
 
     async def _create_bunk_requests(
         self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]
-    ) -> tuple[list[BunkRequest], set[tuple[int, str]]]:
+    ) -> tuple[list[BunkRequest], set[tuple[int, int | None, str]]]:
         """Create bunk request records in the database.
 
         This method:
@@ -2184,13 +2187,15 @@ class RequestOrchestrator:
 
         Returns:
             Tuple of (saved_requests, deduped_keys) where deduped_keys is a set of
-            (requester_cm_id, requested_name) tuples for requests removed by dedup.
+            (requester_cm_id, requested_cm_id, requested_name) tuples for requests
+            removed by dedup. Includes requested_cm_id to avoid trace key collisions
+            when different targets share the same name (#788).
         """
         # Build BunkRequest objects using the request builder
         pending_requests = self.request_builder.build_requests(resolved_requests)
 
         # Apply validation pipeline to all requests
-        deduped_keys: set[tuple[int, str]] = set()
+        deduped_keys: set[tuple[int, int | None, str]] = set()
         if pending_requests:
             logger.info(f"=== Applying Validation Pipeline to {len(pending_requests)} requests ===")
             validated_requests, deduped_keys = self._apply_validation_pipeline(pending_requests)
@@ -2355,7 +2360,9 @@ class RequestOrchestrator:
 
         return self._save_new_request_with_source_link(request)
 
-    def _apply_validation_pipeline(self, requests: list[BunkRequest]) -> tuple[list[BunkRequest], set[tuple[int, str]]]:
+    def _apply_validation_pipeline(
+        self, requests: list[BunkRequest]
+    ) -> tuple[list[BunkRequest], set[tuple[int, int | None, str]]]:
         """Apply the validation pipeline to a list of BunkRequest objects.
 
         This pipeline runs in order:
@@ -2367,7 +2374,9 @@ class RequestOrchestrator:
 
         Returns:
             Tuple of (validated_requests, deduped_keys) where deduped_keys is a set of
-            (requester_cm_id, requested_name) tuples for requests removed by dedup.
+            (requester_cm_id, requested_cm_id, requested_name) tuples for requests
+            removed by dedup. Includes requested_cm_id to avoid trace key collisions
+            when different targets share the same name (#788).
         """
         if not requests:
             return requests, set()
@@ -2409,10 +2418,12 @@ class RequestOrchestrator:
         deduplicated_requests = dedup_result.kept_requests
 
         # Build set of deduped-out request keys for trace accuracy
-        deduped_keys: set[tuple[int, str]] = set()
+        # Key includes requested_cm_id to avoid collisions when different targets
+        # share the same name (#788)
+        deduped_keys: set[tuple[int, int | None, str]] = set()
         for group in dedup_result.duplicate_groups:
             for dup in group.duplicates:
-                deduped_keys.add((dup.requester_cm_id, dup.requested_name or ""))
+                deduped_keys.add((dup.requester_cm_id, dup.requested_cm_id, dup.requested_name or ""))
 
         duplicates_removed = dedup_result.statistics.get("duplicates_removed", 0)
         self._stats["duplicates_removed"] = duplicates_removed

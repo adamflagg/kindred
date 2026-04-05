@@ -357,6 +357,126 @@ class TestOrchestratorValidationPipelineIntegration:
         assert self_ref.confidence_score == 0.0
 
 
+class TestDedupTraceKeyCollision:
+    """Tests for dedup trace key collision fix (issue #788).
+
+    The dedup trace key must include requested_cm_id to distinguish
+    requests for different targets who share the same name. Without it,
+    (requester_cm_id, requested_name) can collide when two different
+    cm_ids resolve to the same display name, causing the surviving
+    request to be incorrectly marked as DEDUPED.
+    """
+
+    @pytest.mark.asyncio
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
+    async def test_deduped_keys_include_requested_cm_id(self, mock_social_graph, mock_factory):
+        """deduped_keys must use (requester_cm_id, requested_cm_id, name) not just (requester_cm_id, name).
+
+        When two requests from the same requester target different people who share a name,
+        only the actual duplicate should appear in deduped_keys — not the distinct request.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        mock_factory.return_value.create.return_value = Mock()
+        mock_social_graph_instance = Mock()
+        mock_social_graph_instance.initialize = AsyncMock()
+        mock_social_graph.return_value = mock_social_graph_instance
+
+        pb = _create_mock_pocketbase()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025)
+
+        # Same requester, same name, DIFFERENT cm_ids — these are distinct people
+        # Emma Johnson (cm_id=200) and Emma Johnson (cm_id=201) are different campers
+        req_a = _create_bunk_request(
+            requester_cm_id=100,
+            requested_cm_id=200,
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+        )
+        req_a.requested_name = "Emma Johnson"
+
+        req_b = _create_bunk_request(
+            requester_cm_id=100,
+            requested_cm_id=201,
+            source=RequestSource.FAMILY,
+            confidence=0.90,
+        )
+        req_b.requested_name = "Emma Johnson"
+
+        validated, deduped_keys = orchestrator._apply_validation_pipeline([req_a, req_b])
+
+        # Both should be kept — different targets (different cm_ids)
+        assert len(validated) == 2
+        # No duplicates removed — these are distinct requests
+        assert len(deduped_keys) == 0
+
+    @pytest.mark.asyncio
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
+    async def test_deduped_keys_distinguish_same_name_different_target(self, mock_social_graph, mock_factory):
+        """When a true duplicate exists alongside a distinct same-name request,
+        only the duplicate's key should be in deduped_keys.
+
+        Setup: requester 100 requests both Emma Johnson (cm_id=200) twice
+        and Emma Johnson (cm_id=201) once. The duplicate pair (cm_id=200)
+        should produce a deduped_keys entry for cm_id=200 only.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        mock_factory.return_value.create.return_value = Mock()
+        mock_social_graph_instance = Mock()
+        mock_social_graph_instance.initialize = AsyncMock()
+        mock_social_graph.return_value = mock_social_graph_instance
+
+        pb = _create_mock_pocketbase()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025)
+
+        # Two requests for Emma Johnson (cm_id=200) — true duplicates
+        dup_1 = _create_bunk_request(
+            requester_cm_id=100,
+            requested_cm_id=200,
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+        )
+        dup_1.requested_name = "Emma Johnson"
+
+        dup_2 = _create_bunk_request(
+            requester_cm_id=100,
+            requested_cm_id=200,
+            source=RequestSource.FAMILY,
+            confidence=0.80,
+        )
+        dup_2.requested_name = "Emma Johnson"
+
+        # One request for different Emma Johnson (cm_id=201) — NOT a duplicate
+        distinct = _create_bunk_request(
+            requester_cm_id=100,
+            requested_cm_id=201,
+            source=RequestSource.FAMILY,
+            confidence=0.90,
+        )
+        distinct.requested_name = "Emma Johnson"
+
+        validated, deduped_keys = orchestrator._apply_validation_pipeline([dup_1, dup_2, distinct])
+
+        # 2 kept: one from the (200) duplicate pair + the distinct (201) request
+        assert len(validated) == 2
+
+        # deduped_keys should contain an entry for cm_id=200 (the removed duplicate)
+        # but NOT for cm_id=201 (the distinct request that was never duplicated)
+        assert len(deduped_keys) == 1
+
+        # The key must include requested_cm_id so we can tell WHICH Emma Johnson was deduped
+        deduped_key = next(iter(deduped_keys))
+        assert 200 in deduped_key, "deduped key must contain the duplicated target's cm_id (200)"
+        assert 201 not in deduped_key, "deduped key must NOT contain the distinct target's cm_id (201)"
+
+
 # =============================================================================
 # Parity Tracker Gap: Line 233 (Known Intentional Differences)
 # =============================================================================
