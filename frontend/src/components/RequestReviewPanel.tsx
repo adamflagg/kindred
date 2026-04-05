@@ -30,6 +30,7 @@ import type {
   BunkRequestsStatusOptions,
 } from '../types/pocketbase-types'
 import clsx from 'clsx'
+import { getDispositionClasses } from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
@@ -61,7 +62,7 @@ interface FilterState {
   resolvedConfidenceFilter: ResolvedConfidenceFilter
 }
 
-type SortColumn = 'requester' | 'request' | 'type' | 'priority' | 'confidence' | 'status'
+type SortColumn = 'requester' | 'request' | 'disposition' | 'priority' | 'confidence' | 'status'
 
 export default function RequestReviewPanel({
   sessionId,
@@ -375,9 +376,9 @@ export default function RequestReviewPanel({
             : b.parse_notes || ''
           break
         }
-        case 'type':
-          aValue = a.request_type
-          bValue = b.request_type
+        case 'disposition':
+          aValue = a.disposition_reason ?? ''
+          bValue = b.disposition_reason ?? ''
           break
         case 'priority':
           aValue = a.priority
@@ -1078,11 +1079,11 @@ export default function RequestReviewPanel({
               </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
-                onClick={() => handleSort('type')}
+                onClick={() => handleSort('disposition')}
               >
                 <div className="flex items-center gap-1">
-                  Type
-                  {sortBy === 'type' && (
+                  Disposition
+                  {sortBy === 'disposition' && (
                     <span className="text-primary">
                       {sortOrder === 'asc' ? (
                         <ChevronUp className="h-3 w-3" />
@@ -1231,6 +1232,16 @@ export default function RequestReviewPanel({
                               {(request.confidence_score * 100).toFixed(0)}%
                             </span>
                             {getStatusBadge(request.status)}
+                            {request.disposition_reason && (
+                              <span
+                                className={clsx(
+                                  'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                  getDispositionClasses(request.disposition_reason)
+                                )}
+                              >
+                                {request.disposition_reason.replace(/_/g, ' ')}
+                              </span>
+                            )}
                           </div>
 
                           {/* Request target info */}
@@ -1462,27 +1473,25 @@ export default function RequestReviewPanel({
                               personMap={personMap}
                             />
                           </div>
-                          <div className="flex items-center px-4 py-3">
-                            <EditableRequestType
-                              value={request.request_type}
-                              onChange={(newType) => {
-                                const updates: Partial<BunkRequestsResponse> = {
-                                  request_type: newType as BunkRequestsResponse['request_type'],
-                                }
-
-                                // Clear fields based on type change
-                                if (newType === 'age_preference') {
-                                  // Clear person selection when switching to age preference
-                                  delete updates.requestee_id
-                                } else {
-                                  // Clear age preference when switching to person-based types
-                                  delete updates.age_preference_target
-                                }
-
-                                handleValidatedUpdate(request, updates)
-                              }}
-                              disabled={request.request_locked || false}
-                            />
+                          <div className="flex items-center gap-1 px-4 py-3">
+                            {request.disposition_reason ? (
+                              <span
+                                className={clsx(
+                                  'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                  getDispositionClasses(request.disposition_reason)
+                                )}
+                                title={request.disposition_reason}
+                              >
+                                {request.disposition_reason.replace(/_/g, ' ')}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                            {request.is_reciprocal && (
+                              <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                                Recip
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center justify-center px-4 py-3">
                             <EditablePriority
