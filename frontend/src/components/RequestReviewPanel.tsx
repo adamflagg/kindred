@@ -1734,10 +1734,12 @@ export default function RequestReviewPanel({
                                     const updates: Partial<BunkRequestsResponse> = {
                                       request_type: newType as BunkRequestsResponse['request_type'],
                                     }
+                                    // Explicit clear values (not delete) so PocketBase clears the field.
+                                    // 0 is the established "no person" sentinel (see ?? 0 pattern elsewhere).
                                     if (newType === 'age_preference') {
-                                      delete updates.requestee_id
+                                      updates.requestee_id = 0
                                     } else {
-                                      delete updates.age_preference_target
+                                      updates.age_preference_target = ''
                                     }
                                     handleValidatedUpdate(request, updates)
                                   }}
