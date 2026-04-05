@@ -15,7 +15,7 @@ def _get_velocity_source() -> str:
     return path.read_text()
 
 
-class TestParseDataOnlyImport:
+class TestParseDateOnlyImport:
     """Verify that parse_date_only is imported from reconstruction."""
 
     def test_imports_parse_date_only(self):
@@ -54,7 +54,7 @@ class TestNoInlineDateStripping:
         )
 
 
-class TestParseDataOnlyUsage:
+class TestParseDateOnlyUsage:
     """Verify that parse_date_only is actually called in the module."""
 
     def test_parse_date_only_is_called(self):
