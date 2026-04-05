@@ -12,8 +12,8 @@ from datetime import datetime
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.core.models import (
-    ParseRequest,
     ParsedRequest,
+    ParseRequest,
     ParseResult,
     RequestSource,
     RequestType,
@@ -457,7 +457,7 @@ class TestTemporalFilterScoping:
     is BUNKING_NOTES or INTERNAL_NOTES.
     """
 
-    def _make_parse_request(self, field_name: str, requester_cm_id: int = 1001) -> "ParseRequest":
+    def _make_parse_request(self, field_name: str, requester_cm_id: int = 1001) -> ParseRequest:
         """Create a minimal ParseRequest with the given field_name."""
         from bunking.sync.bunk_request_processor.core.models import ParseRequest
 
@@ -475,12 +475,12 @@ class TestTemporalFilterScoping:
 
     def _make_parsed_request(
         self,
-        request_type: "RequestType",
+        request_type: RequestType,
         target_name: str,
         source_field: str,
         is_superseded: bool = False,
         csv_position: int = 1,
-    ) -> "ParsedRequest":
+    ) -> ParsedRequest:
         """Create a minimal ParsedRequest."""
         from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource
 

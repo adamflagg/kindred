@@ -11,11 +11,11 @@ safety net that doesn't depend on AI correctly marking is_superseded.
 
 from __future__ import annotations
 
-import pytest
-
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,

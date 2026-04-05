@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, Mock
 
-import pytest
-
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     ParseRequest,
