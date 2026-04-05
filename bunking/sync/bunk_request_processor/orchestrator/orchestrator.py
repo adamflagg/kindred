@@ -1583,6 +1583,14 @@ class RequestOrchestrator:
                     final_status = "RESOLVED" if rr.is_resolved else "PENDING"
                     final_confidence = rr.confidence
 
+                # Dual-source pattern: is_reciprocal and disposition_reason appear together
+                # on the trace but originate from different pipeline stages:
+                #   - is_reciprocal: detection signal from batch_signals.detect_batch_signals(),
+                #     stored in BunkRequest.metadata JSON. It's an INPUT to disposition rules.
+                #   - disposition_reason: business decision OUTPUT from disposition_rules.determine_disposition(),
+                #     stored as a dedicated BunkRequest DB column.
+                # A request can be is_reciprocal=True with disposition_reason="target_not_enrolled"
+                # when the reciprocal signal was detected but a business gate overrode it.
                 final_bunk_requests.append(
                     FinalBunkRequestTrace(
                         bunk_request_id=getattr(matched_br, "id", None) if matched_br else None,

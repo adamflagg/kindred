@@ -33,6 +33,9 @@ class Disposition:
     rule_id: int
 
 
+# NOTE: disposition_reason is the output of this rules engine. It considers
+# batch signals (is_reciprocal, household_co_request) among other factors.
+# See batch_signals.py for how input signals are detected.
 def determine_disposition(
     request_type: RequestType,
     *,
