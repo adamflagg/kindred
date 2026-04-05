@@ -82,7 +82,6 @@ def _make_trace_record_with_data() -> MagicMock:
             ],
         },
         pinned=False,
-        schema_version=1,
         created="2025-06-15T10:00:00Z",
     )
 

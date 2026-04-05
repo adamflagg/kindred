@@ -10,8 +10,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = 1
-
 
 class RequesterInfo(BaseModel):
     cm_id: int = 0

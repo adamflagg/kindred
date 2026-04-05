@@ -604,7 +604,6 @@ export type DebugPipelineTracesRecord<Ttrace_data = unknown> = {
   pinned?: boolean
   requester_cm_id?: number
   run_id: string
-  schema_version?: number
   session_cm_id?: number
   source_field?: string
   trace_data?: null | Ttrace_data

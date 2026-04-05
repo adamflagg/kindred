@@ -1209,7 +1209,6 @@ def _pb_record_to_trace_item(record: Any) -> PipelineTraceItem:
         source_field=getattr(record, "source_field", ""),
         trace_data=getattr(record, "trace_data", {}) or {},
         pinned=getattr(record, "pinned", False),
-        schema_version=getattr(record, "schema_version", 1),
         created=_parse_pb_datetime(getattr(record, "created", None)),
     )
 
