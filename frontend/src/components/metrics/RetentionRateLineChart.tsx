@@ -113,7 +113,7 @@ export function RetentionRateLineChart({
       xAxisRightPadding={20}
     >
       <ResponsiveContainer width="100%" height={barsHeight}>
-        <LineChart
+        <LineChart<ChartItem>
           data={chartData}
           margin={{ top: 16, right: 20, left: 0, bottom: 0 }}
           style={{ overflow: 'visible' }}
@@ -123,11 +123,12 @@ export function RetentionRateLineChart({
           <YAxis hide width={0} domain={[0, 100]} ticks={ticks} />
           <Tooltip content={<CustomTooltip />} />
           <ReferenceLine y={50} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-          <Line
+          <Line<ChartItem>
             type="monotone"
             dataKey="rate"
             stroke="hsl(160, 100%, 35%)"
             strokeWidth={2.5}
+            strokeLinecap="round"
             dot={{ fill: 'hsl(160, 100%, 35%)', r: 5 }}
             activeDot={
               handleDotClick

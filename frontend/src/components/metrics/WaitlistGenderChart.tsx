@@ -158,7 +158,7 @@ export function WaitlistGenderChart({
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           {/* Inner ring: gender totals */}
-          <Pie
+          <Pie<InnerDatum>
             data={innerData}
             dataKey="value"
             nameKey="name"
@@ -174,7 +174,7 @@ export function WaitlistGenderChart({
             ))}
           </Pie>
           {/* Outer ring: enrollment split */}
-          <Pie
+          <Pie<OuterDatum>
             data={outerData}
             dataKey="value"
             nameKey="name"

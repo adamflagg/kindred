@@ -192,7 +192,7 @@ export function CancellationGenderChart({
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           {/* Inner ring: gender totals */}
-          <Pie
+          <Pie<InnerDatum>
             data={innerData}
             dataKey="value"
             nameKey="name"
@@ -208,7 +208,7 @@ export function CancellationGenderChart({
             ))}
           </Pie>
           {/* Outer ring: prior status split */}
-          <Pie
+          <Pie<OuterDatum>
             data={outerData}
             dataKey="value"
             nameKey="name"
