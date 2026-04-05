@@ -445,6 +445,17 @@ class RequestOrchestrator:
             if not result.is_valid or not result.parsed_requests:
                 continue
 
+            # ADR-4: Notes fields are additive across uploads — skip temporal filtering.
+            # bunk_with requests supersede each other (a later upload revises who you want
+            # to bunk with), but bunking_notes/internal_notes accumulate over time and
+            # should never be silently discarded because of an is_superseded flag.
+            if result.parse_request and result.parse_request.field_name in (
+                SourceField.BUNKING_NOTES,
+                SourceField.INTERNAL_NOTES,
+            ):
+                kept_count += len(result.parsed_requests)
+                continue
+
             filtered_requests = []
 
             # Pass 1: Filter by is_superseded flag (AI's semantic judgment)

@@ -445,6 +445,190 @@ class TestParsedRequestTemporalFields:
         assert hasattr(req, "supersedes_reason") or "supersedes_reason" in req.__dict__
 
 
+class TestTemporalFilterScoping:
+    """Tests that temporal conflict filtering is scoped to bunk_with only.
+
+    Notes fields (bunking_notes, internal_notes) are additive across uploads —
+    a counselor may add notes in multiple CSVs and all should be visible.
+    Applying temporal filtering to notes silently discards earlier notes.
+
+    ADR-4 fix: skip temporal filtering for results whose parse_request.field_name
+    is BUNKING_NOTES or INTERNAL_NOTES.
+    """
+
+    def _make_parse_request(self, field_name: str, requester_cm_id: int = 1001) -> "ParseRequest":
+        """Create a minimal ParseRequest with the given field_name."""
+        from bunking.sync.bunk_request_processor.core.models import ParseRequest
+
+        return ParseRequest(
+            request_text="test",
+            field_name=field_name,
+            requester_name="Emma Johnson",
+            requester_cm_id=requester_cm_id,
+            requester_grade="6",
+            session_cm_id=2001,
+            session_name="Session A",
+            year=2025,
+            row_data={},
+        )
+
+    def _make_parsed_request(
+        self,
+        request_type: "RequestType",
+        target_name: str,
+        source_field: str,
+        is_superseded: bool = False,
+        csv_position: int = 1,
+    ) -> "ParsedRequest":
+        """Create a minimal ParsedRequest."""
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource
+
+        req = ParsedRequest(
+            raw_text="test",
+            request_type=request_type,
+            target_name=target_name,
+            age_preference=None,
+            source_field=source_field,
+            source=RequestSource.STAFF,
+            confidence=0.9,
+            csv_position=csv_position,
+            metadata={},
+        )
+        req.is_superseded = is_superseded
+        req.temporal_date = None
+        req.supersedes_reason = "replaced by newer upload" if is_superseded else None
+        return req
+
+    def test_bunking_notes_not_filtered_by_temporal_conflict(self):
+        """Notes from different uploads must both survive — earlier note is NOT superseded.
+
+        Scenario: Two parsed requests for bunking_notes for the same requester.
+        The AI marks one is_superseded=True (simulating what would happen across uploads).
+        With ADR-4 fix, both survive because notes fields bypass temporal filtering.
+        """
+        from bunking.sync.bunk_request_processor.core.models import ParseResult, RequestType
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
+        from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+        orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
+
+        # Simulate two notes requests in a bunking_notes ParseResult.
+        # The older one is marked superseded by the AI — but it shouldn't be discarded
+        # because bunking_notes is additive.
+        older_note = self._make_parsed_request(
+            RequestType.BUNK_WITH,
+            "Liam Garcia",
+            source_field=SourceField.BUNKING_NOTES,
+            is_superseded=True,  # AI marked it as superseded
+            csv_position=1,
+        )
+        newer_note = self._make_parsed_request(
+            RequestType.BUNK_WITH,
+            "Liam Garcia",
+            source_field=SourceField.BUNKING_NOTES,
+            is_superseded=False,
+            csv_position=2,
+        )
+
+        result = ParseResult(
+            parsed_requests=[older_note, newer_note],
+            is_valid=True,
+            parse_request=self._make_parse_request(SourceField.BUNKING_NOTES),
+        )
+        parse_results = [result]
+
+        kept, filtered = orchestrator._filter_temporal_conflicts(parse_results)
+
+        # Both notes must be kept — notes are additive, not superseding
+        assert filtered == 0, f"Expected 0 filtered for bunking_notes, got {filtered}"
+        assert kept == 2, f"Expected 2 kept for bunking_notes, got {kept}"
+        assert len(result.parsed_requests) == 2
+
+    def test_internal_notes_not_filtered_by_temporal_conflict(self):
+        """Internal notes from different uploads must both survive — same as bunking_notes.
+
+        Scenario: Two parsed requests for internal_notes for the same requester.
+        One is marked is_superseded=True. With ADR-4 fix, both survive.
+        """
+        from bunking.sync.bunk_request_processor.core.models import ParseResult, RequestType
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
+        from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+        orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
+
+        older_note = self._make_parsed_request(
+            RequestType.NOT_BUNK_WITH,
+            "Olivia Chen",
+            source_field=SourceField.INTERNAL_NOTES,
+            is_superseded=True,
+            csv_position=1,
+        )
+        newer_note = self._make_parsed_request(
+            RequestType.BUNK_WITH,
+            "Olivia Chen",
+            source_field=SourceField.INTERNAL_NOTES,
+            is_superseded=False,
+            csv_position=2,
+        )
+
+        result = ParseResult(
+            parsed_requests=[older_note, newer_note],
+            is_valid=True,
+            parse_request=self._make_parse_request(SourceField.INTERNAL_NOTES),
+        )
+        parse_results = [result]
+
+        kept, filtered = orchestrator._filter_temporal_conflicts(parse_results)
+
+        # Both must be kept — internal_notes are additive
+        assert filtered == 0, f"Expected 0 filtered for internal_notes, got {filtered}"
+        assert kept == 2, f"Expected 2 kept for internal_notes, got {kept}"
+        assert len(result.parsed_requests) == 2
+
+    def test_bunk_with_is_filtered_by_temporal_conflict(self):
+        """For bunk_with, the superseded (older) request IS discarded.
+
+        Scenario: Two conflicting requests in a bunk_with ParseResult.
+        The older one is marked is_superseded=True. Temporal filtering applies,
+        so only the newer one survives.
+        """
+        from bunking.sync.bunk_request_processor.core.models import ParseResult, RequestType
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
+        from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+        orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
+
+        older_request = self._make_parsed_request(
+            RequestType.NOT_BUNK_WITH,
+            "Noah Williams",
+            source_field=SourceField.BUNK_WITH,
+            is_superseded=True,  # Should be discarded
+            csv_position=1,
+        )
+        newer_request = self._make_parsed_request(
+            RequestType.BUNK_WITH,
+            "Noah Williams",
+            source_field=SourceField.BUNK_WITH,
+            is_superseded=False,
+            csv_position=2,
+        )
+
+        result = ParseResult(
+            parsed_requests=[older_request, newer_request],
+            is_valid=True,
+            parse_request=self._make_parse_request(SourceField.BUNK_WITH),
+        )
+        parse_results = [result]
+
+        kept, filtered = orchestrator._filter_temporal_conflicts(parse_results)
+
+        # Older superseded request must be discarded for bunk_with
+        assert filtered == 1, f"Expected 1 filtered for bunk_with, got {filtered}"
+        assert kept == 1, f"Expected 1 kept for bunk_with, got {kept}"
+        assert len(result.parsed_requests) == 1
+        assert result.parsed_requests[0].request_type == RequestType.BUNK_WITH
+
+
 class TestResolveByDateOrPosition:
     """Tests for the _resolve_by_date_or_position helper method."""
 
