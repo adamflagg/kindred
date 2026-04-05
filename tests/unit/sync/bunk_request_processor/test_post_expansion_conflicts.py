@@ -361,14 +361,14 @@ class TestPostExpansionConflictFilterConditionality:
         resolution_results = self._make_resolution_results(with_expansion=True)
 
         # Stub out all async pipeline services so _execute_pipeline can run
-        orchestrator.phase1_service.get_stats = Mock(
+        orchestrator.phase1_service.get_stats = Mock(  # type: ignore[method-assign]
             return_value={"failed_parses": 0, "successful_parses": 0, "first_failure_reason": None}
         )
-        orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=resolution_results)
-        orchestrator.placeholder_expander.expand = AsyncMock(return_value=resolution_results)
-        orchestrator.historical_verification_service.verify = AsyncMock(return_value=resolution_results)
-        orchestrator.temporal_name_cache.initialize = Mock()
-        orchestrator.temporal_name_cache.get_stats = Mock(return_value={"persons_loaded": 0, "unique_names": 0})
+        orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=resolution_results)  # type: ignore[method-assign]
+        orchestrator.placeholder_expander.expand = AsyncMock(return_value=resolution_results)  # type: ignore[method-assign]
+        orchestrator.historical_verification_service.verify = AsyncMock(return_value=resolution_results)  # type: ignore[method-assign]
+        orchestrator.temporal_name_cache.initialize = Mock()  # type: ignore[method-assign]
+        orchestrator.temporal_name_cache.get_stats = Mock(return_value={"persons_loaded": 0, "unique_names": 0})  # type: ignore[method-assign]
         orchestrator._smart_resolution_enabled = False
 
         with patch.object(
@@ -392,14 +392,14 @@ class TestPostExpansionConflictFilterConditionality:
         resolution_results = self._make_resolution_results(with_expansion=False)
 
         # Stub out all async pipeline services so _execute_pipeline can run
-        orchestrator.phase1_service.get_stats = Mock(
+        orchestrator.phase1_service.get_stats = Mock(  # type: ignore[method-assign]
             return_value={"failed_parses": 0, "successful_parses": 0, "first_failure_reason": None}
         )
-        orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=resolution_results)
-        orchestrator.placeholder_expander.expand = AsyncMock(return_value=resolution_results)
-        orchestrator.historical_verification_service.verify = AsyncMock(return_value=resolution_results)
-        orchestrator.temporal_name_cache.initialize = Mock()
-        orchestrator.temporal_name_cache.get_stats = Mock(return_value={"persons_loaded": 0, "unique_names": 0})
+        orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=resolution_results)  # type: ignore[method-assign]
+        orchestrator.placeholder_expander.expand = AsyncMock(return_value=resolution_results)  # type: ignore[method-assign]
+        orchestrator.historical_verification_service.verify = AsyncMock(return_value=resolution_results)  # type: ignore[method-assign]
+        orchestrator.temporal_name_cache.initialize = Mock()  # type: ignore[method-assign]
+        orchestrator.temporal_name_cache.get_stats = Mock(return_value={"persons_loaded": 0, "unique_names": 0})  # type: ignore[method-assign]
         orchestrator._smart_resolution_enabled = False
 
         with patch.object(
