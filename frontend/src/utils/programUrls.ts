@@ -16,17 +16,15 @@ export function getProgramUrl(path: string, program: Program): string {
  * Check if a path is a program-specific route
  */
 export function isProgramRoute(path: string): boolean {
-  return (
-    path.startsWith('/summer/') || path.startsWith('/weekend/') || path.startsWith('/analytics')
-  )
+  return path.startsWith('/summer') || path.startsWith('/weekend') || path.startsWith('/analytics')
 }
 
 /**
  * Extract program from a path
  */
 export function getProgramFromPath(path: string): Program | null {
-  if (path.startsWith('/summer/')) return 'summer'
-  if (path.startsWith('/weekend/')) return 'weekend'
+  if (path.startsWith('/summer')) return 'summer'
+  if (path.startsWith('/weekend')) return 'weekend'
   if (path.startsWith('/analytics')) return 'analytics'
   return null
 }
@@ -69,13 +67,6 @@ export function getSummerUrl(path: string): string {
 export function getWeekendUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
   return `/weekend/${cleanPath}`
-}
-
-/**
- * Generate a camp analytics URL
- */
-export function getAnalyticsUrl(): string {
-  return '/analytics'
 }
 
 /**

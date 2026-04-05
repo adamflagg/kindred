@@ -18,7 +18,8 @@ import type { Session } from '../types/app-types'
 
 describe('sessionNameToUrl', () => {
   it('should convert known session names to URL segments', () => {
-    expect(sessionNameToUrl('Taste of Camp')).toBe('taste')
+    expect(sessionNameToUrl('Taste of Camp 1')).toBe('taste-1')
+    expect(sessionNameToUrl('Taste of Camp 2')).toBe('taste-2')
     expect(sessionNameToUrl('Session 1')).toBe('1')
     expect(sessionNameToUrl('Session 2')).toBe('2')
     expect(sessionNameToUrl('Session 2a')).toBe('2a')
@@ -26,6 +27,12 @@ describe('sessionNameToUrl', () => {
     expect(sessionNameToUrl('Session 3')).toBe('3')
     expect(sessionNameToUrl('Session 3a')).toBe('3a')
     expect(sessionNameToUrl('Session 4')).toBe('4')
+  })
+
+  it('should not have a hardcoded entry for old "Taste of Camp" name', () => {
+    // Old name falls through to the generic slug generator.
+    // The alias in sessionAliases.ts handles backward compat.
+    expect(sessionNameToUrl('Taste of Camp')).toBe('taste-of-camp')
   })
 
   it('should convert unknown session names to URL-friendly format', () => {
@@ -41,7 +48,8 @@ describe('sessionNameToUrl', () => {
 
 describe('urlToSessionName', () => {
   it('should convert known URL segments to session names', () => {
-    expect(urlToSessionName('taste')).toBe('Taste of Camp')
+    expect(urlToSessionName('taste-1')).toBe('Taste of Camp 1')
+    expect(urlToSessionName('taste-2')).toBe('Taste of Camp 2')
     expect(urlToSessionName('1')).toBe('Session 1')
     expect(urlToSessionName('2')).toBe('Session 2')
     expect(urlToSessionName('2a')).toBe('Session 2a')
@@ -57,7 +65,8 @@ describe('urlToSessionName', () => {
 
 describe('isKnownSessionUrl', () => {
   it('should return true for known URL segments', () => {
-    expect(isKnownSessionUrl('taste')).toBe(true)
+    expect(isKnownSessionUrl('taste-1')).toBe(true)
+    expect(isKnownSessionUrl('taste-2')).toBe(true)
     expect(isKnownSessionUrl('1')).toBe(true)
     expect(isKnownSessionUrl('2a')).toBe(true)
   })
@@ -90,7 +99,7 @@ describe('findSessionByUrlSegment', () => {
   const mockSessions: Session[] = [
     s({
       id: 's1',
-      name: 'Taste of Camp',
+      name: 'Taste of Camp 1',
       cm_id: 1001,
       start_date: '2025-06-01',
       end_date: '2025-06-07',
@@ -118,8 +127,8 @@ describe('findSessionByUrlSegment', () => {
   ]
 
   it('should find session by known URL segment', () => {
-    const result = findSessionByUrlSegment(mockSessions, 'taste')
-    expect(result?.name).toBe('Taste of Camp')
+    const result = findSessionByUrlSegment(mockSessions, 'taste-1')
+    expect(result?.name).toBe('Taste of Camp 1')
   })
 
   it('should find session by numeric CM ID', () => {
@@ -138,7 +147,7 @@ describe('findSessionByUrlSegment', () => {
   })
 
   it('should return null for empty sessions array', () => {
-    const result = findSessionByUrlSegment([], 'taste')
+    const result = findSessionByUrlSegment([], 'taste-1')
     expect(result).toBe(null)
   })
 })

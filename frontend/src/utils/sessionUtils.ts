@@ -6,7 +6,8 @@ import type { Session } from '../types/app-types'
 
 // Map session names to friendly URL segments
 const SESSION_NAME_TO_URL: Record<string, string> = {
-  'Taste of Camp': 'taste',
+  'Taste of Camp 1': 'taste-1',
+  'Taste of Camp 2': 'taste-2',
   'Session 1': '1',
   'Session 2': '2',
   'Session 2a': '2a',

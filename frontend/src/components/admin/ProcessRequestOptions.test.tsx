@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ProcessRequestOptions from './ProcessRequestOptions'
+import { SOURCE_FIELD_OPTIONS } from '../../utils/sourceFieldLabels'
 
 // Mock PocketBase lib - data must be inline since vi.mock is hoisted
 // Generic cm_id values for testing — dropdown uses cm_id as value
@@ -83,15 +84,6 @@ vi.mock('../../lib/pocketbase', () => ({
 vi.mock('../../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))
-
-// Source field display labels and their corresponding values
-const SOURCE_FIELD_OPTIONS = [
-  { value: 'bunk_with', label: 'Bunk With' },
-  { value: 'not_bunk_with', label: 'Not Bunk With' },
-  { value: 'bunking_notes', label: 'Bunking Notes' },
-  { value: 'internal_notes', label: 'Internal Notes' },
-  { value: 'socialize_with', label: 'Socialize With' },
-]
 
 // Test wrapper with QueryClient
 const createWrapper = () => {

@@ -15,11 +15,9 @@ import {
   X,
   Sun,
   Moon,
-  TreePine,
   Clock,
   LogOut,
   Settings,
-  BarChart3,
   HelpCircle,
   MessageSquareWarning,
 } from 'lucide-react'
@@ -38,6 +36,7 @@ import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
 import { MANAGE_TABS } from '../config/manageTabs'
+import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
 
@@ -177,22 +176,17 @@ export const AppLayout = () => {
                   onClick={() => setIsProgramMenuOpen(!isProgramMenuOpen)}
                   className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
                 >
-                  {activeProgram === 'summer' ? (
-                    <>
-                      <TreePine className="h-4 w-4 text-amber-400" />
-                      <span className="hidden sm:inline">Summer</span>
-                    </>
-                  ) : activeProgram === 'weekend' ? (
-                    <>
-                      <Home className="h-4 w-4 text-amber-400" />
-                      <span className="hidden sm:inline">Weekend</span>
-                    </>
-                  ) : (
-                    <>
-                      <BarChart3 className="h-4 w-4 text-sky-400" />
-                      <span className="hidden sm:inline">Analytics</span>
-                    </>
-                  )}
+                  {(() => {
+                    const active = PROGRAM_BUTTONS.find((b) => b.program === activeProgram)
+                    if (!active) return null
+                    const Icon = active.icon
+                    return (
+                      <>
+                        <Icon className={`h-4 w-4 ${active.triggerColorClass}`} />
+                        <span className="hidden sm:inline">{active.label}</span>
+                      </>
+                    )
+                  })()}
                   <ChevronDown
                     className={`h-3 w-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`}
                   />
@@ -200,39 +194,21 @@ export const AppLayout = () => {
 
                 {isProgramMenuOpen && (
                   <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full left-0 z-50 mt-2 w-52 p-2">
-                    <button
-                      onClick={() => handleProgramSwitch('summer')}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                        activeProgram === 'summer'
-                          ? 'bg-primary/10 text-primary'
-                          : 'hover:bg-muted/50 text-foreground'
-                      }`}
-                    >
-                      <TreePine className="h-4 w-4" />
-                      Summer Bunking
-                    </button>
-                    <button
-                      onClick={() => handleProgramSwitch('weekend')}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                        activeProgram === 'weekend'
-                          ? 'bg-accent/10 dark:text-accent text-amber-600'
-                          : 'hover:bg-muted/50 text-foreground'
-                      }`}
-                    >
-                      <Home className="h-4 w-4" />
-                      Weekend Housing
-                    </button>
-                    <button
-                      onClick={() => handleProgramSwitch('analytics')}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                        activeProgram === 'analytics'
-                          ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
-                          : 'hover:bg-muted/50 text-foreground'
-                      }`}
-                    >
-                      <BarChart3 className="h-4 w-4" />
-                      Camp Analytics
-                    </button>
+                    {PROGRAM_BUTTONS.map((btn) => {
+                      const Icon = btn.icon
+                      return (
+                        <button
+                          key={btn.program}
+                          onClick={() => handleProgramSwitch(btn.program)}
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                            activeProgram === btn.program ? btn.activeClass : btn.inactiveClass
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {btn.dropdownLabel}
+                        </button>
+                      )
+                    })}
                     <div className="bg-border my-2 h-px" />
                     <button
                       onClick={() => {
@@ -459,39 +435,23 @@ export const AppLayout = () => {
                   Program
                 </p>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleProgramSwitch('summer')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                      activeProgram === 'summer'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted/50 text-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <TreePine className="h-4 w-4" />
-                    Summer
-                  </button>
-                  <button
-                    onClick={() => handleProgramSwitch('weekend')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                      activeProgram === 'weekend'
-                        ? 'bg-accent text-accent-foreground'
-                        : 'bg-muted/50 text-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <Home className="h-4 w-4" />
-                    Weekend
-                  </button>
-                  <button
-                    onClick={() => handleProgramSwitch('analytics')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                      activeProgram === 'analytics'
-                        ? 'bg-sky-500 text-white'
-                        : 'bg-muted/50 text-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                    Analytics
-                  </button>
+                  {PROGRAM_BUTTONS.map((btn) => {
+                    const Icon = btn.icon
+                    return (
+                      <button
+                        key={btn.program}
+                        onClick={() => handleProgramSwitch(btn.program)}
+                        className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                          activeProgram === btn.program
+                            ? btn.mobileActiveClass
+                            : btn.mobileInactiveClass
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {btn.label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 

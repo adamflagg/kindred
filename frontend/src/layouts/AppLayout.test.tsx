@@ -102,6 +102,44 @@ function renderAppLayout() {
   )
 }
 
+describe('Program Switcher', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders all program labels in the desktop dropdown', () => {
+    renderAppLayout()
+    // Open the program dropdown
+    const programButton = screen.getByText('Summer')
+    fireEvent.click(programButton)
+
+    expect(screen.getByText('Summer Bunking')).toBeInTheDocument()
+    expect(screen.getByText('Weekend Housing')).toBeInTheDocument()
+    expect(screen.getByText('Camp Analytics')).toBeInTheDocument()
+  })
+
+  it('renders all program labels in the mobile menu', () => {
+    renderAppLayout()
+    // Open mobile menu via hamburger button
+    const menuButton = screen.getByLabelText('Toggle navigation menu')
+    fireEvent.click(menuButton)
+
+    // Mobile buttons use short labels
+    const summerButtons = screen.getAllByText('Summer')
+    expect(summerButtons.length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Weekend')).toBeInTheDocument()
+    expect(screen.getByText('Analytics')).toBeInTheDocument()
+  })
+
+  it('renders Switch Programs button in desktop dropdown', () => {
+    renderAppLayout()
+    const programButton = screen.getByText('Summer')
+    fireEvent.click(programButton)
+
+    expect(screen.getByText('Switch Programs')).toBeInTheDocument()
+  })
+})
+
 describe('Help Menu', () => {
   beforeEach(() => {
     vi.clearAllMocks()
