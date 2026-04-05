@@ -11,9 +11,11 @@ safety net that doesn't depend on AI correctly marking is_superseded.
 
 from __future__ import annotations
 
+import pytest
+
 from datetime import datetime
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
@@ -314,3 +316,102 @@ class TestPostExpansionConflictDetection:
         assert filtered == 1
         assert parse_result.parsed_requests[0].request_type == RequestType.BUNK_WITH
         assert parse_result.parsed_requests[0].target_name == "Pippi"
+
+
+class TestPostExpansionConflictFilterConditionality:
+    """ADR-7: _filter_post_expansion_conflicts should only run when expansion occurred.
+
+    The filter is only meaningful after SIBLING/group expansion because that is the
+    only time new conflicts can be introduced.  Running it unconditionally wastes
+    cycles and produces confusing debug output on every pipeline invocation.
+    """
+
+    def _make_orchestrator(self) -> RequestOrchestrator:
+        """Create a minimal orchestrator for testing."""
+        mock_pb = Mock()
+        mock_pb.auth_store = Mock()
+        mock_pb.auth_store.is_valid = True
+        return RequestOrchestrator(
+            pb=mock_pb,
+            year=2025,
+            session_cm_ids=[1000001],
+        )
+
+    def _make_resolution_results(self, *, with_expansion: bool) -> list[tuple[Any, list[Any]]]:
+        """Build a minimal (ParseResult, resolutions) list.
+
+        When with_expansion=True, the ParseResult.metadata contains the
+        'expanded_from_placeholder' key that the orchestrator uses to detect
+        whether a SIBLING/group expansion actually ran.
+        """
+        req = make_request(RequestType.BUNK_WITH, "Alice", csv_position=1)
+        pr = make_parse_result([req], requester_cm_id=99999)
+        if with_expansion:
+            pr.metadata = {"expanded_from_placeholder": True}
+        else:
+            pr.metadata = {}
+        person = make_person(11111, "Alice")
+        resolution = make_resolution(person)
+        return [(pr, [resolution])]
+
+    @pytest.mark.asyncio
+    async def test_filter_called_when_expansion_occurred(self):
+        """_filter_post_expansion_conflicts IS called when at least one record was expanded."""
+        orchestrator = self._make_orchestrator()
+        resolution_results = self._make_resolution_results(with_expansion=True)
+
+        # Stub out all async pipeline services so _execute_pipeline can run
+        orchestrator.phase1_service.get_stats = Mock(
+            return_value={"failed_parses": 0, "successful_parses": 0, "first_failure_reason": None}
+        )
+        orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=resolution_results)
+        orchestrator.placeholder_expander.expand = AsyncMock(return_value=resolution_results)
+        orchestrator.historical_verification_service.verify = AsyncMock(return_value=resolution_results)
+        orchestrator.temporal_name_cache.initialize = Mock()
+        orchestrator.temporal_name_cache.get_stats = Mock(return_value={"persons_loaded": 0, "unique_names": 0})
+        orchestrator._smart_resolution_enabled = False
+
+        with patch.object(
+            orchestrator,
+            "_filter_post_expansion_conflicts",
+            wraps=orchestrator._filter_post_expansion_conflicts,
+        ) as spy:
+            await orchestrator._execute_pipeline(
+                parse_requests=[],
+                pre_parsed_results=[],
+                stop_at_phase="historical",
+                dry_run=True,
+            )
+
+        spy.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_filter_not_called_when_no_expansion(self):
+        """_filter_post_expansion_conflicts is NOT called when no expansion occurred."""
+        orchestrator = self._make_orchestrator()
+        resolution_results = self._make_resolution_results(with_expansion=False)
+
+        # Stub out all async pipeline services so _execute_pipeline can run
+        orchestrator.phase1_service.get_stats = Mock(
+            return_value={"failed_parses": 0, "successful_parses": 0, "first_failure_reason": None}
+        )
+        orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=resolution_results)
+        orchestrator.placeholder_expander.expand = AsyncMock(return_value=resolution_results)
+        orchestrator.historical_verification_service.verify = AsyncMock(return_value=resolution_results)
+        orchestrator.temporal_name_cache.initialize = Mock()
+        orchestrator.temporal_name_cache.get_stats = Mock(return_value={"persons_loaded": 0, "unique_names": 0})
+        orchestrator._smart_resolution_enabled = False
+
+        with patch.object(
+            orchestrator,
+            "_filter_post_expansion_conflicts",
+            wraps=orchestrator._filter_post_expansion_conflicts,
+        ) as spy:
+            await orchestrator._execute_pipeline(
+                parse_requests=[],
+                pre_parsed_results=[],
+                stop_at_phase="historical",
+                dry_run=True,
+            )
+
+        spy.assert_not_called()

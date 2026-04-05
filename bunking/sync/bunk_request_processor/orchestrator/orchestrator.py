@@ -1278,6 +1278,9 @@ class RequestOrchestrator:
         logger.info("=== Expanding Group References ===")
         resolution_results = await self.placeholder_expander.expand(resolution_results, self.resolver_registry)
 
+        # Determine whether any group was expanded (used to gate the post-expansion filter below)
+        _any_expansion = any(bool((pr.metadata or {}).get("expanded_from_placeholder")) for pr, _ in resolution_results)
+
         # --- Trace: Expansion results ---
         for pr, res_list in resolution_results:
             trace_key = _get_trace_key(pr)
@@ -1310,10 +1313,15 @@ class RequestOrchestrator:
             return {"dry_run": dry_run, "phase": "expansion"}
 
         # Post-expansion conflict detection: catch conflicts that weren't visible before
-        # group expansion (e.g., "not_bunk_with Pippi" vs group_kind=SIBLING → Pippi)
-        resolution_results, post_kept, post_filtered = self._filter_post_expansion_conflicts(resolution_results)
-        if post_filtered > 0:
-            logger.info(f"Post-expansion conflict filter: kept {post_kept}, filtered {post_filtered}")
+        # group expansion (e.g., "not_bunk_with Pippi" vs group_kind=SIBLING → Pippi).
+        # Only meaningful when at least one group was expanded — skip otherwise.
+        if _any_expansion:  # only meaningful when expansions occurred
+            resolution_results, post_kept, post_filtered = self._filter_post_expansion_conflicts(resolution_results)
+            if post_filtered > 0:
+                logger.info(f"Post-expansion conflict filter: kept {post_kept}, filtered {post_filtered}")
+        else:
+            post_kept = sum(len(res_list) for _, res_list in resolution_results)
+            post_filtered = 0
 
         # Phase 2.5: Historical Group Verification
         # Verify that multiple targets for same historical year were actually in same bunk
