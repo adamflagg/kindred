@@ -3223,6 +3223,47 @@ func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
 	}
 }
 
+// TestGenerateQueueID verifies the queue ID helper returns non-empty, unique IDs
+// with a random hex suffix. Regression test for #853 — same collision vulnerability
+// as #833 fixed in generateRunToken.
+func TestGenerateQueueID(t *testing.T) {
+	t.Run("returns non-empty string", func(t *testing.T) {
+		id := generateQueueID()
+		if id == "" {
+			t.Error("generateQueueID() returned empty string")
+		}
+	})
+
+	t.Run("returns unique values on successive calls", func(t *testing.T) {
+		seen := make(map[string]bool)
+		for i := 0; i < 100; i++ {
+			id := generateQueueID()
+			if seen[id] {
+				t.Errorf("duplicate queue ID on iteration %d: %s", i, id)
+			}
+			seen[id] = true
+		}
+	})
+
+	t.Run("contains random hex suffix", func(t *testing.T) {
+		id := generateQueueID()
+		// ID format should be "{nanoseconds}-{4-char hex}"
+		parts := strings.SplitN(id, "-", 2)
+		if len(parts) != 2 {
+			t.Fatalf("expected ID format 'nanos-hex', got %q", id)
+		}
+		hexPart := parts[1]
+		if len(hexPart) != 4 {
+			t.Errorf("expected 4-char hex suffix, got %q (len %d)", hexPart, len(hexPart))
+		}
+		for _, c := range hexPart {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+				t.Errorf("non-hex character %q in suffix %q", string(c), hexPart)
+			}
+		}
+	})
+}
+
 // TestGenerateRunToken verifies the extracted helper returns non-empty, unique tokens.
 // Regression test for #791 — two inline fmt.Sprintf("%d", time.Now().UnixNano()) calls
 // are consolidated into this single helper.

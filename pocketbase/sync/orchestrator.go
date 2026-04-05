@@ -1418,9 +1418,10 @@ func generateRunToken() string {
 	return fmt.Sprintf("%d-%04x", time.Now().UnixNano(), rand.IntN(0xFFFF)) //nolint:gosec // uniqueness, not crypto
 }
 
-// generateQueueID generates a unique ID for a queued sync
+// generateQueueID generates a unique ID for a queued sync.
+// Uses random suffix for collision resistance (same pattern as generateRunToken, see #853).
 func generateQueueID() string {
-	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Nanosecond())
+	return fmt.Sprintf("%d-%04x", time.Now().UnixNano(), rand.IntN(0xFFFF)) //nolint:gosec // uniqueness, not crypto
 }
 
 // EnqueueUnifiedSync adds a unified sync request to the queue.
