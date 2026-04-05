@@ -4,6 +4,7 @@ import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 import { extractErrorMessage } from './createSyncMutation'
 import type { ProcessRequestOptionsState } from '../components/admin/ProcessRequestOptions'
+import { buildFieldLabelMap } from '../utils/sourceFieldLabels'
 
 interface ProcessRequestsResponse {
   status: string
@@ -79,13 +80,7 @@ export function useProcessRequests() {
 
       // Add source fields if specified
       if (options.sourceFields.length > 0) {
-        const fieldLabels: Record<string, string> = {
-          bunk_with: 'Bunk With',
-          not_bunk_with: 'Not Bunk With',
-          bunking_notes: 'Bunking Notes',
-          internal_notes: 'Internal Notes',
-          socialize_with: 'Socialize With',
-        }
+        const fieldLabels = buildFieldLabelMap()
         const fieldNames = options.sourceFields.map((f) => fieldLabels[f] ?? f)
         parts.push(`fields: ${fieldNames.join(', ')}`)
       }

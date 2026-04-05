@@ -5,6 +5,7 @@ import { Modal } from '../ui/Modal'
 import { pb } from '../../lib/pocketbase'
 import { useYear } from '../../hooks/useCurrentYear'
 import { queryKeys, syncDataOptions } from '../../utils/queryKeys'
+import { SOURCE_FIELD_OPTIONS } from '../../utils/sourceFieldLabels'
 
 export interface ProcessRequestOptionsState {
   session: string
@@ -23,15 +24,6 @@ interface ProcessRequestOptionsProps {
   onSubmit: (options: ProcessRequestOptionsState) => void
   isProcessing: boolean
 }
-
-// Source field options (static - these don't change between years)
-const SOURCE_FIELD_OPTIONS = [
-  { value: 'bunk_with', label: 'Bunk With' },
-  { value: 'not_bunk_with', label: 'Not Bunk With' },
-  { value: 'bunking_notes', label: 'Bunking Notes' },
-  { value: 'internal_notes', label: 'Internal Notes' },
-  { value: 'socialize_with', label: 'Socialize With' },
-] as const
 
 export default function ProcessRequestOptions({
   isOpen,
