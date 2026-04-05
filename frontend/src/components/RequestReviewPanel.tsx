@@ -30,6 +30,13 @@ import type {
   BunkRequestsStatusOptions,
 } from '../types/pocketbase-types'
 import clsx from 'clsx'
+import {
+  getDispositionClasses,
+  getDispositionSortRank,
+  formatDispositionReason,
+  CONFIDENCE_AUTO_ACCEPT,
+  CONFIDENCE_RESOLVED,
+} from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
@@ -45,14 +52,11 @@ interface RequestReviewPanelProps {
   year: number
 }
 
-// Confidence thresholds (must match backend config)
-const CONFIDENCE_AUTO_ACCEPT = 0.95
-const CONFIDENCE_RESOLVED = 0.85
-
 type ResolvedConfidenceFilter = 'all' | 'high' | 'spot-check'
 
 interface FilterState {
-  confidenceThreshold: number
+  lowConfidenceOnly: boolean
+  needsReviewOnly: boolean
   requestTypes: string[]
   statuses: string[]
   searchQuery: string
@@ -60,7 +64,7 @@ interface FilterState {
   resolvedConfidenceFilter: ResolvedConfidenceFilter
 }
 
-type SortColumn = 'requester' | 'request' | 'type' | 'priority' | 'confidence' | 'status'
+type SortColumn = 'requester' | 'request' | 'disposition' | 'priority' | 'confidence' | 'status'
 
 export default function RequestReviewPanel({
   sessionId,
@@ -79,7 +83,8 @@ export default function RequestReviewPanel({
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterState>({
-    confidenceThreshold: 0,
+    lowConfidenceOnly: false,
+    needsReviewOnly: false,
     requestTypes: [],
     statuses: ['pending', 'declined', 'resolved'],
     searchQuery: '',
@@ -88,22 +93,15 @@ export default function RequestReviewPanel({
   })
   const [filtersExpanded, setFiltersExpanded] = useState(false)
 
-  // Query key excludes searchQuery since search filtering happens client-side using personMap
+  // Query key only includes server-side filters (sent to PocketBase).
+  // Client-side filters (confidence, review, search) are applied in filteredRequests memo.
   const queryKeyFilters = useMemo(
     () => ({
-      confidenceThreshold: filters.confidenceThreshold,
       requestTypes: filters.requestTypes,
       statuses: filters.statuses,
       showResolved: filters.showResolved,
-      resolvedConfidenceFilter: filters.resolvedConfidenceFilter,
     }),
-    [
-      filters.confidenceThreshold,
-      filters.requestTypes,
-      filters.statuses,
-      filters.showResolved,
-      filters.resolvedConfidenceFilter,
-    ]
+    [filters.requestTypes, filters.statuses, filters.showResolved]
   )
 
   // Fetch bunk requests
@@ -132,37 +130,10 @@ export default function RequestReviewPanel({
         filterStr += ` && (${typeFilter})`
       }
 
-      const result = await pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
+      return await pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: filterStr,
         sort: '-confidence_score,priority',
       })
-
-      // Filter by confidence threshold on client side
-      // When slider is at 0, show all requests
-      // When slider is at 100, show only low confidence (score <= 100)
-      let filtered =
-        filters.confidenceThreshold === 0
-          ? result
-          : result.filter((r) => r.confidence_score <= filters.confidenceThreshold)
-
-      // Apply resolved confidence filter when showing resolved requests
-      if (filters.showResolved && filters.resolvedConfidenceFilter !== 'all') {
-        filtered = filtered.filter((r) => {
-          if (r.status !== 'resolved') return true // Keep non-resolved as-is
-          if (filters.resolvedConfidenceFilter === 'high') {
-            return r.confidence_score >= CONFIDENCE_AUTO_ACCEPT
-          } else if (filters.resolvedConfidenceFilter === 'spot-check') {
-            return (
-              r.confidence_score >= CONFIDENCE_RESOLVED &&
-              r.confidence_score < CONFIDENCE_AUTO_ACCEPT
-            )
-          }
-          return true
-        })
-      }
-
-      // Search filtering moved to sortedRequests useMemo for instant client-side filtering
-      return filtered
     },
     staleTime: 30000,
     enabled: !!user,
@@ -324,11 +295,34 @@ export default function RequestReviewPanel({
     return requests.filter((r: BunkRequestsResponse) => r.status === 'pending').length
   }, [requests])
 
-  // Filter and sort requests - search filtering happens here for instant client-side response
+  // Client-side filtering (confidence, review, resolved confidence, search)
   const sortedRequests = useMemo(() => {
     let filtered = [...requests]
 
-    // Client-side search filtering using already-fetched personMap
+    // Confidence / review filters
+    if (filters.lowConfidenceOnly) {
+      filtered = filtered.filter((r) => r.confidence_score < CONFIDENCE_RESOLVED)
+    }
+    if (filters.needsReviewOnly) {
+      filtered = filtered.filter((r) => r.requires_manual_review === true)
+    }
+
+    // Resolved confidence filter
+    if (filters.showResolved && filters.resolvedConfidenceFilter !== 'all') {
+      filtered = filtered.filter((r) => {
+        if (r.status !== 'resolved') return true
+        if (filters.resolvedConfidenceFilter === 'high') {
+          return r.confidence_score >= CONFIDENCE_AUTO_ACCEPT
+        } else if (filters.resolvedConfidenceFilter === 'spot-check') {
+          return (
+            r.confidence_score >= CONFIDENCE_RESOLVED && r.confidence_score < CONFIDENCE_AUTO_ACCEPT
+          )
+        }
+        return true
+      })
+    }
+
+    // Search filtering using already-fetched personMap
     if (filters.searchQuery && personMap.size > 0) {
       const searchLower = filters.searchQuery.toLowerCase()
       filtered = filtered.filter((r) => {
@@ -368,10 +362,18 @@ export default function RequestReviewPanel({
             : b.parse_notes || ''
           break
         }
-        case 'type':
-          aValue = a.request_type
-          bValue = b.request_type
+        case 'disposition': {
+          const aRank = getDispositionSortRank(a.disposition_reason ?? '')
+          const bRank = getDispositionSortRank(b.disposition_reason ?? '')
+          if (aRank !== bRank) {
+            aValue = aRank
+            bValue = bRank
+          } else {
+            aValue = a.disposition_reason ?? ''
+            bValue = b.disposition_reason ?? ''
+          }
           break
+        }
         case 'priority':
           aValue = a.priority
           bValue = b.priority
@@ -396,7 +398,17 @@ export default function RequestReviewPanel({
     })
 
     return sorted
-  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
+  }, [
+    requests,
+    sortBy,
+    sortOrder,
+    personMap,
+    filters.searchQuery,
+    filters.lowConfidenceOnly,
+    filters.needsReviewOnly,
+    filters.showResolved,
+    filters.resolvedConfidenceFilter,
+  ])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
@@ -707,12 +719,13 @@ export default function RequestReviewPanel({
   // Count active filters for the filter toggle badge
   const activeFilterCount = useMemo(() => {
     let count = 0
-    if (filters.confidenceThreshold !== 0) count++
+    if (filters.lowConfidenceOnly || filters.needsReviewOnly) count++
     if (filters.requestTypes.length > 0) count++
     if (filters.statuses.length !== 3 || filters.showResolved) count++
     return count
   }, [
-    filters.confidenceThreshold,
+    filters.lowConfidenceOnly,
+    filters.needsReviewOnly,
     filters.requestTypes.length,
     filters.statuses.length,
     filters.showResolved,
@@ -853,29 +866,60 @@ export default function RequestReviewPanel({
                 Confidence
               </span>
               <div className="bg-muted/50 dark:bg-muted/30 border-border/50 flex items-center gap-1 rounded-xl border p-1">
-                {[
-                  { value: 0, label: 'All' },
-                  { value: 50, label: 'Low Only' },
-                  { value: 1, label: 'Needs Review' },
-                ].map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        confidenceThreshold: value,
-                      }))
-                    }
-                    className={clsx(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
-                      filters.confidenceThreshold === value
-                        ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <button
+                  aria-pressed={!filters.lowConfidenceOnly && !filters.needsReviewOnly}
+                  onClick={() =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      lowConfidenceOnly: false,
+                      needsReviewOnly: false,
+                    }))
+                  }
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                    !filters.lowConfidenceOnly && !filters.needsReviewOnly
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  aria-pressed={filters.lowConfidenceOnly}
+                  onClick={() =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      lowConfidenceOnly: true,
+                      needsReviewOnly: false,
+                    }))
+                  }
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                    filters.lowConfidenceOnly
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  )}
+                >
+                  Low Confidence
+                </button>
+                <button
+                  aria-pressed={filters.needsReviewOnly}
+                  onClick={() =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      lowConfidenceOnly: false,
+                      needsReviewOnly: true,
+                    }))
+                  }
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                    filters.needsReviewOnly
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  )}
+                >
+                  Needs Review
+                </button>
               </div>
             </div>
 
@@ -1042,11 +1086,11 @@ export default function RequestReviewPanel({
               </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
-                onClick={() => handleSort('type')}
+                onClick={() => handleSort('disposition')}
               >
                 <div className="flex items-center gap-1">
-                  Type
-                  {sortBy === 'type' && (
+                  Disposition
+                  {sortBy === 'disposition' && (
                     <span className="text-primary">
                       {sortOrder === 'asc' ? (
                         <ChevronUp className="h-3 w-3" />
@@ -1195,6 +1239,16 @@ export default function RequestReviewPanel({
                               {(request.confidence_score * 100).toFixed(0)}%
                             </span>
                             {getStatusBadge(request.status)}
+                            {request.disposition_reason && (
+                              <span
+                                className={clsx(
+                                  'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                  getDispositionClasses(request.disposition_reason)
+                                )}
+                              >
+                                {formatDispositionReason(request.disposition_reason)}
+                              </span>
+                            )}
                           </div>
 
                           {/* Request target info */}
@@ -1426,27 +1480,25 @@ export default function RequestReviewPanel({
                               personMap={personMap}
                             />
                           </div>
-                          <div className="flex items-center px-4 py-3">
-                            <EditableRequestType
-                              value={request.request_type}
-                              onChange={(newType) => {
-                                const updates: Partial<BunkRequestsResponse> = {
-                                  request_type: newType as BunkRequestsResponse['request_type'],
-                                }
-
-                                // Clear fields based on type change
-                                if (newType === 'age_preference') {
-                                  // Clear person selection when switching to age preference
-                                  delete updates.requestee_id
-                                } else {
-                                  // Clear age preference when switching to person-based types
-                                  delete updates.age_preference_target
-                                }
-
-                                handleValidatedUpdate(request, updates)
-                              }}
-                              disabled={request.request_locked || false}
-                            />
+                          <div className="flex items-center gap-1 px-4 py-3">
+                            {request.disposition_reason ? (
+                              <span
+                                className={clsx(
+                                  'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                  getDispositionClasses(request.disposition_reason)
+                                )}
+                                title={request.disposition_reason}
+                              >
+                                {formatDispositionReason(request.disposition_reason)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                            {request.is_reciprocal && (
+                              <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                                Recip
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center justify-center px-4 py-3">
                             <EditablePriority
@@ -1673,10 +1725,52 @@ export default function RequestReviewPanel({
                                 </>
                               )}
 
-                              {/* Metadata - always show */}
-                              <div className="text-muted-foreground flex items-center gap-4 text-xs">
+                              {/* Type (moved from column) */}
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">Type:</span>
+                                <EditableRequestType
+                                  value={request.request_type}
+                                  onChange={(newType) => {
+                                    const updates: Partial<BunkRequestsResponse> = {
+                                      request_type: newType as BunkRequestsResponse['request_type'],
+                                    }
+                                    if (newType === 'age_preference') {
+                                      delete updates.requestee_id
+                                    } else {
+                                      delete updates.age_preference_target
+                                    }
+                                    handleValidatedUpdate(request, updates)
+                                  }}
+                                  disabled={request.request_locked || false}
+                                />
+                              </div>
+
+                              {/* Metadata */}
+                              <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
                                 <span>Source: {request.source}</span>
-                                <span>Reciprocal: {request.is_reciprocal ? 'Yes' : 'No'}</span>
+                                {request.is_reciprocal && (
+                                  <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                                    Reciprocal
+                                  </span>
+                                )}
+                                {request.disposition_reason && (
+                                  <span
+                                    className={clsx(
+                                      'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                      getDispositionClasses(request.disposition_reason)
+                                    )}
+                                  >
+                                    {formatDispositionReason(request.disposition_reason)}
+                                  </span>
+                                )}
+                                {request.resolution_method && (
+                                  <span>
+                                    via{' '}
+                                    <span className="font-medium">
+                                      {request.resolution_method.replace(/_/g, ' ')}
+                                    </span>
+                                  </span>
+                                )}
                                 <span>
                                   Created: {new Date(request.created).toLocaleDateString()}
                                 </span>
@@ -1709,24 +1803,39 @@ export default function RequestReviewPanel({
             <AlertCircle className="text-forest-600 dark:text-forest-400 mt-0.5 h-5 w-5 flex-shrink-0" />
             <div className="text-forest-800 dark:text-forest-200 space-y-3 text-sm">
               <div>
-                <p className="mb-1 font-medium">Confidence Indicators:</p>
-                <ul className="text-forest-700 dark:text-forest-300 ml-2 list-inside list-disc space-y-1">
-                  <li>
-                    <span className="inline-flex items-center">
-                      <CheckCheck className="mr-1 h-3 w-3" /> <strong>95%+</strong>
-                    </span>{' '}
-                    — High confidence, auto-resolved, typically no review needed
-                  </li>
-                  <li>
-                    <span className="inline-flex items-center">
-                      <CheckCircle className="mr-1 h-3 w-3" /> <strong>85-94%</strong>
-                    </span>{' '}
-                    — Standard confidence, resolved but may want to spot-check
-                  </li>
-                  <li>
-                    <strong>&lt;85%</strong> — Lower confidence, requires manual review
-                  </li>
-                </ul>
+                <p className="mb-1.5 font-medium">Confidence:</p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-forest-700 bg-forest-50 dark:text-forest-300 dark:bg-forest-900/30 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
+                    <CheckCheck className="mr-1 h-3 w-3" /> 95%+ Auto-resolved
+                  </span>
+                  <span className="text-forest-600 bg-forest-50/70 dark:text-forest-400 dark:bg-forest-900/20 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
+                    <CheckCircle className="mr-1 h-3 w-3" /> 85-94% Spot-check
+                  </span>
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    &lt;85% Review needed
+                  </span>
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 font-medium">Disposition Reasons:</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['exact_match', 'needs_review', 'target_not_attending', 'other'] as const).map(
+                    (reason) => (
+                      <span
+                        key={reason}
+                        className={clsx(
+                          'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                          getDispositionClasses(reason)
+                        )}
+                      >
+                        {formatDispositionReason(reason)}
+                      </span>
+                    )
+                  )}
+                  <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                    Recip
+                  </span>
+                </div>
               </div>
               <div>
                 <p className="mb-1 font-medium">Review Guidelines:</p>
@@ -1741,20 +1850,13 @@ export default function RequestReviewPanel({
                 <p className="mb-1 font-medium">Action Meanings:</p>
                 <ul className="text-forest-700 dark:text-forest-300 ml-2 list-inside list-disc space-y-1">
                   <li>
-                    <strong className="text-forest-800 dark:text-forest-200">Approve (✓):</strong>{' '}
-                    Confirms the request is valid and the requested person has been correctly
-                    identified. Approved requests are automatically protected from sync updates.
+                    <strong>Approve (✓):</strong> Confirms match, auto-protects from sync
                   </li>
                   <li>
-                    <strong className="text-forest-800 dark:text-forest-200">Reject (✗):</strong>{' '}
-                    Marks request as invalid (e.g., person not attending this session, incorrect
-                    name match, or typo)
+                    <strong>Reject (✗):</strong> Marks as invalid (wrong match, not attending, etc.)
                   </li>
                   <li>
-                    <strong className="text-forest-800 dark:text-forest-200">
-                      Protected (🛡️):
-                    </strong>{' '}
-                    Resolved requests are automatically protected to preserve manual approvals
+                    <strong>Protected (🛡️):</strong> Preserves manual approvals across syncs
                   </li>
                 </ul>
               </div>

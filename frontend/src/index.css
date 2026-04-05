@@ -1224,7 +1224,7 @@
    ============================================ */
 .request-table-grid {
   display: grid;
-  /* Columns: checkbox+expand | requester | request | type | priority | confidence | status | actions */
+  /* Columns: checkbox+expand | requester | request | disposition | priority | confidence | status | actions */
   grid-template-columns: 64px 240px 260px 200px 80px 100px 100px 120px;
   min-width: 1064px;
 }
