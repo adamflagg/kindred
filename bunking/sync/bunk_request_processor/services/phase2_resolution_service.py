@@ -10,6 +10,7 @@ from bunking.logging_config import get_logger
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
+from ..shared.constants import SourceField
 from ..shared.name_utils import normalize_name
 from ..shared.nickname_groups import find_nickname_variations, names_match_via_nicknames
 
@@ -166,8 +167,15 @@ class Phase2ResolutionService:
                 if parse_result.parse_request is None:
                     continue
 
-                # Check if target name is a detected staff name
-                if self.staff_name_filter and parsed.target_name and self.staff_name_filter(parsed.target_name):
+                # Check if target name is a detected staff name.
+                # Only applies to bunk_with: free-form notes fields (bunking_notes, internal_notes)
+                # may legitimately mention staff names in context, so we skip the filter there.
+                if (
+                    parsed.source_field not in (SourceField.BUNKING_NOTES, SourceField.INTERNAL_NOTES)
+                    and self.staff_name_filter
+                    and parsed.target_name
+                    and self.staff_name_filter(parsed.target_name)
+                ):
                     logger.debug(f"Filtered out staff name from request: {parsed.target_name}")
                     staff_filtered_map.append((case_idx, req_idx))
                     self._stats["staff_filtered"] += 1

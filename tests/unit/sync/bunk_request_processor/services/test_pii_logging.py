@@ -50,6 +50,7 @@ def _make_parsed_req(
     request_type: RequestType = RequestType.BUNK_WITH,
     target_name: str | None = None,
     group_kind: GroupKind | None = None,
+    source_field: str = "bunking_notes",
 ) -> ParsedRequest:
     """Create a ParsedRequest with all required fields."""
     return ParsedRequest(
@@ -57,7 +58,7 @@ def _make_parsed_req(
         request_type=request_type,
         target_name=target_name,
         age_preference=None,
-        source_field="bunking_notes",
+        source_field=source_field,
         source=RequestSource.FAMILY,
         confidence=1.0,
         csv_position=0,
@@ -254,6 +255,7 @@ class TestPhase2ResolutionStaffFilterPiiLogging:
         parsed_req = _make_parsed_req(
             raw_text="bunk with Jordan",
             target_name="Jordan",
+            source_field="bunk_with",  # staff filter only applies to bunk_with, not notes fields
         )
 
         parse_request = MagicMock()
