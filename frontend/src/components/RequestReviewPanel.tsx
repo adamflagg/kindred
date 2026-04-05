@@ -33,6 +33,7 @@ import clsx from 'clsx'
 import {
   getDispositionClasses,
   getDispositionSortRank,
+  formatDispositionReason,
   CONFIDENCE_AUTO_ACCEPT,
   CONFIDENCE_RESOLVED,
 } from '../utils/dispositionColors'
@@ -1245,7 +1246,7 @@ export default function RequestReviewPanel({
                                   getDispositionClasses(request.disposition_reason)
                                 )}
                               >
-                                {request.disposition_reason.replace(/_/g, ' ')}
+                                {formatDispositionReason(request.disposition_reason)}
                               </span>
                             )}
                           </div>
@@ -1488,7 +1489,7 @@ export default function RequestReviewPanel({
                                 )}
                                 title={request.disposition_reason}
                               >
-                                {request.disposition_reason.replace(/_/g, ' ')}
+                                {formatDispositionReason(request.disposition_reason)}
                               </span>
                             ) : (
                               <span className="text-muted-foreground text-xs">—</span>
@@ -1759,7 +1760,7 @@ export default function RequestReviewPanel({
                                       getDispositionClasses(request.disposition_reason)
                                     )}
                                   >
-                                    {request.disposition_reason.replace(/_/g, ' ')}
+                                    {formatDispositionReason(request.disposition_reason)}
                                   </span>
                                 )}
                                 {request.resolution_method && (
@@ -1818,18 +1819,19 @@ export default function RequestReviewPanel({
               <div>
                 <p className="mb-1.5 font-medium">Disposition Reasons:</p>
                 <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
-                    exact match
-                  </span>
-                  <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-                    needs review
-                  </span>
-                  <span className="inline-flex rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-400">
-                    target not attending
-                  </span>
-                  <span className="bg-bark-100 text-bark-600 dark:bg-bark-700 dark:text-bark-300 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold">
-                    other
-                  </span>
+                  {(['exact_match', 'needs_review', 'target_not_attending', 'other'] as const).map(
+                    (reason) => (
+                      <span
+                        key={reason}
+                        className={clsx(
+                          'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                          getDispositionClasses(reason)
+                        )}
+                      >
+                        {formatDispositionReason(reason)}
+                      </span>
+                    )
+                  )}
                   <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
                     Recip
                   </span>

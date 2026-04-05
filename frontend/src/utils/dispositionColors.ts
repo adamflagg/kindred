@@ -67,6 +67,11 @@ export function getConfidenceClasses(confidence: number): string {
   return BADGE_COLORS.danger
 }
 
+/** Format a snake_case disposition reason for display. */
+export function formatDispositionReason(reason: string): string {
+  return reason.replace(/_/g, ' ')
+}
+
 /** Sort rank for disposition reasons: declined (0) < pending (1) < resolved (2) < unknown (3). */
 export function getDispositionSortRank(reason: string): number {
   if (DECLINED_REASONS.has(reason)) return 0

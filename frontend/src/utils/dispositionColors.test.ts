@@ -9,6 +9,7 @@ import {
   getStatusClasses,
   getConfidenceClasses,
   getDispositionSortRank,
+  formatDispositionReason,
   RESOLVED_REASONS,
   PENDING_REASONS,
   DECLINED_REASONS,
@@ -150,6 +151,17 @@ describe('getDispositionSortRank', () => {
   it('returns 3 for unknown reasons', () => {
     expect(getDispositionSortRank('unknown_reason')).toBe(3)
     expect(getDispositionSortRank('')).toBe(3)
+  })
+})
+
+describe('formatDispositionReason', () => {
+  it('replaces underscores with spaces', () => {
+    expect(formatDispositionReason('exact_match')).toBe('exact match')
+    expect(formatDispositionReason('target_not_attending')).toBe('target not attending')
+  })
+
+  it('returns single-word reasons unchanged', () => {
+    expect(formatDispositionReason('other')).toBe('other')
   })
 })
 
