@@ -296,7 +296,7 @@ class Phase2ResolutionService:
                             ResolutionResult(
                                 person=None,
                                 confidence=0.90,
-                                method="age_preference",
+                                method=RequestType.AGE_PREFERENCE.value,
                                 metadata={"age_preference": age_pref_value},
                             )
                         )
@@ -405,7 +405,7 @@ class Phase2ResolutionService:
                     continue
                 # Skip results that should not have candidates generated
                 skip_candidate_generation = {
-                    "age_preference",
+                    RequestType.AGE_PREFERENCE.value,
                     "staff_filtered",
                     "age_preference_undirected",
                     "group_reference",
@@ -551,7 +551,7 @@ class Phase2ResolutionService:
                         ResolutionResult(
                             person=None,
                             confidence=0.90,
-                            method="age_preference",
+                            method=RequestType.AGE_PREFERENCE.value,
                             metadata={"age_preference": age_pref_value},
                         )
                     )
@@ -747,7 +747,7 @@ class Phase2ResolutionService:
                 elif resolution_result.is_ambiguous:
                     self._stats["ambiguous"] += 1
                 elif resolution_result.method in (
-                    "age_preference",
+                    RequestType.AGE_PREFERENCE.value,
                     "age_preference_undirected",
                     "group_reference",
                 ):
