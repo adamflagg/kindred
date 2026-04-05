@@ -106,7 +106,7 @@ def parse_date_only(value: str) -> str:
     return value.split("T")[0].split(" ")[0]
 
 
-def _get_enrollment_date(att: Any) -> str | None:
+def get_enrollment_date(att: Any) -> str | None:
     """Get the enrollment date for an attendee, preferring effective_date over enrollment_date."""
     ed = getattr(att, "effective_date", "") or ""
     if ed:
@@ -167,7 +167,7 @@ def _reconstruct_core(
             session_has_gender.add(effective_sid)
 
         # Enrollment event: use effective_date (original registration date)
-        enroll_date_str = _get_enrollment_date(att)
+        enroll_date_str = get_enrollment_date(att)
         if enroll_date_str:
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
             if (lower_bound is None or lower_bound <= dt.date()) and dt.date() <= cutoff_date:
@@ -404,7 +404,7 @@ def reconstruct_daily_multi(
                 per_session_has_gender[sid] = True
 
         # Enrollment event
-        enroll_date_str = _get_enrollment_date(att)
+        enroll_date_str = get_enrollment_date(att)
         if enroll_date_str:
             enroll_day = parse_date_only(enroll_date_str)
 

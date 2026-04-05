@@ -449,7 +449,7 @@ class MetricsRepository:
     async def has_pre_anchor_enrollments(self, year: int, anchor_date: str) -> bool:
         """Check if any attendees have enrollment dates before the anchor.
 
-        Mirrors _get_enrollment_date priority: effective_date first, then
+        Mirrors get_enrollment_date priority: effective_date first, then
         enrollment_date only when effective_date is empty.  This prevents
         false positives from cancelled attendees whose enrollment_date is
         the cancel PostDate rather than the original registration date.
