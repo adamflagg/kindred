@@ -81,11 +81,16 @@ def make_parse_result(
     requests: list[ParsedRequest],
     requester_cm_id: int = 99999,
 ) -> ParseResult:
-    """Helper to create a ParseResult with proper ParseRequest."""
+    """Helper to create a ParseResult with proper ParseRequest.
+
+    Sets expanded_from_placeholder=True in metadata since post-expansion
+    tests represent scenarios after placeholder expansion (ADR 7).
+    """
     return ParseResult(
         parsed_requests=requests,
         is_valid=True,
         parse_request=make_parse_request(requester_cm_id),
+        metadata={"expanded_from_placeholder": True},
     )
 
 

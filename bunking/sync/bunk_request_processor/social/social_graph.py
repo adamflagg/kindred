@@ -15,7 +15,7 @@ from api.utils.session_metrics import get_person_from_expand, get_session_from_e
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-from ..core.models import Person
+from ..core.models import Person, RequestType
 from ..data.repositories.session_repository import SessionRepository
 from ..resolution.interfaces import ResolutionResult
 
@@ -151,12 +151,15 @@ class SocialGraph:
         """Calculate edge weight based on request properties"""
         base_weight = 1.0
 
-        # Adjust by request type
-        if request.request_type == "bunk_with":
+        # Normalize request_type to string for comparison (handles both enum and raw string)
+        rt = request.request_type.value if isinstance(request.request_type, RequestType) else request.request_type
+
+        # Adjust by request type — ADR 8: use RequestType enum values
+        if rt == RequestType.BUNK_WITH.value:
             base_weight = 1.0
-        elif request.request_type == "not_bunk_with":
+        elif rt == RequestType.NOT_BUNK_WITH.value:
             base_weight = -0.5  # Negative relationships
-        elif request.request_type == "age_preference":
+        elif rt == RequestType.AGE_PREFERENCE.value:
             base_weight = 0.3  # Weak connection
 
         # Adjust by confidence
