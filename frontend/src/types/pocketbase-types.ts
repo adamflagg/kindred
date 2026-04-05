@@ -308,6 +308,7 @@ export type BunkRequestsRecord<
   confidence_score?: number
   conflict_group_id?: string
   created: IsoAutoDateString
+  disposition_reason?: string
   csv_position?: number
   id: string
   is_active?: boolean
@@ -327,6 +328,7 @@ export type BunkRequestsRecord<
   requester_id: number
   requires_family_decision?: boolean
   requires_manual_review?: boolean
+  resolution_method?: string
   resolution_notes?: string
   session_id: number
   source?: BunkRequestsSourceOptions
