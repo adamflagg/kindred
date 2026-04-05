@@ -1718,10 +1718,52 @@ export default function RequestReviewPanel({
                                 </>
                               )}
 
-                              {/* Metadata - always show */}
-                              <div className="text-muted-foreground flex items-center gap-4 text-xs">
+                              {/* Type (moved from column) */}
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">Type:</span>
+                                <EditableRequestType
+                                  value={request.request_type}
+                                  onChange={(newType) => {
+                                    const updates: Partial<BunkRequestsResponse> = {
+                                      request_type: newType as BunkRequestsResponse['request_type'],
+                                    }
+                                    if (newType === 'age_preference') {
+                                      delete updates.requestee_id
+                                    } else {
+                                      delete updates.age_preference_target
+                                    }
+                                    handleValidatedUpdate(request, updates)
+                                  }}
+                                  disabled={request.request_locked || false}
+                                />
+                              </div>
+
+                              {/* Metadata */}
+                              <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
                                 <span>Source: {request.source}</span>
-                                <span>Reciprocal: {request.is_reciprocal ? 'Yes' : 'No'}</span>
+                                {request.is_reciprocal && (
+                                  <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                                    Reciprocal
+                                  </span>
+                                )}
+                                {request.disposition_reason && (
+                                  <span
+                                    className={clsx(
+                                      'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                      getDispositionClasses(request.disposition_reason)
+                                    )}
+                                  >
+                                    {request.disposition_reason.replace(/_/g, ' ')}
+                                  </span>
+                                )}
+                                {request.resolution_method && (
+                                  <span>
+                                    via{' '}
+                                    <span className="font-medium">
+                                      {request.resolution_method.replace(/_/g, ' ')}
+                                    </span>
+                                  </span>
+                                )}
                                 <span>
                                   Created: {new Date(request.created).toLocaleDateString()}
                                 </span>
