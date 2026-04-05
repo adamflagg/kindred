@@ -419,6 +419,8 @@ class Phase3DisambiguationService:
                     elif result.metadata and result.metadata.get("no_match"):
                         self._stats["no_match"] += 1
                     else:
+                        # Reached when Phase 3 returns a non-resolved ResolutionResult
+                        # (e.g. candidates present but no match selected by AI)
                         self._stats["still_ambiguous"] += 1
                 else:
                     # Check disambiguation metadata for specific status

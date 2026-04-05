@@ -545,6 +545,7 @@ describe('Phase3Node', () => {
   it('renders error state for invalid_ai_output result', () => {
     renderNode(<Phase3Node {...makeNodeProps({ phase3: phase3InvalidAI })} />)
     expect(screen.getByText('Phase 3 Disambig')).toBeInTheDocument()
+    expect(screen.getByTestId('node-status-error')).toBeInTheDocument()
   })
 })
 
