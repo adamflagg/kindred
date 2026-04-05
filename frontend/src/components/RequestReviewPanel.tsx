@@ -52,7 +52,8 @@ const CONFIDENCE_RESOLVED = 0.85
 type ResolvedConfidenceFilter = 'all' | 'high' | 'spot-check'
 
 interface FilterState {
-  confidenceThreshold: number
+  lowConfidenceOnly: boolean
+  needsReviewOnly: boolean
   requestTypes: string[]
   statuses: string[]
   searchQuery: string
@@ -79,7 +80,8 @@ export default function RequestReviewPanel({
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterState>({
-    confidenceThreshold: 0,
+    lowConfidenceOnly: false,
+    needsReviewOnly: false,
     requestTypes: [],
     statuses: ['pending', 'declined', 'resolved'],
     searchQuery: '',
@@ -91,14 +93,16 @@ export default function RequestReviewPanel({
   // Query key excludes searchQuery since search filtering happens client-side using personMap
   const queryKeyFilters = useMemo(
     () => ({
-      confidenceThreshold: filters.confidenceThreshold,
+      lowConfidenceOnly: filters.lowConfidenceOnly,
+      needsReviewOnly: filters.needsReviewOnly,
       requestTypes: filters.requestTypes,
       statuses: filters.statuses,
       showResolved: filters.showResolved,
       resolvedConfidenceFilter: filters.resolvedConfidenceFilter,
     }),
     [
-      filters.confidenceThreshold,
+      filters.lowConfidenceOnly,
+      filters.needsReviewOnly,
       filters.requestTypes,
       filters.statuses,
       filters.showResolved,
@@ -137,13 +141,16 @@ export default function RequestReviewPanel({
         sort: '-confidence_score,priority',
       })
 
-      // Filter by confidence threshold on client side
-      // When slider is at 0, show all requests
-      // When slider is at 100, show only low confidence (score <= 100)
-      let filtered =
-        filters.confidenceThreshold === 0
-          ? result
-          : result.filter((r) => r.confidence_score <= filters.confidenceThreshold)
+      // Apply confidence/review filters on client side
+      let filtered = result
+
+      if (filters.lowConfidenceOnly) {
+        filtered = filtered.filter((r) => r.confidence_score < CONFIDENCE_RESOLVED)
+      }
+
+      if (filters.needsReviewOnly) {
+        filtered = filtered.filter((r) => r.requires_manual_review === true)
+      }
 
       // Apply resolved confidence filter when showing resolved requests
       if (filters.showResolved && filters.resolvedConfidenceFilter !== 'all') {
@@ -707,12 +714,13 @@ export default function RequestReviewPanel({
   // Count active filters for the filter toggle badge
   const activeFilterCount = useMemo(() => {
     let count = 0
-    if (filters.confidenceThreshold !== 0) count++
+    if (filters.lowConfidenceOnly || filters.needsReviewOnly) count++
     if (filters.requestTypes.length > 0) count++
     if (filters.statuses.length !== 3 || filters.showResolved) count++
     return count
   }, [
-    filters.confidenceThreshold,
+    filters.lowConfidenceOnly,
+    filters.needsReviewOnly,
     filters.requestTypes.length,
     filters.statuses.length,
     filters.showResolved,
@@ -853,29 +861,57 @@ export default function RequestReviewPanel({
                 Confidence
               </span>
               <div className="bg-muted/50 dark:bg-muted/30 border-border/50 flex items-center gap-1 rounded-xl border p-1">
-                {[
-                  { value: 0, label: 'All' },
-                  { value: 50, label: 'Low Only' },
-                  { value: 1, label: 'Needs Review' },
-                ].map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        confidenceThreshold: value,
-                      }))
-                    }
-                    className={clsx(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
-                      filters.confidenceThreshold === value
-                        ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <button
+                  onClick={() =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      lowConfidenceOnly: false,
+                      needsReviewOnly: false,
+                    }))
+                  }
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                    !filters.lowConfidenceOnly && !filters.needsReviewOnly
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      lowConfidenceOnly: true,
+                      needsReviewOnly: false,
+                    }))
+                  }
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                    filters.lowConfidenceOnly
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  )}
+                >
+                  Low Confidence
+                </button>
+                <button
+                  onClick={() =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      lowConfidenceOnly: false,
+                      needsReviewOnly: true,
+                    }))
+                  }
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                    filters.needsReviewOnly
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  )}
+                >
+                  Needs Review
+                </button>
               </div>
             </div>
 
