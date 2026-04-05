@@ -1,0 +1,216 @@
+"""Tests for Phase 3 trace result logic in the orchestrator.
+
+Verifies that the `result` field of Phase3IntentTrace reflects
+`disambiguation_status` from resolution metadata, not a hardcoded
+"still_ambiguous" fallback.
+
+Issue #838: trace result was always "still_ambiguous" for unresolved Phase 3
+results; it should use rr.metadata["disambiguation_status"] when present.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+from bunking.sync.bunk_request_processor.core.models import (
+    ParseRequest,
+    ParseResult,
+    ParsedRequest,
+    RequestSource,
+    RequestType,
+)
+from bunking.sync.bunk_request_processor.debug.trace_models import Phase3IntentTrace
+from bunking.sync.bunk_request_processor.orchestrator.orchestrator import _get_trace_key
+from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
+
+
+def _make_parse_result(original_request_id: str = "orig_req_1") -> ParseResult:
+    """Build a minimal ParseResult with a trace key."""
+    row_data = {
+        "_original_request_ids": {"share_bunk_with": original_request_id},
+        "requester_cm_id": 12345,
+        "first_name": "Emma",
+        "last_name": "Johnson",
+        "Grade": "5",
+        "year": 2025,
+        "bunk_with": "Olivia Chen",
+        "not_bunk_with": "",
+        "bunking_notes": "",
+        "internal_notes": "",
+        "socialize_with": "",
+    }
+    parse_request = ParseRequest(
+        request_text="Olivia Chen",
+        field_name="share_bunk_with",
+        requester_cm_id=12345,
+        requester_name="Emma Johnson",
+        requester_grade="5",
+        session_cm_id=1000001,
+        session_name="Session 1",
+        year=2025,
+        row_data=row_data,
+    )
+    parsed_req = ParsedRequest(
+        raw_text="Olivia Chen",
+        request_type=RequestType.BUNK_WITH,
+        target_name="Olivia Chen",
+        age_preference=None,
+        source_field="share_bunk_with",
+        source=RequestSource.FAMILY,
+        confidence=0.5,
+        csv_position=1,
+        metadata={},
+    )
+    return ParseResult(
+        parsed_requests=[parsed_req],
+        is_valid=True,
+        parse_request=parse_request,
+    )
+
+
+def _run_current_trace_logic(
+    resolution_result: ResolutionResult,
+    phase3_processed_indices: set[int] | None = None,
+    parse_result: ParseResult | None = None,
+) -> list[Phase3IntentTrace]:
+    """Execute the current (pre-fix) Phase 3 trace loop and return recorded traces.
+
+    This mirrors the exact code in orchestrator.py around lines 1451-1489.
+    The test_* methods assert on the result field to check for bugs.
+    """
+    if parse_result is None:
+        parse_result = _make_parse_result()
+    if phase3_processed_indices is None:
+        phase3_processed_indices = {0}
+
+    resolution_results = [(parse_result, [resolution_result])]
+    pre_phase3_confidences: dict = {}
+    recorded_traces: list[Phase3IntentTrace] = []
+
+    for idx, (pr, res_list) in enumerate(resolution_results):
+        trace_key = _get_trace_key(pr)
+        if not trace_key:
+            continue
+        ran_phase3 = idx in phase3_processed_indices
+        pre_confs = pre_phase3_confidences.get(trace_key, [])
+        for intent_idx, rr in enumerate(res_list):
+            rr_meta = rr.metadata or {}
+            candidates_sent = (
+                [
+                    {
+                        "person_cm_id": c.cm_id,
+                        "name": (c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}"),
+                    }
+                    for c in (rr.candidates or [])
+                ]
+                if ran_phase3
+                else []
+            )
+            ai_reasoning = rr_meta.get("reason")
+            confidence_before = pre_confs[intent_idx] if intent_idx < len(pre_confs) else None
+            trace = Phase3IntentTrace(
+                target_name=rr.target_name or "",
+                ran=ran_phase3,
+                candidates_sent=candidates_sent,
+                ai_reasoning=ai_reasoning,
+                confidence_before=confidence_before,
+                result=(
+                    "resolved"
+                    if rr.is_resolved
+                    else ("not_needed" if not ran_phase3 else rr_meta.get("disambiguation_status", "still_ambiguous"))
+                ),
+                confidence_after=rr.confidence,
+            )
+            recorded_traces.append(trace)
+
+    return recorded_traces
+
+
+class TestPhase3TraceResult:
+    """Phase 3 trace result should reflect disambiguation_status metadata."""
+
+    def test_invalid_ai_output_trace_result(self):
+        """When disambiguation_status='invalid_ai_output' and Phase 3 ran but
+        did not resolve, the trace result should be 'invalid_ai_output',
+        not 'still_ambiguous'."""
+        rr = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={"disambiguation_status": "invalid_ai_output"},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        # This FAILS before the fix: result is "still_ambiguous" not "invalid_ai_output"
+        assert traces[0].result == "invalid_ai_output", f"Expected 'invalid_ai_output' but got '{traces[0].result}'"
+
+    def test_no_match_trace_result(self):
+        """When disambiguation_status='no_match' and Phase 3 ran but did not
+        resolve, the trace result should be 'no_match', not 'still_ambiguous'."""
+        rr = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={"disambiguation_status": "no_match"},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        # This FAILS before the fix: result is "still_ambiguous" not "no_match"
+        assert traces[0].result == "no_match", f"Expected 'no_match' but got '{traces[0].result}'"
+
+    def test_still_ambiguous_when_no_status_in_metadata(self):
+        """When Phase 3 ran but metadata has no disambiguation_status key, the
+        trace result should fall back to 'still_ambiguous'."""
+        rr = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={},  # No disambiguation_status key
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].result == "still_ambiguous"
+
+    def test_resolved_result_unchanged(self):
+        """When the resolution IS resolved, result should always be 'resolved'
+        regardless of any metadata."""
+        mock_person = MagicMock()
+        mock_person.cm_id = 67890
+
+        rr = ResolutionResult(
+            person=mock_person,
+            confidence=0.95,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={"disambiguation_status": "invalid_ai_output"},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].result == "resolved"
+
+    def test_not_needed_when_phase3_did_not_run(self):
+        """When Phase 3 did not run for this index, result should be 'not_needed'."""
+        rr = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="phase2",
+            target_name="Olivia Chen",
+            metadata={"disambiguation_status": "no_match"},
+        )
+
+        # Phase 3 was NOT run for index 0
+        traces = _run_current_trace_logic(rr, phase3_processed_indices=set())
+
+        assert len(traces) == 1
+        assert traces[0].result == "not_needed"

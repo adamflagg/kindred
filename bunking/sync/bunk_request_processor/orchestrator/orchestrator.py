@@ -1481,9 +1481,15 @@ class RequestOrchestrator:
                         candidates_sent=candidates_sent,
                         ai_reasoning=ai_reasoning,
                         confidence_before=confidence_before,
-                        result="resolved"
-                        if rr.is_resolved
-                        else ("not_needed" if not ran_phase3 else "still_ambiguous"),
+                        result=(
+                            "resolved"
+                            if rr.is_resolved
+                            else (
+                                "not_needed"
+                                if not ran_phase3
+                                else rr_meta.get("disambiguation_status", "still_ambiguous")
+                            )
+                        ),
                         confidence_after=rr.confidence,
                     ),
                 )
