@@ -218,6 +218,7 @@ tmp/
 !ruff.toml
 !tsconfig.json
 !tsconfig.node.json
+!tsconfig.test.json
 !vite.config.ts
 
 # Temporary outputs folder

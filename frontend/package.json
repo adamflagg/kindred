@@ -15,7 +15,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
