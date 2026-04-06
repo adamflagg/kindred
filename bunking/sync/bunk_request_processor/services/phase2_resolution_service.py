@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from bunking.logging_config import get_logger
 
@@ -569,11 +569,15 @@ class Phase2ResolutionService:
                     # Shouldn't happen, but handle gracefully
                     case.resolution_results.append(ResolutionResult(confidence=0.0, method="no_resolution_needed"))
 
+    _MUTUAL_REQUEST_TYPES: ClassVar[set[RequestType]] = {RequestType.BUNK_WITH, RequestType.NOT_BUNK_WITH}
+
     def _build_mutual_request_lookup(self, cases: list[ResolutionCase]) -> dict[int, set[int]]:
         """Build a mapping of requester → {cm_ids that mutually requested them}.
 
-        Scans resolved BUNK_WITH requests for bidirectional pairs:
-        if A requested B AND B requested A, both get entries.
+        Scans resolved BUNK_WITH and NOT_BUNK_WITH requests for bidirectional
+        pairs: if A requested B AND B requested A, both get entries. NOT_BUNK_WITH
+        mutuals help disambiguate the correct target person even though they
+        indicate a negative preference.
 
         Args:
             cases: All resolution cases (resolved and unresolved)
@@ -581,7 +585,9 @@ class Phase2ResolutionService:
         Returns:
             Dict mapping requester_cm_id → set of cm_ids that also requested them
         """
-        # Build forward map: requester → set of resolved targets (BUNK_WITH only)
+        # Build forward map: requester → set of resolved targets (person-referencing types only).
+        # Intentionally session-agnostic: cross-session mutuals (A→B in session 1, B→A in
+        # session 2) are valid identity confirmation signals for disambiguation.
         forward: dict[int, set[int]] = {}
 
         for case in cases:
@@ -592,10 +598,12 @@ class Phase2ResolutionService:
             for idx, rr in enumerate(case.resolution_results):
                 if rr is None or not rr.is_resolved or rr.person is None:
                     continue
-                # Only count BUNK_WITH requests
-                if idx < len(case.parsed_requests):
-                    if case.parsed_requests[idx].request_type != RequestType.BUNK_WITH:
-                        continue
+                # Only count person-referencing request types (skip if index out of bounds)
+                if (
+                    idx >= len(case.parsed_requests)
+                    or case.parsed_requests[idx].request_type not in self._MUTUAL_REQUEST_TYPES
+                ):
+                    continue
                 forward.setdefault(requester, set()).add(rr.person.cm_id)
 
         # Find mutual pairs
@@ -662,13 +670,25 @@ class Phase2ResolutionService:
                 # gets TOP 5 by social score, not arbitrary DB order
                 if enhanced_result.is_ambiguous and enhanced_result.candidates:
                     parsed_request = case.parsed_requests[req_idx]
+                    req_cm_id = case.parse_result.parse_request.requester_cm_id
+                    sess_cm_id = case.parse_result.parse_request.session_cm_id
+
+                    # Look up requester gender from social graph nodes
+                    graph = self.networkx_analyzer.graphs.get(sess_cm_id)
+                    requester_gender = (
+                        graph.nodes[req_cm_id].get("gender") if graph and req_cm_id in graph.nodes else None
+                    )
+                    is_ag = self.networkx_analyzer.session_types.get(sess_cm_id) == "ag"
+
                     auto_result, ranked_candidates = self.networkx_analyzer.smart_resolve_candidates(
                         name=parsed_request.target_name or "",
                         candidates=enhanced_result.candidates,
-                        requester_cm_id=case.parse_result.parse_request.requester_cm_id,
-                        session_cm_id=case.parse_result.parse_request.session_cm_id,
+                        requester_cm_id=req_cm_id,
+                        session_cm_id=sess_cm_id,
                         config=smart_config,
-                        mutual_request_cm_ids=mutual_lookup.get(case.parse_result.parse_request.requester_cm_id, set()),
+                        mutual_request_cm_ids=mutual_lookup.get(req_cm_id, set()),
+                        requester_gender=requester_gender,
+                        is_ag_session=is_ag,
                     )
 
                     if auto_result:

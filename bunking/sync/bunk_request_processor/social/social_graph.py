@@ -79,6 +79,7 @@ class SocialGraph:
 
         # Session-specific graphs to ensure isolation
         self.graphs: dict[int, nx.Graph] = {}  # session_cm_id -> graph
+        self.session_types: dict[int, str] = {}  # session_cm_id -> "main"/"ag"/"embedded"
         self._initialized = False
 
         # Cache for performance
@@ -101,6 +102,12 @@ class SocialGraph:
             valid_sessions = self._session_repo.get_valid_bunking_session_ids(self.year)
             self.session_cm_ids = list(valid_sessions)
             logger.info(f"No sessions specified, using all valid sessions: {self.session_cm_ids}")
+
+        # Look up session types for gender-aware filtering
+        for session_cm_id in self.session_cm_ids:
+            session_data = self._session_repo.find_by_cm_id(session_cm_id)
+            if session_data:
+                self.session_types[session_cm_id] = session_data.get("session_type", "main")
 
         # Build a separate graph for each session
         for session_cm_id in self.session_cm_ids:
@@ -207,6 +214,11 @@ class SocialGraph:
                     continue
                 person_cm_id = person.cm_id
                 attendee_data[person_cm_id] = attendee
+
+                # Store gender on graph node for gender-aware filtering
+                gender = getattr(person, "gender", None)
+                if gender:
+                    graph.add_node(person_cm_id, gender=gender)
 
                 # Group by household (from expanded person)
                 household_id = getattr(person, "household_id", None)
@@ -417,7 +429,7 @@ class SocialGraph:
         # Analyze each candidate
         enhanced_candidates = []
 
-        for candidate in resolution.candidates[:5]:  # Top 5 only
+        for candidate in resolution.candidates[:10]:  # Top 10 — cross-session candidates now included
             social_signals = self.get_social_signals(requester_cm_id, candidate.cm_id, session_cm_id)
 
             # Create enhanced person with social metadata
@@ -430,6 +442,7 @@ class SocialGraph:
                 grade=candidate.grade,
                 school=candidate.school,
                 session_cm_id=candidate.session_cm_id,
+                gender=candidate.gender,
             )
 
             # Add social signals to metadata
@@ -438,14 +451,22 @@ class SocialGraph:
             enhanced_person.metadata.update(social_signals)
             enhanced_candidates.append(enhanced_person)
 
-        # Sort by social distance (lower is better) and mutual connections
-        enhanced_candidates.sort(
-            key=lambda p: (
+        # Gender-aware sorting: in non-AG sessions, same-gender candidates rank first
+        requester_gender = graph.nodes[requester_cm_id].get("gender") if requester_cm_id in graph.nodes else None
+        is_ag = self.session_types.get(session_cm_id) == "ag"
+
+        def _sort_key(p: Person) -> tuple[int, int, int, float]:
+            gender_penalty = 0
+            if requester_gender and not is_ag and p.gender:
+                gender_penalty = 0 if p.gender == requester_gender else 1
+            return (
+                gender_penalty,
                 p.metadata.get("social_distance", 999),
                 -p.metadata.get("mutual_connections", 0),
                 -p.metadata.get("relationship_strength", 0),
             )
-        )
+
+        enhanced_candidates.sort(key=_sort_key)
 
         # Update resolution with enhanced candidates
         resolution.candidates = enhanced_candidates
@@ -810,6 +831,8 @@ class SocialGraph:
         session_cm_id: int,
         config: dict[str, Any],
         mutual_request_cm_ids: set[int],
+        requester_gender: str | None = None,
+        is_ag_session: bool = False,
     ) -> tuple[tuple[int, float, str] | None, list[Person]]:
         """Attempt to auto-resolve ambiguous candidates using social signals.
 
@@ -833,6 +856,8 @@ class SocialGraph:
             session_cm_id: The session context
             config: Smart resolution configuration
             mutual_request_cm_ids: Set of candidate cm_ids that have mutual requests
+            requester_gender: Requester's gender ("M"/"F"/"Other") for gender-aware scoring
+            is_ag_session: True if this is an all-gender session (skip gender filtering)
 
         Returns:
             Tuple of:
@@ -858,6 +883,12 @@ class SocialGraph:
                 config=config,
                 has_mutual_request=has_mutual,
             )
+            # Gender-aware scoring: same-gender bonus / cross-gender penalty (non-AG only)
+            if requester_gender and not is_ag_session and candidate.gender:
+                if candidate.gender == requester_gender:
+                    score += 2.0
+                else:
+                    score -= 5.0
             scores[candidate.cm_id] = score
 
         # Find best and second-best scores

@@ -827,7 +827,9 @@ class TestSmartResolutionWiring:
 
         # Create mock social graph - smart_resolve_candidates should be called
         networkx_analyzer = AsyncMock()
-        networkx_analyzer.smart_resolve_candidates = Mock(return_value=None)  # Returns None = needs AI
+        networkx_analyzer.smart_resolve_candidates = Mock(return_value=(None, [candidate1, candidate2]))
+        networkx_analyzer.graphs = {1000002: Mock(nodes={100: {}})}
+        networkx_analyzer.session_types = {}
         # enhance_resolution just sorts candidates, doesn't auto-resolve
         networkx_analyzer.enhance_resolution = AsyncMock(
             return_value=ResolutionResult(
@@ -917,6 +919,8 @@ class TestSmartResolutionWiring:
         networkx_analyzer.smart_resolve_candidates = Mock(
             return_value=((200, 0.87, "social_graph_auto"), [candidate1, candidate2])
         )
+        networkx_analyzer.graphs = {1000002: Mock(nodes={100: {}})}
+        networkx_analyzer.session_types = {}
         # enhance_resolution still returns ambiguous (before smart resolution)
         networkx_analyzer.enhance_resolution = AsyncMock(
             return_value=ResolutionResult(
@@ -1012,6 +1016,8 @@ class TestSmartResolutionWiring:
         networkx_analyzer.smart_resolve_candidates = Mock(
             return_value=((200, 0.87, "social_graph_auto"), [candidate1, candidate2])
         )
+        networkx_analyzer.graphs = {1000002: Mock(nodes={100: {}})}
+        networkx_analyzer.session_types = {}
         networkx_analyzer.enhance_resolution = AsyncMock(
             return_value=ResolutionResult(
                 person=None,

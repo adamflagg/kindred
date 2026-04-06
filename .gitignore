@@ -297,6 +297,7 @@ pb_data_local/
 # =============================================================================
 config/branding.local.json
 config/staff_list.json
+config/nicknames_override.json
 config/sheets_sharing.local.json
 local
 CLAUDE.local.md
