@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
+from bunking.models import RequestType
 from bunking.solver.constraints.bunk_requests import add_bunk_request_satisfaction_vars
 
 from ..conftest import build_solver_context, create_bunk, create_person, create_request, is_optimal_or_feasible
@@ -32,7 +33,7 @@ class TestBunkWithSatisfaction:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=1002,
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -73,7 +74,7 @@ class TestBunkWithSatisfaction:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=1002,
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -118,7 +119,7 @@ class TestBunkWithSatisfaction:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=9999,  # Not in context
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -149,7 +150,7 @@ class TestNotBunkWithSatisfaction:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=1002,
-            request_type="not_bunk_with",
+            request_type=RequestType.NOT_BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -191,7 +192,7 @@ class TestNotBunkWithSatisfaction:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=1002,
-            request_type="not_bunk_with",
+            request_type=RequestType.NOT_BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -231,13 +232,13 @@ class TestMultipleRequests:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=1002,
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
         request2 = create_request(
             request_id="req-2",
             requester_cm_id=1001,
             requested_cm_id=1003,
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -267,13 +268,13 @@ class TestMultipleRequests:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=1002,
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
         request2 = create_request(
             request_id="req-2",
             requester_cm_id=1001,
             requested_cm_id=1003,
-            request_type="not_bunk_with",
+            request_type=RequestType.NOT_BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -325,7 +326,7 @@ class TestRequestEdgeCases:
             request_id="req-1",
             requester_cm_id=1001,
             requested_cm_id=None,  # No target
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
 
         ctx = build_solver_context(
@@ -350,7 +351,7 @@ class TestRequestEdgeCases:
             request_id="req-1",
             requester_cm_id=9999,  # Not in context
             requested_cm_id=1001,
-            request_type="bunk_with",
+            request_type=RequestType.BUNK_WITH,
         )
 
         ctx = build_solver_context(
