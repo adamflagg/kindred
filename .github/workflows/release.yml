@@ -35,6 +35,36 @@ jobs:
 
     - uses: kenji-miyake/setup-git-cliff@2778609c643a39a2576c4bae2e493b855eb4aee8 # v2
 
+    - name: Check CD health (early warning)
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # Fail fast if CD has been consistently broken — saves waiting 15 min at "Ensure CD passed on HEAD"
+        # Gets last 5 completed (non-cancelled) CD runs on main
+        RUNS=$(gh run list \
+          --workflow cd.yml \
+          --branch main \
+          --limit 10 \
+          --json conclusion,status \
+          --jq '[.[] | select(.status == "completed" and (.conclusion == "success" or .conclusion == "failure"))][:5]')
+
+        TOTAL=$(echo "$RUNS" | jq 'length')
+        FAILURES=$(echo "$RUNS" | jq '[.[] | select(.conclusion == "failure")] | length')
+
+        echo "CD health: $FAILURES failures in last $TOTAL completed non-cancelled runs"
+
+        if [ "$TOTAL" -gt 0 ] && [ "$FAILURES" -ge 3 ]; then
+          echo "::error::CD is unhealthy — $FAILURES/$TOTAL recent runs failed. Fix CD before releasing."
+          echo "The release would fail anyway at 'Ensure CD passed on HEAD'. Check the CD workflow logs first."
+          exit 1
+        fi
+
+        if [ "$FAILURES" -ge 1 ]; then
+          echo "::warning::CD has $FAILURES/$TOTAL recent failures. Proceeding — 'Ensure CD passed on HEAD' will gate this."
+        else
+          echo "CD health OK"
+        fi
+
     - name: Calculate version
       id: version
       env:
