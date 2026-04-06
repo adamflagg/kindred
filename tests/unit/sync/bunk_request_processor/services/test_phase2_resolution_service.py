@@ -463,12 +463,41 @@ class TestBuildMutualRequestLookup:
         assert lookup.get(100, set()) == set()
         assert lookup.get(200, set()) == set()
 
-    def test_not_bunk_with_excluded(self):
-        """NOT_BUNK_WITH requests don't count as mutual."""
+    def test_not_bunk_with_mutual_detected(self):
+        """NOT_BUNK_WITH reciprocals count as mutual (helps disambiguate correct target)."""
         service = Phase2ResolutionService(resolution_pipeline=Mock())
 
-        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.BUNK_WITH)])
+        # A says NOT_BUNK_WITH B, B says NOT_BUNK_WITH A → mutual
+        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.NOT_BUNK_WITH)])
         case_b = self._make_resolved_case(200, 1000, [(100, RequestType.NOT_BUNK_WITH)])
+
+        lookup = service._build_mutual_request_lookup([case_a, case_b])
+
+        assert 200 in lookup.get(100, set())
+        assert 100 in lookup.get(200, set())
+
+    def test_mixed_bunk_and_not_bunk_mutual(self):
+        """BUNK_WITH and NOT_BUNK_WITH can independently produce mutual pairs."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+
+        # A BUNK_WITH B, B BUNK_WITH A → mutual
+        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.BUNK_WITH)])
+        case_b = self._make_resolved_case(200, 1000, [(100, RequestType.BUNK_WITH)])
+        # C NOT_BUNK_WITH D, D NOT_BUNK_WITH C → also mutual
+        case_c = self._make_resolved_case(300, 1000, [(400, RequestType.NOT_BUNK_WITH)])
+        case_d = self._make_resolved_case(400, 1000, [(300, RequestType.NOT_BUNK_WITH)])
+
+        lookup = service._build_mutual_request_lookup([case_a, case_b, case_c, case_d])
+
+        assert 200 in lookup.get(100, set())
+        assert 400 in lookup.get(300, set())
+
+    def test_age_preference_excluded(self):
+        """AGE_PREFERENCE requests don't count as mutual."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+
+        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.AGE_PREFERENCE)])
+        case_b = self._make_resolved_case(200, 1000, [(100, RequestType.AGE_PREFERENCE)])
 
         lookup = service._build_mutual_request_lookup([case_a, case_b])
 
@@ -523,6 +552,8 @@ class TestMutualRequestWiring:
         networkx_analyzer = Mock()
         networkx_analyzer.enhance_resolution = AsyncMock(side_effect=lambda resolution, **kw: resolution)
         networkx_analyzer.smart_resolve_candidates = Mock(return_value=(None, [candidate1, candidate2]))
+        networkx_analyzer.graphs = {1000: Mock(nodes={100: {}, 200: {}})}
+        networkx_analyzer.session_types = {}
 
         service = Phase2ResolutionService(
             resolution_pipeline=Mock(),
@@ -535,8 +566,7 @@ class TestMutualRequestWiring:
         networkx_analyzer.smart_resolve_candidates.assert_called_once()
         call_kwargs = networkx_analyzer.smart_resolve_candidates.call_args
         mutual_ids = call_kwargs.kwargs.get("mutual_request_cm_ids")
-        if mutual_ids is None:
-            mutual_ids = call_kwargs.args[5] if len(call_kwargs.args) > 5 else set()
+        assert mutual_ids is not None, "mutual_request_cm_ids not passed as kwarg to smart_resolve_candidates"
 
         # Person 100 has mutual with person 200 (A→B and B→A)
         assert 200 in mutual_ids
@@ -567,6 +597,8 @@ class TestMutualRequestWiring:
         networkx_analyzer = Mock()
         networkx_analyzer.enhance_resolution = AsyncMock(side_effect=lambda resolution, **kw: resolution)
         networkx_analyzer.smart_resolve_candidates = Mock(return_value=(None, [candidate1, candidate2]))
+        networkx_analyzer.graphs = {1000: Mock(nodes={100: {}})}
+        networkx_analyzer.session_types = {}
 
         service = Phase2ResolutionService(
             resolution_pipeline=Mock(),
@@ -577,8 +609,7 @@ class TestMutualRequestWiring:
 
         call_kwargs = networkx_analyzer.smart_resolve_candidates.call_args
         mutual_ids = call_kwargs.kwargs.get("mutual_request_cm_ids")
-        if mutual_ids is None:
-            mutual_ids = call_kwargs.args[5] if len(call_kwargs.args) > 5 else set()
+        assert mutual_ids is not None, "mutual_request_cm_ids not passed as kwarg"
 
         assert mutual_ids == set()
 

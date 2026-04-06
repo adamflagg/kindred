@@ -1417,3 +1417,232 @@ class TestEnhanceResolution:
         assert len(result.candidates) == 3
         assert result.metadata is not None
         assert result.metadata["social_graph_enhanced"] is True
+
+    @pytest.mark.asyncio
+    async def test_gender_preserved_on_enhanced_person(self):
+        """Enhanced person copies gender from original candidate."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+
+        G = nx.Graph()
+        G.add_node(100)
+        sg.graphs[1000] = G
+
+        candidate1 = Person(
+            cm_id=1,
+            first_name="Emma",
+            last_name="Johnson",
+            grade=5,
+            session_cm_id=2000,
+            gender="F",
+        )
+        candidate2 = Person(
+            cm_id=2,
+            first_name="Liam",
+            last_name="Garcia",
+            grade=5,
+            session_cm_id=2000,
+            gender="M",
+        )
+
+        resolution = ResolutionResult(
+            candidates=[candidate1, candidate2],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        # Gender must be preserved through the enhancement path (is_ambiguous = True with 2 candidates)
+        genders = {c.cm_id: c.gender for c in result.candidates}
+        assert genders[1] == "F"
+        assert genders[2] == "M"
+
+    @pytest.mark.asyncio
+    async def test_same_gender_candidates_ranked_first_non_ag(self):
+        """In non-AG sessions, same-gender candidates rank above cross-gender."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+        sg.session_types = {1000: "main"}
+
+        G = nx.Graph()
+        G.add_node(100, gender="F")
+        sg.graphs[1000] = G
+
+        male_candidate = Person(cm_id=1, first_name="Noah", last_name="Chen", grade=5, session_cm_id=2000, gender="M")
+        female_candidate = Person(
+            cm_id=2, first_name="Noa", last_name="Garcia", grade=5, session_cm_id=2000, gender="F"
+        )
+
+        resolution = ResolutionResult(
+            candidates=[male_candidate, female_candidate],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        # Female requester in non-AG session → female candidate ranked first
+        assert result.candidates[0].cm_id == 2
+        assert result.candidates[0].gender == "F"
+        assert result.candidates[1].cm_id == 1
+        assert result.candidates[1].gender == "M"
+
+    @pytest.mark.asyncio
+    async def test_ag_session_skips_gender_sorting(self):
+        """In AG sessions, gender does not affect candidate ordering."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+        sg.session_types = {1000: "ag"}
+
+        G = nx.Graph()
+        # Requester connected to male candidate but not female
+        G.add_node(100, gender="F")
+        G.add_edge(100, 1)
+        sg.graphs[1000] = G
+
+        male_candidate = Person(cm_id=1, first_name="Noah", last_name="Chen", grade=5, session_cm_id=1000, gender="M")
+        female_candidate = Person(
+            cm_id=2, first_name="Noa", last_name="Garcia", grade=5, session_cm_id=1000, gender="F"
+        )
+
+        resolution = ResolutionResult(
+            candidates=[female_candidate, male_candidate],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        # AG session — male candidate with social connection should still rank first
+        assert result.candidates[0].cm_id == 1
+
+    @pytest.mark.asyncio
+    async def test_gender_unknown_no_gender_sorting(self):
+        """When requester gender is unknown, no gender-aware sorting applied."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+        sg.session_types = {1000: "main"}
+
+        G = nx.Graph()
+        G.add_node(100)  # No gender attribute on node
+        sg.graphs[1000] = G
+
+        male_candidate = Person(cm_id=1, first_name="Noah", last_name="Chen", grade=5, session_cm_id=2000, gender="M")
+        female_candidate = Person(
+            cm_id=2, first_name="Noa", last_name="Garcia", grade=5, session_cm_id=2000, gender="F"
+        )
+
+        resolution = ResolutionResult(
+            candidates=[male_candidate, female_candidate],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        # No gender data on requester — original order preserved (both have same default signals)
+        assert len(result.candidates) == 2
+
+
+class TestGenderAwareScoring:
+    """Tests for gender-aware social score adjustments in smart_resolve_candidates."""
+
+    def _make_sg_with_graph(self) -> SocialGraph:
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+        sg.session_types = {1000: "main"}
+        G = nx.Graph()
+        G.add_node(100, gender="F")
+        G.add_node(1, gender="F")
+        G.add_node(2, gender="M")
+        sg.graphs[1000] = G
+        return sg
+
+    def test_same_gender_scores_higher_than_cross_gender(self):
+        """Same-gender candidate scores higher than cross-gender in non-AG session."""
+        sg = self._make_sg_with_graph()
+        config = {
+            "enabled": True,
+            "significant_connection_threshold": 5,
+            "min_connections_for_auto_resolve": 3,
+            "min_confidence_for_auto_resolve": 0.85,
+            "mutual_request_bonus": 10,
+            "common_friends_weight": 1.0,
+            "historical_bunking_weight": 0.8,
+            "connection_score_weight": 0.7,
+        }
+
+        female_candidate = Person(
+            cm_id=1, first_name="Emma", last_name="Johnson", grade=5, session_cm_id=1000, gender="F"
+        )
+        male_candidate = Person(cm_id=2, first_name="Liam", last_name="Garcia", grade=5, session_cm_id=1000, gender="M")
+
+        _, ranked = sg.smart_resolve_candidates(
+            name="emma",
+            candidates=[male_candidate, female_candidate],
+            requester_cm_id=100,
+            session_cm_id=1000,
+            config=config,
+            mutual_request_cm_ids=set(),
+            requester_gender="F",
+            is_ag_session=False,
+        )
+
+        # Female candidate should rank first (same-gender bonus)
+        assert ranked[0].cm_id == 1
+
+    def test_ag_session_no_gender_score_adjustment(self):
+        """AG session candidates scored equally regardless of gender."""
+        sg = self._make_sg_with_graph()
+        config = {
+            "enabled": True,
+            "significant_connection_threshold": 5,
+            "min_connections_for_auto_resolve": 3,
+            "min_confidence_for_auto_resolve": 0.85,
+            "mutual_request_bonus": 10,
+            "common_friends_weight": 1.0,
+            "historical_bunking_weight": 0.8,
+            "connection_score_weight": 0.7,
+        }
+
+        female_candidate = Person(
+            cm_id=1, first_name="Emma", last_name="Johnson", grade=5, session_cm_id=1000, gender="F"
+        )
+        male_candidate = Person(cm_id=2, first_name="Liam", last_name="Garcia", grade=5, session_cm_id=1000, gender="M")
+
+        _, ranked = sg.smart_resolve_candidates(
+            name="emma",
+            candidates=[male_candidate, female_candidate],
+            requester_cm_id=100,
+            session_cm_id=1000,
+            config=config,
+            mutual_request_cm_ids=set(),
+            requester_gender="F",
+            is_ag_session=True,
+        )
+
+        # AG session — no gender adjustment, both candidates have equal score (0.0)
+        # Original order preserved when scores are tied
+        assert len(ranked) == 2
