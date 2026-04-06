@@ -1594,3 +1594,187 @@ class TestSingleNameCandidateGeneration:
         assert candidate_ids == {100, 200}
         # attendee_repository should NOT be called
         attendee_repo.bulk_get_sessions_for_persons.assert_not_called()
+
+
+class TestAICandidateScoringFactors:
+    """Tests that _try_ai_candidate_resolution captures scoring factors in metadata.
+
+    Issue #857: populate confidence_factors in pipeline debug traces.
+    Factors are stored in ResolutionResult.metadata["candidate_factors"] as a dict
+    keyed by cm_id, so the orchestrator can thread them into CandidateTrace.score_breakdown.
+    """
+
+    def _create_service_with_persons(self, persons: list[Person]) -> Phase2ResolutionService:
+        pipeline = Mock()
+        person_repo = Mock()
+        person_map = {p.cm_id: p for p in persons}
+        person_repo.find_by_cm_id = Mock(side_effect=lambda cm_id: person_map.get(cm_id))
+        return Phase2ResolutionService(resolution_pipeline=pipeline, person_repository=person_repo)
+
+    def _make_parsed(self, target_name: str, candidate_ids: list[int]) -> ParsedRequest:
+        return ParsedRequest(
+            raw_text=f"bunk with {target_name}",
+            request_type=RequestType.BUNK_WITH,
+            target_name=target_name,
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.8,
+            csv_position=0,
+            metadata={"target_person_ids": candidate_ids},
+        )
+
+    def test_candidate_factors_present_in_metadata(self):
+        """metadata['candidate_factors'] should exist after _try_ai_candidate_resolution."""
+        candidate = _create_person(cm_id=111, first_name="Emma", last_name="Johnson", grade=5)
+        service = self._create_service_with_persons([candidate])
+
+        parsed = self._make_parsed("Emma Johnson", [111])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",
+            session_cm_id=None,
+            year=2025,
+        )
+
+        assert result is not None
+        assert result.metadata is not None
+        assert "candidate_factors" in result.metadata, (
+            "metadata must contain 'candidate_factors' key after _try_ai_candidate_resolution"
+        )
+
+    def test_candidate_factors_keyed_by_cm_id(self):
+        """candidate_factors should be a dict keyed by cm_id."""
+        candidate = _create_person(cm_id=111, first_name="Emma", last_name="Johnson", grade=5)
+        service = self._create_service_with_persons([candidate])
+
+        parsed = self._make_parsed("Emma Johnson", [111])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",
+            session_cm_id=None,
+            year=2025,
+        )
+
+        assert result is not None
+        factors_by_candidate = result.metadata["candidate_factors"]
+        assert isinstance(factors_by_candidate, dict)
+        assert 111 in factors_by_candidate, "Candidate cm_id 111 should be a key in candidate_factors"
+
+    def test_grade_factor_captured_same_grade(self):
+        """grade factor should be +0.2 when requester and candidate are in the same grade."""
+        candidate = _create_person(cm_id=111, first_name="Emma", last_name="Johnson", grade=5)
+        service = self._create_service_with_persons([candidate])
+
+        parsed = self._make_parsed("Emma Johnson", [111])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",  # Same grade as candidate
+            session_cm_id=None,
+            year=2025,
+        )
+
+        assert result is not None
+        factors = result.metadata["candidate_factors"][111]
+        assert "grade" in factors, "grade factor must be captured"
+        assert factors["grade"] == pytest.approx(0.2), "Same-grade candidate should have grade factor of +0.2"
+
+    def test_grade_factor_captured_one_apart(self):
+        """grade factor should be +0.1 when candidate is 1 grade apart from requester."""
+        candidate = _create_person(cm_id=222, first_name="Liam", last_name="Garcia", grade=6)
+        service = self._create_service_with_persons([candidate])
+
+        parsed = self._make_parsed("Liam Garcia", [222])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",  # 1 grade apart from candidate (grade=6)
+            session_cm_id=None,
+            year=2025,
+        )
+
+        assert result is not None
+        factors = result.metadata["candidate_factors"][222]
+        assert "grade" in factors
+        assert factors["grade"] == pytest.approx(0.1), "1-grade-apart candidate should have grade factor of +0.1"
+
+    def test_session_factor_captured_same_session(self):
+        """session factor should be +0.3 when candidate is in requester's session."""
+        candidate = _create_person(cm_id=111, first_name="Olivia", last_name="Chen", grade=5)
+        service = self._create_service_with_persons([candidate])
+
+        attendee_repo = Mock()
+        attendee_repo.bulk_get_sessions_for_persons = Mock(return_value={111: 1000002})
+        service.attendee_repository = attendee_repo
+
+        parsed = self._make_parsed("Olivia Chen", [111])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",
+            session_cm_id=1000002,  # Candidate is in this session
+            year=2025,
+        )
+
+        assert result is not None
+        factors = result.metadata["candidate_factors"][111]
+        assert "session" in factors, "session factor must be captured"
+        assert factors["session"] == pytest.approx(0.3), "Same-session candidate should have session factor of +0.3"
+
+    def test_session_factor_captured_different_session(self):
+        """session factor should be -0.1 when candidate is in a different session."""
+        candidate = _create_person(cm_id=111, first_name="Olivia", last_name="Chen", grade=5)
+        service = self._create_service_with_persons([candidate])
+
+        attendee_repo = Mock()
+        attendee_repo.bulk_get_sessions_for_persons = Mock(return_value={111: 1000003})
+        service.attendee_repository = attendee_repo
+
+        parsed = self._make_parsed("Olivia Chen", [111])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",
+            session_cm_id=1000002,  # Candidate is in 1000003 (different)
+            year=2025,
+        )
+
+        assert result is not None
+        factors = result.metadata["candidate_factors"][111]
+        assert "session" in factors
+        assert factors["session"] == pytest.approx(-0.1), (
+            "Different-session candidate should have session factor of -0.1"
+        )
+
+    def test_factors_for_multiple_candidates(self):
+        """candidate_factors should include entries for all scored candidates."""
+        candidate1 = _create_person(cm_id=111, first_name="Jake", last_name="Smith", grade=5)
+        candidate2 = _create_person(cm_id=222, first_name="Jake", last_name="Smithson", grade=7)
+        service = self._create_service_with_persons([candidate1, candidate2])
+
+        parsed = self._make_parsed("Jake Smith", [111, 222])
+
+        result, _ = service._try_ai_candidate_resolution(
+            parsed_request=parsed,
+            requester_cm_id=99999,
+            requester_grade="5",
+            session_cm_id=None,
+            year=2025,
+        )
+
+        assert result is not None
+        factors_by_candidate = result.metadata["candidate_factors"]
+        assert 111 in factors_by_candidate, "Candidate 111 factors should be present"
+        assert 222 in factors_by_candidate, "Candidate 222 factors should be present"
+        # grade=5 same as requester → +0.2; grade=7 is 2 apart → 0 factor
+        assert factors_by_candidate[111]["grade"] == pytest.approx(0.2)
+        assert factors_by_candidate[222]["grade"] == pytest.approx(0.0)

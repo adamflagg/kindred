@@ -1243,6 +1243,7 @@ class RequestOrchestrator:
                 continue
             for intent_idx, rr in enumerate(res_list):
                 rr_meta = rr.metadata or {}
+                candidate_factors: dict[int, dict[str, float]] = rr_meta.get("candidate_factors", {})
                 candidates_trace = [
                     CandidateTrace(
                         person_cm_id=c.cm_id,
@@ -1250,9 +1251,13 @@ class RequestOrchestrator:
                         session_cm_id=c.session_cm_id,
                         grade=c.grade,
                         school=c.school,
+                        score_breakdown=candidate_factors.get(c.cm_id, {}),
                     )
                     for c in (rr.candidates or [])
                 ]
+                winning_factors: dict[str, float] = (
+                    candidate_factors.get(rr.person.cm_id, {}) if rr.person and candidate_factors else {}
+                )
                 self.trace_collector.record_phase2(
                     key=trace_key,
                     intent_idx=intent_idx,
@@ -1268,6 +1273,7 @@ class RequestOrchestrator:
                             method=rr.method,
                             is_resolved=rr.is_resolved,
                             is_ambiguous=rr.is_ambiguous,
+                            confidence_factors=winning_factors,
                         ),
                     ),
                 )
