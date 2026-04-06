@@ -1661,6 +1661,7 @@ class TestAICandidateScoringFactors:
         )
 
         assert result is not None
+        assert result.metadata is not None
         factors_by_candidate = result.metadata["candidate_factors"]
         assert isinstance(factors_by_candidate, dict)
         assert 111 in factors_by_candidate, "Candidate cm_id 111 should be a key in candidate_factors"
@@ -1681,6 +1682,7 @@ class TestAICandidateScoringFactors:
         )
 
         assert result is not None
+        assert result.metadata is not None
         factors = result.metadata["candidate_factors"][111]
         assert "grade" in factors, "grade factor must be captured"
         assert factors["grade"] == pytest.approx(0.2), "Same-grade candidate should have grade factor of +0.2"
@@ -1701,6 +1703,7 @@ class TestAICandidateScoringFactors:
         )
 
         assert result is not None
+        assert result.metadata is not None
         factors = result.metadata["candidate_factors"][222]
         assert "grade" in factors
         assert factors["grade"] == pytest.approx(0.1), "1-grade-apart candidate should have grade factor of +0.1"
@@ -1725,6 +1728,7 @@ class TestAICandidateScoringFactors:
         )
 
         assert result is not None
+        assert result.metadata is not None
         factors = result.metadata["candidate_factors"][111]
         assert "session" in factors, "session factor must be captured"
         assert factors["session"] == pytest.approx(0.3), "Same-session candidate should have session factor of +0.3"
@@ -1749,6 +1753,7 @@ class TestAICandidateScoringFactors:
         )
 
         assert result is not None
+        assert result.metadata is not None
         factors = result.metadata["candidate_factors"][111]
         assert "session" in factors
         assert factors["session"] == pytest.approx(-0.1), (
@@ -1772,6 +1777,7 @@ class TestAICandidateScoringFactors:
         )
 
         assert result is not None
+        assert result.metadata is not None
         factors_by_candidate = result.metadata["candidate_factors"]
         assert 111 in factors_by_candidate, "Candidate 111 factors should be present"
         assert 222 in factors_by_candidate, "Candidate 222 factors should be present"
