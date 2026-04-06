@@ -37,6 +37,10 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
     All methods support optional pre-loaded candidates for batch optimization.
     """
 
+    _default_same_session_boost: float = DEFAULT_SAME_SESSION_BOOST
+    _default_different_session_penalty: float = DEFAULT_DIFFERENT_SESSION_PENALTY
+    _default_not_enrolled_penalty: float = DEFAULT_NOT_ENROLLED_PENALTY
+
     def __init__(
         self,
         person_repository: PersonRepository,
@@ -55,25 +59,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         super().__init__(person_repository, attendee_repository, config)
         self._strategy_name = "fuzzy_match"
         self.relationship_analyzer = relationship_analyzer
-
-    def _get_confidence(self, key: str, default: float) -> float:
-        """Get confidence value from config with fallback to default."""
-        return float(self.config.get(key, default))
-
-    def _apply_session_adjustment_simple(
-        self, base_confidence: float, person_session: int | None, requester_session: int | None
-    ) -> float:
-        """Apply session-based confidence adjustment using session IDs directly."""
-        if person_session is None or requester_session is None:
-            # No session info - slight penalty
-            penalty = float(self._get_confidence("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
-            return base_confidence + penalty
-        if person_session == requester_session:
-            boost = float(self._get_confidence("same_session_boost", DEFAULT_SAME_SESSION_BOOST))
-            return base_confidence + boost
-        else:
-            penalty = float(self._get_confidence("different_session_penalty", DEFAULT_DIFFERENT_SESSION_PENALTY))
-            return base_confidence + penalty
 
     def resolve(
         self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
