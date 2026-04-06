@@ -20,6 +20,7 @@ import networkx as nx
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import Person
+from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.social.social_graph import (
     RELATIONSHIP_WEIGHTS,
     FriendGroup,
@@ -1255,3 +1256,164 @@ class TestAddInformationalRelationshipsExpandedPerson:
         assert graph.has_edge(501, 502)
         edge_types = graph[501][502]["relationship_types"]
         assert RelationshipType.BUNKMATE in edge_types
+
+
+class TestEnhanceResolution:
+    """Tests for enhance_resolution — cross-session candidate handling (#866)."""
+
+    @pytest.mark.asyncio
+    async def test_cross_session_candidates_preserved(self):
+        """Candidates in a different session are NOT dropped."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+
+        G = nx.Graph()
+        G.add_node(100)
+        sg.graphs[1000] = G
+
+        candidate = Person(
+            cm_id=1,
+            first_name="Emma",
+            last_name="Johnson",
+            grade=5,
+            session_cm_id=2000,
+        )
+
+        resolution = ResolutionResult(
+            candidates=[candidate],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        assert result.candidates is not None
+        assert len(result.candidates) == 1
+        assert result.candidates[0].cm_id == 1
+
+    @pytest.mark.asyncio
+    async def test_cross_session_candidates_get_default_signals(self):
+        """Cross-session candidates get default social signals (distance=999)."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+
+        G = nx.Graph()
+        G.add_node(100)
+        sg.graphs[1000] = G
+
+        # Two cross-session candidates so is_ambiguous=True and enhance_resolution processes them
+        candidate1 = Person(
+            cm_id=1,
+            first_name="Emma",
+            last_name="Johnson",
+            grade=5,
+            session_cm_id=2000,
+        )
+        candidate2 = Person(
+            cm_id=2,
+            first_name="Emma",
+            last_name="Johnson",
+            grade=5,
+            session_cm_id=3000,
+        )
+
+        resolution = ResolutionResult(
+            candidates=[candidate1, candidate2],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        # Both cross-session candidates must receive default signals
+        assert result.candidates is not None
+        for c in result.candidates:
+            assert c.metadata["social_distance"] == 999
+            assert c.metadata["mutual_connections"] == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_session_candidates_ranked_correctly(self):
+        """Same-session candidates rank above cross-session candidates."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+
+        G = nx.Graph()
+        G.add_edges_from([(100, 2)])
+        sg.graphs[1000] = G
+
+        cross_session = Person(
+            cm_id=1,
+            first_name="Liam",
+            last_name="Garcia",
+            grade=5,
+            session_cm_id=2000,
+        )
+        same_session = Person(
+            cm_id=2,
+            first_name="Olivia",
+            last_name="Chen",
+            grade=5,
+            session_cm_id=1000,
+        )
+
+        resolution = ResolutionResult(
+            candidates=[cross_session, same_session],
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        assert result.candidates is not None
+        assert len(result.candidates) == 2
+        assert result.candidates[0].cm_id == 2
+        assert result.candidates[1].cm_id == 1
+
+    @pytest.mark.asyncio
+    async def test_all_cross_session_returns_nonempty(self):
+        """When ALL candidates are cross-session, list is non-empty (regression test)."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1000])
+        sg._initialized = True
+
+        G = nx.Graph()
+        G.add_node(100)
+        sg.graphs[1000] = G
+
+        candidates = [
+            Person(cm_id=1, first_name="Emma", last_name="Johnson", grade=5, session_cm_id=2000),
+            Person(cm_id=2, first_name="Liam", last_name="Garcia", grade=5, session_cm_id=3000),
+            Person(cm_id=3, first_name="Olivia", last_name="Chen", grade=5, session_cm_id=2000),
+        ]
+
+        resolution = ResolutionResult(
+            candidates=candidates,
+            confidence=0.0,
+            method="disambiguation_candidates",
+        )
+
+        result = await sg.enhance_resolution(
+            resolution=resolution,
+            requester_cm_id=100,
+            session_cm_id=1000,
+        )
+
+        assert result.candidates is not None
+        assert len(result.candidates) == 3
+        assert result.metadata is not None
+        assert result.metadata["social_graph_enhanced"] is True

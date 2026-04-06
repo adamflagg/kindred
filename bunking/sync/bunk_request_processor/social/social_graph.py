@@ -418,10 +418,6 @@ class SocialGraph:
         enhanced_candidates = []
 
         for candidate in resolution.candidates[:5]:  # Top 5 only
-            # Only consider candidates in the same session
-            if candidate.session_cm_id != session_cm_id:
-                continue
-
             social_signals = self.get_social_signals(requester_cm_id, candidate.cm_id, session_cm_id)
 
             # Create enhanced person with social metadata

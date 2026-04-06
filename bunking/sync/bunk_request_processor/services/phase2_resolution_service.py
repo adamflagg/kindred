@@ -569,6 +569,45 @@ class Phase2ResolutionService:
                     # Shouldn't happen, but handle gracefully
                     case.resolution_results.append(ResolutionResult(confidence=0.0, method="no_resolution_needed"))
 
+    def _build_mutual_request_lookup(self, cases: list[ResolutionCase]) -> dict[int, set[int]]:
+        """Build a mapping of requester → {cm_ids that mutually requested them}.
+
+        Scans resolved BUNK_WITH requests for bidirectional pairs:
+        if A requested B AND B requested A, both get entries.
+
+        Args:
+            cases: All resolution cases (resolved and unresolved)
+
+        Returns:
+            Dict mapping requester_cm_id → set of cm_ids that also requested them
+        """
+        # Build forward map: requester → set of resolved targets (BUNK_WITH only)
+        forward: dict[int, set[int]] = {}
+
+        for case in cases:
+            if not case.parse_result.parse_request:
+                continue
+            requester = case.parse_result.parse_request.requester_cm_id
+
+            for idx, rr in enumerate(case.resolution_results):
+                if rr is None or not rr.is_resolved or rr.person is None:
+                    continue
+                # Only count BUNK_WITH requests
+                if idx < len(case.parsed_requests):
+                    if case.parsed_requests[idx].request_type != RequestType.BUNK_WITH:
+                        continue
+                forward.setdefault(requester, set()).add(rr.person.cm_id)
+
+        # Find mutual pairs
+        mutual: dict[int, set[int]] = {}
+        for a, targets in forward.items():
+            for b in targets:
+                if b in forward and a in forward[b]:
+                    mutual.setdefault(a, set()).add(b)
+                    mutual.setdefault(b, set()).add(a)
+
+        return mutual
+
     async def _enhance_with_networkx(self, cases: list[ResolutionCase]) -> None:
         """Enhance ambiguous cases with NetworkX social graph analysis.
 
@@ -589,6 +628,9 @@ class Phase2ResolutionService:
 
         if not ambiguous_items:
             return
+
+        # Build mutual request lookup from resolved cases
+        mutual_lookup = self._build_mutual_request_lookup(cases)
 
         logger.info(f"Enhancing {len(ambiguous_items)} ambiguous resolutions with NetworkX")
 
@@ -626,7 +668,7 @@ class Phase2ResolutionService:
                         requester_cm_id=case.parse_result.parse_request.requester_cm_id,
                         session_cm_id=case.parse_result.parse_request.session_cm_id,
                         config=smart_config,
-                        mutual_request_cm_ids=set(),  # TODO: Wire up mutual request detection
+                        mutual_request_cm_ids=mutual_lookup.get(case.parse_result.parse_request.requester_cm_id, set()),
                     )
 
                     if auto_result:

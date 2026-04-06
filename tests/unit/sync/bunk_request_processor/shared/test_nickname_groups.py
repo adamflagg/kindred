@@ -37,6 +37,10 @@ _MOCK_OVERRIDES = {
     "danny": ["Daniel", "Dan"],
     "lulu": ["Louise"],
     "sammy": ["Samuel", "Samantha"],
+    "olly": ["Oliver"],
+    "rafi": ["Rafael", "Raphael"],
+    "sofia": ["Sophia"],
+    "joni": ["Joan", "Jonathan"],
 }
 
 
@@ -68,6 +72,42 @@ class TestCampOverrides:
         lower_vars = [v.lower() for v in _with_mock_overrides("Sammy")]
         assert "sammy" not in lower_vars
         assert "samuel" in lower_vars
+
+
+class TestIssue865NicknameMappings:
+    """Test nickname mappings from issue #865 — Olly, Rafi, Sofia, Joni."""
+
+    def test_olly_resolves_to_oliver(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Olly")]
+        assert "oliver" in lower_vars
+
+    def test_oliver_resolves_to_olly(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Oliver")]
+        assert "olly" in lower_vars
+
+    def test_rafi_resolves_to_rafael(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Rafi")]
+        assert "rafael" in lower_vars
+
+    def test_rafi_resolves_to_raphael(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Rafi")]
+        assert "raphael" in lower_vars
+
+    def test_sofia_resolves_to_sophia(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Sofia")]
+        assert "sophia" in lower_vars
+
+    def test_sophia_resolves_to_sofia(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Sophia")]
+        assert "sofia" in lower_vars
+
+    def test_joni_resolves_to_joan(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Joni")]
+        assert "joan" in lower_vars
+
+    def test_joni_resolves_to_jonathan(self):
+        lower_vars = [v.lower() for v in _with_mock_overrides("Joni")]
+        assert "jonathan" in lower_vars
 
 
 class TestExistingBehaviorPreserved:
