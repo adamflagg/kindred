@@ -131,11 +131,20 @@ class TestTemporalConflictFiltering:
         req.supersedes_reason = supersedes_reason
         return req
 
-    def _create_parse_result(self, requests: list[ParsedRequest]) -> ParseResult:
-        """Helper to create a ParseResult."""
+    def _create_parse_result(self, requests: list[ParsedRequest], field_name: str = "bunking_notes") -> ParseResult:
+        """Helper to create a ParseResult.
+
+        Defaults to bunking_notes field_name since temporal conflicts only
+        apply to notes fields (ADR 4).
+        """
+        from unittest.mock import Mock
+
+        parse_request = Mock()
+        parse_request.field_name = field_name
         return ParseResult(
             parsed_requests=requests,
             is_valid=True,
+            parse_request=parse_request,
         )
 
     def test_superseded_flag_filters_request(self):

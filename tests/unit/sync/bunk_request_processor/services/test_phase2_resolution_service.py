@@ -616,7 +616,10 @@ class TestStaffNameFiltering:
 
     @pytest.mark.asyncio
     async def test_staff_name_filter_skips_staff_targets(self):
-        """Requests targeting detected staff names should be skipped."""
+        """Requests targeting detected staff names should be skipped.
+
+        ADR 6: Staff filtering only applies to notes source fields.
+        """
         pipeline = Mock()
 
         # Create a mock resolution for the non-staff camper
@@ -633,10 +636,12 @@ class TestStaffNameFiltering:
 
         service = Phase2ResolutionService(resolution_pipeline=pipeline, staff_name_filter=staff_filter)
 
-        # Request targeting a staff name
+        # ADR 6: Staff filtering requires notes source field
         parsed_staff = _create_parsed_request(target_name="Jordan")
+        parsed_staff.source_field = "bunking_notes"  # Must be notes field for staff filter
         # Request targeting a camper
         parsed_camper = _create_parsed_request(target_name="Sarah Smith")
+        parsed_camper.source_field = "bunking_notes"
 
         parse_result = _create_parse_result(parsed_requests=[parsed_staff, parsed_camper])
 
@@ -687,7 +692,10 @@ class TestStaffNameFiltering:
 
     @pytest.mark.asyncio
     async def test_staff_filter_stats_tracked(self):
-        """Staff filtered requests should be tracked in stats."""
+        """Staff filtered requests should be tracked in stats.
+
+        ADR 6: Staff filtering only applies to notes source fields.
+        """
         pipeline = Mock()
         pipeline.batch_resolve = Mock(return_value=[])
 
@@ -696,13 +704,13 @@ class TestStaffNameFiltering:
 
         service = Phase2ResolutionService(resolution_pipeline=pipeline, staff_name_filter=staff_filter)
 
-        # Two staff names
-        parse_result = _create_parse_result(
-            parsed_requests=[
-                _create_parsed_request(target_name="Mom"),
-                _create_parsed_request(target_name="Jordan"),
-            ]
-        )
+        # Two staff names — must be in notes fields for staff filter to apply (ADR 6)
+        req_mom = _create_parsed_request(target_name="Mom")
+        req_mom.source_field = "bunking_notes"
+        req_jordan = _create_parsed_request(target_name="Jordan")
+        req_jordan.source_field = "internal_notes"
+
+        parse_result = _create_parse_result(parsed_requests=[req_mom, req_jordan])
 
         await service.batch_resolve([parse_result])
 

@@ -10,6 +10,7 @@ from bunking.logging_config import get_logger
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
+from ..shared.constants import NOTES_FIELDS
 from ..shared.name_utils import normalize_name
 from ..shared.nickname_groups import find_nickname_variations, names_match_via_nicknames
 
@@ -166,8 +167,13 @@ class Phase2ResolutionService:
                 if parse_result.parse_request is None:
                     continue
 
-                # Check if target name is a detected staff name
-                if self.staff_name_filter and parsed.target_name and self.staff_name_filter(parsed.target_name):
+                # ADR 6: Staff name detection only makes sense for notes fields
+                if (
+                    self.staff_name_filter
+                    and parsed.target_name
+                    and parsed.source_field in NOTES_FIELDS
+                    and self.staff_name_filter(parsed.target_name)
+                ):
                     logger.debug(f"Filtered out staff name from request: {parsed.target_name}")
                     staff_filtered_map.append((case_idx, req_idx))
                     self._stats["staff_filtered"] += 1
@@ -289,7 +295,7 @@ class Phase2ResolutionService:
                             ResolutionResult(
                                 person=None,
                                 confidence=0.90,
-                                method="age_preference",
+                                method=RequestType.AGE_PREFERENCE.value,
                                 metadata={"age_preference": age_pref_value},
                             )
                         )
@@ -398,7 +404,7 @@ class Phase2ResolutionService:
                     continue
                 # Skip results that should not have candidates generated
                 skip_candidate_generation = {
-                    "age_preference",
+                    RequestType.AGE_PREFERENCE.value,
                     "staff_filtered",
                     "age_preference_undirected",
                     "group_reference",
@@ -544,7 +550,7 @@ class Phase2ResolutionService:
                         ResolutionResult(
                             person=None,
                             confidence=0.90,
-                            method="age_preference",
+                            method=RequestType.AGE_PREFERENCE.value,
                             metadata={"age_preference": age_pref_value},
                         )
                     )
@@ -740,7 +746,7 @@ class Phase2ResolutionService:
                 elif resolution_result.is_ambiguous:
                     self._stats["ambiguous"] += 1
                 elif resolution_result.method in (
-                    "age_preference",
+                    RequestType.AGE_PREFERENCE.value,
                     "age_preference_undirected",
                     "group_reference",
                 ):

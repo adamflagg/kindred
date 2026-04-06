@@ -198,7 +198,12 @@ class TestNoPreferenceIntegration:
 
     @pytest.mark.asyncio
     async def test_mixed_fields_only_valid_sent_to_ai(self):
-        """Only non-'no preference' fields should be sent to AI."""
+        """Only bunk_with 'no preference' fields should be skipped; other fields go to AI.
+
+        ADR 5: NA/no-preference skipping is scoped to bunk_with only.
+        Non-bunk_with fields with 'n/a' or 'no preference' text are passed through
+        to AI parsing since the pattern only ever matched on bunk_with in production.
+        """
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
@@ -215,8 +220,8 @@ class TestNoPreferenceIntegration:
                 "first_name": "Emma",
                 "last_name": "Johnson",
                 "bunk_with": "John Smith",  # Valid - should create ParseRequest
-                "not_bunk_with": "n/a",  # Should be skipped
-                "bunking_notes": "no preference",  # Should be skipped
+                "not_bunk_with": "n/a",  # ADR 5: NOT skipped (not bunk_with), goes to AI
+                "bunking_notes": "no preference",  # ADR 5: NOT skipped (not bunk_with), goes to AI
                 "internal_notes": "Keep with Sarah",  # Valid - should create ParseRequest
                 "socialize_with": "",  # Empty - naturally skipped
             }
@@ -224,21 +229,24 @@ class TestNoPreferenceIntegration:
 
         parse_requests, pre_parsed = await orchestrator._prepare_parse_requests(raw_requests)
 
-        # Should have exactly 2 ParseRequests (bunk_with and internal_notes)
-        assert len(parse_requests) == 2
+        # ADR 5: Only bunk_with gets no-preference filtering.
+        # Should have 4 ParseRequests: bunk_with, not_bunk_with, bunking_notes, internal_notes
+        assert len(parse_requests) == 4
 
-        # Verify the correct fields were included (V2 field names)
         field_names = {pr.field_name for pr in parse_requests}
         assert "bunk_with" in field_names
         assert "internal_notes" in field_names
-
-        # Verify skipped fields are NOT present
-        assert "not_bunk_with" not in field_names
-        assert "bunking_notes" not in field_names
+        assert "not_bunk_with" in field_names  # ADR 5: no longer skipped
+        assert "bunking_notes" in field_names  # ADR 5: no longer skipped
 
     @pytest.mark.asyncio
     async def test_stat_tracking_for_skipped_no_preference(self):
-        """Orchestrator should track count of skipped 'no preference' fields."""
+        """Orchestrator should track count of skipped 'no preference' fields.
+
+        ADR 5: NA/no-preference skipping is scoped to bunk_with only.
+        Only bunk_with "none" is skipped; not_bunk_with "n/a" and
+        bunking_notes "no preference" now pass through to AI parsing.
+        """
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
@@ -254,9 +262,9 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "none",
-                "not_bunk_with": "n/a",
-                "bunking_notes": "no preference",
+                "bunk_with": "none",  # Skipped (bunk_with + no-preference)
+                "not_bunk_with": "n/a",  # ADR 5: NOT skipped (not bunk_with)
+                "bunking_notes": "no preference",  # ADR 5: NOT skipped (not bunk_with)
                 "internal_notes": "",
                 "socialize_with": "",
             }
@@ -264,8 +272,8 @@ class TestNoPreferenceIntegration:
 
         await orchestrator._prepare_parse_requests(raw_requests)
 
-        # Should track that 3 fields were skipped
-        assert orchestrator._stats.get("no_preference_skipped", 0) == 3
+        # ADR 5: Only bunk_with field gets no-preference filtering
+        assert orchestrator._stats.get("no_preference_skipped", 0) == 1
 
 
 class TestStripNaPrefix:
@@ -472,7 +480,11 @@ class TestNaPrefixStrippingInPrepare:
 
     @pytest.mark.asyncio
     async def test_na_prefix_stripped_stat_tracked(self):
-        """Orchestrator should track count of N/A-stripped fields."""
+        """Orchestrator should track count of N/A-stripped fields.
+
+        ADR 5: NA prefix stripping is scoped to bunk_with only.
+        The not_bunk_with "N/A- same age" now passes through unchanged.
+        """
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
@@ -486,8 +498,8 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "N/A; their own grade",
-                "not_bunk_with": "N/A- same age",
+                "bunk_with": "N/A; their own grade",  # Stripped (bunk_with field)
+                "not_bunk_with": "N/A- same age",  # ADR 5: NOT stripped (not bunk_with)
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",
@@ -496,4 +508,5 @@ class TestNaPrefixStrippingInPrepare:
 
         await orchestrator._prepare_parse_requests(raw_requests)
 
-        assert orchestrator._stats.get("na_prefix_stripped", 0) == 2
+        # ADR 5: Only bunk_with field gets NA prefix stripping
+        assert orchestrator._stats.get("na_prefix_stripped", 0) == 1

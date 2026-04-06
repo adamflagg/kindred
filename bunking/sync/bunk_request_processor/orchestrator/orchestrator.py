@@ -59,6 +59,7 @@ from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
     ALL_PROCESSING_FIELDS,
+    NOTES_FIELDS,
     UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
     UNRESOLVED_ID_MAX,
@@ -445,6 +446,12 @@ class RequestOrchestrator:
             if not result.is_valid or not result.parsed_requests:
                 continue
 
+            # ADR 4: Temporal conflicts only occur in notes fields — skip for structured fields
+            source_field = result.parse_request.field_name if result.parse_request else None
+            if source_field is not None and source_field not in NOTES_FIELDS:
+                kept_count += len(result.parsed_requests)
+                continue
+
             filtered_requests = []
 
             # Pass 1: Filter by is_superseded flag (AI's semantic judgment)
@@ -632,6 +639,12 @@ class RequestOrchestrator:
         Returns:
             Tuple of (filtered_results, kept_count, filtered_count)
         """
+        # ADR 7: Only run conflict detection if any expansions actually happened
+        any_expansion = any(pr.metadata.get("expanded_from_placeholder") for pr, _ in expansion_results if pr.metadata)
+        if not any_expansion:
+            total = sum(len(pr.parsed_requests) for pr, _ in expansion_results)
+            return expansion_results, total, 0
+
         kept_count = 0
         filtered_count = 0
 
@@ -1364,7 +1377,7 @@ class RequestOrchestrator:
         total_unresolved = 0
         for idx, (pr, resolution_list) in enumerate(resolution_results):
             unresolved_in_this = sum(
-                1 for rr in resolution_list if not rr.is_resolved and rr.method != "age_preference"
+                1 for rr in resolution_list if not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value
             )
             if unresolved_in_this > 0:
                 total_unresolved += unresolved_in_this
@@ -1377,7 +1390,9 @@ class RequestOrchestrator:
         for idx, (pr, resolution_list) in enumerate(resolution_results):
             # Check if any resolutions in this ParseResult are unresolved
             # Skip pre-parsed requests (like age preferences from dropdowns)
-            has_unresolved = any(not rr.is_resolved and rr.method != "age_preference" for rr in resolution_list)
+            has_unresolved = any(
+                not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value for rr in resolution_list
+            )
             if has_unresolved:
                 unresolved_cases.append((pr, resolution_list))
                 unresolved_indices.append(idx)
@@ -1814,48 +1829,50 @@ class RequestOrchestrator:
                 original_text = request_text
                 na_stripped = False
 
-                # Check for "no preference" indicators before processing
-                if self._is_no_preference(request_text):
-                    self._stats["no_preference_skipped"] += 1
-                    if trace_key:
-                        self.trace_collector.record_pre_phase1(
-                            key=trace_key,
-                            action="skipped_no_preference",
-                            original_text=original_text,
-                            requester_cm_id=requester_cm_id,
-                            year=self.year,
-                            session_cm_id=0,
-                            source_field=field_name,
-                            skip_reason="no_preference",
-                            requester_name=requester_name,
-                            requester_grade=requester_grade,
-                        )
-                    continue
+                # ADR 5: NA/no-preference stripping only applies to bunk_with field
+                if field_name == SourceField.BUNK_WITH:
+                    # Check for "no preference" indicators before processing
+                    if self._is_no_preference(request_text):
+                        self._stats["no_preference_skipped"] += 1
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="skipped_no_preference",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=0,
+                                source_field=field_name,
+                                skip_reason="no_preference",
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
+                        continue
 
-                # Strip N/A prefix if present (e.g., "N/A; their grade" -> "their grade")
-                stripped = strip_na_prefix(request_text)
-                if stripped is not None:
-                    logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
-                    self._stats["na_prefix_stripped"] += 1
-                    request_text = stripped
-                    na_stripped = True
-                elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
-                    # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
-                    self._stats["no_preference_skipped"] += 1
-                    if trace_key:
-                        self.trace_collector.record_pre_phase1(
-                            key=trace_key,
-                            action="skipped_na_only",
-                            original_text=original_text,
-                            requester_cm_id=requester_cm_id,
-                            year=self.year,
-                            session_cm_id=0,
-                            source_field=field_name,
-                            skip_reason="na_only",
-                            requester_name=requester_name,
-                            requester_grade=requester_grade,
-                        )
-                    continue
+                    # Strip N/A prefix if present (e.g., "N/A; their grade" -> "their grade")
+                    stripped = strip_na_prefix(request_text)
+                    if stripped is not None:
+                        logger.debug(f"Stripped N/A prefix: '{request_text}' -> '{stripped}'")
+                        self._stats["na_prefix_stripped"] += 1
+                        request_text = stripped
+                        na_stripped = True
+                    elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
+                        # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
+                        self._stats["no_preference_skipped"] += 1
+                        if trace_key:
+                            self.trace_collector.record_pre_phase1(
+                                key=trace_key,
+                                action="skipped_na_only",
+                                original_text=original_text,
+                                requester_cm_id=requester_cm_id,
+                                year=self.year,
+                                session_cm_id=0,
+                                source_field=field_name,
+                                skip_reason="na_only",
+                                requester_name=requester_name,
+                                requester_grade=requester_grade,
+                            )
+                        continue
 
                 # Extract staff signatures from bunking_notes before AI parsing
                 # bunking_notes has STAFFNAME (DATETIME) patterns; internal_notes does not
