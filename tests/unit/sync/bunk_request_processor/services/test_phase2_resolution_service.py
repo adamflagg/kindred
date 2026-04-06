@@ -417,6 +417,172 @@ class TestPhase2ResolutionServiceNetworkX:
         assert resolutions[0].is_ambiguous
 
 
+class TestBuildMutualRequestLookup:
+    """Tests for _build_mutual_request_lookup — builds requester→mutual_cm_ids mapping."""
+
+    def _make_resolved_case(
+        self, requester_cm_id: int, session_cm_id: int, resolved_pairs: list[tuple[int, RequestType]]
+    ) -> ResolutionCase:
+        """Create a ResolutionCase with resolved results using file-level helpers."""
+        parsed_requests = [
+            _create_parsed_request(target_name=f"Person {cm_id}", request_type=rtype) for cm_id, rtype in resolved_pairs
+        ]
+        resolution_results: list[ResolutionResult | None] = [
+            _create_resolution_result(person=_create_person(cm_id=cm_id), confidence=0.95, method="exact_match")
+            for cm_id, _ in resolved_pairs
+        ]
+
+        pr = _create_parse_result(
+            parsed_requests=parsed_requests,
+            parse_request=_create_parse_request(requester_cm_id=requester_cm_id, session_cm_id=session_cm_id),
+        )
+        case = ResolutionCase(pr)
+        case.resolution_results = resolution_results
+        return case
+
+    def test_mutual_pair_detected(self):
+        """A→B and B→A produces mutual entries for both."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+
+        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.BUNK_WITH)])
+        case_b = self._make_resolved_case(200, 1000, [(100, RequestType.BUNK_WITH)])
+
+        lookup = service._build_mutual_request_lookup([case_a, case_b])
+
+        assert 200 in lookup.get(100, set())
+        assert 100 in lookup.get(200, set())
+
+    def test_one_directional_not_mutual(self):
+        """A→B without B→A produces no mutual entries."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+
+        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.BUNK_WITH)])
+
+        lookup = service._build_mutual_request_lookup([case_a])
+
+        assert lookup.get(100, set()) == set()
+        assert lookup.get(200, set()) == set()
+
+    def test_not_bunk_with_excluded(self):
+        """NOT_BUNK_WITH requests don't count as mutual."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+
+        case_a = self._make_resolved_case(100, 1000, [(200, RequestType.BUNK_WITH)])
+        case_b = self._make_resolved_case(200, 1000, [(100, RequestType.NOT_BUNK_WITH)])
+
+        lookup = service._build_mutual_request_lookup([case_a, case_b])
+
+        assert lookup.get(100, set()) == set()
+
+    def test_empty_cases_returns_empty(self):
+        """No cases produces empty lookup."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+        lookup = service._build_mutual_request_lookup([])
+        assert lookup == {}
+
+
+class TestMutualRequestWiring:
+    """Tests that mutual request data is threaded to smart_resolve_candidates (#863)."""
+
+    @pytest.mark.asyncio
+    async def test_mutual_data_passed_to_smart_resolve(self):
+        """smart_resolve_candidates receives mutual_request_cm_ids from resolved cases."""
+        # --- Case A: person 100 requested person 200 (resolved) ---
+        case_a_pr = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Person 200", request_type=RequestType.BUNK_WITH)],
+            parse_request=_create_parse_request(requester_cm_id=100, session_cm_id=1000),
+        )
+        case_a = ResolutionCase(case_a_pr)
+        case_a.resolution_results = [
+            _create_resolution_result(person=_create_person(cm_id=200), confidence=0.95, method="exact_match")
+        ]
+
+        # --- Case B: person 200 requested person 100 (resolved) ---
+        case_b_pr = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Person 100", request_type=RequestType.BUNK_WITH)],
+            parse_request=_create_parse_request(requester_cm_id=200, session_cm_id=1000),
+        )
+        case_b = ResolutionCase(case_b_pr)
+        case_b.resolution_results = [
+            _create_resolution_result(person=_create_person(cm_id=100), confidence=0.95, method="exact_match")
+        ]
+
+        # --- Case C: person 100 has an AMBIGUOUS request ---
+        candidate1 = _create_person(cm_id=300, first_name="Emma", last_name="Johnson")
+        candidate2 = _create_person(cm_id=400, first_name="Liam", last_name="Garcia")
+        case_c_pr = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Emma", request_type=RequestType.BUNK_WITH)],
+            parse_request=_create_parse_request(requester_cm_id=100, session_cm_id=1000),
+        )
+        case_c = ResolutionCase(case_c_pr)
+        case_c.resolution_results = [
+            _create_resolution_result(person=None, confidence=0.0, candidates=[candidate1, candidate2])
+        ]
+
+        # Mock networkx_analyzer
+        networkx_analyzer = Mock()
+        networkx_analyzer.enhance_resolution = AsyncMock(side_effect=lambda resolution, **kw: resolution)
+        networkx_analyzer.smart_resolve_candidates = Mock(return_value=(None, [candidate1, candidate2]))
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=Mock(),
+            networkx_analyzer=networkx_analyzer,
+        )
+
+        await service._enhance_with_networkx([case_a, case_b, case_c])
+
+        # smart_resolve_candidates should have been called
+        networkx_analyzer.smart_resolve_candidates.assert_called_once()
+        call_kwargs = networkx_analyzer.smart_resolve_candidates.call_args
+        mutual_ids = call_kwargs.kwargs.get("mutual_request_cm_ids")
+        if mutual_ids is None:
+            mutual_ids = call_kwargs.args[5] if len(call_kwargs.args) > 5 else set()
+
+        # Person 100 has mutual with person 200 (A→B and B→A)
+        assert 200 in mutual_ids
+
+    @pytest.mark.asyncio
+    async def test_no_mutual_data_when_no_reciprocals(self):
+        """When no reciprocal pairs exist, mutual_request_cm_ids is empty."""
+        case_a_pr = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Person 200", request_type=RequestType.BUNK_WITH)],
+            parse_request=_create_parse_request(requester_cm_id=100, session_cm_id=1000),
+        )
+        case_a = ResolutionCase(case_a_pr)
+        case_a.resolution_results = [
+            _create_resolution_result(person=_create_person(cm_id=200), confidence=0.95, method="exact_match")
+        ]
+
+        candidate1 = _create_person(cm_id=300)
+        candidate2 = _create_person(cm_id=400)
+        case_b_pr = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Emma", request_type=RequestType.BUNK_WITH)],
+            parse_request=_create_parse_request(requester_cm_id=100, session_cm_id=1000),
+        )
+        case_b = ResolutionCase(case_b_pr)
+        case_b.resolution_results = [
+            _create_resolution_result(person=None, confidence=0.0, candidates=[candidate1, candidate2])
+        ]
+
+        networkx_analyzer = Mock()
+        networkx_analyzer.enhance_resolution = AsyncMock(side_effect=lambda resolution, **kw: resolution)
+        networkx_analyzer.smart_resolve_candidates = Mock(return_value=(None, [candidate1, candidate2]))
+
+        service = Phase2ResolutionService(
+            resolution_pipeline=Mock(),
+            networkx_analyzer=networkx_analyzer,
+        )
+
+        await service._enhance_with_networkx([case_a, case_b])
+
+        call_kwargs = networkx_analyzer.smart_resolve_candidates.call_args
+        mutual_ids = call_kwargs.kwargs.get("mutual_request_cm_ids")
+        if mutual_ids is None:
+            mutual_ids = call_kwargs.args[5] if len(call_kwargs.args) > 5 else set()
+
+        assert mutual_ids == set()
+
+
 class TestPhase2ResolutionServiceMetadata:
     """Tests for metadata preservation"""
 
