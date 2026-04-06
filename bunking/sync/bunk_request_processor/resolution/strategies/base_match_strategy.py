@@ -32,6 +32,14 @@ class BaseMatchStrategy(ResolutionStrategy):
     - Building consistent ambiguous results
     """
 
+    # Subclasses override these to set strategy-specific defaults
+    # Subclass-overridable session-adjustment defaults.
+    # These are fallbacks when config keys are missing — subclasses should
+    # override them to set strategy-specific values.
+    _default_same_session_boost: float = DEFAULT_SAME_SESSION_BOOST
+    _default_different_session_penalty: float = DEFAULT_DIFFERENT_SESSION_PENALTY
+    _default_not_enrolled_penalty: float = DEFAULT_NOT_ENROLLED_PENALTY
+
     def __init__(
         self,
         person_repository: PersonRepository,
@@ -160,25 +168,71 @@ class BaseMatchStrategy(ResolutionStrategy):
         """
         # If no session context available (missing data), apply slight penalty
         if not session_cm_id or not attendee_info:
-            penalty = float(self.config.get("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
+            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
             return base_confidence + penalty
 
         person_info = attendee_info.get(person.cm_id)
 
         # If person not enrolled as attendee this year, apply penalty
         if not person_info:
-            penalty = float(self.config.get("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
+            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
             return base_confidence + penalty
 
         person_session = person_info.get("session_cm_id")
 
         if person_session == session_cm_id:
             # Same session - apply boost
-            boost = float(self.config.get("same_session_boost", DEFAULT_SAME_SESSION_BOOST))
+            boost = float(self._get_confidence("same_session_boost", self._default_same_session_boost))
             return base_confidence + boost
         else:
             # Different session - apply penalty
-            penalty = float(self.config.get("different_session_penalty", DEFAULT_DIFFERENT_SESSION_PENALTY))
+            penalty = float(self._get_confidence("different_session_penalty", self._default_different_session_penalty))
+            return base_confidence + penalty
+
+    def _get_confidence(self, key: str, default: float) -> float:
+        """Get confidence value from config with fallback to default.
+
+        Args:
+            key: Config key like 'soundex_base', 'session_match', etc.
+            default: Default value if not in config
+
+        Returns:
+            Confidence value from config or default
+        """
+        return float(self.config.get(key, default))
+
+    def _apply_session_adjustment_simple(
+        self, base_confidence: float, person_session: int | None, requester_session: int | None
+    ) -> float:
+        """Apply session-based confidence adjustment using session IDs directly.
+
+        This is a simplified version for when we have session IDs already looked up.
+
+        Args:
+            base_confidence: Starting confidence value
+            person_session: Session the matched person is in
+            requester_session: Session the requester is in
+
+        Returns:
+            Adjusted confidence value
+        """
+        if requester_session is None:
+            # No session context - apply slight penalty
+            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
+            return base_confidence + penalty
+
+        if person_session is None:
+            # Person not in known session - apply slight penalty
+            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
+            return base_confidence + penalty
+
+        if person_session == requester_session:
+            # Same session - apply boost
+            boost = float(self._get_confidence("same_session_boost", self._default_same_session_boost))
+            return base_confidence + boost
+        else:
+            # Different session - apply penalty
+            penalty = float(self._get_confidence("different_session_penalty", self._default_different_session_penalty))
             return base_confidence + penalty
 
     def _build_ambiguous_result(

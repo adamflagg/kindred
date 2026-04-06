@@ -542,5 +542,63 @@ class TestJaroWinklerFullPoolFallback:
         assert not result.is_resolved
 
 
+class TestFuzzyMatchDefaultOverrideMechanism:
+    """Verify that FuzzyMatchStrategy._default_same_session_boost=0.0 overrides
+    BaseMatchStrategy._default_same_session_boost=0.05 when config is empty."""
+
+    @pytest.fixture
+    def strategy_with_empty_config(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        mock_attendee_repo.get_by_person_and_year.return_value = None
+        mock_attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        mock_person_repo.find_by_normalized_name.return_value = []
+        mock_person_repo.find_by_first_name.return_value = []
+        mock_person_repo.name_cache = {}
+        mock_person_repo.find_by_first_and_parent_surname.return_value = []
+        return FuzzyMatchStrategy(mock_person_repo, mock_attendee_repo, config={})
+
+    def test_same_session_no_boost_with_empty_config(self, strategy_with_empty_config):
+        """FuzzyMatchStrategy with empty config gives no boost for same session.
+
+        FuzzyMatchStrategy._default_same_session_boost = 0.0 overrides the base
+        class default of 0.05, so same-session matches get no boost.
+        """
+        strategy = strategy_with_empty_config
+        result = strategy._apply_session_adjustment_simple(
+            base_confidence=0.75,
+            person_session=1001,
+            requester_session=1001,  # same session
+        )
+        # No boost: 0.75 + 0.0 = 0.75 (not 0.80 which would be base default + 0.05)
+        assert result == pytest.approx(0.75)
+
+    def test_base_class_would_give_boost_with_empty_config(self):
+        """Confirm BaseMatchStrategy with empty config DOES give the 0.05 boost.
+
+        This demonstrates the override mechanism is working: FuzzyMatchStrategy
+        suppresses what BaseMatchStrategy would otherwise provide.
+        """
+        from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            BaseMatchStrategy,
+        )
+
+        class ConcreteBase(BaseMatchStrategy):
+            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+                return ResolutionResult(confidence=0.0, method=self.name)
+
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        base = ConcreteBase(mock_person_repo, mock_attendee_repo, config={})
+        result = base._apply_session_adjustment_simple(
+            base_confidence=0.75,
+            person_session=1001,
+            requester_session=1001,
+        )
+        # Base class default boost is 0.05 → 0.75 + 0.05 = 0.80
+        assert result == pytest.approx(0.80)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
