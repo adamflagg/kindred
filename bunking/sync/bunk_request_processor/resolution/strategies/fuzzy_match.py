@@ -37,6 +37,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
     All methods support optional pre-loaded candidates for batch optimization.
     """
 
+    # 0.0 — fuzzy stays at base confidence for same session (no boost, unlike phonetic/exact)
     _default_same_session_boost: float = DEFAULT_SAME_SESSION_BOOST
     _default_different_session_penalty: float = DEFAULT_DIFFERENT_SESSION_PENALTY
     _default_not_enrolled_penalty: float = DEFAULT_NOT_ENROLLED_PENALTY
