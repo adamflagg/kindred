@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .base import SolverContext
 
@@ -54,12 +55,12 @@ def add_bunk_request_satisfaction_vars(
         person_sat_vars: list[cp_model.IntVar] = []
 
         for request in requests:
-            if request.request_type == "bunk_with":
+            if request.request_type == RequestType.BUNK_WITH.value:
                 sat_var = _create_bunk_with_satisfaction_var(ctx, person_idx, request)
                 if sat_var is not None:
                     person_sat_vars.append(sat_var)
 
-            elif request.request_type == "not_bunk_with":
+            elif request.request_type == RequestType.NOT_BUNK_WITH.value:
                 sat_var = _create_not_bunk_with_satisfaction_var(ctx, person_idx, request)
                 if sat_var is not None:
                     person_sat_vars.append(sat_var)

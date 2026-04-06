@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .base import SolverContext
 
@@ -69,7 +70,7 @@ def add_age_preference_satisfaction_vars(
         person_sat_vars: list[cp_model.IntVar] = []
 
         for request in requests:
-            if request.request_type != "age_preference":
+            if request.request_type != RequestType.AGE_PREFERENCE.value:
                 continue
 
             preference = request.age_preference_target
@@ -128,7 +129,7 @@ def add_age_preference_penalties(
         person_grade = person.grade
 
         for request in requests:
-            if request.request_type != "age_preference":
+            if request.request_type != RequestType.AGE_PREFERENCE.value:
                 continue
 
             preference = request.age_preference_target

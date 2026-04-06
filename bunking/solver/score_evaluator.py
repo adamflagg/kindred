@@ -20,6 +20,7 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 
@@ -136,18 +137,18 @@ def evaluate_scenario_score(
         if requester_id not in person_to_bunk:
             # Requester not assigned - can't be satisfied
             pass
-        elif request_type == "bunk_with" and requestee_id:
+        elif request_type == RequestType.BUNK_WITH.value and requestee_id:
             requestee_id = int(requestee_id)
             if requestee_id in person_to_bunk:
                 is_satisfied = person_to_bunk[requester_id] == person_to_bunk[requestee_id]
-        elif request_type == "not_bunk_with" and requestee_id:
+        elif request_type == RequestType.NOT_BUNK_WITH.value and requestee_id:
             requestee_id = int(requestee_id)
             if requestee_id in person_to_bunk:
                 is_satisfied = person_to_bunk[requester_id] != person_to_bunk[requestee_id]
             else:
                 # Requestee not assigned - not_bunk_with is satisfied
                 is_satisfied = True
-        elif request_type == "age_preference" and age_pref_target:
+        elif request_type == RequestType.AGE_PREFERENCE.value and age_pref_target:
             person = person_by_cm_id.get(requester_id)
             requester_grade = person.get("grade") if person else None
             if person and requester_grade is not None:
@@ -224,7 +225,7 @@ def _get_source_fields(request: dict[str, Any]) -> list[str]:
     if source_field:
         return [source_field]
 
-    if request.get("request_type") == "age_preference":
+    if request.get("request_type") == RequestType.AGE_PREFERENCE.value:
         return [SourceField.SOCIALIZE_WITH]
 
     return []

@@ -19,6 +19,7 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
+from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
 
@@ -215,7 +216,7 @@ class DirectBunkingSolver:
                 total_requests += 1
 
                 # Check if this is a request that references another person
-                if request.request_type in ["bunk_with", "not_bunk_with"]:
+                if request.request_type in [RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value]:
                     if request.requested_person_cm_id:
                         if request.requested_person_cm_id not in self.person_idx_map:
                             # Requested person not in solver at all
@@ -223,7 +224,7 @@ class DirectBunkingSolver:
                             impossible_count += 1
                             affected_campers.add(person_cm_id)
                         elif (
-                            request.request_type == "bunk_with"
+                            request.request_type == RequestType.BUNK_WITH.value
                             and person_by_cm_id[person_cm_id].session_cm_id
                             != person_by_cm_id[request.requested_person_cm_id].session_cm_id
                         ):
@@ -422,7 +423,7 @@ class DirectBunkingSolver:
             person_idx = self.person_idx_map[person_cm_id]
 
             for request in requests:
-                if request.request_type == "bunk_with":
+                if request.request_type == RequestType.BUNK_WITH.value:
                     # Positive request - want them together
                     if request.requested_person_cm_id and request.requested_person_cm_id in self.person_idx_map:
                         target_idx = self.person_idx_map[request.requested_person_cm_id]
@@ -452,7 +453,7 @@ class DirectBunkingSolver:
 
                         person_request_satisfaction[person_cm_id].append((request, request_satisfied))
 
-                elif request.request_type == "not_bunk_with":
+                elif request.request_type == RequestType.NOT_BUNK_WITH.value:
                     # Negative request - want them apart
                     if request.requested_person_cm_id and request.requested_person_cm_id in self.person_idx_map:
                         target_idx = self.person_idx_map[request.requested_person_cm_id]
@@ -621,7 +622,7 @@ class DirectBunkingSolver:
 
             satisfied = []
             for request in requests:
-                if request.request_type == "bunk_with" and request.requested_person_cm_id:
+                if request.request_type == RequestType.BUNK_WITH.value and request.requested_person_cm_id:
                     # Check if requested person is also in this session
                     if request.requested_person_cm_id in self.person_ids:
                         satisfied.append(f"bunk_with:{request.requested_person_cm_id}")

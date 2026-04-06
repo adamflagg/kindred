@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 
@@ -44,7 +45,7 @@ def calculate_satisfied_requests(
         person_bunk = person_to_bunk[person_cm_id]
 
         for request in requests:
-            if request.request_type == "bunk_with":
+            if request.request_type == RequestType.BUNK_WITH.value:
                 if (
                     request.requested_person_cm_id
                     and request.requested_person_cm_id in person_to_bunk
@@ -52,7 +53,7 @@ def calculate_satisfied_requests(
                 ):
                     satisfied[person_cm_id].append(request.id)
 
-            elif request.request_type == "not_bunk_with":
+            elif request.request_type == RequestType.NOT_BUNK_WITH.value:
                 if (
                     request.requested_person_cm_id
                     and request.requested_person_cm_id in person_to_bunk
@@ -60,7 +61,7 @@ def calculate_satisfied_requests(
                 ):
                     satisfied[person_cm_id].append(request.id)
 
-            elif request.request_type == "age_preference":
+            elif request.request_type == RequestType.AGE_PREFERENCE.value:
                 # Check if they have bunkmates matching their preference
                 person = person_by_cm_id.get(person_cm_id)
                 preference = request.age_preference_target
@@ -234,7 +235,10 @@ def analyze_bunk_health(
     for person_cm_id in person_cm_ids:
         if person_cm_id in requests_by_person:
             for request in requests_by_person[person_cm_id]:
-                if request.request_type == "bunk_with" and request.requested_person_cm_id in person_cm_ids:
+                if (
+                    request.request_type == RequestType.BUNK_WITH.value
+                    and request.requested_person_cm_id in person_cm_ids
+                ):
                     # Add connection (order doesn't matter)
                     sorted_pair = sorted([person_cm_id, request.requested_person_cm_id])
                     conn: tuple[int, int] = (sorted_pair[0], sorted_pair[1])
