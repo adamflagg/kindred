@@ -12,6 +12,7 @@ from typing import Any, cast
 import pytest
 from ortools.sat.python import cp_model
 
+from bunking.models import RequestType
 from bunking.models_v2 import (
     DirectBunk,
     DirectBunkRequest,
@@ -146,7 +147,7 @@ def create_request(
     request_id: str,
     requester_cm_id: int,
     requested_cm_id: int | None,
-    request_type: str,
+    request_type: RequestType,
     session_cm_id: int = 1000,
     priority: int = 5,
 ) -> DirectBunkRequest:
@@ -155,7 +156,7 @@ def create_request(
         id=request_id,
         requester_person_cm_id=requester_cm_id,
         requested_person_cm_id=requested_cm_id,
-        request_type=request_type,
+        request_type=request_type.value,
         priority=priority,
         session_cm_id=session_cm_id,
         year=2025,
