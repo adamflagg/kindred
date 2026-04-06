@@ -955,6 +955,8 @@ class Phase2ResolutionService:
 
         best_match = None
         best_score = 0.0
+        # Per-candidate scoring factors for debug trace population (issue #857)
+        candidate_factors: dict[int, dict[str, float]] = {}
 
         # Pre-fetch session mappings for all candidates in one bulk call
         session_map: dict[int, int] = {}
@@ -968,14 +970,17 @@ class Phase2ResolutionService:
                 continue
 
             score = 0.5  # Base score for being in cache
+            factors: dict[str, float] = {}
 
             if session_cm_id is not None and session_map:
                 candidate_session = session_map.get(cm_id)
                 if candidate_session is not None:
                     if candidate_session == session_cm_id:
                         score += 0.3  # Same session is strong signal
+                        factors["session"] = 0.3
                     else:
                         score -= 0.1  # Different session is negative signal
+                        factors["session"] = -0.1
 
             grade_used = False
             if requester_grade is not None and person.grade is not None:
@@ -983,10 +988,16 @@ class Phase2ResolutionService:
                     grade_diff = abs(int(requester_grade) - int(person.grade))
                     if grade_diff == 0:
                         score += 0.2
+                        factors["grade"] = 0.2
                     elif grade_diff == 1:
                         score += 0.1
+                        factors["grade"] = 0.1
                     elif grade_diff > 2:
                         score -= 0.2
+                        factors["grade"] = -0.2
+                    else:
+                        # grade_diff == 2: no adjustment
+                        factors["grade"] = 0.0
                     grade_used = True
                 except (ValueError, TypeError):
                     pass
@@ -1000,13 +1011,19 @@ class Phase2ResolutionService:
                         age_diff_years = age_diff_days / 365.25
                         if age_diff_years <= 1:
                             score += 0.15
+                            factors["age"] = 0.15
                         elif age_diff_years > 3:
                             score -= 0.15
+                            factors["age"] = -0.15
+                        else:
+                            factors["age"] = 0.0
                     except (ValueError, TypeError, AttributeError) as e:
                         logger.debug(f"Error calculating age difference: {e}")
 
             # Clamp score to valid range
             score = max(0.0, min(1.0, score))
+
+            candidate_factors[cm_id] = factors
 
             if score > best_score:
                 best_score = score
@@ -1026,6 +1043,7 @@ class Phase2ResolutionService:
                 metadata={
                     "ai_candidate_count": len(clean_candidate_ids),
                     "ai_provided_person_id": True,  # For confidence boost
+                    "candidate_factors": candidate_factors,
                 },
             ), False
         else:
