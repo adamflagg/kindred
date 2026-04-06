@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from bunking.logging_config import get_logger
-from bunking.models import RequestType
+from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .age_preference import add_age_preference_satisfaction_vars
 from .base import SolverContext

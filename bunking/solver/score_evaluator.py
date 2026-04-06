@@ -20,7 +20,7 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
-from bunking.models import RequestType
+from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 

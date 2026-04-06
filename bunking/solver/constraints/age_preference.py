@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
-from bunking.models import RequestType
+from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .base import SolverContext
 

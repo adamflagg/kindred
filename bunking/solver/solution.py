@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from bunking.models import RequestType
+from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from bunking.utils.age_preference import is_age_preference_satisfied
 
