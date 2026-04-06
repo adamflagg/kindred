@@ -14,17 +14,19 @@
     "jsx": "react-jsx",
 
     /* Path aliases */
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
+
+    /* Node types needed for test files (fs, path, __dirname, globalThis) */
+    "types": ["node", "vite/client"],
 
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    
+
     /* TypeScript 5.8.3 Enhanced Strictness */
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

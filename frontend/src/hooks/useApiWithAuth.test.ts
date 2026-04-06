@@ -25,7 +25,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 // Save original fetch and location
-const originalFetch = global.fetch
+const originalFetch = globalThis.fetch
 
 describe('fetchWithAuth 401 handling', () => {
   let mockLocation: { pathname: string; href: string }
@@ -42,16 +42,16 @@ describe('fetchWithAuth 401 handling', () => {
   })
 
   afterEach(() => {
-    global.fetch = originalFetch
+    globalThis.fetch = originalFetch
   })
 
   it('should clear auth and redirect on 401 response', async () => {
     // Mock fetch to return 401
-    global.fetch = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
 
-    // fetchWithAuth wraps global.fetch and checks for 401
+    // fetchWithAuth wraps globalThis.fetch and checks for 401
     // We verify the contract: 401 response => clear auth + redirect
-    const response = await global.fetch('/api/test')
+    const response = await globalThis.fetch('/api/test')
     expect(response.status).toBe(401)
 
     // The hook should handle this - we verify the expected behavior pattern:
@@ -62,18 +62,18 @@ describe('fetchWithAuth 401 handling', () => {
   it('should not redirect when already on login page', async () => {
     mockLocation.pathname = '/login'
 
-    global.fetch = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
 
     // The contract: when on /login, 401 should NOT trigger redirect
-    const response = await global.fetch('/api/test')
+    const response = await globalThis.fetch('/api/test')
     expect(response.status).toBe(401)
     expect(mockLocation.href).toBe('')
   })
 
   it('should pass through non-401 responses normally', async () => {
-    global.fetch = vi.fn().mockResolvedValue(new Response('OK', { status: 200 }))
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('OK', { status: 200 }))
 
-    const response = await global.fetch('/api/test')
+    const response = await globalThis.fetch('/api/test')
     expect(response.status).toBe(200)
     expect(mockClear).not.toHaveBeenCalled()
   })
