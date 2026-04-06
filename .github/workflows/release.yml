@@ -178,94 +178,17 @@ jobs:
         echo "::error::CI did not complete within 5 minutes"
         exit 1
 
-    - name: Ensure CD passed on HEAD
-      id: cd-check
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        HEAD_SHA=$(git rev-parse HEAD)
-        SHA_TAG="sha-$(echo "$HEAD_SHA" | cut -c1-7)"
-        echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
-        echo "Checking CD for $HEAD_SHA (need :${SHA_TAG} images)..."
-
-        # Phase 1: Check if CD already completed successfully for this commit
-        EXISTING=$(gh run list \
-          --workflow cd.yml \
-          --branch main \
-          --limit 20 \
-          --json headSha,status,conclusion \
-          --jq "[.[] | select(.headSha == \"$HEAD_SHA\" and .status == \"completed\" and .conclusion == \"success\")] | length" 2>/dev/null || echo "0")
-
-        if [ "$EXISTING" != "0" ]; then
-          echo "CD already passed for this commit"
-          exit 0
-        fi
-
-        # Phase 2: Check if CD is already running on main, dispatch if not
-        # We check any CD on main (not just this commit) to avoid cancelling
-        # an in-progress run via the concurrency group (cd-$ref, cancel-in-progress).
-        CD_IN_PROGRESS=$(gh run list --workflow cd.yml --branch main --status in_progress --json databaseId --jq 'length' 2>/dev/null || echo "0")
-        CD_QUEUED=$(gh run list --workflow cd.yml --branch main --status queued --json databaseId --jq 'length' 2>/dev/null || echo "0")
-
-        if [ "$CD_IN_PROGRESS" = "0" ] && [ "$CD_QUEUED" = "0" ]; then
-          # No CD running — dispatch one
-          echo "No CD running on main, dispatching CD..."
-          gh workflow run cd.yml --ref main
-        else
-          echo "CD already running on main (in_progress: $CD_IN_PROGRESS, queued: $CD_QUEUED), waiting..."
-        fi
-
-        # Phase 3: Poll for a completed CD run for this commit (up to ~15 min)
-        for i in {1..45}; do
-          sleep 20
-
-          # Find CD runs for this exact commit on main
-          RUN_INFO=$(gh run list \
-            --workflow cd.yml \
-            --branch main \
-            --limit 20 \
-            --json headSha,status,conclusion,databaseId \
-            --jq ".[] | select(.headSha == \"$HEAD_SHA\")" 2>/dev/null | head -1 || echo "")
-
-          if [ -z "$RUN_INFO" ]; then
-            echo "  Attempt $i/45: No CD run found for this commit yet, waiting..."
-            continue
-          fi
-
-          STATUS=$(echo "$RUN_INFO" | jq -r '.status')
-          CONCLUSION=$(echo "$RUN_INFO" | jq -r '.conclusion')
-          RUN_ID=$(echo "$RUN_INFO" | jq -r '.databaseId')
-
-          if [ "$STATUS" = "completed" ]; then
-            if [ "$CONCLUSION" = "success" ]; then
-              echo "CD run $RUN_ID completed successfully"
-              exit 0
-            else
-              echo "::error::CD run $RUN_ID completed with conclusion: $CONCLUSION"
-              echo "Fix the CD failure and re-run this release workflow."
-              exit 1
-            fi
-          fi
-
-          echo "  Attempt $i/45: CD run $RUN_ID is $STATUS, waiting..."
-        done
-
-        echo "::error::CD did not complete within 15 minutes"
-        echo "The CD workflow may still be running. Wait for it to finish, then re-run this release."
-        exit 1
-
     - name: Install crane and authenticate to GHCR
       uses: imjasonh/setup-crane@6da1ae018866400525525ce74ff892880c099987 # v0.5
 
     - name: Find SHA-tagged images in registry
       id: find-images
-      env:
-        HEAD_SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
       run: |
         # CD can succeed without building (e.g., docs-only changes skip the build).
         # If HEAD's images don't exist, walk back through recent commits to find
         # the most recent build. This is safe because non-built commits only changed
         # docs/config — the application code (and thus Docker images) is identical.
+        HEAD_SHA_TAG="sha-$(git rev-parse HEAD | cut -c1-7)"
         echo "Checking for HEAD images: ${HEAD_SHA_TAG}..."
         if crane manifest "${REGISTRY}/${USERNAME}/kindred-api:${HEAD_SHA_TAG}" > /dev/null 2>&1; then
           echo "Found images at HEAD (${HEAD_SHA_TAG})"
@@ -384,11 +307,11 @@ jobs:
       env:
         VERSION: ${{ steps.version.outputs.version }}
         SHA_TAG: ${{ steps.find-images.outputs.sha_tag }}
-        HEAD_SHA_TAG: ${{ steps.cd-check.outputs.sha_tag }}
         LOOKBACK: ${{ steps.find-images.outputs.lookback }}
       run: |
         DOCKER_TAG=${VERSION#v}
         MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+        HEAD_SHA_TAG="sha-$(git rev-parse HEAD | cut -c1-7)"
 
         echo "" >> "$GITHUB_STEP_SUMMARY"
         echo "### Docker Images" >> "$GITHUB_STEP_SUMMARY"
