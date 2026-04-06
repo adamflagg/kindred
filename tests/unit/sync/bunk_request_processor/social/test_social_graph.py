@@ -1459,6 +1459,7 @@ class TestEnhanceResolution:
         )
 
         # Gender must be preserved through the enhancement path (is_ambiguous = True with 2 candidates)
+        assert result.candidates is not None
         genders = {c.cm_id: c.gender for c in result.candidates}
         assert genders[1] == "F"
         assert genders[2] == "M"
@@ -1493,6 +1494,7 @@ class TestEnhanceResolution:
         )
 
         # Female requester in non-AG session → female candidate ranked first
+        assert result.candidates is not None
         assert result.candidates[0].cm_id == 2
         assert result.candidates[0].gender == "F"
         assert result.candidates[1].cm_id == 1
@@ -1530,6 +1532,7 @@ class TestEnhanceResolution:
         )
 
         # AG session — male candidate with social connection should still rank first
+        assert result.candidates is not None
         assert result.candidates[0].cm_id == 1
 
     @pytest.mark.asyncio
@@ -1562,6 +1565,7 @@ class TestEnhanceResolution:
         )
 
         # No gender data on requester — original order preserved (both have same default signals)
+        assert result.candidates is not None
         assert len(result.candidates) == 2
 
 

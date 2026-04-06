@@ -455,7 +455,7 @@ class SocialGraph:
         requester_gender = graph.nodes[requester_cm_id].get("gender") if requester_cm_id in graph.nodes else None
         is_ag = self.session_types.get(session_cm_id) == "ag"
 
-        def _sort_key(p: Person) -> tuple:
+        def _sort_key(p: Person) -> tuple[int, int, int, float]:
             gender_penalty = 0
             if requester_gender and not is_ag and p.gender:
                 gender_penalty = 0 if p.gender == requester_gender else 1
