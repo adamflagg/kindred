@@ -23,6 +23,7 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
+from bunking.models import RequestType
 from bunking.solver.bunk_ordering import get_bunk_rank
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
@@ -178,7 +179,7 @@ class ObjectiveEvaluator:
             source_field = self._get_primary_source_field(request)
 
             # Only count bunk_with and not_bunk_with (age_preference handled separately)
-            if request_type not in ("bunk_with", "not_bunk_with"):
+            if request_type not in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value):
                 continue
 
             if not requestee_id:
@@ -191,11 +192,11 @@ class ObjectiveEvaluator:
             # Check satisfaction
             is_satisfied = False
 
-            if request_type == "bunk_with":
+            if request_type == RequestType.BUNK_WITH.value:
                 # Satisfied if both in same bunk
                 if requestee_id in assignments:
                     is_satisfied = assignments[requester_id] == assignments[requestee_id]
-            elif request_type == "not_bunk_with":
+            elif request_type == RequestType.NOT_BUNK_WITH.value:
                 # Satisfied if in different bunks (or requestee not assigned)
                 if requestee_id in assignments:
                     is_satisfied = assignments[requester_id] != assignments[requestee_id]
@@ -473,7 +474,7 @@ class ObjectiveEvaluator:
         if source_field:
             return [source_field]
 
-        if request.get("request_type") == "age_preference":
+        if request.get("request_type") == RequestType.AGE_PREFERENCE.value:
             return [SourceField.SOCIALIZE_WITH]
 
         return []

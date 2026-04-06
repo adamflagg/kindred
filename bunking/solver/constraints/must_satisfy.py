@@ -21,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from bunking.logging_config import get_logger
+from bunking.models import RequestType
 
 from .age_preference import add_age_preference_satisfaction_vars
 from .base import SolverContext
@@ -198,9 +199,9 @@ def _filter_and_categorize_requests(
                 continue
 
         # Categorize by request type
-        if request.request_type in ["bunk_with", "not_bunk_with"]:
+        if request.request_type in [RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value]:
             bunk_requests.append(request)
-        elif request.request_type == "age_preference":
+        elif request.request_type == RequestType.AGE_PREFERENCE.value:
             # SOCIALIZE_WITH requests are excluded by the explicit-field check
             # above (SOCIALIZE_WITH is NOT in EXPLICIT_SOURCE_FIELDS), so they
             # never reach this point. Safe to append unconditionally.
