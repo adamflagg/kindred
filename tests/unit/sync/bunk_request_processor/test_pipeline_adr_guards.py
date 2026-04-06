@@ -247,7 +247,7 @@ class TestADR5NAStrippingScopedToBunkWith:
         # without a preceding field_name guard on the same line or wrapping if.
         # We check that the guard exists by looking for the SourceField.BUNK_WITH guard
         # near the no_preference check.
-        assert "SourceField.BUNK_WITH" in source or 'field_name == "bunk_with"' in source, (
+        assert "SourceField.BUNK_WITH" in source, (
             "Expected a SourceField.BUNK_WITH guard around is_no_preference in _prepare_parse_requests"
         )
 
@@ -262,7 +262,7 @@ class TestADR5NAStrippingScopedToBunkWith:
         source = inspect.getsource(RequestOrchestrator._prepare_parse_requests)
 
         # The guard should scope both is_no_preference and strip_na_prefix to bunk_with
-        assert "SourceField.BUNK_WITH" in source or 'field_name == "bunk_with"' in source, (
+        assert "SourceField.BUNK_WITH" in source, (
             "Expected a SourceField.BUNK_WITH guard around strip_na_prefix in _prepare_parse_requests"
         )
 

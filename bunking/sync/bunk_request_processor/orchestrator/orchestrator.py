@@ -59,6 +59,7 @@ from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
 from ..shared.constants import (
     ALL_PROCESSING_FIELDS,
+    NOTES_FIELDS,
     UNIT_NAMES,
     UNRESOLVED_ID_DEFAULT,
     UNRESOLVED_ID_MAX,
@@ -441,15 +442,13 @@ class RequestOrchestrator:
         kept_count = 0
         filtered_count = 0
 
-        notes_fields = (SourceField.BUNKING_NOTES, SourceField.INTERNAL_NOTES)
-
         for result in parse_results:
             if not result.is_valid or not result.parsed_requests:
                 continue
 
             # ADR 4: Temporal conflicts only occur in notes fields — skip for structured fields
             source_field = result.parse_request.field_name if result.parse_request else None
-            if source_field is not None and source_field not in notes_fields:
+            if source_field is not None and source_field not in NOTES_FIELDS:
                 kept_count += len(result.parsed_requests)
                 continue
 

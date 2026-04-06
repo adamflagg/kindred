@@ -10,7 +10,7 @@ from bunking.logging_config import get_logger
 from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
-from ..shared.constants import SourceField
+from ..shared.constants import NOTES_FIELDS
 from ..shared.name_utils import normalize_name
 from ..shared.nickname_groups import find_nickname_variations, names_match_via_nicknames
 
@@ -168,11 +168,10 @@ class Phase2ResolutionService:
                     continue
 
                 # ADR 6: Staff name detection only makes sense for notes fields
-                _notes_fields = (SourceField.BUNKING_NOTES, SourceField.INTERNAL_NOTES)
                 if (
                     self.staff_name_filter
                     and parsed.target_name
-                    and parsed.source_field in _notes_fields
+                    and parsed.source_field in NOTES_FIELDS
                     and self.staff_name_filter(parsed.target_name)
                 ):
                     logger.debug(f"Filtered out staff name from request: {parsed.target_name}")
