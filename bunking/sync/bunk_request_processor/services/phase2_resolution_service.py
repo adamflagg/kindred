@@ -585,7 +585,9 @@ class Phase2ResolutionService:
         Returns:
             Dict mapping requester_cm_id → set of cm_ids that also requested them
         """
-        # Build forward map: requester → set of resolved targets (person-referencing types only)
+        # Build forward map: requester → set of resolved targets (person-referencing types only).
+        # Intentionally session-agnostic: cross-session mutuals (A→B in session 1, B→A in
+        # session 2) are valid identity confirmation signals for disambiguation.
         forward: dict[int, set[int]] = {}
 
         for case in cases:

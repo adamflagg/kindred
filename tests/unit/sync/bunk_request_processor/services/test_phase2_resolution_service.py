@@ -509,6 +509,27 @@ class TestBuildMutualRequestLookup:
         lookup = service._build_mutual_request_lookup([])
         assert lookup == {}
 
+    def test_idx_out_of_bounds_skipped(self):
+        """Extra resolution_results beyond parsed_requests are safely skipped."""
+        service = Phase2ResolutionService(resolution_pipeline=Mock())
+
+        # Build a case where resolution_results has more entries than parsed_requests
+        pr = _create_parse_result(
+            parsed_requests=[_create_parsed_request(target_name="Person 200", request_type=RequestType.BUNK_WITH)],
+            parse_request=_create_parse_request(requester_cm_id=100, session_cm_id=1000),
+        )
+        case = ResolutionCase(pr)
+        # Two resolution results but only one parsed_request — idx=1 is out of bounds
+        case.resolution_results = [
+            _create_resolution_result(person=_create_person(cm_id=200), confidence=0.95, method="exact_match"),
+            _create_resolution_result(person=_create_person(cm_id=300), confidence=0.95, method="exact_match"),
+        ]
+
+        # Should not raise and should only include the in-bounds result
+        lookup = service._build_mutual_request_lookup([case])
+        # One-directional, so no mutual entries — but importantly no IndexError
+        assert lookup == {}
+
 
 class TestMutualRequestWiring:
     """Tests that mutual request data is threaded to smart_resolve_candidates (#863)."""
