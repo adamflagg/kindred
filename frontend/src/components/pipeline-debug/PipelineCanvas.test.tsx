@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { PipelineCanvas } from './PipelineCanvas'
 import { PipelineDetailPanel } from './PipelineDetailPanel'
-import type { TraceData, PipelinePhase } from './types'
+import type { TraceData, PipelinePhase, PipelineStage } from './types'
 
 // Mock React Flow since it needs a browser context for measurements
 vi.mock('@xyflow/react', async () => {
@@ -225,17 +225,17 @@ describe('PipelineDetailPanel', () => {
     onRunFromHere: vi.fn(),
   }
 
-  it('renders nothing when no node is selected', () => {
+  it('renders nothing when no stage is selected', () => {
     const { container } = render(
-      <PipelineDetailPanel selectedNode={null} traceData={mockTraceData} {...defaultActions} />
+      <PipelineDetailPanel selectedStage={null} traceData={mockTraceData} {...defaultActions} />
     )
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders PrePhase1Detail when pre_phase1 is selected', () => {
+  it('renders PrePhase1Detail when staff_detect is selected', () => {
     render(
       <PipelineDetailPanel
-        selectedNode="pre_phase1"
+        selectedStage={'staff_detect' as PipelineStage}
         traceData={mockTraceData}
         {...defaultActions}
       />
@@ -243,21 +243,25 @@ describe('PipelineDetailPanel', () => {
     expect(screen.getByText('Pre-Phase 1')).toBeInTheDocument()
   })
 
-  it('renders Phase1Detail when phase1 is selected', () => {
-    render(
-      <PipelineDetailPanel selectedNode="phase1" traceData={mockTraceData} {...defaultActions} />
-    )
-    expect(screen.getByText('Phase 1 Parse')).toBeInTheDocument()
-  })
-
-  it('renders PostPipelineDetail when post_pipeline is selected', () => {
+  it('renders Phase1Detail when phase1_parse is selected', () => {
     render(
       <PipelineDetailPanel
-        selectedNode="post_pipeline"
+        selectedStage={'phase1_parse' as PipelineStage}
         traceData={mockTraceData}
         {...defaultActions}
       />
     )
-    expect(screen.getByText('Post-Pipeline')).toBeInTheDocument()
+    expect(screen.getByText('Phase 1 Parse')).toBeInTheDocument()
+  })
+
+  it('renders BatchSignalsDetail when batch_signals is selected', () => {
+    render(
+      <PipelineDetailPanel
+        selectedStage={'batch_signals' as PipelineStage}
+        traceData={mockTraceData}
+        {...defaultActions}
+      />
+    )
+    expect(screen.getByText('Batch Signals')).toBeInTheDocument()
   })
 })

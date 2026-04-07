@@ -42,7 +42,7 @@ export function PipelineDetailPanel({
   const sharedProps = {
     onRunAgain: () => onRunAgain(parentPhase),
     onRunFromHere: (writeToProduction: boolean) => onRunFromHere(parentPhase, writeToProduction),
-    isRunning,
+    ...(isRunning !== undefined ? { isRunning } : {}),
   }
 
   function renderPanel() {
