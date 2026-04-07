@@ -54,12 +54,10 @@ export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
       <PanelSection label="Input">
         <DataRow
           label="Source Field"
-          value={
-            data.parse_request?.['field_name'] ? String(data.parse_request['field_name']) : '—'
-          }
+          value={data.parse_request['field_name'] ? String(data.parse_request['field_name']) : '—'}
           mono
         />
-        {data.sanitization?.is_suspicious && (
+        {data.sanitization.is_suspicious && (
           <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
             <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
               ⚠ Suspicious input detected

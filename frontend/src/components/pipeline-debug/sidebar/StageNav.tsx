@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Clock } from 'lucide-react'
 import type { TraceData, PipelineStage, PipelinePhase, StageGroup } from '../types'
 import { STAGE_GROUPS, STAGE_TO_PHASE } from '../types'
@@ -33,30 +33,40 @@ export function StageNav({ traceData, selectedStage, onStageSelect, stalePhases 
     ? STAGE_GROUPS.find((g) => (g.stages as readonly PipelineStage[]).includes(selectedStage))?.id
     : null
 
-  const [collapsed, setCollapsed] = useState<Set<StageGroup>>(new Set())
+  // Manual user overrides: +1 means force-expanded, -1 means force-collapsed
+  const [manualOverrides, setManualOverrides] = useState<Map<StageGroup, 'open' | 'closed'>>(
+    new Map()
+  )
 
-  // Auto-collapse completed groups when selection changes
-  useEffect(() => {
-    const autoCollapsed = new Set<StageGroup>()
+  // Derived auto-collapse: collapse completed groups that aren't selected
+  const autoCollapsed = useMemo<Set<StageGroup>>(() => {
+    const result = new Set<StageGroup>()
     for (const group of STAGE_GROUPS) {
       if (group.id === selectedGroup) continue
       const allDone = group.stages.every((s) => {
         const status = deriveStageStatus(s, traceData)
         return status === 'success' || status === 'skipped'
       })
-      if (allDone) autoCollapsed.add(group.id)
+      if (allDone) result.add(group.id)
     }
-    setCollapsed(autoCollapsed)
+    return result
   }, [selectedGroup, traceData])
 
+  // Final collapsed set: auto-collapsed merged with manual overrides
+  const collapsed = useMemo<Set<StageGroup>>(() => {
+    const result = new Set(autoCollapsed)
+    for (const [groupId, state] of manualOverrides) {
+      if (state === 'open') result.delete(groupId)
+      else result.add(groupId)
+    }
+    return result
+  }, [autoCollapsed, manualOverrides])
+
   const toggleGroup = (groupId: StageGroup) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupId)) {
-        next.delete(groupId)
-      } else {
-        next.add(groupId)
-      }
+    setManualOverrides((prev) => {
+      const next = new Map(prev)
+      const currentlyCollapsed = collapsed.has(groupId)
+      next.set(groupId, currentlyCollapsed ? 'open' : 'closed')
       return next
     })
   }

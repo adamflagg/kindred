@@ -61,7 +61,9 @@ export function ExpansionDetail({
                 key={idx}
                 className="rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-700 dark:bg-gray-800/50 dark:text-gray-300"
               >
-                {String((target as Record<string, unknown>)['name'] ?? JSON.stringify(target))}
+                {String(
+                  (target as Record<string, string | undefined>)['name'] ?? JSON.stringify(target)
+                )}
               </div>
             ))}
           </div>

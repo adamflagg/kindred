@@ -297,35 +297,6 @@ export interface PipelineSummaryFilters {
 // Phase Execution Types
 // =============================================================================
 
-// =============================================================================
-// Shared Node Data — common layout fields for all pipeline phase nodes
-// =============================================================================
-
-import type { Position } from '@xyflow/react'
-
-/** Layout fields shared by all pipeline node data types. */
-export interface BaseNodeData {
-  [key: string]: unknown
-  isStale?: boolean | undefined
-  tooltip?: string | undefined
-  inputPosition?: Position | undefined
-  outputPosition?: Position | undefined
-  showInput?: boolean | undefined
-  showOutput?: boolean | undefined
-}
-
-/** Extract BaseNode layout props from node data for spreading. */
-export function baseNodeProps(data: BaseNodeData) {
-  return {
-    isStale: data.isStale,
-    tooltip: data.tooltip,
-    showInput: data.showInput,
-    showOutput: data.showOutput,
-    inputPosition: data.inputPosition,
-    outputPosition: data.outputPosition,
-  }
-}
-
 export type PipelinePhase =
   | 'pre_phase1'
   | 'phase1'

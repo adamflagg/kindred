@@ -259,9 +259,7 @@ export default function PipelineDebugPage() {
           onRunTrace={handleRunTrace}
           isRunning={runFullTrace.isPending}
           year={year}
-          error={
-            runFullTrace.isError ? (runFullTrace.error?.message ?? 'Trace execution failed') : null
-          }
+          error={runFullTrace.isError ? runFullTrace.error.message : null}
         />
       </div>
     )
@@ -355,9 +353,7 @@ export default function PipelineDebugPage() {
         onRunTrace={handleRunTrace}
         isRunning={runFullTrace.isPending}
         year={year}
-        error={
-          runFullTrace.isError ? (runFullTrace.error?.message ?? 'Trace execution failed') : null
-        }
+        error={runFullTrace.isError ? runFullTrace.error.message : null}
       />
     </div>
   )

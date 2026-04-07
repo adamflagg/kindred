@@ -64,7 +64,9 @@ export function DispositionDetail({
                       <Badge label={br.status} color={statusColor(br.status)} />
                     </td>
                     <td className="py-2 pr-3 text-xs text-gray-600 dark:text-gray-400">
-                      {br.disposition_reason || br.declined_reason || '—'}
+                      {br.disposition_reason !== ''
+                        ? br.disposition_reason
+                        : (br.declined_reason ?? '—')}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">{br.confidence}</td>
                     <td className="py-2 pr-3 text-xs">{br.resolution_method}</td>
