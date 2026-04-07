@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TemporalInfo(BaseModel):
@@ -132,17 +132,51 @@ class AIFullParseResponse(BaseModel):
     requests: list[AIFullParseRequestItem] = Field(default_factory=list)
 
 
+class AIDisambiguationCandidate(BaseModel):
+    """A single ranked candidate from AI disambiguation."""
+
+    person_id: int
+    """CampMinder person ID of this candidate."""
+
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    """AI's confidence this is the right person (0.0 to 1.0)."""
+
+    reasoning: str = ""
+    """Why the AI ranked this candidate here."""
+
+
 class AIDisambiguationResponse(BaseModel):
     """Response from disambiguation request (Phase 3).
 
     Used when Phase 2 local resolution found multiple candidates.
     """
 
+    ranked_selections: list[AIDisambiguationCandidate] = Field(default_factory=list)
+    """Top 3-5 ranked candidate selections from AI."""
+
+    no_match: bool = False
+    """AI explicitly determined no candidate is a plausible match."""
+
+    no_match_reason: str = ""
+    """Explanation for no_match."""
+
     selected_person_id: int | None = None
-    """The AI's selected person ID from the candidates."""
+    """Legacy: AI's selected person ID. Superseded by ranked_selections."""
 
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     """Confidence in the selection (0.0 to 1.0)."""
 
     reasoning: str = ""
     """Explanation for the selection."""
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self) -> AIDisambiguationResponse:
+        """ranked_selections, no_match, and selected_person_id are mutually exclusive."""
+        set_fields = [
+            bool(self.ranked_selections),
+            self.no_match,
+            self.selected_person_id is not None,
+        ]
+        if sum(set_fields) > 1:
+            raise ValueError("ranked_selections, no_match, and selected_person_id are mutually exclusive")
+        return self

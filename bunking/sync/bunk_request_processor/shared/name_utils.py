@@ -46,6 +46,30 @@ def _normalize_last_name(name: str) -> str:
     return name.lower()
 
 
+def _last_name_jw_raw_score(search_last: str, db_last: str) -> float:
+    """Compute best JW similarity between two last names.
+
+    Applies normalization (Mc/Mac prefix, apostrophes, case) then JW, plus
+    hyphen-split parts for compound names. Returns float in [0.0, 1.0].
+    """
+    import jellyfish
+
+    norm_search = _normalize_last_name(search_last)
+    norm_db = _normalize_last_name(db_last)
+
+    best = jellyfish.jaro_winkler_similarity(norm_search, norm_db)
+
+    for part in search_last.split("-"):
+        if part:
+            best = max(best, jellyfish.jaro_winkler_similarity(_normalize_last_name(part), norm_db))
+
+    for part in db_last.split("-"):
+        if part:
+            best = max(best, jellyfish.jaro_winkler_similarity(norm_search, _normalize_last_name(part)))
+
+    return best
+
+
 def last_name_matches(search_last: str, db_last: str, threshold: float = 0.90) -> bool:
     """Check if a searched last name matches a database last name.
 
@@ -70,8 +94,6 @@ def last_name_matches(search_last: str, db_last: str, threshold: float = 0.90) -
     Returns:
         True if search_last matches db_last (exact, suffix, or fuzzy)
     """
-    import jellyfish
-
     search_words = split_last_name_words(search_last)
     db_words = split_last_name_words(db_last)
 
@@ -89,24 +111,11 @@ def last_name_matches(search_last: str, db_last: str, threshold: float = 0.90) -
             return True
 
     # Normalized exact match (collapse prefixes, remove apostrophes)
-    norm_search = _normalize_last_name(search_last)
-    norm_db = _normalize_last_name(db_last)
-    if norm_search == norm_db:
+    if _normalize_last_name(search_last) == _normalize_last_name(db_last):
         return True
 
-    # Jaro-Winkler fuzzy match on normalized forms
-    if jellyfish.jaro_winkler_similarity(norm_search, norm_db) >= threshold:
-        return True
-
-    # Hyphen-split: try each part of either name
-    for part in search_last.split("-"):
-        if part and jellyfish.jaro_winkler_similarity(_normalize_last_name(part), norm_db) >= threshold:
-            return True
-    for part in db_last.split("-"):
-        if part and jellyfish.jaro_winkler_similarity(norm_search, _normalize_last_name(part)) >= threshold:
-            return True
-
-    return False
+    # Jaro-Winkler fuzzy match on normalized forms (including hyphen-split parts)
+    return _last_name_jw_raw_score(search_last, db_last) >= threshold
 
 
 def normalize_name(name: str) -> str:

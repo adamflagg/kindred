@@ -10,16 +10,17 @@ Context:
 - Local resolution confidence: {local_confidence}
 - Ambiguity reason: {ambiguity_reason}
 
-Select the most likely match based on available information.
-Consider:
+Return your top 3-5 most likely matches ranked by confidence. Consider:
+- Name spelling similarity (MOST IMPORTANT — the target name's spelling should closely match the candidate's name)
 - School proximity (same school = more likely to know each other)
 - Grade similarity (campers usually request peers within 1-2 grades)
 - City proximity (same city = more likely to know each other outside camp)
 - Congregation (shared temple/synagogue = community connection)
 - Social connections (mutual friends increase likelihood)
 - Parent names (requests sometimes use parent surnames instead of child's)
-- Name spelling (fuzzy matches may indicate typos)
 - Family references (target may refer to household members by last name)
 
-If one candidate is plausible but uncertain, select it with low confidence.
-If none of the candidates are a plausible match, set selected_person_id to 0.
+CRITICAL: If no candidate's name is a plausible spelling match for "{target_name}", set no_match=true. Do NOT guess based on first name alone when the last names are completely different.
+EXCEPTION: If "{target_name}" is a single first name with no last name, do NOT set no_match. Instead, rank candidates by first-name similarity alone — a single token is an incomplete reference, not a non-match.
+
+For each candidate you select, provide a confidence score (0.0-1.0) and brief reasoning.

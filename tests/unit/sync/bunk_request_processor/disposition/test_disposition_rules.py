@@ -109,6 +109,70 @@ class TestBunkWithBoundary:
         assert d.status == RequestStatus.PENDING
 
 
+class TestReciprocalConfidenceFloor:
+    """Reciprocal match requires >= 0.70 confidence floor to auto-resolve."""
+
+    def test_reciprocal_above_floor_resolved(self):
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="fuzzy_match",
+            match_confidence=0.85,
+            is_reciprocal=True,
+        )
+        assert d.status == RequestStatus.RESOLVED
+        assert d.reason == "reciprocal_match"
+
+    def test_reciprocal_at_floor_resolved(self):
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="ai_disambiguation",
+            match_confidence=0.70,
+            is_reciprocal=True,
+        )
+        assert d.status == RequestStatus.RESOLVED
+        assert d.reason == "reciprocal_match"
+
+    def test_reciprocal_below_floor_pending(self):
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="ai_disambiguation",
+            match_confidence=0.45,
+            is_reciprocal=True,
+        )
+        assert d.status == RequestStatus.PENDING
+        assert d.reason == "needs_review"
+
+    def test_reciprocal_at_030_pending(self):
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="ai_disambiguation",
+            match_confidence=0.30,
+            is_reciprocal=True,
+        )
+        assert d.status == RequestStatus.PENDING
+
+    def test_reciprocal_069_pending(self):
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="ai_disambiguation",
+            match_confidence=0.69,
+            is_reciprocal=True,
+        )
+        assert d.status == RequestStatus.PENDING
+
+    def test_reciprocal_below_floor_pending_even_with_low_auto_threshold(self):
+        """Reciprocal floor must hold even when auto_resolve_threshold is below 0.70."""
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="ai_disambiguation",
+            match_confidence=0.69,
+            is_reciprocal=True,
+            auto_resolve_threshold=0.60,
+        )
+        assert d.status == RequestStatus.PENDING
+        assert d.reason == "needs_review"
+
+
 class TestNotBunkWith:
     """NOT_BUNK_WITH disposition rules."""
 
