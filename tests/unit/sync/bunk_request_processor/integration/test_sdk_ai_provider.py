@@ -16,6 +16,7 @@ from bunking.sync.bunk_request_processor.core.models import (
 )
 from bunking.sync.bunk_request_processor.integration.ai_schemas import (
     AIBunkRequestItem,
+    AIDisambiguationCandidate,
     AIDisambiguationResponse,
     AIParseResponse,
 )
@@ -746,3 +747,68 @@ class TestSDKProviderRequestTypeMapping:
         # Note: NOTES was removed - AI "notes" output now maps to STAFF
         assert RequestSource.FAMILY.value in ["family", "FAMILY"]
         assert RequestSource.STAFF.value in ["staff", "STAFF"]
+
+
+class TestAIDisambiguationRankedSchema:
+    """Test ranked selections in AIDisambiguationResponse schema."""
+
+    def test_ranked_selections_parsed(self):
+        """ranked_selections field parses a list of AIDisambiguationCandidate objects."""
+        response = AIDisambiguationResponse(
+            ranked_selections=[
+                AIDisambiguationCandidate(
+                    person_id=1001,
+                    confidence=0.92,
+                    reasoning="Name and school match",
+                ),
+                AIDisambiguationCandidate(
+                    person_id=1002,
+                    confidence=0.45,
+                    reasoning="Name matches but different school",
+                ),
+            ],
+            selected_person_id=1001,
+            confidence=0.92,
+            reasoning="Top ranked candidate",
+        )
+        assert len(response.ranked_selections) == 2
+        assert response.ranked_selections[0].person_id == 1001
+        assert response.ranked_selections[0].confidence == 0.92
+        assert response.ranked_selections[0].reasoning == "Name and school match"
+        assert response.ranked_selections[1].person_id == 1002
+        assert response.ranked_selections[1].confidence == 0.45
+
+    def test_no_match_flag(self):
+        """no_match=True with empty selections and a reason is valid."""
+        response = AIDisambiguationResponse(
+            ranked_selections=[],
+            no_match=True,
+            no_match_reason="No candidate shares name, school, or session with requester",
+        )
+        assert response.no_match is True
+        assert response.no_match_reason == "No candidate shares name, school, or session with requester"
+        assert len(response.ranked_selections) == 0
+
+    def test_empty_ranked_selections_valid(self):
+        """Default construction produces empty ranked_selections and no_match=False."""
+        response = AIDisambiguationResponse()
+        assert response.ranked_selections == []
+        assert response.no_match is False
+        assert response.no_match_reason == ""
+        assert response.selected_person_id is None
+        assert response.confidence == 0.0
+        assert response.reasoning == ""
+
+    def test_backward_compat_selected_person_id(self):
+        """Legacy selected_person_id / confidence / reasoning fields still work."""
+        response = AIDisambiguationResponse(
+            selected_person_id=5555,
+            confidence=0.75,
+            reasoning="Legacy single selection",
+        )
+        assert response.selected_person_id == 5555
+        assert response.confidence == 0.75
+        assert response.reasoning == "Legacy single selection"
+        # New fields default correctly
+        assert response.ranked_selections == []
+        assert response.no_match is False
