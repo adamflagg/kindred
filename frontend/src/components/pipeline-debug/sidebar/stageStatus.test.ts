@@ -145,6 +145,10 @@ describe('deriveStageStatus', () => {
     expect(deriveStageStatus('conflict_detect', trace)).toBe('warning')
   })
 
+  it('returns success for conflict_detect when no conflict', () => {
+    expect(deriveStageStatus('conflict_detect', makeTrace())).toBe('success')
+  })
+
   it('returns success for disposition when final_bunk_requests exist', () => {
     const trace = makeTrace({
       post_pipeline: {

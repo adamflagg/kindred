@@ -23,6 +23,8 @@ import { DedupDetail } from './panels/DedupDetail'
 interface PipelineDetailPanelProps {
   selectedStage: PipelineStage | null
   traceData: TraceData
+  activeIntentIndex: number
+  onTabChange: (idx: number) => void
   onRunAgain: (phase: PipelinePhase) => void
   onRunFromHere: (phase: PipelinePhase, writeToProduction: boolean) => void
   isRunning?: boolean
@@ -31,6 +33,8 @@ interface PipelineDetailPanelProps {
 export function PipelineDetailPanel({
   selectedStage,
   traceData,
+  activeIntentIndex,
+  onTabChange,
   onRunAgain,
   onRunFromHere,
   isRunning,
@@ -64,13 +68,27 @@ export function PipelineDetailPanel({
 
       // Resolution
       case 'phase2_resolve':
-        return <Phase2Detail data={traceData.phase2_resolution} {...sharedProps} />
+        return (
+          <Phase2Detail
+            data={traceData.phase2_resolution}
+            activeTab={activeIntentIndex}
+            onTabChange={onTabChange}
+            {...sharedProps}
+          />
+        )
       case 'expansion':
         return <ExpansionDetail data={traceData.placeholder_expansion} {...sharedProps} />
       case 'historical':
         return <HistoricalDetail data={traceData.historical_verification} {...sharedProps} />
       case 'phase3_disambig':
-        return <Phase3Detail data={traceData.phase3_disambiguation} {...sharedProps} />
+        return (
+          <Phase3Detail
+            data={traceData.phase3_disambiguation}
+            activeTab={activeIntentIndex}
+            onTabChange={onTabChange}
+            {...sharedProps}
+          />
+        )
 
       // Finalization — each gets its own panel
       case 'batch_signals':

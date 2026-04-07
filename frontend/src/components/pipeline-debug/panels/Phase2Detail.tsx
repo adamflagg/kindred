@@ -6,7 +6,6 @@
  * Output:  Resolved person (CM ID, confidence, method) per intent
  */
 
-import { useState } from 'react'
 import type { Phase2IntentTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { DataRow, Badge, PanelSection } from './DataRow'
@@ -17,6 +16,8 @@ import { PhaseHeader } from './PhaseHeader'
 
 interface Phase2DetailProps {
   data: Phase2IntentTrace[]
+  activeTab: number
+  onTabChange: (idx: number) => void
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
   isRunning?: boolean | undefined
@@ -188,9 +189,14 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
   )
 }
 
-export function Phase2Detail({ data, onRunAgain, onRunFromHere, isRunning }: Phase2DetailProps) {
-  const [activeTab, setActiveTab] = useState(0)
-
+export function Phase2Detail({
+  data,
+  activeTab,
+  onTabChange,
+  onRunAgain,
+  onRunFromHere,
+  isRunning,
+}: Phase2DetailProps) {
   const resolvedCount = data.filter((i) => i.final_result.is_resolved).length
 
   return (
@@ -215,7 +221,7 @@ export function Phase2Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         </p>
       ) : (
         <>
-          <IntentTabs items={data} activeTab={activeTab} onTabChange={setActiveTab} />
+          <IntentTabs items={data} activeTab={activeTab} onTabChange={onTabChange} />
           {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
         </>
       )}

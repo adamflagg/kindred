@@ -80,7 +80,7 @@ export default function PipelineDebugPage() {
     setActiveIntentIndex(0)
   }, [])
 
-  /** Run Again: re-run single phase (always dry-run). Mark downstream as stale. */
+  /** Run Again: re-run from phase, cascading through all remaining phases (always dry-run). */
   const handleRunAgain = useCallback(
     (phase: PipelinePhase) => {
       if (!traceId) return
@@ -89,7 +89,6 @@ export default function PipelineDebugPage() {
       const downstream = new Set<PipelinePhase>(PHASE_ORDER.filter((_, idx) => idx > phaseIdx))
       setStalePhases(downstream)
 
-      // Run the phase (dry-run, single phase via runFromPhase with same start/end)
       const trace = traceQuery.data
       runFromPhase.mutate(
         {
@@ -222,6 +221,8 @@ export default function PipelineDebugPage() {
                   <PipelineDetailPanel
                     selectedStage={selectedStage}
                     traceData={trace.trace_data}
+                    activeIntentIndex={activeIntentIndex}
+                    onTabChange={setActiveIntentIndex}
                     onRunAgain={handleRunAgain}
                     onRunFromHere={handleRunFromHere}
                     isRunning={runFromPhase.isPending}

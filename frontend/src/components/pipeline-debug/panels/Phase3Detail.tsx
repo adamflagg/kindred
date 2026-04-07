@@ -6,7 +6,6 @@
  * Output:  Selected match, confidence before/after, AI reasoning
  */
 
-import { useState } from 'react'
 import type { Phase3IntentTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { DataRow, Badge, PanelSection } from './DataRow'
@@ -16,6 +15,8 @@ import { PhaseHeader } from './PhaseHeader'
 
 interface Phase3DetailProps {
   data: Phase3IntentTrace[]
+  activeTab: number
+  onTabChange: (idx: number) => void
   onRunAgain: () => void
   onRunFromHere: (writeToProduction: boolean) => void
   isRunning?: boolean | undefined
@@ -117,9 +118,14 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
   )
 }
 
-export function Phase3Detail({ data, onRunAgain, onRunFromHere, isRunning }: Phase3DetailProps) {
-  const [activeTab, setActiveTab] = useState(0)
-
+export function Phase3Detail({
+  data,
+  activeTab,
+  onTabChange,
+  onRunAgain,
+  onRunFromHere,
+  isRunning,
+}: Phase3DetailProps) {
   const ranCount = data.filter((i) => i.ran).length
   const resolvedCount = data.filter((i) => i.result === 'resolved').length
 
@@ -143,7 +149,7 @@ export function Phase3Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         <p className="text-sm text-gray-500 italic dark:text-gray-400">No disambiguation data.</p>
       ) : (
         <>
-          <IntentTabs items={data} activeTab={activeTab} onTabChange={setActiveTab} />
+          <IntentTabs items={data} activeTab={activeTab} onTabChange={onTabChange} />
           {data[activeTab] != null && <IntentPanel intent={data[activeTab]} />}
         </>
       )}

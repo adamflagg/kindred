@@ -3,7 +3,7 @@
  *
  * Three input tabs:
  * 1. Search by Name — type-ahead person search, loads their original requests
- * 2. Paste CM ID — enter comma-separated CampMinder IDs
+ * 2. Paste CM ID — enter a single CampMinder ID
  * 3. Browse Requests — filterable table of all original_bunk_requests
  *
  * Bottom controls: session dropdown, stop-after phase dropdown, and Run Trace / Cancel buttons.
@@ -159,14 +159,9 @@ export function NewTraceModal({
   }
 
   function handleLoadPastedIds() {
-    const ids = pastedCmIds
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => /^\d+$/.test(s))
-      .map(Number)
-    const firstId = ids[0]
-    if (firstId !== undefined) {
-      setPastedCmId(firstId)
+    const trimmed = pastedCmIds.trim()
+    if (/^\d+$/.test(trimmed)) {
+      setPastedCmId(Number(trimmed))
       setSelectedRequestIds(new Set())
     }
   }
