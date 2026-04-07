@@ -2,7 +2,7 @@
  * PipelineDebugPage - Full pipeline debug/trace tool
  *
  * Batch overview: run selector + summary table with PB-native filtering.
- * Drill-down: React Flow pipeline canvas with phase nodes and detail panels.
+ * Drill-down: sidebar stage nav + detail panel (flex row layout).
  *
  * Route: /summer/debug/pipeline (batch) or /summer/debug/pipeline/:traceId (drill-down)
  */
@@ -15,7 +15,7 @@ import { useYear } from '../../hooks/useCurrentYear'
 import {
   PipelineRunSelector,
   PipelineBatchList,
-  PipelineCanvas,
+  PipelineSidebar,
   PipelineDetailPanel,
   NewTraceModal,
 } from '../../components/pipeline-debug'
@@ -26,8 +26,10 @@ import { usePipelineTrace } from '../../hooks/usePipelineTrace'
 import { useRunFromPhase, useRunFullTrace } from '../../hooks/useRunPhase'
 import {
   PHASE_ORDER,
+  STAGE_ORDER,
   type PipelineSummaryFilters,
   type PipelinePhase,
+  type PipelineStage,
 } from '../../components/pipeline-debug/types'
 
 export default function PipelineDebugPage() {
@@ -43,7 +45,8 @@ export default function PipelineDebugPage() {
   const [isNewTraceOpen, setIsNewTraceOpen] = useState(false)
 
   // Drill-down state
-  const [selectedNode, setSelectedNode] = useState<PipelinePhase | null>(null)
+  const [selectedStage, setSelectedStage] = useState<PipelineStage>(STAGE_ORDER[0] as PipelineStage)
+  const [activeIntentIndex, setActiveIntentIndex] = useState(0)
   const [stalePhases, setStalePhases] = useState<Set<PipelinePhase>>(new Set())
 
   // Data fetching
@@ -73,11 +76,12 @@ export default function PipelineDebugPage() {
     [navigate]
   )
 
-  const handleNodeSelect = useCallback((phase: PipelinePhase) => {
-    setSelectedNode(phase)
+  const handleStageSelect = useCallback((stage: PipelineStage) => {
+    setSelectedStage(stage)
+    setActiveIntentIndex(0)
   }, [])
 
-  /** Run Again: re-run single phase (always dry-run). Mark downstream as stale. */
+  /** Run Again: re-run from phase, cascading through all remaining phases (always dry-run). */
   const handleRunAgain = useCallback(
     (phase: PipelinePhase) => {
       if (!traceId) return
@@ -86,7 +90,6 @@ export default function PipelineDebugPage() {
       const downstream = new Set<PipelinePhase>(PHASE_ORDER.filter((_, idx) => idx > phaseIdx))
       setStalePhases(downstream)
 
-      // Run the phase (dry-run, single phase via runFromPhase with same start/end)
       const trace = traceQuery.data
       runFromPhase.mutate(
         {
@@ -178,7 +181,14 @@ export default function PipelineDebugPage() {
               Trace: <span className="font-mono text-xs">{traceId}</span>
               {traceQuery.data && (
                 <span className="ml-2">
-                  {traceQuery.data.source_field} — requester #{traceQuery.data.requester_cm_id}
+                  {traceQuery.data.source_field} —{' '}
+                  <Link
+                    to={`/camper/${traceQuery.data.requester_cm_id}`}
+                    className="text-primary hover:underline"
+                  >
+                    {traceQuery.data.trace_data.pre_phase1.requester_info.name}
+                  </Link>{' '}
+                  <span className="font-mono text-xs">#{traceQuery.data.requester_cm_id}</span>
                 </span>
               )}
             </p>
@@ -192,7 +202,7 @@ export default function PipelineDebugPage() {
           </button>
           <button
             onClick={() => {
-              setSelectedNode(null)
+              setSelectedStage(STAGE_ORDER[0] as PipelineStage)
               setStalePhases(new Set())
               void navigate('/summer/debug/pipeline')
             }}
@@ -203,7 +213,7 @@ export default function PipelineDebugPage() {
           </button>
         </div>
 
-        {/* Canvas + Detail Panel */}
+        {/* Sidebar layout: detail panel (flex-1) + sidebar (220px fixed right) */}
         <QueryGuard
           isLoading={traceQuery.isLoading}
           error={traceQuery.error}
@@ -212,26 +222,29 @@ export default function PipelineDebugPage() {
           emptyMessage="Trace not found."
         >
           {(trace) => (
-            <>
-              <PipelineCanvas
+            <div className="flex gap-4">
+              {/* Detail panel — left, fills remaining space */}
+              <div className="min-w-0 flex-1">
+                <PipelineDetailPanel
+                  selectedStage={selectedStage}
+                  traceData={trace.trace_data}
+                  activeIntentIndex={activeIntentIndex}
+                  onTabChange={setActiveIntentIndex}
+                  onRunAgain={handleRunAgain}
+                  onRunFromHere={handleRunFromHere}
+                  isRunning={runFromPhase.isPending}
+                />
+              </div>
+
+              {/* Sidebar — right, fixed 220px */}
+              <PipelineSidebar
                 traceData={trace.trace_data}
-                selectedNode={selectedNode}
-                onNodeSelect={handleNodeSelect}
+                selectedStage={selectedStage}
+                onStageSelect={handleStageSelect}
                 stalePhases={stalePhases}
+                activeIntentIndex={activeIntentIndex}
               />
-              <PipelineDetailPanel
-                selectedNode={selectedNode}
-                traceData={trace.trace_data}
-                onRunAgain={handleRunAgain}
-                onRunFromHere={handleRunFromHere}
-                isRunning={runFromPhase.isPending}
-              />
-              {!selectedNode && (
-                <p className="text-muted-foreground py-4 text-center text-sm">
-                  Click a pipeline phase node above to view its details.
-                </p>
-              )}
-            </>
+            </div>
           )}
         </QueryGuard>
 
@@ -249,9 +262,7 @@ export default function PipelineDebugPage() {
           onRunTrace={handleRunTrace}
           isRunning={runFullTrace.isPending}
           year={year}
-          error={
-            runFullTrace.isError ? (runFullTrace.error?.message ?? 'Trace execution failed') : null
-          }
+          error={runFullTrace.isError ? runFullTrace.error.message : null}
         />
       </div>
     )
@@ -345,9 +356,7 @@ export default function PipelineDebugPage() {
         onRunTrace={handleRunTrace}
         isRunning={runFullTrace.isPending}
         year={year}
-        error={
-          runFullTrace.isError ? (runFullTrace.error?.message ?? 'Trace execution failed') : null
-        }
+        error={runFullTrace.isError ? runFullTrace.error.message : null}
       />
     </div>
   )

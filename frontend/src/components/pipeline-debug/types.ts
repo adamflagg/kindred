@@ -297,35 +297,6 @@ export interface PipelineSummaryFilters {
 // Phase Execution Types
 // =============================================================================
 
-// =============================================================================
-// Shared Node Data — common layout fields for all pipeline phase nodes
-// =============================================================================
-
-import type { Position } from '@xyflow/react'
-
-/** Layout fields shared by all pipeline node data types. */
-export interface BaseNodeData {
-  [key: string]: unknown
-  isStale?: boolean | undefined
-  tooltip?: string | undefined
-  inputPosition?: Position | undefined
-  outputPosition?: Position | undefined
-  showInput?: boolean | undefined
-  showOutput?: boolean | undefined
-}
-
-/** Extract BaseNode layout props from node data for spreading. */
-export function baseNodeProps(data: BaseNodeData) {
-  return {
-    isStale: data.isStale,
-    tooltip: data.tooltip,
-    showInput: data.showInput,
-    showOutput: data.showOutput,
-    inputPosition: data.inputPosition,
-    outputPosition: data.outputPosition,
-  }
-}
-
 export type PipelinePhase =
   | 'pre_phase1'
   | 'phase1'
@@ -347,6 +318,85 @@ export const PHASE_ORDER: PipelinePhase[] = [
   'phase3',
   'post_pipeline',
 ]
+
+// =============================================================================
+// Granular Pipeline Stages — 14 stages mapped to 8 PipelinePhases
+// =============================================================================
+
+export type PipelineStage =
+  // Pre-Processing
+  | 'staff_detect'
+  | 'na_strip'
+  // AI Parse
+  | 'phase1_parse'
+  // Validation
+  | 'type_validation'
+  | 'temporal_filter'
+  | 'source_text_validation'
+  // Resolution
+  | 'phase2_resolve'
+  | 'expansion'
+  | 'historical'
+  | 'phase3_disambig'
+  // Finalization
+  | 'batch_signals'
+  | 'conflict_detect'
+  | 'disposition'
+  | 'dedup_save'
+
+export type StageGroup =
+  | 'pre_processing'
+  | 'ai_parse'
+  | 'validation'
+  | 'resolution'
+  | 'finalization'
+
+/** Maps each granular stage back to its parent PipelinePhase for trace data access and re-runs. */
+export const STAGE_TO_PHASE: Record<PipelineStage, PipelinePhase> = {
+  staff_detect: 'pre_phase1',
+  na_strip: 'pre_phase1',
+  phase1_parse: 'phase1',
+  type_validation: 'validation',
+  temporal_filter: 'validation',
+  source_text_validation: 'validation',
+  phase2_resolve: 'phase2',
+  expansion: 'expansion',
+  historical: 'historical',
+  phase3_disambig: 'phase3',
+  batch_signals: 'post_pipeline',
+  conflict_detect: 'post_pipeline',
+  disposition: 'post_pipeline',
+  dedup_save: 'post_pipeline',
+}
+
+export interface StageGroupConfig {
+  id: StageGroup
+  label: string
+  stages: PipelineStage[]
+}
+
+export const STAGE_GROUPS: StageGroupConfig[] = [
+  { id: 'pre_processing', label: 'Pre-Processing', stages: ['staff_detect', 'na_strip'] },
+  { id: 'ai_parse', label: 'AI Parse', stages: ['phase1_parse'] },
+  {
+    id: 'validation',
+    label: 'Validation',
+    stages: ['type_validation', 'temporal_filter', 'source_text_validation'],
+  },
+  {
+    id: 'resolution',
+    label: 'Resolution',
+    stages: ['phase2_resolve', 'expansion', 'historical', 'phase3_disambig'],
+  },
+  {
+    id: 'finalization',
+    label: 'Finalization',
+    stages: ['batch_signals', 'conflict_detect', 'disposition', 'dedup_save'],
+  },
+]
+
+/** Canonical order of all 14 stages. */
+export const STAGE_ORDER: PipelineStage[] = STAGE_GROUPS.flatMap((g) => g.stages)
 
 export interface RunPhaseRequest {
   trace_id?: string

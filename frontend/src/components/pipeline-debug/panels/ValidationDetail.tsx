@@ -53,11 +53,9 @@ export function ValidationDetail({
       {/* ACTION */}
       <PanelSection label="Action">
         {/* Type validation */}
-        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+        <div className="border-border rounded-lg border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-              Type Validation
-            </span>
+            <span className="text-muted-foreground text-xs font-medium">Type Validation</span>
             <Badge
               label={data.type_validation.passed ? 'Passed' : 'Failed'}
               color={data.type_validation.passed ? 'green' : 'red'}
@@ -73,18 +71,16 @@ export function ValidationDetail({
         </div>
 
         {/* Temporal conflicts */}
-        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+        <div className="border-border rounded-lg border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-              Temporal Conflicts
-            </span>
+            <span className="text-muted-foreground text-xs font-medium">Temporal Conflicts</span>
             <Badge
               label={`${data.temporal_conflicts.filtered} filtered`}
               color={data.temporal_conflicts.filtered > 0 ? 'amber' : 'green'}
             />
           </div>
           {data.temporal_conflicts.details.length > 0 && (
-            <ul className="mt-1 list-inside list-disc text-sm text-gray-700 dark:text-gray-300">
+            <ul className="text-foreground mt-1 list-inside list-disc text-sm">
               {data.temporal_conflicts.details.map((detail, idx) => (
                 <li key={idx}>{String(detail)}</li>
               ))}
@@ -93,9 +89,9 @@ export function ValidationDetail({
         </div>
 
         {/* Source text validation */}
-        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+        <div className="border-border rounded-lg border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            <span className="text-muted-foreground text-xs font-medium">
               Source Text Validation
             </span>
             <Badge
@@ -105,7 +101,7 @@ export function ValidationDetail({
           </div>
           {data.source_text_validation.hallucinated_names.length > 0 && (
             <div className="mt-2">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Hallucinated Names:</p>
+              <p className="text-muted-foreground text-xs">Hallucinated Names:</p>
               <div className="mt-1 flex flex-wrap gap-1">
                 {data.source_text_validation.hallucinated_names.map((name, idx) => (
                   <Badge key={idx} label={name} color="red" />
@@ -115,7 +111,7 @@ export function ValidationDetail({
           )}
           {data.source_text_validation.unit_names.length > 0 && (
             <div className="mt-2">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Unit Names:</p>
+              <p className="text-muted-foreground text-xs">Unit Names:</p>
               <div className="mt-1 flex flex-wrap gap-1">
                 {data.source_text_validation.unit_names.map((name, idx) => (
                   <Badge key={idx} label={name} color="amber" />

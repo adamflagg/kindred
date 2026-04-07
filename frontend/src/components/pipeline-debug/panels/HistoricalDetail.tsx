@@ -66,11 +66,9 @@ export function HistoricalDetail({
       {/* OUTPUT */}
       <PanelSection label="Output">
         {!data.ran ? (
-          <p className="text-sm text-gray-400 italic dark:text-gray-500">
-            Historical check did not run
-          </p>
+          <p className="text-muted-foreground text-sm italic">Historical check did not run</p>
         ) : (
-          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+          <div className="bg-muted rounded-lg p-3">
             <DataRow
               label="Original Confidence"
               value={data.original_confidence !== null ? String(data.original_confidence) : '—'}

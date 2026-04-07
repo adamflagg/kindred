@@ -11,12 +11,8 @@ interface DataRowProps {
 export function DataRow({ label, value, mono = false }: DataRowProps) {
   return (
     <div className="flex items-baseline gap-3 py-1">
-      <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
-      <span
-        className={`text-sm text-gray-800 dark:text-gray-200 ${mono ? 'font-mono text-xs' : ''}`}
-      >
-        {value}
-      </span>
+      <span className="text-muted-foreground shrink-0 text-xs font-medium">{label}</span>
+      <span className={`text-foreground text-sm ${mono ? 'font-mono text-xs' : ''}`}>{value}</span>
     </div>
   )
 }
@@ -31,7 +27,7 @@ const badgeStyles = {
   amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  gray: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  gray: 'bg-muted text-muted-foreground',
 }
 
 export function Badge({ label, color = 'gray' }: BadgeProps) {
@@ -53,7 +49,7 @@ interface PanelSectionProps {
 export function PanelSection({ label, children }: PanelSectionProps) {
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-semibold tracking-widest text-gray-400 uppercase dark:text-gray-500">
+      <p className="text-muted-foreground text-[10px] font-semibold tracking-widest uppercase">
         {label}
       </p>
       <div className="space-y-1">{children}</div>

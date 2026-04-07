@@ -367,7 +367,10 @@ describe('PipelineBatchList', () => {
       // Helper: find the inner badge span (leaf node, exact text match)
       const findBadge = (row: Element, text: string): Element | null => {
         const spans = Array.from(row.querySelectorAll('span'))
-        return spans.find((s) => s.children.length === 0 && s.textContent?.trim() === text) ?? null
+        return (
+          spans.find((s) => s.children.length === 0 && String(s.textContent).trim() === text) ??
+          null
+        )
       }
 
       const [row0, row1, row2] = [rows[0] as Element, rows[1] as Element, rows[2] as Element]
@@ -393,11 +396,11 @@ describe('PipelineBatchList', () => {
       const rows = document.querySelectorAll('tbody tr')
 
       // First row has is_reciprocal=true — should show "Recip" badge
-      expect((rows[0] as Element).textContent ?? '').toMatch(/recip/i)
+      expect((rows[0] as Element).textContent).toMatch(/recip/i)
 
       // Second row has is_reciprocal=false — no "recip" indicator
-      const secondRowRecip = Array.from((rows[1] as Element).querySelectorAll('td')).find(
-        (td) => td.textContent?.toLowerCase().includes('recip') ?? false
+      const secondRowRecip = Array.from((rows[1] as Element).querySelectorAll('td')).find((td) =>
+        String(td.textContent).toLowerCase().includes('recip')
       )
       expect(secondRowRecip).toBeFalsy()
     })
@@ -405,7 +408,7 @@ describe('PipelineBatchList', () => {
     it('renders Reason column header', () => {
       render(<PipelineBatchList {...defaultProps} />)
       const headers = document.querySelectorAll('thead th')
-      const headerTexts = Array.from(headers).map((h) => h.textContent?.trim())
+      const headerTexts = Array.from(headers).map((h) => String(h.textContent).trim())
       expect(headerTexts).toContain('Reason')
     })
   })

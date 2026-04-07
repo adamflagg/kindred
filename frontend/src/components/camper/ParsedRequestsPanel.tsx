@@ -2,7 +2,7 @@
  * Panel showing parsed bunk requests with expandable details
  */
 import { useState } from 'react'
-import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react'
+import { Users, ChevronDown, ChevronRight, Hash, Zap, Bug } from 'lucide-react'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import { formatSourceField } from '../../utils/formatSourceField'
 import { getSourceFieldClasses } from '../../utils/sourceFieldColors'
@@ -12,6 +12,7 @@ interface ParsedRequestsPanelProps {
 }
 
 export function ParsedRequestsPanel({ requests }: ParsedRequestsPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const [expandedRequests, setExpandedRequests] = useState<Set<string>>(new Set())
 
   const toggleRequestExpanded = (id: string) => {
@@ -28,39 +29,49 @@ export function ParsedRequestsPanel({ requests }: ParsedRequestsPanelProps) {
 
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
-      <div className="bg-muted/30 flex items-center gap-3 px-6 py-4">
-        <div className="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-          <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-        </div>
-        <div>
-          <h2 className="font-display text-foreground text-lg font-bold">Parsed Bunk Requests</h2>
-          {requests.length > 0 && (
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="bg-muted/30 hover:bg-muted/50 flex w-full items-center justify-between px-6 py-4 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
+            <Bug className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+          </div>
+          <div className="text-left">
+            <h2 className="font-display text-foreground text-lg font-bold">Parsed Bunk Requests</h2>
             <p className="text-muted-foreground text-xs">
-              {requests.length} request{requests.length !== 1 ? 's' : ''} found
+              {requests.length} request{requests.length !== 1 ? 's' : ''} — Admin debug view
             </p>
+          </div>
+        </div>
+        {isExpanded ? (
+          <ChevronDown className="text-muted-foreground h-5 w-5" />
+        ) : (
+          <ChevronRight className="text-muted-foreground h-5 w-5" />
+        )}
+      </button>
+
+      {isExpanded && (
+        <div className="p-6">
+          {requests.length > 0 ? (
+            <div className="space-y-3">
+              {requests.map((request) => (
+                <RequestCard
+                  key={request.id}
+                  request={request}
+                  isExpanded={expandedRequests.has(request.id)}
+                  onToggle={() => toggleRequestExpanded(request.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center">
+              <Users className="text-muted-foreground/40 mx-auto mb-3 h-10 w-10" />
+              <p className="text-muted-foreground text-sm">No parsed bunk requests found</p>
+            </div>
           )}
         </div>
-      </div>
-
-      <div className="p-6">
-        {requests.length > 0 ? (
-          <div className="space-y-3">
-            {requests.map((request) => (
-              <RequestCard
-                key={request.id}
-                request={request}
-                isExpanded={expandedRequests.has(request.id)}
-                onToggle={() => toggleRequestExpanded(request.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="py-8 text-center">
-            <Users className="text-muted-foreground/40 mx-auto mb-3 h-10 w-10" />
-            <p className="text-muted-foreground text-sm">No parsed bunk requests found</p>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }

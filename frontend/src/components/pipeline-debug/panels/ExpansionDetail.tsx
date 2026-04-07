@@ -53,15 +53,14 @@ export function ExpansionDetail({
       {/* OUTPUT */}
       <PanelSection label="Output">
         {data.expanded_targets.length === 0 ? (
-          <p className="text-sm text-gray-400 italic dark:text-gray-500">No expansion performed</p>
+          <p className="text-muted-foreground text-sm italic">No expansion performed</p>
         ) : (
           <div className="space-y-1">
             {data.expanded_targets.map((target, idx) => (
-              <div
-                key={idx}
-                className="rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-700 dark:bg-gray-800/50 dark:text-gray-300"
-              >
-                {String((target as Record<string, unknown>)['name'] ?? JSON.stringify(target))}
+              <div key={idx} className="bg-muted text-foreground rounded-md px-3 py-1.5 text-sm">
+                {String(
+                  (target as Record<string, string | undefined>)['name'] ?? JSON.stringify(target)
+                )}
               </div>
             ))}
           </div>
