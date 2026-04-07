@@ -13,6 +13,7 @@ from ..integration.ai_types import ParsedResponse
 from ..integration.batch_processor import BatchProcessor
 from ..resolution.interfaces import ResolutionResult
 from .context_builder import ContextBuilder
+from .disambiguation_reranker import rerank_disambiguation_candidates
 
 logger = get_logger(__name__)
 
@@ -251,6 +252,9 @@ class Phase3DisambiguationService:
                 if result and not isinstance(result, ParsedResponse) and not hasattr(result, "selected_person_id"):
                     logger.warning(f"Phase 3 unexpected result type: {type(result).__name__} for case idx={idx}")
 
+                # Track whether re-ranker handled this result
+                reranker_handled = False
+
                 if isinstance(result, ParsedResponse):
                     # Unwrap ParsedResponse from AI provider
                     ai_confidence = result.confidence
@@ -258,11 +262,73 @@ class Phase3DisambiguationService:
                         req_metadata = result.requests[0].metadata or {}
                         selected_person_id = req_metadata.get("target_person_id")
                         ai_reason = req_metadata.get("reason", "AI selected")
+
+                        # --- JW re-ranker path (new ranked_selections) ---
+                        ranked_selections = req_metadata.get("ranked_selections")
+                        if ranked_selections:
+                            ai_no_match = req_metadata.get("no_match", False)
+                            # Convert list[dict] → list[tuple[int, float]] for reranker
+                            ai_ranked = [
+                                (sel["person_id"], sel["confidence"])
+                                for sel in ranked_selections
+                                if "person_id" in sel and "confidence" in sel
+                            ]
+                            reranked = rerank_disambiguation_candidates(
+                                ai_ranked=ai_ranked,
+                                target_name=resolution.target_name or "",
+                                candidate_persons=resolution.candidates[:10] if resolution.candidates else [],
+                                ai_no_match=ai_no_match,
+                            )
+                            if reranked:
+                                num_candidates = len(resolution.candidates) if resolution.candidates else 0
+                                disambiguation_metadata: dict[str, Any] = {
+                                    "ai_confidence": reranked.ai_confidence,
+                                    "disambiguation_reason": reranked.reasoning,
+                                    "original_method": resolution.method,
+                                    "candidates_considered": num_candidates,
+                                    "reranked": True,
+                                    "jw_score": reranked.jw_score,
+                                }
+                                case.disambiguated_results[ambiguous_idx] = ResolutionResult(
+                                    person=reranked.person,
+                                    confidence=reranked.confidence,
+                                    method="ai_disambiguation",
+                                    metadata=disambiguation_metadata,
+                                )
+                                if "status" not in case.disambiguation_metadata:
+                                    case.disambiguation_metadata["status"] = {}
+                                case.disambiguation_metadata["status"][ambiguous_idx] = "success"
+                                logger.debug(
+                                    f"Phase 3 re-ranked '{resolution.target_name}' → "
+                                    f"{reranked.person.first_name} {reranked.person.last_name} "
+                                    f"(cm_id={reranked.person.cm_id}, confidence={reranked.confidence:.2f}, "
+                                    f"jw={reranked.jw_score})"
+                                )
+                                reranker_handled = True
+                            else:
+                                # Re-ranker rejected all candidates
+                                if "status" not in case.disambiguation_metadata:
+                                    case.disambiguation_metadata["status"] = {}
+                                case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
+                                if "reasons" not in case.disambiguation_metadata:
+                                    case.disambiguation_metadata["reasons"] = {}
+                                case.disambiguation_metadata["reasons"][ambiguous_idx] = (
+                                    "JW re-ranker rejected all candidates"
+                                )
+                                logger.debug(
+                                    f"Phase 3 re-ranker rejected all candidates for '{resolution.target_name}'"
+                                )
+                                reranker_handled = True
+
                 elif hasattr(result, "selected_person_id"):
                     # Legacy path: direct AIDisambiguationResponse (defensive)
                     selected_person_id = result.selected_person_id
                     ai_confidence = getattr(result, "confidence", 0.8)
                     ai_reason = getattr(result, "reason", "AI selected")
+
+                if reranker_handled:
+                    # Re-ranker already produced a result or no_match — skip legacy path
+                    continue
 
                 if selected_person_id:
                     # AI selected a specific person — find them in candidates
