@@ -23,6 +23,11 @@ AUTO_RESOLVE_THRESHOLD = 0.85
 # for review is less harmful than incorrectly enforcing one.
 NOT_BUNK_WITH_THRESHOLD = 0.80
 
+# Reciprocal matches require a confidence floor to prevent wrong-person
+# auto-resolves where Phase 3 AI picked the wrong person but the reciprocal
+# signal coincidentally existed.
+RECIPROCAL_MIN_CONFIDENCE = 0.70
+
 
 @dataclass(frozen=True)
 class Disposition:
@@ -104,7 +109,7 @@ def _bunk_with_rules(
     # Resolution quality
     if resolution_method == "exact_match":
         return Disposition(RequestStatus.RESOLVED, "exact_match", 5)
-    if is_reciprocal:
+    if is_reciprocal and match_confidence >= RECIPROCAL_MIN_CONFIDENCE:
         return Disposition(RequestStatus.RESOLVED, "reciprocal_match", 6)
     if match_confidence >= auto_resolve_threshold:
         return Disposition(RequestStatus.RESOLVED, "high_confidence_match", 7)
