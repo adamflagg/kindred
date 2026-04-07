@@ -105,9 +105,31 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
             {intent.candidates_sent.length === 0 ? (
               <p className="text-muted-foreground text-xs">No candidates</p>
             ) : (
-              <pre className="text-foreground max-h-48 overflow-auto text-xs">
-                {JSON.stringify(intent.candidates_sent, null, 2)}
-              </pre>
+              <div className="space-y-2">
+                {intent.candidates_sent.map((c, idx) => {
+                  const cmId = c.person_cm_id as number
+                  const name = c.name as string
+                  const grade = c.grade as number | undefined
+                  const aiConf = c.ai_confidence as number | undefined
+                  const isSelected = cmId === intent.ai_selection
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded border p-2 text-xs ${isSelected ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20' : 'border-border'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-foreground font-medium">{name}</span>
+                        <span className="text-muted-foreground">#{cmId}</span>
+                        {isSelected && <Badge label="Selected" color="blue" />}
+                      </div>
+                      <div className="text-muted-foreground mt-1 flex flex-wrap gap-2">
+                        {grade != null && <span>Grade: {grade}</span>}
+                        {aiConf != null && <span>AI: {aiConf.toFixed(2)}</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </CollapsibleSection>
 

@@ -5,7 +5,7 @@
  * multi-intent tabs (P2, P3, Post), action buttons, and confirmation dialog.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { PrePhase1Detail } from './PrePhase1Detail'
@@ -512,6 +512,42 @@ describe('Phase3Detail', () => {
     render(<Phase3Detail data={phase3Intents} {...defaultActions} />)
     expect(screen.queryByText('Reranked')).not.toBeInTheDocument()
     expect(screen.queryByText('JW Score')).not.toBeInTheDocument()
+  })
+
+  it('renders structured candidate cards with name and cm_id', () => {
+    render(<Phase3Detail data={phase3Reranked} {...defaultActions} />)
+    // CollapsibleSection button includes the count in the title
+    const toggle = screen.getByRole('button', { name: /Candidates Sent/i })
+    fireEvent.click(toggle)
+    // Name appears multiple times (Target row + candidate card) — getAllByText is intentional
+    expect(screen.getAllByText('Emma Johnson').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('#67890')).toBeInTheDocument()
+  })
+
+  it('renders per-candidate ai_confidence when available', () => {
+    const withScores: Phase3IntentTrace[] = [
+      {
+        ...phase3Reranked[0],
+        candidates_sent: [
+          { person_cm_id: 67890, name: 'Emma Johnson', grade: 5, ai_confidence: 0.9 },
+          { person_cm_id: 67892, name: 'Emma Johns', grade: 6, ai_confidence: 0.65 },
+        ],
+      },
+    ]
+    render(<Phase3Detail data={withScores} {...defaultActions} />)
+    const toggle = screen.getByRole('button', { name: /Candidates Sent/i })
+    fireEvent.click(toggle)
+    expect(screen.getByText('AI: 0.90')).toBeInTheDocument()
+    expect(screen.getByText('AI: 0.65')).toBeInTheDocument()
+  })
+
+  it('renders candidate cards without scores for legacy traces', () => {
+    render(<Phase3Detail data={phase3Intents} {...defaultActions} />)
+    const toggle = screen.getByRole('button', { name: /Candidates Sent/i })
+    fireEvent.click(toggle)
+    // Name appears multiple times (Target row + candidate card) — getAllByText is intentional
+    expect(screen.getAllByText('Emma Johnson').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('#67890')).toBeInTheDocument()
   })
 })
 
