@@ -25,13 +25,11 @@ const statusColors: Record<string, 'green' | 'gray' | 'red' | 'amber'> = {
 
 export function PhaseHeader({ phase, status, statusLabel, metrics }: PhaseHeaderProps) {
   return (
-    <div className="border-b border-gray-100 pb-4 dark:border-gray-700/50">
+    <div className="border-border border-b pb-4">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            {PHASE_LABELS[phase]}
-          </h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          <h3 className="text-foreground text-base font-semibold">{PHASE_LABELS[phase]}</h3>
+          <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
             {PHASE_DESCRIPTIONS[phase]}
           </p>
         </div>

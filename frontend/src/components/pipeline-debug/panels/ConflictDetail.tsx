@@ -19,13 +19,11 @@ export function ConflictDetail({
 
   return (
     <div className="space-y-5">
-      <div className="border-b border-gray-100 pb-4 dark:border-gray-700/50">
+      <div className="border-border border-b pb-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              Conflict Detection
-            </h3>
-            <p className="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            <h3 className="text-foreground text-base font-semibold">Conflict Detection</h3>
+            <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
               Checks enrollment status, session assignment, and attendance conflicts
             </p>
           </div>

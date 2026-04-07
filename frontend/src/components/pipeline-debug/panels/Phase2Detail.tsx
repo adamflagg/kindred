@@ -30,22 +30,20 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
       <PanelSection label="Input">
         <DataRow
           label="Target Name"
-          value={intent.target_name || <em className="text-gray-400">unnamed</em>}
+          value={intent.target_name || <em className="text-muted-foreground">unnamed</em>}
         />
         <div className="flex items-start gap-3 py-1">
-          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">
-            Fast Paths
-          </span>
+          <span className="text-muted-foreground shrink-0 text-xs font-medium">Fast Paths</span>
           <div className="flex flex-wrap gap-1">
             {intent.fast_path_tried.length === 0 ? (
-              <span className="text-sm text-gray-400 italic dark:text-gray-500">none tried</span>
+              <span className="text-muted-foreground text-sm italic">none tried</span>
             ) : (
               intent.fast_path_tried.map((fp, idx) => <Badge key={idx} label={fp} color="blue" />)
             )}
           </div>
         </div>
         {intent.fast_path_result && (
-          <pre className="mt-1 max-h-24 overflow-auto rounded bg-gray-50 p-2 text-[10px] text-gray-600 dark:bg-gray-800/50 dark:text-gray-400">
+          <pre className="bg-muted text-muted-foreground mt-1 max-h-24 overflow-auto rounded p-2 text-[10px]">
             {JSON.stringify(intent.fast_path_result, null, 2)}
           </pre>
         )}
@@ -55,19 +53,21 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
       <PanelSection label="Action">
         <div className="space-y-1">
           {intent.pipeline_strategies_tried.length === 0 ? (
-            <p className="text-sm text-gray-400 italic dark:text-gray-500">No strategies ran</p>
+            <p className="text-muted-foreground text-sm italic">No strategies ran</p>
           ) : (
             intent.pipeline_strategies_tried.map((s, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-2 rounded-md bg-gray-50 px-2 py-1 text-xs text-gray-700 dark:bg-gray-800/50 dark:text-gray-300"
+                className="bg-muted text-foreground flex items-center gap-2 rounded-md px-2 py-1 text-xs"
               >
                 <Badge label={String(s['strategy'] ?? 'unknown')} color="blue" />
                 {s['confidence'] !== undefined && (
-                  <span className="text-gray-500">conf: {String(s['confidence'])}</span>
+                  <span className="text-muted-foreground">conf: {String(s['confidence'])}</span>
                 )}
                 {s['candidates_found'] !== undefined && (
-                  <span className="text-gray-500">{String(s['candidates_found'])} candidates</span>
+                  <span className="text-muted-foreground">
+                    {String(s['candidates_found'])} candidates
+                  </span>
                 )}
               </div>
             ))
@@ -109,11 +109,13 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
 
       {/* OUTPUT */}
       <PanelSection label="Output">
-        <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+        <div className="bg-muted rounded-lg p-3">
           <DataRow
             label="Person"
             value={
-              intent.final_result.person_name ?? <em className="text-gray-400">Not resolved</em>
+              intent.final_result.person_name ?? (
+                <em className="text-muted-foreground">Not resolved</em>
+              )
             }
           />
           <DataRow label="CM ID" value={String(intent.final_result.person_cm_id ?? '—')} mono />
@@ -155,21 +157,18 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
       <CollapsibleSection title={`All Candidates (${intent.all_candidates.length})`}>
         <div className="space-y-2">
           {intent.all_candidates.map((c, idx) => (
-            <div
-              key={idx}
-              className="rounded border border-gray-100 p-2 text-xs dark:border-gray-700"
-            >
+            <div key={idx} className="border-border rounded border p-2 text-xs">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-800 dark:text-gray-200">{c.name}</span>
-                <span className="text-gray-500">#{c.person_cm_id}</span>
+                <span className="text-foreground font-medium">{c.name}</span>
+                <span className="text-muted-foreground">#{c.person_cm_id}</span>
               </div>
-              <div className="mt-1 flex flex-wrap gap-2 text-gray-600 dark:text-gray-400">
+              <div className="text-muted-foreground mt-1 flex flex-wrap gap-2">
                 {c.session_cm_id && <span>Session: {c.session_cm_id}</span>}
                 {c.grade !== null && <span>Grade: {c.grade}</span>}
                 {c.school && <span>School: {c.school}</span>}
               </div>
               {Object.keys(c.score_breakdown).length > 0 && (
-                <pre className="mt-1 text-[10px] text-gray-500 dark:text-gray-500">
+                <pre className="text-muted-foreground mt-1 text-[10px]">
                   {JSON.stringify(c.score_breakdown, null, 2)}
                 </pre>
               )}
@@ -180,7 +179,7 @@ function IntentPanel({ intent }: { intent: Phase2IntentTrace }) {
 
       {Object.keys(intent.final_result.confidence_factors).length > 0 && (
         <CollapsibleSection title="Confidence Factors">
-          <pre className="text-xs text-gray-700 dark:text-gray-300">
+          <pre className="text-foreground text-xs">
             {JSON.stringify(intent.final_result.confidence_factors, null, 2)}
           </pre>
         </CollapsibleSection>
@@ -216,9 +215,7 @@ export function Phase2Detail({
       />
 
       {data.length === 0 ? (
-        <p className="text-sm text-gray-500 italic dark:text-gray-400">
-          No resolution data available.
-        </p>
+        <p className="text-muted-foreground text-sm italic">No resolution data available.</p>
       ) : (
         <>
           <IntentTabs items={data} activeTab={activeTab} onTabChange={onTabChange} />

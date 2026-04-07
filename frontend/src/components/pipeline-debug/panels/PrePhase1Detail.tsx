@@ -34,10 +34,10 @@ export function PrePhase1Detail({
 
       {/* INPUT */}
       <PanelSection label="Input">
-        <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
-          <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">Original Text</p>
-          <p className="text-sm break-words text-gray-800 dark:text-gray-200">
-            {data.original_text || <em className="text-gray-400">empty</em>}
+        <div className="bg-muted rounded-lg p-3">
+          <p className="text-muted-foreground mb-1 text-xs font-medium">Original Text</p>
+          <p className="text-foreground text-sm break-words">
+            {data.original_text || <em className="text-muted-foreground">empty</em>}
           </p>
         </div>
         <DataRow label="Source Field" value={data.field_path} mono />
@@ -60,13 +60,9 @@ export function PrePhase1Detail({
       {/* OUTPUT */}
       <PanelSection label="Output">
         {data.cleaned_text && data.cleaned_text !== data.original_text ? (
-          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
-            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-              Cleaned Text
-            </p>
-            <p className="text-sm break-words text-gray-800 dark:text-gray-200">
-              {data.cleaned_text}
-            </p>
+          <div className="bg-muted rounded-lg p-3">
+            <p className="text-muted-foreground mb-1 text-xs font-medium">Cleaned Text</p>
+            <p className="text-foreground text-sm break-words">{data.cleaned_text}</p>
           </div>
         ) : (
           <DataRow label="Cleaned Text" value="No changes" />
@@ -76,7 +72,7 @@ export function PrePhase1Detail({
       {/* ADDITIONAL DATA */}
       {data.staff_metadata && (
         <CollapsibleSection title="Staff Metadata">
-          <pre className="overflow-auto rounded-lg bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+          <pre className="bg-muted text-muted-foreground overflow-auto rounded-lg p-2 text-xs">
             {JSON.stringify(data.staff_metadata, null, 2)}
           </pre>
         </CollapsibleSection>

@@ -44,7 +44,7 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
       <PanelSection label="Input">
         <DataRow
           label="Target"
-          value={intent.target_name || <em className="text-gray-400">unnamed</em>}
+          value={intent.target_name || <em className="text-muted-foreground">unnamed</em>}
         />
         <DataRow label="Candidates Sent" value={String(intent.candidates_sent.length)} />
       </PanelSection>
@@ -61,11 +61,9 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
           <DataRow label="AI Selection" value={String(intent.ai_selection)} mono />
         )}
         {intent.ran && intent.ai_reasoning && (
-          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
-            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-              AI Reasoning
-            </p>
-            <p className="text-sm text-gray-800 dark:text-gray-200">{intent.ai_reasoning}</p>
+          <div className="bg-muted rounded-lg p-3">
+            <p className="text-muted-foreground mb-1 text-xs font-medium">AI Reasoning</p>
+            <p className="text-foreground text-sm">{intent.ai_reasoning}</p>
           </div>
         )}
         {intent.ran && intent.ai_reasoning_summary && (
@@ -79,7 +77,7 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
           <Badge label={intent.result} color={resultColor(intent.result)} />
         </div>
         {intent.ran && (
-          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+          <div className="bg-muted rounded-lg p-3">
             <DataRow
               label="Confidence Before"
               value={intent.confidence_before !== null ? String(intent.confidence_before) : '—'}
@@ -97,9 +95,9 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
         <>
           <CollapsibleSection title={`Candidates Sent (${intent.candidates_sent.length})`}>
             {intent.candidates_sent.length === 0 ? (
-              <p className="text-xs text-gray-400">No candidates</p>
+              <p className="text-muted-foreground text-xs">No candidates</p>
             ) : (
-              <pre className="max-h-48 overflow-auto text-xs text-gray-700 dark:text-gray-300">
+              <pre className="text-foreground max-h-48 overflow-auto text-xs">
                 {JSON.stringify(intent.candidates_sent, null, 2)}
               </pre>
             )}
@@ -107,7 +105,7 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
 
           {Object.keys(intent.ai_context).length > 0 && (
             <CollapsibleSection title="AI Context">
-              <pre className="max-h-48 overflow-auto text-xs text-gray-700 dark:text-gray-300">
+              <pre className="text-foreground max-h-48 overflow-auto text-xs">
                 {JSON.stringify(intent.ai_context, null, 2)}
               </pre>
             </CollapsibleSection>
@@ -146,7 +144,7 @@ export function Phase3Detail({
       />
 
       {data.length === 0 ? (
-        <p className="text-sm text-gray-500 italic dark:text-gray-400">No disambiguation data.</p>
+        <p className="text-muted-foreground text-sm italic">No disambiguation data.</p>
       ) : (
         <>
           <IntentTabs items={data} activeTab={activeTab} onTabChange={onTabChange} />

@@ -41,24 +41,26 @@ export function RequestContext({ traceData, activeIntentIndex }: RequestContextP
 
   return (
     <div className="space-y-3">
-      <p className="text-[10px] font-semibold tracking-widest text-blue-400 uppercase">
+      <p className="text-primary text-[10px] font-semibold tracking-widest uppercase">
         Request Context
       </p>
 
       {/* Requester */}
       <div>
-        <p className="text-sm font-semibold text-gray-100">{requester_info.name}</p>
-        <p className="text-xs text-gray-400">
+        <p className="text-foreground text-sm font-semibold">{requester_info.name}</p>
+        <p className="text-muted-foreground text-xs">
           Grade {requester_info.grade} · CM {requester_info.cm_id}
         </p>
       </div>
 
       {/* Original text */}
       <div>
-        <p className="text-[10px] font-medium tracking-wide text-gray-500 uppercase">Original</p>
-        <div className="mt-1 rounded border-l-2 border-blue-500 bg-gray-800/50 px-2 py-1.5">
-          <p className="text-xs leading-relaxed break-words text-gray-300">
-            {original_text || <em className="text-gray-500">empty</em>}
+        <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+          Original
+        </p>
+        <div className="border-primary bg-muted mt-1 rounded-lg border-l-2 px-2 py-1.5">
+          <p className="text-foreground text-xs leading-relaxed break-words">
+            {original_text || <em className="text-muted-foreground">empty</em>}
           </p>
         </div>
       </div>
@@ -66,25 +68,25 @@ export function RequestContext({ traceData, activeIntentIndex }: RequestContextP
       {/* BR fragment — what P1 split out for this specific BR */}
       {activeIntent && (
         <div>
-          <p className="text-[10px] font-medium tracking-wide text-gray-500 uppercase">
+          <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
             This BR&apos;s Fragment
           </p>
-          <div className="mt-1 rounded border-l-2 border-pink-400 bg-gray-800/50 px-2 py-1.5">
-            <p className="text-xs text-pink-300">
+          <div className="border-accent bg-muted mt-1 rounded-lg border-l-2 px-2 py-1.5">
+            <p className="text-accent-foreground text-xs">
               &quot;{activeIntent.target_name}&quot;
               {activeIntent.request_type !== 'BUNK_WITH' && (
-                <span className="ml-1 text-gray-500">({activeIntent.request_type})</span>
+                <span className="text-muted-foreground ml-1">({activeIntent.request_type})</span>
               )}
             </p>
           </div>
           {totalIntents > 1 && (
-            <p className="mt-0.5 text-[10px] text-gray-500">
+            <p className="text-muted-foreground mt-0.5 text-[10px]">
               BR {activeIntentIndex + 1} of {totalIntents} ·{' '}
               {FIELD_LABELS[field_path] ?? field_path}
             </p>
           )}
           {totalIntents <= 1 && (
-            <p className="mt-0.5 text-[10px] text-gray-500">
+            <p className="text-muted-foreground mt-0.5 text-[10px]">
               {FIELD_LABELS[field_path] ?? field_path}
             </p>
           )}
@@ -93,24 +95,26 @@ export function RequestContext({ traceData, activeIntentIndex }: RequestContextP
 
       {/* Final result */}
       {activeBR && (
-        <div className="border-t border-gray-700 pt-2">
-          <p className="text-[10px] font-medium tracking-wide text-gray-500 uppercase">Result</p>
+        <div className="border-border border-t pt-2">
+          <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+            Result
+          </p>
           <div className="mt-1 flex items-center gap-2">
             <span
-              className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusColor(activeBR.status)}`}
+              className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${statusColor(activeBR.status)}`}
             >
               {activeBR.status}
             </span>
-            <span className="text-xs text-gray-400">{activeBR.confidence}</span>
+            <span className="text-muted-foreground text-xs">{activeBR.confidence}</span>
           </div>
           {activeBR.requested_name && (
-            <p className="mt-0.5 text-xs text-gray-400">
+            <p className="text-muted-foreground mt-0.5 text-xs">
               → {activeBR.requested_name} ({activeBR.resolution_method})
             </p>
           )}
           {activeBR.disposition_reason &&
             activeBR.disposition_reason !== activeBR.resolution_method && (
-              <p className="text-[10px] text-gray-500">{activeBR.disposition_reason}</p>
+              <p className="text-muted-foreground text-[10px]">{activeBR.disposition_reason}</p>
             )}
         </div>
       )}

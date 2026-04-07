@@ -19,7 +19,7 @@ export function IntentTabs<T extends { target_name: string }>({
   if (items.length <= 1) return null
 
   return (
-    <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+    <div className="border-border flex gap-1 border-b">
       {items.map((item, idx) => (
         <button
           key={idx}
@@ -30,7 +30,7 @@ export function IntentTabs<T extends { target_name: string }>({
           className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
             activeTab === idx
               ? 'border-blue-500 text-blue-700 dark:text-blue-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+              : 'text-muted-foreground hover:text-foreground border-transparent'
           }`}
         >
           {item.target_name}

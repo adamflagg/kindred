@@ -26,6 +26,7 @@ import { usePipelineTrace } from '../../hooks/usePipelineTrace'
 import { useRunFromPhase, useRunFullTrace } from '../../hooks/useRunPhase'
 import {
   PHASE_ORDER,
+  STAGE_ORDER,
   type PipelineSummaryFilters,
   type PipelinePhase,
   type PipelineStage,
@@ -44,7 +45,7 @@ export default function PipelineDebugPage() {
   const [isNewTraceOpen, setIsNewTraceOpen] = useState(false)
 
   // Drill-down state
-  const [selectedStage, setSelectedStage] = useState<PipelineStage | null>(null)
+  const [selectedStage, setSelectedStage] = useState<PipelineStage>(STAGE_ORDER[0] as PipelineStage)
   const [activeIntentIndex, setActiveIntentIndex] = useState(0)
   const [stalePhases, setStalePhases] = useState<Set<PipelinePhase>>(new Set())
 
@@ -194,7 +195,7 @@ export default function PipelineDebugPage() {
           </button>
           <button
             onClick={() => {
-              setSelectedStage(null)
+              setSelectedStage(STAGE_ORDER[0] as PipelineStage)
               setStalePhases(new Set())
               void navigate('/summer/debug/pipeline')
             }}
@@ -217,21 +218,15 @@ export default function PipelineDebugPage() {
             <div className="flex gap-4">
               {/* Detail panel — left, fills remaining space */}
               <div className="min-w-0 flex-1">
-                {selectedStage ? (
-                  <PipelineDetailPanel
-                    selectedStage={selectedStage}
-                    traceData={trace.trace_data}
-                    activeIntentIndex={activeIntentIndex}
-                    onTabChange={setActiveIntentIndex}
-                    onRunAgain={handleRunAgain}
-                    onRunFromHere={handleRunFromHere}
-                    isRunning={runFromPhase.isPending}
-                  />
-                ) : (
-                  <p className="text-muted-foreground py-4 text-center text-sm">
-                    Select a pipeline stage from the sidebar
-                  </p>
-                )}
+                <PipelineDetailPanel
+                  selectedStage={selectedStage}
+                  traceData={trace.trace_data}
+                  activeIntentIndex={activeIntentIndex}
+                  onTabChange={setActiveIntentIndex}
+                  onRunAgain={handleRunAgain}
+                  onRunFromHere={handleRunFromHere}
+                  isRunning={runFromPhase.isPending}
+                />
               </div>
 
               {/* Sidebar — right, fixed 220px */}

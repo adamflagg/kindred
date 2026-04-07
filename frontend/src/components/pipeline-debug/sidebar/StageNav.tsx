@@ -7,16 +7,16 @@ import { deriveStageStatus, type StageStatus } from './stageStatus'
 
 interface StageNavProps {
   traceData: TraceData
-  selectedStage: PipelineStage | null
+  selectedStage: PipelineStage
   onStageSelect: (stage: PipelineStage) => void
   stalePhases: Set<PipelinePhase>
 }
 
 const STATUS_ICONS: Record<StageStatus, { symbol: string; color: string }> = {
-  success: { symbol: '✓', color: 'text-green-400' },
-  warning: { symbol: '⚠', color: 'text-amber-400' },
-  error: { symbol: '✗', color: 'text-red-400' },
-  skipped: { symbol: '—', color: 'text-gray-500' },
+  success: { symbol: '✓', color: 'text-green-600 dark:text-green-400' },
+  warning: { symbol: '⚠', color: 'text-amber-600 dark:text-amber-400' },
+  error: { symbol: '✗', color: 'text-red-600 dark:text-red-400' },
+  skipped: { symbol: '—', color: 'text-muted-foreground' },
 }
 
 /** Summary icon for a collapsed group: worst status wins. */
@@ -73,7 +73,7 @@ export function StageNav({ traceData, selectedStage, onStageSelect, stalePhases 
 
   return (
     <div className="space-y-1">
-      <p className="text-[10px] font-semibold tracking-widest text-blue-400 uppercase">Pipeline</p>
+      <p className="text-primary text-[10px] font-semibold tracking-widest uppercase">Pipeline</p>
 
       {STAGE_GROUPS.map((group) => {
         const isCollapsed = collapsed.has(group.id)
@@ -87,11 +87,11 @@ export function StageNav({ traceData, selectedStage, onStageSelect, stalePhases 
               className="flex w-full items-center gap-1 py-1 text-left"
             >
               {isCollapsed ? (
-                <ChevronRight className="h-3 w-3 text-gray-500" />
+                <ChevronRight className="text-muted-foreground h-3 w-3" />
               ) : (
-                <ChevronDown className="h-3 w-3 text-gray-500" />
+                <ChevronDown className="text-muted-foreground h-3 w-3" />
               )}
-              <span className="text-[10px] font-medium tracking-wide text-gray-500 uppercase">
+              <span className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
                 {group.label}
               </span>
               {isCollapsed && (
@@ -115,12 +115,12 @@ export function StageNav({ traceData, selectedStage, onStageSelect, stalePhases 
                       onClick={() => onStageSelect(stage)}
                       className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs transition-colors ${
                         isSelected
-                          ? 'border-l-2 border-blue-500 bg-blue-500/10 font-semibold text-blue-300'
-                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                          ? 'border-primary bg-primary/10 text-primary border-l-2 font-semibold'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       }`}
                     >
                       <span
-                        className={`w-3 text-center text-[10px] ${isSelected ? 'text-blue-400' : icon.color}`}
+                        className={`w-3 text-center text-[10px] ${isSelected ? 'text-primary' : icon.color}`}
                       >
                         {isSelected ? '●' : icon.symbol}
                       </span>

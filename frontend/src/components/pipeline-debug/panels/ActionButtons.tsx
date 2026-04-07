@@ -46,7 +46,7 @@ export function ActionButtons({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+    <div className="border-border flex flex-wrap items-center gap-3 border-t pt-4">
       <button
         onClick={onRunAgain}
         disabled={isRunning}
@@ -67,12 +67,12 @@ export function ActionButtons({
         Run From Here
       </button>
 
-      <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+      <label className="text-muted-foreground inline-flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={writeToProduction}
           onChange={(e) => setWriteToProduction(e.target.checked)}
-          className="rounded border-gray-300 text-amber-500 focus:ring-amber-500"
+          className="border-border rounded text-amber-500 focus:ring-amber-500"
           aria-label="Write to production"
         />
         Write to production
@@ -81,23 +81,21 @@ export function ActionButtons({
       {/* Confirmation dialog overlay */}
       {showConfirmation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="mx-4 max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-gray-800">
+          <div className="bg-card shadow-lodge-lg mx-4 max-w-md rounded-xl p-6">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
                 <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Confirm Production Write
-              </h3>
+              <h3 className="text-foreground text-lg font-semibold">Confirm Production Write</h3>
             </div>
-            <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-muted-foreground mb-6 text-sm">
               This will write {productionWriteCount} bunk_requests to production and mark{' '}
               {processedCount} original requests as processed. Proceed?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={handleCancel}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                className="muted-foreground hover:bg-muted rounded-lg px-4 py-2 text-sm font-medium"
               >
                 Cancel
               </button>

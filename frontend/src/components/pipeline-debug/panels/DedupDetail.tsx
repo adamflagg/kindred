@@ -14,24 +14,24 @@ export function DedupDetail({ data, onRunAgain, onRunFromHere, isRunning }: Dedu
 
   return (
     <div className="space-y-5">
-      <div className="border-b border-gray-100 pb-4 dark:border-gray-700/50">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Dedup + Save</h3>
-        <p className="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+      <div className="border-border border-b pb-4">
+        <h3 className="text-foreground text-base font-semibold">Dedup + Save</h3>
+        <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
           Removes duplicate requests, checks self-references, saves final bunk requests
         </p>
       </div>
 
       <PanelSection label="Checks">
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-gray-200 p-2 dark:border-gray-700">
-            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Self-Reference</p>
+          <div className="border-border rounded-lg border p-2">
+            <p className="text-muted-foreground mb-1 text-xs">Self-Reference</p>
             <Badge
               label={self_reference.detected ? 'Detected' : 'None'}
               color={self_reference.detected ? 'red' : 'green'}
             />
           </div>
-          <div className="rounded-lg border border-gray-200 p-2 dark:border-gray-700">
-            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Duplicate</p>
+          <div className="border-border rounded-lg border p-2">
+            <p className="text-muted-foreground mb-1 text-xs">Duplicate</p>
             <Badge
               label={deduplication.was_duplicate ? 'Duplicate' : 'Unique'}
               color={deduplication.was_duplicate ? 'amber' : 'green'}

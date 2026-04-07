@@ -7,7 +7,6 @@
 
 import type { TraceData, PipelineStage, PipelinePhase } from './types'
 import { STAGE_TO_PHASE } from './types'
-import { STAGE_DESCRIPTIONS } from './phaseDescriptions'
 import { PrePhase1Detail } from './panels/PrePhase1Detail'
 import { Phase1Detail } from './panels/Phase1Detail'
 import { ValidationDetail } from './panels/ValidationDetail'
@@ -21,7 +20,7 @@ import { DispositionDetail } from './panels/DispositionDetail'
 import { DedupDetail } from './panels/DedupDetail'
 
 interface PipelineDetailPanelProps {
-  selectedStage: PipelineStage | null
+  selectedStage: PipelineStage
   traceData: TraceData
   activeIntentIndex: number
   onTabChange: (idx: number) => void
@@ -39,8 +38,6 @@ export function PipelineDetailPanel({
   onRunFromHere,
   isRunning,
 }: PipelineDetailPanelProps) {
-  if (!selectedStage) return null
-
   const parentPhase = STAGE_TO_PHASE[selectedStage]
 
   const sharedProps = {
@@ -105,10 +102,5 @@ export function PipelineDetailPanel({
     }
   }
 
-  return (
-    <div className="card-lodge p-6">
-      <p className="text-muted-foreground mb-4 text-sm">{STAGE_DESCRIPTIONS[selectedStage]}</p>
-      {renderPanel()}
-    </div>
-  )
+  return <div className="card-lodge p-6">{renderPanel()}</div>
 }

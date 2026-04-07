@@ -4,7 +4,7 @@ import { StageNav } from './sidebar/StageNav'
 
 interface PipelineSidebarProps {
   traceData: TraceData
-  selectedStage: PipelineStage | null
+  selectedStage: PipelineStage
   onStageSelect: (stage: PipelineStage) => void
   stalePhases: Set<PipelinePhase>
   activeIntentIndex: number
@@ -18,9 +18,9 @@ export function PipelineSidebar({
   activeIntentIndex,
 }: PipelineSidebarProps) {
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-gray-700 bg-gray-900/80 p-3">
+    <aside className="bg-card border-border shadow-lodge-sm flex w-[220px] shrink-0 flex-col gap-4 overflow-y-auto rounded-2xl border-2 p-3">
       <RequestContext traceData={traceData} activeIntentIndex={activeIntentIndex} />
-      <div className="border-t border-gray-700 pt-2">
+      <div className="border-border border-t pt-2">
         <StageNav
           traceData={traceData}
           selectedStage={selectedStage}

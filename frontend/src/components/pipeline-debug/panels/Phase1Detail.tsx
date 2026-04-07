@@ -58,7 +58,7 @@ export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
           mono
         />
         {data.sanitization.is_suspicious && (
-          <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+          <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-950/30">
             <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
               ⚠ Suspicious input detected
             </p>
@@ -85,13 +85,15 @@ export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
       {/* OUTPUT */}
       <PanelSection label="Output">
         {data.parsed_intents.length === 0 ? (
-          <p className="text-sm text-gray-400 italic dark:text-gray-500">No intents parsed</p>
+          <p className="text-muted-foreground text-sm italic">No intents parsed</p>
         ) : (
           data.parsed_intents.map((intent, idx) => (
-            <div key={idx} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <div key={idx} className="border-border rounded-lg border p-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  {intent.target_name || <em className="font-normal text-gray-400">unnamed</em>}
+                <span className="text-foreground text-sm font-semibold">
+                  {intent.target_name || (
+                    <em className="text-muted-foreground font-normal">unnamed</em>
+                  )}
                 </span>
                 <Badge label={intent.request_type} color="blue" />
                 <Badge
@@ -128,7 +130,7 @@ export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
 
       {/* ADDITIONAL DATA */}
       <CollapsibleSection title="Raw AI Response">
-        <pre className="max-h-64 overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+        <pre className="bg-muted text-muted-foreground max-h-64 overflow-auto rounded-lg p-3 text-xs">
           {JSON.stringify(data.ai_raw_response, null, 2)}
         </pre>
       </CollapsibleSection>
