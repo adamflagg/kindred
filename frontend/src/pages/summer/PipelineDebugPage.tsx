@@ -181,7 +181,14 @@ export default function PipelineDebugPage() {
               Trace: <span className="font-mono text-xs">{traceId}</span>
               {traceQuery.data && (
                 <span className="ml-2">
-                  {traceQuery.data.source_field} — requester #{traceQuery.data.requester_cm_id}
+                  {traceQuery.data.source_field} —{' '}
+                  <Link
+                    to={`/camper/${traceQuery.data.requester_cm_id}`}
+                    className="text-primary hover:underline"
+                  >
+                    {traceQuery.data.trace_data.pre_phase1.requester_info.name}
+                  </Link>{' '}
+                  <span className="font-mono text-xs">#{traceQuery.data.requester_cm_id}</span>
                 </span>
               )}
             </p>
