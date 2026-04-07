@@ -76,6 +76,8 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
       <PanelSection label="Output">
         <div className="flex flex-wrap gap-2">
           <Badge label={intent.result} color={resultColor(intent.result)} />
+          {intent.reranked && <Badge label="Reranked" color="blue" />}
+          {intent.no_match_signal && <Badge label="No Match" color="red" />}
         </div>
         {intent.ran && (
           <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
@@ -83,10 +85,16 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
               label="Confidence Before"
               value={intent.confidence_before !== null ? String(intent.confidence_before) : '—'}
             />
+            {intent.ai_confidence != null && (
+              <DataRow label="AI Confidence" value={String(intent.ai_confidence)} />
+            )}
             <DataRow
               label="Confidence After"
               value={intent.confidence_after !== null ? String(intent.confidence_after) : '—'}
             />
+            {intent.jw_score != null && (
+              <DataRow label="JW Score" value={String(intent.jw_score)} />
+            )}
           </div>
         )}
       </PanelSection>

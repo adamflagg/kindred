@@ -122,6 +122,11 @@ class Phase3IntentTrace(BaseModel):
     result: str = "not_needed"  # not_needed | resolved | no_match | invalid_ai_output | still_ambiguous
     confidence_before: float | None = None
     confidence_after: float | None = None
+    # JW reranker metadata (Phase 3 post-AI validation)
+    reranked: bool = False
+    jw_score: float | None = None
+    ai_confidence: float | None = None  # Raw AI confidence before JW adjustment
+    no_match_signal: bool = False  # AI explicitly indicated no candidate matches
 
 
 class FinalBunkRequestTrace(BaseModel):

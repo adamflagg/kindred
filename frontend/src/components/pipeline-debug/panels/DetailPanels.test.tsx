@@ -201,6 +201,47 @@ const phase3Intents: Phase3IntentTrace[] = [
   },
 ]
 
+const phase3Reranked: Phase3IntentTrace[] = [
+  {
+    target_name: 'Emma Johnson',
+    ran: true,
+    candidates_sent: [
+      { person_cm_id: 67890, name: 'Emma Johnson', grade: 5 },
+      { person_cm_id: 67892, name: 'Emma Johns', grade: 6 },
+    ],
+    ai_context: { session: '1', requester_grade: '5' },
+    ai_selection: 67890,
+    ai_reasoning: 'Best match based on session and grade proximity',
+    ai_reasoning_summary: 'Chain-of-thought reasoning from model',
+    result: 'resolved',
+    confidence_before: 0.5,
+    confidence_after: 0.85,
+    reranked: true,
+    jw_score: 0.92,
+    ai_confidence: 0.9,
+    no_match_signal: false,
+  },
+]
+
+const phase3NoMatch: Phase3IntentTrace[] = [
+  {
+    target_name: 'Olivia Chen',
+    ran: true,
+    candidates_sent: [{ person_cm_id: 67890, name: 'Olivia Chang', grade: 5 }],
+    ai_context: { session: '1' },
+    ai_selection: null,
+    ai_reasoning: null,
+    ai_reasoning_summary: null,
+    result: 'no_match',
+    confidence_before: 0.5,
+    confidence_after: 0.0,
+    reranked: false,
+    jw_score: null,
+    ai_confidence: null,
+    no_match_signal: true,
+  },
+]
+
 const phase3InvalidAI: Phase3IntentTrace[] = [
   {
     target_name: 'Emma Johnson',
@@ -425,6 +466,34 @@ describe('Phase3Detail', () => {
     const badge = screen.getByText('invalid_ai_output')
     expect(badge).toBeInTheDocument()
     expect(badge.className).toMatch(/amber/)
+  })
+
+  it('renders reranked badge when reranked is true', () => {
+    render(<Phase3Detail data={phase3Reranked} {...defaultActions} />)
+    expect(screen.getByText('Reranked')).toBeInTheDocument()
+  })
+
+  it('renders JW score when reranked', () => {
+    render(<Phase3Detail data={phase3Reranked} {...defaultActions} />)
+    expect(screen.getByText('JW Score')).toBeInTheDocument()
+    expect(screen.getByText('0.92')).toBeInTheDocument()
+  })
+
+  it('renders AI raw confidence when available', () => {
+    render(<Phase3Detail data={phase3Reranked} {...defaultActions} />)
+    expect(screen.getByText('AI Confidence')).toBeInTheDocument()
+    expect(screen.getByText('0.9')).toBeInTheDocument()
+  })
+
+  it('renders no_match signal badge', () => {
+    render(<Phase3Detail data={phase3NoMatch} {...defaultActions} />)
+    expect(screen.getByText('No Match')).toBeInTheDocument()
+  })
+
+  it('does not render reranker section when reranked is undefined (old traces)', () => {
+    render(<Phase3Detail data={phase3Intents} {...defaultActions} />)
+    expect(screen.queryByText('Reranked')).not.toBeInTheDocument()
+    expect(screen.queryByText('JW Score')).not.toBeInTheDocument()
   })
 })
 

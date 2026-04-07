@@ -1512,6 +1512,10 @@ class RequestOrchestrator:
                             )
                         ),
                         confidence_after=rr.confidence,
+                        reranked=rr_meta.get("reranked", False),
+                        jw_score=rr_meta.get("jw_score"),
+                        ai_confidence=rr_meta.get("ai_confidence"),
+                        no_match_signal=(rr_meta.get("disambiguation_status") == "no_match" if ran_phase3 else False),
                     ),
                 )
 
