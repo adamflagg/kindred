@@ -564,14 +564,7 @@ class OpenAIProvider(AIProvider):
             if isinstance(response, AIDisambiguationResponse):
                 # New ranked path
                 if response.ranked_selections:
-                    parsed_request.metadata["ranked_selections"] = [
-                        {
-                            "person_id": c.person_id,
-                            "confidence": c.confidence,
-                            "reasoning": c.reasoning,
-                        }
-                        for c in response.ranked_selections
-                    ]
+                    parsed_request.metadata["ranked_selections"] = [c.model_dump() for c in response.ranked_selections]
                     # Use top pick for backward compat fields
                     top = response.ranked_selections[0]
                     parsed_request.metadata["target_person_id"] = top.person_id
@@ -588,6 +581,11 @@ class OpenAIProvider(AIProvider):
                     parsed_request.confidence = response.confidence
                     parsed_request.metadata["disambiguation_method"] = "ai_phase3"
                     parsed_request.metadata["disambiguation_reasoning"] = response.reasoning
+                else:
+                    logger.debug(
+                        f"Disambiguation response had no ranked_selections, no_match, or selected_person_id "
+                        f"for target '{parsed_request.target_name}'"
+                    )
 
             metadata: dict[str, Any] = {"phase": 3, "disambiguated": True}
             if reasoning_summary:

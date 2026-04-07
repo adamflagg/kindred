@@ -10,10 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import jellyfish
-
 from ..core.models import Person
-from ..shared.name_utils import _normalize_last_name, parse_name, split_last_name_words
+from ..shared.name_utils import _last_name_jw_raw_score, parse_name, split_last_name_words
 
 # Minimum JW similarity for a candidate's last name to pass the filter
 JW_LAST_NAME_FLOOR = 0.70
@@ -60,23 +58,8 @@ def _last_name_jw_score(target_last: str, candidate_last: str) -> float:
             if candidate_words == prefix:
                 return 1.0
 
-    # Strategy 2: JW on normalized full strings
-    norm_target = _normalize_last_name(target_last)
-    norm_candidate = _normalize_last_name(candidate_last)
-    best = jellyfish.jaro_winkler_similarity(norm_target, norm_candidate)
-
-    # Strategy 3: hyphen-split parts
-    for part in target_last.split("-"):
-        if part:
-            score = jellyfish.jaro_winkler_similarity(_normalize_last_name(part), norm_candidate)
-            best = max(best, score)
-
-    for part in candidate_last.split("-"):
-        if part:
-            score = jellyfish.jaro_winkler_similarity(norm_target, _normalize_last_name(part))
-            best = max(best, score)
-
-    return best
+    # Strategy 2: JW on normalized forms (including hyphen-split parts)
+    return _last_name_jw_raw_score(target_last, candidate_last)
 
 
 def rerank_disambiguation_candidates(

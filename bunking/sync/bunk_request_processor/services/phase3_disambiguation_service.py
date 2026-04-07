@@ -137,9 +137,10 @@ class Phase3DisambiguationService:
 
         except Exception as e:
             logger.error(f"Phase 3 disambiguation failed: {e}")
-            # Mark all as failed
             for case in cases:
-                case.disambiguation_metadata["error"] = str(e)
+                errors = case.disambiguation_metadata.setdefault("errors", {})
+                for idx in case.disambiguation_indices:
+                    errors[idx] = str(e)
 
         # Build final results
         results = self._build_final_results(ambiguous_cases, cases)
@@ -233,9 +234,7 @@ class Phase3DisambiguationService:
             case, ambiguous_idx = case_mapping[idx]
 
             if not result:
-                if "errors" not in case.disambiguation_metadata:
-                    case.disambiguation_metadata["errors"] = {}
-                case.disambiguation_metadata["errors"][ambiguous_idx] = "No result from AI"
+                case.disambiguation_metadata.setdefault("errors", {})[ambiguous_idx] = "No result from AI"
                 continue
 
             try:
@@ -247,7 +246,7 @@ class Phase3DisambiguationService:
                 # selected_person_id as a direct attribute.
                 selected_person_id: int | None = None
                 ai_confidence: float = 0.8
-                ai_reason: str = "AI selected"
+                ai_reason: str | None = None
 
                 if result and not isinstance(result, ParsedResponse) and not hasattr(result, "selected_person_id"):
                     logger.warning(f"Phase 3 unexpected result type: {type(result).__name__} for case idx={idx}")
@@ -261,22 +260,17 @@ class Phase3DisambiguationService:
                     if result.requests:
                         req_metadata = result.requests[0].metadata or {}
                         selected_person_id = req_metadata.get("target_person_id")
-                        ai_reason = req_metadata.get("reason", "AI selected")
+                        ai_reason = req_metadata.get("reason")
 
                         # --- JW re-ranker path (new ranked_selections) ---
                         ranked_selections = req_metadata.get("ranked_selections")
                         if ranked_selections:
                             ai_no_match = req_metadata.get("no_match", False)
-                            # Convert list[dict] → list[tuple[int, float]] sorted best-first
-                            ai_ranked = sorted(
-                                [
-                                    (sel["person_id"], sel["confidence"])
-                                    for sel in ranked_selections
-                                    if "person_id" in sel and "confidence" in sel
-                                ],
-                                key=lambda x: x[1],
-                                reverse=True,
-                            )
+                            ai_ranked = [
+                                (sel["person_id"], sel["confidence"])
+                                for sel in ranked_selections
+                                if "person_id" in sel and "confidence" in sel
+                            ]
                             reranked = rerank_disambiguation_candidates(
                                 ai_ranked=ai_ranked,
                                 target_name=resolution.target_name or "",
@@ -284,7 +278,7 @@ class Phase3DisambiguationService:
                                 ai_no_match=ai_no_match,
                             )
                             if reranked:
-                                num_candidates = len(resolution.candidates) if resolution.candidates else 0
+                                num_candidates = len(resolution.candidates or [])
                                 disambiguation_metadata: dict[str, Any] = {
                                     "ai_confidence": reranked.ai_confidence,
                                     "disambiguation_reason": reranked.reasoning,
@@ -299,9 +293,7 @@ class Phase3DisambiguationService:
                                     method="ai_disambiguation",
                                     metadata=disambiguation_metadata,
                                 )
-                                if "status" not in case.disambiguation_metadata:
-                                    case.disambiguation_metadata["status"] = {}
-                                case.disambiguation_metadata["status"][ambiguous_idx] = "success"
+                                case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
                                 logger.debug(
                                     f"Phase 3 re-ranked '{resolution.target_name}' → "
                                     f"{reranked.person.first_name} {reranked.person.last_name} "
@@ -311,12 +303,8 @@ class Phase3DisambiguationService:
                                 reranker_handled = True
                             else:
                                 # Re-ranker rejected all candidates
-                                if "status" not in case.disambiguation_metadata:
-                                    case.disambiguation_metadata["status"] = {}
-                                case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
-                                if "reasons" not in case.disambiguation_metadata:
-                                    case.disambiguation_metadata["reasons"] = {}
-                                case.disambiguation_metadata["reasons"][ambiguous_idx] = (
+                                case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
+                                case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = (
                                     "JW re-ranker rejected all candidates"
                                 )
                                 logger.debug(
@@ -326,12 +314,8 @@ class Phase3DisambiguationService:
 
                         elif req_metadata.get("no_match", False):
                             # AI explicitly said no candidate matches — propagate from metadata
-                            if "status" not in case.disambiguation_metadata:
-                                case.disambiguation_metadata["status"] = {}
-                            case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
-                            if "reasons" not in case.disambiguation_metadata:
-                                case.disambiguation_metadata["reasons"] = {}
-                            case.disambiguation_metadata["reasons"][ambiguous_idx] = (
+                            case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
+                            case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = (
                                 req_metadata.get("no_match_reason") or "AI determined no candidate matches"
                             )
                             logger.debug(f"Phase 3 AI no_match for '{resolution.target_name}'")
@@ -341,7 +325,7 @@ class Phase3DisambiguationService:
                     # Legacy path: direct AIDisambiguationResponse (defensive)
                     selected_person_id = result.selected_person_id
                     ai_confidence = getattr(result, "confidence", 0.8)
-                    ai_reason = getattr(result, "reason", "AI selected")
+                    ai_reason = getattr(result, "reason", None)
 
                 if reranker_handled:
                     # Re-ranker already produced a result or no_match — skip legacy path
@@ -358,7 +342,7 @@ class Phase3DisambiguationService:
 
                     if selected_person:
                         # Create disambiguated result
-                        num_candidates = len(resolution.candidates) if resolution.candidates else 0
+                        num_candidates = len(resolution.candidates or [])
                         disambiguation_metadata = {
                             "ai_confidence": ai_confidence,
                             "disambiguation_reason": ai_reason,
@@ -371,9 +355,7 @@ class Phase3DisambiguationService:
                             method="ai_disambiguation",
                             metadata=disambiguation_metadata,
                         )
-                        if "status" not in case.disambiguation_metadata:
-                            case.disambiguation_metadata["status"] = {}
-                        case.disambiguation_metadata["status"][ambiguous_idx] = "success"
+                        case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
                         logger.debug(
                             f"Phase 3 disambiguated '{resolution.target_name}' → "
                             f"{selected_person.first_name} {selected_person.last_name} "
@@ -381,12 +363,8 @@ class Phase3DisambiguationService:
                         )
                     else:
                         # AI selected unknown person (not in candidates)
-                        if "status" not in case.disambiguation_metadata:
-                            case.disambiguation_metadata["status"] = {}
-                        case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
-                        if "selected_ids" not in case.disambiguation_metadata:
-                            case.disambiguation_metadata["selected_ids"] = {}
-                        case.disambiguation_metadata["selected_ids"][ambiguous_idx] = selected_person_id
+                        case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
+                        case.disambiguation_metadata.setdefault("selected_ids", {})[ambiguous_idx] = selected_person_id
                         logger.debug(
                             f"Phase 3 no match for '{resolution.target_name}' — "
                             f"AI selected cm_id={selected_person_id} not in candidates"
@@ -394,29 +372,20 @@ class Phase3DisambiguationService:
 
                 elif getattr(result, "no_match", False):
                     # AI explicitly said no match (legacy path)
-                    if "status" not in case.disambiguation_metadata:
-                        case.disambiguation_metadata["status"] = {}
-                    case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
-                    if "reasons" not in case.disambiguation_metadata:
-                        case.disambiguation_metadata["reasons"] = {}
-                    case.disambiguation_metadata["reasons"][ambiguous_idx] = getattr(
+                    case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
+                    case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = getattr(
                         result, "reason", "No suitable match"
                     )
 
                 else:
                     # No selection and no legacy no_match flag — AI output was invalid/unparseable
-                    if "status" not in case.disambiguation_metadata:
-                        case.disambiguation_metadata["status"] = {}
-                    case.disambiguation_metadata["status"][ambiguous_idx] = "invalid_ai_output"
-                    if "reasons" not in case.disambiguation_metadata:
-                        case.disambiguation_metadata["reasons"] = {}
-                    case.disambiguation_metadata["reasons"][ambiguous_idx] = (
-                        ai_reason if ai_reason != "AI selected" else "No suitable match"
+                    case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "invalid_ai_output"
+                    case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = (
+                        ai_reason or "No suitable match"
                     )
-                    reasoning = ai_reason if ai_reason != "AI selected" else None
                     logger.debug(
                         f"Phase 3 invalid AI output for '{resolution.target_name}' — "
-                        f"{reasoning or 'AI returned no selection'}"
+                        f"{ai_reason or 'AI returned no selection'}"
                     )
 
             except Exception as e:
@@ -428,9 +397,7 @@ class Phase3DisambiguationService:
                 logger.error(
                     f"Error processing disambiguation result for case {req_info}, ambiguous_idx {ambiguous_idx}: {e}"
                 )
-                if "errors" not in case.disambiguation_metadata:
-                    case.disambiguation_metadata["errors"] = {}
-                case.disambiguation_metadata["errors"][ambiguous_idx] = str(e)
+                case.disambiguation_metadata.setdefault("errors", {})[ambiguous_idx] = str(e)
 
     def _build_final_results(
         self,
