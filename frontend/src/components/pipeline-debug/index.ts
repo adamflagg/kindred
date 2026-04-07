@@ -4,6 +4,6 @@
 
 export { PipelineRunSelector } from './PipelineRunSelector'
 export { PipelineBatchList } from './PipelineBatchList'
-export { PipelineCanvas } from './PipelineCanvas'
+export { PipelineSidebar } from './PipelineSidebar'
 export { PipelineDetailPanel } from './PipelineDetailPanel'
 export { NewTraceModal } from './NewTraceModal'
