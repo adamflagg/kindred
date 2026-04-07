@@ -532,7 +532,7 @@ describe('Phase3Detail', () => {
         candidates_sent: [
           { person_cm_id: 67890, name: 'Emma Johnson', grade: 5, ai_confidence: 0.9 },
           { person_cm_id: 67892, name: 'Emma Johns', grade: 6, ai_confidence: 0.65 },
-        ],
+        ] as Array<Record<string, unknown>>,
         ai_context: { session: '1', requester_grade: '5' },
         ai_selection: 67890,
         ai_reasoning: 'Best match based on session and grade proximity',
