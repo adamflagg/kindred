@@ -527,11 +527,23 @@ describe('Phase3Detail', () => {
   it('renders per-candidate ai_confidence when available', () => {
     const withScores: Phase3IntentTrace[] = [
       {
-        ...phase3Reranked[0],
+        target_name: 'Emma Johnson',
+        ran: true,
         candidates_sent: [
           { person_cm_id: 67890, name: 'Emma Johnson', grade: 5, ai_confidence: 0.9 },
           { person_cm_id: 67892, name: 'Emma Johns', grade: 6, ai_confidence: 0.65 },
         ],
+        ai_context: { session: '1', requester_grade: '5' },
+        ai_selection: 67890,
+        ai_reasoning: 'Best match based on session and grade proximity',
+        ai_reasoning_summary: 'Chain-of-thought reasoning from model',
+        result: 'resolved',
+        confidence_before: 0.5,
+        confidence_after: 0.85,
+        reranked: true,
+        jw_score: 0.92,
+        ai_confidence: 0.9,
+        no_match_signal: false,
       },
     ]
     render(<Phase3Detail data={withScores} {...defaultActions} />)

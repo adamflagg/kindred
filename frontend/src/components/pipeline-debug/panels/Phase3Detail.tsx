@@ -107,10 +107,10 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
             ) : (
               <div className="space-y-2">
                 {intent.candidates_sent.map((c, idx) => {
-                  const cmId = c.person_cm_id as number
-                  const name = c.name as string
-                  const grade = c.grade as number | undefined
-                  const aiConf = c.ai_confidence as number | undefined
+                  const cmId = c['person_cm_id'] as number
+                  const name = c['name'] as string
+                  const grade = c['grade'] as number | undefined
+                  const aiConf = c['ai_confidence'] as number | undefined
                   const isSelected = cmId === intent.ai_selection
                   return (
                     <div
