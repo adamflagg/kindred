@@ -96,7 +96,9 @@ def _run_current_trace_logic(
         for intent_idx, rr in enumerate(res_list):
             rr_meta = rr.metadata or {}
             ranked_sel = rr_meta.get("ranked_selections", [])
-            ranked_lookup: dict[int, float] = {s["person_id"]: s["confidence"] for s in ranked_sel if "person_id" in s}
+            ranked_lookup: dict[int, float] = {
+                s["person_id"]: s["confidence"] for s in ranked_sel if "person_id" in s and "confidence" in s
+            }
             candidates_sent = (
                 [
                     {
