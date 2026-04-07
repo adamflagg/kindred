@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveStageStatus, type StageStatus } from './stageStatus'
+import { deriveStageStatus } from './stageStatus'
 import type { TraceData } from '../types'
 
 /** Minimal trace data factory — only the fields stageStatus reads. */
