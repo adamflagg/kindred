@@ -120,6 +120,10 @@ def _run_current_trace_logic(
                     else ("not_needed" if not ran_phase3 else rr_meta.get("disambiguation_status", "still_ambiguous"))
                 ),
                 confidence_after=rr.confidence,
+                reranked=rr_meta.get("reranked", False),
+                jw_score=rr_meta.get("jw_score"),
+                ai_confidence=rr_meta.get("ai_confidence"),
+                no_match_signal=rr_meta.get("disambiguation_status") == "no_match" if ran_phase3 else False,
             )
             recorded_traces.append(trace)
 
@@ -214,3 +218,103 @@ class TestPhase3TraceResult:
 
         assert len(traces) == 1
         assert traces[0].result == "not_needed"
+
+
+class TestPhase3TraceRerankerFields:
+    """Phase 3 trace should surface JW reranker metadata from rr.metadata."""
+
+    def test_reranked_fields_populated_from_metadata(self):
+        """When metadata contains reranker data, trace should capture it."""
+        mock_person = MagicMock()
+        mock_person.cm_id = 67890
+
+        rr = ResolutionResult(
+            person=mock_person,
+            confidence=0.85,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={
+                "reranked": True,
+                "jw_score": 0.92,
+                "ai_confidence": 0.90,
+                "disambiguation_reason": "Best match by name similarity",
+            },
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].reranked is True
+        assert traces[0].jw_score == 0.92
+        assert traces[0].ai_confidence == 0.90
+
+    def test_reranked_false_when_not_in_metadata(self):
+        """Legacy path (no reranker) should default to reranked=False."""
+        mock_person = MagicMock()
+        mock_person.cm_id = 67890
+
+        rr = ResolutionResult(
+            person=mock_person,
+            confidence=0.90,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={"ai_confidence": 0.90, "disambiguation_reason": "Best match"},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].reranked is False
+        assert traces[0].jw_score is None
+        assert traces[0].ai_confidence == 0.90
+
+    def test_no_match_signal_from_status(self):
+        """When disambiguation_status is 'no_match', no_match_signal should be True."""
+        rr = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={"disambiguation_status": "no_match"},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].no_match_signal is True
+
+    def test_no_match_signal_false_for_resolved(self):
+        """Resolved results should have no_match_signal=False."""
+        mock_person = MagicMock()
+        mock_person.cm_id = 67890
+
+        rr = ResolutionResult(
+            person=mock_person,
+            confidence=0.90,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={"reranked": True, "jw_score": 0.88},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].no_match_signal is False
+
+    def test_defaults_when_metadata_empty(self):
+        """Empty metadata should yield safe defaults for all new fields."""
+        rr = ResolutionResult(
+            person=None,
+            confidence=0.0,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            metadata={},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        assert traces[0].reranked is False
+        assert traces[0].jw_score is None
+        assert traces[0].ai_confidence is None
+        assert traces[0].no_match_signal is False

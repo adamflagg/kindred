@@ -145,6 +145,11 @@ export interface Phase3IntentTrace {
   result: 'not_needed' | 'resolved' | 'no_match' | 'invalid_ai_output' | 'still_ambiguous'
   confidence_before: number | null
   confidence_after: number | null
+  // JW reranker metadata (optional for backward compat with old traces)
+  reranked?: boolean
+  jw_score?: number | null
+  ai_confidence?: number | null
+  no_match_signal?: boolean
 }
 
 export interface FinalBunkRequestTrace {
