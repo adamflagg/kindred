@@ -286,11 +286,13 @@ class Phase3DisambiguationService:
                                     "candidates_considered": num_candidates,
                                     "reranked": True,
                                     "jw_score": reranked.jw_score,
+                                    "ranked_selections": ranked_selections,
                                 }
                                 case.disambiguated_results[ambiguous_idx] = ResolutionResult(
                                     person=reranked.person,
                                     confidence=reranked.confidence,
                                     method="ai_disambiguation",
+                                    candidates=(resolution.candidates or [])[:10],
                                     metadata=result_metadata,
                                 )
                                 case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
@@ -353,6 +355,7 @@ class Phase3DisambiguationService:
                             person=selected_person,
                             confidence=ai_confidence,
                             method="ai_disambiguation",
+                            candidates=(resolution.candidates or [])[:10],
                             metadata=result_metadata,
                         )
                         case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"

@@ -95,11 +95,19 @@ def _run_current_trace_logic(
         pre_confs = pre_phase3_confidences.get(trace_key, [])
         for intent_idx, rr in enumerate(res_list):
             rr_meta = rr.metadata or {}
+            ranked_sel = rr_meta.get("ranked_selections") or []
+            ranked_lookup: dict[int, float] = {
+                s["person_id"]: s["confidence"]
+                for s in ranked_sel
+                if isinstance(s, dict) and "person_id" in s and "confidence" in s
+            }
             candidates_sent = (
                 [
                     {
                         "person_cm_id": c.cm_id,
                         "name": (c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}"),
+                        **({"grade": c.grade} if hasattr(c, "grade") and c.grade is not None else {}),
+                        **({"ai_confidence": ranked_lookup[c.cm_id]} if c.cm_id in ranked_lookup else {}),
                     }
                     for c in (rr.candidates or [])
                 ]
@@ -318,3 +326,69 @@ class TestPhase3TraceRerankerFields:
         assert traces[0].jw_score is None
         assert traces[0].ai_confidence is None
         assert traces[0].no_match_signal is False
+
+    def test_candidates_sent_enriched_with_ai_confidence(self):
+        """When ranked_selections is in metadata, candidates_sent should include ai_confidence and grade."""
+        mock_person_1 = MagicMock()
+        mock_person_1.cm_id = 67890
+        mock_person_1.full_name = "Olivia Chen"
+        mock_person_1.grade = 7
+
+        mock_person_2 = MagicMock()
+        mock_person_2.cm_id = 67892
+        mock_person_2.full_name = "Olivia Chang"
+        mock_person_2.grade = 8
+
+        rr = ResolutionResult(
+            person=mock_person_1,
+            confidence=0.85,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            candidates=[mock_person_1, mock_person_2],
+            metadata={
+                "reranked": True,
+                "jw_score": 0.92,
+                "ai_confidence": 0.90,
+                "ranked_selections": [
+                    {"person_id": 67890, "confidence": 0.90, "reasoning": "Best match"},
+                    {"person_id": 67892, "confidence": 0.65, "reasoning": "Similar name"},
+                ],
+            },
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        cs = traces[0].candidates_sent
+        assert len(cs) == 2
+        assert cs[0]["person_cm_id"] == 67890
+        assert cs[0]["ai_confidence"] == 0.90
+        assert cs[0]["grade"] == 7
+        assert cs[1]["person_cm_id"] == 67892
+        assert cs[1]["ai_confidence"] == 0.65
+        assert cs[1]["grade"] == 8
+
+    def test_candidates_sent_no_enrichment_without_ranked_selections(self):
+        """Without ranked_selections, candidates_sent should only have cm_id, name, and grade."""
+        mock_person = MagicMock()
+        mock_person.cm_id = 67890
+        mock_person.full_name = "Olivia Chen"
+        mock_person.grade = 6
+
+        rr = ResolutionResult(
+            person=mock_person,
+            confidence=0.90,
+            method="ai_disambiguation",
+            target_name="Olivia Chen",
+            candidates=[mock_person],
+            metadata={"ai_confidence": 0.90},
+        )
+
+        traces = _run_current_trace_logic(rr)
+
+        assert len(traces) == 1
+        cs = traces[0].candidates_sent
+        assert len(cs) == 1
+        assert cs[0]["person_cm_id"] == 67890
+        assert cs[0]["grade"] == 6
+        assert "ai_confidence" not in cs[0]
