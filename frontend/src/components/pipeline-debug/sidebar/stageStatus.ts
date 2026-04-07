@@ -30,7 +30,7 @@ export function deriveStageStatus(stage: PipelineStage, trace: TraceData): Stage
       const anyAmbiguous = trace.phase2_resolution.some((r) => r.final_result.is_ambiguous)
       if (allResolved) return 'success'
       if (anyAmbiguous) return 'warning'
-      return 'success'
+      return 'error'
     }
 
     case 'expansion':
@@ -55,7 +55,7 @@ export function deriveStageStatus(stage: PipelineStage, trace: TraceData): Stage
       return trace.post_pipeline.reciprocal.detected ? 'success' : 'skipped'
 
     case 'conflict_detect':
-      return trace.post_pipeline.conflict_detection.has_conflict ? 'success' : 'skipped'
+      return trace.post_pipeline.conflict_detection.has_conflict ? 'warning' : 'skipped'
 
     case 'disposition':
       return trace.post_pipeline.final_bunk_requests.length > 0 ? 'success' : 'skipped'

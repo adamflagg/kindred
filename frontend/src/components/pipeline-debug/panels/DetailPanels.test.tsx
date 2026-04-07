@@ -15,7 +15,10 @@ import { Phase2Detail } from './Phase2Detail'
 import { ExpansionDetail } from './ExpansionDetail'
 import { HistoricalDetail } from './HistoricalDetail'
 import { Phase3Detail } from './Phase3Detail'
-import { PostPipelineDetail } from './PostPipelineDetail'
+import { BatchSignalsDetail } from './BatchSignalsDetail'
+import { ConflictDetail } from './ConflictDetail'
+import { DispositionDetail } from './DispositionDetail'
+import { DedupDetail } from './DedupDetail'
 import type {
   PrePhase1Trace,
   Phase1Trace,
@@ -429,37 +432,39 @@ describe('Phase3Detail', () => {
 })
 
 // =============================================================================
-// PostPipelineDetail
+// Finalization Panels (slicing PostPipelineTrace)
 // =============================================================================
-describe('PostPipelineDetail', () => {
-  it('renders final bunk requests table', () => {
-    render(<PostPipelineDetail data={postPipeline} {...defaultActions} />)
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
-  })
-
-  it('renders reciprocal boost info', () => {
-    render(<PostPipelineDetail data={postPipeline} {...defaultActions} />)
-    // "Reciprocal" appears in both the flag card and the details section
+describe('BatchSignalsDetail', () => {
+  it('renders reciprocal detection info', () => {
+    render(<BatchSignalsDetail data={postPipeline} {...defaultActions} />)
     expect(screen.getAllByText(/reciprocal/i).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders action buttons', () => {
-    render(<PostPipelineDetail data={postPipeline} {...defaultActions} />)
+    render(<BatchSignalsDetail data={postPipeline} {...defaultActions} />)
     expect(screen.getByRole('button', { name: /run again/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /run from here/i })).toBeInTheDocument()
   })
+})
 
-  it('shows confirmation dialog when production write toggled', async () => {
-    const user = userEvent.setup()
-    render(<PostPipelineDetail data={postPipeline} {...defaultActions} />)
-    // Toggle production write
-    const toggle = screen.getByRole('checkbox', { name: /write to production/i })
-    await user.click(toggle)
-    // Click "Run From Here"
-    const runBtn = screen.getByRole('button', { name: /run from here/i })
-    await user.click(runBtn)
-    // Confirmation dialog should appear
-    expect(screen.getByText(/will write.*bunk_requests to production/i)).toBeInTheDocument()
+describe('ConflictDetail', () => {
+  it('renders clean state when no conflicts', () => {
+    render(<ConflictDetail data={postPipeline} {...defaultActions} />)
+    expect(screen.getByText(/no enrollment/i)).toBeInTheDocument()
+  })
+})
+
+describe('DispositionDetail', () => {
+  it('renders final bunk requests table', () => {
+    render(<DispositionDetail data={postPipeline} {...defaultActions} />)
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+  })
+})
+
+describe('DedupDetail', () => {
+  it('renders dedup and self-reference checks', () => {
+    render(<DedupDetail data={postPipeline} {...defaultActions} />)
+    expect(screen.getByText('Unique')).toBeInTheDocument()
+    expect(screen.getByText('None')).toBeInTheDocument()
   })
 })

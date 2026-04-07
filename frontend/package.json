@@ -40,7 +40,6 @@
     "@tanstack/react-virtual": "^3.13.22",
     "@types/leaflet": "^1.9.21",
     "@vitejs/plugin-react": "^6.0.0",
-    "@xyflow/react": "^12.10.1",
     "clsx": "^2.1.1",
     "codemirror": "^6.0.2",
     "cytoscape": "^3.32.0",

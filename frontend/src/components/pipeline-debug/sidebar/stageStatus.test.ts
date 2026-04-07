@@ -135,14 +135,14 @@ describe('deriveStageStatus', () => {
     expect(deriveStageStatus('batch_signals', trace)).toBe('success')
   })
 
-  it('returns success for conflict_detect when has_conflict', () => {
+  it('returns warning for conflict_detect when has_conflict', () => {
     const trace = makeTrace({
       post_pipeline: {
         ...makeTrace().post_pipeline,
         conflict_detection: { has_conflict: true, details: ['session_mismatch'] },
       },
     })
-    expect(deriveStageStatus('conflict_detect', trace)).toBe('success')
+    expect(deriveStageStatus('conflict_detect', trace)).toBe('warning')
   })
 
   it('returns success for disposition when final_bunk_requests exist', () => {
