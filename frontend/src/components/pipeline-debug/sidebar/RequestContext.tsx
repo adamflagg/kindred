@@ -72,7 +72,7 @@ export function RequestContext({ traceData, activeIntentIndex }: RequestContextP
             This BR&apos;s Fragment
           </p>
           <div className="border-accent bg-muted mt-1 rounded-lg border-l-2 px-2 py-1.5">
-            <p className="text-accent text-xs font-medium">
+            <p className="text-foreground text-xs font-medium">
               &quot;{activeIntent.target_name}&quot;
               {activeIntent.request_type !== 'BUNK_WITH' && (
                 <span className="text-muted-foreground ml-1">({activeIntent.request_type})</span>
