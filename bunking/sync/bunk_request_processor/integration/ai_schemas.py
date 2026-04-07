@@ -161,7 +161,7 @@ class AIDisambiguationResponse(BaseModel):
     """Explanation for no_match."""
 
     selected_person_id: int | None = None
-    """The AI's selected person ID from the candidates."""
+    """Legacy: AI's selected person ID. Superseded by ranked_selections."""
 
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     """Confidence in the selection (0.0 to 1.0)."""

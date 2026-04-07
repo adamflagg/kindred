@@ -34,10 +34,9 @@ class RerankedResult:
 def _last_name_jw_score(target_last: str, candidate_last: str) -> float:
     """Compute the best JW similarity between target and candidate last names.
 
-    Handles compound/hyphenated names via multiple strategies:
-    1. Suffix match → 1.0 (exact word suffix)
-    2. JW on fully normalized forms
-    3. Hyphen-split parts: any target-part vs full candidate, any candidate-part vs full target
+    Handles compound/hyphenated names:
+    1. Word prefix match → 1.0 (e.g. "Godoy" matches "Godoy Abbott")
+    2. JW on normalized forms + hyphen-split parts via _last_name_jw_raw_score
     """
     if not target_last or not candidate_last:
         return 0.0

@@ -279,7 +279,7 @@ class Phase3DisambiguationService:
                             )
                             if reranked:
                                 num_candidates = len(resolution.candidates or [])
-                                disambiguation_metadata: dict[str, Any] = {
+                                result_metadata: dict[str, Any] = {
                                     "ai_confidence": reranked.ai_confidence,
                                     "disambiguation_reason": reranked.reasoning,
                                     "original_method": resolution.method,
@@ -291,7 +291,7 @@ class Phase3DisambiguationService:
                                     person=reranked.person,
                                     confidence=reranked.confidence,
                                     method="ai_disambiguation",
-                                    metadata=disambiguation_metadata,
+                                    metadata=result_metadata,
                                 )
                                 case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
                                 logger.debug(
@@ -343,7 +343,7 @@ class Phase3DisambiguationService:
                     if selected_person:
                         # Create disambiguated result
                         num_candidates = len(resolution.candidates or [])
-                        disambiguation_metadata = {
+                        result_metadata = {
                             "ai_confidence": ai_confidence,
                             "disambiguation_reason": ai_reason,
                             "original_method": resolution.method,
@@ -353,7 +353,7 @@ class Phase3DisambiguationService:
                             person=selected_person,
                             confidence=ai_confidence,
                             method="ai_disambiguation",
-                            metadata=disambiguation_metadata,
+                            metadata=result_metadata,
                         )
                         case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
                         logger.debug(
