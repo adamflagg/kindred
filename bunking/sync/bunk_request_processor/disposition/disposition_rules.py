@@ -111,7 +111,7 @@ def _bunk_with_rules(
         return Disposition(RequestStatus.RESOLVED, "exact_match", 5)
     if is_reciprocal and match_confidence >= RECIPROCAL_MIN_CONFIDENCE:
         return Disposition(RequestStatus.RESOLVED, "reciprocal_match", 6)
-    if match_confidence >= auto_resolve_threshold:
+    if not is_reciprocal and match_confidence >= auto_resolve_threshold:
         return Disposition(RequestStatus.RESOLVED, "high_confidence_match", 7)
 
     # Catch-all
