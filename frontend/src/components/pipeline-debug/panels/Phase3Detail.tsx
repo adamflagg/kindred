@@ -110,7 +110,8 @@ function IntentPanel({ intent }: { intent: Phase3IntentTrace }) {
                   const cmId = c['person_cm_id'] as number
                   const name = c['name'] as string
                   const grade = c['grade'] as number | undefined
-                  const aiConf = c['ai_confidence'] as number | undefined
+                  const aiConf =
+                    typeof c['ai_confidence'] === 'number' ? c['ai_confidence'] : undefined
                   const isSelected = cmId === intent.ai_selection
                   return (
                     <div

@@ -1479,15 +1479,18 @@ class RequestOrchestrator:
             for intent_idx, rr in enumerate(res_list):
                 rr_meta = rr.metadata or {}
                 # Build candidates sent to AI from the ResolutionResult's candidate list
-                ranked_sel = rr_meta.get("ranked_selections", [])
+                ranked_sel = rr_meta.get("ranked_selections") or []
                 ranked_lookup: dict[int, float] = {
-                    s["person_id"]: s["confidence"] for s in ranked_sel if "person_id" in s and "confidence" in s
+                    s["person_id"]: s["confidence"]
+                    for s in ranked_sel
+                    if isinstance(s, dict) and "person_id" in s and "confidence" in s
                 }
                 candidates_sent = (
                     [
                         {
                             "person_cm_id": c.cm_id,
                             "name": c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                            **({"grade": c.grade} if hasattr(c, "grade") and c.grade is not None else {}),
                             **({"ai_confidence": ranked_lookup[c.cm_id]} if c.cm_id in ranked_lookup else {}),
                         }
                         for c in (rr.candidates or [])

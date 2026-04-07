@@ -514,7 +514,7 @@ describe('Phase3Detail', () => {
     expect(screen.queryByText('JW Score')).not.toBeInTheDocument()
   })
 
-  it('renders structured candidate cards with name and cm_id', () => {
+  it('renders structured candidate cards with name, cm_id, and grade', () => {
     render(<Phase3Detail data={phase3Reranked} {...defaultActions} />)
     // CollapsibleSection button includes the count in the title
     const toggle = screen.getByRole('button', { name: /Candidates Sent/i })
@@ -522,6 +522,8 @@ describe('Phase3Detail', () => {
     // Name appears multiple times (Target row + candidate card) — getAllByText is intentional
     expect(screen.getAllByText('Emma Johnson').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('#67890')).toBeInTheDocument()
+    expect(screen.getByText('Grade: 5')).toBeInTheDocument()
+    expect(screen.getByText('Grade: 6')).toBeInTheDocument()
   })
 
   it('renders per-candidate ai_confidence when available', () => {
