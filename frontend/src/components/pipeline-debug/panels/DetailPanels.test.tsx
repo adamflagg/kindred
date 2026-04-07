@@ -34,6 +34,8 @@ import type {
 const defaultActions = {
   onRunAgain: vi.fn(),
   onRunFromHere: vi.fn(),
+  activeTab: 0,
+  onTabChange: vi.fn(),
 }
 
 // ---- Mock trace data ----
