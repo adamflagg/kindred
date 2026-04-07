@@ -364,10 +364,23 @@ describe('Phase2Detail', () => {
 
   it('switches tabs to show second intent', async () => {
     const user = userEvent.setup()
-    render(<Phase2Detail data={phase2Intents} {...defaultActions} />)
+    const onTabChange = vi.fn()
+    const { rerender } = render(
+      <Phase2Detail data={phase2Intents} {...defaultActions} onTabChange={onTabChange} />
+    )
     const liamTab = screen.getByRole('tab', { name: /Liam Garcia/i })
     await user.click(liamTab)
-    // fuzzy_match appears in the second intent's data
+    expect(onTabChange).toHaveBeenCalledWith(1)
+
+    // Re-render with activeTab=1 to simulate controlled state update
+    rerender(
+      <Phase2Detail
+        data={phase2Intents}
+        {...defaultActions}
+        activeTab={1}
+        onTabChange={onTabChange}
+      />
+    )
     expect(screen.getAllByText(/fuzzy_match/).length).toBeGreaterThanOrEqual(1)
   })
 })
