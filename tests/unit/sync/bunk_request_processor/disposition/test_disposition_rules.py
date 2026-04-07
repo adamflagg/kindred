@@ -160,6 +160,18 @@ class TestReciprocalConfidenceFloor:
         )
         assert d.status == RequestStatus.PENDING
 
+    def test_reciprocal_below_floor_pending_even_with_low_auto_threshold(self):
+        """Reciprocal floor must hold even when auto_resolve_threshold is below 0.70."""
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="ai_disambiguation",
+            match_confidence=0.69,
+            is_reciprocal=True,
+            auto_resolve_threshold=0.60,
+        )
+        assert d.status == RequestStatus.PENDING
+        assert d.reason == "needs_review"
+
 
 class TestNotBunkWith:
     """NOT_BUNK_WITH disposition rules."""

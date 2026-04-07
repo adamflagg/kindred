@@ -267,12 +267,16 @@ class Phase3DisambiguationService:
                         ranked_selections = req_metadata.get("ranked_selections")
                         if ranked_selections:
                             ai_no_match = req_metadata.get("no_match", False)
-                            # Convert list[dict] → list[tuple[int, float]] for reranker
-                            ai_ranked = [
-                                (sel["person_id"], sel["confidence"])
-                                for sel in ranked_selections
-                                if "person_id" in sel and "confidence" in sel
-                            ]
+                            # Convert list[dict] → list[tuple[int, float]] sorted best-first
+                            ai_ranked = sorted(
+                                [
+                                    (sel["person_id"], sel["confidence"])
+                                    for sel in ranked_selections
+                                    if "person_id" in sel and "confidence" in sel
+                                ],
+                                key=lambda x: x[1],
+                                reverse=True,
+                            )
                             reranked = rerank_disambiguation_candidates(
                                 ai_ranked=ai_ranked,
                                 target_name=resolution.target_name or "",
@@ -320,6 +324,19 @@ class Phase3DisambiguationService:
                                 )
                                 reranker_handled = True
 
+                        elif req_metadata.get("no_match", False):
+                            # AI explicitly said no candidate matches — propagate from metadata
+                            if "status" not in case.disambiguation_metadata:
+                                case.disambiguation_metadata["status"] = {}
+                            case.disambiguation_metadata["status"][ambiguous_idx] = "no_match"
+                            if "reasons" not in case.disambiguation_metadata:
+                                case.disambiguation_metadata["reasons"] = {}
+                            case.disambiguation_metadata["reasons"][ambiguous_idx] = (
+                                req_metadata.get("no_match_reason") or "AI determined no candidate matches"
+                            )
+                            logger.debug(f"Phase 3 AI no_match for '{resolution.target_name}'")
+                            reranker_handled = True
+
                 elif hasattr(result, "selected_person_id"):
                     # Legacy path: direct AIDisambiguationResponse (defensive)
                     selected_person_id = result.selected_person_id
@@ -342,7 +359,7 @@ class Phase3DisambiguationService:
                     if selected_person:
                         # Create disambiguated result
                         num_candidates = len(resolution.candidates) if resolution.candidates else 0
-                        disambiguation_metadata: dict[str, Any] = {
+                        disambiguation_metadata = {
                             "ai_confidence": ai_confidence,
                             "disambiguation_reason": ai_reason,
                             "original_method": resolution.method,

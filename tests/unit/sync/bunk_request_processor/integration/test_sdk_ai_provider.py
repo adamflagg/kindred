@@ -767,9 +767,6 @@ class TestAIDisambiguationRankedSchema:
                     reasoning="Name matches but different school",
                 ),
             ],
-            selected_person_id=1001,
-            confidence=0.92,
-            reasoning="Top ranked candidate",
         )
         assert len(response.ranked_selections) == 2
         assert response.ranked_selections[0].person_id == 1001
@@ -812,3 +809,138 @@ class TestAIDisambiguationRankedSchema:
         # New fields default correctly
         assert response.ranked_selections == []
         assert response.no_match is False
+
+    def test_ranked_and_no_match_mutually_exclusive(self):
+        """Cannot set ranked_selections AND no_match=True simultaneously."""
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            AIDisambiguationResponse(
+                ranked_selections=[
+                    AIDisambiguationCandidate(person_id=1001, confidence=0.90, reasoning="test"),
+                ],
+                no_match=True,
+                no_match_reason="contradictory",
+            )
+
+    def test_ranked_and_selected_person_id_mutually_exclusive(self):
+        """Cannot set ranked_selections AND selected_person_id simultaneously."""
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            AIDisambiguationResponse(
+                ranked_selections=[
+                    AIDisambiguationCandidate(person_id=1001, confidence=0.90, reasoning="test"),
+                ],
+                selected_person_id=1001,
+                confidence=0.90,
+            )
+
+    def test_no_match_and_selected_person_id_mutually_exclusive(self):
+        """Cannot set no_match=True AND selected_person_id simultaneously."""
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            AIDisambiguationResponse(
+                no_match=True,
+                no_match_reason="no match",
+                selected_person_id=1001,
+                confidence=0.90,
+            )
+
+
+class TestOpenAIProviderDisambiguateMetadata:
+    """End-to-end tests for OpenAIProvider.disambiguate() metadata translation layer.
+
+    Verifies that each AIDisambiguationResponse field is correctly wired into
+    ParsedRequest.metadata, preventing silent no_match / ranked_selections loss.
+    """
+
+    @pytest.fixture
+    def mock_openai_client(self):
+        """Create a mock OpenAI client."""
+        client = MagicMock()
+        client.responses = MagicMock()
+        client.responses.parse = AsyncMock()
+        return client
+
+    def _make_provider_and_request(self, mock_openai_client):
+        """Set up provider and a bare ParsedRequest for disambiguation."""
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+        provider.client = mock_openai_client
+
+        parsed_req = ParsedRequest(
+            raw_text="bunk with Liam",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Liam",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.5,
+            csv_position=1,
+            metadata={},
+        )
+        context = AIRequestContext(
+            requester_name="Emma Johnson",
+            requester_cm_id=10001,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "candidates": [
+                    {"name": "Liam Garcia", "person_id": 2001, "school": "Oak Valley Middle"},
+                    {"name": "Liam Chen", "person_id": 2002, "school": "Riverside Elementary"},
+                ],
+            },
+        )
+        return provider, parsed_req, context
+
+    def _mock_response(self, mock_client: MagicMock, ai_response: AIDisambiguationResponse) -> None:
+        mock_text = MagicMock()
+        mock_text.parsed = ai_response
+        mock_message = MagicMock(spec=[])
+        mock_message.type = "message"
+        mock_message.content = [mock_text]
+        mock_resp = MagicMock()
+        mock_resp.output = [mock_message]
+        mock_resp.usage = MagicMock(input_tokens=50, output_tokens=20)
+        mock_client.responses.parse = AsyncMock(return_value=mock_resp)
+
+    @pytest.mark.asyncio
+    async def test_ranked_selections_written_to_metadata(self, mock_openai_client):
+        """ranked_selections from AI are serialized into metadata["ranked_selections"]."""
+        provider, parsed_req, context = self._make_provider_and_request(mock_openai_client)
+        self._mock_response(
+            mock_openai_client,
+            AIDisambiguationResponse(
+                ranked_selections=[
+                    AIDisambiguationCandidate(person_id=2001, confidence=0.88, reasoning="Name match"),
+                    AIDisambiguationCandidate(person_id=2002, confidence=0.52, reasoning="Partial match"),
+                ],
+            ),
+        )
+
+        result = await provider.disambiguate(parsed_req, context)
+
+        ranked = result.requests[0].metadata.get("ranked_selections")
+        assert ranked is not None, "ranked_selections must be written to metadata"
+        assert len(ranked) == 2
+        assert ranked[0]["person_id"] == 2001
+        assert ranked[0]["confidence"] == pytest.approx(0.88)
+        assert result.requests[0].metadata.get("no_match") is not True
+
+    @pytest.mark.asyncio
+    async def test_no_match_written_to_metadata(self, mock_openai_client):
+        """no_match=True from AI is written to metadata and reason is preserved."""
+        provider, parsed_req, context = self._make_provider_and_request(mock_openai_client)
+        self._mock_response(
+            mock_openai_client,
+            AIDisambiguationResponse(
+                no_match=True,
+                no_match_reason="No candidate shares name with target",
+            ),
+        )
+
+        result = await provider.disambiguate(parsed_req, context)
+
+        meta = result.requests[0].metadata
+        assert meta.get("no_match") is True, "no_match must be written to metadata"
+        assert meta.get("no_match_reason") == "No candidate shares name with target"
+        assert meta.get("ranked_selections") is None

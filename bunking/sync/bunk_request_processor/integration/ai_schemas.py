@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TemporalInfo(BaseModel):
@@ -168,3 +168,15 @@ class AIDisambiguationResponse(BaseModel):
 
     reasoning: str = ""
     """Explanation for the selection."""
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self) -> AIDisambiguationResponse:
+        """ranked_selections, no_match, and selected_person_id are mutually exclusive."""
+        set_fields = [
+            bool(self.ranked_selections),
+            self.no_match,
+            self.selected_person_id is not None,
+        ]
+        if sum(set_fields) > 1:
+            raise ValueError("ranked_selections, no_match, and selected_person_id are mutually exclusive")
+        return self

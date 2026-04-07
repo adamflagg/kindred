@@ -47,17 +47,17 @@ def _last_name_jw_score(target_last: str, candidate_last: str) -> float:
     target_words = split_last_name_words(target_last)
     candidate_words = split_last_name_words(candidate_last)
 
-    # Strategy 1: suffix match (e.g. "Godoy" matches "Godoy Abbott" last-word suffix)
+    # Strategy 1: prefix match (e.g. "Godoy" matches "Godoy Abbott" — first word prefix)
     if target_words and candidate_words:
         if target_words == candidate_words:
             return 1.0
         if len(target_words) <= len(candidate_words):
-            suffix = candidate_words[-len(target_words):]
-            if target_words == suffix:
+            prefix = candidate_words[: len(target_words)]
+            if target_words == prefix:
                 return 1.0
         if len(candidate_words) <= len(target_words):
-            suffix = target_words[-len(candidate_words):]
-            if candidate_words == suffix:
+            prefix = target_words[: len(candidate_words)]
+            if candidate_words == prefix:
                 return 1.0
 
     # Strategy 2: JW on normalized full strings

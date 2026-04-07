@@ -8,13 +8,10 @@ Tests cover:
 
 from __future__ import annotations
 
-import pytest
-
 from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.services.disambiguation_reranker import (
     FIRST_NAME_ONLY_CONFIDENCE_CAP,
     JW_LAST_NAME_FLOOR,
-    RerankedResult,
     _last_name_jw_score,
     rerank_disambiguation_candidates,
 )
