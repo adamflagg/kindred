@@ -244,7 +244,7 @@ export function drawBunkBubbles(
       },
     }
 
-    // Create popper instance
+    // Create popper instance - use graph container as boundary so labels clip to graph area
     const popperInstance = createPopper(virtualElement as unknown as Element, labelEl, {
       placement: 'top',
       modifiers: [
@@ -257,7 +257,24 @@ export function drawBunkBubbles(
         {
           name: 'preventOverflow',
           options: {
-            boundary: 'viewport',
+            boundary: containerRef.current ?? 'viewport',
+          },
+        },
+        {
+          name: 'hideOutsideContainer',
+          enabled: true,
+          phase: 'main',
+          fn({ state }) {
+            const container = containerRef.current
+            if (!container) return
+            const containerRect = container.getBoundingClientRect()
+            const popperRect = state.elements.popper.getBoundingClientRect()
+            const isOutside =
+              popperRect.bottom < containerRect.top ||
+              popperRect.top > containerRect.bottom ||
+              popperRect.right < containerRect.left ||
+              popperRect.left > containerRect.right
+            state.elements.popper.style.visibility = isOutside ? 'hidden' : 'visible'
           },
         },
       ],
@@ -377,7 +394,24 @@ export function drawBunkBubbles(
         placement: 'top',
         modifiers: [
           { name: 'offset', options: { offset: [0, 30] } },
-          { name: 'preventOverflow', options: { boundary: 'viewport' } },
+          { name: 'preventOverflow', options: { boundary: containerRef.current ?? 'viewport' } },
+          {
+            name: 'hideOutsideContainer',
+            enabled: true,
+            phase: 'main',
+            fn({ state }) {
+              const container = containerRef.current
+              if (!container) return
+              const containerRect = container.getBoundingClientRect()
+              const popperRect = state.elements.popper.getBoundingClientRect()
+              const isOutside =
+                popperRect.bottom < containerRect.top ||
+                popperRect.top > containerRect.bottom ||
+                popperRect.right < containerRect.left ||
+                popperRect.left > containerRect.right
+              state.elements.popper.style.visibility = isOutside ? 'hidden' : 'visible'
+            },
+          },
         ],
       })
       poppersRef.current.push({ element: labelEl, instance: popperInstance })

@@ -21,9 +21,13 @@ export function useSocialGraphData(sessionCmId: number) {
     queryKey: ['social-graph', sessionCmId, currentYear],
     enabled: !isAuthLoading,
     queryFn: async () => {
-      return graphCacheService.getSessionGraph(sessionCmId, async () => {
-        return socialGraphService.getSessionSocialGraph(sessionCmId, currentYear, fetchWithAuth)
-      })
+      return graphCacheService.getSessionGraph(
+        sessionCmId,
+        async () => {
+          return socialGraphService.getSessionSocialGraph(sessionCmId, currentYear, fetchWithAuth)
+        },
+        currentYear
+      )
     },
   })
 }

@@ -459,7 +459,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         >
           <div
             ref={containerRef}
-            className={clsx(isExpanded ? 'w-full flex-1' : 'h-full w-full')}
+            className={clsx('overflow-hidden', isExpanded ? 'w-full flex-1' : 'h-full w-full')}
           />
 
           {/* Layout Computing Overlay */}

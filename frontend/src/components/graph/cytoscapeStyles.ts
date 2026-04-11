@@ -166,27 +166,17 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         events: 'no',
       },
     },
-    // Compound parent nodes for unit grouping (visible border for unit boundaries)
+    // Compound parent nodes for unit grouping (invisible - BubbleSets provide visual)
     {
       selector: 'node[isUnitParent]',
       style: {
         'background-opacity': 0,
-        'border-width': 2,
-        'border-color': '#aaa',
-        'border-opacity': 0.5,
-        'border-style': 'dashed',
-        label: 'data(label)',
-        'font-size': '16px',
-        'font-weight': 'bold',
-        color: '#666',
-        'text-outline-width': 2,
-        'text-outline-color': '#fff',
-        'text-valign': 'top',
-        'text-halign': 'center',
-        'text-margin-y': -10,
+        'border-width': 0,
+        label: '',
         padding: '30px',
         'min-width': '1px',
         'min-height': '1px',
+        events: 'no',
       } as unknown as Record<string, string>,
     },
     // Compound parent nodes for bunk grouping (invisible - used for layout only)
