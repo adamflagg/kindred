@@ -9,7 +9,7 @@
  * to drill-down.
  */
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 import { formatSourceField } from '../../utils/formatSourceField'
@@ -19,6 +19,9 @@ import {
   getStatusClasses,
   getConfidenceClasses,
 } from '../../utils/dispositionColors'
+
+/** Minimum characters before triggering a search API call. */
+const MIN_SEARCH_LENGTH = 2
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -43,6 +46,40 @@ function parseSort(sort?: string): { field: string; desc: boolean } | null {
   if (sort.startsWith('-')) return { field: sort.slice(1), desc: true }
   if (sort.startsWith('+')) return { field: sort.slice(1), desc: false }
   return { field: sort, desc: false }
+}
+
+/**
+ * Invisible sentinel element that triggers onLoadMore when scrolled into view.
+ * Uses IntersectionObserver for efficient scroll-based pagination.
+ */
+function InfiniteScrollSentinel({
+  onLoadMore,
+  isLoading = false,
+}: {
+  onLoadMore: () => void
+  isLoading?: boolean
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !onLoadMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Only trigger when becoming visible and not already loading
+        if (entries[0]?.isIntersecting && !isLoading) {
+          onLoadMore()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [onLoadMore, isLoading])
+
+  return <div ref={sentinelRef} className="h-1" aria-hidden="true" />
 }
 
 interface PipelineBatchListProps {
@@ -70,17 +107,29 @@ export function PipelineBatchList({
   onLoadMore,
   isLoadingMore,
 }: PipelineBatchListProps) {
-  const [searchText, setSearchText] = useState('')
+  const [searchText, setSearchText] = useState(filters.search ?? '')
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
 
-  /** Debounced search handler — updates filters after 300ms of inactivity. */
+  // Sync search text when filters.search changes externally (e.g., from "View all traces")
+  useEffect(() => {
+    setSearchText(filters.search ?? '')
+  }, [filters.search])
+
+  /** Debounced search handler — requires MIN_SEARCH_LENGTH chars before triggering API call. */
   function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value
     setSearchText(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
+      const trimmed = value.trim()
       const { search: _, ...rest } = filters
-      onFiltersChange(value ? { ...rest, search: value, page: 1 } : { ...rest, page: 1 })
+      // Only search if we have enough characters, or if clearing
+      if (trimmed.length >= MIN_SEARCH_LENGTH) {
+        onFiltersChange({ ...rest, search: trimmed, page: 1 })
+      } else if (filters.search) {
+        // Had a previous search, now clearing it
+        onFiltersChange({ ...rest, page: 1 })
+      }
     }, 300)
   }
 
@@ -138,10 +187,10 @@ export function PipelineBatchList({
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search names..."
+              placeholder={`Search names (${MIN_SEARCH_LENGTH}+ chars)...`}
               value={searchText}
               onChange={handleSearchChange}
-              className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 w-44 rounded-md border py-1 pr-2 pl-7 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
+              className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 w-52 rounded-md border py-1 pr-2 pl-7 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
             />
           </div>
 
@@ -414,28 +463,22 @@ export function PipelineBatchList({
             </div>
           </div>
 
-          {/* Pagination: showing count + load more */}
+          {/* Pagination: showing count + infinite scroll sentinel */}
           <div className="flex items-center justify-between px-3 py-2">
             <span className="text-muted-foreground text-xs">
               Showing {items.length} of {total}
             </span>
-            {items.length < total && (
-              <button
-                onClick={onLoadMore}
-                disabled={isLoadingMore}
-                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/40"
-              >
-                {isLoadingMore ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  'Load more'
-                )}
-              </button>
+            {isLoadingMore && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Loading more...
+              </span>
             )}
           </div>
+          {/* Infinite scroll sentinel — triggers onLoadMore when scrolled into view */}
+          {items.length < total && onLoadMore && (
+            <InfiniteScrollSentinel onLoadMore={onLoadMore} isLoading={isLoadingMore ?? false} />
+          )}
         </>
       )}
     </div>

@@ -421,7 +421,7 @@ describe('PipelineBatchList', () => {
       expect(searchInput).toBeInTheDocument()
     })
 
-    it('calls onFiltersChange with search value on input change', async () => {
+    it('calls onFiltersChange with search value on input change (2+ chars)', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       try {
         const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -439,6 +439,22 @@ describe('PipelineBatchList', () => {
         vi.useRealTimers()
       }
     })
+
+    it('does NOT trigger search for single character input', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+        render(<PipelineBatchList {...defaultProps} />)
+        const searchInput = screen.getByPlaceholderText(/search/i)
+        await user.type(searchInput, 'a')
+        // Advance past the 300ms debounce
+        await vi.advanceTimersByTimeAsync(350)
+        // Should NOT have called onFiltersChange — single char is below threshold
+        expect(defaultProps.onFiltersChange).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   describe('Pagination controls', () => {
@@ -447,22 +463,17 @@ describe('PipelineBatchList', () => {
       expect(screen.getByText(/showing/i)).toBeInTheDocument()
     })
 
-    it('renders a load-more button when more items available', () => {
+    it('renders infinite scroll sentinel when more items available', () => {
       render(<PipelineBatchList {...defaultProps} total={150} />)
-      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument()
-    })
-
-    it('does not render load-more when all items shown', () => {
-      render(<PipelineBatchList {...defaultProps} total={3} />)
+      // Sentinel is a hidden div for IntersectionObserver — no load-more button
       expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
     })
 
-    it('calls onLoadMore when load-more is clicked', async () => {
-      const user = userEvent.setup()
-      const onLoadMore = vi.fn()
-      render(<PipelineBatchList {...defaultProps} total={150} onLoadMore={onLoadMore} />)
-      await user.click(screen.getByRole('button', { name: /load more/i }))
-      expect(onLoadMore).toHaveBeenCalled()
+    it('does not render sentinel when all items shown', () => {
+      const { container } = render(<PipelineBatchList {...defaultProps} total={3} />)
+      // When total equals items.length, no sentinel is rendered
+      const sentinels = container.querySelectorAll('[aria-hidden="true"].h-1')
+      expect(sentinels.length).toBe(0)
     })
   })
 })

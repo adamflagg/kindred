@@ -165,11 +165,13 @@ export function RequestContext({
           <div className="bg-card shadow-lodge-lg mx-4 max-w-sm rounded-xl p-5">
             <div className="mb-3 flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
-              <h3 className="text-foreground text-sm font-semibold">Confirm Reprocess</h3>
+              <h3 className="text-foreground text-sm font-semibold">Reprocess from Source</h3>
             </div>
             <p className="text-muted-foreground mb-4 text-xs">
-              This will replace all processed requests for{' '}
-              <span className="text-foreground font-medium">{requester_info.name}</span>. Continue?
+              Re-run the full pipeline for{' '}
+              <span className="text-foreground font-medium">{requester_info.name}</span>&apos;s
+              original bunk request text. This will regenerate all parsed requests from the source
+              CSV row and write them to production.
             </p>
             <div className="flex justify-end gap-2">
               <button

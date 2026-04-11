@@ -184,7 +184,7 @@ describe('RequestContext', () => {
     )
     await user.click(screen.getByRole('button', { name: /reprocess/i }))
     // Should show confirmation dialog with the camper's name in context
-    expect(screen.getByText(/replace all processed requests/i)).toBeInTheDocument()
+    expect(screen.getByText(/regenerate all parsed requests/i)).toBeInTheDocument()
     // The name appears both in sidebar and dialog; just verify the dialog text exists
     expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
@@ -221,6 +221,6 @@ describe('RequestContext', () => {
     await user.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onReprocess).not.toHaveBeenCalled()
     // Dialog should be dismissed
-    expect(screen.queryByText(/replace all processed requests/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/regenerate all parsed requests/i)).not.toBeInTheDocument()
   })
 })
