@@ -155,12 +155,42 @@ describe('getDispositionSortRank', () => {
 })
 
 describe('formatDispositionReason', () => {
-  it('replaces underscores with spaces', () => {
-    expect(formatDispositionReason('exact_match')).toBe('exact match')
-    expect(formatDispositionReason('target_not_attending')).toBe('target not attending')
+  describe('resolved reasons', () => {
+    it.each([
+      ['exact_match', 'Matched'],
+      ['high_confidence_match', 'Matched'],
+      ['auto_resolved', 'Matched'],
+      ['reciprocal_match', 'Mutual match'],
+      ['cross_session_satisfied', 'Different sessions (neg)'],
+      ['directional_preference', 'Age preference'],
+    ])('maps %s to "%s"', (reason, expected) => {
+      expect(formatDispositionReason(reason)).toBe(expected)
+    })
   })
 
-  it('returns single-word reasons unchanged', () => {
+  describe('pending reasons', () => {
+    it.each([
+      ['needs_review', 'Needs review'],
+      ['target_waitlisted', 'Waitlisted'],
+      ['undirected_preference', 'Unclear age preference'],
+    ])('maps %s to "%s"', (reason, expected) => {
+      expect(formatDispositionReason(reason)).toBe(expected)
+    })
+  })
+
+  describe('declined reasons', () => {
+    it.each([
+      ['session_mismatch', 'Different sessions'],
+      ['target_not_attending', 'Not attending'],
+      ['target_not_enrolled', 'Not enrolled'],
+      ['requester_not_attending', 'Requester not attending'],
+    ])('maps %s to "%s"', (reason, expected) => {
+      expect(formatDispositionReason(reason)).toBe(expected)
+    })
+  })
+
+  it('falls back to underscore replacement for unknown values', () => {
+    expect(formatDispositionReason('some_unknown_reason')).toBe('some unknown reason')
     expect(formatDispositionReason('other')).toBe('other')
   })
 })
