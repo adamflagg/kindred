@@ -4,7 +4,6 @@ Social Graph Builder using NetworkX for advanced friend group detection
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,13 +18,6 @@ from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 logger = get_logger(__name__)
-
-# Create dedicated logger for self-referential detection
-self_ref_logger = logging.getLogger("self_referential")
-self_ref_handler = logging.FileHandler("logs/self_referential_caught.log")
-self_ref_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-self_ref_logger.addHandler(self_ref_handler)
-self_ref_logger.setLevel(logging.INFO)
 
 
 @dataclass
@@ -553,20 +545,11 @@ class SocialGraphBuilder:
                     req_priority = getattr(request, "priority", None)
                     req_confidence = getattr(request, "confidence_score", None)
                     req_status = getattr(request, "status", None)
-                    self_ref_logger.warning(
-                        f"Self-referential request caught in graph builder! "
-                        f"Request ID: {request.id}, "
-                        f"Person CM ID: {requester}, "
-                        f"Year: {year}, "
-                        f"Session CM ID: {session_cm_id}, "
-                        f"Priority: {req_priority}, "
-                        f"Confidence: {req_confidence}, "
-                        f"Original Text: {getattr(request, 'original_text', 'N/A')}, "
-                        f"Status: {req_status}"
-                    )
                     logger.warning(
                         f"Skipping self-referential request: person {requester} "
-                        f"requesting themselves (request ID: {request.id})"
+                        f"requesting themselves (request ID: {request.id}, "
+                        f"priority: {req_priority}, confidence: {req_confidence}, "
+                        f"status: {req_status})"
                     )
                     continue  # Skip adding this edge
 
