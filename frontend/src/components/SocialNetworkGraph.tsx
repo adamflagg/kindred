@@ -74,7 +74,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [isComputingLayout, setIsComputingLayout] = useState(false)
   const [showEdges, setShowEdges] = useState({
     request: true,
-    sibling: false,
+    sibling: true,
   })
   const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
@@ -416,7 +416,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             : 'card-lodge'
         )}
       >
-        <div className="border-border border-b p-4">
+        <div className="border-border relative z-20 border-b p-4">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-foreground flex items-center gap-2 font-semibold">
               <Network className="text-primary h-5 w-5" />

@@ -117,6 +117,47 @@ describe('getUnitForBunk', () => {
       expect(getUnitForBunk('AG-5')).toBe('Eilat')
     })
   })
+
+  describe('sub-bunk variants (trailing letter)', () => {
+    it('maps B-5A to Eilat', () => {
+      expect(getUnitForBunk('B-5A')).toBe('Eilat')
+    })
+
+    it('maps G-3B to Galil', () => {
+      expect(getUnitForBunk('G-3B')).toBe('Galil')
+    })
+
+    it('maps AG-11a to Chalutzim 2 (case-insensitive suffix)', () => {
+      expect(getUnitForBunk('AG-11a')).toBe('Chalutzim 2')
+    })
+
+    it('maps B-1A to Carmel', () => {
+      expect(getUnitForBunk('B-1A')).toBe('Carmel')
+    })
+  })
+
+  describe('prefixed Nitzanim names', () => {
+    it('maps B-Aleph to Nitzanim', () => {
+      expect(getUnitForBunk('B-Aleph')).toBe('Nitzanim')
+    })
+
+    it('maps B-Bet to Nitzanim', () => {
+      expect(getUnitForBunk('B-Bet')).toBe('Nitzanim')
+    })
+
+    it('maps G-Aleph to Nitzanim', () => {
+      expect(getUnitForBunk('G-Aleph')).toBe('Nitzanim')
+    })
+
+    it('maps G-Bet to Nitzanim', () => {
+      expect(getUnitForBunk('G-Bet')).toBe('Nitzanim')
+    })
+
+    it('is case-insensitive for prefixed names', () => {
+      expect(getUnitForBunk('b-aleph')).toBe('Nitzanim')
+      expect(getUnitForBunk('g-bet')).toBe('Nitzanim')
+    })
+  })
 })
 
 describe('UNIT_COLORS', () => {

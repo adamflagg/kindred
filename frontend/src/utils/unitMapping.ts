@@ -38,10 +38,14 @@ const CABIN_NUMBER_TO_UNIT: Record<number, string> = {
 const SPECIAL_NAME_TO_UNIT: Record<string, string> = {
   aleph: 'Nitzanim',
   bet: 'Nitzanim',
+  'b-aleph': 'Nitzanim',
+  'b-bet': 'Nitzanim',
+  'g-aleph': 'Nitzanim',
+  'g-bet': 'Nitzanim',
 }
 
-/** Regex to extract cabin number from gendered bunk names (B-5, G-12, AG-3) */
-const BUNK_NUMBER_REGEX = /^(?:B|G|AG)-(\d+)$/i
+/** Regex to extract cabin number from gendered bunk names (B-5, G-12, AG-3, B-5A) */
+const BUNK_NUMBER_REGEX = /^(?:B|G|AG)-(\d+)[A-Za-z]?$/i
 
 /** Muted colors for unit-level grouping (distinct from bunk bubble colors) */
 export const UNIT_COLORS: Record<string, string> = {

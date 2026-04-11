@@ -184,7 +184,7 @@ export function drawBunkBubbles(
     const labelEl = document.createElement('div')
     labelEl.className = 'bunk-label-popper'
     labelEl.style.position = 'absolute'
-    labelEl.style.zIndex = '10'
+    labelEl.style.zIndex = '1'
     const innerDiv = document.createElement('div')
     Object.assign(innerDiv.style, {
       backgroundColor: bunkColor,
@@ -333,7 +333,7 @@ export function drawBunkBubbles(
       const labelEl = document.createElement('div')
       labelEl.className = 'unit-label-popper'
       labelEl.style.position = 'absolute'
-      labelEl.style.zIndex = '8'
+      labelEl.style.zIndex = '1'
       const innerDiv = document.createElement('div')
       Object.assign(innerDiv.style, {
         color: unitColor,

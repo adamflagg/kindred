@@ -7,22 +7,22 @@ import { FCOSE_LAYOUT_OPTIONS, getLayoutOptions } from './graphLayout'
 
 describe('FCOSE_LAYOUT_OPTIONS', () => {
   it('has expected default values', () => {
-    expect(FCOSE_LAYOUT_OPTIONS.nodeSeparation).toBe(100)
-    expect(FCOSE_LAYOUT_OPTIONS.componentSpacing).toBe(120)
+    expect(FCOSE_LAYOUT_OPTIONS.nodeSeparation).toBe(200)
+    expect(FCOSE_LAYOUT_OPTIONS.componentSpacing).toBe(200)
   })
 })
 
 describe('getLayoutOptions', () => {
   it('returns default spacing when compound nodes exist', () => {
     const options = getLayoutOptions({ hasCompoundNodes: true })
-    expect(options.nodeSeparation).toBe(100)
-    expect(options.componentSpacing).toBe(120)
+    expect(options.nodeSeparation).toBe(200)
+    expect(options.componentSpacing).toBe(200)
   })
 
   it('returns expanded spacing when no compound nodes exist', () => {
     const options = getLayoutOptions({ hasCompoundNodes: false })
-    expect(options.nodeSeparation).toBe(200)
-    expect(options.componentSpacing).toBe(250)
+    expect(options.nodeSeparation).toBe(400)
+    expect(options.componentSpacing).toBe(400)
   })
 
   it('preserves other layout properties', () => {
