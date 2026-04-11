@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { GraduationCap, ChevronDown, ChevronRight, User } from 'lucide-react'
 import type { OriginalBunkData } from '../../hooks/camper/types'
+import { formatSyncDates } from '../../utils/rawDataDates'
 
 interface RawDataPanelProps {
   data: OriginalBunkData
@@ -81,20 +82,33 @@ function RawDataField({
 }) {
   const parsed = staffParsing ? parseStaffAttribution(value) : null
   const displayContent = parsed?.content ?? value
+  const dates = formatSyncDates(updatedAt, processedAt, !!value)
 
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
         <dt className="text-muted-foreground text-sm font-medium">{label}</dt>
         <div className="text-muted-foreground flex items-center gap-3 text-xs">
-          {updatedAt && <span>Synced: {new Date(updatedAt).toLocaleDateString()}</span>}
-          {processedAt ? (
+          {dates.mode === 'same-day' && (
             <span className="text-green-600 dark:text-green-400">
-              Processed: {new Date(processedAt).toLocaleDateString()}
+              Synced & Processed: {dates.syncedDisplay}
             </span>
-          ) : value ? (
-            <span className="text-amber-600 italic dark:text-amber-400">Not processed</span>
-          ) : null}
+          )}
+          {dates.mode === 'different-days' && (
+            <>
+              <span>Synced: {dates.syncedDisplay}</span>
+              <span className="text-green-600 dark:text-green-400">
+                Processed: {dates.processedDisplay}
+              </span>
+            </>
+          )}
+          {dates.mode === 'unprocessed' && (
+            <>
+              <span>Synced: {dates.syncedDisplay}</span>
+              <span className="text-amber-600 italic dark:text-amber-400">Not yet processed</span>
+            </>
+          )}
+          {dates.mode === 'synced-only' && <span>Synced: {dates.syncedDisplay}</span>}
         </div>
       </div>
       <dd className="bg-muted/50 mt-1 rounded-lg p-3 text-sm whitespace-pre-wrap">

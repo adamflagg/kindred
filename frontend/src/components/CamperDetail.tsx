@@ -284,8 +284,8 @@ export default function CamperDetail() {
                 satisfactionLoading={satisfactionLoading}
               />
 
-              {/* Raw Bunking Data */}
-              {originalBunkData && (
+              {/* Raw Bunking Data (admin only) */}
+              {isAdmin && originalBunkData && (
                 <RawDataPanel data={originalBunkData} year={currentYear} defaultExpanded={false} />
               )}
 

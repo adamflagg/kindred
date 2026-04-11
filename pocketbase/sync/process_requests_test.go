@@ -183,7 +183,7 @@ func TestGetProcessRequestsTimeout(t *testing.T) {
 		{
 			name:     "default when env not set",
 			envValue: "",
-			want:     45 * time.Minute,
+			want:     120 * time.Minute,
 		},
 		{
 			name:     "custom value from env",
@@ -193,17 +193,17 @@ func TestGetProcessRequestsTimeout(t *testing.T) {
 		{
 			name:     "invalid value falls back to default",
 			envValue: "not-a-number",
-			want:     45 * time.Minute,
+			want:     120 * time.Minute,
 		},
 		{
 			name:     "zero falls back to default",
 			envValue: "0",
-			want:     45 * time.Minute,
+			want:     120 * time.Minute,
 		},
 		{
 			name:     "negative falls back to default",
 			envValue: "-5",
-			want:     45 * time.Minute,
+			want:     120 * time.Minute,
 		},
 	}
 
