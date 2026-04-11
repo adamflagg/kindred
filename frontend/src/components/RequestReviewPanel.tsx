@@ -34,6 +34,7 @@ import {
   formatDispositionReason,
   CONFIDENCE_AUTO_ACCEPT,
   CONFIDENCE_RESOLVED,
+  MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
@@ -1104,22 +1105,27 @@ export default function RequestReviewPanel({
 
                           {/* Main info: Requester name and type */}
                           <div className="card-main">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedCamperId(String(request.requester_id))
-                              }}
-                              className="hover:text-primary text-left font-medium transition-colors hover:underline"
-                            >
-                              {requester
-                                ? `${requester.first_name || ''} ${requester.last_name || ''}`
-                                : `Person ${request.requester_id}`}
-                              {requester?.grade != null && requester.grade > 0 && (
-                                <span className="text-muted-foreground ml-1 text-xs font-normal">
-                                  ({formatGradeOrdinal(requester.grade)})
-                                </span>
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedCamperId(String(request.requester_id))
+                                }}
+                                className="hover:text-primary min-w-0 text-left font-medium transition-colors hover:underline"
+                              >
+                                {requester
+                                  ? `${requester.first_name || ''} ${requester.last_name || ''}`
+                                  : `Person ${request.requester_id}`}
+                                {requester?.grade != null && requester.grade > 0 && (
+                                  <span className="text-muted-foreground ml-1 text-xs font-normal">
+                                    ({formatGradeOrdinal(requester.grade)})
+                                  </span>
+                                )}
+                              </button>
+                              {request.is_reciprocal && (
+                                <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                               )}
-                            </button>
+                            </div>
                             <div className="text-muted-foreground mt-0.5 text-xs">
                               {getRequestTypeLabel(request.request_type)}
                             </div>
@@ -1336,7 +1342,7 @@ export default function RequestReviewPanel({
                               className="rounded"
                             />
                           </div>
-                          <div className="flex items-center px-4 py-3">
+                          <div className="flex min-w-0 items-center gap-1.5 px-4 py-3">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -1354,6 +1360,9 @@ export default function RequestReviewPanel({
                                 </span>
                               )}
                             </button>
+                            {request.is_reciprocal && (
+                              <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
+                            )}
                           </div>
                           <div
                             className="flex items-center px-4 py-3"
@@ -1418,11 +1427,6 @@ export default function RequestReviewPanel({
                               </span>
                             ) : (
                               <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                            {request.is_reciprocal && (
-                              <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
-                                Recip
-                              </span>
                             )}
                           </div>
                           <div
@@ -1687,11 +1691,6 @@ export default function RequestReviewPanel({
                               {/* Metadata */}
                               <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
                                 <span>Source: {request.source}</span>
-                                {request.is_reciprocal && (
-                                  <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
-                                    Reciprocal
-                                  </span>
-                                )}
                                 {request.disposition_reason && (
                                   <span
                                     className={clsx(
@@ -1771,9 +1770,7 @@ export default function RequestReviewPanel({
                       </span>
                     )
                   )}
-                  <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
-                    Recip
-                  </span>
+                  <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                 </div>
               </div>
               <div>

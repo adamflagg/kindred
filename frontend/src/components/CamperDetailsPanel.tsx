@@ -47,6 +47,7 @@ import CamperLink from './CamperLink'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
+import { MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
 import {
   getStatusIndicator,
   filterEnrollmentsByStatus,
@@ -932,9 +933,7 @@ export default function CamperDetailsPanel({
 
                         {/* Reciprocal badge - only if reciprocal */}
                         {request.is_reciprocal && (
-                          <span className="bg-forest-100 dark:bg-forest-900/50 text-forest-700 dark:text-forest-300 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-                            mutual
-                          </span>
+                          <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                         )}
 
                         {/* Satisfaction - concise icon only */}

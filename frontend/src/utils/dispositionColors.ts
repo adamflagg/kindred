@@ -67,9 +67,33 @@ export function getConfidenceClasses(confidence: number): string {
   return BADGE_COLORS.danger
 }
 
-/** Format a snake_case disposition reason for display. */
+/** Tailwind classes for the "mutual" reciprocal badge. */
+export const MUTUAL_BADGE_CLASSES =
+  'bg-forest-100 dark:bg-forest-900/50 text-forest-700 dark:text-forest-300 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium'
+
+/** Friendly display names for disposition reasons. */
+const DISPOSITION_DISPLAY_NAMES: Record<string, string> = {
+  // Resolved
+  exact_match: 'Matched',
+  high_confidence_match: 'Matched',
+  auto_resolved: 'Matched',
+  reciprocal_match: 'Mutual match',
+  cross_session_satisfied: 'Different sessions (neg)',
+  directional_preference: 'Age preference',
+  // Pending
+  needs_review: 'Needs review',
+  target_waitlisted: 'Waitlisted',
+  undirected_preference: 'Unclear age preference',
+  // Declined
+  session_mismatch: 'Different sessions',
+  target_not_attending: 'Not attending',
+  target_not_enrolled: 'Not enrolled',
+  requester_not_attending: 'Requester not attending',
+}
+
+/** Format a disposition reason for display using friendly names. */
 export function formatDispositionReason(reason: string): string {
-  return reason.replace(/_/g, ' ')
+  return DISPOSITION_DISPLAY_NAMES[reason] ?? reason.replace(/_/g, ' ')
 }
 
 /** Sort rank for disposition reasons: declined (0) < pending (1) < resolved (2) < unknown (3). */
