@@ -193,6 +193,15 @@ describe('formatDispositionReason', () => {
     expect(formatDispositionReason('some_unknown_reason')).toBe('some unknown reason')
     expect(formatDispositionReason('other')).toBe('other')
   })
+
+  it('has an explicit display name for every known disposition reason', () => {
+    const allReasons = [...RESOLVED_REASONS, ...PENDING_REASONS, ...DECLINED_REASONS]
+    for (const reason of allReasons) {
+      const display = formatDispositionReason(reason)
+      const fallback = reason.replace(/_/g, ' ')
+      expect(display, `${reason} is missing from DISPOSITION_DISPLAY_NAMES`).not.toBe(fallback)
+    }
+  })
 })
 
 describe('confidence constants', () => {

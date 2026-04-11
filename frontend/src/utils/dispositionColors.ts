@@ -67,6 +67,10 @@ export function getConfidenceClasses(confidence: number): string {
   return BADGE_COLORS.danger
 }
 
+/** Tailwind classes for the "mutual" reciprocal badge. */
+export const MUTUAL_BADGE_CLASSES =
+  'bg-forest-100 dark:bg-forest-900/50 text-forest-700 dark:text-forest-300 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium'
+
 /** Friendly display names for disposition reasons. */
 const DISPOSITION_DISPLAY_NAMES: Record<string, string> = {
   // Resolved

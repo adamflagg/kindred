@@ -34,6 +34,7 @@ import {
   formatDispositionReason,
   CONFIDENCE_AUTO_ACCEPT,
   CONFIDENCE_RESOLVED,
+  MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
@@ -1122,9 +1123,7 @@ export default function RequestReviewPanel({
                                 )}
                               </button>
                               {request.is_reciprocal && (
-                                <span className="bg-forest-100 dark:bg-forest-900/50 text-forest-700 dark:text-forest-300 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-                                  mutual
-                                </span>
+                                <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                               )}
                             </div>
                             <div className="text-muted-foreground mt-0.5 text-xs">
@@ -1362,9 +1361,7 @@ export default function RequestReviewPanel({
                               )}
                             </button>
                             {request.is_reciprocal && (
-                              <span className="bg-forest-100 dark:bg-forest-900/50 text-forest-700 dark:text-forest-300 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-                                mutual
-                              </span>
+                              <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                             )}
                           </div>
                           <div
@@ -1773,9 +1770,7 @@ export default function RequestReviewPanel({
                       </span>
                     )
                   )}
-                  <span className="bg-forest-100 dark:bg-forest-900/50 text-forest-700 dark:text-forest-300 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-                    mutual
-                  </span>
+                  <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                 </div>
               </div>
               <div>
