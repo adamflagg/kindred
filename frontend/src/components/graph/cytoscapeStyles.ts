@@ -31,9 +31,8 @@ export interface GraphEdgeData {
 /** Edge visibility settings */
 export interface ShowEdgesSettings {
   request: boolean
-  historical: boolean
   sibling: boolean
-  school: boolean
+  [key: string]: boolean
 }
 
 /** Options for getCytoscapeStyles */
@@ -164,7 +163,6 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'text-valign': 'center',
         'text-halign': 'center',
         events: 'no',
-        'z-index': 1000,
       },
     },
     // Compound parent nodes for bunk grouping (invisible - used for layout only)
@@ -249,7 +247,7 @@ export function createGraphElements(
     }
   })
 
-  // Create parent nodes for each bunk
+  // Create parent nodes for each bunk (compound layout grouping only)
   const parentNodes: ParentNodeElement[] = Object.keys(bunkGroups).map((bunkIdStr) => {
     const bunkId = parseInt(bunkIdStr, 10)
     return {

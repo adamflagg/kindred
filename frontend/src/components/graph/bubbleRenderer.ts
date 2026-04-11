@@ -6,6 +6,26 @@ import type { Core, NodeSingular } from 'cytoscape'
 import type { Instance as PopperInstance } from '@popperjs/core'
 import { createPopper } from '@popperjs/core'
 import { getBunkColor } from '../../utils/graphUtils'
+import { getUnitForBunk, UNIT_COLORS } from '../../utils/unitMapping'
+
+const DEFAULT_UNIT_COLOR = '#888888'
+
+/** Shared config for bubbleset path rendering (unit and bunk bubbles) */
+const BASE_BUBBLE_OPTIONS = {
+  maxRoutingIterations: 100,
+  threshold: 2,
+  pixelGroup: 4,
+  includeLabels: false,
+  includeMainLabels: false,
+  virtualEdges: true,
+} as const
+
+/** Shared font styles for unit labels */
+const UNIT_LABEL_FONT = {
+  fontSize: '14px',
+  fontWeight: '700',
+  letterSpacing: '0.5px',
+} as const
 
 export interface BubbleRenderStatus {
   total: number
@@ -26,13 +46,95 @@ export interface BubbleRenderRefs {
 }
 
 /**
+ * Create a Popper-based label positioned above a group of nodes.
+ * Shared by bunk and unit label creation.
+ */
+function createPopperLabel(
+  nodes: NodeSingular[],
+  labelEl: HTMLElement,
+  containerRef: { current: HTMLDivElement | null },
+  poppersRef: { current: PopperRef[] },
+  offsetY: number = 10
+): void {
+  // Find the topmost node in the group to position label above it
+  let topmostNode = nodes[0]
+  if (!topmostNode) return
+
+  let minY = topmostNode.position().y
+  nodes.forEach((node) => {
+    if (node.position().y < minY) {
+      minY = node.position().y
+      topmostNode = node
+    }
+  })
+
+  document.body.appendChild(labelEl)
+
+  // Create virtual element for Popper that tracks the node position
+  const virtualElement = {
+    getBoundingClientRect: () => {
+      const pos = topmostNode?.renderedPosition() ?? { x: 0, y: 0 }
+      const containerRect = containerRef.current?.getBoundingClientRect()
+
+      if (!containerRect) {
+        return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0 }
+      }
+
+      const x = containerRect.left + pos.x
+      const y = containerRect.top + pos.y
+
+      return {
+        top: y,
+        bottom: y,
+        left: x,
+        right: x,
+        width: 0,
+        height: 0,
+        x,
+        y,
+        toJSON: () => ({ top: y, bottom: y, left: x, right: x, width: 0, height: 0 }),
+      } as DOMRect
+    },
+  }
+
+  const popperInstance = createPopper(virtualElement as unknown as Element, labelEl, {
+    placement: 'top',
+    modifiers: [
+      { name: 'offset', options: { offset: [0, offsetY] } },
+      { name: 'preventOverflow', options: { boundary: containerRef.current ?? 'viewport' } },
+      {
+        name: 'hideOutsideContainer',
+        enabled: true,
+        phase: 'main',
+        fn({ state }) {
+          const container = containerRef.current
+          if (!container) return
+          const containerRect = container.getBoundingClientRect()
+          const popperRect = state.elements.popper.getBoundingClientRect()
+          const isOutside =
+            popperRect.bottom < containerRect.top ||
+            popperRect.top > containerRect.bottom ||
+            popperRect.right < containerRect.left ||
+            popperRect.left > containerRect.right
+          state.elements.popper.style.visibility = isOutside ? 'hidden' : 'visible'
+        },
+      },
+    ],
+  })
+
+  poppersRef.current.push({ element: labelEl, instance: popperInstance })
+}
+
+/**
  * Draw bunk bubbles around groups of campers in the same bunk
  */
 export function drawBunkBubbles(
   cy: Core,
   bunksData: Record<number, string> | null | undefined,
   refs: BubbleRenderRefs,
-  updateStatus?: (status: BubbleRenderStatus) => void
+  updateStatus?: (status: BubbleRenderStatus) => void,
+  showUnits: boolean = false,
+  showBunks: boolean = true
 ): void {
   const { bubblesetsRef, pathsRef, poppersRef, containerRef } = refs
 
@@ -72,64 +174,133 @@ export function drawBunkBubbles(
   }
   bubblesetsRef.current = bb
 
-  // Track which bunks successfully render
+  // Typed helpers for untyped bubbleset API
+  const addPath = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath.bind(bb)
+  const updateBubbles = (bb as { update: (force: boolean) => void }).update.bind(bb)
+
+  // Collect unit grouping data (needed for both bubble paths and labels)
+  const unitGroups: Record<string, NodeSingular[]> = {}
+  const unitBunkColors: Record<string, string[]> = {}
+
+  if (showUnits && bunksData) {
+    cy.nodes()
+      .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent') && !n.data('isUnitParent'))
+      .forEach((node) => {
+        const bunkId = node.data('bunk_cm_id')
+        if (!bunkId) return
+        const bunkName = bunksData[bunkId]
+        if (!bunkName) return
+        const unit = getUnitForBunk(bunkName)
+        if (!unit) return
+        const group = (unitGroups[unit] ??= [])
+        group.push(node)
+        // Track unique bunk colors per unit for gradient labels
+        const colors = (unitBunkColors[unit] ??= [])
+        const bunkColor = getBunkColor(parseInt(bunkId, 10))
+        if (!colors.includes(bunkColor)) {
+          colors.push(bunkColor)
+        }
+      })
+  }
+
+  // --- Draw order: unit bubbles FIRST (behind), then bunk bubbles ON TOP ---
+
+  // 1. Add unit bubble paths first so they render behind bunk bubbles
+  if (showUnits && bunksData) {
+    Object.entries(unitGroups).forEach(([unitName, nodes]) => {
+      if (nodes.length === 0) return
+
+      const unitColor = UNIT_COLORS[unitName] ?? DEFAULT_UNIT_COLOR
+      try {
+        const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
+        const nodeCollection = cy.$(nodeIds)
+
+        const path = addPath(nodeCollection, cy.collection(), cy.collection(), {
+          style: {
+            fill: unitColor,
+            fillOpacity: 0.15,
+            stroke: unitColor,
+            strokeOpacity: 0.7,
+            strokeWidth: 3,
+          },
+          // Larger morphBuffer than bunk bubbles (35) so unit bubbles wrap outside them
+          ...BASE_BUBBLE_OPTIONS,
+          morphBuffer: 120,
+        })
+        pathsRef.current.push(path)
+      } catch (error) {
+        console.error(`Error creating unit bubble for ${unitName}:`, error)
+      }
+    })
+  }
+
+  // 2. Add bunk bubble paths on top of unit bubbles (only when showBunks)
   const renderedBunks: string[] = []
   const failedBunks: string[] = []
 
-  // Add paths for each bunk
-  Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
-    if (!nodes || nodes.length === 0) return // Skip empty bunks
-
-    const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
-    const bunkColor = getBunkColor(parseInt(bunkId))
-
-    try {
-      // Create a bubble path for this bunk
-      const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
-      const nodeCollection = cy.$(nodeIds)
-
-      // Add path to the single bubbleset instance
-      let path
-      try {
-        path = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath(
-          nodeCollection, // Nodes to include in the bubble
-          cy.collection(), // Empty edge collection
-          cy.collection(), // No avoid nodes needed - compound layout separates bunks
-          {
-            style: {
-              fill: bunkColor,
-              fillOpacity: 0.25,
-              stroke: bunkColor,
-              strokeOpacity: 0.8,
-              strokeWidth: 3,
-            },
-            maxRoutingIterations: 100,
-            morphBuffer: 35,
-            threshold: 2,
-            pixelGroup: 4,
-            includeLabels: false,
-            includeMainLabels: false,
-            virtualEdges: true,
-          }
-        )
-
-        renderedBunks.push(`${bunkId} (${bunkName})`)
-      } catch (pathError) {
-        console.error(`Error creating path for bunk ${bunkId}:`, pathError)
-        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(pathError)}`)
-        return
-      }
-
-      // Store the path reference with metadata
-      pathsRef.current.push(path)
-    } catch (error) {
-      console.error(`Error creating bubble for bunk ${bunkId}:`, error)
-      failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
+  if (!showBunks) {
+    // Report zero rendered bunks but DON'T return — unit labels and popper
+    // setup still need to run below.
+    if (updateStatus) {
+      updateStatus({
+        total: Object.keys(bunkGroups).length,
+        rendered: 0,
+        failed: 0,
+      })
     }
-  })
+  }
 
-  // Update UI state with rendering status
-  if (updateStatus) {
+  if (showBunks) {
+    Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
+      if (!nodes || nodes.length === 0) return // Skip empty bunks
+
+      const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
+      const bunkColor = getBunkColor(parseInt(bunkId, 10))
+
+      try {
+        // Create a bubble path for this bunk
+        const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
+        const nodeCollection = cy.$(nodeIds)
+
+        // Add path to the single bubbleset instance
+        let path
+        try {
+          path = addPath(
+            nodeCollection, // Nodes to include in the bubble
+            cy.collection(), // Empty edge collection
+            cy.collection(), // No avoid nodes needed - compound layout separates bunks
+            {
+              style: {
+                fill: bunkColor,
+                fillOpacity: 0.25,
+                stroke: bunkColor,
+                strokeOpacity: 0.8,
+                strokeWidth: 3,
+              },
+              ...BASE_BUBBLE_OPTIONS,
+              morphBuffer: 35,
+            }
+          )
+
+          renderedBunks.push(`${bunkId} (${bunkName})`)
+        } catch (pathError) {
+          console.error(`Error creating path for bunk ${bunkId}:`, pathError)
+          failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(pathError)}`)
+          return
+        }
+
+        // Store the path reference with metadata
+        pathsRef.current.push(path)
+      } catch (error) {
+        console.error(`Error creating bubble for bunk ${bunkId}:`, error)
+        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
+      }
+    })
+  }
+
+  // Update UI state with rendering status (only when showBunks — the !showBunks
+  // branch already reported zero rendered above)
+  if (showBunks && updateStatus) {
     updateStatus({
       total: Object.keys(bunkGroups).length,
       rendered: renderedBunks.length,
@@ -137,14 +308,14 @@ export function drawBunkBubbles(
     })
   }
 
-  // Force a render update to ensure bubbles are drawn
+  // Force bubbleset to recompute paths
   try {
-    ;(bb as { update: (force: boolean) => void }).update(true)
+    updateBubbles(true)
   } catch (updateError) {
     console.error('Error calling bb.update(true):', updateError)
   }
 
-  // Force a render update to ensure bubbles are drawn
+  // Force Cytoscape repaint
   if (!cy.destroyed()) {
     cy.forceRender()
   }
@@ -158,112 +329,86 @@ export function drawBunkBubbles(
     poppersRef.current = []
   }
 
-  // Add bunk labels using Popper
-  Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
-    if (!nodes || nodes.length === 0) return
+  // --- Labels: unit labels first (higher offset), then bunk labels ---
 
-    const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
-    const bunkColor = getBunkColor(parseInt(bunkId))
+  // 3. Add unit labels with gradient bunk colors
+  if (showUnits && bunksData) {
+    Object.entries(unitGroups).forEach(([unitName, nodes]) => {
+      if (nodes.length === 0) return
 
-    // Find the topmost node in the bunk to position label above it
-    let topmostNode = nodes[0]
-    if (!topmostNode) return
+      const unitColor = UNIT_COLORS[unitName] ?? DEFAULT_UNIT_COLOR
+      const colors = unitBunkColors[unitName] ?? []
 
-    let minY = topmostNode.position().y
+      const labelEl = document.createElement('div')
+      labelEl.className = 'unit-label-popper'
+      labelEl.style.position = 'absolute'
+      labelEl.style.zIndex = '1'
+      const innerDiv = document.createElement('div')
 
-    nodes.forEach((node) => {
-      if (node.position().y < minY) {
-        minY = node.position().y
-        topmostNode = node
+      // Shared pill styling on the outer label element
+      const labelColor = colors[0] ?? unitColor
+      Object.assign(labelEl.style, {
+        backgroundColor: 'rgba(255,255,255,0.85)',
+        padding: '2px 10px',
+        borderRadius: '10px',
+        whiteSpace: 'nowrap',
+      })
+
+      // Shared font styles, then color-specific overrides
+      Object.assign(innerDiv.style, UNIT_LABEL_FONT)
+
+      if (colors.length >= 2) {
+        const gradientStops = colors.join(', ')
+        Object.assign(labelEl.style, {
+          border: '2px solid transparent',
+          borderImage: `linear-gradient(90deg, ${gradientStops}) 1`,
+        })
+        Object.assign(innerDiv.style, {
+          background: `linear-gradient(90deg, ${gradientStops})`,
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+        })
+      } else {
+        labelEl.style.border = `2px solid ${labelColor}`
+        innerDiv.style.color = labelColor
       }
+      innerDiv.textContent = unitName
+      labelEl.appendChild(innerDiv)
+
+      createPopperLabel(nodes, labelEl, containerRef, poppersRef, 30)
     })
+  }
 
-    // Create label element
-    const labelEl = document.createElement('div')
-    labelEl.className = 'bunk-label-popper'
-    labelEl.style.position = 'absolute'
-    labelEl.style.zIndex = '1000'
-    const innerDiv = document.createElement('div')
-    Object.assign(innerDiv.style, {
-      backgroundColor: bunkColor,
-      color: 'white',
-      padding: '4px 12px',
-      borderRadius: '16px',
-      fontSize: '12px',
-      fontWeight: '600',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-      whiteSpace: 'nowrap',
+  // 4. Add bunk labels using Popper (only when showBunks)
+  if (showBunks) {
+    Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
+      if (!nodes || nodes.length === 0) return
+
+      const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
+      const bunkColor = getBunkColor(parseInt(bunkId, 10))
+
+      const labelEl = document.createElement('div')
+      labelEl.className = 'bunk-label-popper'
+      labelEl.style.position = 'absolute'
+      labelEl.style.zIndex = '1'
+      const innerDiv = document.createElement('div')
+      Object.assign(innerDiv.style, {
+        backgroundColor: bunkColor,
+        color: 'white',
+        padding: '4px 12px',
+        borderRadius: '16px',
+        fontSize: '12px',
+        fontWeight: '600',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        whiteSpace: 'nowrap',
+      })
+      innerDiv.textContent = bunkName
+      labelEl.appendChild(innerDiv)
+
+      createPopperLabel(nodes, labelEl, containerRef, poppersRef, 10)
     })
-    innerDiv.textContent = bunkName
-    labelEl.appendChild(innerDiv)
-    document.body.appendChild(labelEl)
-
-    // Create virtual element for Popper that tracks the node position
-    const virtualElement = {
-      getBoundingClientRect: () => {
-        const pos = topmostNode?.renderedPosition() ?? { x: 0, y: 0 }
-        const containerRect = containerRef.current?.getBoundingClientRect()
-
-        if (!containerRect) {
-          return {
-            top: 0,
-            bottom: 0,
-            left: 0,
-            right: 0,
-            width: 0,
-            height: 0,
-            x: 0,
-            y: 0,
-          }
-        }
-
-        // Convert from Cytoscape coordinates to page coordinates
-        const x = containerRect.left + pos.x
-        const y = containerRect.top + pos.y
-
-        return {
-          top: y,
-          bottom: y,
-          left: x,
-          right: x,
-          width: 0,
-          height: 0,
-          x: x,
-          y: y,
-          toJSON: () => ({
-            top: y,
-            bottom: y,
-            left: x,
-            right: x,
-            width: 0,
-            height: 0,
-          }),
-        } as DOMRect
-      },
-    }
-
-    // Create popper instance
-    const popperInstance = createPopper(virtualElement as unknown as Element, labelEl, {
-      placement: 'top',
-      modifiers: [
-        {
-          name: 'offset',
-          options: {
-            offset: [0, 10],
-          },
-        },
-        {
-          name: 'preventOverflow',
-          options: {
-            boundary: 'viewport',
-          },
-        },
-      ],
-    })
-
-    // Store reference for cleanup
-    poppersRef.current.push({ element: labelEl, instance: popperInstance })
-  })
+  }
 
   // Update popper positions on graph viewport changes
   const updatePoppers = () => {

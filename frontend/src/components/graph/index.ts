@@ -59,6 +59,7 @@ export {
 // Graph layout utilities
 export {
   FCOSE_LAYOUT_OPTIONS,
+  getLayoutOptions,
   prepareWorkerInput,
   setupGraphEventHandlers,
   type SetupEventHandlersOptions,

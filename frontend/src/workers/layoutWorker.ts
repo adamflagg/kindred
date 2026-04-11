@@ -30,6 +30,7 @@ export interface LayoutWorkerInput {
     numIter?: number
     nodeSeparation?: number
     componentSpacing?: number
+    hasCompoundNodes?: boolean
   }
 }
 
@@ -57,6 +58,13 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       },
     })
 
+    // Detect compound nodes if not explicitly passed
+    const hasCompound = options.hasCompoundNodes ?? nodes.some((n) => n.data.parent !== undefined)
+
+    // Use expanded spacing when no compound nodes exist
+    const defaultNodeSep = hasCompound ? 200 : 400
+    const defaultCompSpacing = hasCompound ? 200 : 400
+
     // Run fcose layout with compound node support
     const layout = cy.layout({
       name: 'fcose',
@@ -64,18 +72,18 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       // Performance tuning - can be adjusted via options
       numIter: options.numIter ?? 1000,
       packComponents: true,
-      componentSpacing: options.componentSpacing ?? 120,
-      nodeSeparation: options.nodeSeparation ?? 100,
+      componentSpacing: options.componentSpacing ?? defaultCompSpacing,
+      nodeSeparation: options.nodeSeparation ?? defaultNodeSep,
       uniformNodeDimensions: false,
-      nodeOverlap: 60,
+      nodeOverlap: 120,
       fit: true,
       padding: 80,
       // Compound node options - keeps bunk members grouped
-      gravityCompound: 1.5,
-      gravityRangeCompound: 2.0,
-      nestingFactor: 0.15,
-      tilingPaddingVertical: 15,
-      tilingPaddingHorizontal: 15,
+      gravityCompound: 1.0,
+      gravityRangeCompound: 1.5,
+      nestingFactor: 0.1,
+      tilingPaddingVertical: 30,
+      tilingPaddingHorizontal: 30,
       // Quality settings
       quality: 'default',
       randomize: true,

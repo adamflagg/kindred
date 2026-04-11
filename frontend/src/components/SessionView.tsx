@@ -255,7 +255,8 @@ export default function SessionView() {
         onSessionChange={(sessionCmId) => {
           const selectedSess = allSessionsForLookup.find((s) => s.cm_id.toString() === sessionCmId)
           if (selectedSess) {
-            void navigate(`/summer/session/${sessionNameToUrl(selectedSess.name)}`)
+            // Preserve the current tab when switching sessions
+            void navigate(`/summer/session/${sessionNameToUrl(selectedSess.name)}/${activeTab}`)
           }
         }}
         onRunSolver={handleRunSolver}

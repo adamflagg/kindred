@@ -24,7 +24,7 @@ import {
   createGraphElements,
   prepareWorkerInput,
   setupGraphEventHandlers,
-  FCOSE_LAYOUT_OPTIONS,
+  getLayoutOptions,
   type ViewMode,
   type BubbleRenderStatus,
   type PopperRef,
@@ -67,20 +67,29 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [showLabels, setShowLabels] = useState(true)
-  const [showBubbles, setShowBubbles] = useState(false)
+  const [showBubbles, setShowBubbles] = useState(true)
   const [isExpanded, setIsExpanded] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
   const [showEdges, setShowEdges] = useState({
     request: true,
-    historical: true,
     sibling: true,
-    school: true,
   })
   const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
   const { data: graphData, isLoading } = useSocialGraphData(sessionCmId)
+
+  // Compute the set of grades present in the current data for the legend
+  const existingGrades = useMemo(() => {
+    if (!graphData) return undefined
+    const grades = new Set<number>()
+    for (const node of graphData.nodes) {
+      if (node.grade != null) grades.add(node.grade)
+    }
+    return grades.size > 0 ? grades : undefined
+  }, [graphData])
   const { data: bunksData } = useBunkNames(sessionCmId, !!graphData)
 
   // Suppress unused variable warning - selectedNodeId used for future features
@@ -161,7 +170,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     // Add elements in stages
     const addElementsStaged = async () => {
-      // Add parent (bunk) nodes first - required for compound structure
+      // Add parent (bunk) nodes - required for compound layout grouping
       await stageElements(parentNodes as cytoscape.ElementDefinition[], 20)
 
       // Add child (camper) nodes
@@ -187,9 +196,16 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             // Redraw bubbles after layout if enabled (showBubbles is read from
             // the closure at effect-creation time, which is correct — if bubbles
             // were on when the graph rebuilt, they should be restored).
-            if (showBubbles && bunksData) {
+            if ((showBubbles || showUnits) && bunksData) {
               clearBubbles(bubbleRefs)
-              drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
+              drawBunkBubbles(
+                cy,
+                bunksData,
+                bubbleRefs,
+                setBubbleRenderStatus,
+                showUnits,
+                showBubbles
+              )
             }
           } catch (error) {
             console.error('Error after layout complete:', error)
@@ -247,7 +263,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
       // Fallback layout on main thread (if worker fails)
       function runFallbackLayout() {
-        const layout = cy.layout(FCOSE_LAYOUT_OPTIONS as cytoscape.LayoutOptions)
+        const hasCompound = parentNodes.length > 0
+        const layoutOpts = getLayoutOptions({ hasCompoundNodes: hasCompound })
+        const layout = cy.layout(layoutOpts as cytoscape.LayoutOptions)
         layoutRef.current = layout
         layout.on('layoutstop', onLayoutComplete)
         layout.run()
@@ -295,18 +313,18 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         cy.fit(undefined, 50)
 
         // Redraw bubbles after resize if enabled
-        if (showBubbles && bunksData) {
+        if ((showBubbles || showUnits) && bunksData) {
           // Clear existing bubblesets using the utility
           clearBubbles(bubbleRefs)
-          drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
-        } else if (!showBubbles) {
+          drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits, showBubbles)
+        } else if (!showBubbles && !showUnits) {
           clearBubbles(bubbleRefs)
         }
       }
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [isExpanded, showBubbles, bunksData, bubbleRefs])
+  }, [isExpanded, showBubbles, showUnits, bunksData, bubbleRefs])
 
   // Update edge visibility when filters change
   useEffect(() => {
@@ -399,7 +417,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             : 'card-lodge'
         )}
       >
-        <div className="border-border border-b p-4">
+        <div className="border-border relative z-20 border-b p-4">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-foreground flex items-center gap-2 font-semibold">
               <Network className="text-primary h-5 w-5" />
@@ -425,6 +443,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
             showBubbles={showBubbles}
             onToggleBubbles={setShowBubbles}
+            showUnits={showUnits}
+            onToggleUnits={setShowUnits}
           />
         </div>
 
@@ -440,7 +460,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         >
           <div
             ref={containerRef}
-            className={clsx(isExpanded ? 'w-full flex-1' : 'h-full w-full')}
+            className={clsx('overflow-hidden', isExpanded ? 'w-full flex-1' : 'h-full w-full')}
           />
 
           {/* Layout Computing Overlay */}
@@ -469,7 +489,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             </div>
           )}
 
-          <GraphLegend />
+          <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
         </div>
 
         {showHelp && <GraphHelp />}

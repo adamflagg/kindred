@@ -14,18 +14,46 @@ export const FCOSE_LAYOUT_OPTIONS = {
   name: 'fcose',
   numIter: 1000,
   packComponents: true,
-  componentSpacing: 120,
-  nodeSeparation: 100,
+  componentSpacing: 200,
+  nodeSeparation: 200,
   uniformNodeDimensions: false,
-  nodeOverlap: 60,
+  nodeOverlap: 120,
   fit: true,
   padding: 80,
-  gravityCompound: 1.5,
-  gravityRangeCompound: 2.0,
-  nestingFactor: 0.15,
-  tilingPaddingVertical: 15,
-  tilingPaddingHorizontal: 15,
+  gravityCompound: 1.0,
+  gravityRangeCompound: 1.5,
+  nestingFactor: 0.1,
+  tilingPaddingVertical: 30,
+  tilingPaddingHorizontal: 30,
 } as const
+
+/** Expanded spacing for graphs without compound (bunk) parent nodes */
+const NO_COMPOUND_OVERRIDES = {
+  nodeSeparation: 400,
+  componentSpacing: 400,
+} as const
+
+export interface LayoutOptionsParams {
+  hasCompoundNodes: boolean
+}
+
+/**
+ * Get layout options with spacing adjusted for compound vs non-compound graphs.
+ * When no bunk parent nodes exist, nodes clump too tightly with default spacing.
+ */
+/** Widened type so overrides don't clash with `as const` literal types */
+type FcoseLayoutConfig = {
+  [K in keyof typeof FCOSE_LAYOUT_OPTIONS]: K extends 'nodeSeparation' | 'componentSpacing'
+    ? number
+    : (typeof FCOSE_LAYOUT_OPTIONS)[K]
+}
+
+export function getLayoutOptions(params: LayoutOptionsParams): FcoseLayoutConfig {
+  if (params.hasCompoundNodes) {
+    return FCOSE_LAYOUT_OPTIONS
+  }
+  return { ...FCOSE_LAYOUT_OPTIONS, ...NO_COMPOUND_OVERRIDES }
+}
 
 /**
  * Prepare graph elements for the layout worker
@@ -65,8 +93,8 @@ export function prepareWorkerInput(
     edges: workerEdges as LayoutWorkerInput['edges'],
     options: {
       numIter: 1000,
-      componentSpacing: 120,
-      nodeSeparation: 100,
+      componentSpacing: 200,
+      nodeSeparation: 200,
     },
   }
 }
