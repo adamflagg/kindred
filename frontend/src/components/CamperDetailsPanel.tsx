@@ -119,9 +119,11 @@ export default function CamperDetailsPanel({
   embedded = false,
   requestClose = false,
 }: CamperDetailsPanelProps) {
-  // Animation phase derived from requestClose prop - 'exiting' when close requested, 'entering' otherwise
-  // This avoids the anti-pattern of setting state in useEffect based on prop changes
-  const animationPhase: AnimationPhase = requestClose ? 'exiting' : 'entering'
+  // Internal close state enables slide-out animation before unmount.
+  // handleClose sets this to true, which triggers the exit animation.
+  // When the animation finishes, handleAnimationEnd calls the real onClose() to unmount.
+  const [isClosing, setIsClosing] = useState(false)
+  const animationPhase: AnimationPhase = requestClose || isClosing ? 'exiting' : 'entering'
   const currentYear = useYear()
 
   // Collapsible section states
@@ -139,9 +141,14 @@ export default function CamperDetailsPanel({
   // Handle animation completion - call onClose when exit animation finishes
   const handleAnimationEnd = useCallback(
     (e: React.AnimationEvent) => {
-      // Only respond to the exit animation completing on the panel itself
-      if (animationPhase === 'exiting' && e.animationName.includes('Out')) {
-        onClose()
+      // Only respond to exit animations completing on the panel itself.
+      // Check both animationPhase and animationName for safety,
+      // but allow animationName to be empty (JSDOM/test environments).
+      if (animationPhase === 'exiting') {
+        const name = e.animationName || ''
+        if (!name || name.includes('Out')) {
+          onClose()
+        }
       }
     },
     [animationPhase, onClose]
@@ -464,10 +471,14 @@ export default function CamperDetailsPanel({
     enabled: !!camper?.person_cm_id,
   })
 
-  // Trigger close - for embedded mode, call directly; for slide panel, animation handles it
+  // Trigger close - for embedded mode, call directly; for slide panel, start exit animation
   const handleClose = useCallback(() => {
-    onClose()
-  }, [onClose])
+    if (embedded) {
+      onClose()
+    } else {
+      setIsClosing(true)
+    }
+  }, [embedded, onClose])
 
   // Helper: get location from person's discrete address columns
   const location = getLocationDisplay(
@@ -678,9 +689,22 @@ export default function CamperDetailsPanel({
         <div className="spinner-lodge"></div>
       </div>
     ) : (
-      <div className="bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] flex w-[28rem] items-center justify-center border-l">
-        <div className="spinner-lodge"></div>
-      </div>
+      <>
+        <div
+          data-testid="panel-backdrop"
+          className="fixed inset-0 z-[59]"
+          onClick={handleClose}
+          aria-hidden="true"
+        />
+        <div
+          className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] flex w-[28rem] items-center justify-center border-l ${
+            animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
+          }`}
+          onAnimationEnd={handleAnimationEnd}
+        >
+          <div className="spinner-lodge"></div>
+        </div>
+      </>
     )
   }
 
@@ -691,9 +715,22 @@ export default function CamperDetailsPanel({
         <div className="text-muted-foreground text-center">Camper not found</div>
       </div>
     ) : (
-      <div className="bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] w-[28rem] border-l p-6">
-        <div className="text-muted-foreground text-center">Camper not found</div>
-      </div>
+      <>
+        <div
+          data-testid="panel-backdrop"
+          className="fixed inset-0 z-[59]"
+          onClick={handleClose}
+          aria-hidden="true"
+        />
+        <div
+          className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] w-[28rem] border-l p-6 ${
+            animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
+          }`}
+          onAnimationEnd={handleAnimationEnd}
+        >
+          <div className="text-muted-foreground text-center">Camper not found</div>
+        </div>
+      </>
     )
   }
 
@@ -1285,96 +1322,105 @@ export default function CamperDetailsPanel({
     )
   }
 
-  // Slide-in panel (no backdrop - workspace stays active)
+  // Slide-in panel with semi-transparent backdrop for click-outside close
   // Uses CSS animations instead of transitions for React Compiler compatibility
   return (
-    <div
-      data-panel="camper-details"
-      className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] w-[28rem] border-l ${
-        animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
-      }`}
-      onAnimationEnd={handleAnimationEnd}
-    >
-      <div className="flex h-full flex-col">
-        {/* Premium Header */}
-        <div className="from-forest-700 via-forest-800 to-forest-900 flex-shrink-0 bg-gradient-to-br text-white">
-          <div className="p-5">
-            <div className="flex items-start gap-4">
-              {/* Avatar */}
-              <div
-                className={`h-16 w-16 rounded-2xl ${getAvatarColor(camper.gender)} flex flex-shrink-0 items-center justify-center shadow-lg ring-4 ring-white/20`}
-              >
-                <span className="font-display text-2xl font-bold text-white">
-                  {getInitial(camper.first_name)}
-                </span>
-              </div>
+    <>
+      {/* Backdrop - click to close panel */}
+      <div
+        data-testid="panel-backdrop"
+        className="fixed inset-0 z-[59]"
+        onClick={handleClose}
+        aria-hidden="true"
+      />
+      <div
+        data-panel="camper-details"
+        className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] w-[28rem] border-l ${
+          animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
+        }`}
+        onAnimationEnd={handleAnimationEnd}
+      >
+        <div className="flex h-full flex-col">
+          {/* Premium Header */}
+          <div className="from-forest-700 via-forest-800 to-forest-900 flex-shrink-0 bg-gradient-to-br text-white">
+            <div className="p-5">
+              <div className="flex items-start gap-4">
+                {/* Avatar */}
+                <div
+                  className={`h-16 w-16 rounded-2xl ${getAvatarColor(camper.gender)} flex flex-shrink-0 items-center justify-center shadow-lg ring-4 ring-white/20`}
+                >
+                  <span className="font-display text-2xl font-bold text-white">
+                    {getInitial(camper.first_name)}
+                  </span>
+                </div>
 
-              {/* Name and info */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-bold tracking-tight">
-                      {camper.first_name}
-                      {camper.preferred_name && camper.preferred_name !== camper.first_name && (
-                        <span className="font-normal text-white/90 italic">
-                          {' '}
-                          "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
-                        </span>
-                      )}
-                      {(!camper.preferred_name || camper.preferred_name === camper.first_name) &&
-                        ' '}
-                      {camper.last_name}
-                    </h2>
-                    <StatusBadge status={camper.attendee_status} />
+                {/* Name and info */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-bold tracking-tight">
+                        {camper.first_name}
+                        {camper.preferred_name && camper.preferred_name !== camper.first_name && (
+                          <span className="font-normal text-white/90 italic">
+                            {' '}
+                            "{camper.preferred_name.replace(/^["']|["']$/g, '')}"{' '}
+                          </span>
+                        )}
+                        {(!camper.preferred_name || camper.preferred_name === camper.first_name) &&
+                          ' '}
+                        {camper.last_name}
+                      </h2>
+                      <StatusBadge status={camper.attendee_status} />
+                    </div>
+                    <button
+                      onClick={handleClose}
+                      className="-mr-1 rounded-xl p-2 transition-colors hover:bg-white/10"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={handleClose}
-                    className="-mr-1 rounded-xl p-2 transition-colors hover:bg-white/10"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
 
-                <div className="text-forest-100 mt-1 flex items-center gap-2 text-sm">
-                  <span>
-                    {camper.gender === 'M'
-                      ? 'Male'
-                      : camper.gender === 'F'
-                        ? 'Female'
-                        : 'Non-Binary'}
-                  </span>
-                  <span>•</span>
-                  <span>{camper.pronouns ?? 'No Preference'}</span>
-                  <span>•</span>
-                  <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
-                </div>
-                <div className="text-forest-100 mt-0.5 flex items-center gap-2 text-sm">
-                  <span>
-                    {formatGradeOrdinal(camper.grade)}
-                    {camper.school ? ` @ ${camper.school}` : ''}
-                  </span>
-                </div>
+                  <div className="text-forest-100 mt-1 flex items-center gap-2 text-sm">
+                    <span>
+                      {camper.gender === 'M'
+                        ? 'Male'
+                        : camper.gender === 'F'
+                          ? 'Female'
+                          : 'Non-Binary'}
+                    </span>
+                    <span>•</span>
+                    <span>{camper.pronouns ?? 'No Preference'}</span>
+                    <span>•</span>
+                    <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
+                  </div>
+                  <div className="text-forest-100 mt-0.5 flex items-center gap-2 text-sm">
+                    <span>
+                      {formatGradeOrdinal(camper.grade)}
+                      {camper.school ? ` @ ${camper.school}` : ''}
+                    </span>
+                  </div>
 
-                <div className="mt-2">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getGenderBadgeClasses(
-                      getGenderCategory(getGenderIdentityDisplay(camper))
-                    )} bg-opacity-20 backdrop-blur-sm`}
-                  >
-                    {getGenderIdentityDisplay(camper)}
-                  </span>
+                  <div className="mt-2">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getGenderBadgeClasses(
+                        getGenderCategory(getGenderIdentityDisplay(camper))
+                      )} bg-opacity-20 backdrop-blur-sm`}
+                    >
+                      {getGenderIdentityDisplay(camper)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto">{renderContent()}</div>
+
+          {/* Footer */}
+          {renderFooter()}
         </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">{renderContent()}</div>
-
-        {/* Footer */}
-        {renderFooter()}
       </div>
-    </div>
+    </>
   )
 }

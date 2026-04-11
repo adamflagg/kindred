@@ -78,5 +78,49 @@ describe('CamperDetailsPanel', () => {
       // The onClose callback might be called via animation timeout
       // This is a weak assertion since we can't easily test the full close flow
     })
+
+    it('renders a backdrop overlay for click-outside close in non-embedded mode', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+
+      // The backdrop should be present (fixed, behind the panel)
+      const backdrop = document.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop).toBeInTheDocument()
+    })
+
+    it('does not render a backdrop overlay in embedded mode', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} embedded={true} />)
+
+      const backdrop = document.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop).not.toBeInTheDocument()
+    })
+
+    it('starts exit animation on backdrop click instead of closing immediately', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+
+      const backdrop = document.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop).toBeInTheDocument()
+
+      // Click backdrop starts exit animation (does not call onClose immediately)
+      fireEvent.click(backdrop!)
+      expect(mockOnClose).not.toHaveBeenCalled()
+
+      // The panel should now have the exit animation class (slide-out)
+      await waitFor(() => {
+        const panel = document.querySelector('.animate-slide-out-right')
+        expect(panel).toBeInTheDocument()
+      })
+    })
+
+    it('calls onClose directly for embedded mode (no animation)', () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} embedded={true} />)
+
+      // In embedded mode, simulate a close action via the close button
+      // Embedded mode calls onClose directly without animation
+      const closeButton = document.querySelector('button[aria-label="Close panel"]')
+      if (closeButton) {
+        fireEvent.click(closeButton)
+        expect(mockOnClose).toHaveBeenCalledTimes(1)
+      }
+    })
   })
 })

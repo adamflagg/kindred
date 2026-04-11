@@ -344,6 +344,9 @@ export default function SessionView() {
                     : []
                 }
                 year={currentYear}
+                sessionName={
+                  allSessionsForLookup.find((s) => s.cm_id === parseInt(selectedSession, 10))?.name
+                }
               />
             ) : (
               <div className="text-muted-foreground text-center">Loading session data...</div>
