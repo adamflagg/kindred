@@ -21,6 +21,8 @@ interface EditableRequestTargetProps {
   requestedPersonName?: string
   onViewCamper?: (personCmId: number) => void
   personMap?: Map<number, PersonsResponse>
+  /** Session display name shown in the lookup banner (e.g. "Session 2"). Passed from RequestReviewPanel. */
+  sessionName?: string
 }
 
 interface Camper {
@@ -62,6 +64,7 @@ export default function EditableRequestTarget({
   requestedPersonName,
   onViewCamper,
   personMap,
+  sessionName,
 }: EditableRequestTargetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -365,7 +368,7 @@ export default function EditableRequestTarget({
                 <Quote className="text-forest-600 dark:text-forest-400 mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <span className="text-forest-700 dark:text-forest-300 text-xs font-medium">
-                    Looking for:
+                    {sessionName ? `Looking in ${sessionName} for:` : 'Looking for:'}
                   </span>
                   <p
                     className="text-forest-800 dark:text-forest-200 truncate text-sm italic"

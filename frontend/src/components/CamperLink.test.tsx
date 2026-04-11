@@ -20,6 +20,16 @@ describe('CamperLink', () => {
       expect(link).toHaveAttribute('href', '/camper/12345')
     })
 
+    it('opens link in a new tab', () => {
+      renderWithRouter(
+        <CamperLink personCmId={12345} displayName="Sarah Johnson" isConfirmed={true} />
+      )
+
+      const link = screen.getByRole('link', { name: /Sarah Johnson/i })
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    })
+
     it('includes external link icon', () => {
       renderWithRouter(
         <CamperLink personCmId={12345} displayName="Sarah Johnson" isConfirmed={true} />

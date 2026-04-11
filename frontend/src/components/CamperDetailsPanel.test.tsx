@@ -78,5 +78,30 @@ describe('CamperDetailsPanel', () => {
       // The onClose callback might be called via animation timeout
       // This is a weak assertion since we can't easily test the full close flow
     })
+
+    it('renders a backdrop overlay for click-outside close in non-embedded mode', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+
+      // The backdrop should be present (fixed, behind the panel)
+      const backdrop = document.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop).toBeInTheDocument()
+    })
+
+    it('does not render a backdrop overlay in embedded mode', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} embedded={true} />)
+
+      const backdrop = document.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop).not.toBeInTheDocument()
+    })
+
+    it('calls onClose when backdrop is clicked', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+
+      const backdrop = document.querySelector('[data-testid="panel-backdrop"]')
+      if (backdrop) {
+        fireEvent.click(backdrop)
+        expect(mockOnClose).toHaveBeenCalledTimes(1)
+      }
+    })
   })
 })
