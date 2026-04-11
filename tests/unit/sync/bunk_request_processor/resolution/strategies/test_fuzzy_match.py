@@ -600,5 +600,108 @@ class TestFuzzyMatchDefaultOverrideMechanism:
         assert result == pytest.approx(0.80)
 
 
+class TestJaroWinklerShortNameSafety:
+    """Tests for Jaro-Winkler false match prevention on short names.
+
+    Issue #2 (Mieke Baskett investigation): Short names (4-5 chars) produce
+    disproportionately high JW scores for unrelated names. "mieke" vs "mike"
+    scores 0.88, which passes the 0.85 threshold despite being completely
+    different names (Dutch female vs English male).
+
+    The fix: Apply a stricter JW threshold for short first names (<=5 chars)
+    to prevent false matches like mieke->mike, jake->jane, dale->dave.
+    """
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        return FuzzyMatchStrategy(person_repo, attendee_repo)
+
+    def test_mieke_does_not_match_mike(self, strategy: FuzzyMatchStrategy, mock_repositories):
+        """Mieke Baskett should NOT match Mike Baskett (different names, different genders)."""
+        person_repo, attendee_repo = mock_repositories
+
+        mike = Person(cm_id=99001, first_name="Mike", last_name="Baskett")
+
+        person_repo.find_by_name.return_value = []
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve_with_context(
+            name="Mieke Baskett",
+            requester_cm_id=99002,
+            session_cm_id=1000001,
+            year=2025,
+            candidates=[mike],
+            attendee_info={},
+            all_persons=[mike],
+        )
+
+        # Should NOT resolve to Mike
+        if result.is_resolved:
+            assert result.person.cm_id != mike.cm_id, (
+                "Mieke Baskett should NOT match Mike Baskett - they are different names (Dutch female vs English male)"
+            )
+
+    def test_jake_does_not_match_jane(self, strategy: FuzzyMatchStrategy, mock_repositories):
+        """Jake should NOT match Jane (JW 0.87 for short names)."""
+        person_repo, attendee_repo = mock_repositories
+
+        jane = Person(cm_id=99003, first_name="Jane", last_name="Davis")
+
+        person_repo.find_by_name.return_value = []
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve_with_context(
+            name="Jake Davis",
+            requester_cm_id=99004,
+            session_cm_id=1000001,
+            year=2025,
+            candidates=[jane],
+            attendee_info={},
+            all_persons=[jane],
+        )
+
+        if result.is_resolved:
+            assert result.person.cm_id != jane.cm_id, (
+                "Jake Davis should NOT match Jane Davis - completely different first names"
+            )
+
+    def test_legitimate_typo_still_matches(self, strategy: FuzzyMatchStrategy, mock_repositories):
+        """Legitimate typos like Kaitlyn->Caitlyn should still match (JW > 0.92)."""
+        person_repo, attendee_repo = mock_repositories
+
+        caitlyn = Person(cm_id=99005, first_name="Caitlyn", last_name="Marsh")
+
+        person_repo.find_by_name.return_value = []
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve_with_context(
+            name="Kaitlyn Marsh",
+            requester_cm_id=99006,
+            session_cm_id=1000001,
+            year=2025,
+            candidates=[caitlyn],
+            attendee_info={},
+            all_persons=[caitlyn],
+        )
+
+        # This is a legitimate typo/variant - should still resolve
+        assert result.is_resolved or result.is_ambiguous, (
+            "Kaitlyn -> Caitlyn is a legitimate variant and should still match"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

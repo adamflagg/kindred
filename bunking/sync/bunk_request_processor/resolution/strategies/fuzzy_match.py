@@ -28,6 +28,13 @@ DEFAULT_SAME_SESSION_BOOST = 0.0  # Fuzzy match maintains base confidence for sa
 DEFAULT_DIFFERENT_SESSION_PENALTY = -0.10
 DEFAULT_NOT_ENROLLED_PENALTY = -0.05  # Person not in attendee list for this year
 DEFAULT_JARO_WINKLER_THRESHOLD = 0.85
+# Stricter JW threshold for short first names (<=5 chars). Short names produce
+# disproportionately high JW scores for unrelated names (e.g., mieke->mike 0.88,
+# jake->jane 0.87). Nickname/spelling variation dicts catch legitimate short-name
+# variants before JW runs; this threshold prevents false matches in the fallback.
+DEFAULT_JARO_WINKLER_SHORT_NAME_THRESHOLD = 0.92
+# Max length for "short name" stricter threshold
+SHORT_NAME_MAX_LENGTH = 5
 
 
 class FuzzyMatchStrategy(BaseMatchStrategy):
@@ -531,6 +538,18 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
 
         jw_threshold = float(self._get_confidence("jaro_winkler_threshold", DEFAULT_JARO_WINKLER_THRESHOLD))
         first_lower = parsed.first.lower()
+
+        # Use stricter threshold for short first names to prevent false matches
+        # (e.g., mieke->mike 0.88, jake->jane 0.87). Nickname/spelling dicts
+        # catch legitimate short-name variants before this JW fallback runs.
+        if len(first_lower) <= SHORT_NAME_MAX_LENGTH:
+            jw_threshold = max(
+                jw_threshold,
+                float(
+                    self._get_confidence("jaro_winkler_short_name_threshold", DEFAULT_JARO_WINKLER_SHORT_NAME_THRESHOLD)
+                ),
+            )
+
         matches = []
 
         for c in jw_pool:

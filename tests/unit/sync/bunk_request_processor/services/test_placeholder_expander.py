@@ -237,18 +237,18 @@ class TestPassThrough:
 
 
 class TestPlaceholderExpansion:
-    """Tests for LAST_YEAR_BUNKMATES placeholder expansion"""
+    """Tests for LAST_YEAR_BUNKMATES placeholder handling (auto-expand disabled)"""
 
     @pytest.mark.asyncio
-    async def test_expands_placeholder_to_individual_requests(
+    async def test_bunkmates_creates_single_staff_review_request(
         self,
         expander: PlaceholderExpander,
         mock_attendee_repo: Mock,
         mock_person_repo: Mock,
         resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
-        """Should expand placeholder into individual bunk_with requests"""
-        # Setup: 2 returning bunkmates
+        """LAST_YEAR_BUNKMATES should create a single PENDING request, not expand to individuals"""
+        # Setup: 2 returning bunkmates (should NOT be expanded)
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
             "cm_ids": [22222, 33333],
             "prior_bunk": "B-3",
@@ -264,34 +264,28 @@ class TestPlaceholderExpansion:
         input_results = [(parse_result, [resolution])]
         output = await expander.expand(input_results, resolver_registry)
 
-        # Should have 2 expanded results (one per bunkmate)
-        assert len(output) == 2
+        # Should have 1 result (single PENDING for staff review), not 2 individual expanded ones
+        assert len(output) == 1
 
-        # First expanded request
-        first_parse, first_resolutions = output[0]
-        assert first_parse.is_valid
-        assert len(first_parse.parsed_requests) == 1
-        assert first_parse.parsed_requests[0].target_name == "Alex Jones"
-        assert first_parse.parsed_requests[0].request_type == RequestType.BUNK_WITH
-        assert first_resolutions[0].person is not None
-        assert first_resolutions[0].person.cm_id == 22222
-        assert first_resolutions[0].confidence == 0.90
-
-        # Second expanded request
-        second_parse, second_resolutions = output[1]
-        assert second_parse.parsed_requests[0].target_name == "Jordan Lee"
-        assert second_resolutions[0].person is not None
-        assert second_resolutions[0].person.cm_id == 33333
+        result_parse, result_resolutions = output[0]
+        assert result_parse.is_valid
+        assert len(result_parse.parsed_requests) == 1
+        # Original request preserved (not expanded to individual names)
+        assert result_parse.parsed_requests[0].raw_text == "keep with last year's bunk"
+        # Resolution is unresolved, flagged for staff review
+        assert result_resolutions[0].person is None
+        assert result_resolutions[0].method == "auto_expand_disabled"
+        assert result_resolutions[0].metadata.get("needs_staff_review") is True
 
     @pytest.mark.asyncio
-    async def test_expansion_preserves_metadata(
+    async def test_bunkmates_staff_review_has_group_kind_metadata(
         self,
         expander: PlaceholderExpander,
         mock_attendee_repo: Mock,
         mock_person_repo: Mock,
         resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
-        """Expanded requests should have proper metadata"""
+        """Staff review request should include group_kind metadata for context"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
             "cm_ids": [22222],
             "prior_bunk": "G-5",
@@ -308,17 +302,16 @@ class TestPlaceholderExpansion:
         assert len(output) == 1
         first_parse, first_resolutions = output[0]
 
-        # Check parsed request metadata
-        parsed_req = first_parse.parsed_requests[0]
-        assert parsed_req.metadata.get("expanded_from") == "last_year_bunkmates"
-        assert parsed_req.metadata.get("prior_bunk") == "G-5"
-        assert parsed_req.metadata.get("prior_year") == 2024
+        # Check parse result metadata indicates auto-expand was disabled
+        assert first_parse.metadata.get("auto_expand_disabled") is True
+        assert first_parse.metadata.get("group_kind") == "last_year_bunkmates"
 
         # Check resolution metadata
         res = first_resolutions[0]
         assert res.metadata is not None
-        assert res.metadata.get("expanded_from") == "last_year_bunkmates"
-        assert res.method == "last_year_bunkmates_expansion"
+        assert res.metadata.get("group_kind") == "last_year_bunkmates"
+        assert res.metadata.get("needs_staff_review") is True
+        assert res.method == "auto_expand_disabled"
 
 
 # ============================================================================
@@ -327,13 +320,17 @@ class TestPlaceholderExpansion:
 
 
 class TestExpansionFailures:
-    """Tests for placeholder expansion failure cases"""
+    """Tests for LAST_YEAR_BUNKMATES handling with auto-expand disabled.
+
+    Since auto-expand is disabled, the BunkmateResolver is never called.
+    All LAST_YEAR_BUNKMATES references produce a single staff review request.
+    """
 
     @pytest.mark.asyncio
-    async def test_no_prior_year_data(
+    async def test_no_prior_year_data_creates_staff_review(
         self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
-        """Should handle when requester has no prior year assignment"""
+        """Should create staff review regardless of prior year data availability"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = None
 
         parse_result = _create_parse_result()
@@ -341,18 +338,18 @@ class TestExpansionFailures:
 
         output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
-        # Should return one result with failed expansion
+        # Should return one result flagged for staff review
         assert len(output) == 1
         _, resolutions = output[0]
-        assert resolutions[0].method == "placeholder_expansion_failed"
+        assert resolutions[0].method == "auto_expand_disabled"
         assert resolutions[0].metadata is not None
-        assert "expansion_failure_reason" in resolutions[0].metadata
+        assert resolutions[0].metadata.get("needs_staff_review") is True
 
     @pytest.mark.asyncio
-    async def test_no_returning_bunkmates(
+    async def test_no_returning_bunkmates_creates_staff_review(
         self, expander: PlaceholderExpander, mock_attendee_repo: Mock, resolver_registry: dict[GroupKind, GroupResolver]
     ) -> None:
-        """Should handle when no bunkmates are returning this year"""
+        """Even with empty bunkmate data, should create staff review (resolver not called)"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
             "cm_ids": [],
             "prior_bunk": "B-3",
@@ -366,35 +363,36 @@ class TestExpansionFailures:
 
         assert len(output) == 1
         _, resolutions = output[0]
-        assert resolutions[0].method == "placeholder_expansion_failed"
+        assert resolutions[0].method == "auto_expand_disabled"
 
     @pytest.mark.asyncio
-    async def test_bunkmate_not_found_in_person_repo(
+    async def test_resolver_never_called_when_disabled(
         self,
         expander: PlaceholderExpander,
         mock_attendee_repo: Mock,
         mock_person_repo: Mock,
         resolver_registry: dict[GroupKind, GroupResolver],
     ) -> None:
-        """Should skip bunkmates that can't be found in person repo"""
+        """BunkmateResolver should never be invoked when auto-expand is disabled"""
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
-            "cm_ids": [22222, 33333],  # Two bunkmates
+            "cm_ids": [22222, 33333],
             "prior_bunk": "B-3",
             "prior_year": 2024,
         }
-        # Only first bunkmate found in bulk lookup
         alex = _create_person(cm_id=22222, first_name="Alex", last_name="Jones")
-        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: alex}  # 33333 missing
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: alex}
 
         parse_result = _create_parse_result()
         resolution = _create_placeholder_resolution()
 
         output = await expander.expand([(parse_result, [resolution])], resolver_registry)
 
-        # Should only have 1 expanded result (the found bunkmate)
+        # Single staff review result
         assert len(output) == 1
-        first_parse, _ = output[0]
-        assert first_parse.parsed_requests[0].target_name == "Alex Jones"
+        _, resolutions = output[0]
+        assert resolutions[0].method == "auto_expand_disabled"
+        # Resolver should not have been called
+        mock_attendee_repo.find_prior_year_bunkmates.assert_not_called()
 
 
 # ============================================================================
@@ -441,17 +439,17 @@ class TestMixedResults:
 
         output = await expander.expand(input_results, resolver_registry)
 
-        # Should have 2 results: 1 regular pass-through + 1 expanded
+        # Should have 2 results: 1 regular pass-through + 1 staff review (not expanded)
         assert len(output) == 2
 
         # First should be regular (passed through)
         assert output[0] == (regular_parse, [regular_resolution])
 
-        # Second should be expanded
-        expanded_parse, expanded_res = output[1]
-        assert expanded_parse.parsed_requests[0].target_name == "Sarah Smith"
-        assert expanded_res[0].person is not None
-        assert expanded_res[0].person.cm_id == 22222
+        # Second should be a staff review request (auto-expand disabled)
+        review_parse, review_res = output[1]
+        assert review_res[0].method == "auto_expand_disabled"
+        assert review_res[0].person is None
+        assert review_res[0].metadata.get("needs_staff_review") is True
 
 
 # ============================================================================
@@ -662,3 +660,107 @@ class TestSiblingPlaceholderExpansion:
         assert second_parse.parsed_requests[0].target_name == "Bob Smith"
         assert second_res[0].person is not None
         assert second_res[0].person.cm_id == 222
+
+
+class TestHistoricalAutoExpandDisabled:
+    """Tests that vague historical references (last_year_bunkmates) do NOT expand
+    into individual requests. Instead, a single PENDING request is created for staff review.
+    Named references like 'Mike from last year' should still resolve through resolution strategies."""
+
+    @pytest.mark.asyncio
+    async def test_last_year_bunkmates_does_not_expand_to_individual_requests(
+        self,
+        expander: PlaceholderExpander,
+        mock_attendee_repo: Mock,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
+    ) -> None:
+        """LAST_YEAR_BUNKMATES group reference should NOT expand into individual requests."""
+        # Even though bunkmates exist in the database, the expander should NOT expand them
+        mock_attendee_repo.find_prior_year_bunkmates.return_value = {
+            "cm_ids": [22222, 33333, 44444],
+            "prior_bunk": "B-3",
+            "prior_year": 2024,
+        }
+        alex = _create_person(cm_id=22222, first_name="Alex", last_name="Jones")
+        jordan = _create_person(cm_id=33333, first_name="Jordan", last_name="Lee")
+        taylor = _create_person(cm_id=44444, first_name="Taylor", last_name="Davis")
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: alex, 33333: jordan, 44444: taylor}
+
+        parse_result = _create_parse_result()
+        resolution = _create_placeholder_resolution()
+
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
+
+        # Should produce exactly 1 result, NOT 3 individual expanded results
+        assert len(output) == 1, (
+            f"Expected 1 result (single PENDING request for staff review), got {len(output)} "
+            "(historical auto-expand should be disabled)"
+        )
+
+        # The single result should be marked for staff review
+        result_parse, result_resolutions = output[0]
+        assert len(result_resolutions) == 1
+
+        result_resolution = result_resolutions[0]
+        # Should NOT be resolved to a specific person
+        assert result_resolution.person is None, "Vague historical reference should not resolve to a specific person"
+        # Should have metadata indicating staff review needed
+        assert result_resolution.metadata is not None
+        assert result_resolution.metadata.get("needs_staff_review") is True
+        assert result_resolution.metadata.get("group_kind") == "last_year_bunkmates"
+
+    @pytest.mark.asyncio
+    async def test_sibling_expansion_still_works(
+        self,
+        expander: PlaceholderExpander,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
+    ) -> None:
+        """Sibling expansion should still work normally (not affected by historical disable)."""
+        sibling = _create_person(cm_id=19930605, first_name="Penelope", last_name="Wright-Thompson")
+        mock_person_repo.find_siblings.return_value = [sibling]
+
+        parse_request = _create_sibling_parse_request()
+        parsed_request = _create_sibling_parsed_request()
+        parse_result = _create_parse_result(
+            parsed_requests=[parsed_request],
+            parse_request=parse_request,
+        )
+        resolution = _create_sibling_placeholder_resolution()
+
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
+
+        # Sibling expansion should still produce individual requests
+        assert len(output) == 1
+        expanded_parse, expanded_res = output[0]
+        assert expanded_parse.parsed_requests[0].target_name == "Penelope Wright-Thompson"
+        assert expanded_res[0].person is not None
+        assert expanded_res[0].person.cm_id == 19930605
+
+    @pytest.mark.asyncio
+    async def test_vague_historical_creates_pending_with_original_text(
+        self,
+        expander: PlaceholderExpander,
+        mock_attendee_repo: Mock,
+        mock_person_repo: Mock,
+        resolver_registry: dict[GroupKind, GroupResolver],
+    ) -> None:
+        """Vague historical reference should preserve original request text for staff context."""
+        mock_attendee_repo.find_prior_year_bunkmates.return_value = {
+            "cm_ids": [22222],
+            "prior_bunk": "B-3",
+            "prior_year": 2024,
+        }
+        person = _create_person(cm_id=22222)
+        mock_person_repo.bulk_find_by_cm_ids.return_value = {22222: person}
+
+        parse_result = _create_parse_result()
+        resolution = _create_placeholder_resolution()
+
+        output = await expander.expand([(parse_result, [resolution])], resolver_registry)
+
+        assert len(output) == 1
+        result_parse, _ = output[0]
+        # Original request text should be preserved
+        assert result_parse.parsed_requests[0].raw_text == "keep with last year's bunk"
