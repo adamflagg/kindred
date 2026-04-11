@@ -9,7 +9,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
-import { useIsAdmin } from '../hooks/useIsAdmin'
+import { usePermissions } from '../hooks/usePermissions'
+import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
@@ -79,7 +80,8 @@ function getSessionShortName(
 export default function CamperDetail() {
   const { camperId } = useParams<{ camperId: string }>()
   const currentYear = useYear()
-  const isAdmin = useIsAdmin()
+  const { hasPermission } = usePermissions()
+  const canManageBunking = hasPermission(Permission.BUNKING_MANAGE)
 
   // Parse and validate the person CampMinder ID
   const personCmId = camperId ? parseInt(camperId, 10) : null
@@ -285,12 +287,12 @@ export default function CamperDetail() {
               />
 
               {/* Raw Bunking Data (admin only) */}
-              {isAdmin && originalBunkData && (
+              {canManageBunking && originalBunkData && (
                 <RawDataPanel data={originalBunkData} year={currentYear} defaultExpanded={false} />
               )}
 
               {/* Parsed Bunk Requests (admin only) */}
-              {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
+              {canManageBunking && <ParsedRequestsPanel requests={allBunkRequests} />}
             </>
           )}
         </div>

@@ -82,7 +82,7 @@ function RawDataField({
 }) {
   const parsed = staffParsing ? parseStaffAttribution(value) : null
   const displayContent = parsed?.content ?? value
-  const dates = formatSyncDates(updatedAt, processedAt, !!value)
+  const dates = formatSyncDates(updatedAt, processedAt)
 
   return (
     <div>
@@ -100,12 +100,6 @@ function RawDataField({
               <span className="text-green-600 dark:text-green-400">
                 Processed: {dates.processedDisplay}
               </span>
-            </>
-          )}
-          {dates.mode === 'unprocessed' && (
-            <>
-              <span>Synced: {dates.syncedDisplay}</span>
-              <span className="text-amber-600 italic dark:text-amber-400">Not yet processed</span>
             </>
           )}
           {dates.mode === 'synced-only' && <span>Synced: {dates.syncedDisplay}</span>}
