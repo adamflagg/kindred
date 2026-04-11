@@ -196,9 +196,16 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             // Redraw bubbles after layout if enabled (showBubbles is read from
             // the closure at effect-creation time, which is correct — if bubbles
             // were on when the graph rebuilt, they should be restored).
-            if (showBubbles && bunksData) {
+            if ((showBubbles || showUnits) && bunksData) {
               clearBubbles(bubbleRefs)
-              drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits)
+              drawBunkBubbles(
+                cy,
+                bunksData,
+                bubbleRefs,
+                setBubbleRenderStatus,
+                showUnits,
+                showBubbles
+              )
             }
           } catch (error) {
             console.error('Error after layout complete:', error)
@@ -306,11 +313,11 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         cy.fit(undefined, 50)
 
         // Redraw bubbles after resize if enabled
-        if (showBubbles && bunksData) {
+        if ((showBubbles || showUnits) && bunksData) {
           // Clear existing bubblesets using the utility
           clearBubbles(bubbleRefs)
-          drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
-        } else if (!showBubbles) {
+          drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits, showBubbles)
+        } else if (!showBubbles && !showUnits) {
           clearBubbles(bubbleRefs)
         }
       }

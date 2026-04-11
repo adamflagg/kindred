@@ -114,7 +114,8 @@ export function drawBunkBubbles(
   bunksData: Record<number, string> | null | undefined,
   refs: BubbleRenderRefs,
   updateStatus?: (status: BubbleRenderStatus) => void,
-  showUnits: boolean = false
+  showUnits: boolean = false,
+  showBunks: boolean = true
 ): void {
   const { bubblesetsRef, pathsRef, poppersRef, containerRef } = refs
 
@@ -220,63 +221,77 @@ export function drawBunkBubbles(
     })
   }
 
-  // 2. Add bunk bubble paths on top of unit bubbles
+  // 2. Add bunk bubble paths on top of unit bubbles (only when showBunks)
   const renderedBunks: string[] = []
   const failedBunks: string[] = []
 
-  Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
-    if (!nodes || nodes.length === 0) return // Skip empty bunks
-
-    const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
-    const bunkColor = getBunkColor(parseInt(bunkId))
-
-    try {
-      // Create a bubble path for this bunk
-      const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
-      const nodeCollection = cy.$(nodeIds)
-
-      // Add path to the single bubbleset instance
-      let path
-      try {
-        path = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath(
-          nodeCollection, // Nodes to include in the bubble
-          cy.collection(), // Empty edge collection
-          cy.collection(), // No avoid nodes needed - compound layout separates bunks
-          {
-            style: {
-              fill: bunkColor,
-              fillOpacity: 0.25,
-              stroke: bunkColor,
-              strokeOpacity: 0.8,
-              strokeWidth: 3,
-            },
-            maxRoutingIterations: 100,
-            morphBuffer: 35,
-            threshold: 2,
-            pixelGroup: 4,
-            includeLabels: false,
-            includeMainLabels: false,
-            virtualEdges: true,
-          }
-        )
-
-        renderedBunks.push(`${bunkId} (${bunkName})`)
-      } catch (pathError) {
-        console.error(`Error creating path for bunk ${bunkId}:`, pathError)
-        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(pathError)}`)
-        return
-      }
-
-      // Store the path reference with metadata
-      pathsRef.current.push(path)
-    } catch (error) {
-      console.error(`Error creating bubble for bunk ${bunkId}:`, error)
-      failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
+  if (!showBunks) {
+    // Report zero rendered bunks but DON'T return — unit labels and popper
+    // setup still need to run below.
+    if (updateStatus) {
+      updateStatus({
+        total: Object.keys(bunkGroups).length,
+        rendered: 0,
+        failed: 0,
+      })
     }
-  })
+  }
 
-  // Update UI state with rendering status
-  if (updateStatus) {
+  if (showBunks)
+    Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
+      if (!nodes || nodes.length === 0) return // Skip empty bunks
+
+      const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
+      const bunkColor = getBunkColor(parseInt(bunkId))
+
+      try {
+        // Create a bubble path for this bunk
+        const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
+        const nodeCollection = cy.$(nodeIds)
+
+        // Add path to the single bubbleset instance
+        let path
+        try {
+          path = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath(
+            nodeCollection, // Nodes to include in the bubble
+            cy.collection(), // Empty edge collection
+            cy.collection(), // No avoid nodes needed - compound layout separates bunks
+            {
+              style: {
+                fill: bunkColor,
+                fillOpacity: 0.25,
+                stroke: bunkColor,
+                strokeOpacity: 0.8,
+                strokeWidth: 3,
+              },
+              maxRoutingIterations: 100,
+              morphBuffer: 35,
+              threshold: 2,
+              pixelGroup: 4,
+              includeLabels: false,
+              includeMainLabels: false,
+              virtualEdges: true,
+            }
+          )
+
+          renderedBunks.push(`${bunkId} (${bunkName})`)
+        } catch (pathError) {
+          console.error(`Error creating path for bunk ${bunkId}:`, pathError)
+          failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(pathError)}`)
+          return
+        }
+
+        // Store the path reference with metadata
+        pathsRef.current.push(path)
+      } catch (error) {
+        console.error(`Error creating bubble for bunk ${bunkId}:`, error)
+        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
+      }
+    })
+
+  // Update UI state with rendering status (only when showBunks — the !showBunks
+  // branch already reported zero rendered above)
+  if (showBunks && updateStatus) {
     updateStatus({
       total: Object.keys(bunkGroups).length,
       rendered: renderedBunks.length,
@@ -360,33 +375,34 @@ export function drawBunkBubbles(
     })
   }
 
-  // 4. Add bunk labels using Popper
-  Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
-    if (!nodes || nodes.length === 0) return
+  // 4. Add bunk labels using Popper (only when showBunks)
+  if (showBunks)
+    Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
+      if (!nodes || nodes.length === 0) return
 
-    const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
-    const bunkColor = getBunkColor(parseInt(bunkId))
+      const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
+      const bunkColor = getBunkColor(parseInt(bunkId))
 
-    const labelEl = document.createElement('div')
-    labelEl.className = 'bunk-label-popper'
-    labelEl.style.position = 'absolute'
-    labelEl.style.zIndex = '1'
-    const innerDiv = document.createElement('div')
-    Object.assign(innerDiv.style, {
-      backgroundColor: bunkColor,
-      color: 'white',
-      padding: '4px 12px',
-      borderRadius: '16px',
-      fontSize: '12px',
-      fontWeight: '600',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-      whiteSpace: 'nowrap',
+      const labelEl = document.createElement('div')
+      labelEl.className = 'bunk-label-popper'
+      labelEl.style.position = 'absolute'
+      labelEl.style.zIndex = '1'
+      const innerDiv = document.createElement('div')
+      Object.assign(innerDiv.style, {
+        backgroundColor: bunkColor,
+        color: 'white',
+        padding: '4px 12px',
+        borderRadius: '16px',
+        fontSize: '12px',
+        fontWeight: '600',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        whiteSpace: 'nowrap',
+      })
+      innerDiv.textContent = bunkName
+      labelEl.appendChild(innerDiv)
+
+      createPopperLabel(nodes, labelEl, containerRef, poppersRef, 10)
     })
-    innerDiv.textContent = bunkName
-    labelEl.appendChild(innerDiv)
-
-    createPopperLabel(nodes, labelEl, containerRef, poppersRef, 10)
-  })
 
   // Update popper positions on graph viewport changes
   const updatePoppers = () => {
