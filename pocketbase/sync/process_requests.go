@@ -137,9 +137,9 @@ type apiProcessorResponse struct {
 }
 
 // getProcessRequestsTimeout returns the HTTP timeout for process-requests calls.
-// Reads PROCESS_REQUESTS_TIMEOUT_MINUTES env var, defaults to 45 minutes.
+// Reads PROCESS_REQUESTS_TIMEOUT_MINUTES env var, defaults to 120 minutes.
 func getProcessRequestsTimeout() time.Duration {
-	const defaultTimeout = 45 * time.Minute
+	const defaultTimeout = 120 * time.Minute
 	envVal := os.Getenv("PROCESS_REQUESTS_TIMEOUT_MINUTES")
 	if envVal == "" {
 		return defaultTimeout
