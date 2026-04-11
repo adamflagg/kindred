@@ -15,6 +15,10 @@ export interface EdgeFiltersProps {
   showBubbles: boolean
   /** Toggle bunk bubble visibility */
   onToggleBubbles: (show: boolean) => void
+  /** Whether unit grouping is visible */
+  showUnits?: boolean
+  /** Toggle unit grouping visibility */
+  onToggleUnits?: (show: boolean) => void
 }
 
 /**
@@ -30,6 +34,8 @@ export default function EdgeFilters({
   onEdgeFilterChange,
   showBubbles,
   onToggleBubbles,
+  showUnits,
+  onToggleUnits,
 }: EdgeFiltersProps) {
   const handleEdgeToggle = (type: string, enabled: boolean) => {
     onEdgeFilterChange({ ...showEdges, [type]: enabled })
@@ -65,8 +71,21 @@ export default function EdgeFilters({
           onChange={(e) => onToggleBubbles(e.target.checked)}
           className="rounded"
         />
-        <span>Show Bunk Bubbles</span>
+        <span>Bunks</span>
       </label>
+
+      {/* Unit Grouping Toggle */}
+      {onToggleUnits != null && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showUnits ?? false}
+            onChange={(e) => onToggleUnits(e.target.checked)}
+            className="rounded"
+          />
+          <span>Units</span>
+        </label>
+      )}
     </div>
   )
 }

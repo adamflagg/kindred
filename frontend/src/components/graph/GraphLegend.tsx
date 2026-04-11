@@ -11,11 +11,14 @@ export interface GraphLegendProps {
   edgeColors?: Record<string, string>
   /** Optional custom grade colors (defaults to GRADE_COLORS) */
   gradeColors?: Record<number, string>
+  /** Set of grades present in graph data. When provided, only these grades are shown. */
+  existingGrades?: Set<number>
 }
 
 export default function GraphLegend({
   edgeColors = EDGE_COLORS,
   gradeColors = GRADE_COLORS,
+  existingGrades,
 }: GraphLegendProps) {
   return (
     <div className="bg-card/95 border-border shadow-lodge-sm absolute right-4 bottom-4 space-y-2 rounded-xl border p-3 text-xs backdrop-blur-sm">
@@ -28,16 +31,8 @@ export default function GraphLegend({
             <span>Bunk Request</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['historical'] }} />
-            <span>Historical</span>
-          </div>
-          <div className="flex items-center gap-2">
             <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['sibling'] }} />
             <span>Sibling</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['school'] }} />
-            <span>Classmates</span>
           </div>
         </div>
       </div>
@@ -79,7 +74,7 @@ export default function GraphLegend({
         <div className="text-muted-foreground mb-1 text-xs font-medium">Grade Colors</div>
         <div className="grid grid-cols-3 gap-1 text-xs">
           {Object.entries(gradeColors)
-            .slice(0, 12)
+            .filter(([grade]) => !existingGrades || existingGrades.has(parseInt(grade)))
             .map(([grade, color]) => (
               <div key={grade} className="flex items-center gap-1">
                 <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />

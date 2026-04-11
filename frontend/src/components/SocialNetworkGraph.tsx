@@ -24,7 +24,7 @@ import {
   createGraphElements,
   prepareWorkerInput,
   setupGraphEventHandlers,
-  FCOSE_LAYOUT_OPTIONS,
+  getLayoutOptions,
   type ViewMode,
   type BubbleRenderStatus,
   type PopperRef,
@@ -67,20 +67,29 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [showLabels, setShowLabels] = useState(true)
-  const [showBubbles, setShowBubbles] = useState(false)
+  const [showBubbles, setShowBubbles] = useState(true)
   const [isExpanded, setIsExpanded] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
   const [showEdges, setShowEdges] = useState({
     request: true,
-    historical: true,
-    sibling: true,
-    school: true,
+    sibling: false,
   })
   const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
   const { data: graphData, isLoading } = useSocialGraphData(sessionCmId)
+
+  // Compute the set of grades present in the current data for the legend
+  const existingGrades = useMemo(() => {
+    if (!graphData) return undefined
+    const grades = new Set<number>()
+    for (const node of graphData.nodes) {
+      if (node.grade != null) grades.add(node.grade)
+    }
+    return grades.size > 0 ? grades : undefined
+  }, [graphData])
   const { data: bunksData } = useBunkNames(sessionCmId, !!graphData)
 
   // Suppress unused variable warning - selectedNodeId used for future features
@@ -136,11 +145,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     cyRef.current = cy
 
     // Create graph elements using extracted utility
-    const { parentNodes, nodes, edges } = createGraphElements(
+    const { unitNodes, parentNodes, nodes, edges } = createGraphElements(
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      showEdges
+      showEdges,
+      showUnits
     )
 
     // Staged rendering for smoother loading
@@ -161,7 +171,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     // Add elements in stages
     const addElementsStaged = async () => {
-      // Add parent (bunk) nodes first - required for compound structure
+      // Add unit parent nodes first (top-level compound), then bunk parents, then campers
+      if (unitNodes.length > 0) {
+        await stageElements(unitNodes as cytoscape.ElementDefinition[], 10)
+      }
+
+      // Add parent (bunk) nodes - required for compound structure
       await stageElements(parentNodes as cytoscape.ElementDefinition[], 20)
 
       // Add child (camper) nodes
@@ -189,7 +204,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             // were on when the graph rebuilt, they should be restored).
             if (showBubbles && bunksData) {
               clearBubbles(bubbleRefs)
-              drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)
+              drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits)
             }
           } catch (error) {
             console.error('Error after layout complete:', error)
@@ -198,7 +213,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       }
 
       // Prepare data for worker
-      const workerInput = prepareWorkerInput(parentNodes, nodes, edges)
+      const workerInput = prepareWorkerInput(parentNodes, nodes, edges, unitNodes)
 
       // Try to use WebWorker for layout computation
       try {
@@ -247,7 +262,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
       // Fallback layout on main thread (if worker fails)
       function runFallbackLayout() {
-        const layout = cy.layout(FCOSE_LAYOUT_OPTIONS as cytoscape.LayoutOptions)
+        const hasCompound = parentNodes.length > 0
+        const layoutOpts = getLayoutOptions({ hasCompoundNodes: hasCompound })
+        const layout = cy.layout(layoutOpts as cytoscape.LayoutOptions)
         layoutRef.current = layout
         layout.on('layoutstop', onLayoutComplete)
         layout.run()
@@ -281,7 +298,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // The closure reads showBubbles at effect-creation time to restore bubbles
     // after graph rebuilds triggered by other deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, viewMode, bunksData, showEdges, showLabels, bubbleRefs])
+  }, [graphData, viewMode, bunksData, showEdges, showLabels, showUnits, bubbleRefs])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
@@ -306,7 +323,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [isExpanded, showBubbles, bunksData, bubbleRefs])
+  }, [isExpanded, showBubbles, showUnits, bunksData, bubbleRefs])
 
   // Update edge visibility when filters change
   useEffect(() => {
@@ -425,6 +442,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
             showBubbles={showBubbles}
             onToggleBubbles={setShowBubbles}
+            showUnits={showUnits}
+            onToggleUnits={setShowUnits}
           />
         </div>
 
@@ -469,7 +488,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             </div>
           )}
 
-          <GraphLegend />
+          <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
         </div>
 
         {showHelp && <GraphHelp />}

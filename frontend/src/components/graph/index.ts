@@ -20,6 +20,7 @@ export {
   type GraphNodeData,
   type GraphEdgeData,
   type ShowEdgesSettings,
+  type UnitNodeElement,
   type ParentNodeElement,
   type CamperNodeElement,
   type EdgeElement,
@@ -59,6 +60,7 @@ export {
 // Graph layout utilities
 export {
   FCOSE_LAYOUT_OPTIONS,
+  getLayoutOptions,
   prepareWorkerInput,
   setupGraphEventHandlers,
   type SetupEventHandlersOptions,

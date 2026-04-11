@@ -5,6 +5,7 @@
 import type { NodeSingular, EdgeSingular, StylesheetStyle } from 'cytoscape'
 import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from './constants'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
+import { getUnitForBunk } from '../../utils/unitMapping'
 
 /** Input node data from API */
 export interface GraphNodeData {
@@ -31,9 +32,8 @@ export interface GraphEdgeData {
 /** Edge visibility settings */
 export interface ShowEdgesSettings {
   request: boolean
-  historical: boolean
   sibling: boolean
-  school: boolean
+  [key: string]: boolean
 }
 
 /** Options for getCytoscapeStyles */
@@ -167,6 +167,18 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'z-index': 1000,
       },
     },
+    // Compound parent nodes for unit grouping (invisible - used for layout only)
+    {
+      selector: 'node[isUnitParent]',
+      style: {
+        'background-opacity': 0,
+        'border-width': 0,
+        label: '',
+        padding: '30px',
+        'min-width': '1px',
+        'min-height': '1px',
+      } as unknown as Record<string, string>,
+    },
     // Compound parent nodes for bunk grouping (invisible - used for layout only)
     {
       selector: 'node[isBunkParent]',
@@ -183,6 +195,16 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
   ]
 }
 
+/** Cytoscape element for unit parent node */
+export interface UnitNodeElement {
+  data: {
+    id: string
+    label: string
+    isUnitParent: boolean
+    unitName: string
+  }
+}
+
 /** Cytoscape element for parent (bunk) node */
 export interface ParentNodeElement {
   data: {
@@ -190,6 +212,7 @@ export interface ParentNodeElement {
     label: string
     isBunkParent: boolean
     bunk_cm_id: number
+    parent?: string
   }
 }
 
@@ -224,6 +247,7 @@ export interface EdgeElement {
 
 /** Result of createGraphElements */
 export interface GraphElements {
+  unitNodes: UnitNodeElement[]
   parentNodes: ParentNodeElement[]
   nodes: CamperNodeElement[]
   edges: EdgeElement[]
@@ -236,7 +260,8 @@ export function createGraphElements(
   nodeData: GraphNodeData[],
   edgeData: GraphEdgeData[],
   bunksData: Record<number, string> | null | undefined,
-  showEdges: ShowEdgesSettings
+  showEdges: ShowEdgesSettings,
+  showUnits: boolean = false
 ): GraphElements {
   // Group nodes by bunk
   const bunkGroups: Record<number, GraphNodeData[]> = {}
@@ -249,15 +274,45 @@ export function createGraphElements(
     }
   })
 
+  // Collect unit assignments for bunks (when showUnits is on)
+  const bunkToUnit: Record<number, string> = {}
+  const unitSet = new Set<string>()
+
+  if (showUnits && bunksData) {
+    for (const bunkIdStr of Object.keys(bunkGroups)) {
+      const bunkId = parseInt(bunkIdStr, 10)
+      const bunkName = bunksData[bunkId]
+      if (bunkName) {
+        const unit = getUnitForBunk(bunkName)
+        if (unit) {
+          bunkToUnit[bunkId] = unit
+          unitSet.add(unit)
+        }
+      }
+    }
+  }
+
+  // Create unit parent nodes
+  const unitNodes: UnitNodeElement[] = [...unitSet].map((unitName) => ({
+    data: {
+      id: `unit-${unitName.replace(/\s+/g, '-')}`,
+      label: unitName,
+      isUnitParent: true,
+      unitName,
+    },
+  }))
+
   // Create parent nodes for each bunk
   const parentNodes: ParentNodeElement[] = Object.keys(bunkGroups).map((bunkIdStr) => {
     const bunkId = parseInt(bunkIdStr, 10)
+    const unitName = bunkToUnit[bunkId]
     return {
       data: {
         id: `bunk-${bunkId}`,
         label: bunksData?.[bunkId] ?? `Bunk ${bunkId}`,
         isBunkParent: true,
         bunk_cm_id: bunkId,
+        ...(unitName ? { parent: `unit-${unitName.replace(/\s+/g, '-')}` } : {}),
       },
     }
   })
@@ -296,5 +351,5 @@ export function createGraphElements(
       },
     }))
 
-  return { parentNodes, nodes, edges }
+  return { unitNodes, parentNodes, nodes, edges }
 }

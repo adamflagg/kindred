@@ -4,7 +4,12 @@
  */
 import type { Core, NodeSingular } from 'cytoscape'
 import type { LayoutWorkerInput } from '../../workers/layoutWorker'
-import type { ParentNodeElement, CamperNodeElement, EdgeElement } from './cytoscapeStyles'
+import type {
+  UnitNodeElement,
+  ParentNodeElement,
+  CamperNodeElement,
+  EdgeElement,
+} from './cytoscapeStyles'
 import { showEgoNetwork } from './graphInteractions'
 
 /**
@@ -27,15 +32,44 @@ export const FCOSE_LAYOUT_OPTIONS = {
   tilingPaddingHorizontal: 15,
 } as const
 
+/** Expanded spacing for graphs without compound (bunk) parent nodes */
+const NO_COMPOUND_OVERRIDES = {
+  nodeSeparation: 200,
+  componentSpacing: 250,
+} as const
+
+export interface LayoutOptionsParams {
+  hasCompoundNodes: boolean
+}
+
+/**
+ * Get layout options with spacing adjusted for compound vs non-compound graphs.
+ * When no bunk parent nodes exist, nodes clump too tightly with default spacing.
+ */
+/** Widened type so overrides don't clash with `as const` literal types */
+type FcoseLayoutConfig = {
+  [K in keyof typeof FCOSE_LAYOUT_OPTIONS]: K extends 'nodeSeparation' | 'componentSpacing'
+    ? number
+    : (typeof FCOSE_LAYOUT_OPTIONS)[K]
+}
+
+export function getLayoutOptions(params: LayoutOptionsParams): FcoseLayoutConfig {
+  if (params.hasCompoundNodes) {
+    return FCOSE_LAYOUT_OPTIONS
+  }
+  return { ...FCOSE_LAYOUT_OPTIONS, ...NO_COMPOUND_OVERRIDES }
+}
+
 /**
  * Prepare graph elements for the layout worker
  */
 export function prepareWorkerInput(
   parentNodes: ParentNodeElement[],
   nodes: CamperNodeElement[],
-  edges: EdgeElement[]
+  edges: EdgeElement[],
+  unitNodes: UnitNodeElement[] = []
 ): LayoutWorkerInput {
-  const allNodes = [...parentNodes, ...nodes]
+  const allNodes = [...unitNodes, ...parentNodes, ...nodes]
   const workerNodes = allNodes.map((n) => {
     const data: Record<string, unknown> = {
       id: n.data.id,
@@ -46,6 +80,9 @@ export function prepareWorkerInput(
     }
     if ('isBunkParent' in n.data) {
       data['isBunkParent'] = n.data['isBunkParent']
+    }
+    if ('isUnitParent' in n.data) {
+      data['isUnitParent'] = n.data['isUnitParent']
     }
     return { data }
   })
