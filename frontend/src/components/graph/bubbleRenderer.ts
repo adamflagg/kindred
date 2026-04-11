@@ -8,6 +8,25 @@ import { createPopper } from '@popperjs/core'
 import { getBunkColor } from '../../utils/graphUtils'
 import { getUnitForBunk, UNIT_COLORS } from '../../utils/unitMapping'
 
+const DEFAULT_UNIT_COLOR = '#888888'
+
+/** Shared config for bubbleset path rendering (unit and bunk bubbles) */
+const BASE_BUBBLE_OPTIONS = {
+  maxRoutingIterations: 100,
+  threshold: 2,
+  pixelGroup: 4,
+  includeLabels: false,
+  includeMainLabels: false,
+  virtualEdges: true,
+} as const
+
+/** Shared font styles for unit labels */
+const UNIT_LABEL_FONT = {
+  fontSize: '14px',
+  fontWeight: '700',
+  letterSpacing: '0.5px',
+} as const
+
 export interface BubbleRenderStatus {
   total: number
   rendered: number
@@ -155,6 +174,10 @@ export function drawBunkBubbles(
   }
   bubblesetsRef.current = bb
 
+  // Typed helpers for untyped bubbleset API
+  const addPath = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath.bind(bb)
+  const updateBubbles = (bb as { update: (force: boolean) => void }).update.bind(bb)
+
   // Collect unit grouping data (needed for both bubble paths and labels)
   const unitGroups: Record<string, NodeSingular[]> = {}
   const unitBunkColors: Record<string, string[]> = {}
@@ -173,7 +196,7 @@ export function drawBunkBubbles(
         group.push(node)
         // Track unique bunk colors per unit for gradient labels
         const colors = (unitBunkColors[unit] ??= [])
-        const bunkColor = getBunkColor(parseInt(String(bunkId), 10))
+        const bunkColor = getBunkColor(parseInt(bunkId, 10))
         if (!colors.includes(bunkColor)) {
           colors.push(bunkColor)
         }
@@ -187,33 +210,23 @@ export function drawBunkBubbles(
     Object.entries(unitGroups).forEach(([unitName, nodes]) => {
       if (nodes.length === 0) return
 
-      const unitColor = UNIT_COLORS[unitName] ?? '#888888'
+      const unitColor = UNIT_COLORS[unitName] ?? DEFAULT_UNIT_COLOR
       try {
         const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
         const nodeCollection = cy.$(nodeIds)
 
-        const path = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath(
-          nodeCollection,
-          cy.collection(),
-          cy.collection(),
-          {
-            style: {
-              fill: unitColor,
-              fillOpacity: 0.15,
-              stroke: unitColor,
-              strokeOpacity: 0.7,
-              strokeWidth: 3,
-            },
-            // Larger morphBuffer than bunk bubbles (35) so unit bubbles wrap outside them
-            maxRoutingIterations: 100,
-            morphBuffer: 120,
-            threshold: 2,
-            pixelGroup: 4,
-            includeLabels: false,
-            includeMainLabels: false,
-            virtualEdges: true,
-          }
-        )
+        const path = addPath(nodeCollection, cy.collection(), cy.collection(), {
+          style: {
+            fill: unitColor,
+            fillOpacity: 0.15,
+            stroke: unitColor,
+            strokeOpacity: 0.7,
+            strokeWidth: 3,
+          },
+          // Larger morphBuffer than bunk bubbles (35) so unit bubbles wrap outside them
+          ...BASE_BUBBLE_OPTIONS,
+          morphBuffer: 120,
+        })
         pathsRef.current.push(path)
       } catch (error) {
         console.error(`Error creating unit bubble for ${unitName}:`, error)
@@ -237,12 +250,12 @@ export function drawBunkBubbles(
     }
   }
 
-  if (showBunks)
+  if (showBunks) {
     Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
       if (!nodes || nodes.length === 0) return // Skip empty bunks
 
-      const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
-      const bunkColor = getBunkColor(parseInt(bunkId))
+      const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
+      const bunkColor = getBunkColor(parseInt(bunkId, 10))
 
       try {
         // Create a bubble path for this bunk
@@ -252,7 +265,7 @@ export function drawBunkBubbles(
         // Add path to the single bubbleset instance
         let path
         try {
-          path = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath(
+          path = addPath(
             nodeCollection, // Nodes to include in the bubble
             cy.collection(), // Empty edge collection
             cy.collection(), // No avoid nodes needed - compound layout separates bunks
@@ -264,13 +277,8 @@ export function drawBunkBubbles(
                 strokeOpacity: 0.8,
                 strokeWidth: 3,
               },
-              maxRoutingIterations: 100,
+              ...BASE_BUBBLE_OPTIONS,
               morphBuffer: 35,
-              threshold: 2,
-              pixelGroup: 4,
-              includeLabels: false,
-              includeMainLabels: false,
-              virtualEdges: true,
             }
           )
 
@@ -288,6 +296,7 @@ export function drawBunkBubbles(
         failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
       }
     })
+  }
 
   // Update UI state with rendering status (only when showBunks — the !showBunks
   // branch already reported zero rendered above)
@@ -299,14 +308,14 @@ export function drawBunkBubbles(
     })
   }
 
-  // Force a render update to ensure bubbles are drawn
+  // Force bubbleset to recompute paths
   try {
-    ;(bb as { update: (force: boolean) => void }).update(true)
+    updateBubbles(true)
   } catch (updateError) {
     console.error('Error calling bb.update(true):', updateError)
   }
 
-  // Force a render update to ensure bubbles are drawn
+  // Force Cytoscape repaint
   if (!cy.destroyed()) {
     cy.forceRender()
   }
@@ -327,7 +336,7 @@ export function drawBunkBubbles(
     Object.entries(unitGroups).forEach(([unitName, nodes]) => {
       if (nodes.length === 0) return
 
-      const unitColor = UNIT_COLORS[unitName] ?? '#888888'
+      const unitColor = UNIT_COLORS[unitName] ?? DEFAULT_UNIT_COLOR
       const colors = unitBunkColors[unitName] ?? []
 
       const labelEl = document.createElement('div')
@@ -345,7 +354,9 @@ export function drawBunkBubbles(
         whiteSpace: 'nowrap',
       })
 
-      // Use CSS gradient text if multiple bunk colors, otherwise single color
+      // Shared font styles, then color-specific overrides
+      Object.assign(innerDiv.style, UNIT_LABEL_FONT)
+
       if (colors.length >= 2) {
         const gradientStops = colors.join(', ')
         Object.assign(labelEl.style, {
@@ -357,20 +368,10 @@ export function drawBunkBubbles(
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text',
-          fontSize: '14px',
-          fontWeight: '700',
-          letterSpacing: '0.5px',
         })
       } else {
-        Object.assign(labelEl.style, {
-          border: `2px solid ${labelColor}`,
-        })
-        Object.assign(innerDiv.style, {
-          color: labelColor,
-          fontSize: '14px',
-          fontWeight: '700',
-          letterSpacing: '0.5px',
-        })
+        labelEl.style.border = `2px solid ${labelColor}`
+        innerDiv.style.color = labelColor
       }
       innerDiv.textContent = unitName
       labelEl.appendChild(innerDiv)
@@ -380,12 +381,12 @@ export function drawBunkBubbles(
   }
 
   // 4. Add bunk labels using Popper (only when showBunks)
-  if (showBunks)
+  if (showBunks) {
     Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
       if (!nodes || nodes.length === 0) return
 
-      const bunkName = bunksData?.[parseInt(bunkId)] ?? `Bunk ${bunkId}`
-      const bunkColor = getBunkColor(parseInt(bunkId))
+      const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
+      const bunkColor = getBunkColor(parseInt(bunkId, 10))
 
       const labelEl = document.createElement('div')
       labelEl.className = 'bunk-label-popper'
@@ -407,6 +408,7 @@ export function drawBunkBubbles(
 
       createPopperLabel(nodes, labelEl, containerRef, poppersRef, 10)
     })
+  }
 
   // Update popper positions on graph viewport changes
   const updatePoppers = () => {
