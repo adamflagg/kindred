@@ -312,7 +312,7 @@ export default function EditableRequestTarget({
   }
 
   // Determine if we can link to the target camper
-  const canLinkToTarget = currentPersonId && currentPersonId > 0
+  const canLinkToTarget = !!currentPersonId && currentPersonId > 0
 
   return (
     <div className="relative flex items-center gap-1" ref={dropdownRef}>
@@ -426,7 +426,7 @@ export default function EditableRequestTarget({
           </div>
 
           {/* Clear selection option */}
-          {currentPersonId && (
+          {!!currentPersonId && (
             <div className="border-border border-t py-1">
               <button
                 onClick={() => onChange({ requestee_id: null })}
