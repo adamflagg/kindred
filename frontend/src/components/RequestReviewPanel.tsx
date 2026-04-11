@@ -1104,13 +1104,13 @@ export default function RequestReviewPanel({
 
                           {/* Main info: Requester name and type */}
                           <div className="card-main">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex min-w-0 items-center gap-1.5">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setSelectedCamperId(String(request.requester_id))
                                 }}
-                                className="hover:text-primary text-left font-medium transition-colors hover:underline"
+                                className="hover:text-primary min-w-0 text-left font-medium transition-colors hover:underline"
                               >
                                 {requester
                                   ? `${requester.first_name || ''} ${requester.last_name || ''}`
@@ -1343,7 +1343,7 @@ export default function RequestReviewPanel({
                               className="rounded"
                             />
                           </div>
-                          <div className="flex items-center gap-1.5 px-4 py-3">
+                          <div className="flex min-w-0 items-center gap-1.5 px-4 py-3">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
