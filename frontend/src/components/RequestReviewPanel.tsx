@@ -151,6 +151,47 @@ export default function RequestReviewPanel({
     }
   }, [storageKey, filters, sortBy, sortOrder])
 
+  // Rehydrate filters/sort when sessionId changes (component stays mounted via Activity)
+  const isInitialMount = useRef(true)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    // Session changed — reload from localStorage or reset to defaults
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.filters) {
+          setFilters({
+            requestTypes: parsed.filters.requestTypes ?? defaultFilters.requestTypes,
+            statuses: parsed.filters.statuses ?? defaultFilters.statuses,
+            searchQuery: parsed.filters.searchQuery ?? defaultFilters.searchQuery,
+          })
+        } else {
+          setFilters(defaultFilters)
+        }
+        if (parsed?.sort?.sortBy) setSortBy(parsed.sort.sortBy as SortColumn)
+        else setSortBy(defaultSortBy)
+        if (parsed?.sort?.sortOrder) setSortOrder(parsed.sort.sortOrder as 'asc' | 'desc')
+        else setSortOrder(defaultSortOrder)
+      } else {
+        setFilters(defaultFilters)
+        setSortBy(defaultSortBy)
+        setSortOrder(defaultSortOrder)
+      }
+    } catch {
+      setFilters(defaultFilters)
+      setSortBy(defaultSortBy)
+      setSortOrder(defaultSortOrder)
+    }
+    // Clear selection state from previous session
+    setSelectedRequests(new Set())
+    setExpandedRows(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
   // Query key only includes server-side filters (sent to PocketBase).
   // Client-side filters (search) are applied in filteredRequests memo.
   const queryKeyFilters = useMemo(
@@ -612,7 +653,8 @@ export default function RequestReviewPanel({
     (request: BunkRequestsResponse, updates: Partial<BunkRequestsResponse>) => {
       // Only validate if changing target or type (potential conflict fields)
       if (updates.requestee_id !== undefined || updates.request_type !== undefined) {
-        const newRequesteeId = updates.requestee_id ?? request.requestee_id
+        const newRequesteeId =
+          updates.requestee_id !== undefined ? updates.requestee_id : request.requestee_id
         const newType = updates.request_type ?? request.request_type
 
         validateChange({
@@ -1117,9 +1159,13 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
+                                // Use null (not 0) to clear requestee_id — 0 causes
+                                // unique constraint violations when multiple requests exist.
                                 const pbUpdates: Partial<BunkRequestsResponse> = {}
                                 if (updates.requestee_id !== undefined) {
-                                  pbUpdates.requestee_id = updates.requestee_id ?? 0
+                                  // Pass null through to PocketBase to clear the field.
+                                  // Using 0 causes unique constraint violations.
+                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
                                 }
                                 if (updates.age_preference_target !== undefined) {
                                   pbUpdates.age_preference_target = updates.age_preference_target
@@ -1321,10 +1367,13 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
-                                // Convert null to 0 for PocketBase (0 means "no value")
+                                // Use null (not 0) to clear requestee_id — 0 causes
+                                // unique constraint violations when multiple requests exist.
                                 const pbUpdates: Partial<BunkRequestsResponse> = {}
                                 if (updates.requestee_id !== undefined) {
-                                  pbUpdates.requestee_id = updates.requestee_id ?? 0
+                                  // Pass null through to PocketBase to clear the field.
+                                  // Using 0 causes unique constraint violations.
+                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
                                 }
                                 if (updates.age_preference_target !== undefined) {
                                   pbUpdates.age_preference_target = updates.age_preference_target
@@ -1731,7 +1780,7 @@ export default function RequestReviewPanel({
                 <p className="mb-1 font-medium">Review Guidelines:</p>
                 <ul className="text-forest-700 dark:text-forest-300 ml-2 list-inside list-disc space-y-1">
                   <li>Focus on pending requests first — these need attention</li>
-                  <li>Use "Spot Check (85-94%)" filter to review borderline resolved requests</li>
+                  <li>Filter by status to review resolved or declined requests</li>
                   <li>Check AI intent notes for ambiguous requests that need clarification</li>
                   <li>Use bulk actions to quickly process similar requests</li>
                 </ul>

@@ -12,27 +12,27 @@ describe('CamperLink', () => {
   describe('when request is confirmed with valid personCmId', () => {
     it('renders as a clickable link', () => {
       renderWithRouter(
-        <CamperLink personCmId={12345} displayName="Sarah Johnson" isConfirmed={true} />
+        <CamperLink personCmId={12345} displayName="Emma Johnson" isConfirmed={true} />
       )
 
-      const link = screen.getByRole('link', { name: /Sarah Johnson/i })
+      const link = screen.getByRole('link', { name: /Emma Johnson/i })
       expect(link).toBeInTheDocument()
       expect(link).toHaveAttribute('href', '/camper/12345')
     })
 
     it('opens link in a new tab', () => {
       renderWithRouter(
-        <CamperLink personCmId={12345} displayName="Sarah Johnson" isConfirmed={true} />
+        <CamperLink personCmId={12345} displayName="Emma Johnson" isConfirmed={true} />
       )
 
-      const link = screen.getByRole('link', { name: /Sarah Johnson/i })
+      const link = screen.getByRole('link', { name: /Emma Johnson/i })
       expect(link).toHaveAttribute('target', '_blank')
       expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     })
 
     it('includes external link icon', () => {
       renderWithRouter(
-        <CamperLink personCmId={12345} displayName="Sarah Johnson" isConfirmed={true} />
+        <CamperLink personCmId={12345} displayName="Emma Johnson" isConfirmed={true} />
       )
 
       // The ExternalLink icon should be present (as an svg)
@@ -45,7 +45,7 @@ describe('CamperLink', () => {
       renderWithRouter(
         <CamperLink
           personCmId={12345}
-          displayName="Sarah Johnson"
+          displayName="Emma Johnson"
           isConfirmed={true}
           className="custom-class"
         />
@@ -59,18 +59,18 @@ describe('CamperLink', () => {
   describe('when request is not confirmed', () => {
     it('renders as plain text without link', () => {
       renderWithRouter(
-        <CamperLink personCmId={12345} displayName="Sarah Johnson" isConfirmed={false} />
+        <CamperLink personCmId={12345} displayName="Emma Johnson" isConfirmed={false} />
       )
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument()
-      expect(screen.getByText('Sarah Johnson')).toBeInTheDocument()
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     })
 
     it('shows unresolved indicator when showUnresolved is true', () => {
       renderWithRouter(
         <CamperLink
           personCmId={12345}
-          displayName="Sarah Johnson"
+          displayName="Emma Johnson"
           isConfirmed={false}
           showUnresolved={true}
         />

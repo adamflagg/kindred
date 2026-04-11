@@ -111,16 +111,37 @@ describe('CamperDetailsPanel', () => {
       })
     })
 
-    it('calls onClose directly for embedded mode (no animation)', () => {
+    it('starts exit animation on Escape key in non-embedded mode', async () => {
+      render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+
+      // Wait for non-embedded panel to render (backdrop is always present)
+      await waitFor(() => {
+        expect(document.querySelector('[data-testid="panel-backdrop"]')).toBeInTheDocument()
+      })
+
+      // Press Escape to trigger close
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      // In non-embedded mode, Escape triggers isClosing which starts exit animation.
+      // The animation end handler calls onClose. In JSDOM (no real animations),
+      // we verify the animation class changed to slide-out.
+      await waitFor(() => {
+        // Find the animated panel div (loading or full - both get the animation class)
+        const panels = document.querySelectorAll('.animate-slide-out-right')
+        expect(panels.length).toBeGreaterThan(0)
+      })
+    })
+
+    it('does not close on Escape key in embedded mode', async () => {
       render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} embedded={true} />)
 
-      // In embedded mode, simulate a close action via the close button
-      // Embedded mode calls onClose directly without animation
-      const closeButton = document.querySelector('button[aria-label="Close panel"]')
-      if (closeButton) {
-        fireEvent.click(closeButton)
-        expect(mockOnClose).toHaveBeenCalledTimes(1)
-      }
+      await waitFor(() => {
+        expect(screen.getByText('Camper not found')).toBeInTheDocument()
+      })
+
+      // Escape should not trigger close in embedded mode
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(mockOnClose).not.toHaveBeenCalled()
     })
   })
 })

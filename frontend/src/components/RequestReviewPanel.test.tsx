@@ -861,6 +861,12 @@ describe('RequestReviewPanel', () => {
     })
   })
 
+  // NOTE: The following tests are spec-documentation tests that verify business logic
+  // patterns (label text, CSS classes, filter behavior) in isolation rather than rendering
+  // the full RequestReviewPanel component. They document the expected conventions and catch
+  // regressions in string constants and logic, but do not test actual DOM rendering.
+  // Integration tests that render the component would provide stronger confidence.
+
   describe('EditableRequestType onChange payload', () => {
     it('includes requestee_id: null when switching to age_preference (bug fix #16)', () => {
       // BUG FIX: requestee_id must be null, not 0, when changing to age_preference

@@ -6,6 +6,7 @@ import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-typ
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import clsx from 'clsx'
 import { useClickOutside } from '../hooks/useClickOutside'
+import { queryKeys } from '../utils/queryKeys'
 
 interface EditableRequestTargetProps {
   requestType: string
@@ -145,26 +146,20 @@ export default function EditableRequestTarget({
 
   // Fetch session campers for person selection
   const { data: allCampers = [] } = useQuery({
-    queryKey: ['session-campers', sessionId, year],
+    queryKey: queryKeys.sessionCampers(sessionId, year),
     queryFn: async () => {
-      // Fetch attendees for this session with expanded person relation
+      // Filter attendees by session_id (CampMinder ID) server-side
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `year = ${year} && status = "enrolled"`,
-        expand: 'person,session',
+        filter: `session_id = ${sessionId} && year = ${year} && status = "enrolled"`,
+        expand: 'person',
       })
 
-      // Filter by session after expand since we can't filter on relation fields directly
       interface ExpandedAttendee {
-        session?: { cm_id?: number }
         person?: PersonsResponse
       }
-      const sessionAttendees = attendees.filter((attendee) => {
-        const expanded = attendee.expand as ExpandedAttendee | undefined
-        return expanded?.session?.cm_id === sessionId
-      })
 
       // Map to camper format with session info
-      return sessionAttendees
+      return attendees
         .map((attendee) => {
           const expanded = attendee.expand as ExpandedAttendee | undefined
           const person = expanded?.person

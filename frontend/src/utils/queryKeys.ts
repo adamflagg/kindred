@@ -45,6 +45,10 @@ export const queryKeys = {
       : (['saved-scenarios', sessionCmId] as const),
   scenario: (id: string) => ['scenario', id] as const,
 
+  // Session Campers (Tier 1 - sync data, shared by CreateRequestModal + EditableRequestTarget)
+  sessionCampers: (sessionId: number, year: number) =>
+    ['session-campers', sessionId, year] as const,
+
   // Bunk Requests (Tier 2 - user data)
   bunkRequests: (sessionId: string, year: number) => ['bunk-requests', sessionId, year] as const,
 

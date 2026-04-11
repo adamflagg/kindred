@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -479,6 +479,16 @@ export default function CamperDetailsPanel({
       setIsClosing(true)
     }
   }, [embedded, onClose])
+
+  // Dismiss overlay with Escape key (non-embedded mode only)
+  useEffect(() => {
+    if (embedded || isClosing) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [embedded, isClosing, handleClose])
 
   // Helper: get location from person's discrete address columns
   const location = getLocationDisplay(
@@ -1283,6 +1293,7 @@ export default function CamperDetailsPanel({
                 </div>
                 <button
                   onClick={handleClose}
+                  aria-label="Close panel"
                   className="-mr-1 rounded-lg p-1.5 transition-colors hover:bg-white/10"
                 >
                   <X className="h-4 w-4" />
@@ -1374,6 +1385,7 @@ export default function CamperDetailsPanel({
                     </div>
                     <button
                       onClick={handleClose}
+                      aria-label="Close panel"
                       className="-mr-1 rounded-xl p-2 transition-colors hover:bg-white/10"
                     >
                       <X className="h-5 w-5" />

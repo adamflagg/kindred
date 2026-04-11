@@ -10,6 +10,7 @@ import type {
 } from '../types/pocketbase-types'
 import clsx from 'clsx'
 import { Modal } from './ui/Modal'
+import { queryKeys } from '../utils/queryKeys'
 
 interface CreateRequestModalProps {
   sessionId: number
@@ -32,30 +33,24 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Fetch campers for this session
-  const { data: campers = [], isLoading: campersLoading } = useQuery({
-    queryKey: ['session-campers', sessionId, year],
+  const {
+    data: campers = [],
+    isLoading: campersLoading,
+    isError: campersError,
+  } = useQuery({
+    queryKey: queryKeys.sessionCampers(sessionId, year),
     queryFn: async () => {
-      // Fetch attendees with expanded session + person relations
-      // We can't filter directly on session CM ID (it's a relation field),
-      // so we filter by year/status and then match session client-side.
+      // Filter attendees by session_id (CampMinder ID) server-side
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `year = ${year} && status = "enrolled"`,
-        expand: 'person,session',
+        filter: `session_id = ${sessionId} && year = ${year} && status = "enrolled"`,
+        expand: 'person',
       })
 
       interface ExpandedAttendee {
-        session?: { cm_id?: number }
         person?: PersonsResponse
       }
 
-      // Filter by session CM ID after expand
-      const sessionAttendees = attendees.filter((attendee) => {
-        const expanded = attendee.expand as ExpandedAttendee | undefined
-        return expanded?.session?.cm_id === sessionId
-      })
-
-      // Extract persons from expanded attendees
-      return sessionAttendees
+      return attendees
         .map((attendee) => {
           const expanded = attendee.expand as ExpandedAttendee | undefined
           return expanded?.person
@@ -121,6 +116,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionCampers(sessionId, year) })
       toast.success('Request created successfully')
       onClose()
     },
@@ -180,6 +176,10 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         {campersLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        ) : campersError ? (
+          <div className="text-destructive py-8 text-center text-sm">
+            Failed to load campers. Please close and try again.
           </div>
         ) : (
           <div className="space-y-6">
