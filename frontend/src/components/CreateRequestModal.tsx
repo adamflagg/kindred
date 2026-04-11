@@ -35,50 +35,31 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
   const { data: campers = [], isLoading: campersLoading } = useQuery({
     queryKey: ['session-campers', sessionId, year],
     queryFn: async () => {
-      // Fetch attendees for this session
+      // Fetch attendees with expanded session + person relations
+      // We can't filter directly on session CM ID (it's a relation field),
+      // so we filter by year/status and then match session client-side.
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `session = ${sessionId} && year = ${year} && status = "enrolled"`,
+        filter: `year = ${year} && status = "enrolled"`,
+        expand: 'person,session',
       })
 
-      // Get person IDs
-      const personIds = attendees.map((a) => a.person_id)
-      if (personIds.length === 0) return []
-
-      // Fetch persons in batches to avoid 414 Request Too Large errors
-      const BATCH_SIZE = 50
-      const batches: Array<Promise<PersonsResponse[]>> = []
-
-      // Split personIds into batches and create promises
-      for (let i = 0; i < personIds.length; i += BATCH_SIZE) {
-        const batch = personIds.slice(i, i + BATCH_SIZE)
-        const batchFilter = batch.map((id) => `cm_id = ${id}`).join(' || ')
-
-        const batchPromise = pb
-          .collection<PersonsResponse>('persons')
-          .getFullList({
-            filter: batchFilter,
-          })
-          .catch((error) => {
-            console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error)
-            return [] // Return empty array for failed batches
-          })
-
-        batches.push(batchPromise)
+      interface ExpandedAttendee {
+        session?: { cm_id?: number }
+        person?: PersonsResponse
       }
 
-      // Fetch all batches in parallel
-      const batchResults = await Promise.all(batches)
-      const persons = batchResults.flat()
-
-      // Create a map for quick lookup
-      const personsMap = new Map<number, PersonsResponse>()
-      persons.forEach((p) => {
-        personsMap.set(p.cm_id, p)
+      // Filter by session CM ID after expand
+      const sessionAttendees = attendees.filter((attendee) => {
+        const expanded = attendee.expand as ExpandedAttendee | undefined
+        return expanded?.session?.cm_id === sessionId
       })
 
-      // Filter to only include persons that have attendees in this session
-      return personIds
-        .map((id) => personsMap.get(id))
+      // Extract persons from expanded attendees
+      return sessionAttendees
+        .map((attendee) => {
+          const expanded = attendee.expand as ExpandedAttendee | undefined
+          return expanded?.person
+        })
         .filter((p): p is PersonsResponse => p !== undefined)
     },
   })
@@ -123,6 +104,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         original_text: `Manually created ${requestType} request`,
         parse_notes: notes || 'Created through admin interface',
         request_locked: true, // Auto-lock manual requests
+        is_active: true, // Manually created requests are active
       }
 
       if (requestType === 'age_preference') {

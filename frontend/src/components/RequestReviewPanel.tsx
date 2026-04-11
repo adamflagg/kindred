@@ -1108,14 +1108,7 @@ export default function RequestReviewPanel({
                           </div>
 
                           {/* Request target info */}
-                          <div
-                            className={clsx(
-                              'card-request',
-                              request.request_type === 'not_bunk_with' &&
-                                'text-red-600 [text-shadow:0_0_8px_rgba(239,68,68,0.4)] dark:text-red-400'
-                            )}
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                          <div className="card-request" onClick={(e) => e.stopPropagation()}>
                             <EditableRequestTarget
                               requestType={request.request_type}
                               currentPersonId={request.requestee_id}
@@ -1317,11 +1310,7 @@ export default function RequestReviewPanel({
                             </button>
                           </div>
                           <div
-                            className={clsx(
-                              'flex items-center px-4 py-3',
-                              request.request_type === 'not_bunk_with' &&
-                                'text-red-600 [text-shadow:0_0_8px_rgba(239,68,68,0.4)] dark:text-red-400'
-                            )}
+                            className="flex items-center px-4 py-3"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <EditableRequestTarget

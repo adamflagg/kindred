@@ -324,7 +324,9 @@ export default function EditableRequestTarget({
           'hover:bg-muted hover:border-border border border-transparent',
           'max-w-full',
           disabled && 'cursor-not-allowed opacity-50',
-          !currentPersonId && 'text-muted-foreground'
+          !currentPersonId && 'text-muted-foreground',
+          requestType === 'not_bunk_with' &&
+            'text-red-600 [text-shadow:0_0_8px_rgba(239,68,68,0.4)] dark:text-red-400'
         )}
         disabled={disabled}
       >
