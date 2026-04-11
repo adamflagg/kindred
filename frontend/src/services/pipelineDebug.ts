@@ -85,6 +85,7 @@ export const pipelineDebugService = {
     if (filters.page !== undefined) params.set('page', String(filters.page))
     if (filters.per_page !== undefined) params.set('per_page', String(filters.per_page))
     if (filters.sort) params.set('sort', filters.sort)
+    if (filters.search) params.set('search', filters.search)
 
     const queryString = params.toString()
     const url = `${API_BASE}/pipeline-runs/${encodeURIComponent(runId)}/summary${queryString ? `?${queryString}` : ''}`

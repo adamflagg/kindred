@@ -7,7 +7,7 @@
  * Route: /summer/debug/pipeline (batch) or /summer/debug/pipeline/:traceId (drill-down)
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Link } from 'react-router'
 import { Bug, GitGraph, ArrowLeft, Loader2, FileText, Plus } from 'lucide-react'
@@ -28,6 +28,7 @@ import {
   PHASE_ORDER,
   STAGE_ORDER,
   type PipelineSummaryFilters,
+  type PipelineSummaryItem,
   type PipelinePhase,
   type PipelineStage,
 } from '../../components/pipeline-debug/types'
@@ -49,6 +50,10 @@ export default function PipelineDebugPage() {
   const [activeIntentIndex, setActiveIntentIndex] = useState(0)
   const [stalePhases, setStalePhases] = useState<Set<PipelinePhase>>(new Set())
 
+  // Accumulated pagination state for "load more" pattern
+  const [accumulatedItems, setAccumulatedItems] = useState<PipelineSummaryItem[]>([])
+  const prevFiltersRef = useRef(filters)
+
   // Data fetching
   const runsQuery = usePipelineRuns()
   const togglePin = useToggleRunPin()
@@ -57,9 +62,32 @@ export default function PipelineDebugPage() {
   const runFromPhase = useRunFromPhase()
   const runFullTrace = useRunFullTrace()
 
+  // Accumulate items across pages; reset on filter/run changes
+  useEffect(() => {
+    if (!summaryQuery.data) return
+    const currentPage = filters.page ?? 1
+    const filtersChanged =
+      JSON.stringify({ ...prevFiltersRef.current, page: undefined }) !==
+      JSON.stringify({ ...filters, page: undefined })
+    if (currentPage === 1 || filtersChanged) {
+      // Reset: new filter/sort/search or first page
+      setAccumulatedItems(summaryQuery.data.items)
+    } else {
+      // Append: loading next page
+      setAccumulatedItems((prev) => [...prev, ...summaryQuery.data!.items])
+    }
+    prevFiltersRef.current = filters
+  }, [summaryQuery.data, filters])
+
+  const handleLoadMore = useCallback(() => {
+    const currentPage = filters.page ?? 1
+    setFilters((prev) => ({ ...prev, page: currentPage + 1 }))
+  }, [filters])
+
   const handleSelectRun = useCallback((runId: string | null) => {
     setSelectedRunId(runId)
     setFilters({}) // Reset filters when switching runs
+    setAccumulatedItems([]) // Reset accumulated pages
   }, [])
 
   const handleTogglePin = useCallback(
@@ -243,6 +271,31 @@ export default function PipelineDebugPage() {
                 onStageSelect={handleStageSelect}
                 stalePhases={stalePhases}
                 activeIntentIndex={activeIntentIndex}
+                onViewAllTraces={() => {
+                  // Navigate back to batch list filtered by this camper's name
+                  const requesterName = trace.trace_data.pre_phase1.requester_info.name
+                  setFilters({ search: requesterName })
+                  setAccumulatedItems([])
+                  void navigate('/summer/debug/pipeline')
+                }}
+                onReprocess={() => {
+                  runFullTrace.mutate(
+                    {
+                      original_request_ids: [trace.original_request_id],
+                      year: trace.year,
+                      session_cm_ids: [trace.session_cm_id],
+                      dry_run: false,
+                    },
+                    {
+                      onSuccess: () => {
+                        // Refresh the batch list after reprocessing
+                        setAccumulatedItems([])
+                        setFilters((prev) => ({ ...prev, page: 1 }))
+                      },
+                    }
+                  )
+                }}
+                isReprocessing={runFullTrace.isPending}
               />
             </div>
           )}
@@ -320,21 +373,32 @@ export default function PipelineDebugPage() {
       {/* Summary table — only show when a run is selected */}
       {selectedRunId && (
         <QueryGuard
-          isLoading={summaryQuery.isLoading}
+          isLoading={summaryQuery.isLoading && (filters.page ?? 1) === 1}
           error={summaryQuery.error}
-          data={summaryQuery.data}
+          data={accumulatedItems.length > 0 ? summaryQuery.data : summaryQuery.data}
           label="pipeline summary"
           emptyMessage="No summary data for this run."
         >
           {(summaryData) => (
             <PipelineBatchList
-              items={summaryData.items}
+              items={accumulatedItems.length > 0 ? accumulatedItems : summaryData.items}
               total={summaryData.total}
               filters={filters}
-              onFiltersChange={setFilters}
+              onFiltersChange={(newFilters) => {
+                // If non-page filter changed, reset page to 1
+                const pageOnly =
+                  JSON.stringify({ ...newFilters, page: undefined }) ===
+                  JSON.stringify({ ...filters, page: undefined })
+                if (!pageOnly) {
+                  setAccumulatedItems([])
+                }
+                setFilters(newFilters)
+              }}
               onRowClick={handleRowClick}
               isLoading={false}
               error={summaryQuery.error}
+              onLoadMore={handleLoadMore}
+              isLoadingMore={summaryQuery.isFetching && (filters.page ?? 1) > 1}
             />
           )}
         </QueryGuard>

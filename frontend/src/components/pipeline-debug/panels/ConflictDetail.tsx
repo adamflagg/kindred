@@ -1,6 +1,7 @@
 import type { PostPipelineTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { Badge, PanelSection } from './DataRow'
+import { renderUnknownValue } from './panelUtils'
 
 interface ConflictDetailProps {
   data: PostPipelineTrace
@@ -41,14 +42,22 @@ export function ConflictDetail({
           </p>
         ) : (
           <div className="space-y-2">
-            {conflict_detection.details.map((detail, idx) => (
-              <div
-                key={idx}
-                className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
-              >
-                {String(detail)}
-              </div>
-            ))}
+            {conflict_detection.details.map((detail, idx) => {
+              const text = renderUnknownValue(detail)
+              const isObject = typeof detail === 'object' && detail !== null
+              return (
+                <div
+                  key={idx}
+                  className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                >
+                  {isObject ? (
+                    <pre className="font-mono text-xs whitespace-pre-wrap">{text}</pre>
+                  ) : (
+                    text
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </PanelSection>

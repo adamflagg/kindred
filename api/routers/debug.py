@@ -1319,7 +1319,7 @@ def toggle_pipeline_run_pin(
 def get_pipeline_run_summary(
     run_id: str,
     page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=50, ge=1, le=200),
+    per_page: int = Query(default=50, ge=1, le=500),
     final_status: str | None = Query(default=None),
     resolution_method: str | None = Query(default=None),
     source_field: str | None = Query(default=None),
@@ -1329,6 +1329,7 @@ def get_pipeline_run_summary(
     min_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
     max_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
     sort: str = Query(default="-final_confidence"),
+    search: str | None = Query(default=None, max_length=100),
     user: AuthUser = Depends(require_admin),
 ) -> PipelineSummaryResponse:
     """Get summary rows for a run with PB-native filtering/sort/pagination."""
@@ -1355,6 +1356,11 @@ def get_pipeline_run_summary(
         filter_parts.append(f"final_confidence >= {min_confidence}")
     if max_confidence is not None:
         filter_parts.append(f"final_confidence <= {max_confidence}")
+    if search:
+        # Sanitize: strip quotes to prevent PB filter injection
+        safe_search = search.replace('"', "").replace("'", "").strip()
+        if safe_search:
+            filter_parts.append(f'(requester_name ~ "{safe_search}" || target_name ~ "{safe_search}")')
 
     filter_str = " && ".join(filter_parts)
 

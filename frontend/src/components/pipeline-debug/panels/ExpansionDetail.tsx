@@ -10,6 +10,7 @@ import type { PlaceholderExpansionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { DataRow, Badge, PanelSection } from './DataRow'
 import { PhaseHeader } from './PhaseHeader'
+import { renderUnknownValue } from './panelUtils'
 
 interface ExpansionDetailProps {
   data: PlaceholderExpansionTrace
@@ -56,13 +57,40 @@ export function ExpansionDetail({
           <p className="text-muted-foreground text-sm italic">No expansion performed</p>
         ) : (
           <div className="space-y-1">
-            {data.expanded_targets.map((target, idx) => (
-              <div key={idx} className="bg-muted text-foreground rounded-md px-3 py-1.5 text-sm">
-                {String(
-                  (target as Record<string, string | undefined>)['name'] ?? JSON.stringify(target)
-                )}
-              </div>
-            ))}
+            {data.expanded_targets.map((target, idx) => {
+              // Primitives: render directly
+              if (typeof target !== 'object' || target === null) {
+                return (
+                  <div
+                    key={idx}
+                    className="bg-muted text-foreground rounded-md px-3 py-1.5 text-sm"
+                  >
+                    {renderUnknownValue(target)}
+                  </div>
+                )
+              }
+              // Objects: prefer name field, fall back to JSON
+              const obj = target as Record<string, unknown>
+              const name = obj['name'] ?? obj['first_name']
+              if (typeof name === 'string') {
+                const lastName = typeof obj['last_name'] === 'string' ? ` ${obj['last_name']}` : ''
+                return (
+                  <div
+                    key={idx}
+                    className="bg-muted text-foreground rounded-md px-3 py-1.5 text-sm"
+                  >
+                    {name + lastName}
+                  </div>
+                )
+              }
+              return (
+                <div key={idx} className="bg-muted text-foreground rounded-md px-3 py-1.5 text-sm">
+                  <pre className="font-mono text-xs whitespace-pre-wrap">
+                    {JSON.stringify(target, null, 2)}
+                  </pre>
+                </div>
+              )
+            })}
           </div>
         )}
       </PanelSection>

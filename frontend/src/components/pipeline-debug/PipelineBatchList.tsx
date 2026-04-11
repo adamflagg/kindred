@@ -9,6 +9,7 @@
  * to drill-down.
  */
 
+import { useState, useRef } from 'react'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 import { formatSourceField } from '../../utils/formatSourceField'
@@ -52,6 +53,10 @@ interface PipelineBatchListProps {
   onRowClick: (traceId: string) => void
   isLoading: boolean
   error?: Error | null
+  /** Called when user clicks "Load more" to fetch next page */
+  onLoadMore?: () => void
+  /** Whether more pages are being fetched */
+  isLoadingMore?: boolean
 }
 
 export function PipelineBatchList({
@@ -62,7 +67,23 @@ export function PipelineBatchList({
   onRowClick,
   isLoading,
   error,
+  onLoadMore,
+  isLoadingMore,
 }: PipelineBatchListProps) {
+  const [searchText, setSearchText] = useState('')
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
+
+  /** Debounced search handler — updates filters after 300ms of inactivity. */
+  function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value
+    setSearchText(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      const { search: _, ...rest } = filters
+      onFiltersChange(value ? { ...rest, search: value, page: 1 } : { ...rest, page: 1 })
+    }, 300)
+  }
+
   /** Update a single filter value and notify parent. */
   function updateFilter<K extends keyof PipelineSummaryFilters>(
     key: K,
@@ -112,6 +133,18 @@ export function PipelineBatchList({
       {/* Filter bar */}
       <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 p-3">
         <div className="flex flex-wrap items-center gap-3">
+          {/* Name search */}
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search names..."
+              value={searchText}
+              onChange={handleSearchChange}
+              className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 w-44 rounded-md border py-1 pr-2 pl-7 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
+            />
+          </div>
+
           {/* Status filter */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="filter-status" className="text-muted-foreground text-xs font-medium">
@@ -255,126 +288,155 @@ export function PipelineBatchList({
           <p className="text-muted-foreground text-sm">No results found. Try adjusting filters.</p>
         </div>
       ) : (
-        <div className="card-lodge overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-bark-200 dark:border-bark-700 bg-bark-50 dark:bg-bark-800/50 border-b">
-                  {SORTABLE_COLUMNS.map((col) => {
-                    const isActive = currentSort?.field === col.field
-                    const isDesc = isActive && currentSort.desc
-                    return (
-                      <th
-                        key={col.field}
-                        tabIndex={0}
-                        aria-sort={
-                          currentSort?.field === col.field
-                            ? currentSort.desc
-                              ? 'descending'
-                              : 'ascending'
-                            : undefined
-                        }
-                        onClick={() => toggleSort(col.field)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            toggleSort(col.field)
+        <>
+          <div className="card-lodge overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-bark-200 dark:border-bark-700 bg-bark-50 dark:bg-bark-800/50 border-b">
+                    {SORTABLE_COLUMNS.map((col) => {
+                      const isActive = currentSort?.field === col.field
+                      const isDesc = isActive && currentSort.desc
+                      return (
+                        <th
+                          key={col.field}
+                          tabIndex={0}
+                          aria-sort={
+                            currentSort?.field === col.field
+                              ? currentSort.desc
+                                ? 'descending'
+                                : 'ascending'
+                              : undefined
                           }
-                        }}
-                        className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          {isActive ? (
-                            isDesc ? (
-                              <ArrowDown className="h-3 w-3" />
+                          onClick={() => toggleSort(col.field)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              toggleSort(col.field)
+                            }
+                          }}
+                          className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {col.label}
+                            {isActive ? (
+                              isDesc ? (
+                                <ArrowDown className="h-3 w-3" />
+                              ) : (
+                                <ArrowUp className="h-3 w-3" />
+                              )
                             ) : (
-                              <ArrowUp className="h-3 w-3" />
-                            )
+                              <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                            )}
+                          </span>
+                        </th>
+                      )
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-bark-100 dark:divide-bark-700/50 divide-y">
+                  {items.map((item) => (
+                    <tr
+                      key={item.id}
+                      tabIndex={0}
+                      role="button"
+                      onClick={() => onRowClick(item.trace_id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onRowClick(item.trace_id)
+                        }
+                      }}
+                      className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+                    >
+                      <td className="text-foreground px-3 py-2 font-medium">
+                        {item.requester_name}
+                      </td>
+                      <td className="text-foreground px-3 py-2">{item.target_name}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
+                        >
+                          {formatSourceField(item.source_field)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getStatusClasses(item.final_status)}`}
+                        >
+                          {item.final_status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center gap-1">
+                          {item.disposition_reason ? (
+                            <span
+                              className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
+                            >
+                              {item.disposition_reason}
+                            </span>
                           ) : (
-                            <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                            <span className="text-muted-foreground text-xs">{'\u2014'}</span>
+                          )}
+                          {item.is_reciprocal && (
+                            <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                              Recip
+                            </span>
                           )}
                         </span>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-bark-100 dark:divide-bark-700/50 divide-y">
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
-                    tabIndex={0}
-                    role="button"
-                    onClick={() => onRowClick(item.trace_id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        onRowClick(item.trace_id)
-                      }
-                    }}
-                    className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
-                  >
-                    <td className="text-foreground px-3 py-2 font-medium">{item.requester_name}</td>
-                    <td className="text-foreground px-3 py-2">{item.target_name}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
-                      >
-                        {formatSourceField(item.source_field)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getStatusClasses(item.final_status)}`}
-                      >
-                        {item.final_status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="inline-flex items-center gap-1">
-                        {item.disposition_reason ? (
-                          <span
-                            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
-                          >
-                            {item.disposition_reason}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${getConfidenceClasses(item.final_confidence)}`}
+                        >
+                          {item.final_confidence.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="text-muted-foreground px-3 py-2 text-xs">
+                        {item.resolution_method || '\u2014'}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {item.phase3_triggered ? (
+                          <span className="font-medium text-amber-600 dark:text-amber-400">
+                            Yes
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-xs">{'\u2014'}</span>
+                          <span className="text-muted-foreground">No</span>
                         )}
-                        {item.is_reciprocal && (
-                          <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
-                            Recip
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${getConfidenceClasses(item.final_confidence)}`}
-                      >
-                        {item.final_confidence.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="text-muted-foreground px-3 py-2 text-xs">
-                      {item.resolution_method || '\u2014'}
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {item.phase3_triggered ? (
-                        <span className="font-medium text-amber-600 dark:text-amber-400">Yes</span>
-                      ) : (
-                        <span className="text-muted-foreground">No</span>
-                      )}
-                    </td>
-                    <td className="text-muted-foreground hidden max-w-[200px] truncate px-3 py-2 text-xs lg:table-cell">
-                      {item.ai_reasoning_summary || '\u2014'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                      <td className="text-muted-foreground hidden max-w-[200px] truncate px-3 py-2 text-xs lg:table-cell">
+                        {item.ai_reasoning_summary || '\u2014'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Pagination: showing count + load more */}
+          <div className="flex items-center justify-between px-3 py-2">
+            <span className="text-muted-foreground text-xs">
+              Showing {items.length} of {total}
+            </span>
+            {items.length < total && (
+              <button
+                onClick={onLoadMore}
+                disabled={isLoadingMore}
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/40"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Load more'
+                )}
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

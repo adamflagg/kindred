@@ -311,7 +311,8 @@ describe('PipelineBatchList', () => {
     it('shows total result count', () => {
       render(<PipelineBatchList {...defaultProps} total={42} />)
 
-      expect(screen.getByText(/42/)).toBeInTheDocument()
+      // Total count appears in both the header ("42 results") and pagination ("Showing 3 of 42")
+      expect(screen.getAllByText(/42/).length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -410,6 +411,58 @@ describe('PipelineBatchList', () => {
       const headers = document.querySelectorAll('thead th')
       const headerTexts = Array.from(headers).map((h) => String(h.textContent).trim())
       expect(headerTexts).toContain('Reason')
+    })
+  })
+
+  describe('Search input', () => {
+    it('renders a search input field', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      expect(searchInput).toBeInTheDocument()
+    })
+
+    it('calls onFiltersChange with search value on input change', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+        render(<PipelineBatchList {...defaultProps} />)
+        const searchInput = screen.getByPlaceholderText(/search/i)
+        await user.type(searchInput, 'Emma')
+        // Advance past the 300ms debounce
+        await vi.advanceTimersByTimeAsync(350)
+        // Should have called onFiltersChange with a search value
+        const calls = defaultProps.onFiltersChange.mock.calls
+        expect(calls.length).toBeGreaterThan(0)
+        const lastCall = calls[calls.length - 1]!
+        expect(lastCall[0]).toHaveProperty('search', 'Emma')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  describe('Pagination controls', () => {
+    it('renders showing count text', () => {
+      render(<PipelineBatchList {...defaultProps} total={150} />)
+      expect(screen.getByText(/showing/i)).toBeInTheDocument()
+    })
+
+    it('renders a load-more button when more items available', () => {
+      render(<PipelineBatchList {...defaultProps} total={150} />)
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument()
+    })
+
+    it('does not render load-more when all items shown', () => {
+      render(<PipelineBatchList {...defaultProps} total={3} />)
+      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
+    })
+
+    it('calls onLoadMore when load-more is clicked', async () => {
+      const user = userEvent.setup()
+      const onLoadMore = vi.fn()
+      render(<PipelineBatchList {...defaultProps} total={150} onLoadMore={onLoadMore} />)
+      await user.click(screen.getByRole('button', { name: /load more/i }))
+      expect(onLoadMore).toHaveBeenCalled()
     })
   })
 })

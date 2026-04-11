@@ -379,6 +379,27 @@ describe('ValidationDetail', () => {
     render(<ValidationDetail data={validation} {...defaultActions} />)
     expect(screen.getByText(/1 filtered/i)).toBeInTheDocument()
   })
+
+  it('renders object rejected items without [object Object]', () => {
+    const withObjectRejections: ValidationTrace = {
+      type_validation: {
+        passed: false,
+        rejected: [
+          { field: 'target_name', reason: 'Invalid type for field' },
+          'Simple string rejection',
+        ],
+      },
+      temporal_conflicts: {
+        filtered: 1,
+        details: [{ type: 'superseded', original: 'old request', replacement: 'new request' }],
+      },
+      source_text_validation: { rejected: 0, hallucinated_names: [], unit_names: [] },
+    }
+    render(<ValidationDetail data={withObjectRejections} {...defaultActions} />)
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
+    expect(screen.getByText('Simple string rejection')).toBeInTheDocument()
+    expect(screen.getByText(/Invalid type for field/)).toBeInTheDocument()
+  })
 })
 
 // =============================================================================
@@ -439,6 +460,35 @@ describe('ExpansionDetail', () => {
   it('renders expanded target names', () => {
     render(<ExpansionDetail data={expansion} {...defaultActions} />)
     expect(screen.getByText(/Olivia Chen/)).toBeInTheDocument()
+  })
+
+  it('renders object targets without [object Object]', () => {
+    const withObjectTargets: PlaceholderExpansionTrace = {
+      triggered: true,
+      type: 'bunkmates',
+      expanded_count: 2,
+      expanded_targets: [
+        { cm_id: 1001, name: 'Emma Johnson' },
+        { cm_id: 1002, first_name: 'Liam', last_name: 'Garcia' },
+      ],
+    }
+    render(<ExpansionDetail data={withObjectTargets} {...defaultActions} />)
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
+    // First target has a name field
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    // Second target has no name field but should still render readably
+    expect(screen.getByText(/Liam/)).toBeInTheDocument()
+  })
+
+  it('renders primitive targets directly', () => {
+    const withStringTargets: PlaceholderExpansionTrace = {
+      triggered: true,
+      type: 'siblings',
+      expanded_count: 1,
+      expanded_targets: ['Emma Johnson' as unknown as Record<string, unknown>],
+    }
+    render(<ExpansionDetail data={withStringTargets} {...defaultActions} />)
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
   })
 })
 
@@ -584,6 +634,51 @@ describe('ConflictDetail', () => {
   it('renders clean state when no conflicts', () => {
     render(<ConflictDetail data={postPipeline} {...defaultActions} />)
     expect(screen.getByText(/no enrollment/i)).toBeInTheDocument()
+  })
+
+  it('renders object details without [object Object]', () => {
+    const withConflicts: PostPipelineTrace = {
+      ...postPipeline,
+      conflict_detection: {
+        has_conflict: true,
+        details: [
+          { type: 'enrollment', message: 'Not enrolled in session' },
+          'Simple string conflict',
+        ],
+      },
+    }
+    render(<ConflictDetail data={withConflicts} {...defaultActions} />)
+    // Object should be serialized readably, not as [object Object]
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
+    // The string detail should render directly
+    expect(screen.getByText('Simple string conflict')).toBeInTheDocument()
+    // The object detail should show its contents
+    expect(screen.getByText(/Not enrolled in session/)).toBeInTheDocument()
+  })
+
+  it('renders null and undefined details gracefully', () => {
+    const withNullDetails: PostPipelineTrace = {
+      ...postPipeline,
+      conflict_detection: {
+        has_conflict: true,
+        details: [null, undefined, ''],
+      },
+    }
+    render(<ConflictDetail data={withNullDetails} {...defaultActions} />)
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
+  })
+
+  it('renders array details without [object Object]', () => {
+    const withArrayDetails: PostPipelineTrace = {
+      ...postPipeline,
+      conflict_detection: {
+        has_conflict: true,
+        details: [['nested', 'array', 'values']],
+      },
+    }
+    render(<ConflictDetail data={withArrayDetails} {...defaultActions} />)
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
+    expect(screen.getByText(/nested/)).toBeInTheDocument()
   })
 })
 
