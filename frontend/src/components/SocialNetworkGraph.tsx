@@ -145,12 +145,11 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     cyRef.current = cy
 
     // Create graph elements using extracted utility
-    const { unitNodes, parentNodes, nodes, edges } = createGraphElements(
+    const { parentNodes, nodes, edges } = createGraphElements(
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      showEdges,
-      showUnits
+      showEdges
     )
 
     // Staged rendering for smoother loading
@@ -171,12 +170,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     // Add elements in stages
     const addElementsStaged = async () => {
-      // Add unit parent nodes first (top-level compound), then bunk parents, then campers
-      if (unitNodes.length > 0) {
-        await stageElements(unitNodes as cytoscape.ElementDefinition[], 10)
-      }
-
-      // Add parent (bunk) nodes - required for compound structure
+      // Add parent (bunk) nodes - required for compound layout grouping
       await stageElements(parentNodes as cytoscape.ElementDefinition[], 20)
 
       // Add child (camper) nodes
@@ -213,7 +207,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       }
 
       // Prepare data for worker
-      const workerInput = prepareWorkerInput(parentNodes, nodes, edges, unitNodes)
+      const workerInput = prepareWorkerInput(parentNodes, nodes, edges)
 
       // Try to use WebWorker for layout computation
       try {
@@ -298,7 +292,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // The closure reads showBubbles at effect-creation time to restore bubbles
     // after graph rebuilds triggered by other deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, viewMode, bunksData, showEdges, showLabels, showUnits, bubbleRefs])
+  }, [graphData, viewMode, bunksData, showEdges, showLabels, bubbleRefs])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {

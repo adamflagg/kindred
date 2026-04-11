@@ -4,12 +4,7 @@
  */
 import type { Core, NodeSingular } from 'cytoscape'
 import type { LayoutWorkerInput } from '../../workers/layoutWorker'
-import type {
-  UnitNodeElement,
-  ParentNodeElement,
-  CamperNodeElement,
-  EdgeElement,
-} from './cytoscapeStyles'
+import type { ParentNodeElement, CamperNodeElement, EdgeElement } from './cytoscapeStyles'
 import { showEgoNetwork } from './graphInteractions'
 
 /**
@@ -66,10 +61,9 @@ export function getLayoutOptions(params: LayoutOptionsParams): FcoseLayoutConfig
 export function prepareWorkerInput(
   parentNodes: ParentNodeElement[],
   nodes: CamperNodeElement[],
-  edges: EdgeElement[],
-  unitNodes: UnitNodeElement[] = []
+  edges: EdgeElement[]
 ): LayoutWorkerInput {
-  const allNodes = [...unitNodes, ...parentNodes, ...nodes]
+  const allNodes = [...parentNodes, ...nodes]
   const workerNodes = allNodes.map((n) => {
     const data: Record<string, unknown> = {
       id: n.data.id,
@@ -80,9 +74,6 @@ export function prepareWorkerInput(
     }
     if ('isBunkParent' in n.data) {
       data['isBunkParent'] = n.data['isBunkParent']
-    }
-    if ('isUnitParent' in n.data) {
-      data['isUnitParent'] = n.data['isUnitParent']
     }
     return { data }
   })

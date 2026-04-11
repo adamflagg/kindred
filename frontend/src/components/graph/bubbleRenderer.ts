@@ -198,14 +198,14 @@ export function drawBunkBubbles(
           {
             style: {
               fill: unitColor,
-              fillOpacity: 0.08,
+              fillOpacity: 0.15,
               stroke: unitColor,
-              strokeOpacity: 0.5,
-              strokeWidth: 2,
+              strokeOpacity: 0.7,
+              strokeWidth: 3,
             },
-            // Larger morphBuffer than bunk bubbles (35) so unit bubbles wrap around them
+            // Larger morphBuffer than bunk bubbles (35) so unit bubbles wrap outside them
             maxRoutingIterations: 100,
-            morphBuffer: 80,
+            morphBuffer: 120,
             threshold: 2,
             pixelGroup: 4,
             includeLabels: false,

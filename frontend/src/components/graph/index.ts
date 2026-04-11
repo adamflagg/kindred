@@ -20,7 +20,6 @@ export {
   type GraphNodeData,
   type GraphEdgeData,
   type ShowEdgesSettings,
-  type UnitNodeElement,
   type ParentNodeElement,
   type CamperNodeElement,
   type EdgeElement,
