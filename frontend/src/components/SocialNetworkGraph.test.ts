@@ -18,7 +18,9 @@ describe('SocialNetworkGraph safety guards', () => {
     // When the graph rebuilds (data/viewMode change) and showBubbles is on,
     // onLayoutComplete must redraw bubbles on the new Cytoscape instance.
     // Without this, bubbles vanish until the user toggles off/on.
-    expect(source).toContain('drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus)')
+    expect(source).toContain(
+      'drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits, showBubbles)'
+    )
   })
 
   it('clears bubbles when showBubbles is toggled OFF in the resize effect', () => {

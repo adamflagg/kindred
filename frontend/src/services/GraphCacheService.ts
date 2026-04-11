@@ -81,14 +81,17 @@ export class GraphCacheService {
    * Invalidate all cached data for a session
    */
   invalidate(sessionCmId: number): void {
-    const sessionKey: GraphCacheKey = `session-${sessionCmId}`
+    // Remove all session and bunk graphs for this session.
+    // Session entries may be keyed as `session-{id}` or `session-{id}-{year}`.
+    const sessionPrefix = `session-${sessionCmId}`
+    const bunkSuffix = `-${sessionCmId}`
 
-    // Remove session graph
-    this.removeEntry(sessionKey)
-
-    // Remove all bunk graphs for this session
     for (const key of this.cache.keys()) {
-      if (key.includes(`-${sessionCmId}`)) {
+      if (key === sessionPrefix || key.startsWith(`${sessionPrefix}-`)) {
+        // Matches session-{id} and session-{id}-{year}
+        this.removeEntry(key)
+      } else if (key.startsWith('bunk-') && key.endsWith(bunkSuffix)) {
+        // Matches bunk-{bunkId}-{sessionCmId}
         this.removeEntry(key)
       }
     }

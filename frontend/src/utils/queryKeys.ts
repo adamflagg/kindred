@@ -221,6 +221,9 @@ export const queryKeys = {
   ) => ['metrics', 'forecast', year, sessionTypes, sessionCmId, dayOffset, duration] as const,
   forecastWeekOptions: (year: number) => ['metrics', 'forecast', 'week-options', year] as const,
 
+  // Social Graph (Tier 1 - sync data)
+  socialGraph: (sessionCmId: number, year: number) => ['social-graph', sessionCmId, year] as const,
+
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
 

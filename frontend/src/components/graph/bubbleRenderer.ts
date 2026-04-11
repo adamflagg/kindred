@@ -156,8 +156,8 @@ export function drawBunkBubbles(
   bubblesetsRef.current = bb
 
   // Collect unit grouping data (needed for both bubble paths and labels)
-  let unitGroups: Record<string, NodeSingular[]> = {}
-  let unitBunkColors: Record<string, string[]> = {}
+  const unitGroups: Record<string, NodeSingular[]> = {}
+  const unitBunkColors: Record<string, string[]> = {}
 
   if (showUnits && bunksData) {
     cy.nodes()
@@ -336,36 +336,40 @@ export function drawBunkBubbles(
       labelEl.style.zIndex = '1'
       const innerDiv = document.createElement('div')
 
-      // Use CSS gradient text if multiple bunk colors, otherwise use single bunk color
+      // Shared pill styling on the outer label element
+      const labelColor = colors[0] ?? unitColor
+      Object.assign(labelEl.style, {
+        backgroundColor: 'rgba(255,255,255,0.85)',
+        padding: '2px 10px',
+        borderRadius: '10px',
+        whiteSpace: 'nowrap',
+      })
+
+      // Use CSS gradient text if multiple bunk colors, otherwise single color
       if (colors.length >= 2) {
         const gradientStops = colors.join(', ')
+        Object.assign(labelEl.style, {
+          border: '2px solid transparent',
+          borderImage: `linear-gradient(90deg, ${gradientStops}) 1`,
+        })
         Object.assign(innerDiv.style, {
           background: `linear-gradient(90deg, ${gradientStops})`,
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text',
-          padding: '2px 10px',
-          borderRadius: '10px',
           fontSize: '14px',
           fontWeight: '700',
           letterSpacing: '0.5px',
-          whiteSpace: 'nowrap',
-          border: `2px solid ${colors[0]}`,
-          borderImage: `linear-gradient(90deg, ${gradientStops}) 1`,
-          backgroundColor: 'rgba(255,255,255,0.85)',
         })
       } else {
-        const labelColor = colors[0] ?? unitColor
+        Object.assign(labelEl.style, {
+          border: `2px solid ${labelColor}`,
+        })
         Object.assign(innerDiv.style, {
           color: labelColor,
-          padding: '2px 10px',
-          borderRadius: '10px',
           fontSize: '14px',
           fontWeight: '700',
           letterSpacing: '0.5px',
-          whiteSpace: 'nowrap',
-          border: `2px solid ${labelColor}`,
-          backgroundColor: 'rgba(255,255,255,0.85)',
         })
       }
       innerDiv.textContent = unitName

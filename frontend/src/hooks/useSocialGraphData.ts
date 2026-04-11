@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { socialGraphService } from '../services/socialGraph'
 import { graphCacheService } from '../services/GraphCacheService'
 import type { GraphData } from '../types/graph'
+import { queryKeys } from '../utils/queryKeys'
 import { useYear } from './useCurrentYear'
 import { useApiWithAuth } from './useApiWithAuth'
 
@@ -18,7 +19,7 @@ export function useSocialGraphData(sessionCmId: number) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery<GraphData>({
-    queryKey: ['social-graph', sessionCmId, currentYear],
+    queryKey: queryKeys.socialGraph(sessionCmId, currentYear),
     enabled: !isAuthLoading,
     queryFn: async () => {
       return graphCacheService.getSessionGraph(
