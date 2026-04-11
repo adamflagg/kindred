@@ -103,6 +103,9 @@ function RawDataField({
             </>
           )}
           {dates.mode === 'synced-only' && <span>Synced: {dates.syncedDisplay}</span>}
+          {dates.mode === 'synced-only' && displayContent && (
+            <span className="text-amber-600 italic dark:text-amber-400">Not yet processed</span>
+          )}
         </div>
       </div>
       <dd className="bg-muted/50 mt-1 rounded-lg p-3 text-sm whitespace-pre-wrap">
