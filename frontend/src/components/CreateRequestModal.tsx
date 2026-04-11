@@ -1,16 +1,13 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { Search, Loader2 } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
-import type {
-  BunkRequestsResponse,
-  PersonsResponse,
-  AttendeesResponse,
-} from '../types/pocketbase-types'
+import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import clsx from 'clsx'
 import { Modal } from './ui/Modal'
 import { queryKeys } from '../utils/queryKeys'
+import { useSessionCamperPersons } from '../hooks/useSessionCamperPersons'
 
 interface CreateRequestModalProps {
   sessionId: number
@@ -37,27 +34,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
     data: campers = [],
     isLoading: campersLoading,
     isError: campersError,
-  } = useQuery({
-    queryKey: queryKeys.sessionCampers(sessionId, year),
-    queryFn: async () => {
-      // Filter attendees by session_id (CampMinder ID) server-side
-      const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `session_id = ${sessionId} && year = ${year} && status = "enrolled"`,
-        expand: 'person',
-      })
-
-      interface ExpandedAttendee {
-        person?: PersonsResponse
-      }
-
-      return attendees
-        .map((attendee) => {
-          const expanded = attendee.expand as ExpandedAttendee | undefined
-          return expanded?.person
-        })
-        .filter((p): p is PersonsResponse => p !== undefined)
-    },
-  })
+  } = useSessionCamperPersons(sessionId, year)
 
   // Filter campers based on search
   const filteredRequesters = campers.filter((camper) => {
