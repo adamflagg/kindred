@@ -20,12 +20,6 @@ This document provides a comprehensive reference for all command-line tools and 
 ```
 Starts all development services including PocketBase, frontend dev server, and any required background services.
 
-### Start PocketBase with OAuth
-```bash
-./scripts/start_pocketbase_with_oauth.sh
-```
-Starts PocketBase with OAuth2 configuration automatically applied from environment variables.
-
 ### Create Admin User
 ```bash
 ./scripts/create_admin.sh
