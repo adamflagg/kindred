@@ -275,6 +275,7 @@ class TestPlaceholderExpansion:
         # Resolution is unresolved, flagged for staff review
         assert result_resolutions[0].person is None
         assert result_resolutions[0].method == "auto_expand_disabled"
+        assert result_resolutions[0].metadata is not None
         assert result_resolutions[0].metadata.get("needs_staff_review") is True
 
     @pytest.mark.asyncio
@@ -449,6 +450,7 @@ class TestMixedResults:
         review_parse, review_res = output[1]
         assert review_res[0].method == "auto_expand_disabled"
         assert review_res[0].person is None
+        assert review_res[0].metadata is not None
         assert review_res[0].metadata.get("needs_staff_review") is True
 
 

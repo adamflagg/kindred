@@ -629,7 +629,9 @@ class TestJaroWinklerShortNameSafety:
         person_repo.find_by_first_and_parent_surname.return_value = []
         return FuzzyMatchStrategy(person_repo, attendee_repo)
 
-    def test_mieke_does_not_match_mike(self, strategy: FuzzyMatchStrategy, mock_repositories):
+    def test_mieke_does_not_match_mike(
+        self, strategy: FuzzyMatchStrategy, mock_repositories: tuple[Mock, Mock]
+    ) -> None:
         """Mieke Baskett should NOT match Mike Baskett (different names, different genders)."""
         person_repo, attendee_repo = mock_repositories
 
@@ -650,11 +652,12 @@ class TestJaroWinklerShortNameSafety:
 
         # Should NOT resolve to Mike
         if result.is_resolved:
+            assert result.person is not None
             assert result.person.cm_id != mike.cm_id, (
                 "Mieke Baskett should NOT match Mike Baskett - they are different names (Dutch female vs English male)"
             )
 
-    def test_jake_does_not_match_jane(self, strategy: FuzzyMatchStrategy, mock_repositories):
+    def test_jake_does_not_match_jane(self, strategy: FuzzyMatchStrategy, mock_repositories: tuple[Mock, Mock]) -> None:
         """Jake should NOT match Jane (JW 0.87 for short names)."""
         person_repo, attendee_repo = mock_repositories
 
@@ -674,11 +677,14 @@ class TestJaroWinklerShortNameSafety:
         )
 
         if result.is_resolved:
+            assert result.person is not None
             assert result.person.cm_id != jane.cm_id, (
                 "Jake Davis should NOT match Jane Davis - completely different first names"
             )
 
-    def test_legitimate_typo_still_matches(self, strategy: FuzzyMatchStrategy, mock_repositories):
+    def test_legitimate_typo_still_matches(
+        self, strategy: FuzzyMatchStrategy, mock_repositories: tuple[Mock, Mock]
+    ) -> None:
         """Legitimate typos like Kaitlyn->Caitlyn should still match (JW > 0.92)."""
         person_repo, attendee_repo = mock_repositories
 
