@@ -1072,7 +1072,7 @@ export default function RequestReviewPanel({
                               {requester
                                 ? `${requester.first_name || ''} ${requester.last_name || ''}`
                                 : `Person ${request.requester_id}`}
-                              {requester?.grade != null && (
+                              {requester?.grade != null && requester.grade > 0 && (
                                 <span className="text-muted-foreground ml-1 text-xs font-normal">
                                   ({formatGradeOrdinal(requester.grade)})
                                 </span>
@@ -1143,7 +1143,7 @@ export default function RequestReviewPanel({
                                 request.requestee_id > 0
                                   ? personMap.get(request.requestee_id)
                                   : undefined
-                              return targetPerson?.grade != null ? (
+                              return targetPerson?.grade != null && targetPerson.grade > 0 ? (
                                 <span className="text-muted-foreground ml-1 text-xs">
                                   ({formatGradeOrdinal(targetPerson.grade)})
                                 </span>
@@ -1302,7 +1302,7 @@ export default function RequestReviewPanel({
                               {requester
                                 ? `${requester.first_name || ''} ${requester.last_name || ''}`
                                 : `Person ${request.requester_id}`}
-                              {requester?.grade != null && (
+                              {requester?.grade != null && requester.grade > 0 && (
                                 <span className="text-muted-foreground ml-1 text-xs font-normal">
                                   ({formatGradeOrdinal(requester.grade)})
                                 </span>
@@ -1349,7 +1349,7 @@ export default function RequestReviewPanel({
                                 request.requestee_id > 0
                                   ? personMap.get(request.requestee_id)
                                   : undefined
-                              return targetPerson?.grade != null ? (
+                              return targetPerson?.grade != null && targetPerson.grade > 0 ? (
                                 <span className="text-muted-foreground ml-1 text-xs">
                                   ({formatGradeOrdinal(targetPerson.grade)})
                                 </span>

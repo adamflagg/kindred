@@ -177,7 +177,7 @@ export default function EditableRequestTarget({
             preferred_name: person.preferred_name,
             age: person.age,
             birthdate: person.birthdate,
-            grade: person.grade || 0,
+            grade: person.grade ?? 0,
             gender: person.gender || '',
             session_cm_id: sessionId,
           }
@@ -416,8 +416,8 @@ export default function EditableRequestTarget({
                   >
                     <div className="font-medium">{formatCamperName(camper)}</div>
                     <div className="text-muted-foreground text-xs">
-                      Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} • Grade{' '}
-                      {camper.grade}
+                      Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)}
+                      {camper.grade > 0 && ` • Grade ${camper.grade}`}
                     </div>
                   </button>
                 ))}
