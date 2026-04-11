@@ -2,6 +2,7 @@
  * Tests for RequestContext sidebar component.
  */
 
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RequestContext } from './RequestContext'
@@ -16,7 +17,7 @@ const minimalTraceData: TraceData = {
     na_prefix_stripped: false,
     skip_reason: null,
     socialize_mapped_value: null,
-    requester_info: { name: 'Liam Garcia', cm_id: 12345, grade: 5 },
+    requester_info: { name: 'Liam Garcia', cm_id: 12345, grade: '5' },
     session_cm_ids: [1000001],
     staff_metadata: null,
   },
@@ -30,13 +31,14 @@ const minimalTraceData: TraceData = {
         confidence: 0.9,
         keywords_found: [],
         needs_clarification: false,
-        reasoning: null,
+        reasoning: '',
         ai_reasoning_summary: null,
-        parse_notes: null,
+        parse_notes: '',
         temporal_info: null,
+        csv_position: 0,
       },
     ],
-    ai_raw_response: null,
+    ai_raw_response: {},
     parse_request: {},
     error_message: null,
     ai_reasoning_summary: null,
@@ -106,12 +108,16 @@ const minimalTraceData: TraceData = {
     },
     final_bunk_requests: [
       {
+        bunk_request_id: null,
+        requester_cm_id: 12345,
+        requested_cm_id: 54321,
         requested_name: 'Emma Johnson',
-        target_cm_id: 54321,
+        request_type: 'BUNK_WITH',
         status: 'RESOLVED',
         priority: 1,
         confidence: 0.95,
         resolution_method: 'exact_match',
+        is_placeholder: false,
         declined_reason: '',
         disposition_reason: '',
         is_reciprocal: false,
