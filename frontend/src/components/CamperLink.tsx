@@ -45,6 +45,8 @@ export default function CamperLink({
     return (
       <Link
         to={`/camper/${personCmId}`}
+        target="_blank"
+        rel="noopener noreferrer"
         className={clsx(
           'inline-flex items-center gap-1 font-medium',
           'text-foreground hover:text-primary hover:underline',

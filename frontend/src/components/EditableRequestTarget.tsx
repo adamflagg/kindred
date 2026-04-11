@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Search, User, ExternalLink, Quote } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { pb } from '../lib/pocketbase'
-import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-types'
+import type { PersonsResponse } from '../types/pocketbase-types'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import clsx from 'clsx'
 import { useClickOutside } from '../hooks/useClickOutside'
+import { useSessionCamperPersons } from '../hooks/useSessionCamperPersons'
 
 interface EditableRequestTargetProps {
   requestType: string
@@ -21,6 +20,7 @@ interface EditableRequestTargetProps {
   requestedPersonName?: string
   onViewCamper?: (personCmId: number) => void
   personMap?: Map<number, PersonsResponse>
+  sessionName?: string | undefined // Session display name for the "Looking in session X for:" banner
 }
 
 interface Camper {
@@ -62,6 +62,7 @@ export default function EditableRequestTarget({
   requestedPersonName,
   onViewCamper,
   personMap,
+  sessionName,
 }: EditableRequestTargetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -76,115 +77,71 @@ export default function EditableRequestTarget({
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Calculate dropdown position on open - use fixed positioning to escape overflow containers
-  useLayoutEffect(() => {
-    if (isOpen && triggerRef.current) {
-      const triggerRect = triggerRef.current.getBoundingClientRect()
-      const viewportHeight = window.innerHeight
-      const dropdownHeight = 400 // Approximate max height of dropdown
+  // Calculate dropdown position relative to trigger — shared by initial open and scroll/resize
+  const calculatePosition = useCallback(() => {
+    if (!triggerRef.current) return
+    const triggerRect = triggerRef.current.getBoundingClientRect()
+    const viewportHeight = window.innerHeight
+    const dropdownHeight = 400 // Approximate max height of dropdown
 
-      const spaceBelow = viewportHeight - triggerRect.bottom
-      const spaceAbove = triggerRect.top
+    const spaceBelow = viewportHeight - triggerRect.bottom
+    const spaceAbove = triggerRect.top
 
-      // Open upward if not enough space below and more space above
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        setDropdownPosition({
-          bottom: viewportHeight - triggerRect.top + 4,
-          left: triggerRect.left,
-          direction: 'up',
-        })
-      } else {
-        setDropdownPosition({
-          top: triggerRect.bottom + 4,
-          left: triggerRect.left,
-          direction: 'down',
-        })
-      }
+    if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+      setDropdownPosition({
+        bottom: viewportHeight - triggerRect.top + 4,
+        left: triggerRect.left,
+        direction: 'up',
+      })
+    } else {
+      setDropdownPosition({
+        top: triggerRect.bottom + 4,
+        left: triggerRect.left,
+        direction: 'down',
+      })
     }
-  }, [isOpen])
+  }, [])
 
-  // Recalculate position on scroll (parent container may scroll)
+  // Position on open
+  useLayoutEffect(() => {
+    if (isOpen) calculatePosition()
+  }, [isOpen, calculatePosition])
+
+  // Recalculate position on scroll (parent container may scroll) and resize
   useEffect(() => {
     if (!isOpen) return
 
-    const recalculatePosition = () => {
-      if (triggerRef.current) {
-        const triggerRect = triggerRef.current.getBoundingClientRect()
-        const viewportHeight = window.innerHeight
-        const dropdownHeight = 400
-
-        const spaceBelow = viewportHeight - triggerRect.bottom
-        const spaceAbove = triggerRect.top
-
-        if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-          setDropdownPosition({
-            bottom: viewportHeight - triggerRect.top + 4,
-            left: triggerRect.left,
-            direction: 'up',
-          })
-        } else {
-          setDropdownPosition({
-            top: triggerRect.bottom + 4,
-            left: triggerRect.left,
-            direction: 'down',
-          })
-        }
-      }
-    }
-
-    // Listen for scroll on any ancestor
-    window.addEventListener('scroll', recalculatePosition, true)
-    window.addEventListener('resize', recalculatePosition)
+    window.addEventListener('scroll', calculatePosition, true)
+    window.addEventListener('resize', calculatePosition)
 
     return () => {
-      window.removeEventListener('scroll', recalculatePosition, true)
-      window.removeEventListener('resize', recalculatePosition)
+      window.removeEventListener('scroll', calculatePosition, true)
+      window.removeEventListener('resize', calculatePosition)
     }
-  }, [isOpen])
+  }, [isOpen, calculatePosition])
 
   // Fetch session campers for person selection
-  const { data: allCampers = [] } = useQuery({
-    queryKey: ['session-campers', sessionId, year],
-    queryFn: async () => {
-      // Fetch attendees for this session with expanded person relation
-      const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `year = ${year} && status = "enrolled"`,
-        expand: 'person,session',
-      })
-
-      // Filter by session after expand since we can't filter on relation fields directly
-      interface ExpandedAttendee {
-        session?: { cm_id?: number }
-        person?: PersonsResponse
-      }
-      const sessionAttendees = attendees.filter((attendee) => {
-        const expanded = attendee.expand as ExpandedAttendee | undefined
-        return expanded?.session?.cm_id === sessionId
-      })
-
-      // Map to camper format with session info
-      return sessionAttendees
-        .map((attendee) => {
-          const expanded = attendee.expand as ExpandedAttendee | undefined
-          const person = expanded?.person
-          if (!person) return null
-          const camper: Camper = {
-            id: person.id,
-            campminder_person_id: person.cm_id,
-            first_name: person.first_name,
-            last_name: person.last_name,
-            preferred_name: person.preferred_name,
-            age: person.age,
-            birthdate: person.birthdate,
-            grade: person.grade || 0,
-            gender: person.gender || '',
-            session_cm_id: sessionId,
-          }
-          return camper
-        })
-        .filter(Boolean) as Camper[]
-    },
+  const { data: camperPersons = [] } = useSessionCamperPersons(sessionId, year, {
     enabled: requestType !== 'age_preference' && isOpen,
   })
+
+  // Map PersonsResponse to local Camper shape
+  const allCampers: Camper[] = useMemo(
+    () =>
+      camperPersons.map((person) => ({
+        id: person.id,
+        campminder_person_id: person.cm_id,
+        first_name: person.first_name,
+        last_name: person.last_name,
+        preferred_name: person.preferred_name,
+        age: person.age,
+        birthdate: person.birthdate,
+        grade: person.grade ?? 0,
+        gender: person.gender || '',
+        session_cm_id: sessionId,
+      })),
+    [camperPersons, sessionId]
+  )
 
   // Get current person from personMap (passed from parent) instead of separate query
   const currentPerson = useMemo(() => {
@@ -310,7 +267,7 @@ export default function EditableRequestTarget({
   }
 
   // Determine if we can link to the target camper
-  const canLinkToTarget = currentPersonId && currentPersonId > 0
+  const canLinkToTarget = !!currentPersonId && currentPersonId > 0
 
   return (
     <div className="relative flex items-center gap-1" ref={dropdownRef}>
@@ -322,7 +279,9 @@ export default function EditableRequestTarget({
           'hover:bg-muted hover:border-border border border-transparent',
           'max-w-full',
           disabled && 'cursor-not-allowed opacity-50',
-          !currentPersonId && 'text-muted-foreground'
+          !currentPersonId && 'text-muted-foreground',
+          requestType === 'not_bunk_with' &&
+            'text-red-600 [text-shadow:0_0_8px_rgba(239,68,68,0.4)] dark:text-red-400'
         )}
         disabled={disabled}
       >
@@ -350,7 +309,7 @@ export default function EditableRequestTarget({
 
       {isOpen && (
         <div
-          className="bg-popover border-border fixed z-[9999] w-80 rounded-md border shadow-lg"
+          className="bg-popover text-popover-foreground border-border fixed z-[9999] w-80 rounded-md border shadow-lg"
           style={{
             top: dropdownPosition.top ?? undefined,
             bottom: dropdownPosition.bottom ?? undefined,
@@ -365,7 +324,7 @@ export default function EditableRequestTarget({
                 <Quote className="text-forest-600 dark:text-forest-400 mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <span className="text-forest-700 dark:text-forest-300 text-xs font-medium">
-                    Looking for:
+                    {sessionName ? `Looking in ${sessionName} for:` : 'Looking for:'}
                   </span>
                   <p
                     className="text-forest-800 dark:text-forest-200 truncate text-sm italic"
@@ -412,8 +371,8 @@ export default function EditableRequestTarget({
                   >
                     <div className="font-medium">{formatCamperName(camper)}</div>
                     <div className="text-muted-foreground text-xs">
-                      Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} • Grade{' '}
-                      {camper.grade}
+                      Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)}
+                      {camper.grade > 0 && ` • Grade ${camper.grade}`}
                     </div>
                   </button>
                 ))}
@@ -422,7 +381,7 @@ export default function EditableRequestTarget({
           </div>
 
           {/* Clear selection option */}
-          {currentPersonId && (
+          {!!currentPersonId && (
             <div className="border-border border-t py-1">
               <button
                 onClick={() => onChange({ requestee_id: null })}

@@ -1,15 +1,13 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { Search, Loader2 } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
-import type {
-  BunkRequestsResponse,
-  PersonsResponse,
-  AttendeesResponse,
-} from '../types/pocketbase-types'
+import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import clsx from 'clsx'
 import { Modal } from './ui/Modal'
+import { queryKeys } from '../utils/queryKeys'
+import { useSessionCamperPersons } from '../hooks/useSessionCamperPersons'
 
 interface CreateRequestModalProps {
   sessionId: number
@@ -32,56 +30,11 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Fetch campers for this session
-  const { data: campers = [], isLoading: campersLoading } = useQuery({
-    queryKey: ['session-campers', sessionId, year],
-    queryFn: async () => {
-      // Fetch attendees for this session
-      const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `session = ${sessionId} && year = ${year} && status = "enrolled"`,
-      })
-
-      // Get person IDs
-      const personIds = attendees.map((a) => a.person_id)
-      if (personIds.length === 0) return []
-
-      // Fetch persons in batches to avoid 414 Request Too Large errors
-      const BATCH_SIZE = 50
-      const batches: Array<Promise<PersonsResponse[]>> = []
-
-      // Split personIds into batches and create promises
-      for (let i = 0; i < personIds.length; i += BATCH_SIZE) {
-        const batch = personIds.slice(i, i + BATCH_SIZE)
-        const batchFilter = batch.map((id) => `cm_id = ${id}`).join(' || ')
-
-        const batchPromise = pb
-          .collection<PersonsResponse>('persons')
-          .getFullList({
-            filter: batchFilter,
-          })
-          .catch((error) => {
-            console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error)
-            return [] // Return empty array for failed batches
-          })
-
-        batches.push(batchPromise)
-      }
-
-      // Fetch all batches in parallel
-      const batchResults = await Promise.all(batches)
-      const persons = batchResults.flat()
-
-      // Create a map for quick lookup
-      const personsMap = new Map<number, PersonsResponse>()
-      persons.forEach((p) => {
-        personsMap.set(p.cm_id, p)
-      })
-
-      // Filter to only include persons that have attendees in this session
-      return personIds
-        .map((id) => personsMap.get(id))
-        .filter((p): p is PersonsResponse => p !== undefined)
-    },
-  })
+  const {
+    data: campers = [],
+    isLoading: campersLoading,
+    isError: campersError,
+  } = useSessionCamperPersons(sessionId, year)
 
   // Filter campers based on search
   const filteredRequesters = campers.filter((camper) => {
@@ -119,9 +72,11 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         status: 'resolved' as BunkRequestsResponse['status'], // Manually created requests go directly to resolved
         confidence_score: 1.0, // Full confidence for manual entries
         source: 'staff' as BunkRequestsResponse['source'],
+        source_field: 'manual', // Required field - identifies this as a staff-created request
         original_text: `Manually created ${requestType} request`,
         parse_notes: notes || 'Created through admin interface',
         request_locked: true, // Auto-lock manual requests
+        is_active: true, // Manually created requests are active
       }
 
       if (requestType === 'age_preference') {
@@ -138,6 +93,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionCampers(sessionId, year) })
       toast.success('Request created successfully')
       onClose()
     },
@@ -197,6 +153,10 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         {campersLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        ) : campersError ? (
+          <div className="text-destructive py-8 text-center text-sm">
+            Failed to load campers. Please close and try again.
           </div>
         ) : (
           <div className="space-y-6">

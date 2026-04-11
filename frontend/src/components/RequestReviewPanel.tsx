@@ -8,7 +8,6 @@ import {
   CheckCheck,
   XCircle,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   Search,
   AlertCircle,
@@ -16,7 +15,6 @@ import {
   Plus,
   GitMerge,
   Scissors,
-  SlidersHorizontal,
   Users,
   Loader2,
   Star,
@@ -45,23 +43,19 @@ import CamperDetailsPanel from './CamperDetailsPanel'
 import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
+import { formatGradeOrdinal } from '../utils/gradeUtils'
 
 interface RequestReviewPanelProps {
   sessionId: number
   relatedSessionIds?: number[] // Additional session IDs to include (sub-sessions, AG sessions)
   year: number
+  sessionName?: string | undefined // Session display name (e.g., "TOC2") — passed to EditableRequestTarget
 }
 
-type ResolvedConfidenceFilter = 'all' | 'high' | 'spot-check'
-
 interface FilterState {
-  lowConfidenceOnly: boolean
-  needsReviewOnly: boolean
   requestTypes: string[]
   statuses: string[]
   searchQuery: string
-  showResolved: boolean
-  resolvedConfidenceFilter: ResolvedConfidenceFilter
 }
 
 type SortColumn = 'requester' | 'request' | 'disposition' | 'priority' | 'confidence' | 'status'
@@ -70,38 +64,142 @@ export default function RequestReviewPanel({
   sessionId,
   relatedSessionIds = [],
   year,
+  sessionName,
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+
+  // Task 7: Default filter/sort constants and localStorage persistence
+  const storageKey = `kindred-requests-filters-${sessionId}`
+  const defaultFilters: FilterState = useMemo(
+    () => ({
+      requestTypes: [],
+      statuses: ['pending'],
+      searchQuery: '',
+    }),
+    []
+  )
+  const defaultSortBy: SortColumn = 'confidence'
+  const defaultSortOrder: 'asc' | 'desc' = 'asc'
+
   const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set())
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [sortBy, setSortBy] = useState<SortColumn>('confidence')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState<SortColumn>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.sort?.sortBy) return parsed.sort.sortBy as SortColumn
+      }
+    } catch {
+      // Ignore
+    }
+    return defaultSortBy
+  })
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.sort?.sortOrder) return parsed.sort.sortOrder as 'asc' | 'desc'
+      }
+    } catch {
+      // Ignore
+    }
+    return defaultSortOrder
+  })
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
-  const [filters, setFilters] = useState<FilterState>({
-    lowConfidenceOnly: false,
-    needsReviewOnly: false,
-    requestTypes: [],
-    statuses: ['pending', 'declined', 'resolved'],
-    searchQuery: '',
-    showResolved: false,
-    resolvedConfidenceFilter: 'all',
+  const [filters, setFilters] = useState<FilterState>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.filters) {
+          return {
+            requestTypes: parsed.filters.requestTypes ?? defaultFilters.requestTypes,
+            statuses: parsed.filters.statuses ?? defaultFilters.statuses,
+            searchQuery: parsed.filters.searchQuery ?? defaultFilters.searchQuery,
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors, fall through to defaults
+    }
+    return defaultFilters
   })
-  const [filtersExpanded, setFiltersExpanded] = useState(false)
+
+  // Task 7: Persist filters and sort config to localStorage on changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          filters: {
+            requestTypes: filters.requestTypes,
+            statuses: filters.statuses,
+            searchQuery: filters.searchQuery,
+          },
+          sort: { sortBy, sortOrder },
+        })
+      )
+    } catch {
+      // Ignore quota errors
+    }
+  }, [storageKey, filters, sortBy, sortOrder])
+
+  // Rehydrate filters/sort when sessionId changes (component stays mounted via Activity)
+  const isInitialMount = useRef(true)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    // Session changed — reload from localStorage or reset to defaults
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.filters) {
+          setFilters({
+            requestTypes: parsed.filters.requestTypes ?? defaultFilters.requestTypes,
+            statuses: parsed.filters.statuses ?? defaultFilters.statuses,
+            searchQuery: parsed.filters.searchQuery ?? defaultFilters.searchQuery,
+          })
+        } else {
+          setFilters(defaultFilters)
+        }
+        if (parsed?.sort?.sortBy) setSortBy(parsed.sort.sortBy as SortColumn)
+        else setSortBy(defaultSortBy)
+        if (parsed?.sort?.sortOrder) setSortOrder(parsed.sort.sortOrder as 'asc' | 'desc')
+        else setSortOrder(defaultSortOrder)
+      } else {
+        setFilters(defaultFilters)
+        setSortBy(defaultSortBy)
+        setSortOrder(defaultSortOrder)
+      }
+    } catch {
+      setFilters(defaultFilters)
+      setSortBy(defaultSortBy)
+      setSortOrder(defaultSortOrder)
+    }
+    // Clear selection state from previous session
+    setSelectedRequests(new Set())
+    setExpandedRows(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
 
   // Query key only includes server-side filters (sent to PocketBase).
-  // Client-side filters (confidence, review, search) are applied in filteredRequests memo.
+  // Client-side filters (search) are applied in filteredRequests memo.
   const queryKeyFilters = useMemo(
     () => ({
       requestTypes: filters.requestTypes,
       statuses: filters.statuses,
-      showResolved: filters.showResolved,
     }),
-    [filters.requestTypes, filters.statuses, filters.showResolved]
+    [filters.requestTypes, filters.statuses]
   )
 
   // Fetch bunk requests
@@ -114,13 +212,9 @@ export default function RequestReviewPanel({
       // Filter out absorbed requests (those that have been merged into another request)
       let filterStr = `(${sessionFilter}) && year = ${year} && (merged_into = "" || merged_into = null)`
 
-      // Add status filter - exclude resolved if showResolved is false
-      const activeStatuses = filters.showResolved
-        ? filters.statuses
-        : filters.statuses.filter((s) => s !== 'resolved')
-
-      if (activeStatuses.length > 0) {
-        const statusFilter = activeStatuses.map((s) => `status = '${s}'`).join(' || ')
+      // Add status filter
+      if (filters.statuses.length > 0) {
+        const statusFilter = filters.statuses.map((s) => `status = '${s}'`).join(' || ')
         filterStr += ` && (${statusFilter})`
       }
 
@@ -299,29 +393,6 @@ export default function RequestReviewPanel({
   const sortedRequests = useMemo(() => {
     let filtered = [...requests]
 
-    // Confidence / review filters
-    if (filters.lowConfidenceOnly) {
-      filtered = filtered.filter((r) => r.confidence_score < CONFIDENCE_RESOLVED)
-    }
-    if (filters.needsReviewOnly) {
-      filtered = filtered.filter((r) => r.requires_manual_review === true)
-    }
-
-    // Resolved confidence filter
-    if (filters.showResolved && filters.resolvedConfidenceFilter !== 'all') {
-      filtered = filtered.filter((r) => {
-        if (r.status !== 'resolved') return true
-        if (filters.resolvedConfidenceFilter === 'high') {
-          return r.confidence_score >= CONFIDENCE_AUTO_ACCEPT
-        } else if (filters.resolvedConfidenceFilter === 'spot-check') {
-          return (
-            r.confidence_score >= CONFIDENCE_RESOLVED && r.confidence_score < CONFIDENCE_AUTO_ACCEPT
-          )
-        }
-        return true
-      })
-    }
-
     // Search filtering using already-fetched personMap
     if (filters.searchQuery && personMap.size > 0) {
       const searchLower = filters.searchQuery.toLowerCase()
@@ -398,17 +469,7 @@ export default function RequestReviewPanel({
     })
 
     return sorted
-  }, [
-    requests,
-    sortBy,
-    sortOrder,
-    personMap,
-    filters.searchQuery,
-    filters.lowConfidenceOnly,
-    filters.needsReviewOnly,
-    filters.showResolved,
-    filters.resolvedConfidenceFilter,
-  ])
+  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
@@ -592,7 +653,8 @@ export default function RequestReviewPanel({
     (request: BunkRequestsResponse, updates: Partial<BunkRequestsResponse>) => {
       // Only validate if changing target or type (potential conflict fields)
       if (updates.requestee_id !== undefined || updates.request_type !== undefined) {
-        const newRequesteeId = updates.requestee_id ?? request.requestee_id
+        const newRequesteeId =
+          updates.requestee_id !== undefined ? updates.requestee_id : request.requestee_id
         const newType = updates.request_type ?? request.request_type
 
         validateChange({
@@ -716,21 +778,6 @@ export default function RequestReviewPanel({
 
   const requestTypes = ['bunk_with', 'not_bunk_with', 'age_preference']
 
-  // Count active filters for the filter toggle badge
-  const activeFilterCount = useMemo(() => {
-    let count = 0
-    if (filters.lowConfidenceOnly || filters.needsReviewOnly) count++
-    if (filters.requestTypes.length > 0) count++
-    if (filters.statuses.length !== 3 || filters.showResolved) count++
-    return count
-  }, [
-    filters.lowConfidenceOnly,
-    filters.needsReviewOnly,
-    filters.requestTypes.length,
-    filters.statuses.length,
-    filters.showResolved,
-  ])
-
   // Get preview of selected request names for bulk action bar
   const getSelectedNamesPreview = useCallback(
     (maxDisplay: number = 2) => {
@@ -753,18 +800,6 @@ export default function RequestReviewPanel({
     },
     [sortedRequests, selectedRequests, personMap]
   )
-
-  // Keyboard handler for Escape to close filters
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && filtersExpanded) {
-        setFiltersExpanded(false)
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [filtersExpanded])
 
   return (
     <>
@@ -802,39 +837,6 @@ export default function RequestReviewPanel({
               />
             </div>
 
-            {/* Filter Toggle Button */}
-            <button
-              onClick={() => setFiltersExpanded(!filtersExpanded)}
-              aria-expanded={filtersExpanded}
-              aria-controls="filter-panel"
-              className={clsx(
-                'flex touch-manipulation items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all',
-                filtersExpanded
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-              )}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              <span className="hidden sm:inline">Filters</span>
-              {activeFilterCount > 0 && (
-                <span
-                  className={clsx(
-                    'rounded-full px-1.5 py-0.5 text-xs font-semibold',
-                    filtersExpanded
-                      ? 'bg-primary-foreground/20 text-primary-foreground'
-                      : 'bg-primary text-primary-foreground'
-                  )}
-                >
-                  {activeFilterCount}
-                </span>
-              )}
-              {filtersExpanded ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
-            </button>
-
             {/* Create Button */}
             <button
               onClick={() => setShowCreateModal(true)}
@@ -851,185 +853,71 @@ export default function RequestReviewPanel({
           </div>
         </div>
 
-        {/* Collapsible Filter Panel */}
-        <div
-          id="filter-panel"
-          className={clsx(
-            'border-border bg-forest-50/30 dark:bg-forest-900/40 overflow-hidden border-b transition-all duration-200 ease-out',
-            filtersExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
-          )}
-        >
-          <div className="space-y-4 p-4 sm:p-6">
-            {/* Row 1: Confidence Segmented Buttons */}
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="text-bark-600 dark:text-bark-300 w-20 text-xs font-semibold">
-                Confidence
-              </span>
-              <div className="bg-muted/50 dark:bg-muted/30 border-border/50 flex items-center gap-1 rounded-xl border p-1">
-                <button
-                  aria-pressed={!filters.lowConfidenceOnly && !filters.needsReviewOnly}
-                  onClick={() =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      lowConfidenceOnly: false,
-                      needsReviewOnly: false,
-                    }))
-                  }
-                  className={clsx(
-                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
-                    !filters.lowConfidenceOnly && !filters.needsReviewOnly
-                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
-                  )}
-                >
-                  All
-                </button>
-                <button
-                  aria-pressed={filters.lowConfidenceOnly}
-                  onClick={() =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      lowConfidenceOnly: true,
-                      needsReviewOnly: false,
-                    }))
-                  }
-                  className={clsx(
-                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
-                    filters.lowConfidenceOnly
-                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
-                  )}
-                >
-                  Low Confidence
-                </button>
-                <button
-                  aria-pressed={filters.needsReviewOnly}
-                  onClick={() =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      lowConfidenceOnly: false,
-                      needsReviewOnly: true,
-                    }))
-                  }
-                  className={clsx(
-                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
-                    filters.needsReviewOnly
-                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
-                  )}
-                >
-                  Needs Review
-                </button>
-              </div>
-            </div>
-
-            {/* Row 2: Request Types as Pills */}
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="text-bark-600 dark:text-bark-300 w-20 text-xs font-semibold">
-                Types
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {requestTypes.map((type) => {
-                  const isSelected = filters.requestTypes.includes(type)
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        setFilters((prev) => ({
-                          ...prev,
-                          requestTypes: isSelected
-                            ? prev.requestTypes.filter((t) => t !== type)
-                            : [...prev.requestTypes, type],
-                        }))
-                      }}
-                      role="button"
-                      aria-pressed={isSelected}
-                      className={clsx(
-                        'rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
-                        isSelected
-                          ? 'bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700'
-                          : 'text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground bg-transparent'
-                      )}
-                    >
-                      {isSelected && <CheckCircle className="mr-1.5 inline h-3 w-3" />}
-                      {getRequestTypeLabel(type)}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Row 3: Status Pills + Show Resolved */}
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="text-bark-600 dark:text-bark-300 w-20 text-xs font-semibold">
-                Status
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {['pending', 'declined'].map((status) => {
-                  const isSelected = filters.statuses.includes(status)
-                  return (
-                    <button
-                      key={status}
-                      onClick={() => {
-                        setFilters((prev) => ({
-                          ...prev,
-                          statuses: isSelected
-                            ? prev.statuses.filter((s) => s !== status)
-                            : [...prev.statuses, status],
-                        }))
-                      }}
-                      role="button"
-                      aria-pressed={isSelected}
-                      className={clsx(
-                        'rounded-full border px-3 py-1.5 text-sm font-medium capitalize transition-all',
-                        isSelected
-                          ? 'bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700'
-                          : 'text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground bg-transparent'
-                      )}
-                    >
-                      {isSelected && <CheckCircle className="mr-1.5 inline h-3 w-3" />}
-                      {status}
-                    </button>
-                  )
-                })}
-                <div className="border-border ml-1 flex items-center gap-2 border-l pl-2">
+        {/* Filter Bar — always visible, single row */}
+        <div className="border-border border-b px-4 py-2">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Status checkboxes — first */}
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-xs font-semibold">Status:</span>
+              {['pending', 'declined', 'resolved'].map((status) => {
+                const isSelected = filters.statuses.includes(status)
+                return (
                   <button
-                    onClick={() =>
+                    key={status}
+                    onClick={() => {
                       setFilters((prev) => ({
                         ...prev,
-                        showResolved: !prev.showResolved,
+                        statuses: isSelected
+                          ? prev.statuses.filter((s) => s !== status)
+                          : [...prev.statuses, status],
                       }))
-                    }
+                    }}
                     role="button"
-                    aria-pressed={filters.showResolved}
+                    aria-pressed={isSelected}
                     className={clsx(
-                      'rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
-                      filters.showResolved
+                      'rounded-full border px-3 py-1 text-xs font-medium capitalize transition-all',
+                      isSelected
                         ? 'bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700'
                         : 'text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground bg-transparent'
                     )}
                   >
-                    {filters.showResolved && <CheckCircle className="mr-1.5 inline h-3 w-3" />}
-                    Show Resolved
+                    {isSelected && <CheckCircle className="mr-1 inline h-3 w-3" />}
+                    {status}
                   </button>
-                  {filters.showResolved && (
-                    <select
-                      value={filters.resolvedConfidenceFilter}
-                      onChange={(e) =>
-                        setFilters((prev) => ({
-                          ...prev,
-                          resolvedConfidenceFilter: e.target.value as ResolvedConfidenceFilter,
-                        }))
-                      }
-                      className="input-lodge px-2 py-1.5 text-sm"
-                    >
-                      <option value="all">All Resolved</option>
-                      <option value="high">High Confidence (≥95%)</option>
-                      <option value="spot-check">Spot Check (85-94%)</option>
-                    </select>
-                  )}
-                </div>
-              </div>
+                )
+              })}
+            </div>
+
+            {/* Request type checkboxes — second */}
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-xs font-semibold">Type:</span>
+              {requestTypes.map((type) => {
+                const isSelected = filters.requestTypes.includes(type)
+                return (
+                  <button
+                    key={type}
+                    onClick={() => {
+                      setFilters((prev) => ({
+                        ...prev,
+                        requestTypes: isSelected
+                          ? prev.requestTypes.filter((t) => t !== type)
+                          : [...prev.requestTypes, type],
+                      }))
+                    }}
+                    role="button"
+                    aria-pressed={isSelected}
+                    className={clsx(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                      isSelected
+                        ? 'bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700'
+                        : 'text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground bg-transparent'
+                    )}
+                  >
+                    {isSelected && <CheckCircle className="mr-1 inline h-3 w-3" />}
+                    {getRequestTypeLabel(type)}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1048,7 +936,6 @@ export default function RequestReviewPanel({
                   onChange={toggleAllSelection}
                   className="rounded"
                 />
-                <ChevronRight className="text-muted-foreground h-4 w-4" />
               </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
@@ -1201,9 +1088,12 @@ export default function RequestReviewPanel({
 
                     return (
                       <div key={request.id}>
-                        <div className="request-card-mobile hover:bg-muted/30 transition-colors">
+                        <div
+                          className="request-card-mobile hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => toggleRowExpansion(request.id, request)}
+                        >
                           {/* Checkbox */}
-                          <div className="card-checkbox">
+                          <div className="card-checkbox" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={selectedRequests.has(request.id)}
@@ -1215,12 +1105,20 @@ export default function RequestReviewPanel({
                           {/* Main info: Requester name and type */}
                           <div className="card-main">
                             <button
-                              onClick={() => setSelectedCamperId(String(request.requester_id))}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCamperId(String(request.requester_id))
+                              }}
                               className="hover:text-primary text-left font-medium transition-colors hover:underline"
                             >
                               {requester
                                 ? `${requester.first_name || ''} ${requester.last_name || ''}`
                                 : `Person ${request.requester_id}`}
+                              {requester?.grade != null && requester.grade > 0 && (
+                                <span className="text-muted-foreground ml-1 text-xs font-normal">
+                                  ({formatGradeOrdinal(requester.grade)})
+                                </span>
+                              )}
                             </button>
                             <div className="text-muted-foreground mt-0.5 text-xs">
                               {getRequestTypeLabel(request.request_type)}
@@ -1252,7 +1150,7 @@ export default function RequestReviewPanel({
                           </div>
 
                           {/* Request target info */}
-                          <div className="card-request">
+                          <div className="card-request" onClick={(e) => e.stopPropagation()}>
                             <EditableRequestTarget
                               requestType={request.request_type}
                               currentPersonId={request.requestee_id}
@@ -1261,9 +1159,13 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
+                                // Use null (not 0) to clear requestee_id — 0 causes
+                                // unique constraint violations when multiple requests exist.
                                 const pbUpdates: Partial<BunkRequestsResponse> = {}
                                 if (updates.requestee_id !== undefined) {
-                                  pbUpdates.requestee_id = updates.requestee_id ?? 0
+                                  // Pass null through to PocketBase to clear the field.
+                                  // Using 0 causes unique constraint violations.
+                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
                                 }
                                 if (updates.age_preference_target !== undefined) {
                                   pbUpdates.age_preference_target = updates.age_preference_target
@@ -1280,22 +1182,23 @@ export default function RequestReviewPanel({
                               parseNotes={request.parse_notes}
                               onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
                               personMap={personMap}
+                              sessionName={sessionName}
                             />
+                            {(() => {
+                              const targetPerson =
+                                request.requestee_id > 0
+                                  ? personMap.get(request.requestee_id)
+                                  : undefined
+                              return targetPerson?.grade != null && targetPerson.grade > 0 ? (
+                                <span className="text-muted-foreground ml-1 text-xs">
+                                  ({formatGradeOrdinal(targetPerson.grade)})
+                                </span>
+                              ) : null
+                            })()}
                           </div>
 
                           {/* Actions */}
-                          <div className="card-actions">
-                            <button
-                              onClick={() => toggleRowExpansion(request.id, request)}
-                              className="hover:bg-muted touch-manipulation rounded-lg p-2 transition-colors"
-                              title="View details"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="h-5 w-5" />
-                              ) : (
-                                <ChevronRight className="h-5 w-5" />
-                              )}
-                            </button>
+                          <div className="card-actions" onClick={(e) => e.stopPropagation()}>
                             {request.status === 'resolved' && request.request_locked && (
                               <button
                                 onClick={() =>
@@ -1358,7 +1261,10 @@ export default function RequestReviewPanel({
 
                         {/* Expanded details - mobile */}
                         {isExpanded && (
-                          <div className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-b px-4 py-3">
+                          <div
+                            className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-b px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="space-y-2 text-sm">
                               <div>
                                 <span className="font-medium">Priority:</span>{' '}
@@ -1411,44 +1317,48 @@ export default function RequestReviewPanel({
                       <div
                         key={request.id}
                         className={clsx(
-                          'border-b transition-colors',
+                          'cursor-pointer border-b transition-colors',
                           selectedRequests.has(request.id)
                             ? 'bg-primary/5 hover:bg-primary/10'
-                            : 'hover:bg-muted/30'
+                            : 'hover:bg-muted/50'
                         )}
+                        onClick={() => toggleRowExpansion(request.id, request)}
                       >
                         <div className="request-table-grid">
-                          <div className="flex items-center gap-1 px-3 py-3">
+                          <div
+                            className="flex items-center justify-center px-3 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="checkbox"
                               checked={selectedRequests.has(request.id)}
                               onChange={() => toggleRequestSelection(request.id)}
                               className="rounded"
                             />
-                            <button
-                              onClick={() => toggleRowExpansion(request.id, request)}
-                              className="hover:bg-muted rounded-lg p-1.5 transition-colors"
-                              title="View details"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                            </button>
                           </div>
                           <div className="flex items-center px-4 py-3">
                             <button
-                              onClick={() => setSelectedCamperId(String(request.requester_id))}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCamperId(String(request.requester_id))
+                              }}
                               className="hover:text-primary cursor-pointer truncate text-left font-medium transition-colors hover:underline"
                               title="View camper details"
                             >
                               {requester
                                 ? `${requester.first_name || ''} ${requester.last_name || ''}`
                                 : `Person ${request.requester_id}`}
+                              {requester?.grade != null && requester.grade > 0 && (
+                                <span className="text-muted-foreground ml-1 text-xs font-normal">
+                                  ({formatGradeOrdinal(requester.grade)})
+                                </span>
+                              )}
                             </button>
                           </div>
-                          <div className="flex items-center px-4 py-3">
+                          <div
+                            className="flex items-center px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <EditableRequestTarget
                               requestType={request.request_type}
                               currentPersonId={request.requestee_id}
@@ -1457,10 +1367,13 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
-                                // Convert null to 0 for PocketBase (0 means "no value")
+                                // Use null (not 0) to clear requestee_id — 0 causes
+                                // unique constraint violations when multiple requests exist.
                                 const pbUpdates: Partial<BunkRequestsResponse> = {}
                                 if (updates.requestee_id !== undefined) {
-                                  pbUpdates.requestee_id = updates.requestee_id ?? 0
+                                  // Pass null through to PocketBase to clear the field.
+                                  // Using 0 causes unique constraint violations.
+                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
                                 }
                                 if (updates.age_preference_target !== undefined) {
                                   pbUpdates.age_preference_target = updates.age_preference_target
@@ -1478,7 +1391,19 @@ export default function RequestReviewPanel({
                               parseNotes={request.parse_notes}
                               onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
                               personMap={personMap}
+                              sessionName={sessionName}
                             />
+                            {(() => {
+                              const targetPerson =
+                                request.requestee_id > 0
+                                  ? personMap.get(request.requestee_id)
+                                  : undefined
+                              return targetPerson?.grade != null && targetPerson.grade > 0 ? (
+                                <span className="text-muted-foreground ml-1 text-xs">
+                                  ({formatGradeOrdinal(targetPerson.grade)})
+                                </span>
+                              ) : null
+                            })()}
                           </div>
                           <div className="flex items-center gap-1 px-4 py-3">
                             {request.disposition_reason ? (
@@ -1500,7 +1425,10 @@ export default function RequestReviewPanel({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center justify-center px-4 py-3">
+                          <div
+                            className="flex items-center justify-center px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <EditablePriority
                               value={request.priority}
                               onChange={(newPriority) => {
@@ -1526,7 +1454,10 @@ export default function RequestReviewPanel({
                           <div className="flex items-center justify-center px-4 py-3">
                             {getStatusBadge(request.status)}
                           </div>
-                          <div className="flex items-center justify-end px-4 py-3">
+                          <div
+                            className="flex items-center justify-end px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="flex min-w-[100px] items-center justify-end gap-1">
                               {request.status === 'resolved' && request.request_locked && (
                                 <button
@@ -1591,7 +1522,10 @@ export default function RequestReviewPanel({
                           </div>
                         </div>
                         {isExpanded && (
-                          <div className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-t px-4 py-4">
+                          <div
+                            className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-t px-4 py-4"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="ml-10 max-w-3xl space-y-3">
                               {/* Merged Request: Show individual sources */}
                               {hasMultipleSources(request) &&
@@ -1636,9 +1570,11 @@ export default function RequestReviewPanel({
                                                 )}
                                               </p>
                                               <p className="text-muted-foreground bg-muted/50 mt-1.5 rounded px-2 py-1 text-xs">
-                                                <span className="font-medium">Parse notes:</span>{' '}
+                                                <span className="font-medium">
+                                                  AI Intent Notes:
+                                                </span>{' '}
                                                 {source.parse_notes ?? (
-                                                  <span className="italic">No parse notes</span>
+                                                  <span className="italic">No AI intent notes</span>
                                                 )}
                                               </p>
                                             </div>
@@ -1658,7 +1594,7 @@ export default function RequestReviewPanel({
                                   {/* Single Source Request: Original display */}
                                   <div>
                                     <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                      Source Field & Content
+                                      Notes from Bunk Requests Form
                                     </h4>
                                     {(() => {
                                       // Get field name(s) with proper fallback chain:
@@ -1711,14 +1647,14 @@ export default function RequestReviewPanel({
                                     })()}
                                   </div>
 
-                                  {/* Parse Notes - always show for single source */}
+                                  {/* AI Intent Notes - always show for single source */}
                                   <div>
                                     <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                      Parse Notes
+                                      AI Intent Notes
                                     </h4>
                                     <p className="text-muted-foreground text-sm">
                                       {request.parse_notes || (
-                                        <span className="italic">No parse notes</span>
+                                        <span className="italic">No AI intent notes</span>
                                       )}
                                     </p>
                                   </div>
@@ -1735,9 +1671,10 @@ export default function RequestReviewPanel({
                                       request_type: newType as BunkRequestsResponse['request_type'],
                                     }
                                     // Explicit clear values (not delete) so PocketBase clears the field.
-                                    // 0 is the established "no person" sentinel (see ?? 0 pattern elsewhere).
+                                    // Use null (not 0) to properly clear the field — 0 causes
+                                    // unique constraint violations when multiple requests exist.
                                     if (newType === 'age_preference') {
-                                      updates.requestee_id = 0
+                                      updates.requestee_id = null as unknown as number
                                     } else {
                                       updates.age_preference_target = ''
                                     }
@@ -1843,8 +1780,8 @@ export default function RequestReviewPanel({
                 <p className="mb-1 font-medium">Review Guidelines:</p>
                 <ul className="text-forest-700 dark:text-forest-300 ml-2 list-inside list-disc space-y-1">
                   <li>Focus on pending requests first — these need attention</li>
-                  <li>Use "Spot Check (85-94%)" filter to review borderline resolved requests</li>
-                  <li>Check parse notes for ambiguous requests that need clarification</li>
+                  <li>Filter by status to review resolved or declined requests</li>
+                  <li>Check AI intent notes for ambiguous requests that need clarification</li>
                   <li>Use bulk actions to quickly process similar requests</li>
                 </ul>
               </div>
