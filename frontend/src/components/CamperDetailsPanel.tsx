@@ -5,9 +5,6 @@ import {
   X,
   Calendar,
   Heart,
-  CheckCircle,
-  XCircle,
-  Clock,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -16,7 +13,6 @@ import {
   Home,
   Users,
   ExternalLink,
-  Sparkles,
 } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
 import { StatusBadge } from './StatusBadge'
@@ -43,11 +39,10 @@ import { isAgePreferenceSatisfied } from '../utils/agePreferenceSatisfaction'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
-import CamperLink from './CamperLink'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
-import { MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { BunkRequestRow } from './BunkRequestRow'
 import {
   getStatusIndicator,
   filterEnrollmentsByStatus,
@@ -351,6 +346,7 @@ export default function CamperDetailsPanel({
               req.requested_person_name
               ? `${req.requested_person_name} (unresolved)`
               : undefined,
+          targetPerson: person ?? null,
           metadata: req.metadata ?? ({} as Record<string, unknown>),
         }
       })
@@ -889,68 +885,24 @@ export default function CamperDetailsPanel({
               <div className="mt-2 space-y-1">
                 {bunkRequests
                   .filter((r) => r.request_type !== 'age_preference')
-                  .map((request, idx) => {
+                  .map((request) => {
                     const isConfirmed = Boolean(
                       request.status === 'resolved' &&
                       request.requestee_id &&
                       request.requestee_id > 0
                     )
-                    const isBunkWith = request.request_type === 'bunk_with'
                     const satisfaction = satisfactionData[request.id]
-                    const showSatisfaction = isConfirmed
 
                     return (
-                      <div
-                        key={idx}
-                        className="hover:bg-muted/50 flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors"
-                      >
-                        {/* Status indicator */}
-                        {request.status === 'resolved' ? (
-                          <CheckCircle className="text-forest-600 dark:text-forest-400 h-4 w-4 flex-shrink-0" />
-                        ) : request.status === 'declined' ? (
-                          <XCircle className="text-bark-600 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
-                        ) : (
-                          <Clock className="h-4 w-4 flex-shrink-0 text-amber-500" />
-                        )}
-
-                        {/* Type label */}
-                        <span
-                          className={`text-muted-foreground ${!isBunkWith ? 'text-red-600 dark:text-red-400' : ''}`}
-                        >
-                          {isBunkWith ? 'Bunk with' : 'Not bunk with'}
-                        </span>
-
-                        {/* Arrow */}
-                        <span className="text-muted-foreground">→</span>
-
-                        {/* Target - clickable if confirmed */}
-                        <CamperLink
-                          personCmId={request.requestee_id}
-                          displayName={request.requestedPersonName ?? 'Unknown'}
-                          isConfirmed={isConfirmed}
-                          showUnresolved={!isConfirmed && !!request.requestedPersonName}
-                        />
-
-                        {/* Reciprocal badge - only if reciprocal */}
-                        {request.is_reciprocal && (
-                          <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
-                        )}
-
-                        {/* Satisfaction - concise icon only */}
-                        {showSatisfaction && (
-                          <span className="ml-auto" title={satisfaction?.detail}>
-                            {satisfactionLoading ? (
-                              <span className="sat-spinner" />
-                            ) : satisfaction?.status === 'satisfied' ? (
-                              <span className="sat-icon sat-icon-met">✓</span>
-                            ) : satisfaction?.status === 'not_satisfied' ? (
-                              <span className="sat-icon sat-icon-unmet">✗</span>
-                            ) : satisfaction?.status === 'unknown' ? (
-                              <span className="sat-icon sat-icon-unknown">?</span>
-                            ) : null}
-                          </span>
-                        )}
-                      </div>
+                      <BunkRequestRow
+                        key={request.id}
+                        request={request}
+                        targetPerson={request.targetPerson ?? null}
+                        showSatisfaction={isConfirmed}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                      />
                     )
                   })}
 
@@ -958,35 +910,20 @@ export default function CamperDetailsPanel({
                 {agePreferenceRequest?.age_preference_target &&
                   (() => {
                     const ageSatisfaction = satisfactionData[agePreferenceRequest.id]
-                    const prefersOlder = agePreferenceRequest.age_preference_target === 'older'
                     const hasOtherRequests =
                       bunkRequests.filter((r) => r.request_type !== 'age_preference').length > 0
 
                     return (
                       <div
-                        className={`text-muted-foreground flex items-center gap-2 px-2 text-xs ${hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}`}
+                        className={hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}
                       >
-                        <Sparkles className="h-3 w-3 flex-shrink-0 text-amber-500" />
-                        <span>
-                          Prefers bunking with{' '}
-                          <span className="text-foreground font-medium">
-                            {prefersOlder ? 'older' : 'younger'}
-                          </span>{' '}
-                          campers
-                        </span>
-
-                        {/* Satisfaction icon */}
-                        <span className="ml-auto" title={ageSatisfaction?.detail}>
-                          {satisfactionLoading ? (
-                            <span className="sat-spinner" />
-                          ) : ageSatisfaction?.status === 'satisfied' ? (
-                            <span className="sat-icon sat-icon-met">✓</span>
-                          ) : ageSatisfaction?.status === 'not_satisfied' ? (
-                            <span className="sat-icon sat-icon-unmet">✗</span>
-                          ) : ageSatisfaction?.status === 'unknown' ? (
-                            <span className="sat-icon sat-icon-unknown">?</span>
-                          ) : null}
-                        </span>
+                        <BunkRequestRow
+                          request={agePreferenceRequest}
+                          showSatisfaction={true}
+                          satisfaction={ageSatisfaction?.status ?? null}
+                          satisfactionLoading={satisfactionLoading}
+                          satisfactionDetail={ageSatisfaction?.detail}
+                        />
                       </div>
                     )
                   })()}
