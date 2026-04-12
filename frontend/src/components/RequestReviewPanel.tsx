@@ -43,6 +43,7 @@ import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
+import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 
@@ -114,6 +115,11 @@ export default function RequestReviewPanel({
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  const [confirmPopover, setConfirmPopover] = useState<{
+    action: 'approve' | 'decline'
+    anchorRect: { top: number; left: number; width: number; height: number }
+    requestId: string
+  } | null>(null)
   const [filters, setFilters] = useState<FilterState>(() => {
     try {
       const stored = localStorage.getItem(storageKey)
@@ -1232,30 +1238,39 @@ export default function RequestReviewPanel({
                               </button>
                             )}
                             <button
-                              onClick={() =>
-                                updateRequestMutation.mutate({
-                                  id: request.id,
-                                  updates: {
-                                    status: 'resolved' as BunkRequestsStatusOptions,
-                                    request_locked: true,
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setConfirmPopover({
+                                  action: 'approve',
+                                  anchorRect: {
+                                    top: rect.top,
+                                    left: rect.left,
+                                    width: rect.width,
+                                    height: rect.height,
                                   },
+                                  requestId: request.id,
                                 })
-                              }
+                              }}
                               className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 touch-manipulation rounded-lg p-2 transition-colors"
                               title="Approve"
                             >
                               <CheckCircle className="h-5 w-5" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm('Reject this request?')) {
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: {
-                                      status: 'declined' as BunkRequestsStatusOptions,
-                                    },
-                                  })
-                                }
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setConfirmPopover({
+                                  action: 'decline',
+                                  anchorRect: {
+                                    top: rect.top,
+                                    left: rect.left,
+                                    width: rect.width,
+                                    height: rect.height,
+                                  },
+                                  requestId: request.id,
+                                })
                               }}
                               className="hover:bg-destructive/10 text-destructive touch-manipulation rounded-lg p-2 transition-colors"
                               title="Reject"
@@ -1492,30 +1507,39 @@ export default function RequestReviewPanel({
                                 </button>
                               )}
                               <button
-                                onClick={() =>
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: {
-                                      status: 'resolved' as BunkRequestsStatusOptions,
-                                      request_locked: true,
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const rect = e.currentTarget.getBoundingClientRect()
+                                  setConfirmPopover({
+                                    action: 'approve',
+                                    anchorRect: {
+                                      top: rect.top,
+                                      left: rect.left,
+                                      width: rect.width,
+                                      height: rect.height,
                                     },
+                                    requestId: request.id,
                                   })
-                                }
+                                }}
                                 className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
                                 title="Approve"
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to reject this request?')) {
-                                    updateRequestMutation.mutate({
-                                      id: request.id,
-                                      updates: {
-                                        status: 'declined' as BunkRequestsStatusOptions,
-                                      },
-                                    })
-                                  }
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const rect = e.currentTarget.getBoundingClientRect()
+                                  setConfirmPopover({
+                                    action: 'decline',
+                                    anchorRect: {
+                                      top: rect.top,
+                                      left: rect.left,
+                                      width: rect.width,
+                                      height: rect.height,
+                                    },
+                                    requestId: request.id,
+                                  })
                                 }}
                                 className="hover:bg-destructive/10 text-destructive rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
                                 title="Reject"
@@ -1955,6 +1979,31 @@ export default function RequestReviewPanel({
           </div>
         </div>
       </div>
+
+      {/* Confirm Approve/Reject Popover (anchored near action button) */}
+      <ConfirmActionPopover
+        isOpen={!!confirmPopover}
+        anchorRect={confirmPopover?.anchorRect ?? { top: 0, left: 0, width: 0, height: 0 }}
+        action={confirmPopover?.action ?? 'approve'}
+        onConfirm={() => {
+          if (!confirmPopover) return
+          const { action, requestId } = confirmPopover
+          updateRequestMutation.mutate({
+            id: requestId,
+            updates:
+              action === 'approve'
+                ? {
+                    status: 'resolved' as BunkRequestsStatusOptions,
+                    request_locked: true,
+                  }
+                : {
+                    status: 'declined' as BunkRequestsStatusOptions,
+                  },
+          })
+          setConfirmPopover(null)
+        }}
+        onCancel={() => setConfirmPopover(null)}
+      />
     </>
   )
 }
