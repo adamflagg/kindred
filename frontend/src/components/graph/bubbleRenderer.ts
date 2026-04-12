@@ -257,34 +257,34 @@ export function drawBunkBubbles(
       const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
       const bunkColor = getBunkColor(parseInt(bunkId, 10))
 
-      try {
-  const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
-  const nodeCollection = cy.$(nodeIds)
+   try {
+        const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
+        const nodeCollection = cy.$(nodeIds)
 
-  const path = addPath(
-    nodeCollection,
-    cy.collection(),
-    cy.collection(),
-    {
-      style: {
-        fill: bunkColor,
-        fillOpacity: 0.25,
-        stroke: bunkColor,
-        strokeOpacity: 0.8,
-        strokeWidth: 3,
-      },
-      ...BASE_BUBBLE_OPTIONS,
-      morphBuffer: 35,
-    }
-  )
+        const path = addPath(
+          nodeCollection,
+          cy.collection(),
+          cy.collection(),
+          {
+            style: {
+              fill: bunkColor,
+              fillOpacity: 0.25,
+              stroke: bunkColor,
+              strokeOpacity: 0.8,
+              strokeWidth: 3,
+            },
+            ...BASE_BUBBLE_OPTIONS,
+            morphBuffer: 35,
+          }
+        )
 
-  renderedBunks.push(`${bunkId} (${bunkName})`)
-  pathsRef.current.push(path)
+        renderedBunks.push(`${bunkId} (${bunkName})`)
+        pathsRef.current.push(path)
 
-} catch (error) {
-  console.error(`Error creating bubble for bunk ${bunkId}:`, error)
-  failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
-}
+      } catch (error) {
+        console.error(`Error creating bubble for bunk ${bunkId}:`, error)
+        failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)
+      }
   // Update UI state with rendering status (only when showBunks — the !showBunks
   // branch already reported zero rendered above)
   if (showBunks && updateStatus) {
