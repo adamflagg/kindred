@@ -43,7 +43,7 @@ dependencies = [
     "python-louvain>=0.16",
     # Configuration & validation
     "pydantic>=2.7.0",
-    "pydantic-settings>=2.0.0",
+    "pydantic-settings>=2.13.1",
     "python-dotenv>=1.0.0",
     "PyYAML>=6.0",
     # Auth
