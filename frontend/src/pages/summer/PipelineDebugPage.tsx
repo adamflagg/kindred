@@ -246,27 +246,16 @@ export default function PipelineDebugPage() {
                 stalePhases={stalePhases}
                 activeIntentIndex={activeIntentIndex}
                 onViewAllTraces={() => {
-                  // Navigate back to batch list. `search` is client-side only —
-                  // the user can re-enter the name in the search box (clearing
-                  // server-filters is enough).
                   setFilters({})
                   void navigate('/summer/debug/pipeline')
                 }}
                 onReprocess={() => {
-                  runFullTrace.mutate(
-                    {
-                      original_request_ids: [trace.original_request_id],
-                      year: trace.year,
-                      session_cm_ids: [trace.session_cm_id],
-                      dry_run: false,
-                    },
-                    {
-                      onSuccess: () => {
-                        // No page/accumulation state — React Query will
-                        // invalidate on refetch. Nothing to reset here.
-                      },
-                    }
-                  )
+                  runFullTrace.mutate({
+                    original_request_ids: [trace.original_request_id],
+                    year: trace.year,
+                    session_cm_ids: [trace.session_cm_id],
+                    dry_run: false,
+                  })
                 }}
                 isReprocessing={runFullTrace.isPending}
               />

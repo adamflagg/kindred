@@ -103,58 +103,45 @@ export function PipelineBatchList({
 
   // Apply all filters + search + sort client-side over the full in-memory list.
   const visibleItems = useMemo(() => {
-    let out = items
-
-    // Search (case-insensitive, requester_name OR target_name)
     const q = searchText.trim().toLowerCase()
-    if (q) {
-      out = out.filter(
-        (item) =>
-          item.requester_name.toLowerCase().includes(q) ||
-          item.target_name.toLowerCase().includes(q)
-      )
-    }
+    const filtered = items.filter((item) => {
+      if (
+        q &&
+        !item.requester_name.toLowerCase().includes(q) &&
+        !item.target_name.toLowerCase().includes(q)
+      ) {
+        return false
+      }
+      if (filters.final_status && item.final_status !== filters.final_status) return false
+      if (filters.source_field && item.source_field !== filters.source_field) return false
+      if (filters.resolution_method && item.resolution_method !== filters.resolution_method) {
+        return false
+      }
+      if (filters.session_cm_id !== undefined && item.session_cm_id !== filters.session_cm_id) {
+        return false
+      }
+      if (
+        filters.phase3_triggered !== undefined &&
+        item.phase3_triggered !== filters.phase3_triggered
+      ) {
+        return false
+      }
+      if (filters.pre_p1_action && item.pre_p1_action !== filters.pre_p1_action) return false
+      if (filters.min_confidence !== undefined && item.final_confidence < filters.min_confidence) {
+        return false
+      }
+      if (filters.max_confidence !== undefined && item.final_confidence > filters.max_confidence) {
+        return false
+      }
+      return true
+    })
 
-    // Structural filters (previously server-side)
-    if (filters.final_status) {
-      out = out.filter((item) => item.final_status === filters.final_status)
-    }
-    if (filters.source_field) {
-      out = out.filter((item) => item.source_field === filters.source_field)
-    }
-    if (filters.resolution_method) {
-      out = out.filter((item) => item.resolution_method === filters.resolution_method)
-    }
-    if (filters.session_cm_id !== undefined) {
-      out = out.filter((item) => item.session_cm_id === filters.session_cm_id)
-    }
-    if (filters.phase3_triggered !== undefined) {
-      out = out.filter((item) => item.phase3_triggered === filters.phase3_triggered)
-    }
-    if (filters.pre_p1_action) {
-      out = out.filter((item) => item.pre_p1_action === filters.pre_p1_action)
-    }
-    if (filters.min_confidence !== undefined) {
-      const min = filters.min_confidence
-      out = out.filter((item) => item.final_confidence >= min)
-    }
-    if (filters.max_confidence !== undefined) {
-      const max = filters.max_confidence
-      out = out.filter((item) => item.final_confidence <= max)
-    }
-
-    // Sort
-    if (sort) {
-      const { field, desc } = sort
-      out = [...out].sort((a, b) => {
-        const av = a[field]
-        const bv = b[field]
-        const cmp = compareValues(av, bv)
-        return desc ? -cmp : cmp
-      })
-    }
-
-    return out
+    if (!sort) return filtered
+    const { field, desc } = sort
+    return [...filtered].sort((a, b) => {
+      const cmp = compareValues(a[field], b[field])
+      return desc ? -cmp : cmp
+    })
   }, [items, filters, searchText, sort])
 
   // Always instantiate the virtualizer (hooks order must be stable). It's
