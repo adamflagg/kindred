@@ -60,6 +60,9 @@ class AIBunkRequestItem(BaseModel):
     reasoning: str = ""
     """Why the AI categorized it this way."""
 
+    source_fragment: str = ""
+    """Verbatim substring of the input text that justified this request. Empty when AI inferred without a direct quote (e.g. placeholder expansion, age preference, aggregate inference)."""
+
     list_position: int = 0
     """Position in multi-request fields (0-indexed from AI, converted to 1-indexed)."""
 
@@ -113,6 +116,9 @@ class AIFullParseRequestItem(BaseModel):
     source_type: Literal["parent", "counselor", "staff"] = "parent"
     parse_notes: str = ""
     reasoning: str = ""
+    source_fragment: str = ""
+    """Verbatim substring of the input text that justified this request. Empty when AI inferred without a direct quote (e.g. placeholder expansion, age preference, aggregate inference)."""
+
     found_in_current_year: bool = False
     found_in_previous_year_only: bool = False
 
