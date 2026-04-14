@@ -120,9 +120,9 @@ class TestRetentionAgedOutExclusion:
         repo.fetch_persons = AsyncMock(side_effect=lambda year: persons_base if year == 2025 else persons_compare)
         repo.fetch_bunk_assignments = AsyncMock(return_value=bunk_assignments or [])
         repo.fetch_sessions = AsyncMock(
-            side_effect=lambda year, types: {base_session.cm_id: base_session}
-            if year == 2025
-            else {compare_session.cm_id: compare_session}
+            side_effect=lambda year, types: (
+                {base_session.cm_id: base_session} if year == 2025 else {compare_session.cm_id: compare_session}
+            )
         )
         repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 

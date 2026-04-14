@@ -1409,7 +1409,7 @@ class TestWaitlistDrilldowns:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         # Filter to Session 1 only
@@ -1548,7 +1548,7 @@ class TestWaitlistTotalDrilldown:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         result = await drilldown_service.get_attendees_for_breakdown(
@@ -1582,7 +1582,7 @@ class TestWaitlistTotalDrilldown:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         result = await drilldown_service.get_attendees_for_breakdown(
@@ -1686,7 +1686,7 @@ class TestWaitlistDrilldownEnrolledSessions:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         result = await drilldown_service.get_attendees_for_breakdown(
@@ -1867,7 +1867,7 @@ class TestWaitlistDrilldownFullSessionsList:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         # Drilldown filtered to Session 1 bar click
@@ -1907,7 +1907,7 @@ class TestWaitlistDrilldownFullSessionsList:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         # Drilldown on waitlist_no_enrollment filtered to Session 1
@@ -1987,7 +1987,7 @@ class TestWaitlistPersonBreakdowns:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         # Grade drilldown for grade=5, filtered to Session 1, waitlisted status
@@ -2071,7 +2071,7 @@ class TestWaitlistPersonBreakdowns:
         mock_repository.fetch_sessions.return_value = waitlist_sessions
         mock_repository.fetch_persons.return_value = waitlist_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else []
         )
 
         # Drilldown on grade=5 with waitlisted filter
@@ -3984,34 +3984,36 @@ class TestWaitlistSessionGenderDrilldown:
         # With fix: main session 1001 is NOT in summer_session_ids (filtered to quest only),
         # so enrolled_sessions should be empty.
         mock_repository.fetch_attendees_with_persons = AsyncMock(
-            side_effect=lambda year, status_filter=None: [
-                create_mock_attendee_with_person(
-                    101,
-                    3001,
-                    gender="F",
-                    status="waitlisted",
-                    first_name="Emma",
-                    last_name="Johnson",
-                    grade=5,
-                    effective_date="2025-11-12",
-                    enrollment_date="2025-11-13T00:00:00Z",
-                    session=quest_session,
-                ),
-            ]
-            if status_filter == ["waitlisted"]
-            else [
-                create_mock_attendee_with_person(
-                    101,
-                    1001,
-                    gender="F",
-                    status="enrolled",
-                    first_name="Emma",
-                    last_name="Johnson",
-                    session=main_session,
-                ),
-            ]
-            if status_filter == ["enrolled"]
-            else []
+            side_effect=lambda year, status_filter=None: (
+                [
+                    create_mock_attendee_with_person(
+                        101,
+                        3001,
+                        gender="F",
+                        status="waitlisted",
+                        first_name="Emma",
+                        last_name="Johnson",
+                        grade=5,
+                        effective_date="2025-11-12",
+                        enrollment_date="2025-11-13T00:00:00Z",
+                        session=quest_session,
+                    ),
+                ]
+                if status_filter == ["waitlisted"]
+                else [
+                    create_mock_attendee_with_person(
+                        101,
+                        1001,
+                        gender="F",
+                        status="enrolled",
+                        first_name="Emma",
+                        last_name="Johnson",
+                        session=main_session,
+                    ),
+                ]
+                if status_filter == ["enrolled"]
+                else []
+            )
         )
 
         result = await drilldown_service.get_attendees_for_breakdown(
@@ -4068,7 +4070,7 @@ class TestWaitlistForSummerSessionFiltering:
         enrolled: list[Mock] = []
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else enrolled
         )
 
         result = await drilldown_service.get_attendees_for_breakdown(
@@ -4108,7 +4110,7 @@ class TestWaitlistForSummerSessionFiltering:
         enrolled: list[Mock] = []
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else enrolled)
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == ["waitlisted"] else enrolled
         )
 
         result = await drilldown_service.get_attendees_for_breakdown(
