@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { formatSourceField } from '../utils/formatSourceField'
+import { highlightSourceText } from '../utils/highlightSourceText'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import {
@@ -1299,7 +1300,10 @@ export default function RequestReviewPanel({
                                 <div>
                                   <span className="font-medium">Original:</span>{' '}
                                   <span className="text-muted-foreground">
-                                    {request.original_text}
+                                    {highlightSourceText(
+                                      request.original_text,
+                                      request.source_fragment
+                                    )}
                                   </span>
                                 </div>
                               )}
@@ -1648,9 +1652,10 @@ export default function RequestReviewPanel({
                                           <p className="text-sm">
                                             <span className="font-medium">{fieldName}:</span>{' '}
                                             <span className="text-muted-foreground">
-                                              {request.original_text || (
-                                                <span className="italic">No original text</span>
-                                              )}
+                                              {highlightSourceText(
+                                                request.original_text,
+                                                request.source_fragment
+                                              ) || <span className="italic">No original text</span>}
                                             </span>
                                           </p>
                                         )
