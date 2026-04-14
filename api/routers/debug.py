@@ -1328,17 +1328,17 @@ def get_pipeline_run_summary(
     session_cm_id: int | None = Query(default=None, ge=1),
     min_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
     max_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
-    sort: str = Query(default="-final_confidence"),
     search: str | None = Query(default=None, max_length=100),
     fetch_all: bool = Query(default=False),
     user: AuthUser = Depends(require_admin),
 ) -> PipelineSummaryResponse:
-    """Get summary rows for a run with PB-native filtering/sort/pagination.
+    """Get summary rows for a run with PB-native filtering/pagination.
 
     When ``fetch_all=true``, returns every row for the run in a single
     response using PocketBase's ``get_full_list``, bypassing ``page`` and
     ``per_page``. This powers the client-side filter/sort/virtualized-scroll
-    batch list UI (see PipelineBatchList.tsx).
+    batch list UI (see PipelineBatchList.tsx). Server-side sort is fixed
+    (``-final_confidence``) since the client re-sorts in memory anyway.
     """
     _validate_run_id(run_id)
     filter_parts = [f'run_id = "{run_id}"']
@@ -1373,7 +1373,7 @@ def get_pipeline_run_summary(
 
     if fetch_all:
         records = pb.collection(DEBUG_PIPELINE_SUMMARY).get_full_list(
-            query_params={"filter": filter_str, "sort": sort},
+            query_params={"filter": filter_str, "sort": "-final_confidence"},
         )
         items = [_pb_record_to_summary_item(r) for r in records]
         return PipelineSummaryResponse(
@@ -1386,7 +1386,7 @@ def get_pipeline_run_summary(
     result = pb.collection(DEBUG_PIPELINE_SUMMARY).get_list(
         page=page,
         per_page=per_page,
-        query_params={"filter": filter_str, "sort": sort},
+        query_params={"filter": filter_str, "sort": "-final_confidence"},
     )
 
     items = [_pb_record_to_summary_item(r) for r in result.items]
