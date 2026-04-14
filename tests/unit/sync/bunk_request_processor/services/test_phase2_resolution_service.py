@@ -19,7 +19,6 @@ import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
     AgePreference,
-    GroupKind,
     ParsedRequest,
     ParseRequest,
     ParseResult,
@@ -78,7 +77,6 @@ def _create_parsed_request(
     request_type: RequestType = RequestType.BUNK_WITH,
     confidence: float = 0.9,
     age_preference: AgePreference | None = None,
-    group_kind: GroupKind | None = None,
 ) -> ParsedRequest:
     """Helper to create ParsedRequest objects"""
     return ParsedRequest(
@@ -91,7 +89,6 @@ def _create_parsed_request(
         confidence=confidence,
         csv_position=0,
         metadata={},
-        group_kind=group_kind,
     )
 
 
@@ -734,58 +731,6 @@ class TestPhase2ResolutionServiceStatistics:
 
         stats2 = service.get_stats()
         assert stats2["total_processed"] == 0
-
-
-class TestLastYearBunkmatesGroupReference:
-    """Tests for group_kind=LAST_YEAR_BUNKMATES handling in Phase 2."""
-
-    def test_last_year_bunkmates_group_ref_not_resolved(self):
-        """Group references with group_kind set should NOT be sent to
-        the resolution pipeline. They are expanded by resolvers later.
-        """
-        parsed_group_ref = _create_parsed_request(
-            target_name="",
-            request_type=RequestType.BUNK_WITH,
-            group_kind=GroupKind.LAST_YEAR_BUNKMATES,
-        )
-        parse_result = _create_parse_result(parsed_requests=[parsed_group_ref])
-
-        case = ResolutionCase(parse_result)
-
-        # Group references should NOT need resolution - expanded by resolvers
-        assert not case.needs_resolution, (
-            "LAST_YEAR_BUNKMATES group reference should NOT be sent to resolution pipeline. "
-            "It is expanded by the BunkmateResolver in the PlaceholderExpander."
-        )
-        assert len(case.requests_needing_resolution) == 0
-
-    @pytest.mark.asyncio
-    async def test_last_year_bunkmates_returns_high_confidence(self):
-        """Group references should return a resolution result with confidence 1.0
-        and method 'group_reference', to be expanded later by the resolver.
-        """
-        pipeline = Mock()
-        # Pipeline should NOT be called for group references
-        pipeline.batch_resolve = Mock(return_value=[])
-
-        service = Phase2ResolutionService(resolution_pipeline=pipeline)
-        parsed_group_ref = _create_parsed_request(
-            target_name="",
-            request_type=RequestType.BUNK_WITH,
-            group_kind=GroupKind.LAST_YEAR_BUNKMATES,
-        )
-        parse_result = _create_parse_result(parsed_requests=[parsed_group_ref])
-
-        results = await service.batch_resolve([parse_result])
-
-        # Should get a result tuple back
-        assert len(results) == 1
-        _, resolutions = results[0]
-        assert len(resolutions) == 1
-        # Confidence should be 1.0 (group reference will be expanded elsewhere)
-        assert resolutions[0].confidence == 1.0
-        # Method should indicate this is a group reference
-        assert resolutions[0].method == "group_reference"
 
 
 class TestResolutionCase:

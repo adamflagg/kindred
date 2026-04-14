@@ -209,69 +209,6 @@ class TestPriorityCalculator:
         priority = calculator.calculate_priority(request, [request])
         assert priority == 1
 
-    def test_last_year_bunkmates_sole_request(self, calculator):
-        """LAST_YEAR_BUNKMATES as sole non-age request gets priority 4"""
-        # Note: csv_position is 1-indexed (first = 1), matching orchestrator convention
-        requests = [
-            ParsedRequest(
-                raw_text="LAST_YEAR_BUNKMATES",
-                request_type=RequestType.BUNK_WITH,
-                target_name="LAST_YEAR_BUNKMATES",
-                age_preference=None,
-                source_field=SourceField.BUNK_WITH,
-                source=RequestSource.FAMILY,
-                confidence=1.0,
-                csv_position=1,  # First position (1-indexed)
-                metadata={},
-            ),
-            ParsedRequest(
-                raw_text="older",
-                request_type=RequestType.AGE_PREFERENCE,
-                target_name=None,
-                age_preference=AgePreference.OLDER,
-                source_field=SourceField.SOCIALIZE_WITH,
-                source=RequestSource.FAMILY,
-                confidence=1.0,
-                csv_position=1,  # First position (1-indexed)
-                metadata={},
-            ),
-        ]
-
-        # Should be priority 4 (age preference doesn't count as "other request")
-        priority = calculator.calculate_priority(requests[0], requests)
-        assert priority == 4
-
-    def test_last_year_bunkmates_with_other_requests(self, calculator):
-        """LAST_YEAR_BUNKMATES with other specific requests gets priority 3"""
-        # Note: csv_position is 1-indexed (first = 1), matching orchestrator convention
-        requests = [
-            ParsedRequest(
-                raw_text="Johnny Smith",
-                request_type=RequestType.BUNK_WITH,
-                target_name="Johnny Smith",
-                age_preference=None,
-                source_field=SourceField.BUNK_WITH,
-                source=RequestSource.FAMILY,
-                confidence=0.95,
-                csv_position=1,  # First position (1-indexed)
-                metadata={},
-            ),
-            ParsedRequest(
-                raw_text="LAST_YEAR_BUNKMATES",
-                request_type=RequestType.BUNK_WITH,
-                target_name="LAST_YEAR_BUNKMATES",
-                age_preference=None,
-                source_field=SourceField.BUNK_WITH,
-                source=RequestSource.FAMILY,
-                confidence=1.0,
-                csv_position=2,  # Second position (1-indexed)
-                metadata={},
-            ),
-        ]
-
-        priority = calculator.calculate_priority(requests[1], requests)
-        assert priority == 3
-
     def test_staff_notes_request(self, calculator):
         """Any request from staff notes gets priority 2"""
         request = ParsedRequest(

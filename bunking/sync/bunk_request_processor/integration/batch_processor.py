@@ -92,7 +92,9 @@ _NON_NAME_PATTERNS = {
     "noise sensitive",
     "sound sensitive",
     "sleepers",
-    # Family words (should use SIBLING placeholder instead)
+    # Family words (unnamed group references — rejected as target_name;
+    # the parse prompts emit a single staff-review fallback record for
+    # these instead)
     "twins",
     "twin",
     "siblings",

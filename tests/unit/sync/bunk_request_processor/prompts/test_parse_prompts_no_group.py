@@ -22,6 +22,8 @@ and pass only after the prompt sweep is complete.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 
 from bunking.sync.bunk_request_processor.prompts.loader import (
@@ -53,7 +55,7 @@ PARSE_PROMPT_NAMES = (
 
 
 @pytest.fixture(autouse=True)
-def _reset_prompt_cache() -> None:
+def _reset_prompt_cache() -> Generator[None, None, None]:
     # Ensure every test reads the current on-disk prompt, not a cached copy
     # left behind by another test.
     clear_cache()
@@ -69,8 +71,7 @@ class TestParsePromptsNoGroupVocabulary:
         text = load_prompt(prompt_name)
         for token in FORBIDDEN_GROUP_TOKENS:
             assert token not in text, (
-                f"Prompt '{prompt_name}.txt' still mentions '{token}'; "
-                "the group-expansion vocabulary must be removed."
+                f"Prompt '{prompt_name}.txt' still mentions '{token}'; the group-expansion vocabulary must be removed."
             )
 
     def test_output_field_rules_partial_has_no_group_kind(self) -> None:
@@ -84,8 +85,7 @@ class TestParsePromptsNoGroupVocabulary:
         text = path.read_text(encoding="utf-8")
         for token in FORBIDDEN_GROUP_TOKENS:
             assert token not in text, (
-                f"output_field_rules.txt still mentions '{token}'; "
-                "the group-expansion vocabulary must be removed."
+                f"output_field_rules.txt still mentions '{token}'; the group-expansion vocabulary must be removed."
             )
 
 

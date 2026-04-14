@@ -387,86 +387,8 @@ class TestADR6StaffDetectionNotesGuard:
 # ===========================================================================
 
 
-class TestADR7ConditionalPostExpansionFilter:
-    """Post-expansion conflict check should only run when expansions happened."""
-
-    def test_post_expansion_filter_runs_when_expansions_present(self):
-        """When at least one ParseResult has expanded_from_placeholder, filter should run."""
-        orchestrator = _make_orchestrator()
-
-        person = _make_person(cm_id=12345, name="Emma")
-        req1 = _make_parsed_request(RequestType.NOT_BUNK_WITH, "Emma Johnson", csv_position=1)
-        req2 = _make_parsed_request(RequestType.BUNK_WITH, "Emma Johnson", csv_position=2)
-
-        pr = _make_parse_result([req1, req2])
-        pr.metadata = {"expanded_from_placeholder": True}
-
-        resolutions = [
-            _make_resolution(person),
-            _make_resolution(person),
-        ]
-
-        results, kept, filtered = orchestrator._filter_post_expansion_conflicts([(pr, resolutions)])
-        # Should run the filter and resolve the conflict
-        assert filtered == 1
-        assert kept == 1
-
-    def test_post_expansion_filter_skipped_when_no_expansions(self):
-        """When no ParseResults have expanded_from_placeholder, filter should be skipped.
-
-        With no expansions, the method should return all results unchanged
-        without performing conflict detection.
-        """
-        orchestrator = _make_orchestrator()
-
-        person = _make_person(cm_id=12345, name="Emma")
-        req1 = _make_parsed_request(RequestType.NOT_BUNK_WITH, "Emma Johnson", csv_position=1)
-        req2 = _make_parsed_request(RequestType.BUNK_WITH, "Emma Johnson", csv_position=2)
-
-        pr = _make_parse_result([req1, req2])
-        pr.metadata = {}  # No expansion
-
-        resolutions = [
-            _make_resolution(person),
-            _make_resolution(person),
-        ]
-
-        results, kept, filtered = orchestrator._filter_post_expansion_conflicts([(pr, resolutions)])
-
-        # Guard should skip — both requests kept, no filtering
-        assert filtered == 0
-        assert kept == 2
-        assert len(pr.parsed_requests) == 2
-
-    def test_post_expansion_filter_mixed_results(self):
-        """When some results have expansions, the filter runs on the entire batch."""
-        orchestrator = _make_orchestrator()
-
-        person_a = _make_person(cm_id=12345, name="Emma")
-        person_b = _make_person(cm_id=67890, name="Liam")
-
-        # Result 1: Has expansion, has conflict
-        req1 = _make_parsed_request(RequestType.NOT_BUNK_WITH, "Emma Johnson", csv_position=1)
-        req2 = _make_parsed_request(RequestType.BUNK_WITH, "Emma Johnson", csv_position=2)
-        pr1 = _make_parse_result([req1, req2])
-        pr1.metadata = {"expanded_from_placeholder": True}
-        resolutions1 = [_make_resolution(person_a), _make_resolution(person_a)]
-
-        # Result 2: No expansion, has conflict — but since batch has expansions,
-        # the filter runs on all results
-        req3 = _make_parsed_request(RequestType.NOT_BUNK_WITH, "Liam Garcia", csv_position=1)
-        req4 = _make_parsed_request(RequestType.BUNK_WITH, "Liam Garcia", csv_position=2)
-        pr2 = _make_parse_result([req3, req4])
-        pr2.metadata = {}  # No expansion
-        resolutions2 = [_make_resolution(person_b), _make_resolution(person_b)]
-
-        results, kept, filtered = orchestrator._filter_post_expansion_conflicts(
-            [(pr1, resolutions1), (pr2, resolutions2)]
-        )
-
-        # Both conflicts resolved because batch-level guard detected expansion
-        assert filtered == 2
-        assert kept == 2
+# ADR 7 (post-expansion conflict filter) — removed with the group-expansion
+# deletion. See docs/plans/workstream-b-remove-group-expansion.md.
 
 
 # ===========================================================================

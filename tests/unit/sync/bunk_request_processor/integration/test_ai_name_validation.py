@@ -107,19 +107,20 @@ class TestIsLikelyPersonName:
         for non_name in non_names:
             assert not is_likely_person_name(non_name), f"Should reject '{non_name}'"
 
-    def test_accepts_special_placeholders(self):
-        """Special placeholders like LAST_YEAR_BUNKMATES and SIBLING should be accepted."""
+    def test_accepts_age_placeholders(self):
+        """Age placeholders are the only non-person-name values accepted."""
         from bunking.sync.bunk_request_processor.integration.batch_processor import (
             is_likely_person_name,
         )
 
-        placeholders = ["LAST_YEAR_BUNKMATES", "SIBLING", "older", "younger", "unclear"]
+        placeholders = ["older", "younger", "unclear"]
 
         for placeholder in placeholders:
             assert is_likely_person_name(placeholder), f"Should accept '{placeholder}'"
 
     def test_rejects_literal_family_words(self):
-        """Literal family words like 'twins' should be rejected (use SIBLING placeholder)."""
+        """Literal family words like 'twins' should be rejected (use the
+        staff-review fallback for unnamed group references instead)."""
         from bunking.sync.bunk_request_processor.integration.batch_processor import (
             is_likely_person_name,
         )

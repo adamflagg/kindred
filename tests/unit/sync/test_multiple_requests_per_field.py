@@ -42,7 +42,6 @@ class TestMultipleRequestsPerField:
         req.metadata = {}
         req.priority = "high"
         req.is_valid = True
-        req.group_kind = None
         return req
 
     def _create_person(self, cm_id: str, name: str, grade: str = "3") -> Person:
