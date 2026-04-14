@@ -367,7 +367,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
 
         if not matches:
             # Try matching via parent surname with pre-loaded candidates (or all_persons for fallback)
-            parent_pool = candidates if candidates else all_persons
+            parent_pool = candidates or all_persons
             result = self._try_parent_surname_match_with_context(
                 first_t, last_t, requester_cm_id, session_cm_id, year, parent_pool, attendee_info
             )

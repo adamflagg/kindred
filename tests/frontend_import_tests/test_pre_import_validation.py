@@ -119,7 +119,7 @@ class TestPreImportValidation:
 
             def visit_Import(self, node):
                 for alias in node.names:
-                    name = alias.asname if alias.asname else alias.name
+                    name = alias.asname or alias.name
                     self.defined_names.add(name.split(".")[0])
 
             def visit_ImportFrom(self, node):
@@ -128,7 +128,7 @@ class TestPreImportValidation:
                         # Can't track star imports
                         self.imports.add("*")
                     else:
-                        name = alias.asname if alias.asname else alias.name
+                        name = alias.asname or alias.name
                         self.defined_names.add(name)
 
             def visit_FunctionDef(self, node):

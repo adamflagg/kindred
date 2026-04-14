@@ -367,7 +367,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
             return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "incomplete_name"})
 
         # Use all_persons as fallback when candidates is empty (single-name targets)
-        school_pool = candidates if candidates else all_persons
+        school_pool = candidates or all_persons
 
         # If no pool to search, can't do school disambiguation
         if not school_pool:

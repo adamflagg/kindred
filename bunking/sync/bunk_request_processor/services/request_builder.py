@@ -267,7 +267,7 @@ class RequestBuilder:
             is_reciprocal=resolution_info.get("is_reciprocal", False),
             requester_is_inactive=conflict_type == "requester_not_attending",
             target_is_inactive=conflict_type == "target_not_attending",
-            target_has_bunking_session=conflict_type not in ("target_not_enrolled",),
+            target_has_bunking_session=conflict_type != "target_not_enrolled",
             target_waitlisted=resolution_info.get("target_waitlisted", False),
             session_match=conflict_type not in ("session_mismatch", "cross_session_satisfied"),
             age_direction=parsed_req.age_preference.value if parsed_req.age_preference else None,
