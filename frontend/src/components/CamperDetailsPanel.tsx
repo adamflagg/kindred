@@ -36,6 +36,7 @@ import type {
 import { Collections } from '../types/pocketbase-types'
 import { toAppCamper } from '../utils/transforms'
 import { isAgePreferenceSatisfied } from '../utils/agePreferenceSatisfaction'
+import { isConfirmedRequest } from '../utils/bunkRequest'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
@@ -883,50 +884,33 @@ export default function CamperDetailsPanel({
             />
             {expandedSections.requests && (
               <div className="mt-2 space-y-1">
-                {bunkRequests
-                  .filter((r) => r.request_type !== 'age_preference')
-                  .map((request) => {
-                    const isConfirmed = Boolean(
-                      request.status === 'resolved' &&
-                      request.requestee_id &&
-                      request.requestee_id > 0
-                    )
-                    const satisfaction = satisfactionData[request.id]
-
-                    return (
-                      <BunkRequestRow
-                        key={request.id}
-                        request={request}
-                        targetPerson={request.targetPerson ?? null}
-                        showSatisfaction={isConfirmed}
-                        satisfaction={satisfaction?.status ?? null}
-                        satisfactionLoading={satisfactionLoading}
-                        satisfactionDetail={satisfaction?.detail}
-                      />
-                    )
-                  })}
+                {nonAgeRequests.map((request) => {
+                  const satisfaction = satisfactionData[request.id]
+                  return (
+                    <BunkRequestRow
+                      key={request.id}
+                      request={request}
+                      targetPerson={request.targetPerson ?? null}
+                      showSatisfaction={isConfirmedRequest(request)}
+                      satisfaction={satisfaction?.status ?? null}
+                      satisfactionLoading={satisfactionLoading}
+                      satisfactionDetail={satisfaction?.detail}
+                    />
+                  )
+                })}
 
                 {/* Age preference - subtle at bottom with satisfaction */}
-                {agePreferenceRequest?.age_preference_target &&
-                  (() => {
-                    const ageSatisfaction = satisfactionData[agePreferenceRequest.id]
-                    const hasOtherRequests =
-                      bunkRequests.filter((r) => r.request_type !== 'age_preference').length > 0
-
-                    return (
-                      <div
-                        className={hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}
-                      >
-                        <BunkRequestRow
-                          request={agePreferenceRequest}
-                          showSatisfaction={true}
-                          satisfaction={ageSatisfaction?.status ?? null}
-                          satisfactionLoading={satisfactionLoading}
-                          satisfactionDetail={ageSatisfaction?.detail}
-                        />
-                      </div>
-                    )
-                  })()}
+                {agePreferenceRequest?.age_preference_target && (
+                  <div className={hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}>
+                    <BunkRequestRow
+                      request={agePreferenceRequest}
+                      showSatisfaction={true}
+                      satisfaction={ageSatisfaction?.status ?? null}
+                      satisfactionLoading={satisfactionLoading}
+                      satisfactionDetail={ageSatisfaction?.detail}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -1268,6 +1252,13 @@ export default function CamperDetailsPanel({
       </div>
     )
   }
+
+  // Derived request lists (used in the bunk requests section of the render)
+  const nonAgeRequests = bunkRequests.filter((r) => r.request_type !== 'age_preference')
+  const hasOtherRequests = nonAgeRequests.length > 0
+  const ageSatisfaction = agePreferenceRequest
+    ? satisfactionData[agePreferenceRequest.id]
+    : undefined
 
   // Slide-in panel with semi-transparent backdrop for click-outside close
   // Uses CSS animations instead of transitions for React Compiler compatibility

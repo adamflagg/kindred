@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '../test/testUtils'
+import type { BunkRequestsResponse } from '../types/pocketbase-types'
 
 // Mock pocketbase
 const mockGetFullList = vi.fn()
@@ -25,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-const mockRequests = [
+const mockRequests: BunkRequestsResponse[] = [
   {
     id: 'req1',
     requester_id: 100,
@@ -39,7 +40,7 @@ const mockRequests = [
     is_reciprocal: false,
     confidence_score: 0.95,
     created: '2025-01-01',
-  },
+  } as unknown as BunkRequestsResponse,
   {
     id: 'req2',
     requester_id: 100,
@@ -53,7 +54,7 @@ const mockRequests = [
     is_reciprocal: false,
     confidence_score: 0.88,
     created: '2025-01-01',
-  },
+  } as unknown as BunkRequestsResponse,
   {
     id: 'req3',
     requester_id: 100,
@@ -67,7 +68,7 @@ const mockRequests = [
     is_reciprocal: false,
     confidence_score: 0.9,
     created: '2025-01-01',
-  },
+  } as unknown as BunkRequestsResponse,
 ]
 
 const mockPersons = [
@@ -148,7 +149,7 @@ describe('CamperRequestSummary', () => {
     })
   })
 
-  it('filters out age_preference requests', async () => {
+  it('renders age_preference requests with "Prefers bunking with" text', async () => {
     mockFetch([
       ...mockRequests,
       {
@@ -156,6 +157,7 @@ describe('CamperRequestSummary', () => {
         requester_id: 100,
         requestee_id: 0,
         request_type: 'age_preference',
+        age_preference_target: 'older',
         status: 'pending',
         priority: 0,
         requested_person_name: '',
@@ -164,12 +166,20 @@ describe('CamperRequestSummary', () => {
         is_reciprocal: false,
         confidence_score: 1,
         created: '2025-01-01',
-      } as unknown as (typeof mockRequests)[number],
+      } as unknown as BunkRequestsResponse,
     ])
     render(<CamperRequestSummary requesterCmId={100} year={2025} currentRequestId="req1" />)
     await waitFor(() => {
       expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     })
-    expect(screen.queryByText(/Prefers bunking with/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Prefers bunking with/)).toBeInTheDocument()
+  })
+
+  it('shows an error state when request fetch fails', async () => {
+    mockGetFullList.mockRejectedValue(new Error('Network error'))
+    render(<CamperRequestSummary requesterCmId={100} year={2025} currentRequestId="req1" />)
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load requests/)).toBeInTheDocument()
+    })
   })
 })

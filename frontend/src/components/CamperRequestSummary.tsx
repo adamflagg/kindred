@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { BunkRequestRow } from './BunkRequestRow'
+import { queryKeys } from '../utils/queryKeys'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 interface CamperRequestSummaryProps {
@@ -25,8 +26,12 @@ export function CamperRequestSummary({
 }: CamperRequestSummaryProps) {
   const { user } = useAuth()
 
-  const { data: requests = [], isLoading: isLoadingRequests } = useQuery({
-    queryKey: ['camper-request-summary', requesterCmId, year],
+  const {
+    data: requests = [],
+    isLoading: isLoadingRequests,
+    isError: isErrorRequests,
+  } = useQuery({
+    queryKey: queryKeys.camperRequestSummary(requesterCmId, year),
     queryFn: async () => {
       return pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: `requester_id = ${requesterCmId} && year = ${year} && (merged_into = "" || merged_into = null)`,
@@ -47,10 +52,8 @@ export function CamperRequestSummary({
     return Array.from(ids).sort((a, b) => a - b)
   }, [requests])
 
-  const requesteeIdsKey = useMemo(() => requesteeIds.join(','), [requesteeIds])
-
   const { data: persons = [], isLoading: isLoadingPersons } = useQuery({
-    queryKey: ['camper-request-summary-persons', requesteeIdsKey, year],
+    queryKey: queryKeys.camperRequestSummaryPersons(requesteeIds, year),
     queryFn: async () => {
       if (requesteeIds.length === 0) return []
       const chunks: number[][] = []
@@ -72,7 +75,7 @@ export function CamperRequestSummary({
 
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])
 
-  const isLoading = isLoadingRequests || (requesteeIds.length > 0 && isLoadingPersons)
+  const isLoading = isLoadingRequests || isLoadingPersons
 
   if (isLoading) {
     return (
@@ -83,10 +86,19 @@ export function CamperRequestSummary({
     )
   }
 
-  // Filter to only show non-age_preference requests (consistent with CamperDetailsPanel)
-  const displayRequests = requests.filter((r) => r.request_type !== 'age_preference')
+  if (isErrorRequests) {
+    return (
+      <div className="text-destructive flex items-center gap-2 py-2 text-sm">
+        <AlertCircle className="h-4 w-4 flex-shrink-0" />
+        Failed to load requests
+      </div>
+    )
+  }
 
-  if (displayRequests.length === 0) {
+  const nonAgeRequests = requests.filter((r) => r.request_type !== 'age_preference')
+  const agePreferenceRequest = requests.find((r) => r.request_type === 'age_preference')
+
+  if (nonAgeRequests.length === 0 && !agePreferenceRequest) {
     return <div className="text-muted-foreground py-2 text-sm italic">No other requests</div>
   }
 
@@ -95,7 +107,7 @@ export function CamperRequestSummary({
       <div className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">
         Other requests from this camper
       </div>
-      {displayRequests.map((request) => {
+      {nonAgeRequests.map((request) => {
         const targetPerson = request.requestee_id
           ? (personMap.get(request.requestee_id) ?? null)
           : null
@@ -109,6 +121,14 @@ export function CamperRequestSummary({
           </div>
         )
       })}
+      {agePreferenceRequest?.age_preference_target && (
+        <div
+          className={nonAgeRequests.length > 0 ? 'border-border/50 mt-3 border-t pt-2' : ''}
+          data-testid={`request-row-${agePreferenceRequest.id}`}
+        >
+          <BunkRequestRow request={agePreferenceRequest} />
+        </div>
+      )}
     </div>
   )
 }

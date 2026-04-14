@@ -1307,6 +1307,13 @@ export default function RequestReviewPanel({
                                 </div>
                               )}
                             </div>
+                            <div className="mt-3 border-t pt-3">
+                              <CamperRequestSummary
+                                requesterCmId={request.requester_id}
+                                year={year}
+                                currentRequestId={request.id}
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1571,7 +1578,9 @@ export default function RequestReviewPanel({
                                                   )}
                                                 </div>
                                                 <p className="text-muted-foreground text-sm">
-                                                  {source.original_content ?? (
+                                                  {source.original_content?.trim() ? (
+                                                    source.original_content
+                                                  ) : (
                                                     <span className="italic">No original text</span>
                                                   )}
                                                 </p>
@@ -1579,7 +1588,9 @@ export default function RequestReviewPanel({
                                                   <span className="font-medium">
                                                     AI Intent Notes:
                                                   </span>{' '}
-                                                  {source.parse_notes ?? (
+                                                  {source.parse_notes?.trim() ? (
+                                                    source.parse_notes
+                                                  ) : (
                                                     <span className="italic">
                                                       No AI intent notes
                                                     </span>

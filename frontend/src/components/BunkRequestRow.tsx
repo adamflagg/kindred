@@ -2,6 +2,7 @@ import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
 import { MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { isConfirmedRequest } from '../utils/bunkRequest'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 export type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'unknown' | 'checking'
@@ -21,6 +22,40 @@ export interface BunkRequestRowProps {
   satisfactionLoading?: boolean
   /** Optional detail text for the satisfaction tooltip. */
   satisfactionDetail?: string | undefined
+}
+
+function statusIcon(status: string) {
+  if (status === 'resolved')
+    return <CheckCircle className="text-forest-600 dark:text-forest-400 h-4 w-4 flex-shrink-0" />
+  if (status === 'declined')
+    return <XCircle className="text-bark-600 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
+  return <Clock className="h-4 w-4 flex-shrink-0 text-amber-500" />
+}
+
+const SATISFACTION_ICONS = {
+  satisfied: <span className="sat-icon sat-icon-met">✓</span>,
+  not_satisfied: <span className="sat-icon sat-icon-unmet">✗</span>,
+  unknown: <span className="sat-icon sat-icon-unknown">?</span>,
+}
+
+function SatisfactionIcon({
+  satisfaction,
+  satisfactionLoading,
+  satisfactionDetail,
+}: {
+  satisfaction: SatisfactionStatus | null
+  satisfactionLoading: boolean
+  satisfactionDetail?: string | undefined
+}) {
+  return (
+    <span className="ml-auto" title={satisfactionDetail}>
+      {satisfactionLoading ? (
+        <span className="sat-spinner" />
+      ) : satisfaction ? (
+        (SATISFACTION_ICONS[satisfaction as keyof typeof SATISFACTION_ICONS] ?? null)
+      ) : null}
+    </span>
+  )
 }
 
 /**
@@ -54,26 +89,18 @@ export function BunkRequestRow({
           campers
         </span>
         {showSatisfaction && (
-          <span className="ml-auto" title={satisfactionDetail}>
-            {satisfactionLoading ? (
-              <span className="sat-spinner" />
-            ) : satisfaction === 'satisfied' ? (
-              <span className="sat-icon sat-icon-met">✓</span>
-            ) : satisfaction === 'not_satisfied' ? (
-              <span className="sat-icon sat-icon-unmet">✗</span>
-            ) : satisfaction === 'unknown' ? (
-              <span className="sat-icon sat-icon-unknown">?</span>
-            ) : null}
-          </span>
+          <SatisfactionIcon
+            satisfaction={satisfaction}
+            satisfactionLoading={satisfactionLoading}
+            satisfactionDetail={satisfactionDetail}
+          />
         )}
       </div>
     )
   }
 
   const isBunkWith = request.request_type === 'bunk_with'
-  const isConfirmed = Boolean(
-    request.status === 'resolved' && request.requestee_id && request.requestee_id > 0
-  )
+  const isConfirmed = isConfirmedRequest(request)
 
   // Prefer resolved person name if we have it; fall back to requested_person_name.
   const resolvedName = targetPerson ? `${targetPerson.first_name} ${targetPerson.last_name}` : null
@@ -82,13 +109,7 @@ export function BunkRequestRow({
   return (
     <div className={rowClass}>
       {/* Status indicator */}
-      {request.status === 'resolved' ? (
-        <CheckCircle className="text-forest-600 dark:text-forest-400 h-4 w-4 flex-shrink-0" />
-      ) : request.status === 'declined' ? (
-        <XCircle className="text-bark-600 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
-      ) : (
-        <Clock className="h-4 w-4 flex-shrink-0 text-amber-500" />
-      )}
+      {statusIcon(request.status)}
 
       {/* Type label */}
       <span
@@ -113,17 +134,11 @@ export function BunkRequestRow({
 
       {/* Satisfaction - concise icon only */}
       {showSatisfaction && (
-        <span className="ml-auto" title={satisfactionDetail}>
-          {satisfactionLoading ? (
-            <span className="sat-spinner" />
-          ) : satisfaction === 'satisfied' ? (
-            <span className="sat-icon sat-icon-met">✓</span>
-          ) : satisfaction === 'not_satisfied' ? (
-            <span className="sat-icon sat-icon-unmet">✗</span>
-          ) : satisfaction === 'unknown' ? (
-            <span className="sat-icon sat-icon-unknown">?</span>
-          ) : null}
-        </span>
+        <SatisfactionIcon
+          satisfaction={satisfaction}
+          satisfactionLoading={satisfactionLoading}
+          satisfactionDetail={satisfactionDetail}
+        />
       )}
     </div>
   )
