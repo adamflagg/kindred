@@ -142,6 +142,34 @@ class TestSourceTypeMetadata:
 
         assert parsed_req.metadata["source_type"] == "counselor"
 
+    def test_source_fragment_flows_into_parsed_request_metadata(self) -> None:
+        """AI-emitted source_fragment should be preserved on ParsedRequest.metadata."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-4o-mini")
+
+        ai_response = AIParseResponse(
+            requests=[
+                AIBunkRequestItem(
+                    request_type="bunk_with",
+                    target_name="Emma",
+                    source_fragment="wants to be with Emma from last year",
+                )
+            ]
+        )
+
+        context = AIRequestContext(
+            requester_name="Liam Garcia",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={"csv_source_field": "share_bunk_with"},
+        )
+
+        result = provider._convert_parse_response(ai_response, "wants to be with Emma from last year", context)
+
+        assert len(result.requests) == 1
+        parsed_req = result.requests[0]
+        assert parsed_req.metadata.get("source_fragment") == "wants to be with Emma from last year"
+
 
 class TestSupportsReasoning:
     """Test _supports_reasoning model prefix detection."""
