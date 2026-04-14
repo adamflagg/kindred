@@ -221,6 +221,12 @@ export const queryKeys = {
   ) => ['metrics', 'forecast', year, sessionTypes, sessionCmId, dayOffset, duration] as const,
   forecastWeekOptions: (year: number) => ['metrics', 'forecast', 'week-options', year] as const,
 
+  // Camper Request Summary (Tier 2 - user data, used in expanded row)
+  camperRequestSummary: (requesterCmId: number, year: number) =>
+    ['camper-request-summary', requesterCmId, year] as const,
+  camperRequestSummaryPersons: (requesteeIds: number[], year: number) =>
+    ['camper-request-summary-persons', requesteeIds, year] as const,
+
   // Social Graph (Tier 1 - sync data)
   socialGraph: (sessionCmId: number, year: number) => ['social-graph', sessionCmId, year] as const,
 
