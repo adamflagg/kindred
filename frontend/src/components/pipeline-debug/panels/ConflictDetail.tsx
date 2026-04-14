@@ -5,14 +5,14 @@ import { renderUnknownValue } from './panelUtils'
 
 interface ConflictDetailProps {
   data: PostPipelineTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean
 }
 
 export function ConflictDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: ConflictDetailProps) {
@@ -62,7 +62,11 @@ export function ConflictDetail({
         )}
       </PanelSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

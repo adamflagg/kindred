@@ -24,8 +24,8 @@ interface PipelineDetailPanelProps {
   traceData: TraceData
   activeIntentIndex: number
   onTabChange: (idx: number) => void
-  onRunAgain: (phase: PipelinePhase) => void
-  onRunFromHere: (phase: PipelinePhase, writeToProduction: boolean) => void
+  onRerunPhase: (phase: PipelinePhase) => void
+  onRunFromHere: (phase: PipelinePhase) => void
   isRunning?: boolean
 }
 
@@ -34,15 +34,15 @@ export function PipelineDetailPanel({
   traceData,
   activeIntentIndex,
   onTabChange,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: PipelineDetailPanelProps) {
   const parentPhase = STAGE_TO_PHASE[selectedStage]
 
   const sharedProps = {
-    onRunAgain: () => onRunAgain(parentPhase),
-    onRunFromHere: (writeToProduction: boolean) => onRunFromHere(parentPhase, writeToProduction),
+    onRerunPhase: () => onRerunPhase(parentPhase),
+    onRunFromHere: () => onRunFromHere(parentPhase),
     ...(isRunning !== undefined ? { isRunning } : {}),
   }
 

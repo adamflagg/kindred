@@ -17,8 +17,8 @@ interface Phase3DetailProps {
   data: Phase3IntentTrace[]
   activeTab: number
   onTabChange: (idx: number) => void
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
@@ -151,7 +151,7 @@ export function Phase3Detail({
   data,
   activeTab,
   onTabChange,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: Phase3DetailProps) {
@@ -183,7 +183,11 @@ export function Phase3Detail({
         </>
       )}
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

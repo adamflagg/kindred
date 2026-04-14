@@ -32,7 +32,7 @@ import type {
 
 // Common action callbacks
 const defaultActions = {
-  onRunAgain: vi.fn(),
+  onRerunPhase: vi.fn(),
   onRunFromHere: vi.fn(),
   activeTab: 0,
   onTabChange: vi.fn(),
@@ -329,7 +329,7 @@ describe('PrePhase1Detail', () => {
 
   it('renders action buttons', () => {
     render(<PrePhase1Detail data={prePhase1} {...defaultActions} />)
-    expect(screen.getByRole('button', { name: /run again/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /rerun this phase/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /run from here/i })).toBeInTheDocument()
   })
 })
@@ -626,7 +626,7 @@ describe('BatchSignalsDetail', () => {
 
   it('renders action buttons', () => {
     render(<BatchSignalsDetail data={postPipeline} {...defaultActions} />)
-    expect(screen.getByRole('button', { name: /run again/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /rerun this phase/i })).toBeInTheDocument()
   })
 })
 

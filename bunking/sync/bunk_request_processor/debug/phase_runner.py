@@ -130,11 +130,17 @@ class PhaseRunner:
         Loads prior phase outputs from trace_data for upstream phases,
         runs the specified phase and all downstream phases.
 
+        Dry-run only — production writes are exclusively handled by
+        ``run_full_trace`` (via ``RequestOrchestrator``). The ``dry_run``
+        parameter is retained for API compatibility and is forwarded to
+        downstream phases, but this method never writes to production.
+
         Args:
             phase: Phase to start from ("phase1", "phase2", "phase3").
             trace_data: Existing trace data with upstream phase results.
             parse_requests: Parse requests for phase1 start (if phase="phase1").
-            dry_run: If True (default), do not write to production.
+            dry_run: Forwarded to downstream phases; this method does not write
+                to production regardless.
             stop_at_phase: If set, stop after this phase completes. Must be at or
                 after the start phase in PHASE_ORDER. None runs all remaining phases.
 
@@ -197,13 +203,6 @@ class PhaseRunner:
             phase3_input = self._reconstruct_ambiguous_from_trace(trace_data)
             phase3_results = await self.run_phase3(phase3_input)
             result["phase3_results"] = phase3_results
-
-        # Production write mode (only for cascades, not single-phase)
-        if not dry_run:
-            logger.info("PhaseRunner: production write mode — saving results")
-            # This would call _save_bunk_requests and mark_as_processed
-            # Implementation deferred to when request building is wired up
-            result["production_write"] = True
 
         return result
 

@@ -1624,7 +1624,10 @@ async def run_from_phase(
 ) -> PhaseRunResponse:
     """Cascade from a specified phase through all remaining phases.
 
-    Supports dry_run (default True). When dry_run=False, writes to production.
+    Dry-run only; production writes are supported exclusively via
+    ``/run-full-trace``. ``body.dry_run`` is accepted for API compatibility
+    and forwarded to the runner, but this endpoint does not write to
+    production regardless of its value.
     """
     if phase not in VALID_CASCADE_PHASES:
         raise HTTPException(

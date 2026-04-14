@@ -14,14 +14,14 @@ import { renderUnknownValue } from './panelUtils'
 
 interface ExpansionDetailProps {
   data: PlaceholderExpansionTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
 export function ExpansionDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: ExpansionDetailProps) {
@@ -95,7 +95,11 @@ export function ExpansionDetail({
         )}
       </PanelSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

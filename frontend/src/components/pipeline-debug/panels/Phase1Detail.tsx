@@ -15,12 +15,12 @@ import { confidenceColor } from './panelUtils'
 
 interface Phase1DetailProps {
   data: Phase1Trace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
-export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Phase1DetailProps) {
+export function Phase1Detail({ data, onRerunPhase, onRunFromHere, isRunning }: Phase1DetailProps) {
   const status = !data.ran ? 'not_run' : data.is_valid ? 'ran' : 'error'
 
   return (
@@ -135,7 +135,11 @@ export function Phase1Detail({ data, onRunAgain, onRunFromHere, isRunning }: Pha
         </pre>
       </CollapsibleSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

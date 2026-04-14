@@ -14,14 +14,14 @@ import { renderUnknownValue } from './panelUtils'
 
 interface ValidationDetailProps {
   data: ValidationTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
 export function ValidationDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: ValidationDetailProps) {
@@ -170,7 +170,11 @@ export function ValidationDetail({
         )}
       </PanelSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }
