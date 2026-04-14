@@ -43,6 +43,7 @@ import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
+import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 
@@ -114,6 +115,37 @@ export default function RequestReviewPanel({
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  const [confirmPopover, setConfirmPopover] = useState<{
+    action: 'approve' | 'decline'
+    anchorRect: Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>
+    requestId: string
+  } | null>(null)
+  const [bulkConfirm, setBulkConfirm] = useState<{
+    action: 'approve' | 'decline'
+    count: number
+  } | null>(null)
+  const bulkConfirmRef = useRef<HTMLDivElement>(null)
+  const bulkConfirmPreviousFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (bulkConfirm) {
+      bulkConfirmPreviousFocusRef.current = document.activeElement as HTMLElement | null
+      const buttons = bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button')
+      buttons?.[buttons.length - 1]?.focus()
+    } else {
+      bulkConfirmPreviousFocusRef.current?.focus()
+      bulkConfirmPreviousFocusRef.current = null
+    }
+  }, [bulkConfirm])
+
+  function openConfirmPopover(
+    e: React.MouseEvent<HTMLButtonElement>,
+    action: 'approve' | 'decline',
+    requestId: string
+  ): void {
+    e.stopPropagation()
+    setConfirmPopover({ action, anchorRect: e.currentTarget.getBoundingClientRect(), requestId })
+  }
   const [filters, setFilters] = useState<FilterState>(() => {
     try {
       const stored = localStorage.getItem(storageKey)
@@ -631,22 +663,12 @@ export default function RequestReviewPanel({
 
   const handleBulkApprove = () => {
     if (selectedRequests.size === 0) return
-    bulkUpdateMutation.mutate({
-      ids: Array.from(selectedRequests),
-      updates: {
-        status: 'resolved' as BunkRequestsStatusOptions,
-        request_locked: true,
-      },
-    })
+    setBulkConfirm({ action: 'approve', count: selectedRequests.size })
   }
 
   const handleBulkReject = () => {
     if (selectedRequests.size === 0) return
-    if (!confirm(`Are you sure you want to reject ${selectedRequests.size} requests?`)) return
-    bulkUpdateMutation.mutate({
-      ids: Array.from(selectedRequests),
-      updates: { status: 'declined' as BunkRequestsStatusOptions },
-    })
+    setBulkConfirm({ action: 'decline', count: selectedRequests.size })
   }
 
   // Validated update handler - checks for conflicts before applying
@@ -1232,31 +1254,14 @@ export default function RequestReviewPanel({
                               </button>
                             )}
                             <button
-                              onClick={() =>
-                                updateRequestMutation.mutate({
-                                  id: request.id,
-                                  updates: {
-                                    status: 'resolved' as BunkRequestsStatusOptions,
-                                    request_locked: true,
-                                  },
-                                })
-                              }
+                              onClick={(e) => openConfirmPopover(e, 'approve', request.id)}
                               className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 touch-manipulation rounded-lg p-2 transition-colors"
                               title="Approve"
                             >
                               <CheckCircle className="h-5 w-5" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm('Reject this request?')) {
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: {
-                                      status: 'declined' as BunkRequestsStatusOptions,
-                                    },
-                                  })
-                                }
-                              }}
+                              onClick={(e) => openConfirmPopover(e, 'decline', request.id)}
                               className="hover:bg-destructive/10 text-destructive touch-manipulation rounded-lg p-2 transition-colors"
                               title="Reject"
                             >
@@ -1492,31 +1497,14 @@ export default function RequestReviewPanel({
                                 </button>
                               )}
                               <button
-                                onClick={() =>
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: {
-                                      status: 'resolved' as BunkRequestsStatusOptions,
-                                      request_locked: true,
-                                    },
-                                  })
-                                }
+                                onClick={(e) => openConfirmPopover(e, 'approve', request.id)}
                                 className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
                                 title="Approve"
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to reject this request?')) {
-                                    updateRequestMutation.mutate({
-                                      id: request.id,
-                                      updates: {
-                                        status: 'declined' as BunkRequestsStatusOptions,
-                                      },
-                                    })
-                                  }
-                                }}
+                                onClick={(e) => openConfirmPopover(e, 'decline', request.id)}
                                 className="hover:bg-destructive/10 text-destructive rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
                                 title="Reject"
                               >
@@ -1955,6 +1943,93 @@ export default function RequestReviewPanel({
           </div>
         </div>
       </div>
+
+      <ConfirmActionPopover
+        isOpen={!!confirmPopover}
+        anchorRect={confirmPopover?.anchorRect ?? { top: 0, left: 0, width: 0, height: 0 }}
+        action={confirmPopover?.action ?? 'approve'}
+        onConfirm={() => {
+          if (!confirmPopover) return
+          const { action, requestId } = confirmPopover
+          updateRequestMutation.mutate({
+            id: requestId,
+            updates:
+              action === 'approve'
+                ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
+                : { status: 'declined' as BunkRequestsStatusOptions },
+          })
+          setConfirmPopover(null)
+        }}
+        onCancel={() => setConfirmPopover(null)}
+      />
+
+      {bulkConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setBulkConfirm(null)} />
+          <div
+            ref={bulkConfirmRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-confirm-label"
+            className="bg-card border-border relative mx-4 w-full max-w-sm rounded-xl border p-6 shadow-xl"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setBulkConfirm(null)
+                return
+              }
+              if (e.key === 'Tab') {
+                const buttons = Array.from(
+                  bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button') ?? []
+                )
+                if (buttons.length === 0) return
+                e.preventDefault()
+                const idx = buttons.indexOf(document.activeElement as HTMLElement)
+                if (e.shiftKey) {
+                  buttons[idx <= 0 ? buttons.length - 1 : idx - 1]?.focus()
+                } else {
+                  buttons[idx >= buttons.length - 1 ? 0 : idx + 1]?.focus()
+                }
+              }
+            }}
+          >
+            <p id="bulk-confirm-label" className="text-foreground mb-5 text-base font-medium">
+              {bulkConfirm.action === 'approve'
+                ? `Confirm approving ${bulkConfirm.count} request${bulkConfirm.count === 1 ? '' : 's'}?`
+                : `Confirm declining ${bulkConfirm.count} request${bulkConfirm.count === 1 ? '' : 's'}?`}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setBulkConfirm(null)}
+                className="text-muted-foreground hover:bg-muted rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = Array.from(selectedRequests)
+                  bulkUpdateMutation.mutate({
+                    ids,
+                    updates:
+                      bulkConfirm.action === 'approve'
+                        ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
+                        : { status: 'declined' as BunkRequestsStatusOptions },
+                  })
+                  setBulkConfirm(null)
+                }}
+                className={
+                  bulkConfirm.action === 'approve'
+                    ? 'bg-forest-600 hover:bg-forest-700 dark:bg-forest-700 dark:hover:bg-forest-600 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors'
+                    : 'rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600'
+                }
+              >
+                {bulkConfirm.action === 'approve' ? 'Approve' : 'Decline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
