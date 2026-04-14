@@ -288,6 +288,11 @@ class RequestRepository:
                 data["ai_p1_reasoning"] = json.dumps(request.metadata["ai_p1_reasoning"])
             if "ai_p3_reasoning" in request.metadata:
                 data["ai_p3_reasoning"] = json.dumps(request.metadata["ai_p3_reasoning"])
+
+        # Always set source_fragment column (even if empty — old rows need clearing on re-save)
+        data["source_fragment"] = request.metadata.get("source_fragment", "")
+
+        if request.metadata:
             if "ai_parsed" in request.metadata:
                 data["ai_parsed"] = request.metadata["ai_parsed"]
             if "is_reciprocal" in request.metadata:

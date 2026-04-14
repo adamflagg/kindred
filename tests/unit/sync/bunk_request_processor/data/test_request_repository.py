@@ -756,5 +756,50 @@ class TestMapToDbDispositionFields:
         assert meta["other_field"] == "keep_me"
 
 
+class TestMapToDbSourceFragment:
+    """Test that _map_to_db writes source_fragment to a top-level DB column."""
+
+    @pytest.fixture
+    def repository(self):
+        mock_client = Mock()
+        mock_client.collection.return_value = Mock()
+        return RequestRepository(mock_client)
+
+    def _make_request(self, metadata: dict[str, Any]) -> BunkRequest:
+        return BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata=metadata,
+        )
+
+    def test_save_includes_source_fragment_column(self, repository: RequestRepository) -> None:
+        """Repository should write source_fragment as a top-level PB column, not buried in metadata."""
+        request = self._make_request({"source_fragment": "wants to be with Emma"})
+        data = repository._map_to_db(request)
+        assert data.get("source_fragment") == "wants to be with Emma"
+
+    def test_save_source_fragment_defaults_to_empty(self, repository: RequestRepository) -> None:
+        """If metadata lacks source_fragment key, column saves as empty string."""
+        request = self._make_request({})
+        data = repository._map_to_db(request)
+        assert data.get("source_fragment", "") == ""
+
+    def test_save_source_fragment_always_set_unconditionally(self, repository: RequestRepository) -> None:
+        """source_fragment key must always be present in the payload (so old rows get cleared on re-save)."""
+        request = self._make_request({})
+        data = repository._map_to_db(request)
+        assert "source_fragment" in data
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
