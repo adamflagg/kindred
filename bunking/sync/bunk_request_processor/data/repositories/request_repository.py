@@ -10,13 +10,13 @@ from typing import Any
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-from ...integration.ai_schemas import SOURCE_FRAGMENT_MAX_LEN
 from ...core.models import (
     BunkRequest,
     RequestSource,
     RequestStatus,
     RequestType,
 )
+from ...integration.ai_schemas import SOURCE_FRAGMENT_MAX_LEN
 from ..pocketbase_wrapper import PocketBaseWrapper
 
 logger = get_logger(__name__)
