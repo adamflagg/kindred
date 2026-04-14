@@ -10,6 +10,7 @@ from typing import Any
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
+from ...integration.ai_schemas import SOURCE_FRAGMENT_MAX_LEN
 from ...core.models import (
     BunkRequest,
     RequestSource,
@@ -290,9 +291,8 @@ class RequestRepository:
                 data["ai_p3_reasoning"] = json.dumps(request.metadata["ai_p3_reasoning"])
 
         # Always set source_fragment column (even if empty — old rows need clearing on re-save)
-        # Truncate to DB max (2000 chars) in case AI returns an unexpectedly long fragment.
         raw_fragment = request.metadata.get("source_fragment", "") if request.metadata else ""
-        data["source_fragment"] = raw_fragment[:2000]
+        data["source_fragment"] = raw_fragment[:SOURCE_FRAGMENT_MAX_LEN]
 
         if request.metadata:
             if "ai_parsed" in request.metadata:
