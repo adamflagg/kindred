@@ -24,7 +24,7 @@ import {
 import { useVirtualTable } from '../../hooks/useVirtualTable'
 
 /** Fixed height for the virtualized scroll viewport. */
-const VIRTUAL_VIEWPORT_HEIGHT = 600
+const VIRTUAL_VIEWPORT_HEIGHT = 696
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -40,8 +40,15 @@ const SORTABLE_COLUMNS: Array<{
   { label: 'Confidence', field: 'final_confidence' },
   { label: 'Method', field: 'resolution_method' },
   { label: 'P3', field: 'phase3_triggered' },
-  { label: 'Reasoning', field: 'ai_reasoning_summary', hiddenClass: 'hidden lg:table-cell' },
+  { label: 'Reasoning', field: 'ai_reasoning_summary', hiddenClass: 'hidden lg:block' },
 ]
+
+/** Shared CSS grid template for header + rows so columns stay aligned.
+ *  Small screens: 8 columns (Reasoning cell uses `hidden`, removed from flow).
+ *  lg+: 9 columns including Reasoning. */
+const PIPELINE_GRID_COLS =
+  'grid-cols-[minmax(120px,1.5fr)_minmax(120px,1.5fr)_130px_90px_140px_80px_minmax(110px,1fr)_56px] ' +
+  'lg:grid-cols-[minmax(120px,1.5fr)_minmax(120px,1.5fr)_130px_90px_140px_80px_minmax(110px,1fr)_56px_minmax(140px,2fr)]'
 
 /** Local sort state: field + direction. */
 type SortState = { field: keyof PipelineSummaryItem; desc: boolean } | null
@@ -155,7 +162,7 @@ export function PipelineBatchList({
   const { parentRef, rowVirtualizer } = useVirtualTable({
     data: visibleItems,
     height: VIRTUAL_VIEWPORT_HEIGHT,
-    rowHeightPreset: 'normal',
+    rowHeightPreset: 'compact',
     overscan: 15,
   })
 
@@ -335,7 +342,8 @@ export function PipelineBatchList({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Grid-based virtualized list (not HTML table — avoids table/tbody
+          display-mode foot-guns when combined with absolute-positioned rows). */}
       {visibleItems.length === 0 ? (
         <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 flex h-48 flex-col items-center justify-center gap-3">
           <Search className="text-bark-400 h-8 w-8" />
@@ -343,153 +351,144 @@ export function PipelineBatchList({
         </div>
       ) : (
         <div className="card-lodge overflow-hidden">
-          {/* Single table with sticky header; the scroll parent is the div. */}
           <div
             ref={parentRef}
             className="overflow-auto"
             style={{ height: `${VIRTUAL_VIEWPORT_HEIGHT}px` }}
           >
-            <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-              <thead className="bg-bark-50 dark:bg-bark-800/50 sticky top-0 z-10">
-                <tr className="border-bark-200 dark:border-bark-700 border-b">
-                  {SORTABLE_COLUMNS.map((col) => {
-                    const isActive = sort?.field === col.field
-                    const isDesc = isActive && sort.desc
-                    return (
-                      <th
-                        key={col.field}
-                        tabIndex={0}
-                        aria-sort={
-                          sort?.field === col.field
-                            ? sort.desc
-                              ? 'descending'
-                              : 'ascending'
-                            : undefined
-                        }
-                        onClick={() => toggleSort(col.field)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            toggleSort(col.field)
-                          }
-                        }}
-                        className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          {isActive ? (
-                            isDesc ? (
-                              <ArrowDown className="h-3 w-3" />
-                            ) : (
-                              <ArrowUp className="h-3 w-3" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                          )}
-                        </span>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody
-                className="divide-bark-100 dark:divide-bark-700/50 relative divide-y"
-                style={{
-                  height: `${rowVirtualizer.getTotalSize()}px`,
-                  display: 'block',
-                }}
-              >
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const item = visibleItems[virtualRow.index]
-                  if (!item) return null
-                  return (
-                    <tr
-                      key={item.id}
-                      tabIndex={0}
-                      role="button"
-                      data-index={virtualRow.index}
-                      onClick={() => onRowClick(item.trace_id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          onRowClick(item.trace_id)
-                        }
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: `${virtualRow.size}px`,
-                        transform: `translateY(${virtualRow.start}px)`,
-                        display: 'table',
-                        tableLayout: 'fixed',
-                      }}
-                      className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
-                    >
-                      <td className="text-foreground px-3 py-2 font-medium">
-                        {item.requester_name}
-                      </td>
-                      <td className="text-foreground px-3 py-2">{item.target_name}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
-                        >
-                          {formatSourceField(item.source_field)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getStatusClasses(item.final_status)}`}
-                        >
-                          {item.final_status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className="inline-flex items-center gap-1">
-                          {item.disposition_reason ? (
-                            <span
-                              className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
-                            >
-                              {item.disposition_reason}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">{'\u2014'}</span>
-                          )}
-                          {item.is_reciprocal && (
-                            <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
-                              Recip
-                            </span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${getConfidenceClasses(item.final_confidence)}`}
-                        >
-                          {item.final_confidence.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="text-muted-foreground px-3 py-2 text-xs">
-                        {item.resolution_method || '\u2014'}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        {item.phase3_triggered ? (
-                          <span className="font-medium text-amber-600 dark:text-amber-400">
-                            Yes
-                          </span>
+            {/* Sticky header row */}
+            <div
+              role="row"
+              className={`bg-bark-50 dark:bg-bark-800/50 border-bark-200 dark:border-bark-700 sticky top-0 z-10 grid border-b ${PIPELINE_GRID_COLS}`}
+            >
+              {SORTABLE_COLUMNS.map((col) => {
+                const isActive = sort?.field === col.field
+                const isDesc = isActive && sort.desc
+                return (
+                  <div
+                    key={col.field}
+                    role="columnheader"
+                    tabIndex={0}
+                    aria-sort={isActive ? (sort?.desc ? 'descending' : 'ascending') : undefined}
+                    onClick={() => toggleSort(col.field)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        toggleSort(col.field)
+                      }
+                    }}
+                    className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {isActive ? (
+                        isDesc ? (
+                          <ArrowDown className="h-3 w-3" />
                         ) : (
-                          <span className="text-muted-foreground">No</span>
-                        )}
-                      </td>
-                      <td className="text-muted-foreground hidden max-w-[200px] truncate px-3 py-2 text-xs lg:table-cell">
-                        {item.ai_reasoning_summary || '\u2014'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                          <ArrowUp className="h-3 w-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Virtualized body — a relatively-positioned spacer whose height
+                represents all rows; each row is absolutely positioned. */}
+            <div
+              role="rowgroup"
+              className="divide-bark-100 dark:divide-bark-700/50 relative"
+              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const item = visibleItems[virtualRow.index]
+                if (!item) return null
+                return (
+                  <div
+                    key={item.id}
+                    role="row"
+                    tabIndex={0}
+                    data-index={virtualRow.index}
+                    onClick={() => onRowClick(item.trace_id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onRowClick(item.trace_id)
+                      }
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    className={`hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 border-bark-100 dark:border-bark-700/50 grid cursor-pointer items-center border-b transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${PIPELINE_GRID_COLS}`}
+                  >
+                    <div className="text-foreground truncate px-3 py-2 text-sm font-medium">
+                      {item.requester_name}
+                    </div>
+                    <div className="text-foreground truncate px-3 py-2 text-sm">
+                      {item.target_name}
+                    </div>
+                    <div className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
+                      >
+                        {formatSourceField(item.source_field)}
+                      </span>
+                    </div>
+                    <div className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getStatusClasses(item.final_status)}`}
+                      >
+                        {item.final_status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 px-3 py-2">
+                      {item.disposition_reason ? (
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
+                        >
+                          {item.disposition_reason}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">{'\u2014'}</span>
+                      )}
+                      {item.is_reciprocal && (
+                        <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                          Recip
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${getConfidenceClasses(item.final_confidence)}`}
+                      >
+                        {item.final_confidence.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-muted-foreground truncate px-3 py-2 text-xs">
+                      {item.resolution_method || '\u2014'}
+                    </div>
+                    <div className="px-3 py-2 text-xs">
+                      {item.phase3_triggered ? (
+                        <span className="font-medium text-amber-600 dark:text-amber-400">Yes</span>
+                      ) : (
+                        <span className="text-muted-foreground">No</span>
+                      )}
+                    </div>
+                    <div className="text-muted-foreground hidden truncate px-3 py-2 text-xs lg:block">
+                      {item.ai_reasoning_summary || '\u2014'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

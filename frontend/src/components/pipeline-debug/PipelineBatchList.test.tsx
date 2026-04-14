@@ -256,7 +256,7 @@ describe('PipelineBatchList', () => {
       const user = userEvent.setup()
       render(<PipelineBatchList {...defaultProps} />)
 
-      const row = screen.getByText('Emma Johnson').closest('tr')!
+      const row = screen.getByText('Emma Johnson').closest('[role="row"]') as HTMLElement
       await user.click(row)
 
       expect(defaultProps.onRowClick).toHaveBeenCalledWith('trace-001')
@@ -265,7 +265,7 @@ describe('PipelineBatchList', () => {
     it('shows clickable cursor on rows', () => {
       render(<PipelineBatchList {...defaultProps} />)
 
-      const row = screen.getByText('Emma Johnson').closest('tr')!
+      const row = screen.getByText('Emma Johnson').closest('[role="row"]') as HTMLElement
       expect(row.className).toMatch(/cursor-pointer/)
     })
   })
@@ -333,13 +333,13 @@ describe('PipelineBatchList', () => {
     it('renders error state when error prop is provided', () => {
       render(<PipelineBatchList {...defaultProps} error={new Error('Network failure')} />)
       expect(screen.getByText(/failed to load pipeline data/i)).toBeInTheDocument()
-      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      expect(document.querySelectorAll('[role="row"]').length).toBe(0)
     })
 
     it('does not render error state when error is null', () => {
       render(<PipelineBatchList {...defaultProps} error={null} />)
       expect(screen.queryByText(/failed to load pipeline data/i)).not.toBeInTheDocument()
-      expect(screen.getByRole('table')).toBeInTheDocument()
+      expect(document.querySelectorAll('[role="row"]').length).toBeGreaterThan(0)
     })
   })
 
@@ -355,17 +355,17 @@ describe('PipelineBatchList', () => {
   describe('Keyboard accessibility', () => {
     it('rows are keyboard-focusable with role=button', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
       expect(rows.length).toBeGreaterThan(0)
       rows.forEach((row) => {
         expect(row).toHaveAttribute('tabindex', '0')
-        expect(row).toHaveAttribute('role', 'button')
+        expect(row).toHaveAttribute('role', 'row')
       })
     })
 
     it('triggers row click on Enter key', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const firstRow = document.querySelector('tbody tr') as HTMLElement
+      const firstRow = document.querySelector('[role="rowgroup"] [role="row"]') as HTMLElement
       firstRow.focus()
       await userEvent.keyboard('{Enter}')
       expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
@@ -373,7 +373,7 @@ describe('PipelineBatchList', () => {
 
     it('triggers row click on Space key', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const firstRow = document.querySelector('tbody tr') as HTMLElement
+      const firstRow = document.querySelector('[role="rowgroup"] [role="row"]') as HTMLElement
       firstRow.focus()
       await userEvent.keyboard(' ')
       expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
@@ -381,7 +381,9 @@ describe('PipelineBatchList', () => {
 
     it('toggles sort indicator on Enter key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
+      const sortableHeader = document.querySelector(
+        '[role="columnheader"][tabindex]'
+      ) as HTMLElement
       sortableHeader.focus()
       await userEvent.keyboard('{Enter}')
       // Sorting is now client-side; aria-sort on the header reflects the applied order
@@ -391,7 +393,9 @@ describe('PipelineBatchList', () => {
 
     it('toggles sort indicator on Space key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
+      const sortableHeader = document.querySelector(
+        '[role="columnheader"][tabindex]'
+      ) as HTMLElement
       sortableHeader.focus()
       await userEvent.keyboard(' ')
       const ariaSort = sortableHeader.getAttribute('aria-sort') ?? ''
@@ -402,7 +406,7 @@ describe('PipelineBatchList', () => {
   describe('disposition columns', () => {
     it('renders disposition_reason column with color-coded badges', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
 
       // Helper: find the inner badge span (leaf node, exact text match)
       const findBadge = (row: Element, text: string): Element | null => {
@@ -433,21 +437,18 @@ describe('PipelineBatchList', () => {
 
     it('renders is_reciprocal indicator when true', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
 
       // First row has is_reciprocal=true — should show "Recip" badge
       expect((rows[0] as Element).textContent).toMatch(/recip/i)
 
-      // Second row has is_reciprocal=false — no "recip" indicator
-      const secondRowRecip = Array.from((rows[1] as Element).querySelectorAll('td')).find((td) =>
-        String(td.textContent).toLowerCase().includes('recip')
-      )
-      expect(secondRowRecip).toBeFalsy()
+      // Second row has is_reciprocal=false — no "recip" indicator inside row's direct children
+      expect((rows[1] as Element).textContent?.toLowerCase()).not.toMatch(/recip/)
     })
 
     it('renders Reason column header', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const headers = document.querySelectorAll('thead th')
+      const headers = document.querySelectorAll('[role="columnheader"]')
       const headerTexts = Array.from(headers).map((h) => String(h.textContent).trim())
       expect(headerTexts).toContain('Reason')
     })
@@ -593,7 +594,7 @@ describe('PipelineBatchList', () => {
       await user.click(camperHeader)
 
       // Sort is now applied client-side; first row should be Emma (alphabetical)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
       expect((rows[0] as Element).textContent).toContain('Emma Johnson')
       expect((rows[1] as Element).textContent).toContain('Olivia Chen')
       expect((rows[2] as Element).textContent).toContain('Sophia Martinez')
