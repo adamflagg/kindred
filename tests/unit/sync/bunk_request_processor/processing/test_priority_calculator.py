@@ -192,8 +192,8 @@ class TestPriorityCalculator:
         priority = calculator.calculate_priority(requests[1], requests)
         assert priority == 1
 
-    def test_age_preference_from_parent(self, calculator):
-        """age_preference from parent always gets priority 1"""
+    def test_age_preference_from_socialize_with_sole_request(self, calculator):
+        """age_preference from socialize_with as sole request gets priority 4 (same as bunk_with sole age pref)"""
         request = ParsedRequest(
             raw_text="younger",
             request_type=RequestType.AGE_PREFERENCE,
@@ -207,7 +207,37 @@ class TestPriorityCalculator:
         )
 
         priority = calculator.calculate_priority(request, [request])
-        assert priority == 1
+        assert priority == 4, "Sole age_preference from socialize_with should get priority 4"
+
+    def test_age_preference_from_socialize_with_with_other_requests(self, calculator):
+        """age_preference from socialize_with with other requests gets priority 1"""
+        requests = [
+            ParsedRequest(
+                raw_text="Emma Johnson",
+                request_type=RequestType.BUNK_WITH,
+                target_name="Emma Johnson",
+                age_preference=None,
+                source_field=SourceField.SOCIALIZE_WITH,
+                source=RequestSource.FAMILY,
+                confidence=0.95,
+                csv_position=1,
+                metadata={},
+            ),
+            ParsedRequest(
+                raw_text="younger",
+                request_type=RequestType.AGE_PREFERENCE,
+                target_name=None,
+                age_preference=AgePreference.YOUNGER,
+                source_field=SourceField.SOCIALIZE_WITH,
+                source=RequestSource.FAMILY,
+                confidence=1.0,
+                csv_position=0,
+                metadata={},
+            ),
+        ]
+
+        priority = calculator.calculate_priority(requests[1], requests)
+        assert priority == 1, "age_preference from socialize_with with other requests should stay priority 1"
 
     def test_staff_notes_request(self, calculator):
         """Any request from staff notes gets priority 2"""
