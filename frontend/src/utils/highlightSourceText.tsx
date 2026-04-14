@@ -19,6 +19,11 @@ export function highlightSourceText(
   if (!sourceText) return ''
   if (!sourceFragment) return sourceText
 
+  // If the fragment equals the full source text it highlights everything, which adds no value.
+  // This happens when the AI returns the whole comma-separated list as a fragment instead of
+  // the minimal per-name portion. Degrade gracefully to plain text in that case.
+  if (sourceFragment.trim() === sourceText.trim()) return sourceText
+
   const idx = sourceText.indexOf(sourceFragment)
   if (idx === -1) return sourceText
 

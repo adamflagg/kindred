@@ -61,7 +61,7 @@ class AIBunkRequestItem(BaseModel):
     """Why the AI categorized it this way."""
 
     source_fragment: str = ""
-    """Verbatim substring of the input text that justified this request. Empty when AI inferred without a direct quote (e.g. placeholder expansion, age preference, aggregate inference)."""
+    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (age preference, placeholder expansion)."""
 
     list_position: int = 0
     """Position in multi-request fields (0-indexed from AI, converted to 1-indexed)."""
@@ -117,7 +117,7 @@ class AIFullParseRequestItem(BaseModel):
     parse_notes: str = ""
     reasoning: str = ""
     source_fragment: str = ""
-    """Verbatim substring of the input text that justified this request. Empty when AI inferred without a direct quote (e.g. placeholder expansion, age preference, aggregate inference)."""
+    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (age preference, placeholder expansion)."""
 
     found_in_current_year: bool = False
     found_in_previous_year_only: bool = False

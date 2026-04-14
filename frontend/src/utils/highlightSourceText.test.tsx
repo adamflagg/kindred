@@ -71,4 +71,25 @@ describe('highlightSourceText', () => {
     expect(html).toContain('<mark')
     expect(html).toContain('(Emma)')
   })
+
+  it('returns plain text when fragment equals the entire source (whole-list AI bug)', () => {
+    // When the AI returns the full comma-separated list as the fragment for every
+    // individual request, highlighting everything adds no value — degrade to plain text.
+    const list = 'Sasha Doerig-Krugman, Edo Firstenberg, Dean Roitman'
+    const out = highlightSourceText(list, list)
+    const html = renderToString(out)
+    expect(html).not.toContain('<mark')
+    expect(html).toContain(list)
+  })
+
+  it('still highlights when fragment is a proper subset of the source', () => {
+    // Sanity check: a name-only entry from a comma list should still highlight.
+    const out = highlightSourceText(
+      'Sasha Doerig-Krugman, Edo Firstenberg, Dean Roitman',
+      'Edo Firstenberg'
+    )
+    const html = renderToString(out)
+    expect(html).toContain('<mark')
+    expect(html).toContain('Edo Firstenberg')
+  })
 })
