@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface ConfirmActionPopoverProps {
   isOpen: boolean
-  anchorRect: { top: number; left: number; width: number; height: number }
+  anchorRect: Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>
   action: 'approve' | 'decline'
   onConfirm: () => void
   onCancel: () => void
@@ -16,20 +16,43 @@ export function ConfirmActionPopover({
   onConfirm,
   onCancel,
 }: ConfirmActionPopoverProps) {
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  // Stable ref so the keydown/mousedown handlers never go stale,
+  // keeping isOpen as the sole dep and avoiding listener churn on parent re-renders.
+  const onCancelRef = useRef(onCancel)
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  })
+
   useEffect(() => {
     if (!isOpen) return
 
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    confirmButtonRef.current?.focus()
+
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onCancel()
+        onCancelRef.current()
+      } else if (e.key === 'Tab') {
+        const buttons = popoverRef.current
+          ? Array.from(popoverRef.current.querySelectorAll<HTMLElement>('button'))
+          : []
+        if (buttons.length === 0) return
+        e.preventDefault()
+        const idx = buttons.indexOf(document.activeElement as HTMLElement)
+        if (e.shiftKey) {
+          buttons[idx <= 0 ? buttons.length - 1 : idx - 1]?.focus()
+        } else {
+          buttons[idx >= buttons.length - 1 ? 0 : idx + 1]?.focus()
+        }
       }
     }
 
     function handleMouseDown(e: MouseEvent) {
       const target = e.target as Node
-      const popover = document.getElementById('confirm-action-popover')
-      if (popover && !popover.contains(target)) {
-        onCancel()
+      if (popoverRef.current && !popoverRef.current.contains(target)) {
+        onCancelRef.current()
       }
     }
 
@@ -39,12 +62,14 @@ export function ConfirmActionPopover({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleMouseDown)
+      previouslyFocused?.focus()
     }
-  }, [isOpen, onCancel])
+  }, [isOpen])
 
   if (!isOpen) return null
 
   const popoverWidth = 220
+  // Estimated: ~2 lines of text + padding; update if layout changes
   const popoverHeight = 90
   const padding = 10
 
@@ -68,13 +93,14 @@ export function ConfirmActionPopover({
   }
 
   const isApprove = action === 'approve'
-  const message = isApprove ? 'Approve this request?' : 'Decline this request?'
+  const displayMessage = isApprove ? 'Approve this request?' : 'Decline this request?'
 
   return createPortal(
     <div
-      id="confirm-action-popover"
+      ref={popoverRef}
       role="dialog"
-      aria-label={message}
+      aria-modal="true"
+      aria-label={displayMessage}
       className="bg-popover fixed z-[200] rounded-lg border p-3 shadow-lg"
       style={{
         top: `${top}px`,
@@ -82,7 +108,7 @@ export function ConfirmActionPopover({
         width: `${popoverWidth}px`,
       }}
     >
-      <p className="text-foreground mb-3 text-sm font-medium">{message}</p>
+      <p className="text-foreground mb-3 text-sm font-medium">{displayMessage}</p>
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
@@ -93,6 +119,7 @@ export function ConfirmActionPopover({
           Cancel
         </button>
         <button
+          ref={confirmButtonRef}
           type="button"
           aria-label="Confirm"
           onClick={onConfirm}

@@ -103,4 +103,57 @@ describe('ConfirmActionPopover', () => {
     expect(popover.style.top).toBeTruthy()
     expect(popover.style.left).toBeTruthy()
   })
+
+  it('focuses the confirm button when the dialog opens', () => {
+    render(<ConfirmActionPopover {...defaultProps} />)
+    const confirmBtn = screen.getByRole('button', { name: /confirm/i })
+    expect(document.activeElement).toBe(confirmBtn)
+  })
+
+  it('restores focus to the previously focused element when closed via onCancel', () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    const onCancel = vi.fn()
+    const { rerender } = render(<ConfirmActionPopover {...defaultProps} onCancel={onCancel} />)
+
+    // Close the popover
+    rerender(<ConfirmActionPopover {...defaultProps} onCancel={onCancel} isOpen={false} />)
+    expect(document.activeElement).toBe(trigger)
+
+    document.body.removeChild(trigger)
+  })
+
+  it('has aria-modal="true" on the dialog', () => {
+    render(<ConfirmActionPopover {...defaultProps} />)
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true')
+  })
+
+  it('cycles focus forward with Tab key', () => {
+    render(<ConfirmActionPopover {...defaultProps} />)
+    const confirmBtn = screen.getByRole('button', { name: /confirm/i })
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i })
+
+    // Auto-focused on confirm (last button); Tab should wrap to first (cancel)
+    expect(document.activeElement).toBe(confirmBtn)
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: false })
+    expect(document.activeElement).toBe(cancelBtn)
+
+    // Tab again wraps back to confirm
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: false })
+    expect(document.activeElement).toBe(confirmBtn)
+  })
+
+  it('cycles focus backward with Shift+Tab', () => {
+    render(<ConfirmActionPopover {...defaultProps} />)
+    const confirmBtn = screen.getByRole('button', { name: /confirm/i })
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i })
+
+    // Auto-focused on confirm; Shift+Tab should wrap backward to cancel
+    expect(document.activeElement).toBe(confirmBtn)
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancelBtn)
+  })
 })
