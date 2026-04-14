@@ -22,7 +22,7 @@ RETENTION_AGED_OUT_GRADE = 10
 def extract_gender(person: Any) -> str:
     """Extract gender from person, returning 'Unknown' for None/empty."""
     gender = getattr(person, "gender", None)
-    return gender if gender else "Unknown"
+    return gender or "Unknown"
 
 
 def extract_grade(person: Any) -> int | None:

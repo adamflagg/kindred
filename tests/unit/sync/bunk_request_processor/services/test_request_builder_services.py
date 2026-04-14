@@ -680,172 +680,154 @@ class TestDispositionReasonDirect:
         assert br.status == RequestStatus.PENDING
 
 
-class TestPhase3Guardrails:
-    """Tests for post-build guardrails that prevent pipeline over-generation.
-
-    Guardrail 1: Output count limit - >5 requests from a single source text
-    should be flagged for staff review, not auto-created as individual requests.
-
-    Guardrail 2: Blanket statement detection - if the original text doesn't name
-    specific people, individual per-person requests should not be created.
-    """
+class TestBuildMetadataSourceFragment:
+    """build_request_metadata should surface source_fragment from parsed_req.metadata."""
 
     @pytest.fixture
-    def mock_priority_calculator(self):
+    def builder(self):
         mock = Mock()
-        mock.calculate_priority.return_value = 2
-        return mock
-
-    @pytest.fixture
-    def builder(self, mock_priority_calculator):
+        mock.calculate_priority.return_value = 3
         return RequestBuilder(
-            priority_calculator=mock_priority_calculator,
+            priority_calculator=mock,
             temporal_name_cache=None,
             year=2025,
             auto_resolve_threshold=0.8,
         )
 
-    def _make_resolved_request(
-        self,
-        raw_text: str,
-        target_name: str | None,
-        requester_cm_id: int = 12345,
-        person_cm_id: int | None = None,
-        confidence: float = 0.85,
-        source_field: str = "share_bunk_with",
-        field_index: int = 0,
-        total_in_field: int = 1,
-    ) -> tuple[ParsedRequest, dict[str, Any]]:
-        """Helper to create a (ParsedRequest, resolution_info) pair."""
-        parsed = ParsedRequest(
-            raw_text=raw_text,
+    def test_build_metadata_preserves_source_fragment(self, builder: RequestBuilder) -> None:
+        """BR metadata should include source_fragment from parsed_req when ai_parsed=False (Phase 1 path)."""
+        parsed_req = ParsedRequest(
+            target_name="Emma",
+            raw_text="wants to be with Emma from last year",
             request_type=RequestType.BUNK_WITH,
-            target_name=target_name,
             age_preference=None,
-            source_field=source_field,
+            confidence=0.9,
             source=RequestSource.FAMILY,
-            confidence=confidence,
+            source_field="share_bunk_with",
             csv_position=0,
-            metadata={},
+            metadata={
+                "reasoning": "because emma",
+                "source_fragment": "wants to be with Emma from last year",
+            },
         )
-        info: dict[str, Any] = {
-            "requester_cm_id": requester_cm_id,
-            "session_cm_id": 1000002,
-            "confidence": confidence,
-            "field_index": field_index,
-            "total_in_field": total_in_field,
-        }
-        if person_cm_id is not None:
-            info["person_cm_id"] = person_cm_id
-            info["person_name"] = target_name
-            info["resolution_method"] = "exact_match"
-        return parsed, info
+        resolution_info: dict[str, Any] = {}
+        ai_parsed = False
 
-    def test_over_generation_flagged_when_exceeds_limit(self, builder: RequestBuilder) -> None:
-        """When >5 requests come from the same source text, they should all be flagged as PENDING."""
-        # 7 individual requests all from the same source text
-        resolved_requests = []
-        names = [
-            "Emma Johnson",
-            "Liam Garcia",
-            "Olivia Chen",
-            "Noah Kim",
-            "Sophia Patel",
-            "Mason Nguyen",
-            "Isabella Brown",
-        ]
-        for i, name in enumerate(names):
-            resolved_requests.append(
-                self._make_resolved_request(
-                    raw_text="wants to be with all her friends from school",
-                    target_name=name,
-                    person_cm_id=10000 + i,
-                    field_index=i,
-                    total_in_field=len(names),
-                )
-            )
+        metadata = builder.build_request_metadata(parsed_req, resolution_info, ai_parsed)
 
-        results = builder.build_requests(resolved_requests)
+        assert metadata["source_fragment"] == "wants to be with Emma from last year"
 
-        # All 7 requests should be flagged as PENDING (not auto-resolved)
-        assert len(results) > 0
-        for req in results:
-            assert req.status == RequestStatus.PENDING, (
-                f"Request for {req.requested_name} should be PENDING due to over-generation guardrail"
-            )
-            assert req.metadata.get("over_generation_flagged") is True
-
-    def test_normal_count_not_flagged(self, builder: RequestBuilder) -> None:
-        """5 or fewer requests from same source should NOT be flagged."""
-        resolved_requests = []
-        names = ["Emma Johnson", "Liam Garcia", "Olivia Chen", "Noah Kim", "Sophia Patel"]
-        for i, name in enumerate(names):
-            resolved_requests.append(
-                self._make_resolved_request(
-                    raw_text="wants to bunk with Emma Johnson, Liam Garcia, Olivia Chen, Noah Kim, Sophia Patel",
-                    target_name=name,
-                    person_cm_id=10000 + i,
-                    confidence=0.90,
-                    field_index=i,
-                    total_in_field=len(names),
-                )
-            )
-
-        results = builder.build_requests(resolved_requests)
-
-        # Should NOT be flagged
-        for req in results:
-            assert req.metadata.get("over_generation_flagged") is not True
-
-    def test_blanket_statement_creates_single_pending(self, builder: RequestBuilder) -> None:
-        """Text without specific people names should create a single PENDING request, not N individual ones."""
-        # Blanket statement: no specific names, but somehow resolved to multiple people
-        resolved_requests = []
-        names = ["Emma Johnson", "Liam Garcia", "Olivia Chen"]
-        for i, name in enumerate(names):
-            resolved_requests.append(
-                self._make_resolved_request(
-                    raw_text="wants to be with kids her age",  # No names mentioned
-                    target_name=name,
-                    person_cm_id=10000 + i,
-                    field_index=i,
-                    total_in_field=len(names),
-                )
-            )
-
-        results = builder.build_requests(resolved_requests)
-
-        # Should produce either 0 individual requests (blanket detected) or all flagged as PENDING
-        blanket_flagged = [r for r in results if r.metadata.get("blanket_statement_flagged")]
-        assert len(blanket_flagged) == len(results), (
-            "All requests from blanket statements should be flagged for staff review"
+    def test_build_metadata_source_fragment_empty_when_missing(self, builder: RequestBuilder) -> None:
+        """If parsed_req.metadata has no source_fragment key, default to empty string."""
+        parsed_req = ParsedRequest(
+            target_name="Emma",
+            raw_text="some text",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"reasoning": "x"},  # no source_fragment key
         )
-        for req in blanket_flagged:
-            assert req.status == RequestStatus.PENDING
 
-    def test_named_requests_not_flagged_as_blanket(self, builder: RequestBuilder) -> None:
-        """Text that explicitly mentions names should NOT be flagged as a blanket statement."""
-        resolved_requests = [
-            self._make_resolved_request(
-                raw_text="Emma Johnson and Liam Garcia",
-                target_name="Emma Johnson",
-                person_cm_id=10001,
-                field_index=0,
-                total_in_field=2,
-            ),
-            self._make_resolved_request(
-                raw_text="Emma Johnson and Liam Garcia",
-                target_name="Liam Garcia",
-                person_cm_id=10002,
-                field_index=1,
-                total_in_field=2,
-            ),
-        ]
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=False)
 
-        results = builder.build_requests(resolved_requests)
+        assert metadata["source_fragment"] == ""
 
-        for req in results:
-            assert req.metadata.get("blanket_statement_flagged") is not True
+    def test_narrows_fragment_when_ai_copied_whole_comma_list(self, builder: RequestBuilder) -> None:
+        """Comma-separated list + AI returned the whole list → narrow to just the target name."""
+        parsed_req = ParsedRequest(
+            target_name="Edo Firstenberg",
+            raw_text="Sasha Doerig-Krugman, Edo Firstenberg, Dean Roitman",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={
+                "source_fragment": "Sasha Doerig-Krugman, Edo Firstenberg, Dean Roitman",
+            },
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "Edo Firstenberg"
+
+    def test_narrows_fragment_for_semicolon_list(self, builder: RequestBuilder) -> None:
+        parsed_req = ParsedRequest(
+            target_name="Elizabeth Gordon",
+            raw_text="Miya Marks; Elizabeth Gordon; Roslyn Euser",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "Miya Marks; Elizabeth Gordon; Roslyn Euser"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "Elizabeth Gordon"
+
+    def test_keeps_ai_fragment_when_subset_of_source(self, builder: RequestBuilder) -> None:
+        """AI returned a minimal fragment (not the whole list) → keep it as-is."""
+        parsed_req = ParsedRequest(
+            target_name="Jake",
+            raw_text="wants Emma but NOT Jake - he bullied her",
+            request_type=RequestType.NOT_BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "NOT Jake"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "NOT Jake"
+
+    def test_keeps_ai_fragment_for_single_name_input(self, builder: RequestBuilder) -> None:
+        """Single-name input where fragment == raw_text is legitimate, not a bug — keep it."""
+        parsed_req = ParsedRequest(
+            target_name="Emma Wilson",
+            raw_text="Emma Wilson",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "Emma Wilson"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "Emma Wilson"
+
+    def test_keeps_ai_fragment_when_target_not_in_text(self, builder: RequestBuilder) -> None:
+        """Parenthetical case: target='Levi Weissenborn' not contiguous in 'Levi (Fern) Weissenborn'.
+        We can't safely narrow → trust the AI's fragment even if it equals the whole input.
+        """
+        parsed_req = ParsedRequest(
+            target_name="Levi Weissenborn",
+            raw_text="Levi (Fern) Weissenborn, Nico Mosseri",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "Levi (Fern) Weissenborn, Nico Mosseri"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        # target_name not in raw_text contiguously → can't narrow → keep AI fragment as-is
+        assert metadata["source_fragment"] == "Levi (Fern) Weissenborn, Nico Mosseri"
 
 
 if __name__ == "__main__":

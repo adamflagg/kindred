@@ -10,17 +10,18 @@ import type { ValidationTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { DataRow, Badge, PanelSection } from './DataRow'
 import { PhaseHeader } from './PhaseHeader'
+import { renderUnknownValue } from './panelUtils'
 
 interface ValidationDetailProps {
   data: ValidationTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
 export function ValidationDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: ValidationDetailProps) {
@@ -63,9 +64,19 @@ export function ValidationDetail({
           </div>
           {data.type_validation.rejected.length > 0 && (
             <ul className="mt-1 list-inside list-disc text-sm text-red-700 dark:text-red-300">
-              {data.type_validation.rejected.map((item, idx) => (
-                <li key={idx}>{String(item)}</li>
-              ))}
+              {data.type_validation.rejected.map((item, idx) => {
+                const text = renderUnknownValue(item)
+                const isObject = typeof item === 'object' && item !== null
+                return (
+                  <li key={idx}>
+                    {isObject ? (
+                      <pre className="inline font-mono text-xs whitespace-pre-wrap">{text}</pre>
+                    ) : (
+                      text
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
@@ -81,9 +92,19 @@ export function ValidationDetail({
           </div>
           {data.temporal_conflicts.details.length > 0 && (
             <ul className="text-foreground mt-1 list-inside list-disc text-sm">
-              {data.temporal_conflicts.details.map((detail, idx) => (
-                <li key={idx}>{String(detail)}</li>
-              ))}
+              {data.temporal_conflicts.details.map((detail, idx) => {
+                const text = renderUnknownValue(detail)
+                const isObject = typeof detail === 'object' && detail !== null
+                return (
+                  <li key={idx}>
+                    {isObject ? (
+                      <pre className="inline font-mono text-xs whitespace-pre-wrap">{text}</pre>
+                    ) : (
+                      text
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
@@ -149,7 +170,11 @@ export function ValidationDetail({
         )}
       </PanelSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

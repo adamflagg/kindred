@@ -141,7 +141,7 @@ class ContextBuilder:
                         session_cm_id,
                         year,
                     )
-                    additional_context["previous_year_bunkmates"] = prior_bunkmates if prior_bunkmates else None
+                    additional_context["previous_year_bunkmates"] = prior_bunkmates or None
                 except Exception as e:
                     logger.warning(f"Failed to fetch prior year bunkmates: {e}")
                     additional_context["previous_year_bunkmates"] = None

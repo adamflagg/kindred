@@ -1138,11 +1138,7 @@ class SocialGraphBuilder:
                 final_members.extend(sg_members)
                 final_subgroups[-1]["cohesion_score"] = self._calculate_group_cohesion(final_members)
 
-        return (
-            final_subgroups
-            if final_subgroups
-            else [{"members": members, "split_reason": "size_exceeded", "cohesion_score": 1.0}]
-        )
+        return final_subgroups or [{"members": members, "split_reason": "size_exceeded", "cohesion_score": 1.0}]
 
     def _calculate_group_cohesion(self, members: list[int]) -> float:
         """Calculate cohesion score for a group of members"""

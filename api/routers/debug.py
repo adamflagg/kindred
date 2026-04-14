@@ -1319,7 +1319,7 @@ def toggle_pipeline_run_pin(
 def get_pipeline_run_summary(
     run_id: str,
     page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=50, ge=1, le=200),
+    per_page: int = Query(default=50, ge=1, le=500),
     final_status: str | None = Query(default=None),
     resolution_method: str | None = Query(default=None),
     source_field: str | None = Query(default=None),
@@ -1328,10 +1328,18 @@ def get_pipeline_run_summary(
     session_cm_id: int | None = Query(default=None, ge=1),
     min_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
     max_confidence: float | None = Query(default=None, ge=0.0, le=1.0),
-    sort: str = Query(default="-final_confidence"),
+    search: str | None = Query(default=None, max_length=100),
+    fetch_all: bool = Query(default=False),
     user: AuthUser = Depends(require_admin),
 ) -> PipelineSummaryResponse:
-    """Get summary rows for a run with PB-native filtering/sort/pagination."""
+    """Get summary rows for a run with PB-native filtering/pagination.
+
+    When ``fetch_all=true``, returns every row for the run in a single
+    response using PocketBase's ``get_full_list``, bypassing ``page`` and
+    ``per_page``. This powers the client-side filter/sort/virtualized-scroll
+    batch list UI (see PipelineBatchList.tsx). Server-side sort is fixed
+    (``-final_confidence``) since the client re-sorts in memory anyway.
+    """
     _validate_run_id(run_id)
     filter_parts = [f'run_id = "{run_id}"']
 
@@ -1355,13 +1363,30 @@ def get_pipeline_run_summary(
         filter_parts.append(f"final_confidence >= {min_confidence}")
     if max_confidence is not None:
         filter_parts.append(f"final_confidence <= {max_confidence}")
+    if search:
+        # Sanitize: strip quotes to prevent PB filter injection
+        safe_search = search.replace('"', "").replace("'", "").strip()
+        if safe_search:
+            filter_parts.append(f'(requester_name ~ "{safe_search}" || target_name ~ "{safe_search}")')
 
     filter_str = " && ".join(filter_parts)
+
+    if fetch_all:
+        records = pb.collection(DEBUG_PIPELINE_SUMMARY).get_full_list(
+            query_params={"filter": filter_str, "sort": "-final_confidence"},
+        )
+        items = [_pb_record_to_summary_item(r) for r in records]
+        return PipelineSummaryResponse(
+            items=items,
+            total=len(items),
+            page=1,
+            per_page=len(items) or 1,
+        )
 
     result = pb.collection(DEBUG_PIPELINE_SUMMARY).get_list(
         page=page,
         per_page=per_page,
-        query_params={"filter": filter_str, "sort": sort},
+        query_params={"filter": filter_str, "sort": "-final_confidence"},
     )
 
     items = [_pb_record_to_summary_item(r) for r in result.items]
@@ -1599,7 +1624,10 @@ async def run_from_phase(
 ) -> PhaseRunResponse:
     """Cascade from a specified phase through all remaining phases.
 
-    Supports dry_run (default True). When dry_run=False, writes to production.
+    Dry-run only; production writes are supported exclusively via
+    ``/run-full-trace``. ``body.dry_run`` is accepted for API compatibility
+    and forwarded to the runner, but this endpoint does not write to
+    production regardless of its value.
     """
     if phase not in VALID_CASCADE_PHASES:
         raise HTTPException(

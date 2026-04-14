@@ -523,7 +523,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         if not parsed.is_complete:
             return ResolutionResult(confidence=0.0, method=self.name)
 
-        jw_pool = candidates if candidates else (all_persons or [])
+        jw_pool = candidates or (all_persons or [])
         if not jw_pool:
             return ResolutionResult(confidence=0.0, method=self.name)
 

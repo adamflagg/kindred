@@ -55,6 +55,7 @@ export const BunkRequestsRecordSchema = z.object({
   source: BunkRequestsSourceSchema.optional(),
   source_detail: z.string().optional(),
   source_field: z.string().optional(),
+  source_fragment: z.string().optional(),
   status: BunkRequestsStatusSchema,
   was_dropped_for_spread: z.boolean().optional(),
   year: z.number(),

@@ -508,7 +508,7 @@ class BatchProcessor:
                     results=results,
                     retry_count=retry_count,
                     processing_time=processing_time,
-                    failed_items=item_failures if item_failures else None,
+                    failed_items=item_failures or None,
                 )
 
             except Exception as e:

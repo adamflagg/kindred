@@ -239,7 +239,7 @@ class TestPreviouslyWaitlistedAccepted:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status, new_statuses: (history if new_statuses == ["enrolled"] else [])
+            side_effect=lambda year, old_status, new_statuses: history if new_statuses == ["enrolled"] else []
         )
 
         result = await waitlist_service.calculate_waitlist(year=2026)
@@ -270,7 +270,7 @@ class TestPreviouslyWaitlistedAccepted:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status, new_statuses: (history if new_statuses == ["enrolled"] else [])
+            side_effect=lambda year, old_status, new_statuses: history if new_statuses == ["enrolled"] else []
         )
 
         result = await waitlist_service.calculate_waitlist(year=2026)
@@ -306,7 +306,7 @@ class TestPreviouslyWaitlistedDeclined:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status, new_statuses: (history if new_statuses == declined_statuses else [])
+            side_effect=lambda year, old_status, new_statuses: history if new_statuses == declined_statuses else []
         )
 
         result = await waitlist_service.calculate_waitlist(year=2026)
@@ -351,7 +351,7 @@ class TestSessionFiltering:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -394,7 +394,7 @@ class TestSessionFiltering:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -486,7 +486,7 @@ class TestSessionBreakdown:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -659,7 +659,7 @@ class TestEnrolledInBreakdown:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -778,7 +778,7 @@ class TestCrossTypeEnrollment:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions = AsyncMock(side_effect=mock_fetch_sessions)
         mock_repository.fetch_persons.return_value = {101: sample_persons[101]}
@@ -822,7 +822,7 @@ class TestPerSessionDedup:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -927,7 +927,7 @@ class TestFilterToSessionsBug:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -958,7 +958,7 @@ class TestFilterToSessionsBug:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -1004,9 +1004,7 @@ class TestAcceptedDeclinedSessionFilter:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status, new_statuses: (
-                accepted_history if new_statuses == ["enrolled"] else []
-            )
+            side_effect=lambda year, old_status, new_statuses: accepted_history if new_statuses == ["enrolled"] else []
         )
 
         # Filter to Session 1 only
@@ -1069,9 +1067,7 @@ class TestAcceptedDeclinedSessionFilter:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status, new_statuses: (
-                accepted_history if new_statuses == ["enrolled"] else []
-            )
+            side_effect=lambda year, old_status, new_statuses: accepted_history if new_statuses == ["enrolled"] else []
         )
 
         # Filter to Session 1 only
@@ -1271,7 +1267,7 @@ class TestDemographicEnrollmentSplit:
         ]
 
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+            side_effect=lambda year, status_filter=None: waitlisted_attendees if status_filter == "waitlisted" else []
         )
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -1377,9 +1373,7 @@ class TestWaitlistDuration:
             side_effect=lambda year, status_filter=None: [attendee] if status_filter == "enrolled" else []
         )
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status=None, new_statuses=None: (
-                history if new_statuses == ["enrolled"] else []
-            )
+            side_effect=lambda year, old_status=None, new_statuses=None: history if new_statuses == ["enrolled"] else []
         )
 
         result = await waitlist_service.calculate_waitlist(year=2026)
@@ -1448,9 +1442,7 @@ class TestWaitlistDuration:
             side_effect=lambda year, status_filter=None: [attendee] if status_filter == "enrolled" else []
         )
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status=None, new_statuses=None: (
-                history if new_statuses == ["enrolled"] else []
-            )
+            side_effect=lambda year, old_status=None, new_statuses=None: history if new_statuses == ["enrolled"] else []
         )
 
         result = await waitlist_service.calculate_waitlist(year=2026)
@@ -1491,12 +1483,10 @@ class TestWaitlistDuration:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: ([att1, att2] if status_filter == "enrolled" else [])
+            side_effect=lambda year, status_filter=None: [att1, att2] if status_filter == "enrolled" else []
         )
         mock_repository.fetch_status_history = AsyncMock(
-            side_effect=lambda year, old_status=None, new_statuses=None: (
-                history if new_statuses == ["enrolled"] else []
-            )
+            side_effect=lambda year, old_status=None, new_statuses=None: history if new_statuses == ["enrolled"] else []
         )
 
         result = await waitlist_service.calculate_waitlist(year=2026)

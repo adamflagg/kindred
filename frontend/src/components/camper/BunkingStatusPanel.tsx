@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { Heart, Home, Clock, CheckCircle, Sparkles } from 'lucide-react'
 import CamperLink from '../CamperLink'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
+import { MUTUAL_BADGE_CLASSES } from '../../utils/dispositionColors'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
@@ -195,11 +196,7 @@ export function BunkingStatusPanel({
                   />
 
                   {/* Mutual badge */}
-                  {request.is_reciprocal && (
-                    <span className="bg-forest-100 dark:bg-forest-900/30 text-forest-700 dark:text-forest-400 rounded px-1.5 py-0.5 text-xs font-medium">
-                      mutual
-                    </span>
-                  )}
+                  {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
 
                   {/* Satisfaction status */}
                   {showSatisfaction && (

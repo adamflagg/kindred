@@ -308,8 +308,8 @@ export type BunkRequestsRecord<
   confidence_score?: number
   conflict_group_id?: string
   created: IsoAutoDateString
-  disposition_reason?: string
   csv_position?: number
+  disposition_reason?: string
   id: string
   is_active?: boolean
   is_placeholder?: boolean
@@ -335,6 +335,7 @@ export type BunkRequestsRecord<
   source_detail?: string
   source_field: string
   source_fields?: null | Tsource_fields
+  source_fragment?: string
   status: BunkRequestsStatusOptions
   updated: IsoAutoDateString
   was_dropped_for_spread?: boolean
@@ -578,9 +579,11 @@ export type DebugPipelineSummaryRecord = {
   ai_reasoning_summary?: string
   bunk_request?: RecordIdString
   created: IsoAutoDateString
+  disposition_reason?: string
   final_confidence?: number
   final_status?: string
   id: string
+  is_reciprocal?: boolean
   original_request?: RecordIdString
   phase3_triggered?: boolean
   pre_p1_action?: string

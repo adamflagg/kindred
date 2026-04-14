@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+SOURCE_FRAGMENT_MAX_LEN = 2000
+
 
 class TemporalInfo(BaseModel):
     """Temporal metadata for tracking superseded requests.
@@ -32,12 +34,8 @@ class TemporalInfo(BaseModel):
     """Why superseded: 'changed minds on 6/5', 'now wants together instead'."""
 
 
-class AIBunkRequestItem(BaseModel):
-    """Single parsed bunk request from AI.
-
-    Maps to the JSON structure expected by the prompt in openai_provider.py.
-    The Literal types ensure the AI can only output valid enum values.
-    """
+class AIBaseRequestItem(BaseModel):
+    """Fields shared between Phase 1 and Phase 1+2 parsed request items."""
 
     request_type: Literal["bunk_with", "not_bunk_with", "age_preference"]
     """Type of request - constrained to exactly these three values."""
@@ -60,14 +58,25 @@ class AIBunkRequestItem(BaseModel):
     reasoning: str = ""
     """Why the AI categorized it this way."""
 
+    source_fragment: str = Field("", max_length=SOURCE_FRAGMENT_MAX_LEN)
+    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (age preference, placeholder expansion)."""
+
+    ambiguity_reason: str | None = None
+    """Explanation if the request is ambiguous."""
+
+
+class AIBunkRequestItem(AIBaseRequestItem):
+    """Single parsed bunk request from AI.
+
+    Maps to the JSON structure expected by the prompt in openai_provider.py.
+    The Literal types ensure the AI can only output valid enum values.
+    """
+
     list_position: int = 0
     """Position in multi-request fields (0-indexed from AI, converted to 1-indexed)."""
 
     needs_clarification: bool = False
     """Whether this request needs human review."""
-
-    ambiguity_reason: str | None = None
-    """Explanation if the request is ambiguous."""
 
     temporal_info: TemporalInfo | None = None
     """Temporal metadata for conflict detection - date mentioned, superseded status."""
@@ -92,14 +101,12 @@ class AIParseResponse(BaseModel):
     """List of parsed requests from the input text."""
 
 
-class AIFullParseRequestItem(BaseModel):
+class AIFullParseRequestItem(AIBaseRequestItem):
     """Parsed request with ID matching (Phase 1+2 combined, full mode).
 
     Extended version that includes person ID resolution from attendee lists.
     """
 
-    request_type: Literal["bunk_with", "not_bunk_with", "age_preference"]
-    target_name: str | None = None
     target_person_id: int | None = None
     """Matched person ID from attendee list, or None if not found."""
 
@@ -107,12 +114,6 @@ class AIFullParseRequestItem(BaseModel):
     """How confident the AI is in the ID match."""
 
     requires_clarification: bool = False
-    ambiguity_reason: str | None = None
-    keywords_found: list[str] = Field(default_factory=list)
-    source_field: str = ""
-    source_type: Literal["parent", "counselor", "staff"] = "parent"
-    parse_notes: str = ""
-    reasoning: str = ""
     found_in_current_year: bool = False
     found_in_previous_year_only: bool = False
 

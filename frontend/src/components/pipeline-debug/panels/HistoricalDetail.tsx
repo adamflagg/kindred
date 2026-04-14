@@ -13,14 +13,14 @@ import { PhaseHeader } from './PhaseHeader'
 
 interface HistoricalDetailProps {
   data: HistoricalVerificationTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
 export function HistoricalDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: HistoricalDetailProps) {
@@ -89,7 +89,11 @@ export function HistoricalDetail({
         )}
       </PanelSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

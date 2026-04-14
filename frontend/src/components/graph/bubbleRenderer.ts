@@ -258,39 +258,28 @@ export function drawBunkBubbles(
       const bunkColor = getBunkColor(parseInt(bunkId, 10))
 
       try {
-        // Create a bubble path for this bunk
         const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
         const nodeCollection = cy.$(nodeIds)
 
-        // Add path to the single bubbleset instance
-        let path
-        try {
-          path = addPath(
-            nodeCollection, // Nodes to include in the bubble
-            cy.collection(), // Empty edge collection
-            cy.collection(), // No avoid nodes needed - compound layout separates bunks
-            {
-              style: {
-                fill: bunkColor,
-                fillOpacity: 0.25,
-                stroke: bunkColor,
-                strokeOpacity: 0.8,
-                strokeWidth: 3,
-              },
-              ...BASE_BUBBLE_OPTIONS,
-              morphBuffer: 35,
-            }
-          )
+        const path = addPath(
+          nodeCollection, // Nodes to include in the bubble
+          cy.collection(), // Empty edge collection
+          cy.collection(), // No avoid nodes needed - compound layout separates bunks
+          {
+            style: {
+              fill: bunkColor,
+              fillOpacity: 0.25,
+              stroke: bunkColor,
+              strokeOpacity: 0.8,
+              strokeWidth: 3,
+            },
+            ...BASE_BUBBLE_OPTIONS,
+            morphBuffer: 35,
+          }
+        )
 
-          renderedBunks.push(`${bunkId} (${bunkName})`)
-        } catch (pathError) {
-          console.error(`Error creating path for bunk ${bunkId}:`, pathError)
-          failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(pathError)}`)
-          return
-        }
-
-        // Store the path reference with metadata
         pathsRef.current.push(path)
+        renderedBunks.push(`${bunkId} (${bunkName})`)
       } catch (error) {
         console.error(`Error creating bubble for bunk ${bunkId}:`, error)
         failedBunks.push(`${bunkId} (${bunkName}) - Error: ${String(error)}`)

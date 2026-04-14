@@ -4,8 +4,8 @@ import { Badge, PanelSection } from './DataRow'
 
 interface DispositionDetailProps {
   data: PostPipelineTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean
 }
 
@@ -24,7 +24,7 @@ function statusColor(status: string): 'green' | 'amber' | 'red' | 'gray' {
 
 export function DispositionDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: DispositionDetailProps) {
@@ -80,7 +80,11 @@ export function DispositionDetail({
         )}
       </PanelSection>
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

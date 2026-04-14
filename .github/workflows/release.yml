@@ -143,11 +143,11 @@ jobs:
           echo "CI already running on main (in_progress: $CI_IN_PROGRESS, queued: $CI_QUEUED), waiting..."
         fi
 
-        # Poll for a successful CI Summary (up to ~5 min)
+        # Poll for a successful CI Summary (up to ~7.5 min)
         # Note: After dispatching, the new CI may cancel an in-progress push-triggered CI
         # (same concurrency group). The cancelled run produces a failed CI Summary.
         # We must keep polling until either a success appears or all runs finish as failures.
-        for i in {1..20}; do
+        for i in {1..30}; do
           sleep 15
 
           # Check for any successful CI Summary
@@ -172,10 +172,68 @@ jobs:
             exit 1
           fi
 
-          echo "  Attempt $i/20: waiting for CI... (total: $TOTAL, pending: $PENDING)"
+          echo "  Attempt $i/30: waiting for CI... (total: $TOTAL, pending: $PENDING)"
         done
 
-        echo "::error::CI did not complete within 5 minutes"
+        echo "::error::CI did not complete within 7.5 minutes"
+        exit 1
+
+    - name: Ensure CD passed on HEAD
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        HEAD_SHA=$(git rev-parse HEAD)
+        echo "Waiting for CD to complete on HEAD ($HEAD_SHA)..."
+
+        # Check if a CD run exists for HEAD
+        CD_RUN=$(gh run list --workflow cd.yml --branch main --json headSha,status,conclusion,databaseId \
+          --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | first" 2>/dev/null || echo "null")
+
+        if [ "$CD_RUN" = "null" ] || [ -z "$CD_RUN" ]; then
+          echo "::error::No CD run found for HEAD ($HEAD_SHA). CD should auto-trigger on push to main."
+          echo "If the commit was just pushed, wait a moment and re-run this workflow."
+          exit 1
+        fi
+
+        CD_STATUS=$(echo "$CD_RUN" | jq -r '.status')
+        CD_CONCLUSION=$(echo "$CD_RUN" | jq -r '.conclusion')
+        CD_RUN_ID=$(echo "$CD_RUN" | jq -r '.databaseId')
+        echo "Found CD run #${CD_RUN_ID}: status=$CD_STATUS conclusion=$CD_CONCLUSION"
+
+        if [ "$CD_STATUS" = "completed" ] && [ "$CD_CONCLUSION" = "success" ]; then
+          echo "CD already passed on HEAD"
+          exit 0
+        fi
+
+        if [ "$CD_STATUS" = "completed" ]; then
+          echo "::error::CD run #${CD_RUN_ID} completed with conclusion=$CD_CONCLUSION (expected success)"
+          exit 1
+        fi
+
+        # CD still running — poll until completion (up to ~20 min for CD builds)
+        echo "CD still running, polling..."
+        for i in {1..80}; do
+          sleep 15
+          CD_RUN=$(gh run list --workflow cd.yml --branch main --json headSha,status,conclusion,databaseId \
+            --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | first" 2>/dev/null || echo "null")
+
+          CD_STATUS=$(echo "$CD_RUN" | jq -r '.status')
+          CD_CONCLUSION=$(echo "$CD_RUN" | jq -r '.conclusion')
+
+          if [ "$CD_STATUS" = "completed" ]; then
+            if [ "$CD_CONCLUSION" = "success" ]; then
+              echo "CD passed on HEAD (after $i polls)"
+              exit 0
+            else
+              echo "::error::CD run #${CD_RUN_ID} completed with conclusion=$CD_CONCLUSION"
+              exit 1
+            fi
+          fi
+
+          echo "  Attempt $i/80: CD status=$CD_STATUS..."
+        done
+
+        echo "::error::CD did not complete within 20 minutes"
         exit 1
 
     - name: Install crane and authenticate to GHCR
@@ -184,49 +242,49 @@ jobs:
     - name: Find SHA-tagged images in registry
       id: find-images
       run: |
-        # CD can succeed without building (e.g., docs-only changes skip the build).
-        # If HEAD's images don't exist, walk back through recent commits to find
-        # the most recent build. This is safe because non-built commits only changed
-        # docs/config — the application code (and thus Docker images) is identical.
+        # After the CD gate, CD has completed successfully on HEAD.
         HEAD_SHA_TAG="sha-$(git rev-parse HEAD | cut -c1-7)"
+        CHOSEN_TAG=""
+        LOOKBACK="false"
+
         echo "Checking for HEAD images: ${HEAD_SHA_TAG}..."
         if crane manifest "${REGISTRY}/${USERNAME}/kindred-api:${HEAD_SHA_TAG}" > /dev/null 2>&1; then
           echo "Found images at HEAD (${HEAD_SHA_TAG})"
-          echo "sha_tag=${HEAD_SHA_TAG}" >> "$GITHUB_OUTPUT"
-          echo "lookback=false" >> "$GITHUB_OUTPUT"
-          exit 0
+          CHOSEN_TAG="${HEAD_SHA_TAG}"
+        else
+          # CD passed but skipped the build (e.g., docs-only changes).
+          # Walk back to find the most recent build. This is safe because non-built
+          # commits only changed docs/config — the application code is identical.
+          echo "HEAD images not found (CD skipped build), searching recent commits..."
+          for SHA in $(git log --format=%H -20 --skip=1 HEAD); do
+            TAG="sha-$(echo "$SHA" | cut -c1-7)"
+            if crane manifest "${REGISTRY}/${USERNAME}/kindred-api:${TAG}" > /dev/null 2>&1; then
+              CHOSEN_TAG="$TAG"
+              LOOKBACK="true"
+              echo "Found images at ${TAG} (commit ${SHA})"
+              break
+            fi
+            echo "  No images at ${TAG}"
+          done
         fi
 
-        echo "HEAD images not found, searching recent commits..."
-        FOUND=""
-        # Skip HEAD (already checked), check up to 20 prior commits
-        for SHA in $(git log --format=%H -20 --skip=1 HEAD); do
-          TAG="sha-$(echo "$SHA" | cut -c1-7)"
-          if crane manifest "${REGISTRY}/${USERNAME}/kindred-api:${TAG}" > /dev/null 2>&1; then
-            FOUND="$TAG"
-            echo "Found images at ${TAG} (commit ${SHA})"
-            break
-          fi
-          echo "  No images at ${TAG}"
-        done
-
-        if [ -z "$FOUND" ]; then
+        if [ -z "$CHOSEN_TAG" ]; then
           echo "::error::No SHA-tagged images found in the last 20 commits."
           echo "A CD run with an actual build is required before releasing."
           exit 1
         fi
 
-        # Verify all 3 promoted images exist (not just kindred-api)
+        # Verify all 3 promoted images exist at the chosen tag
         for IMAGE in kindred-pocketbase kindred-api kindred-init; do
-          if ! crane manifest "${REGISTRY}/${USERNAME}/${IMAGE}:${FOUND}" > /dev/null 2>&1; then
-            echo "::error::${IMAGE}:${FOUND} not found — incomplete build at that commit."
+          if ! crane manifest "${REGISTRY}/${USERNAME}/${IMAGE}:${CHOSEN_TAG}" > /dev/null 2>&1; then
+            echo "::error::${IMAGE}:${CHOSEN_TAG} not found — incomplete build at that commit."
             exit 1
           fi
         done
 
-        echo "All 3 images verified at ${FOUND}"
-        echo "sha_tag=${FOUND}" >> "$GITHUB_OUTPUT"
-        echo "lookback=true" >> "$GITHUB_OUTPUT"
+        echo "All 3 images verified at ${CHOSEN_TAG}"
+        echo "sha_tag=${CHOSEN_TAG}" >> "$GITHUB_OUTPUT"
+        echo "lookback=${LOOKBACK}" >> "$GITHUB_OUTPUT"
 
     - name: Log in to GitHub Container Registry (for docker push)
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
