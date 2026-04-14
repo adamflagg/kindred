@@ -163,10 +163,12 @@ class PriorityCalculator:
         if parsed.source_field in [SourceField.INTERNAL_NOTES, SourceField.BUNKING_NOTES]:
             return self._get_rule_priority("staff_notes")
 
-        # Priority 1 cases - parent age preference
+        # Parent age preference from socialize_with
         if parsed.source_field == SourceField.SOCIALIZE_WITH:
             if parsed.request_type == RequestType.AGE_PREFERENCE:
-                return self._get_rule_priority("parent_age_preference")
+                if not has_other_requests:
+                    return self._get_rule_priority("age_preference_sole")  # priority 4
+                return self._get_rule_priority("parent_age_preference")  # priority 1
 
         # Age preference with other requests
         if parsed.request_type == RequestType.AGE_PREFERENCE:
