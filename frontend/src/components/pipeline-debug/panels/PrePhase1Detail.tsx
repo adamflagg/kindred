@@ -14,14 +14,14 @@ import { CollapsibleSection } from './CollapsibleSection'
 
 interface PrePhase1DetailProps {
   data: PrePhase1Trace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
 export function PrePhase1Detail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: PrePhase1DetailProps) {
@@ -78,7 +78,11 @@ export function PrePhase1Detail({
         </CollapsibleSection>
       )}
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

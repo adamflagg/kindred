@@ -4,14 +4,14 @@ import { DataRow, Badge, PanelSection } from './DataRow'
 
 interface BatchSignalsDetailProps {
   data: PostPipelineTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean
 }
 
 export function BatchSignalsDetail({
   data,
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
   isRunning,
 }: BatchSignalsDetailProps) {
@@ -70,7 +70,11 @@ export function BatchSignalsDetail({
         </PanelSection>
       )}
 
-      <ActionButtons onRunAgain={onRunAgain} onRunFromHere={onRunFromHere} isRunning={isRunning} />
+      <ActionButtons
+        onRerunPhase={onRerunPhase}
+        onRunFromHere={onRunFromHere}
+        isRunning={isRunning}
+      />
     </div>
   )
 }

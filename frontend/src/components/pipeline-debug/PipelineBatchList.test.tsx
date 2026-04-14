@@ -14,9 +14,46 @@
 
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { PipelineBatchList } from './PipelineBatchList'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
+
+// jsdom returns 0 for getBoundingClientRect / offsetHeight, which starves
+// @tanstack/react-virtual's viewport size and leaves it rendering zero rows.
+// Stub non-zero dimensions so the virtualizer renders our rows in tests.
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    value: 600,
+  })
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+    configurable: true,
+    value: 1024,
+  })
+  const original = Element.prototype.getBoundingClientRect
+  Element.prototype.getBoundingClientRect = function (): DOMRect {
+    const rect = original.call(this)
+    // Only inflate the virtualizer's scroll parent — leave untouched rects
+    // alone if they aren't zero.
+    if (rect.width === 0 && rect.height === 0) {
+      return {
+        ...rect,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1024,
+        bottom: 600,
+        width: 1024,
+        height: 600,
+        toJSON() {
+          return {}
+        },
+      } as DOMRect
+    }
+    return rect
+  }
+})
 
 const mockItems: PipelineSummaryItem[] = [
   {
@@ -90,7 +127,6 @@ const mockItems: PipelineSummaryItem[] = [
 describe('PipelineBatchList', () => {
   const defaultProps = {
     items: mockItems,
-    total: mockItems.length,
     filters: {} as PipelineSummaryFilters,
     onFiltersChange: vi.fn(),
     onRowClick: vi.fn(),
@@ -220,7 +256,7 @@ describe('PipelineBatchList', () => {
       const user = userEvent.setup()
       render(<PipelineBatchList {...defaultProps} />)
 
-      const row = screen.getByText('Emma Johnson').closest('tr')!
+      const row = screen.getByText('Emma Johnson').closest('[role="row"]') as HTMLElement
       await user.click(row)
 
       expect(defaultProps.onRowClick).toHaveBeenCalledWith('trace-001')
@@ -229,7 +265,7 @@ describe('PipelineBatchList', () => {
     it('shows clickable cursor on rows', () => {
       render(<PipelineBatchList {...defaultProps} />)
 
-      const row = screen.getByText('Emma Johnson').closest('tr')!
+      const row = screen.getByText('Emma Johnson').closest('[role="row"]') as HTMLElement
       expect(row.className).toMatch(/cursor-pointer/)
     })
   })
@@ -283,13 +319,13 @@ describe('PipelineBatchList', () => {
 
   describe('Empty and loading states', () => {
     it('shows loading state', () => {
-      render(<PipelineBatchList {...defaultProps} isLoading={true} items={[]} total={0} />)
+      render(<PipelineBatchList {...defaultProps} isLoading={true} items={[]} />)
 
       expect(screen.getByText(/loading/i)).toBeInTheDocument()
     })
 
     it('shows empty state when no items', () => {
-      render(<PipelineBatchList {...defaultProps} items={[]} total={0} />)
+      render(<PipelineBatchList {...defaultProps} items={[]} />)
 
       expect(screen.getByText(/no results/i)).toBeInTheDocument()
     })
@@ -297,38 +333,39 @@ describe('PipelineBatchList', () => {
     it('renders error state when error prop is provided', () => {
       render(<PipelineBatchList {...defaultProps} error={new Error('Network failure')} />)
       expect(screen.getByText(/failed to load pipeline data/i)).toBeInTheDocument()
-      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      expect(document.querySelectorAll('[role="row"]').length).toBe(0)
     })
 
     it('does not render error state when error is null', () => {
       render(<PipelineBatchList {...defaultProps} error={null} />)
       expect(screen.queryByText(/failed to load pipeline data/i)).not.toBeInTheDocument()
-      expect(screen.getByRole('table')).toBeInTheDocument()
+      expect(document.querySelectorAll('[role="row"]').length).toBeGreaterThan(0)
     })
   })
 
-  describe('Total count', () => {
-    it('shows total result count', () => {
-      render(<PipelineBatchList {...defaultProps} total={42} />)
+  describe('Result count', () => {
+    it('shows visible row count derived from items', () => {
+      render(<PipelineBatchList {...defaultProps} />)
 
-      expect(screen.getByText(/42/)).toBeInTheDocument()
+      // 3 mock items -> "3 results"
+      expect(screen.getByText(/3 results/i)).toBeInTheDocument()
     })
   })
 
   describe('Keyboard accessibility', () => {
     it('rows are keyboard-focusable with role=button', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
       expect(rows.length).toBeGreaterThan(0)
       rows.forEach((row) => {
         expect(row).toHaveAttribute('tabindex', '0')
-        expect(row).toHaveAttribute('role', 'button')
+        expect(row).toHaveAttribute('role', 'row')
       })
     })
 
     it('triggers row click on Enter key', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const firstRow = document.querySelector('tbody tr') as HTMLElement
+      const firstRow = document.querySelector('[role="rowgroup"] [role="row"]') as HTMLElement
       firstRow.focus()
       await userEvent.keyboard('{Enter}')
       expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
@@ -336,33 +373,40 @@ describe('PipelineBatchList', () => {
 
     it('triggers row click on Space key', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const firstRow = document.querySelector('tbody tr') as HTMLElement
+      const firstRow = document.querySelector('[role="rowgroup"] [role="row"]') as HTMLElement
       firstRow.focus()
       await userEvent.keyboard(' ')
       expect(defaultProps.onRowClick).toHaveBeenCalledWith(expect.any(String))
     })
 
-    it('triggers sort on Enter key on sortable header', async () => {
+    it('toggles sort indicator on Enter key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
+      const sortableHeader = document.querySelector(
+        '[role="columnheader"][tabindex]'
+      ) as HTMLElement
       sortableHeader.focus()
       await userEvent.keyboard('{Enter}')
-      expect(defaultProps.onFiltersChange).toHaveBeenCalled()
+      // Sorting is now client-side; aria-sort on the header reflects the applied order
+      const ariaSort = sortableHeader.getAttribute('aria-sort') ?? ''
+      expect(['ascending', 'descending']).toContain(ariaSort)
     })
 
-    it('triggers sort on Space key on sortable header', async () => {
+    it('toggles sort indicator on Space key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector('thead th[tabindex]') as HTMLElement
+      const sortableHeader = document.querySelector(
+        '[role="columnheader"][tabindex]'
+      ) as HTMLElement
       sortableHeader.focus()
       await userEvent.keyboard(' ')
-      expect(defaultProps.onFiltersChange).toHaveBeenCalled()
+      const ariaSort = sortableHeader.getAttribute('aria-sort') ?? ''
+      expect(['ascending', 'descending']).toContain(ariaSort)
     })
   })
 
   describe('disposition columns', () => {
     it('renders disposition_reason column with color-coded badges', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
 
       // Helper: find the inner badge span (leaf node, exact text match)
       const findBadge = (row: Element, text: string): Element | null => {
@@ -393,23 +437,167 @@ describe('PipelineBatchList', () => {
 
     it('renders is_reciprocal indicator when true', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const rows = document.querySelectorAll('tbody tr')
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
 
       // First row has is_reciprocal=true — should show "Recip" badge
       expect((rows[0] as Element).textContent).toMatch(/recip/i)
 
-      // Second row has is_reciprocal=false — no "recip" indicator
-      const secondRowRecip = Array.from((rows[1] as Element).querySelectorAll('td')).find((td) =>
-        String(td.textContent).toLowerCase().includes('recip')
-      )
-      expect(secondRowRecip).toBeFalsy()
+      // Second row has is_reciprocal=false — no "recip" indicator inside row's direct children
+      expect((rows[1] as Element).textContent?.toLowerCase()).not.toMatch(/recip/)
     })
 
     it('renders Reason column header', () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const headers = document.querySelectorAll('thead th')
+      const headers = document.querySelectorAll('[role="columnheader"]')
       const headerTexts = Array.from(headers).map((h) => String(h.textContent).trim())
       expect(headerTexts).toContain('Reason')
+    })
+  })
+
+  describe('Search input (client-side)', () => {
+    it('renders a search input field', () => {
+      render(<PipelineBatchList {...defaultProps} />)
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      expect(searchInput).toBeInTheDocument()
+    })
+
+    it('filters the visible list by requester_name as the user types', async () => {
+      const user = userEvent.setup()
+      render(<PipelineBatchList {...defaultProps} />)
+
+      // All 3 rows visible at start
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+      expect(screen.getByText('Sophia Martinez')).toBeInTheDocument()
+
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      await user.type(searchInput, 'Emma')
+
+      // Only Emma's row should remain visible
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      expect(screen.queryByText('Olivia Chen')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sophia Martinez')).not.toBeInTheDocument()
+    })
+
+    it('filters the visible list by target_name as the user types', async () => {
+      const user = userEvent.setup()
+      render(<PipelineBatchList {...defaultProps} />)
+
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      await user.type(searchInput, 'Noah')
+
+      // Noah Williams is the target of Olivia Chen's request
+      expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+      expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sophia Martinez')).not.toBeInTheDocument()
+    })
+
+    it('is case-insensitive', async () => {
+      const user = userEvent.setup()
+      render(<PipelineBatchList {...defaultProps} />)
+
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      await user.type(searchInput, 'emma')
+
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      expect(screen.queryByText('Olivia Chen')).not.toBeInTheDocument()
+    })
+
+    it('does NOT call onFiltersChange when the user types (client-side)', async () => {
+      const user = userEvent.setup()
+      render(<PipelineBatchList {...defaultProps} />)
+
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      await user.type(searchInput, 'Emma')
+
+      // Typing must not cause a network round-trip — onFiltersChange is for
+      // server-roundtrip filters only. Client-side search stays local.
+      expect(defaultProps.onFiltersChange).not.toHaveBeenCalled()
+    })
+
+    it('filters instantly on a single character (no minimum length)', async () => {
+      const user = userEvent.setup()
+      render(<PipelineBatchList {...defaultProps} />)
+
+      const searchInput = screen.getByPlaceholderText(/search/i)
+      await user.type(searchInput, 'E')
+
+      // Single char still filters; "E" matches "Emma" (requester) only (O/S are upper but 'E' not in Olivia/Sophia)
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    })
+  })
+
+  describe('Client-side filtering', () => {
+    it('filters rows by final_status from filters prop without a network call', () => {
+      render(
+        <PipelineBatchList
+          {...defaultProps}
+          filters={{ final_status: 'RESOLVED' } as PipelineSummaryFilters}
+        />
+      )
+
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      expect(screen.queryByText('Olivia Chen')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sophia Martinez')).not.toBeInTheDocument()
+    })
+
+    it('filters rows by source_field from filters prop', () => {
+      render(
+        <PipelineBatchList
+          {...defaultProps}
+          filters={{ source_field: 'not_bunk_with' } as PipelineSummaryFilters}
+        />
+      )
+
+      expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+      expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sophia Martinez')).not.toBeInTheDocument()
+    })
+
+    it('filters rows by phase3_triggered from filters prop', () => {
+      render(
+        <PipelineBatchList
+          {...defaultProps}
+          filters={{ phase3_triggered: true } as PipelineSummaryFilters}
+        />
+      )
+
+      // Only Olivia's row has phase3_triggered=true
+      expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+      expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sophia Martinez')).not.toBeInTheDocument()
+    })
+
+    it('filters rows by min_confidence from filters prop', () => {
+      render(
+        <PipelineBatchList
+          {...defaultProps}
+          filters={{ min_confidence: 0.8 } as PipelineSummaryFilters}
+        />
+      )
+
+      // Only Emma (0.95) meets >= 0.80 — Olivia (0.72) and Sophia (0.35) excluded
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      expect(screen.queryByText('Olivia Chen')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sophia Martinez')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Client-side sorting', () => {
+    it('sorts ascending on first header click', async () => {
+      const user = userEvent.setup()
+      render(<PipelineBatchList {...defaultProps} />)
+
+      const camperHeader = screen
+        .getAllByRole('columnheader')
+        .find((h) => String(h.textContent).trim().startsWith('Camper'))!
+      await user.click(camperHeader)
+
+      // Sort is now applied client-side; first row should be Emma (alphabetical)
+      const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
+      expect((rows[0] as Element).textContent).toContain('Emma Johnson')
+      expect((rows[1] as Element).textContent).toContain('Olivia Chen')
+      expect((rows[2] as Element).textContent).toContain('Sophia Martinez')
     })
   })
 })

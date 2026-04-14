@@ -1,64 +1,43 @@
 /**
- * ActionButtons - Shared "Run Again" and "Run From Here" buttons for detail panels.
+ * ActionButtons - Shared phase-replay buttons for detail panels.
  *
- * "Run Again" is always dry-run only.
- * "Run From Here" supports opt-in production write with confirmation dialog.
+ * Both buttons are dry-run-only developer/staff iteration tools. Production
+ * writes are exclusively handled by "Reprocess from source" (run-full-trace).
+ *
+ * - "Rerun this phase": isolated single-phase execution (uses stop_at_phase
+ *   on the backend). Downstream phases are unchanged. Useful for prompt
+ *   engineering or A/B testing a single phase's logic.
+ * - "Run From Here": cascade from this phase through the end of the pipeline.
+ *   Useful for vetting how a logic change ripples through downstream phases.
  */
 
-import { useState } from 'react'
-import { Play, FastForward, AlertTriangle } from 'lucide-react'
+import { Play, FastForward } from 'lucide-react'
 
 export interface ActionButtonsProps {
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
-  /** Number of bunk_requests that would be written if production write is enabled */
-  productionWriteCount?: number
-  /** Number of original_requests that would be marked processed */
-  processedCount?: number
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean | undefined
 }
 
 export function ActionButtons({
-  onRunAgain,
+  onRerunPhase,
   onRunFromHere,
-  productionWriteCount = 0,
-  processedCount = 0,
   isRunning = false,
 }: ActionButtonsProps) {
-  const [writeToProduction, setWriteToProduction] = useState(false)
-  const [showConfirmation, setShowConfirmation] = useState(false)
-
-  function handleRunFromHere() {
-    if (writeToProduction) {
-      setShowConfirmation(true)
-    } else {
-      onRunFromHere(false)
-    }
-  }
-
-  function handleConfirm() {
-    setShowConfirmation(false)
-    onRunFromHere(true)
-  }
-
-  function handleCancel() {
-    setShowConfirmation(false)
-  }
-
   return (
     <div className="border-border flex flex-wrap items-center gap-3 border-t pt-4">
       <button
-        onClick={onRunAgain}
+        onClick={onRerunPhase}
         disabled={isRunning}
         className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
-        aria-label="Run Again"
+        aria-label="Rerun this phase"
       >
         <Play className="h-3.5 w-3.5" />
-        Run Again
+        Rerun this phase
       </button>
 
       <button
-        onClick={handleRunFromHere}
+        onClick={onRunFromHere}
         disabled={isRunning}
         className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
         aria-label="Run From Here"
@@ -66,49 +45,6 @@ export function ActionButtons({
         <FastForward className="h-3.5 w-3.5" />
         Run From Here
       </button>
-
-      <label className="text-muted-foreground inline-flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={writeToProduction}
-          onChange={(e) => setWriteToProduction(e.target.checked)}
-          className="border-border rounded text-amber-500 focus:ring-amber-500"
-          aria-label="Write to production"
-        />
-        Write to production
-      </label>
-
-      {/* Confirmation dialog overlay */}
-      {showConfirmation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-card shadow-lodge-lg mx-4 max-w-md rounded-xl p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
-                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <h3 className="text-foreground text-lg font-semibold">Confirm Production Write</h3>
-            </div>
-            <p className="text-muted-foreground mb-6 text-sm">
-              This will write {productionWriteCount} bunk_requests to production and mark{' '}
-              {processedCount} original requests as processed. Proceed?
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={handleCancel}
-                className="muted-foreground hover:bg-muted rounded-lg px-4 py-2 text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirm}
-                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

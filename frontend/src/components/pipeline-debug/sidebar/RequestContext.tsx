@@ -1,9 +1,17 @@
+import { useState } from 'react'
+import { History, RotateCcw, AlertTriangle } from 'lucide-react'
 import type { TraceData } from '../types'
 
 interface RequestContextProps {
   traceData: TraceData
   /** Currently selected intent index (from IntentTabs in Phase2/Phase3 detail panels). */
   activeIntentIndex: number
+  /** Callback when user clicks "View all traces" for the requester. Receives requester CM ID. */
+  onViewAllTraces?: (cmId: number) => void
+  /** Callback to reprocess from source for this camper. */
+  onReprocess?: () => void
+  /** Whether a reprocess operation is in progress. */
+  isReprocessing?: boolean
 }
 
 /** Source field display names. */
@@ -31,7 +39,14 @@ function statusColor(status: string): string {
   }
 }
 
-export function RequestContext({ traceData, activeIntentIndex }: RequestContextProps) {
+export function RequestContext({
+  traceData,
+  activeIntentIndex,
+  onViewAllTraces,
+  onReprocess,
+  isReprocessing,
+}: RequestContextProps) {
+  const [showReprocessConfirm, setShowReprocessConfirm] = useState(false)
   const { requester_info, original_text, field_path } = traceData.pre_phase1
   const intents = traceData.phase1_parse.parsed_intents
   const totalIntents = intents.length
@@ -116,6 +131,66 @@ export function RequestContext({ traceData, activeIntentIndex }: RequestContextP
             activeBR.disposition_reason !== activeBR.resolution_method && (
               <p className="text-muted-foreground text-[10px]">{activeBR.disposition_reason}</p>
             )}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {(onViewAllTraces || onReprocess) && (
+        <div className="border-border flex flex-col gap-1.5 border-t pt-2">
+          {onViewAllTraces && (
+            <button
+              onClick={() => onViewAllTraces(requester_info.cm_id)}
+              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium transition-colors"
+            >
+              <History className="h-3 w-3" />
+              View all traces
+            </button>
+          )}
+          {onReprocess && (
+            <button
+              onClick={() => setShowReprocessConfirm(true)}
+              disabled={isReprocessing}
+              className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 transition-colors hover:text-amber-700 disabled:opacity-50 dark:text-amber-400 dark:hover:text-amber-300"
+            >
+              <RotateCcw className={`h-3 w-3 ${isReprocessing ? 'animate-spin' : ''}`} />
+              {isReprocessing ? 'Reprocessing...' : 'Reprocess from source'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Reprocess confirmation dialog */}
+      {showReprocessConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-card shadow-lodge-lg mx-4 max-w-sm rounded-xl p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <h3 className="text-foreground text-sm font-semibold">Reprocess from Source</h3>
+            </div>
+            <p className="text-muted-foreground mb-4 text-xs">
+              Re-run the full pipeline for{' '}
+              <span className="text-foreground font-medium">{requester_info.name}</span>&apos;s
+              original bunk request text. This will regenerate all parsed requests from the source
+              CSV row and write them to production.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowReprocessConfirm(false)}
+                className="text-muted-foreground hover:bg-muted rounded-md px-3 py-1.5 text-xs font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowReprocessConfirm(false)
+                  onReprocess?.()
+                }}
+                className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
