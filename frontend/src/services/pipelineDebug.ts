@@ -7,7 +7,6 @@
 
 import type {
   PipelineRunsResponse,
-  PipelineSummaryFilters,
   PipelineSummaryResponse,
   PipelineTrace,
   PipelineTracesResponse,
@@ -58,37 +57,17 @@ export const pipelineDebugService = {
   },
 
   /**
-   * Fetch summary rows for a specific run with PB-native filtering and pagination.
+   * Fetch ALL summary rows for a run in a single request.
+   *
+   * Filtering, sorting, and searching are performed client-side in
+   * `PipelineBatchList`. This keeps the React Query cache stable so typing
+   * in the search box and scrolling never trigger a re-fetch.
    */
   async fetchPipelineSummary(
     runId: string,
-    filters: PipelineSummaryFilters,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<PipelineSummaryResponse> {
-    const params = new URLSearchParams()
-    if (filters.final_status) params.set('final_status', filters.final_status)
-    if (filters.resolution_method) params.set('resolution_method', filters.resolution_method)
-    if (filters.source_field) params.set('source_field', filters.source_field)
-    if (filters.session_cm_id !== undefined) {
-      params.set('session_cm_id', String(filters.session_cm_id))
-    }
-    if (filters.phase3_triggered !== undefined) {
-      params.set('phase3_triggered', String(filters.phase3_triggered))
-    }
-    if (filters.pre_p1_action) params.set('pre_p1_action', filters.pre_p1_action)
-    if (filters.min_confidence !== undefined) {
-      params.set('min_confidence', String(filters.min_confidence))
-    }
-    if (filters.max_confidence !== undefined) {
-      params.set('max_confidence', String(filters.max_confidence))
-    }
-    if (filters.page !== undefined) params.set('page', String(filters.page))
-    if (filters.per_page !== undefined) params.set('per_page', String(filters.per_page))
-    if (filters.sort) params.set('sort', filters.sort)
-    if (filters.search) params.set('search', filters.search)
-
-    const queryString = params.toString()
-    const url = `${API_BASE}/pipeline-runs/${encodeURIComponent(runId)}/summary${queryString ? `?${queryString}` : ''}`
+    const url = `${API_BASE}/pipeline-runs/${encodeURIComponent(runId)}/summary?fetch_all=true`
     const response = await fetchWithAuth(url)
 
     if (!response.ok) {

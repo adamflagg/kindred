@@ -1,25 +1,27 @@
 /**
  * React Query hook for pipeline debug summary (batch list).
+ *
+ * Fetches ALL rows for a run in a single request (`fetch_all=true`). The
+ * queryKey is intentionally stable — only `(runId)` — so the list isn't
+ * refetched when the user types in the search box, sorts, or changes a
+ * filter. Filtering/sorting/searching happen client-side in
+ * `PipelineBatchList`.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { pipelineDebugService } from '../services/pipelineDebug'
-import type { PipelineSummaryFilters } from '../components/pipeline-debug/types'
 
-/**
- * Hook to fetch summary rows for a specific pipeline run.
- * Supports PB-native filtering, sorting, and pagination.
- */
-export function usePipelineSummary(runId: string | null, filters: PipelineSummaryFilters = {}) {
+/** Hook to fetch every summary row for a pipeline run. */
+export function usePipelineSummary(runId: string | null) {
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.pipelineSummary(runId ?? '', filters as Record<string, unknown>),
+    queryKey: queryKeys.pipelineSummary(runId ?? ''),
     queryFn: () => {
       if (!runId) throw new Error('Run ID is required')
-      return pipelineDebugService.fetchPipelineSummary(runId, filters, fetchWithAuth)
+      return pipelineDebugService.fetchPipelineSummary(runId, fetchWithAuth)
     },
     enabled: isAuthenticated && !!runId,
     ...userDataOptions,

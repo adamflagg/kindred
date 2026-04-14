@@ -1,15 +1,17 @@
 /**
  * PipelineBatchList - Summary table for pipeline debug batch overview.
  *
- * Displays a table of summary rows with columns for camper name, target name,
- * source field, status, confidence, resolution method, Phase 3 triggered, and
- * AI reasoning excerpt. Includes filters for status, source field, resolution
- * method, confidence range, session, and Phase 3. Color coding for status
- * (green/amber/red) and confidence (gradient by value). Click row navigates
- * to drill-down.
+ * Receives the full row set for a run in `items` and performs all filtering,
+ * sorting and searching in-memory. The search input is local-only and never
+ * triggers a network round-trip. Scrolling is virtualized with
+ * `useVirtualTable` so thousands of rows stay smooth.
+ *
+ * Columns: camper name, target name, source field, status, disposition/
+ * reason, confidence, resolution method, Phase 3 triggered, AI reasoning.
+ * Status / disposition / confidence are color-coded.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 import { formatSourceField } from '../../utils/formatSourceField'
@@ -19,9 +21,10 @@ import {
   getStatusClasses,
   getConfidenceClasses,
 } from '../../utils/dispositionColors'
+import { useVirtualTable } from '../../hooks/useVirtualTable'
 
-/** Minimum characters before triggering a search API call. */
-const MIN_SEARCH_LENGTH = 2
+/** Fixed height for the virtualized scroll viewport. */
+const VIRTUAL_VIEWPORT_HEIGHT = 600
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -40,98 +43,39 @@ const SORTABLE_COLUMNS: Array<{
   { label: 'Reasoning', field: 'ai_reasoning_summary', hiddenClass: 'hidden lg:table-cell' },
 ]
 
-/** Parse PocketBase sort string (e.g. "-final_confidence") into field + direction. */
-function parseSort(sort?: string): { field: string; desc: boolean } | null {
-  if (!sort) return null
-  if (sort.startsWith('-')) return { field: sort.slice(1), desc: true }
-  if (sort.startsWith('+')) return { field: sort.slice(1), desc: false }
-  return { field: sort, desc: false }
-}
-
-/**
- * Invisible sentinel element that triggers onLoadMore when scrolled into view.
- * Uses IntersectionObserver for efficient scroll-based pagination.
- */
-function InfiniteScrollSentinel({
-  onLoadMore,
-  isLoading = false,
-}: {
-  onLoadMore: () => void
-  isLoading?: boolean
-}) {
-  const sentinelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el || !onLoadMore) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Only trigger when becoming visible and not already loading
-        if (entries[0]?.isIntersecting && !isLoading) {
-          onLoadMore()
-        }
-      },
-      { rootMargin: '200px' }
-    )
-
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [onLoadMore, isLoading])
-
-  return <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-}
+/** Local sort state: field + direction. */
+type SortState = { field: keyof PipelineSummaryItem; desc: boolean } | null
 
 interface PipelineBatchListProps {
+  /** ALL rows for the selected run. Filtering/sorting/search happen client-side. */
   items: PipelineSummaryItem[]
-  total: number
+  /**
+   * Server-roundtrip filters (status, source_field, session, etc.) — still
+   * applied client-side but owned by the parent so state survives nav. The
+   * `search` / `page` / `sort` / `per_page` fields are no longer used and are
+   * tolerated for backward compatibility.
+   */
   filters: PipelineSummaryFilters
   onFiltersChange: (filters: PipelineSummaryFilters) => void
   onRowClick: (traceId: string) => void
   isLoading: boolean
   error?: Error | null
-  /** Called when user clicks "Load more" to fetch next page */
-  onLoadMore?: () => void
-  /** Whether more pages are being fetched */
-  isLoadingMore?: boolean
 }
 
 export function PipelineBatchList({
   items,
-  total,
   filters,
   onFiltersChange,
   onRowClick,
   isLoading,
   error,
-  onLoadMore,
-  isLoadingMore,
 }: PipelineBatchListProps) {
-  const [searchText, setSearchText] = useState(filters.search ?? '')
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
+  // Local, never-leaves-the-component search text — no debounce, no min char.
+  const [searchText, setSearchText] = useState('')
 
-  // Sync search text when filters.search changes externally (e.g., from "View all traces")
-  useEffect(() => {
-    setSearchText(filters.search ?? '')
-  }, [filters.search])
-
-  /** Debounced search handler — requires MIN_SEARCH_LENGTH chars before triggering API call. */
-  function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const value = e.target.value
-    setSearchText(value)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      const trimmed = value.trim()
-      const { search: _, ...rest } = filters
-      // Only search if we have enough characters, or if clearing
-      if (trimmed.length >= MIN_SEARCH_LENGTH) {
-        onFiltersChange({ ...rest, search: trimmed, page: 1 })
-      } else if (filters.search) {
-        // Had a previous search, now clearing it
-        onFiltersChange({ ...rest, page: 1 })
-      }
-    }, 300)
-  }
+  // Local sort state — initialized from filters.sort for back-compat, but
+  // all toggles stay client-side (never calls onFiltersChange).
+  const [sort, setSort] = useState<SortState>(() => parseSortFilter(filters.sort))
 
   /** Update a single filter value and notify parent. */
   function updateFilter<K extends keyof PipelineSummaryFilters>(
@@ -142,20 +86,78 @@ export function PipelineBatchList({
   }
 
   /** Toggle sort on a column: none → asc → desc → none. */
-  function toggleSort(field: string) {
-    const current = parseSort(filters.sort)
-    let next: string | undefined
-    if (current?.field !== field) {
-      next = field // ascending (no prefix)
-    } else if (!current.desc) {
-      next = `-${field}` // descending
-    } else {
-      next = undefined // clear sort
-    }
-    updateFilter('sort', next)
+  function toggleSort(field: keyof PipelineSummaryItem) {
+    setSort((current) => {
+      if (current?.field !== field) return { field, desc: false }
+      if (!current.desc) return { field, desc: true }
+      return null
+    })
   }
 
-  const currentSort = parseSort(filters.sort)
+  // Apply all filters + search + sort client-side over the full in-memory list.
+  const visibleItems = useMemo(() => {
+    let out = items
+
+    // Search (case-insensitive, requester_name OR target_name)
+    const q = searchText.trim().toLowerCase()
+    if (q) {
+      out = out.filter(
+        (item) =>
+          item.requester_name.toLowerCase().includes(q) ||
+          item.target_name.toLowerCase().includes(q)
+      )
+    }
+
+    // Structural filters (previously server-side)
+    if (filters.final_status) {
+      out = out.filter((item) => item.final_status === filters.final_status)
+    }
+    if (filters.source_field) {
+      out = out.filter((item) => item.source_field === filters.source_field)
+    }
+    if (filters.resolution_method) {
+      out = out.filter((item) => item.resolution_method === filters.resolution_method)
+    }
+    if (filters.session_cm_id !== undefined) {
+      out = out.filter((item) => item.session_cm_id === filters.session_cm_id)
+    }
+    if (filters.phase3_triggered !== undefined) {
+      out = out.filter((item) => item.phase3_triggered === filters.phase3_triggered)
+    }
+    if (filters.pre_p1_action) {
+      out = out.filter((item) => item.pre_p1_action === filters.pre_p1_action)
+    }
+    if (filters.min_confidence !== undefined) {
+      const min = filters.min_confidence
+      out = out.filter((item) => item.final_confidence >= min)
+    }
+    if (filters.max_confidence !== undefined) {
+      const max = filters.max_confidence
+      out = out.filter((item) => item.final_confidence <= max)
+    }
+
+    // Sort
+    if (sort) {
+      const { field, desc } = sort
+      out = [...out].sort((a, b) => {
+        const av = a[field]
+        const bv = b[field]
+        const cmp = compareValues(av, bv)
+        return desc ? -cmp : cmp
+      })
+    }
+
+    return out
+  }, [items, filters, searchText, sort])
+
+  // Always instantiate the virtualizer (hooks order must be stable). It's
+  // fine if the result isn't rendered because of loading/empty/error states.
+  const { parentRef, rowVirtualizer } = useVirtualTable({
+    data: visibleItems,
+    height: VIRTUAL_VIEWPORT_HEIGHT,
+    rowHeightPreset: 'normal',
+    overscan: 15,
+  })
 
   if (isLoading) {
     return (
@@ -187,9 +189,9 @@ export function PipelineBatchList({
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
             <input
               type="text"
-              placeholder={`Search names (${MIN_SEARCH_LENGTH}+ chars)...`}
+              placeholder="Search names..."
               value={searchText}
-              onChange={handleSearchChange}
+              onChange={(e) => setSearchText(e.target.value)}
               className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 w-52 rounded-md border py-1 pr-2 pl-7 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
             />
           </div>
@@ -325,76 +327,103 @@ export function PipelineBatchList({
 
           {/* Result count */}
           <div className="text-muted-foreground ml-auto text-xs">
-            {total} {total === 1 ? 'result' : 'results'}
+            {visibleItems.length} {visibleItems.length === 1 ? 'result' : 'results'}
+            {visibleItems.length !== items.length && (
+              <span className="text-muted-foreground/70"> of {items.length}</span>
+            )}
           </div>
         </div>
       </div>
 
       {/* Table */}
-      {items.length === 0 ? (
+      {visibleItems.length === 0 ? (
         <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 flex h-48 flex-col items-center justify-center gap-3">
           <Search className="text-bark-400 h-8 w-8" />
           <p className="text-muted-foreground text-sm">No results found. Try adjusting filters.</p>
         </div>
       ) : (
-        <>
-          <div className="card-lodge overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-bark-200 dark:border-bark-700 bg-bark-50 dark:bg-bark-800/50 border-b">
-                    {SORTABLE_COLUMNS.map((col) => {
-                      const isActive = currentSort?.field === col.field
-                      const isDesc = isActive && currentSort.desc
-                      return (
-                        <th
-                          key={col.field}
-                          tabIndex={0}
-                          aria-sort={
-                            currentSort?.field === col.field
-                              ? currentSort.desc
-                                ? 'descending'
-                                : 'ascending'
-                              : undefined
+        <div className="card-lodge overflow-hidden">
+          {/* Single table with sticky header; the scroll parent is the div. */}
+          <div
+            ref={parentRef}
+            className="overflow-auto"
+            style={{ height: `${VIRTUAL_VIEWPORT_HEIGHT}px` }}
+          >
+            <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+              <thead className="bg-bark-50 dark:bg-bark-800/50 sticky top-0 z-10">
+                <tr className="border-bark-200 dark:border-bark-700 border-b">
+                  {SORTABLE_COLUMNS.map((col) => {
+                    const isActive = sort?.field === col.field
+                    const isDesc = isActive && sort.desc
+                    return (
+                      <th
+                        key={col.field}
+                        tabIndex={0}
+                        aria-sort={
+                          sort?.field === col.field
+                            ? sort.desc
+                              ? 'descending'
+                              : 'ascending'
+                            : undefined
+                        }
+                        onClick={() => toggleSort(col.field)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            toggleSort(col.field)
                           }
-                          onClick={() => toggleSort(col.field)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault()
-                              toggleSort(col.field)
-                            }
-                          }}
-                          className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {col.label}
-                            {isActive ? (
-                              isDesc ? (
-                                <ArrowDown className="h-3 w-3" />
-                              ) : (
-                                <ArrowUp className="h-3 w-3" />
-                              )
+                        }}
+                        className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {isActive ? (
+                            isDesc ? (
+                              <ArrowDown className="h-3 w-3" />
                             ) : (
-                              <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                            )}
-                          </span>
-                        </th>
-                      )
-                    })}
-                  </tr>
-                </thead>
-                <tbody className="divide-bark-100 dark:divide-bark-700/50 divide-y">
-                  {items.map((item) => (
+                              <ArrowUp className="h-3 w-3" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </span>
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody
+                className="divide-bark-100 dark:divide-bark-700/50 relative divide-y"
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  display: 'block',
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = visibleItems[virtualRow.index]
+                  if (!item) return null
+                  return (
                     <tr
                       key={item.id}
                       tabIndex={0}
                       role="button"
+                      data-index={virtualRow.index}
                       onClick={() => onRowClick(item.trace_id)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault()
                           onRowClick(item.trace_id)
                         }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                        display: 'table',
+                        tableLayout: 'fixed',
                       }}
                       className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                     >
@@ -457,30 +486,34 @@ export function PipelineBatchList({
                         {item.ai_reasoning_summary || '\u2014'}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-
-          {/* Pagination: showing count + infinite scroll sentinel */}
-          <div className="flex items-center justify-between px-3 py-2">
-            <span className="text-muted-foreground text-xs">
-              Showing {items.length} of {total}
-            </span>
-            {isLoadingMore && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading more...
-              </span>
-            )}
-          </div>
-          {/* Infinite scroll sentinel — triggers onLoadMore when scrolled into view */}
-          {items.length < total && onLoadMore && (
-            <InfiniteScrollSentinel onLoadMore={onLoadMore} isLoading={isLoadingMore ?? false} />
-          )}
-        </>
+        </div>
       )}
     </div>
   )
+}
+
+/** Parse a PB-style sort string (e.g. "-final_confidence") into local SortState. */
+function parseSortFilter(sort?: string): SortState {
+  if (!sort) return null
+  const desc = sort.startsWith('-')
+  const field = sort.startsWith('-') || sort.startsWith('+') ? sort.slice(1) : sort
+  // Best-effort narrow to a known PipelineSummaryItem key
+  return { field: field as keyof PipelineSummaryItem, desc }
+}
+
+/** Compare two values of possibly heterogeneous types for sort. */
+function compareValues(a: unknown, b: unknown): number {
+  if (a === b) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  if (typeof a === 'boolean' && typeof b === 'boolean') {
+    return a === b ? 0 : a ? -1 : 1
+  }
+  return String(a).localeCompare(String(b))
 }

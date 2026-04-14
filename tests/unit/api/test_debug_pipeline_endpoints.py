@@ -292,6 +292,46 @@ class TestGetPipelineRunSummary:
 
         assert response.status_code == 200
 
+    def test_fetch_all_returns_full_list(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """fetch_all=true should return all rows past the 500 cap via get_full_list."""
+        client, mock_pb = client_with_mock_pb
+
+        # Simulate 1,200 rows (well past the 500 per_page cap)
+        all_records = [_make_pb_summary_record(record_id=f"rec_sum_{i}") for i in range(1200)]
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_full_list.return_value = all_records
+
+        response = client.get(
+            "/api/debug/pipeline-runs/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/summary",
+            params={"fetch_all": "true"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1200
+        assert data["total"] == 1200
+        # Should use get_full_list (un-paged) not get_list
+        mock_collection.get_full_list.assert_called_once()
+
+    def test_fetch_all_ignores_page_and_per_page(self, client_with_mock_pb: tuple[TestClient, MagicMock]) -> None:
+        """When fetch_all=true, page/per_page params should be ignored."""
+        client, mock_pb = client_with_mock_pb
+
+        all_records = [_make_pb_summary_record(record_id=f"rec_sum_{i}") for i in range(600)]
+        mock_collection = mock_pb.collection.return_value
+        mock_collection.get_full_list.return_value = all_records
+
+        response = client.get(
+            "/api/debug/pipeline-runs/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/summary",
+            params={"fetch_all": "true", "page": 2, "per_page": 10},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # All 600 records returned regardless of page/per_page
+        assert len(data["items"]) == 600
+        assert data["total"] == 600
+
 
 class TestGetPipelineTrace:
     """Test GET /api/debug/pipeline-traces/{trace_id} endpoint."""

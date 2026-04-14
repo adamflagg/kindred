@@ -7,7 +7,7 @@
  * Route: /summer/debug/pipeline (batch) or /summer/debug/pipeline/:traceId (drill-down)
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Link } from 'react-router'
 import { Bug, GitGraph, ArrowLeft, Loader2, FileText, Plus } from 'lucide-react'
@@ -28,7 +28,6 @@ import {
   PHASE_ORDER,
   STAGE_ORDER,
   type PipelineSummaryFilters,
-  type PipelineSummaryItem,
   type PipelinePhase,
   type PipelineStage,
 } from '../../components/pipeline-debug/types'
@@ -50,44 +49,20 @@ export default function PipelineDebugPage() {
   const [activeIntentIndex, setActiveIntentIndex] = useState(0)
   const [stalePhases, setStalePhases] = useState<Set<PipelinePhase>>(new Set())
 
-  // Accumulated pagination state for "load more" pattern
-  const [accumulatedItems, setAccumulatedItems] = useState<PipelineSummaryItem[]>([])
-  const prevFiltersRef = useRef(filters)
-
-  // Data fetching
+  // Data fetching — the summary query fetches all rows for the run in a
+  // single request. Filtering/sorting/searching happen client-side in
+  // PipelineBatchList, so the queryKey is stable and typing/scrolling never
+  // trigger a refetch.
   const runsQuery = usePipelineRuns()
   const togglePin = useToggleRunPin()
-  const summaryQuery = usePipelineSummary(selectedRunId, filters)
+  const summaryQuery = usePipelineSummary(selectedRunId)
   const traceQuery = usePipelineTrace(traceId ?? null)
   const runFromPhase = useRunFromPhase()
   const runFullTrace = useRunFullTrace()
 
-  // Accumulate items across pages; reset on filter/run changes
-  useEffect(() => {
-    if (!summaryQuery.data) return
-    const currentPage = filters.page ?? 1
-    const filtersChanged =
-      JSON.stringify({ ...prevFiltersRef.current, page: undefined }) !==
-      JSON.stringify({ ...filters, page: undefined })
-    if (currentPage === 1 || filtersChanged) {
-      // Reset: new filter/sort/search or first page
-      setAccumulatedItems(summaryQuery.data.items)
-    } else {
-      // Append: loading next page
-      setAccumulatedItems((prev) => [...prev, ...summaryQuery.data!.items])
-    }
-    prevFiltersRef.current = filters
-  }, [summaryQuery.data, filters])
-
-  const handleLoadMore = useCallback(() => {
-    const currentPage = filters.page ?? 1
-    setFilters((prev) => ({ ...prev, page: currentPage + 1 }))
-  }, [filters])
-
   const handleSelectRun = useCallback((runId: string | null) => {
     setSelectedRunId(runId)
     setFilters({}) // Reset filters when switching runs
-    setAccumulatedItems([]) // Reset accumulated pages
   }, [])
 
   const handleTogglePin = useCallback(
@@ -272,10 +247,10 @@ export default function PipelineDebugPage() {
                 stalePhases={stalePhases}
                 activeIntentIndex={activeIntentIndex}
                 onViewAllTraces={() => {
-                  // Navigate back to batch list filtered by this camper's name
-                  const requesterName = trace.trace_data.pre_phase1.requester_info.name
-                  setFilters({ search: requesterName })
-                  setAccumulatedItems([])
+                  // Navigate back to batch list. `search` is client-side only —
+                  // the user can re-enter the name in the search box (clearing
+                  // server-filters is enough).
+                  setFilters({})
                   void navigate('/summer/debug/pipeline')
                 }}
                 onReprocess={() => {
@@ -288,9 +263,8 @@ export default function PipelineDebugPage() {
                     },
                     {
                       onSuccess: () => {
-                        // Refresh the batch list after reprocessing
-                        setAccumulatedItems([])
-                        setFilters((prev) => ({ ...prev, page: 1 }))
+                        // No page/accumulation state — React Query will
+                        // invalidate on refetch. Nothing to reset here.
                       },
                     }
                   )
@@ -370,35 +344,28 @@ export default function PipelineDebugPage() {
         )}
       </QueryGuard>
 
-      {/* Summary table — only show when a run is selected */}
+      {/* Summary table — only show when a run is selected.
+          The query fetches ALL rows for the run in one shot; filtering /
+          sorting / searching happen client-side inside PipelineBatchList.
+          Because the queryKey is stable per run, the QueryGuard only
+          shows the loading skeleton on the first load, never on keystrokes
+          or scroll. */}
       {selectedRunId && (
         <QueryGuard
-          isLoading={summaryQuery.isLoading && (filters.page ?? 1) === 1}
+          isLoading={summaryQuery.isLoading}
           error={summaryQuery.error}
-          data={accumulatedItems.length > 0 ? summaryQuery.data : summaryQuery.data}
+          data={summaryQuery.data}
           label="pipeline summary"
           emptyMessage="No summary data for this run."
         >
           {(summaryData) => (
             <PipelineBatchList
-              items={accumulatedItems.length > 0 ? accumulatedItems : summaryData.items}
-              total={summaryData.total}
+              items={summaryData.items}
               filters={filters}
-              onFiltersChange={(newFilters) => {
-                // If non-page filter changed, reset page to 1
-                const pageOnly =
-                  JSON.stringify({ ...newFilters, page: undefined }) ===
-                  JSON.stringify({ ...filters, page: undefined })
-                if (!pageOnly) {
-                  setAccumulatedItems([])
-                }
-                setFilters(newFilters)
-              }}
+              onFiltersChange={setFilters}
               onRowClick={handleRowClick}
               isLoading={false}
               error={summaryQuery.error}
-              onLoadMore={handleLoadMore}
-              isLoadingMore={summaryQuery.isFetching && (filters.page ?? 1) > 1}
             />
           )}
         </QueryGuard>
