@@ -680,5 +680,61 @@ class TestDispositionReasonDirect:
         assert br.status == RequestStatus.PENDING
 
 
+class TestBuildMetadataSourceFragment:
+    """build_request_metadata should surface source_fragment from parsed_req.metadata."""
+
+    @pytest.fixture
+    def builder(self):
+        mock = Mock()
+        mock.calculate_priority.return_value = 3
+        return RequestBuilder(
+            priority_calculator=mock,
+            temporal_name_cache=None,
+            year=2025,
+            auto_resolve_threshold=0.8,
+        )
+
+    def test_build_metadata_preserves_source_fragment(self, builder) -> None:
+        """BR metadata should include source_fragment from parsed_req when ai_parsed=False (Phase 1 path)."""
+        parsed_req = ParsedRequest(
+            target_name="Emma",
+            raw_text="wants to be with Emma from last year",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={
+                "reasoning": "because emma",
+                "source_fragment": "wants to be with Emma from last year",
+            },
+        )
+        resolution_info: dict = {}
+        ai_parsed = False
+
+        metadata = builder.build_request_metadata(parsed_req, resolution_info, ai_parsed)
+
+        assert metadata["source_fragment"] == "wants to be with Emma from last year"
+
+    def test_build_metadata_source_fragment_empty_when_missing(self, builder) -> None:
+        """If parsed_req.metadata has no source_fragment key, default to empty string."""
+        parsed_req = ParsedRequest(
+            target_name="Emma",
+            raw_text="some text",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"reasoning": "x"},  # no source_fragment key
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=False)
+
+        assert metadata["source_fragment"] == ""
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

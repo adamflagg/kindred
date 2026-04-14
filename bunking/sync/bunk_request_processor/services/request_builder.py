@@ -200,6 +200,7 @@ class RequestBuilder:
             "target_name": parsed_req.target_name,
             "keywords_found": parsed_req.metadata.get("keywords_found", []),
             "ai_p1_reasoning": parsed_req.metadata.get("reasoning", "") if not ai_parsed else "",
+            "source_fragment": parsed_req.metadata.get("source_fragment", ""),
             "ai_p3_reasoning": resolution_info.get("resolution_metadata", {}).get("ai_p3_reasoning", {})
             if ai_parsed
             else {},
