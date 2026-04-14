@@ -6,7 +6,6 @@ Extracted from orchestrator to reduce class size and improve testability.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from bunking.logging_config import get_logger
@@ -19,15 +18,6 @@ from ..core.models import (
 )
 
 logger = get_logger(__name__)
-
-# Maximum number of individual requests that can be auto-created from a single
-# source text before they're flagged for staff review. Prevents pipeline
-# over-generation from vague or blanket statements.
-MAX_REQUESTS_PER_SOURCE = 5
-
-# Pattern to detect proper names (capitalized words, at least 2 chars).
-# Used for blanket statement detection.
-_PROPER_NAME_PATTERN = re.compile(r"\b[A-Z][a-z]{1,}\b")
 
 
 class RequestBuilder:
@@ -66,7 +56,6 @@ class RequestBuilder:
         """Build BunkRequest objects from resolved requests.
 
         Groups by requester for priority calculation, then builds each request.
-        Applies post-build guardrails (over-generation, blanket statement detection).
 
         Args:
             resolved_requests: List of (ParsedRequest, resolution_info) tuples
@@ -98,81 +87,7 @@ class RequestBuilder:
                 except Exception as e:
                     logger.error(f"Failed to build bunk request: {e}")
 
-        # Apply post-build guardrails
-        pending_requests = self._apply_guardrails(pending_requests)
-
         return pending_requests
-
-    def _apply_guardrails(self, requests: list[BunkRequest]) -> list[BunkRequest]:
-        """Apply over-generation and blanket statement guardrails.
-
-        Guardrail 1: Over-generation - If >MAX_REQUESTS_PER_SOURCE individual
-        requests come from the same source text, flag all as PENDING for staff review.
-
-        Guardrail 2: Blanket statements - If the source text doesn't name specific
-        people (no proper nouns), flag all resulting requests as PENDING.
-        """
-        if not requests:
-            return requests
-
-        # Group requests by source text to detect over-generation
-        by_source: dict[str, list[BunkRequest]] = {}
-        for req in requests:
-            source_text = req.metadata.get("original_text", "")
-            if source_text:
-                by_source.setdefault(source_text, []).append(req)
-
-        for source_text, group in by_source.items():
-            # Guardrail 1: Over-generation check
-            if len(group) > MAX_REQUESTS_PER_SOURCE:
-                logger.warning(
-                    f"Over-generation guardrail: {len(group)} requests from single source "
-                    f"(limit {MAX_REQUESTS_PER_SOURCE}). Flagging for staff review."
-                )
-                for req in group:
-                    req.status = RequestStatus.PENDING
-                    req.metadata["over_generation_flagged"] = True
-                    req.metadata["over_generation_count"] = len(group)
-                    req.disposition_reason = "over_generation_review"
-
-            # Guardrail 2: Blanket statement detection
-            # If source text doesn't contain any target names from its requests,
-            # it's a blanket statement that shouldn't generate individual requests
-            if len(group) > 1 and self._is_blanket_statement(source_text, group):
-                logger.warning(
-                    f"Blanket statement guardrail: source text has no named individuals. "
-                    f"Flagging {len(group)} requests for staff review."
-                )
-                for req in group:
-                    req.status = RequestStatus.PENDING
-                    req.metadata["blanket_statement_flagged"] = True
-                    req.disposition_reason = "blanket_statement_review"
-
-        return requests
-
-    @staticmethod
-    def _is_blanket_statement(source_text: str, requests: list[BunkRequest]) -> bool:
-        """Detect if source text is a blanket statement without named individuals.
-
-        Returns True if the source text doesn't contain any of the target names
-        from the requests it generated. This catches cases like "wants to be with
-        kids her age" that somehow got resolved to individual people.
-        """
-        if not source_text:
-            return False
-
-        text_lower = source_text.lower()
-
-        # Check if any requested name appears in the source text
-        for req in requests:
-            if req.requested_name:
-                # Check if the target's first name appears in the source
-                name_parts = req.requested_name.lower().split()
-                if name_parts and name_parts[0] in text_lower:
-                    return False
-
-        # No target names found in source text - likely a blanket statement
-        return True
 
     def build_single_request(
         self,

@@ -26,16 +26,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Group kinds where auto-expansion is disabled.
-# Vague references ("last year's bunkmates") create a single PENDING request
-# for staff review instead of expanding to N individual requests.
-# Named references ("Mike from last year") still resolve via resolution strategies.
-DISABLED_AUTO_EXPAND_KINDS: frozenset[GroupKind] = frozenset(
-    {
-        GroupKind.LAST_YEAR_BUNKMATES,
-    }
-)
-
 
 class PlaceholderExpander:
     """Service for expanding group reference requests into individual requests.
@@ -102,16 +92,7 @@ class PlaceholderExpander:
 
             # Expand each group reference
             for idx, group_kind in group_refs:
-                if group_kind in DISABLED_AUTO_EXPAND_KINDS:
-                    # Vague group references are NOT auto-expanded.
-                    # Create a single PENDING request for staff review.
-                    logger.info(
-                        f"Auto-expand disabled for {group_kind.value}; creating single PENDING request for staff review"
-                    )
-                    expanded_results.extend(
-                        self._create_staff_review_request(parse_result, resolution_list, idx, group_kind)
-                    )
-                elif resolver_registry and group_kind in resolver_registry:
+                if resolver_registry and group_kind in resolver_registry:
                     resolver = resolver_registry[group_kind]
                     expanded = self._expand_via_resolver(parse_result, resolution_list, idx, group_kind, resolver)
                     expanded_results.extend(expanded)
@@ -265,42 +246,3 @@ class PlaceholderExpander:
         )
 
         return [(failed_pr, [updated_resolution])]
-
-    def _create_staff_review_request(
-        self,
-        parse_result: ParseResult,
-        resolution_list: list[ResolutionResult],
-        idx: int,
-        group_kind: GroupKind,
-    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
-        """Create a single PENDING request for staff review instead of auto-expanding.
-
-        Used when auto-expansion is disabled for a group kind (e.g. LAST_YEAR_BUNKMATES).
-        The original request text is preserved so staff have context for manual review.
-        """
-        original_request = parse_result.parsed_requests[idx]
-
-        review_pr = ParseResult(
-            parsed_requests=[original_request],
-            needs_historical_context=parse_result.needs_historical_context,
-            is_valid=parse_result.is_valid,
-            parse_request=parse_result.parse_request,
-            metadata={
-                **parse_result.metadata,
-                "auto_expand_disabled": True,
-                "group_kind": group_kind.value,
-            },
-        )
-
-        review_resolution = ResolutionResult(
-            person=None,
-            confidence=0.0,
-            method="auto_expand_disabled",
-            metadata={
-                "group_kind": group_kind.value,
-                "needs_staff_review": True,
-                "reason": f"Vague {group_kind.value} reference requires staff review; auto-expansion disabled",
-            },
-        )
-
-        return [(review_pr, [review_resolution])]

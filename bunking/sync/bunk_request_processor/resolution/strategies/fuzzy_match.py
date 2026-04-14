@@ -531,7 +531,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
 
         jw_threshold = float(self._get_confidence("jaro_winkler_threshold", DEFAULT_JARO_WINKLER_THRESHOLD))
         first_lower = parsed.first.lower()
-
         matches = []
 
         for c in jw_pool:
