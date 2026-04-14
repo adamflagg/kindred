@@ -694,7 +694,7 @@ class TestBuildMetadataSourceFragment:
             auto_resolve_threshold=0.8,
         )
 
-    def test_build_metadata_preserves_source_fragment(self, builder) -> None:
+    def test_build_metadata_preserves_source_fragment(self, builder: RequestBuilder) -> None:
         """BR metadata should include source_fragment from parsed_req when ai_parsed=False (Phase 1 path)."""
         parsed_req = ParsedRequest(
             target_name="Emma",
@@ -710,14 +710,14 @@ class TestBuildMetadataSourceFragment:
                 "source_fragment": "wants to be with Emma from last year",
             },
         )
-        resolution_info: dict = {}
+        resolution_info: dict[str, Any] = {}
         ai_parsed = False
 
         metadata = builder.build_request_metadata(parsed_req, resolution_info, ai_parsed)
 
         assert metadata["source_fragment"] == "wants to be with Emma from last year"
 
-    def test_build_metadata_source_fragment_empty_when_missing(self, builder) -> None:
+    def test_build_metadata_source_fragment_empty_when_missing(self, builder: RequestBuilder) -> None:
         """If parsed_req.metadata has no source_fragment key, default to empty string."""
         parsed_req = ParsedRequest(
             target_name="Emma",
