@@ -800,6 +800,20 @@ class TestMapToDbSourceFragment:
         data = repository._map_to_db(request)
         assert "source_fragment" in data
 
+    def test_source_fragment_truncated_at_2000_chars(self, repository: RequestRepository) -> None:
+        """Fragments longer than 2000 chars must be truncated to fit the DB column max."""
+        long_fragment = "x" * 2500
+        request = self._make_request({"source_fragment": long_fragment})
+        data = repository._map_to_db(request)
+        assert data["source_fragment"] == "x" * 2000
+
+    def test_source_fragment_within_limit_preserved(self, repository: RequestRepository) -> None:
+        """Fragments at or under 2000 chars must not be modified."""
+        exact_fragment = "y" * 2000
+        request = self._make_request({"source_fragment": exact_fragment})
+        data = repository._map_to_db(request)
+        assert data["source_fragment"] == exact_fragment
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

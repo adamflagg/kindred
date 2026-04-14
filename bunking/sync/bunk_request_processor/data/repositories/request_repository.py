@@ -290,7 +290,9 @@ class RequestRepository:
                 data["ai_p3_reasoning"] = json.dumps(request.metadata["ai_p3_reasoning"])
 
         # Always set source_fragment column (even if empty — old rows need clearing on re-save)
-        data["source_fragment"] = request.metadata.get("source_fragment", "")
+        # Truncate to DB max (2000 chars) in case AI returns an unexpectedly long fragment.
+        raw_fragment = request.metadata.get("source_fragment", "") if request.metadata else ""
+        data["source_fragment"] = raw_fragment[:2000]
 
         if request.metadata:
             if "ai_parsed" in request.metadata:

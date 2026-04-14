@@ -42,3 +42,35 @@ class TestAIFullParseRequestItemSourceFragment:
             source_fragment="Emma Johnson from last year",
         )
         assert item.source_fragment == "Emma Johnson from last year"
+
+
+class TestSourceFragmentMaxLength:
+    def test_bunk_request_item_rejects_fragment_over_2000_chars(self) -> None:
+        import pytest
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AIBunkRequestItem(
+                request_type="bunk_with",
+                target_name="Emma",
+                source_fragment="x" * 2001,
+            )
+
+    def test_full_parse_request_item_rejects_fragment_over_2000_chars(self) -> None:
+        import pytest
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AIFullParseRequestItem(
+                request_type="bunk_with",
+                target_name="Emma",
+                source_fragment="x" * 2001,
+            )
+
+    def test_bunk_request_item_accepts_fragment_at_exactly_2000_chars(self) -> None:
+        item = AIBunkRequestItem(
+            request_type="bunk_with",
+            target_name="Emma",
+            source_fragment="x" * 2000,
+        )
+        assert len(item.source_fragment) == 2000
