@@ -200,6 +200,7 @@ class RequestBuilder:
             "target_name": parsed_req.target_name,
             "keywords_found": parsed_req.metadata.get("keywords_found", []),
             "ai_p1_reasoning": parsed_req.metadata.get("reasoning", "") if not ai_parsed else "",
+            "source_fragment": self._reconcile_source_fragment(parsed_req),
             "ai_p3_reasoning": resolution_info.get("resolution_metadata", {}).get("ai_p3_reasoning", {})
             if ai_parsed
             else {},
@@ -216,6 +217,20 @@ class RequestBuilder:
             metadata["source_detail"] = parsed_req.metadata.get("source_detail", "")
 
         return metadata
+
+    @staticmethod
+    def _reconcile_source_fragment(parsed_req: ParsedRequest) -> str:
+        """Pick the minimal highlight fragment, falling back to target_name when the AI returned
+        the full list as the fragment for a comma/semicolon-separated input (known failure mode).
+        """
+        ai_fragment = str(parsed_req.metadata.get("source_fragment", "")).strip()
+        original = (parsed_req.raw_text or "").strip()
+        target = (parsed_req.target_name or "").strip()
+
+        ai_copied_whole_list = ai_fragment == original and original != "" and ("," in original or ";" in original)
+        if ai_copied_whole_list and target and target in original:
+            return target
+        return ai_fragment
 
     def determine_request_status(
         self, parsed_req: ParsedRequest, resolution_info: dict[str, Any], metadata: dict[str, Any]

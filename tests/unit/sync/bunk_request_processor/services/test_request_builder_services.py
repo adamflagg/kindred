@@ -680,5 +680,155 @@ class TestDispositionReasonDirect:
         assert br.status == RequestStatus.PENDING
 
 
+class TestBuildMetadataSourceFragment:
+    """build_request_metadata should surface source_fragment from parsed_req.metadata."""
+
+    @pytest.fixture
+    def builder(self):
+        mock = Mock()
+        mock.calculate_priority.return_value = 3
+        return RequestBuilder(
+            priority_calculator=mock,
+            temporal_name_cache=None,
+            year=2025,
+            auto_resolve_threshold=0.8,
+        )
+
+    def test_build_metadata_preserves_source_fragment(self, builder: RequestBuilder) -> None:
+        """BR metadata should include source_fragment from parsed_req when ai_parsed=False (Phase 1 path)."""
+        parsed_req = ParsedRequest(
+            target_name="Emma",
+            raw_text="wants to be with Emma from last year",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={
+                "reasoning": "because emma",
+                "source_fragment": "wants to be with Emma from last year",
+            },
+        )
+        resolution_info: dict[str, Any] = {}
+        ai_parsed = False
+
+        metadata = builder.build_request_metadata(parsed_req, resolution_info, ai_parsed)
+
+        assert metadata["source_fragment"] == "wants to be with Emma from last year"
+
+    def test_build_metadata_source_fragment_empty_when_missing(self, builder: RequestBuilder) -> None:
+        """If parsed_req.metadata has no source_fragment key, default to empty string."""
+        parsed_req = ParsedRequest(
+            target_name="Emma",
+            raw_text="some text",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"reasoning": "x"},  # no source_fragment key
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=False)
+
+        assert metadata["source_fragment"] == ""
+
+    def test_narrows_fragment_when_ai_copied_whole_comma_list(self, builder: RequestBuilder) -> None:
+        """Comma-separated list + AI returned the whole list → narrow to just the target name."""
+        parsed_req = ParsedRequest(
+            target_name="Edo Firstenberg",
+            raw_text="Sasha Doerig-Krugman, Edo Firstenberg, Dean Roitman",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={
+                "source_fragment": "Sasha Doerig-Krugman, Edo Firstenberg, Dean Roitman",
+            },
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "Edo Firstenberg"
+
+    def test_narrows_fragment_for_semicolon_list(self, builder: RequestBuilder) -> None:
+        parsed_req = ParsedRequest(
+            target_name="Elizabeth Gordon",
+            raw_text="Miya Marks; Elizabeth Gordon; Roslyn Euser",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "Miya Marks; Elizabeth Gordon; Roslyn Euser"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "Elizabeth Gordon"
+
+    def test_keeps_ai_fragment_when_subset_of_source(self, builder: RequestBuilder) -> None:
+        """AI returned a minimal fragment (not the whole list) → keep it as-is."""
+        parsed_req = ParsedRequest(
+            target_name="Jake",
+            raw_text="wants Emma but NOT Jake - he bullied her",
+            request_type=RequestType.NOT_BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "NOT Jake"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "NOT Jake"
+
+    def test_keeps_ai_fragment_for_single_name_input(self, builder: RequestBuilder) -> None:
+        """Single-name input where fragment == raw_text is legitimate, not a bug — keep it."""
+        parsed_req = ParsedRequest(
+            target_name="Emma Wilson",
+            raw_text="Emma Wilson",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "Emma Wilson"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        assert metadata["source_fragment"] == "Emma Wilson"
+
+    def test_keeps_ai_fragment_when_target_not_in_text(self, builder: RequestBuilder) -> None:
+        """Parenthetical case: target='Levi Weissenborn' not contiguous in 'Levi (Fern) Weissenborn'.
+        We can't safely narrow → trust the AI's fragment even if it equals the whole input.
+        """
+        parsed_req = ParsedRequest(
+            target_name="Levi Weissenborn",
+            raw_text="Levi (Fern) Weissenborn, Nico Mosseri",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.9,
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            metadata={"source_fragment": "Levi (Fern) Weissenborn, Nico Mosseri"},
+        )
+
+        metadata = builder.build_request_metadata(parsed_req, {}, ai_parsed=True)
+
+        # target_name not in raw_text contiguously → can't narrow → keep AI fragment as-is
+        assert metadata["source_fragment"] == "Levi (Fern) Weissenborn, Nico Mosseri"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

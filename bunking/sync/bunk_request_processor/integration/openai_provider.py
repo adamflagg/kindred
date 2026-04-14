@@ -406,6 +406,7 @@ class OpenAIProvider(AIProvider):
                 "keywords_found": ai_req.keywords_found,
                 "parse_notes": ai_req.parse_notes,
                 "reasoning": ai_req.reasoning,
+                "source_fragment": ai_req.source_fragment,
                 "needs_clarification": ai_req.needs_clarification,
                 "ambiguity_reason": ai_req.ambiguity_reason,
                 "source_type": ai_req.source_type,

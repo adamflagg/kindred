@@ -84,3 +84,4 @@ For each valid request, provide:
 - parse_notes: Brief explanation of what was extracted
 - reasoning: Why you categorized this request this way
 - list_position: Position in multi-request fields (0-indexed)
+- source_fragment: The EXACT verbatim substring of the input text (copy-paste, do NOT paraphrase) that supports THIS specific request. When a single field contains multiple requests, return a different fragment for each. Use an empty string "" ONLY when the request was inferred without any direct textual support (e.g. placeholder expansion like LAST_YEAR_BUNKMATES, or an age preference you inferred from context without a quotable phrase). Prefer the shortest fragment that unambiguously supports the request. Include adjacent words ("not X", "definitely X") when they change the meaning.

@@ -16,6 +16,7 @@ from ...core.models import (
     RequestStatus,
     RequestType,
 )
+from ...integration.ai_schemas import SOURCE_FRAGMENT_MAX_LEN
 from ..pocketbase_wrapper import PocketBaseWrapper
 
 logger = get_logger(__name__)
@@ -288,6 +289,12 @@ class RequestRepository:
                 data["ai_p1_reasoning"] = json.dumps(request.metadata["ai_p1_reasoning"])
             if "ai_p3_reasoning" in request.metadata:
                 data["ai_p3_reasoning"] = json.dumps(request.metadata["ai_p3_reasoning"])
+
+        # Always set source_fragment column (even if empty — old rows need clearing on re-save)
+        raw_fragment = request.metadata.get("source_fragment", "") if request.metadata else ""
+        data["source_fragment"] = raw_fragment[:SOURCE_FRAGMENT_MAX_LEN]
+
+        if request.metadata:
             if "ai_parsed" in request.metadata:
                 data["ai_parsed"] = request.metadata["ai_parsed"]
             if "is_reciprocal" in request.metadata:
