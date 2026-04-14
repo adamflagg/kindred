@@ -1,0 +1,122 @@
+"""Tests verifying the AI parse schema no longer accepts group_kind fields.
+
+After removing the group-expansion feature entirely (see
+docs/plans/workstream-b-remove-group-expansion.md), the Pydantic schema
+for AI-structured output must reject `group_kind` and `group_metadata`
+as unknown fields. AI responses are expected to name specific individuals
+or, when that isn't possible, produce a single PENDING staff-review
+record via prompt instructions.
+
+These tests are written first (TDD) and fail on current `main` (which
+still defines `group_kind` / `group_metadata` on `AIBunkRequestItem`).
+They pass after the schema fields are deleted.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from bunking.sync.bunk_request_processor.integration.ai_schemas import (
+    AIBunkRequestItem,
+    AIFullParseRequestItem,
+    AIParseResponse,
+)
+
+
+class TestAiSchemaRejectsGroupKind:
+    """AIBunkRequestItem must not accept group_kind or group_metadata."""
+
+    def test_ai_bunk_request_item_rejects_group_kind(self) -> None:
+        """Sending group_kind to AIBunkRequestItem must raise a validation error.
+
+        Pydantic models default to ignoring extras in permissive mode; the
+        schema is configured (after this change) to forbid unknown fields so
+        a stale AI response containing `group_kind` surfaces as a hard error
+        rather than silently passing unused data.
+        """
+        with pytest.raises(Exception) as exc_info:
+            AIBunkRequestItem.model_validate(
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Emma Johnson",
+                    "group_kind": "sibling",
+                }
+            )
+        # Pydantic raises ValidationError; either way, the field name
+        # should appear in the error message for clarity.
+        assert "group_kind" in str(exc_info.value)
+
+    def test_ai_bunk_request_item_rejects_group_metadata(self) -> None:
+        """group_metadata must also be rejected as an unknown field."""
+        with pytest.raises(Exception) as exc_info:
+            AIBunkRequestItem.model_validate(
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Emma Johnson",
+                    "group_metadata": {"school_name": "Riverside Elementary"},
+                }
+            )
+        assert "group_metadata" in str(exc_info.value)
+
+    def test_ai_bunk_request_item_has_no_group_kind_attribute(self) -> None:
+        """The schema class should not define group_kind at all."""
+        item = AIBunkRequestItem(request_type="bunk_with", target_name="Liam Garcia")
+        assert not hasattr(item, "group_kind")
+        assert not hasattr(item, "group_metadata")
+
+    def test_ai_full_parse_request_item_has_no_group_kind(self) -> None:
+        """The Phase 1+2 combined schema also should not expose group_kind."""
+        item = AIFullParseRequestItem(
+            request_type="bunk_with",
+            target_name="Olivia Chen",
+        )
+        assert not hasattr(item, "group_kind")
+        assert not hasattr(item, "group_metadata")
+
+    def test_ai_parse_response_rejects_group_kind_in_items(self) -> None:
+        """A full parse response with nested group_kind should fail validation."""
+        with pytest.raises(Exception) as exc_info:
+            AIParseResponse.model_validate(
+                {
+                    "requests": [
+                        {
+                            "request_type": "bunk_with",
+                            "target_name": "",
+                            "group_kind": "last_year_bunkmates",
+                        }
+                    ]
+                }
+            )
+        assert "group_kind" in str(exc_info.value)
+
+
+class TestParsedRequestHasNoGroupKind:
+    """The domain ParsedRequest model must not expose a group_kind field."""
+
+    def test_parsed_request_no_group_kind_field(self) -> None:
+        from bunking.sync.bunk_request_processor.core.models import (
+            ParsedRequest,
+            RequestSource,
+            RequestType,
+        )
+
+        req = ParsedRequest(
+            raw_text="bunk with Emma",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field="share_bunk_with",
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=0,
+            metadata={},
+        )
+
+        # The group_kind attribute must not exist on ParsedRequest
+        assert not hasattr(req, "group_kind")
+
+    def test_group_kind_enum_not_exported(self) -> None:
+        """GroupKind enum must not be importable from core.models."""
+        import bunking.sync.bunk_request_processor.core.models as models
+
+        assert not hasattr(models, "GroupKind")
