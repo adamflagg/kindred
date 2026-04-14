@@ -11,7 +11,6 @@ import { PrePhase1Detail } from './panels/PrePhase1Detail'
 import { Phase1Detail } from './panels/Phase1Detail'
 import { ValidationDetail } from './panels/ValidationDetail'
 import { Phase2Detail } from './panels/Phase2Detail'
-import { ExpansionDetail } from './panels/ExpansionDetail'
 import { HistoricalDetail } from './panels/HistoricalDetail'
 import { Phase3Detail } from './panels/Phase3Detail'
 import { BatchSignalsDetail } from './panels/BatchSignalsDetail'
@@ -73,8 +72,6 @@ export function PipelineDetailPanel({
             {...sharedProps}
           />
         )
-      case 'expansion':
-        return <ExpansionDetail data={traceData.placeholder_expansion} {...sharedProps} />
       case 'historical':
         return <HistoricalDetail data={traceData.historical_verification} {...sharedProps} />
       case 'phase3_disambig':

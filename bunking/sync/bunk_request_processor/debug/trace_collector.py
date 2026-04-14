@@ -15,7 +15,6 @@ from .trace_models import (
     Phase1Trace,
     Phase2IntentTrace,
     Phase3IntentTrace,
-    PlaceholderExpansionTrace,
     PostPipelineTrace,
     PrePhase1Trace,
     RequesterInfo,
@@ -133,22 +132,6 @@ class TraceCollector:
         while len(trace.phase2_resolution) <= intent_idx:
             trace.phase2_resolution.append(Phase2IntentTrace())
         trace.phase2_resolution[intent_idx] = intent_trace
-
-    def record_expansion(
-        self,
-        key: str,
-        triggered: bool = False,
-        expansion_type: str | None = None,
-        expanded_count: int = 0,
-        expanded_targets: list[dict[str, Any]] | None = None,
-    ) -> None:
-        trace = self._ensure_trace(key)
-        trace.placeholder_expansion = PlaceholderExpansionTrace(
-            triggered=triggered,
-            type=expansion_type,
-            expanded_count=expanded_count,
-            expanded_targets=expanded_targets or [],
-        )
 
     def record_historical(
         self,
@@ -341,9 +324,6 @@ class NoOpTraceCollector(TraceCollector):
         pass
 
     def record_phase2(self, **kwargs: Any) -> None:  # type: ignore[override]
-        pass
-
-    def record_expansion(self, **kwargs: Any) -> None:  # type: ignore[override]
         pass
 
     def record_historical(self, **kwargs: Any) -> None:  # type: ignore[override]

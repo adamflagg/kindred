@@ -33,9 +33,6 @@ export function deriveStageStatus(stage: PipelineStage, trace: TraceData): Stage
       return 'error'
     }
 
-    case 'expansion':
-      return trace.placeholder_expansion.triggered ? 'success' : 'skipped'
-
     case 'historical':
       if (!trace.historical_verification.ran) return 'skipped'
       return trace.historical_verification.boost_applied ? 'success' : 'warning'

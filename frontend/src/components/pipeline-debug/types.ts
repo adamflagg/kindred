@@ -120,13 +120,6 @@ export interface Phase2IntentTrace {
   spread_filter_applied: boolean
 }
 
-export interface PlaceholderExpansionTrace {
-  triggered: boolean
-  type: string | null
-  expanded_count: number
-  expanded_targets: Array<Record<string, unknown>>
-}
-
 export interface HistoricalVerificationTrace {
   ran: boolean
   boost_applied: boolean
@@ -194,7 +187,6 @@ export interface TraceData {
   phase1_parse: Phase1Trace
   validation: ValidationTrace
   phase2_resolution: Phase2IntentTrace[]
-  placeholder_expansion: PlaceholderExpansionTrace
   historical_verification: HistoricalVerificationTrace
   phase3_disambiguation: Phase3IntentTrace[]
   post_pipeline: PostPipelineTrace
@@ -309,7 +301,6 @@ export type PipelinePhase =
   | 'phase1'
   | 'validation'
   | 'phase2'
-  | 'expansion'
   | 'historical'
   | 'phase3'
   | 'post_pipeline'
@@ -320,7 +311,6 @@ export const PHASE_ORDER: PipelinePhase[] = [
   'phase1',
   'validation',
   'phase2',
-  'expansion',
   'historical',
   'phase3',
   'post_pipeline',
@@ -342,7 +332,6 @@ export type PipelineStage =
   | 'source_text_validation'
   // Resolution
   | 'phase2_resolve'
-  | 'expansion'
   | 'historical'
   | 'phase3_disambig'
   // Finalization
@@ -367,7 +356,6 @@ export const STAGE_TO_PHASE: Record<PipelineStage, PipelinePhase> = {
   temporal_filter: 'validation',
   source_text_validation: 'validation',
   phase2_resolve: 'phase2',
-  expansion: 'expansion',
   historical: 'historical',
   phase3_disambig: 'phase3',
   batch_signals: 'post_pipeline',
@@ -393,7 +381,7 @@ export const STAGE_GROUPS: StageGroupConfig[] = [
   {
     id: 'resolution',
     label: 'Resolution',
-    stages: ['phase2_resolve', 'expansion', 'historical', 'phase3_disambig'],
+    stages: ['phase2_resolve', 'historical', 'phase3_disambig'],
   },
   {
     id: 'finalization',
