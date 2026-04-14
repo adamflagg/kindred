@@ -485,7 +485,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         # Use all_persons for phonetic matching when candidates is empty (single-name targets)
         # This avoids the expensive fallback to resolve() which re-fetches all persons
-        phonetic_pool = candidates if candidates else all_persons
+        phonetic_pool = candidates or all_persons
 
         # If we still have no pool to search, we can't do phonetic matching
         if not phonetic_pool:

@@ -388,7 +388,7 @@ async def validate_bunking(
             all_sessions=all_sessions,
             bunk_plans=bunk_plans_for_validator,
             attendees=attendees_for_validator,
-            historical_bunking=historical_bunking if historical_bunking else None,
+            historical_bunking=historical_bunking or None,
         )
 
         return validation_result.model_dump()

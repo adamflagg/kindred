@@ -444,9 +444,8 @@ class OpenAIProvider(AIProvider):
                     "younger": AgePreference.YOUNGER,
                 }
                 parsed_request.age_preference = age_pref_map.get(
-                    parsed_request.target_name.lower(),
-                    None,  # "unclear" maps to None for manual review
-                )
+                    parsed_request.target_name.lower()
+                )  # "unclear" maps to None for manual review
                 parsed_request.target_name = None
 
             # Handle group_kind from AI output

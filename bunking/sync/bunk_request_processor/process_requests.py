@@ -241,7 +241,7 @@ async def load_from_database(
 
     # Determine which fields to process
     # If source_fields provided, use those; otherwise use all
-    fields_to_process = source_fields if source_fields else ALL_PROCESSING_FIELDS
+    fields_to_process = source_fields or ALL_PROCESSING_FIELDS
 
     # Force mode: clear processed flags to enable reprocessing (same logic as Go)
     if force:

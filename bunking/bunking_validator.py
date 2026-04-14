@@ -8,7 +8,7 @@ import json
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -60,7 +60,7 @@ class HistoricalBunkingRecord:
 logger = get_logger(__name__)
 
 
-class ValidationSeverity(str, Enum):
+class ValidationSeverity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
