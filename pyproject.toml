@@ -157,6 +157,11 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["."]
+
 [tool.mypy]
 python_version = "3.14"
 plugins = ["pydantic.mypy"]
