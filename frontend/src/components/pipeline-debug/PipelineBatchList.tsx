@@ -1,14 +1,17 @@
 /**
  * PipelineBatchList - Summary table for pipeline debug batch overview.
  *
- * Displays a table of summary rows with columns for camper name, target name,
- * source field, status, confidence, resolution method, Phase 3 triggered, and
- * AI reasoning excerpt. Includes filters for status, source field, resolution
- * method, confidence range, session, and Phase 3. Color coding for status
- * (green/amber/red) and confidence (gradient by value). Click row navigates
- * to drill-down.
+ * Receives the full row set for a run in `items` and performs all filtering,
+ * sorting and searching in-memory. The search input is local-only and never
+ * triggers a network round-trip. Scrolling is virtualized with
+ * `useVirtualTable` so thousands of rows stay smooth.
+ *
+ * Columns: camper name, target name, source field, status, disposition/
+ * reason, confidence, resolution method, Phase 3 triggered, AI reasoning.
+ * Status / disposition / confidence are color-coded.
  */
 
+import { useMemo, useState } from 'react'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 import { formatSourceField } from '../../utils/formatSourceField'
@@ -18,6 +21,10 @@ import {
   getStatusClasses,
   getConfidenceClasses,
 } from '../../utils/dispositionColors'
+import { useVirtualTable } from '../../hooks/useVirtualTable'
+
+/** Fixed height for the virtualized scroll viewport. */
+const VIRTUAL_VIEWPORT_HEIGHT = 696
 
 /** Column definitions for sortable headers. */
 const SORTABLE_COLUMNS: Array<{
@@ -33,20 +40,28 @@ const SORTABLE_COLUMNS: Array<{
   { label: 'Confidence', field: 'final_confidence' },
   { label: 'Method', field: 'resolution_method' },
   { label: 'P3', field: 'phase3_triggered' },
-  { label: 'Reasoning', field: 'ai_reasoning_summary', hiddenClass: 'hidden lg:table-cell' },
+  { label: 'Reasoning', field: 'ai_reasoning_summary', hiddenClass: 'hidden lg:block' },
 ]
 
-/** Parse PocketBase sort string (e.g. "-final_confidence") into field + direction. */
-function parseSort(sort?: string): { field: string; desc: boolean } | null {
-  if (!sort) return null
-  if (sort.startsWith('-')) return { field: sort.slice(1), desc: true }
-  if (sort.startsWith('+')) return { field: sort.slice(1), desc: false }
-  return { field: sort, desc: false }
-}
+/** Shared CSS grid template for header + rows so columns stay aligned.
+ *  Small screens: 8 columns (Reasoning cell uses `hidden`, removed from flow).
+ *  lg+: 9 columns including Reasoning. */
+const PIPELINE_GRID_COLS =
+  'grid-cols-[minmax(120px,1.5fr)_minmax(120px,1.5fr)_130px_90px_140px_80px_minmax(110px,1fr)_56px] ' +
+  'lg:grid-cols-[minmax(120px,1.5fr)_minmax(120px,1.5fr)_130px_90px_140px_80px_minmax(110px,1fr)_56px_minmax(140px,2fr)]'
+
+/** Local sort state: field + direction. */
+type SortState = { field: keyof PipelineSummaryItem; desc: boolean } | null
 
 interface PipelineBatchListProps {
+  /** ALL rows for the selected run. Filtering/sorting/search happen client-side. */
   items: PipelineSummaryItem[]
-  total: number
+  /**
+   * Server-roundtrip filters (status, source_field, session, etc.) — still
+   * applied client-side but owned by the parent so state survives nav. The
+   * `search` / `page` / `sort` / `per_page` fields are no longer used and are
+   * tolerated for backward compatibility.
+   */
   filters: PipelineSummaryFilters
   onFiltersChange: (filters: PipelineSummaryFilters) => void
   onRowClick: (traceId: string) => void
@@ -56,13 +71,19 @@ interface PipelineBatchListProps {
 
 export function PipelineBatchList({
   items,
-  total,
   filters,
   onFiltersChange,
   onRowClick,
   isLoading,
   error,
 }: PipelineBatchListProps) {
+  // Local, never-leaves-the-component search text — no debounce, no min char.
+  const [searchText, setSearchText] = useState('')
+
+  // Local sort state — initialized from filters.sort for back-compat, but
+  // all toggles stay client-side (never calls onFiltersChange).
+  const [sort, setSort] = useState<SortState>(() => parseSortFilter(filters.sort))
+
   /** Update a single filter value and notify parent. */
   function updateFilter<K extends keyof PipelineSummaryFilters>(
     key: K,
@@ -72,20 +93,65 @@ export function PipelineBatchList({
   }
 
   /** Toggle sort on a column: none → asc → desc → none. */
-  function toggleSort(field: string) {
-    const current = parseSort(filters.sort)
-    let next: string | undefined
-    if (current?.field !== field) {
-      next = field // ascending (no prefix)
-    } else if (!current.desc) {
-      next = `-${field}` // descending
-    } else {
-      next = undefined // clear sort
-    }
-    updateFilter('sort', next)
+  function toggleSort(field: keyof PipelineSummaryItem) {
+    setSort((current) => {
+      if (current?.field !== field) return { field, desc: false }
+      if (!current.desc) return { field, desc: true }
+      return null
+    })
   }
 
-  const currentSort = parseSort(filters.sort)
+  // Apply all filters + search + sort client-side over the full in-memory list.
+  const visibleItems = useMemo(() => {
+    const q = searchText.trim().toLowerCase()
+    const filtered = items.filter((item) => {
+      if (
+        q &&
+        !item.requester_name.toLowerCase().includes(q) &&
+        !item.target_name.toLowerCase().includes(q)
+      ) {
+        return false
+      }
+      if (filters.final_status && item.final_status !== filters.final_status) return false
+      if (filters.source_field && item.source_field !== filters.source_field) return false
+      if (filters.resolution_method && item.resolution_method !== filters.resolution_method) {
+        return false
+      }
+      if (filters.session_cm_id !== undefined && item.session_cm_id !== filters.session_cm_id) {
+        return false
+      }
+      if (
+        filters.phase3_triggered !== undefined &&
+        item.phase3_triggered !== filters.phase3_triggered
+      ) {
+        return false
+      }
+      if (filters.pre_p1_action && item.pre_p1_action !== filters.pre_p1_action) return false
+      if (filters.min_confidence !== undefined && item.final_confidence < filters.min_confidence) {
+        return false
+      }
+      if (filters.max_confidence !== undefined && item.final_confidence > filters.max_confidence) {
+        return false
+      }
+      return true
+    })
+
+    if (!sort) return filtered
+    const { field, desc } = sort
+    return [...filtered].sort((a, b) => {
+      const cmp = compareValues(a[field], b[field])
+      return desc ? -cmp : cmp
+    })
+  }, [items, filters, searchText, sort])
+
+  // Always instantiate the virtualizer (hooks order must be stable). It's
+  // fine if the result isn't rendered because of loading/empty/error states.
+  const { parentRef, rowVirtualizer } = useVirtualTable({
+    data: visibleItems,
+    height: VIRTUAL_VIEWPORT_HEIGHT,
+    rowHeightPreset: 'compact',
+    overscan: 15,
+  })
 
   if (isLoading) {
     return (
@@ -112,6 +178,18 @@ export function PipelineBatchList({
       {/* Filter bar */}
       <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 p-3">
         <div className="flex flex-wrap items-center gap-3">
+          {/* Name search */}
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search names..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 w-52 rounded-md border py-1 pr-2 pl-7 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
+            />
+          </div>
+
           {/* Status filter */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="filter-status" className="text-muted-foreground text-xs font-medium">
@@ -243,69 +321,84 @@ export function PipelineBatchList({
 
           {/* Result count */}
           <div className="text-muted-foreground ml-auto text-xs">
-            {total} {total === 1 ? 'result' : 'results'}
+            {visibleItems.length} {visibleItems.length === 1 ? 'result' : 'results'}
+            {visibleItems.length !== items.length && (
+              <span className="text-muted-foreground/70"> of {items.length}</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Table */}
-      {items.length === 0 ? (
+      {/* Grid-based virtualized list (not HTML table — avoids table/tbody
+          display-mode foot-guns when combined with absolute-positioned rows). */}
+      {visibleItems.length === 0 ? (
         <div className="card-lodge bg-parchment-100/30 dark:bg-bark-900/20 flex h-48 flex-col items-center justify-center gap-3">
           <Search className="text-bark-400 h-8 w-8" />
           <p className="text-muted-foreground text-sm">No results found. Try adjusting filters.</p>
         </div>
       ) : (
         <div className="card-lodge overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-bark-200 dark:border-bark-700 bg-bark-50 dark:bg-bark-800/50 border-b">
-                  {SORTABLE_COLUMNS.map((col) => {
-                    const isActive = currentSort?.field === col.field
-                    const isDesc = isActive && currentSort.desc
-                    return (
-                      <th
-                        key={col.field}
-                        tabIndex={0}
-                        aria-sort={
-                          currentSort?.field === col.field
-                            ? currentSort.desc
-                              ? 'descending'
-                              : 'ascending'
-                            : undefined
-                        }
-                        onClick={() => toggleSort(col.field)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            toggleSort(col.field)
-                          }
-                        }}
-                        className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          {isActive ? (
-                            isDesc ? (
-                              <ArrowDown className="h-3 w-3" />
-                            ) : (
-                              <ArrowUp className="h-3 w-3" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                          )}
-                        </span>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-bark-100 dark:divide-bark-700/50 divide-y">
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
+          <div
+            ref={parentRef}
+            className="overflow-auto"
+            style={{ height: `${VIRTUAL_VIEWPORT_HEIGHT}px` }}
+          >
+            {/* Sticky header row */}
+            <div
+              role="row"
+              className={`bg-bark-50 dark:bg-bark-800/50 border-bark-200 dark:border-bark-700 sticky top-0 z-10 grid border-b ${PIPELINE_GRID_COLS}`}
+            >
+              {SORTABLE_COLUMNS.map((col) => {
+                const isActive = sort?.field === col.field
+                const isDesc = isActive && sort.desc
+                return (
+                  <div
+                    key={col.field}
+                    role="columnheader"
                     tabIndex={0}
-                    role="button"
+                    aria-sort={isActive ? (sort?.desc ? 'descending' : 'ascending') : undefined}
+                    onClick={() => toggleSort(col.field)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        toggleSort(col.field)
+                      }
+                    }}
+                    className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {isActive ? (
+                        isDesc ? (
+                          <ArrowDown className="h-3 w-3" />
+                        ) : (
+                          <ArrowUp className="h-3 w-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Virtualized body — a relatively-positioned spacer whose height
+                represents all rows; each row is absolutely positioned. */}
+            <div
+              role="rowgroup"
+              className="divide-bark-100 dark:divide-bark-700/50 relative"
+              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const item = visibleItems[virtualRow.index]
+                if (!item) return null
+                return (
+                  <div
+                    key={item.id}
+                    role="row"
+                    tabIndex={0}
+                    data-index={virtualRow.index}
                     onClick={() => onRowClick(item.trace_id)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -313,69 +406,100 @@ export function PipelineBatchList({
                         onRowClick(item.trace_id)
                       }
                     }}
-                    className="hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    className={`hover:bg-parchment-100/50 dark:hover:bg-bark-800/30 focus-visible:ring-forest-500 border-bark-100 dark:border-bark-700/50 grid cursor-pointer items-center border-b transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${PIPELINE_GRID_COLS}`}
                   >
-                    <td className="text-foreground px-3 py-2 font-medium">{item.requester_name}</td>
-                    <td className="text-foreground px-3 py-2">{item.target_name}</td>
-                    <td className="px-3 py-2">
+                    <div className="text-foreground truncate px-3 py-2 text-sm font-medium">
+                      {item.requester_name}
+                    </div>
+                    <div className="text-foreground truncate px-3 py-2 text-sm">
+                      {item.target_name}
+                    </div>
+                    <div className="px-3 py-2">
                       <span
                         className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getSourceFieldClasses(item.source_field)}`}
                       >
                         {formatSourceField(item.source_field)}
                       </span>
-                    </td>
-                    <td className="px-3 py-2">
+                    </div>
+                    <div className="px-3 py-2">
                       <span
                         className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getStatusClasses(item.final_status)}`}
                       >
                         {item.final_status}
                       </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="inline-flex items-center gap-1">
-                        {item.disposition_reason ? (
-                          <span
-                            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
-                          >
-                            {item.disposition_reason}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">{'\u2014'}</span>
-                        )}
-                        {item.is_reciprocal && (
-                          <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
-                            Recip
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
+                    </div>
+                    <div className="flex items-center gap-1 px-3 py-2">
+                      {item.disposition_reason ? (
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDispositionClasses(item.disposition_reason)}`}
+                        >
+                          {item.disposition_reason}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">{'\u2014'}</span>
+                      )}
+                      {item.is_reciprocal && (
+                        <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
+                          Recip
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-3 py-2">
                       <span
                         className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${getConfidenceClasses(item.final_confidence)}`}
                       >
                         {item.final_confidence.toFixed(2)}
                       </span>
-                    </td>
-                    <td className="text-muted-foreground px-3 py-2 text-xs">
+                    </div>
+                    <div className="text-muted-foreground truncate px-3 py-2 text-xs">
                       {item.resolution_method || '\u2014'}
-                    </td>
-                    <td className="px-3 py-2 text-xs">
+                    </div>
+                    <div className="px-3 py-2 text-xs">
                       {item.phase3_triggered ? (
                         <span className="font-medium text-amber-600 dark:text-amber-400">Yes</span>
                       ) : (
                         <span className="text-muted-foreground">No</span>
                       )}
-                    </td>
-                    <td className="text-muted-foreground hidden max-w-[200px] truncate px-3 py-2 text-xs lg:table-cell">
+                    </div>
+                    <div className="text-muted-foreground hidden truncate px-3 py-2 text-xs lg:block">
                       {item.ai_reasoning_summary || '\u2014'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
     </div>
   )
+}
+
+/** Parse a PB-style sort string (e.g. "-final_confidence") into local SortState. */
+function parseSortFilter(sort?: string): SortState {
+  if (!sort) return null
+  const desc = sort.startsWith('-')
+  const field = sort.startsWith('-') || sort.startsWith('+') ? sort.slice(1) : sort
+  // Best-effort narrow to a known PipelineSummaryItem key
+  return { field: field as keyof PipelineSummaryItem, desc }
+}
+
+/** Compare two values of possibly heterogeneous types for sort. */
+function compareValues(a: unknown, b: unknown): number {
+  if (a === b) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  if (typeof a === 'boolean' && typeof b === 'boolean') {
+    return a === b ? 0 : a ? -1 : 1
+  }
+  return String(a).localeCompare(String(b))
 }

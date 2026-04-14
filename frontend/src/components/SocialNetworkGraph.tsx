@@ -8,6 +8,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
 import { useSocialGraphData } from '../hooks/useSocialGraphData'
 import { Network, AlertCircle } from 'lucide-react'
+import { QueryGuard } from './QueryGuard'
 import clsx from 'clsx'
 import {
   ZOOM_SETTINGS,
@@ -79,7 +80,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
-  const { data: graphData, isLoading } = useSocialGraphData(sessionCmId)
+  const { data: graphData, isLoading, error } = useSocialGraphData(sessionCmId)
 
   // Compute the set of grades present in the current data for the legend
   const existingGrades = useMemo(() => {
@@ -381,119 +382,110 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="text-muted-foreground">Loading social network...</div>
-      </div>
-    )
-  }
-
-  if (!graphData || graphData.nodes.length === 0) {
-    // Display API warnings if available, otherwise show default message
-    const warningMessage = graphData?.warnings?.[0] ?? 'No social network data available'
-    return (
-      <div className="card-lodge p-12 text-center">
-        <Network className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
-        <p className="text-muted-foreground">{warningMessage}</p>
-      </div>
-    )
-  }
-
-  // Unified view - single structure with conditional styling
   return (
-    <>
-      {/* Backdrop - only shown when expanded */}
-      {isExpanded && (
-        <div className="fixed inset-0 z-40 bg-black/50" onClick={handleExpandToggle} />
-      )}
-
-      {/* Main container - card style when normal, fixed fullscreen when expanded */}
-      <div
-        className={clsx(
-          'flex flex-col overflow-hidden',
-          isExpanded
-            ? 'bg-card border-border shadow-lodge-xl fixed inset-4 z-50 rounded-2xl border'
-            : 'card-lodge'
-        )}
-      >
-        <div className="border-border relative z-20 border-b p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-display text-foreground flex items-center gap-2 font-semibold">
-              <Network className="text-primary h-5 w-5" />
-              Social Network Graph{isExpanded ? ' - Expanded View' : ''}
-            </h3>
-            <GraphControls
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              showLabels={showLabels}
-              onToggleLabels={toggleLabels}
-              showHelp={showHelp}
-              onToggleHelp={() => setShowHelp(!showHelp)}
-              isExpanded={isExpanded}
-              onToggleExpand={handleExpandToggle}
-              onZoomIn={handleZoomIn}
-              onZoomOut={handleZoomOut}
-              onFit={handleFit}
-            />
-          </div>
-
-          <EdgeFilters
-            showEdges={showEdges}
-            onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
-            showBubbles={showBubbles}
-            onToggleBubbles={setShowBubbles}
-            showUnits={showUnits}
-            onToggleUnits={setShowUnits}
-          />
-        </div>
-
-        {/* Graph container - ALWAYS in same tree position */}
-        {/* Mobile-responsive: min-h-[50vh] on mobile, h-[600px] on desktop */}
-        <div
-          className={clsx(
-            'relative',
-            isExpanded
-              ? 'flex min-h-0 flex-1 flex-col'
-              : 'h-[50vh] min-h-[50vh] sm:h-[60vh] lg:h-[600px]'
+    <QueryGuard
+      isLoading={isLoading}
+      error={error}
+      data={graphData?.nodes.length ? graphData : undefined}
+      label="social network"
+      emptyMessage={graphData?.warnings?.[0] ?? 'No social network data available'}
+    >
+      {(guardedGraphData) => (
+        <>
+          {/* Backdrop - only shown when expanded */}
+          {isExpanded && (
+            <div className="fixed inset-0 z-40 bg-black/50" onClick={handleExpandToggle} />
           )}
-        >
+
+          {/* Main container - card style when normal, fixed fullscreen when expanded */}
           <div
-            ref={containerRef}
-            className={clsx('overflow-hidden', isExpanded ? 'w-full flex-1' : 'h-full w-full')}
-          />
-
-          {/* Layout Computing Overlay */}
-          {isComputingLayout && (
-            <div className="bg-card/80 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm">
-              <div className="flex flex-col items-center gap-3">
-                <div className="spinner-lodge h-8 w-8" />
-                <div className="text-muted-foreground text-sm">Computing layout...</div>
+            className={clsx(
+              'flex flex-col overflow-hidden',
+              isExpanded
+                ? 'bg-card border-border shadow-lodge-xl fixed inset-4 z-50 rounded-2xl border'
+                : 'card-lodge'
+            )}
+          >
+            <div className="border-border relative z-20 border-b p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-foreground flex items-center gap-2 font-semibold">
+                  <Network className="text-primary h-5 w-5" />
+                  Social Network Graph{isExpanded ? ' - Expanded View' : ''}
+                </h3>
+                <GraphControls
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  showLabels={showLabels}
+                  onToggleLabels={toggleLabels}
+                  showHelp={showHelp}
+                  onToggleHelp={() => setShowHelp(!showHelp)}
+                  isExpanded={isExpanded}
+                  onToggleExpand={handleExpandToggle}
+                  onZoomIn={handleZoomIn}
+                  onZoomOut={handleZoomOut}
+                  onFit={handleFit}
+                />
               </div>
+
+              <EdgeFilters
+                showEdges={showEdges}
+                onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
+                showBubbles={showBubbles}
+                onToggleBubbles={setShowBubbles}
+                showUnits={showUnits}
+                onToggleUnits={setShowUnits}
+              />
             </div>
-          )}
 
-          <GraphMetrics graphData={graphData} />
+            {/* Graph container - ALWAYS in same tree position */}
+            {/* Mobile-responsive: min-h-[50vh] on mobile, h-[600px] on desktop */}
+            <div
+              className={clsx(
+                'relative',
+                isExpanded
+                  ? 'flex min-h-0 flex-1 flex-col'
+                  : 'h-[50vh] min-h-[50vh] sm:h-[60vh] lg:h-[600px]'
+              )}
+            >
+              <div
+                ref={containerRef}
+                className={clsx('overflow-hidden', isExpanded ? 'w-full flex-1' : 'h-full w-full')}
+              />
 
-          {/* Bubble Render Status */}
-          {bubbleRenderStatus && bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
-            <div className="shadow-lodge-sm absolute top-4 left-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
-              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-                <AlertCircle className="h-4 w-4" />
-                <span className="font-medium">Bubble Rendering Issue</span>
-              </div>
-              <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles
-                rendered. This is a known library limitation. The graph is still fully functional.
-              </div>
+              {/* Layout Computing Overlay */}
+              {isComputingLayout && (
+                <div className="bg-card/80 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="spinner-lodge h-8 w-8" />
+                    <div className="text-muted-foreground text-sm">Computing layout...</div>
+                  </div>
+                </div>
+              )}
+
+              <GraphMetrics graphData={guardedGraphData} />
+
+              {/* Bubble Render Status */}
+              {bubbleRenderStatus && bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
+                <div className="shadow-lodge-sm absolute top-4 left-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="font-medium">Bubble Rendering Issue</span>
+                  </div>
+                  <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                    Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles
+                    rendered. This is a known library limitation. The graph is still fully
+                    functional.
+                  </div>
+                </div>
+              )}
+
+              <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
             </div>
-          )}
 
-          <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
-        </div>
-
-        {showHelp && <GraphHelp />}
-      </div>
-    </>
+            {showHelp && <GraphHelp />}
+          </div>
+        </>
+      )}
+    </QueryGuard>
   )
 }

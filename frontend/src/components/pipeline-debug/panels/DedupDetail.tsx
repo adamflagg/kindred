@@ -4,12 +4,12 @@ import { DataRow, Badge, PanelSection } from './DataRow'
 
 interface DedupDetailProps {
   data: PostPipelineTrace
-  onRunAgain: () => void
-  onRunFromHere: (writeToProduction: boolean) => void
+  onRerunPhase: () => void
+  onRunFromHere: () => void
   isRunning?: boolean
 }
 
-export function DedupDetail({ data, onRunAgain, onRunFromHere, isRunning }: DedupDetailProps) {
+export function DedupDetail({ data, onRerunPhase, onRunFromHere, isRunning }: DedupDetailProps) {
   const { deduplication, self_reference, final_bunk_requests } = data
 
   return (
@@ -49,10 +49,8 @@ export function DedupDetail({ data, onRunAgain, onRunFromHere, isRunning }: Dedu
       </PanelSection>
 
       <ActionButtons
-        onRunAgain={onRunAgain}
+        onRerunPhase={onRerunPhase}
         onRunFromHere={onRunFromHere}
-        productionWriteCount={final_bunk_requests.length}
-        processedCount={1}
         isRunning={isRunning}
       />
     </div>

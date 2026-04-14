@@ -41,8 +41,10 @@ import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
 import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
+import { CamperRequestSummary } from './CamperRequestSummary'
 import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
+import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 
@@ -114,6 +116,37 @@ export default function RequestReviewPanel({
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  const [confirmPopover, setConfirmPopover] = useState<{
+    action: 'approve' | 'decline'
+    anchorRect: Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>
+    requestId: string
+  } | null>(null)
+  const [bulkConfirm, setBulkConfirm] = useState<{
+    action: 'approve' | 'decline'
+    count: number
+  } | null>(null)
+  const bulkConfirmRef = useRef<HTMLDivElement>(null)
+  const bulkConfirmPreviousFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (bulkConfirm) {
+      bulkConfirmPreviousFocusRef.current = document.activeElement as HTMLElement | null
+      const buttons = bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button')
+      buttons?.[buttons.length - 1]?.focus()
+    } else {
+      bulkConfirmPreviousFocusRef.current?.focus()
+      bulkConfirmPreviousFocusRef.current = null
+    }
+  }, [bulkConfirm])
+
+  function openConfirmPopover(
+    e: React.MouseEvent<HTMLButtonElement>,
+    action: 'approve' | 'decline',
+    requestId: string
+  ): void {
+    e.stopPropagation()
+    setConfirmPopover({ action, anchorRect: e.currentTarget.getBoundingClientRect(), requestId })
+  }
   const [filters, setFilters] = useState<FilterState>(() => {
     try {
       const stored = localStorage.getItem(storageKey)
@@ -631,22 +664,12 @@ export default function RequestReviewPanel({
 
   const handleBulkApprove = () => {
     if (selectedRequests.size === 0) return
-    bulkUpdateMutation.mutate({
-      ids: Array.from(selectedRequests),
-      updates: {
-        status: 'resolved' as BunkRequestsStatusOptions,
-        request_locked: true,
-      },
-    })
+    setBulkConfirm({ action: 'approve', count: selectedRequests.size })
   }
 
   const handleBulkReject = () => {
     if (selectedRequests.size === 0) return
-    if (!confirm(`Are you sure you want to reject ${selectedRequests.size} requests?`)) return
-    bulkUpdateMutation.mutate({
-      ids: Array.from(selectedRequests),
-      updates: { status: 'declined' as BunkRequestsStatusOptions },
-    })
+    setBulkConfirm({ action: 'decline', count: selectedRequests.size })
   }
 
   // Validated update handler - checks for conflicts before applying
@@ -1232,31 +1255,14 @@ export default function RequestReviewPanel({
                               </button>
                             )}
                             <button
-                              onClick={() =>
-                                updateRequestMutation.mutate({
-                                  id: request.id,
-                                  updates: {
-                                    status: 'resolved' as BunkRequestsStatusOptions,
-                                    request_locked: true,
-                                  },
-                                })
-                              }
+                              onClick={(e) => openConfirmPopover(e, 'approve', request.id)}
                               className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 touch-manipulation rounded-lg p-2 transition-colors"
                               title="Approve"
                             >
                               <CheckCircle className="h-5 w-5" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm('Reject this request?')) {
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: {
-                                      status: 'declined' as BunkRequestsStatusOptions,
-                                    },
-                                  })
-                                }
-                              }}
+                              onClick={(e) => openConfirmPopover(e, 'decline', request.id)}
                               className="hover:bg-destructive/10 text-destructive touch-manipulation rounded-lg p-2 transition-colors"
                               title="Reject"
                             >
@@ -1305,6 +1311,13 @@ export default function RequestReviewPanel({
                                   </span>
                                 </div>
                               )}
+                            </div>
+                            <div className="mt-3 border-t pt-3">
+                              <CamperRequestSummary
+                                requesterCmId={request.requester_id}
+                                year={year}
+                                currentRequestId={request.id}
+                              />
                             </div>
                           </div>
                         )}
@@ -1492,31 +1505,14 @@ export default function RequestReviewPanel({
                                 </button>
                               )}
                               <button
-                                onClick={() =>
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: {
-                                      status: 'resolved' as BunkRequestsStatusOptions,
-                                      request_locked: true,
-                                    },
-                                  })
-                                }
+                                onClick={(e) => openConfirmPopover(e, 'approve', request.id)}
                                 className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
                                 title="Approve"
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to reject this request?')) {
-                                    updateRequestMutation.mutate({
-                                      id: request.id,
-                                      updates: {
-                                        status: 'declined' as BunkRequestsStatusOptions,
-                                      },
-                                    })
-                                  }
-                                }}
+                                onClick={(e) => openConfirmPopover(e, 'decline', request.id)}
                                 className="hover:bg-destructive/10 text-destructive rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
                                 title="Reject"
                               >
@@ -1530,199 +1526,218 @@ export default function RequestReviewPanel({
                             className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-t px-4 py-4"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="ml-10 max-w-3xl space-y-3">
-                              {/* Merged Request: Show individual sources */}
-                              {hasMultipleSources(request) &&
-                              expandedMergedRequestId === request.id ? (
-                                <>
-                                  <div>
-                                    <h4 className="text-foreground mb-2 text-sm font-semibold">
-                                      Contributing Sources
-                                    </h4>
-                                    {isLoadingExpandedSourceLinks ? (
-                                      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Loading source details...
-                                      </div>
-                                    ) : expandedSourceLinks.length > 0 ? (
-                                      <div className="space-y-3">
-                                        {expandedSourceLinks.map((source, idx) => {
-                                          return (
-                                            <div
-                                              key={source.original_request_id || idx}
-                                              className={clsx(
-                                                'rounded-lg border p-3',
-                                                source.is_primary
-                                                  ? 'border-primary/30 bg-primary/5'
-                                                  : 'border-border bg-muted/20'
-                                              )}
-                                            >
-                                              <div className="mb-1 flex items-center gap-2">
-                                                <span className="text-sm font-medium">
-                                                  {formatSourceField(source.source_field)}
-                                                </span>
-                                                {source.is_primary && (
-                                                  <span className="bg-primary/10 text-primary inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium">
-                                                    <Star className="h-3 w-3" />
-                                                    Primary
+                            <div className="ml-10 grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-2">
+                              <div className="max-w-3xl space-y-3">
+                                {/* Merged Request: Show individual sources */}
+                                {hasMultipleSources(request) &&
+                                expandedMergedRequestId === request.id ? (
+                                  <>
+                                    <div>
+                                      <h4 className="text-foreground mb-2 text-sm font-semibold">
+                                        Contributing Sources
+                                      </h4>
+                                      {isLoadingExpandedSourceLinks ? (
+                                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          Loading source details...
+                                        </div>
+                                      ) : expandedSourceLinks.length > 0 ? (
+                                        <div className="space-y-3">
+                                          {expandedSourceLinks.map((source, idx) => {
+                                            return (
+                                              <div
+                                                key={source.original_request_id || idx}
+                                                className={clsx(
+                                                  'rounded-lg border p-3',
+                                                  source.is_primary
+                                                    ? 'border-primary/30 bg-primary/5'
+                                                    : 'border-border bg-muted/20'
+                                                )}
+                                              >
+                                                <div className="mb-1 flex items-center gap-2">
+                                                  <span className="text-sm font-medium">
+                                                    {formatSourceField(source.source_field)}
                                                   </span>
-                                                )}
+                                                  {source.is_primary && (
+                                                    <span className="bg-primary/10 text-primary inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium">
+                                                      <Star className="h-3 w-3" />
+                                                      Primary
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <p className="text-muted-foreground text-sm">
+                                                  {source.original_content?.trim() ? (
+                                                    source.original_content
+                                                  ) : (
+                                                    <span className="italic">No original text</span>
+                                                  )}
+                                                </p>
+                                                <p className="text-muted-foreground bg-muted/50 mt-1.5 rounded px-2 py-1 text-xs">
+                                                  <span className="font-medium">
+                                                    AI Intent Notes:
+                                                  </span>{' '}
+                                                  {source.parse_notes?.trim() ? (
+                                                    source.parse_notes
+                                                  ) : (
+                                                    <span className="italic">
+                                                      No AI intent notes
+                                                    </span>
+                                                  )}
+                                                </p>
                                               </div>
-                                              <p className="text-muted-foreground text-sm">
-                                                {source.original_content ?? (
-                                                  <span className="italic">No original text</span>
-                                                )}
-                                              </p>
-                                              <p className="text-muted-foreground bg-muted/50 mt-1.5 rounded px-2 py-1 text-xs">
-                                                <span className="font-medium">
-                                                  AI Intent Notes:
-                                                </span>{' '}
-                                                {source.parse_notes ?? (
-                                                  <span className="italic">No AI intent notes</span>
-                                                )}
-                                              </p>
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    ) : (
-                                      // Fallback to request-level data if no source links found
-                                      <p className="text-muted-foreground text-sm italic">
-                                        Source details not available
-                                      </p>
-                                    )}
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  {/* Single Source Request: Original display */}
-                                  <div>
-                                    <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                      Notes from Bunk Requests Form
-                                    </h4>
-                                    {(() => {
-                                      // Get field name(s) with proper fallback chain:
-                                      // 1. source_fields (for merged requests - array)
-                                      // 2. source_field (single field)
-                                      // 3. ai_p1_reasoning.csv_source_field (AI processing)
-                                      interface AiReasoningWithField {
-                                        csv_source_field?: string
-                                      }
-
-                                      const sourceFields = request.source_fields
-                                      const singleField = request.source_field
-                                      const aiField =
-                                        request.ai_p1_reasoning &&
-                                        typeof request.ai_p1_reasoning === 'object' &&
-                                        'csv_source_field' in request.ai_p1_reasoning
-                                          ? ((request.ai_p1_reasoning as AiReasoningWithField)
-                                              .csv_source_field ?? '')
-                                          : ''
-
-                                      // Determine display field name
-                                      let fieldName: string
-                                      if (Array.isArray(sourceFields) && sourceFields.length > 1) {
-                                        // Merged request: show all source fields combined
-                                        fieldName = sourceFields
-                                          .map((f) => formatSourceField(f))
-                                          .join(' + ')
-                                      } else {
-                                        // Single source: use first available field
-                                        const firstSourceField = Array.isArray(sourceFields)
-                                          ? sourceFields[0]
-                                          : undefined
-                                        const field =
-                                          (firstSourceField ?? singleField) || aiField || ''
-                                        fieldName = field
-                                          ? formatSourceField(field)
-                                          : 'Unknown Field'
-                                      }
-
-                                      return (
-                                        <p className="text-sm">
-                                          <span className="font-medium">{fieldName}:</span>{' '}
-                                          <span className="text-muted-foreground">
-                                            {request.original_text || (
-                                              <span className="italic">No original text</span>
-                                            )}
-                                          </span>
+                                            )
+                                          })}
+                                        </div>
+                                      ) : (
+                                        // Fallback to request-level data if no source links found
+                                        <p className="text-muted-foreground text-sm italic">
+                                          Source details not available
                                         </p>
-                                      )
-                                    })()}
-                                  </div>
-
-                                  {/* AI Intent Notes - always show for single source */}
-                                  <div>
-                                    <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                      AI Intent Notes
-                                    </h4>
-                                    <p className="text-muted-foreground text-sm">
-                                      {request.parse_notes || (
-                                        <span className="italic">No AI intent notes</span>
                                       )}
-                                    </p>
-                                  </div>
-                                </>
-                              )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Single Source Request: Original display */}
+                                    <div>
+                                      <h4 className="text-foreground mb-1 text-sm font-semibold">
+                                        Notes from Bunk Requests Form
+                                      </h4>
+                                      {(() => {
+                                        // Get field name(s) with proper fallback chain:
+                                        // 1. source_fields (for merged requests - array)
+                                        // 2. source_field (single field)
+                                        // 3. ai_p1_reasoning.csv_source_field (AI processing)
+                                        interface AiReasoningWithField {
+                                          csv_source_field?: string
+                                        }
 
-                              {/* Type (moved from column) */}
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="font-medium">Type:</span>
-                                <EditableRequestType
-                                  value={request.request_type}
-                                  onChange={(newType) => {
-                                    const updates: Partial<BunkRequestsResponse> = {
-                                      request_type: newType as BunkRequestsResponse['request_type'],
-                                    }
-                                    // Explicit clear values (not delete) so PocketBase clears the field.
-                                    // Use null (not 0) to properly clear the field — 0 causes
-                                    // unique constraint violations when multiple requests exist.
-                                    if (newType === 'age_preference') {
-                                      updates.requestee_id = null as unknown as number
-                                    } else {
-                                      updates.age_preference_target = ''
-                                    }
-                                    handleValidatedUpdate(request, updates)
-                                  }}
-                                  disabled={request.request_locked || false}
-                                />
-                              </div>
+                                        const sourceFields = request.source_fields
+                                        const singleField = request.source_field
+                                        const aiField =
+                                          request.ai_p1_reasoning &&
+                                          typeof request.ai_p1_reasoning === 'object' &&
+                                          'csv_source_field' in request.ai_p1_reasoning
+                                            ? ((request.ai_p1_reasoning as AiReasoningWithField)
+                                                .csv_source_field ?? '')
+                                            : ''
 
-                              {/* Metadata */}
-                              <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
-                                <span>Source: {request.source}</span>
-                                {request.disposition_reason && (
-                                  <span
-                                    className={clsx(
-                                      'rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                                      getDispositionClasses(request.disposition_reason)
-                                    )}
-                                  >
-                                    {formatDispositionReason(request.disposition_reason)}
-                                  </span>
+                                        // Determine display field name
+                                        let fieldName: string
+                                        if (
+                                          Array.isArray(sourceFields) &&
+                                          sourceFields.length > 1
+                                        ) {
+                                          // Merged request: show all source fields combined
+                                          fieldName = sourceFields
+                                            .map((f) => formatSourceField(f))
+                                            .join(' + ')
+                                        } else {
+                                          // Single source: use first available field
+                                          const firstSourceField = Array.isArray(sourceFields)
+                                            ? sourceFields[0]
+                                            : undefined
+                                          const field =
+                                            (firstSourceField ?? singleField) || aiField || ''
+                                          fieldName = field
+                                            ? formatSourceField(field)
+                                            : 'Unknown Field'
+                                        }
+
+                                        return (
+                                          <p className="text-sm">
+                                            <span className="font-medium">{fieldName}:</span>{' '}
+                                            <span className="text-muted-foreground">
+                                              {request.original_text || (
+                                                <span className="italic">No original text</span>
+                                              )}
+                                            </span>
+                                          </p>
+                                        )
+                                      })()}
+                                    </div>
+
+                                    {/* AI Intent Notes - always show for single source */}
+                                    <div>
+                                      <h4 className="text-foreground mb-1 text-sm font-semibold">
+                                        AI Intent Notes
+                                      </h4>
+                                      <p className="text-muted-foreground text-sm">
+                                        {request.parse_notes || (
+                                          <span className="italic">No AI intent notes</span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </>
                                 )}
-                                {request.resolution_method && (
-                                  <span>
-                                    via{' '}
-                                    <span className="font-medium">
-                                      {request.resolution_method.replace(/_/g, ' ')}
+
+                                {/* Type (moved from column) */}
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="font-medium">Type:</span>
+                                  <EditableRequestType
+                                    value={request.request_type}
+                                    onChange={(newType) => {
+                                      const updates: Partial<BunkRequestsResponse> = {
+                                        request_type:
+                                          newType as BunkRequestsResponse['request_type'],
+                                      }
+                                      // Explicit clear values (not delete) so PocketBase clears the field.
+                                      // Use null (not 0) to properly clear the field — 0 causes
+                                      // unique constraint violations when multiple requests exist.
+                                      if (newType === 'age_preference') {
+                                        updates.requestee_id = null as unknown as number
+                                      } else {
+                                        updates.age_preference_target = ''
+                                      }
+                                      handleValidatedUpdate(request, updates)
+                                    }}
+                                    disabled={request.request_locked || false}
+                                  />
+                                </div>
+
+                                {/* Metadata */}
+                                <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
+                                  <span>Source: {request.source}</span>
+                                  {request.disposition_reason && (
+                                    <span
+                                      className={clsx(
+                                        'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                        getDispositionClasses(request.disposition_reason)
+                                      )}
+                                    >
+                                      {formatDispositionReason(request.disposition_reason)}
                                     </span>
-                                  </span>
-                                )}
-                                <span>
-                                  Created: {new Date(request.created).toLocaleDateString()}
-                                </span>
-                              </div>
-
-                              {/* Protection status - show when applicable */}
-                              {request.request_locked && request.status === 'resolved' && (
-                                <div className="flex items-center gap-4 text-xs">
-                                  <span className="text-primary flex items-center gap-1.5 font-medium">
-                                    <Shield className="h-3 w-3" />
-                                    Protected due to manual approval
+                                  )}
+                                  {request.resolution_method && (
+                                    <span>
+                                      via{' '}
+                                      <span className="font-medium">
+                                        {request.resolution_method.replace(/_/g, ' ')}
+                                      </span>
+                                    </span>
+                                  )}
+                                  <span>
+                                    Created: {new Date(request.created).toLocaleDateString()}
                                   </span>
                                 </div>
-                              )}
+
+                                {/* Protection status - show when applicable */}
+                                {request.request_locked && request.status === 'resolved' && (
+                                  <div className="flex items-center gap-4 text-xs">
+                                    <span className="text-primary flex items-center gap-1.5 font-medium">
+                                      <Shield className="h-3 w-3" />
+                                      Protected due to manual approval
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="max-w-xl">
+                                <CamperRequestSummary
+                                  requesterCmId={request.requester_id}
+                                  year={year}
+                                  currentRequestId={request.id}
+                                />
+                              </div>
                             </div>
                           </div>
                         )}
@@ -1955,6 +1970,93 @@ export default function RequestReviewPanel({
           </div>
         </div>
       </div>
+
+      <ConfirmActionPopover
+        isOpen={!!confirmPopover}
+        anchorRect={confirmPopover?.anchorRect ?? { top: 0, left: 0, width: 0, height: 0 }}
+        action={confirmPopover?.action ?? 'approve'}
+        onConfirm={() => {
+          if (!confirmPopover) return
+          const { action, requestId } = confirmPopover
+          updateRequestMutation.mutate({
+            id: requestId,
+            updates:
+              action === 'approve'
+                ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
+                : { status: 'declined' as BunkRequestsStatusOptions },
+          })
+          setConfirmPopover(null)
+        }}
+        onCancel={() => setConfirmPopover(null)}
+      />
+
+      {bulkConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setBulkConfirm(null)} />
+          <div
+            ref={bulkConfirmRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-confirm-label"
+            className="bg-card border-border relative mx-4 w-full max-w-sm rounded-xl border p-6 shadow-xl"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setBulkConfirm(null)
+                return
+              }
+              if (e.key === 'Tab') {
+                const buttons = Array.from(
+                  bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button') ?? []
+                )
+                if (buttons.length === 0) return
+                e.preventDefault()
+                const idx = buttons.indexOf(document.activeElement as HTMLElement)
+                if (e.shiftKey) {
+                  buttons[idx <= 0 ? buttons.length - 1 : idx - 1]?.focus()
+                } else {
+                  buttons[idx >= buttons.length - 1 ? 0 : idx + 1]?.focus()
+                }
+              }
+            }}
+          >
+            <p id="bulk-confirm-label" className="text-foreground mb-5 text-base font-medium">
+              {bulkConfirm.action === 'approve'
+                ? `Confirm approving ${bulkConfirm.count} request${bulkConfirm.count === 1 ? '' : 's'}?`
+                : `Confirm declining ${bulkConfirm.count} request${bulkConfirm.count === 1 ? '' : 's'}?`}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setBulkConfirm(null)}
+                className="text-muted-foreground hover:bg-muted rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = Array.from(selectedRequests)
+                  bulkUpdateMutation.mutate({
+                    ids,
+                    updates:
+                      bulkConfirm.action === 'approve'
+                        ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
+                        : { status: 'declined' as BunkRequestsStatusOptions },
+                  })
+                  setBulkConfirm(null)
+                }}
+                className={
+                  bulkConfirm.action === 'approve'
+                    ? 'bg-forest-600 hover:bg-forest-700 dark:bg-forest-700 dark:hover:bg-forest-600 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors'
+                    : 'rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600'
+                }
+              >
+                {bulkConfirm.action === 'approve' ? 'Approve' : 'Decline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

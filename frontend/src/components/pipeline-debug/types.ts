@@ -296,6 +296,8 @@ export interface PipelineSummaryFilters {
   page?: number
   per_page?: number
   sort?: string
+  /** Free-text search across requester_name and target_name. */
+  search?: string
 }
 
 // =============================================================================

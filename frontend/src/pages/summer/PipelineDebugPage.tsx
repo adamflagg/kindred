@@ -25,7 +25,6 @@ import { usePipelineSummary } from '../../hooks/usePipelineSummary'
 import { usePipelineTrace } from '../../hooks/usePipelineTrace'
 import { useRunFromPhase, useRunFullTrace } from '../../hooks/useRunPhase'
 import {
-  PHASE_ORDER,
   STAGE_ORDER,
   type PipelineSummaryFilters,
   type PipelinePhase,
@@ -49,10 +48,13 @@ export default function PipelineDebugPage() {
   const [activeIntentIndex, setActiveIntentIndex] = useState(0)
   const [stalePhases, setStalePhases] = useState<Set<PipelinePhase>>(new Set())
 
-  // Data fetching
+  // Data fetching — the summary query fetches all rows for the run in a
+  // single request. Filtering/sorting/searching happen client-side in
+  // PipelineBatchList, so the queryKey is stable and typing/scrolling never
+  // trigger a refetch.
   const runsQuery = usePipelineRuns()
   const togglePin = useToggleRunPin()
-  const summaryQuery = usePipelineSummary(selectedRunId, filters)
+  const summaryQuery = usePipelineSummary(selectedRunId)
   const traceQuery = usePipelineTrace(traceId ?? null)
   const runFromPhase = useRunFromPhase()
   const runFullTrace = useRunFullTrace()
@@ -81,14 +83,13 @@ export default function PipelineDebugPage() {
     setActiveIntentIndex(0)
   }, [])
 
-  /** Run Again: re-run from phase, cascading through all remaining phases (always dry-run). */
-  const handleRunAgain = useCallback(
+  /** Rerun this phase: isolated single-phase execution (dry-run). */
+  const handleRerunPhase = useCallback(
     (phase: PipelinePhase) => {
       if (!traceId) return
-      // Mark all downstream phases as stale
-      const phaseIdx = PHASE_ORDER.indexOf(phase)
-      const downstream = new Set<PipelinePhase>(PHASE_ORDER.filter((_, idx) => idx > phaseIdx))
-      setStalePhases(downstream)
+      // Only this phase is re-executed — downstream phases are left unchanged,
+      // so we do not mark them stale.
+      setStalePhases(new Set())
 
       const trace = traceQuery.data
       runFromPhase.mutate(
@@ -99,6 +100,7 @@ export default function PipelineDebugPage() {
             year: trace?.year ?? 0,
             session_cm_ids: trace?.session_cm_id ? [trace.session_cm_id] : [],
             dry_run: true,
+            stop_at_phase: phase,
           },
         },
         {
@@ -113,9 +115,9 @@ export default function PipelineDebugPage() {
     [traceId, traceQuery.data, runFromPhase, navigate]
   )
 
-  /** Run From Here: cascade from phase through remaining phases. */
+  /** Run From Here: cascade from phase through remaining phases (dry-run only). */
   const handleRunFromHere = useCallback(
-    (phase: PipelinePhase, writeToProduction: boolean) => {
+    (phase: PipelinePhase) => {
       if (!traceId) return
       setStalePhases(new Set()) // Clear stale since we're re-running everything downstream
 
@@ -127,7 +129,7 @@ export default function PipelineDebugPage() {
             trace_id: traceId,
             year: trace?.year ?? 0,
             session_cm_ids: trace?.session_cm_id ? [trace.session_cm_id] : [],
-            dry_run: !writeToProduction,
+            dry_run: true,
           },
         },
         {
@@ -230,7 +232,7 @@ export default function PipelineDebugPage() {
                   traceData={trace.trace_data}
                   activeIntentIndex={activeIntentIndex}
                   onTabChange={setActiveIntentIndex}
-                  onRunAgain={handleRunAgain}
+                  onRerunPhase={handleRerunPhase}
                   onRunFromHere={handleRunFromHere}
                   isRunning={runFromPhase.isPending}
                 />
@@ -243,6 +245,19 @@ export default function PipelineDebugPage() {
                 onStageSelect={handleStageSelect}
                 stalePhases={stalePhases}
                 activeIntentIndex={activeIntentIndex}
+                onViewAllTraces={() => {
+                  setFilters({})
+                  void navigate('/summer/debug/pipeline')
+                }}
+                onReprocess={() => {
+                  runFullTrace.mutate({
+                    original_request_ids: [trace.original_request_id],
+                    year: trace.year,
+                    session_cm_ids: [trace.session_cm_id],
+                    dry_run: false,
+                  })
+                }}
+                isReprocessing={runFullTrace.isPending}
               />
             </div>
           )}
@@ -317,7 +332,12 @@ export default function PipelineDebugPage() {
         )}
       </QueryGuard>
 
-      {/* Summary table — only show when a run is selected */}
+      {/* Summary table — only show when a run is selected.
+          The query fetches ALL rows for the run in one shot; filtering /
+          sorting / searching happen client-side inside PipelineBatchList.
+          Because the queryKey is stable per run, the QueryGuard only
+          shows the loading skeleton on the first load, never on keystrokes
+          or scroll. */}
       {selectedRunId && (
         <QueryGuard
           isLoading={summaryQuery.isLoading}
@@ -329,7 +349,6 @@ export default function PipelineDebugPage() {
           {(summaryData) => (
             <PipelineBatchList
               items={summaryData.items}
-              total={summaryData.total}
               filters={filters}
               onFiltersChange={setFilters}
               onRowClick={handleRowClick}
