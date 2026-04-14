@@ -34,10 +34,12 @@ FORBIDDEN_GROUP_TOKENS = (
     "group_metadata",
     "LAST_YEAR_BUNKMATES",
     "last_year_bunkmates",
-    "classmates",
-    "congregation",
-    "Group references",
-    "group reference",
+    # Group-expansion category names that the AI was previously asked to emit
+    # as an enum value. Lowercase-standalone "classmates" / "congregation" are
+    # still legal English and the demographic fallback may mention them, so
+    # only the prompt-enum value tokens are forbidden.
+    '"classmates"',
+    '"congregation"',
 )
 
 PARSE_PROMPT_NAMES = (

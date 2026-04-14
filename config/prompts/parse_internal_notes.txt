@@ -29,10 +29,33 @@ This field may contain:
 3. "age_preference" - Age/grade preference
    Keywords: "bunk older", "same age/younger", "bunk with 5th/6th"
 
-=== SPECIAL PLACEHOLDERS ===
+=== NAMED INDIVIDUALS ONLY ===
 
-- "SIBLING" - For twin/sibling references
-- "LAST_YEAR_BUNKMATES" - For prior cabin references
+Every bunk_with / not_bunk_with request MUST name a specific individual camper.
+Group references ("twin", "sibling", "last year bunkmates") must NOT be
+turned into individual requests or guessed names — staff review is required.
+See STAFF-REVIEW FALLBACK below.
+
+=== STAFF-REVIEW FALLBACK (NEVER SILENTLY DROP) ===
+
+If the text expresses a bunking preference but does NOT name a specific
+individual, emit exactly ONE request with:
+- target_name = "" (empty string)
+- needs_clarification = true
+- ambiguity_reason = "unnamed_group_reference"
+- parse_notes = the original phrase verbatim
+
+Unnamed group examples — each produces ONE staff-review record:
+- "Must be bunked with twin sister" → 1 bunk_with fallback
+- "With last year's bunkmates" → 1 bunk_with fallback
+- "Must be with twin" → 1 bunk_with fallback
+
+For BUNK_APART style demographic or trait exclusions, also emit exactly ONE
+not_bunk_with record with `ambiguity_reason="demographic_or_trait_exclusion"`
+and the original phrase preserved in parse_notes.
+
+Never invent individual names. Never split an unnamed group into multiple
+requests.
 
 === STAFF SHORTHAND PATTERNS ===
 
@@ -48,9 +71,11 @@ Example 3 - Grade range:
 Input: "Bunk with 5th/6th"
 Output: 1 age_preference "younger" (relative to camper's grade context)
 
-Example 4 - Twin requirement:
+Example 4 - Twin requirement (unnamed):
 Input: "Must be bunked with twin sister"
-Output: 1 bunk_with "SIBLING", keywords_found: ["must"]
+Output: 1 bunk_with request, target_name="", needs_clarification=true,
+ambiguity_reason="unnamed_group_reference", keywords_found: ["must"],
+parse_notes: verbatim original text
 
 Example 5 - CO reference with friend:
 Input: "CO noted friends with Riley Brooks"
@@ -82,7 +107,8 @@ Output: 1 bunk_with "Noah Garcia", parse_notes: "prior bunkmate 2024"
 
 Example 12 - Multiple notes concatenated:
 Input: "Bunk older. CO noted friends with Emma. Must be with twin."
-Output: 3 requests - age_preference "older", bunk_with "Emma", bunk_with "SIBLING"
+Output: 3 requests - age_preference "older", bunk_with "Emma" (named),
+bunk_with staff-review fallback for "must be with twin" (unnamed group)
 
 === INVALID EXTRACTIONS ===
 
@@ -105,9 +131,13 @@ Staff shorthand can be ambiguous. Use confidence scoring:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name, placeholder, or age value
+- target_name: Person's actual name, age value ("older"/"younger"/"unclear"),
+  or "" for a staff-review fallback record
 - confidence: 0.0-1.0 (lower for abbreviated/unclear content)
 - keywords_found: Priority words like "must", "first choice"
+- needs_clarification: true when emitting a staff-review fallback record
+- ambiguity_reason: "unnamed_group_reference" or "demographic_or_trait_exclusion"
+  when needs_clarification is true
 
 Note: temporal_info is rarely needed for internal notes shorthand.
 
