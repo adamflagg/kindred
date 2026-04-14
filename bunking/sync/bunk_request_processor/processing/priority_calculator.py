@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.constants import PRIORITY_KEYWORDS
-from ..core.models import GroupKind, ParsedRequest, RequestType
+from ..core.models import ParsedRequest, RequestType
 from ..shared.constants import SourceField
 
 # Default rule priorities (used when config not provided or incomplete)
@@ -19,8 +19,6 @@ DEFAULT_RULES = {
     "staff_not_bunk_with": {"priority": 4},
     "age_preference_sole": {"priority": 4},
     "age_preference_with_others": {"priority": 1},
-    "last_year_bunkmates_sole": {"priority": 4},
-    "last_year_bunkmates_with_others": {"priority": 3},
     "staff_notes": {"priority": 2},
     "parent_age_preference": {"priority": 1},
 }
@@ -94,11 +92,9 @@ class PriorityCalculator:
         - bunk_with from family (first in list OR with keywords)
         - not_bunk_with from family or staff
         - age_preference from family as sole request
-        - LAST_YEAR_BUNKMATES as sole non-age request
 
         Priority 3:
         - bunk_with from family (subsequent without keywords)
-        - LAST_YEAR_BUNKMATES with other specific requests
 
         Priority 2:
         - Any request from staff notes
@@ -107,15 +103,7 @@ class PriorityCalculator:
         - age_preference from family with other requests
         - age_preference from parent (always)
         """
-        # Check what other requests exist for this person
-        non_age_requests = [r for r in all_requests_for_person if r.request_type != RequestType.AGE_PREFERENCE]
-
         has_other_requests = len(all_requests_for_person) > 1
-        # Group references (sibling, classmates, etc.) are not "specific" —
-        # only named-person requests count for priority escalation.
-        has_specific_bunk_requests = any(
-            r for r in non_age_requests if r.request_type == RequestType.BUNK_WITH and r.group_kind is None
-        )
 
         # Get all bunk_with requests from family source
         family_bunk_requests = [
@@ -151,13 +139,6 @@ class PriorityCalculator:
 
         if parsed.source_field == SourceField.NOT_BUNK_WITH and parsed.request_type == RequestType.NOT_BUNK_WITH:
             return self._get_rule_priority("staff_not_bunk_with")
-
-        if parsed.group_kind == GroupKind.LAST_YEAR_BUNKMATES and not has_specific_bunk_requests:
-            return self._get_rule_priority("last_year_bunkmates_sole")
-
-        # Priority 3 cases
-        if parsed.group_kind == GroupKind.LAST_YEAR_BUNKMATES and has_specific_bunk_requests:
-            return self._get_rule_priority("last_year_bunkmates_with_others")
 
         # Priority 2 cases - staff notes
         if parsed.source_field in [SourceField.INTERNAL_NOTES, SourceField.BUNKING_NOTES]:

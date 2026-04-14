@@ -71,15 +71,6 @@ class AgePreference(Enum):
     YOUNGER = "younger"
 
 
-class GroupKind(Enum):
-    """Types of group references that can be expanded into individual requests."""
-
-    SIBLING = "sibling"
-    LAST_YEAR_BUNKMATES = "last_year_bunkmates"
-    CLASSMATES = "classmates"
-    CONGREGATION = "congregation"
-
-
 @dataclass(frozen=True)
 class EnrollmentInfo:
     """Enrollment data for a person in a specific year.
@@ -264,7 +255,6 @@ class ParsedRequest:
     csv_position: int  # Position in the CSV field (0-based)
     metadata: dict[str, Any]
     notes: str | None = None
-    group_kind: GroupKind | None = None
 
     # Temporal conflict handling fields
     temporal_date: datetime | None = None
@@ -306,7 +296,7 @@ class BunkRequest:
     csv_position: int  # Position in the field
     year: int
     status: RequestStatus
-    is_placeholder: bool  # True for LAST_YEAR_BUNKMATES
+    is_placeholder: bool  # True when no concrete person is resolved (e.g. age preferences)
     metadata: dict[str, Any]  # All tracking info
 
     # Promoted fields — written directly, not via metadata

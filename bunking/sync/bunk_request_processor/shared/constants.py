@@ -51,7 +51,6 @@ INACTIVE_ENROLLMENT_STATUSES: frozenset[int] = frozenset(
 UNIT_NAMES: set[str] = {"nitzanim", "galil", "eilat", "haifa", "chalutzim", "carmel"}
 
 # Age preference values accepted as valid target_name values.
-# Group references (sibling, bunkmates, classmates, congregation) use group_kind field instead.
 VALID_AGE_TARGETS: set[str] = {
     "older",
     "younger",
