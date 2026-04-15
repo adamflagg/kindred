@@ -79,16 +79,31 @@ from ..validation.rules.self_reference import SelfReferenceRule
 logger = get_logger(__name__)
 
 
+_TRACE_KEY_CACHE_SENTINEL = "_trace_key_cache"
+
+
 def _get_trace_key(parse_result: ParseResult) -> str:
     """Extract the original_request_id trace key from a ParseResult.
 
     Uses V2 field_name directly as the _original_request_ids key.
     Returns empty string if mapping fails (e.g., CSV data without original_request_ids).
+
+    Result is memoized on the ParseResult's metadata dict (#923) to avoid
+    repeated dict lookups when multiple trace loops iterate the same results.
     """
+    meta = parse_result.metadata
+    cached = meta.get(_TRACE_KEY_CACHE_SENTINEL)
+    if cached is not None:
+        return str(cached)
+
     if parse_result.parse_request is None:
-        return ""
-    field_name = parse_result.parse_request.field_name
-    return str(parse_result.parse_request.row_data.get("_original_request_ids", {}).get(field_name, ""))
+        result = ""
+    else:
+        field_name = parse_result.parse_request.field_name
+        result = str(parse_result.parse_request.row_data.get("_original_request_ids", {}).get(field_name, ""))
+
+    meta[_TRACE_KEY_CACHE_SENTINEL] = result
+    return result
 
 
 def generate_unresolved_person_id(name_text: str) -> int:
@@ -999,31 +1014,34 @@ class RequestOrchestrator:
         """
         logger.info("=== Phase 2.5: Historical Group Verification ===")
 
-        # Snapshot confidence values before historical verification for trace comparison
+        # Snapshot confidence values before historical verification for trace comparison.
+        # Skipped in production (NoOpTraceCollector) to avoid per-request iteration (#923).
         pre_historical_confidences: dict[str, list[float]] = {}
-        for pr, res_list in resolution_results:
-            trace_key = _get_trace_key(pr)
-            if trace_key:
-                pre_historical_confidences[trace_key] = [rr.confidence for rr in res_list]
+        if self.trace_collector.is_enabled:
+            for pr, res_list in resolution_results:
+                trace_key = _get_trace_key(pr)
+                if trace_key:
+                    pre_historical_confidences[trace_key] = [rr.confidence for rr in res_list]
 
         verified_results = await self.historical_verification_service.verify(resolution_results)
 
         # --- Trace: Historical verification results ---
-        for pr, res_list in verified_results:
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            boost_applied = any(rr.metadata and rr.metadata.get("historical_verified") is True for rr in res_list)
-            pre_confs = pre_historical_confidences.get(trace_key, [])
-            original_conf = max(pre_confs) if pre_confs else None
-            boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
-            self.trace_collector.record_historical(
-                key=trace_key,
-                ran=True,
-                boost_applied=boost_applied,
-                original_confidence=original_conf if boost_applied else None,
-                boosted_confidence=boosted_conf if boost_applied else None,
-            )
+        if self.trace_collector.is_enabled:
+            for pr, res_list in verified_results:
+                trace_key = _get_trace_key(pr)
+                if not trace_key:
+                    continue
+                boost_applied = any(rr.metadata and rr.metadata.get("historical_verified") is True for rr in res_list)
+                pre_confs = pre_historical_confidences.get(trace_key, [])
+                original_conf = max(pre_confs) if pre_confs else None
+                boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
+                self.trace_collector.record_historical(
+                    key=trace_key,
+                    ran=True,
+                    boost_applied=boost_applied,
+                    original_confidence=original_conf if boost_applied else None,
+                    boosted_confidence=boosted_conf if boost_applied else None,
+                )
 
         return verified_results
 
@@ -1088,48 +1106,50 @@ class RequestOrchestrator:
             logger.info(f"Pre-parsed {len(pre_parsed_results)} requests without AI (e.g., socialize preferences)")
 
         # --- Trace: Phase 1 results ---
-        pre_parsed_ids = {id(r) for r in pre_parsed_results}
-        for pr in parse_results:
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            ran = id(pr) not in pre_parsed_ids  # AI-parsed vs pre-parsed
-            parsed_intents = [
-                {
-                    "target_name": req.target_name or "",
-                    "request_type": req.request_type.value if req.request_type else "",
-                    "confidence": req.confidence,
-                    "keywords_found": req.metadata.get("keywords_found", []) if req.metadata else [],
-                    "reasoning": req.metadata.get("reasoning", "") if req.metadata else "",
-                    "parse_notes": req.metadata.get("parse_notes", "") if req.metadata else "",
-                    "csv_position": req.csv_position,
-                }
-                for req in pr.parsed_requests
-            ]
-            pr_meta = pr.metadata or {}
-            security_meta = pr_meta.get("security_metadata") or {}
-            sanitization_info = (
-                {
-                    "is_suspicious": security_meta.get("is_suspicious", False),
-                    "risk_level": security_meta.get("risk_level"),
-                    "confidence_penalty": security_meta.get("confidence_penalty", 0.0),
-                }
-                if security_meta
-                else None
-            )
-            self.trace_collector.record_phase1(
-                key=trace_key,
-                ran=ran,
-                parsed_intents=parsed_intents,
-                is_valid=pr.is_valid,
-                error_message=pr_meta.get("failure_reason"),
-                token_count=pr_meta.get("token_count"),
-                processing_time_ms=pr_meta.get("processing_time_ms"),
-                ai_raw_response=pr_meta.get("ai_raw_response"),
-                ai_reasoning_summary=pr_meta.get("ai_reasoning_summary"),
-                sanitization=sanitization_info,
-                parse_request={"field_name": pr.parse_request.field_name} if pr.parse_request else {},
-            )
+        # Skipped under NoOpTraceCollector (#923) — avoids per-request dict builds.
+        if self.trace_collector.is_enabled:
+            pre_parsed_ids = {id(r) for r in pre_parsed_results}
+            for pr in parse_results:
+                trace_key = _get_trace_key(pr)
+                if not trace_key:
+                    continue
+                ran = id(pr) not in pre_parsed_ids  # AI-parsed vs pre-parsed
+                parsed_intents = [
+                    {
+                        "target_name": req.target_name or "",
+                        "request_type": req.request_type.value if req.request_type else "",
+                        "confidence": req.confidence,
+                        "keywords_found": req.metadata.get("keywords_found", []) if req.metadata else [],
+                        "reasoning": req.metadata.get("reasoning", "") if req.metadata else "",
+                        "parse_notes": req.metadata.get("parse_notes", "") if req.metadata else "",
+                        "csv_position": req.csv_position,
+                    }
+                    for req in pr.parsed_requests
+                ]
+                pr_meta = pr.metadata or {}
+                security_meta = pr_meta.get("security_metadata") or {}
+                sanitization_info = (
+                    {
+                        "is_suspicious": security_meta.get("is_suspicious", False),
+                        "risk_level": security_meta.get("risk_level"),
+                        "confidence_penalty": security_meta.get("confidence_penalty", 0.0),
+                    }
+                    if security_meta
+                    else None
+                )
+                self.trace_collector.record_phase1(
+                    key=trace_key,
+                    ran=ran,
+                    parsed_intents=parsed_intents,
+                    is_valid=pr.is_valid,
+                    error_message=pr_meta.get("failure_reason"),
+                    token_count=pr_meta.get("token_count"),
+                    processing_time_ms=pr_meta.get("processing_time_ms"),
+                    ai_raw_response=pr_meta.get("ai_raw_response"),
+                    ai_reasoning_summary=pr_meta.get("ai_reasoning_summary"),
+                    sanitization=sanitization_info,
+                    parse_request={"field_name": pr.parse_request.field_name} if pr.parse_request else {},
+                )
 
         if stop_at_phase == "phase1":
             return {"dry_run": dry_run, "phase": "phase1"}
@@ -1161,25 +1181,27 @@ class RequestOrchestrator:
                     self._map_age_preference_direction(parsed_req)
 
         # --- Trace: Validation results ---
-        for pr in parse_results:
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            self.trace_collector.record_validation(
-                key=trace_key,
-                type_validation={"passed": pr.is_valid, "rejected": []},
-                temporal_conflicts={
-                    "batch_filtered": conflict_filtered,
-                    "details": [],
-                    "note": "batch-level aggregate, not per-request",
-                },
-                source_text_validation={
-                    "batch_rejected": source_rejected,
-                    "hallucinated_names": [],
-                    "unit_names": [],
-                    "note": "batch-level aggregate, not per-request",
-                },
-            )
+        # Gated on trace_collector.is_enabled to skip per-request trace work in prod (#923).
+        if self.trace_collector.is_enabled:
+            for pr in parse_results:
+                trace_key = _get_trace_key(pr)
+                if not trace_key:
+                    continue
+                self.trace_collector.record_validation(
+                    key=trace_key,
+                    type_validation={"passed": pr.is_valid, "rejected": []},
+                    temporal_conflicts={
+                        "batch_filtered": conflict_filtered,
+                        "details": [],
+                        "note": "batch-level aggregate, not per-request",
+                    },
+                    source_text_validation={
+                        "batch_rejected": source_rejected,
+                        "hallucinated_names": [],
+                        "unit_names": [],
+                        "note": "batch-level aggregate, not per-request",
+                    },
+                )
 
         if stop_at_phase == "validation":
             return {"dry_run": dry_run, "phase": "validation"}
@@ -1204,46 +1226,49 @@ class RequestOrchestrator:
         resolution_results = await self.phase2_service.batch_resolve(parse_results)
 
         # --- Trace: Phase 2 results ---
-        for pr, res_list in resolution_results:
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            for intent_idx, rr in enumerate(res_list):
-                rr_meta = rr.metadata or {}
-                candidate_factors: dict[int, dict[str, float]] = rr_meta.get("candidate_factors", {})
-                candidates_trace = [
-                    CandidateTrace(
-                        person_cm_id=c.cm_id,
-                        name=c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
-                        session_cm_id=c.session_cm_id,
-                        grade=c.grade,
-                        school=c.school,
-                        score_breakdown=candidate_factors.get(c.cm_id, {}),
+        # Gated on trace_collector.is_enabled — candidate_factors dict construction
+        # is pure overhead under NoOpTraceCollector (#923).
+        if self.trace_collector.is_enabled:
+            for pr, res_list in resolution_results:
+                trace_key = _get_trace_key(pr)
+                if not trace_key:
+                    continue
+                for intent_idx, rr in enumerate(res_list):
+                    rr_meta = rr.metadata or {}
+                    candidate_factors: dict[int, dict[str, float]] = rr_meta.get("candidate_factors", {})
+                    candidates_trace = [
+                        CandidateTrace(
+                            person_cm_id=c.cm_id,
+                            name=c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                            session_cm_id=c.session_cm_id,
+                            grade=c.grade,
+                            school=c.school,
+                            score_breakdown=candidate_factors.get(c.cm_id, {}),
+                        )
+                        for c in (rr.candidates or [])
+                    ]
+                    winning_factors: dict[str, float] = (
+                        candidate_factors.get(rr.person.cm_id, {}) if rr.person and candidate_factors else {}
                     )
-                    for c in (rr.candidates or [])
-                ]
-                winning_factors: dict[str, float] = (
-                    candidate_factors.get(rr.person.cm_id, {}) if rr.person and candidate_factors else {}
-                )
-                self.trace_collector.record_phase2(
-                    key=trace_key,
-                    intent_idx=intent_idx,
-                    intent_trace=Phase2IntentTrace(
-                        target_name=rr.target_name or "",
-                        all_candidates=candidates_trace,
-                        staff_filtered=rr.method == "staff_filtered",
-                        hallucination_detected=bool(rr_meta.get("below_threshold")),
-                        final_result=Phase2FinalResult(
-                            person_cm_id=rr.person.cm_id if rr.person else None,
-                            person_name=rr.person.full_name if rr.person else None,
-                            confidence=rr.confidence,
-                            method=rr.method,
-                            is_resolved=rr.is_resolved,
-                            is_ambiguous=rr.is_ambiguous,
-                            confidence_factors=winning_factors,
+                    self.trace_collector.record_phase2(
+                        key=trace_key,
+                        intent_idx=intent_idx,
+                        intent_trace=Phase2IntentTrace(
+                            target_name=rr.target_name or "",
+                            all_candidates=candidates_trace,
+                            staff_filtered=rr.method == "staff_filtered",
+                            hallucination_detected=bool(rr_meta.get("below_threshold")),
+                            final_result=Phase2FinalResult(
+                                person_cm_id=rr.person.cm_id if rr.person else None,
+                                person_name=rr.person.full_name if rr.person else None,
+                                confidence=rr.confidence,
+                                method=rr.method,
+                                is_resolved=rr.is_resolved,
+                                is_ambiguous=rr.is_ambiguous,
+                                confidence_factors=winning_factors,
+                            ),
                         ),
-                    ),
-                )
+                    )
 
         if stop_at_phase == "phase2":
             return {"dry_run": dry_run, "phase": "phase2"}
@@ -1261,12 +1286,14 @@ class RequestOrchestrator:
                 elif res_result.is_ambiguous:
                     self._stats["phase2_ambiguous"] += 1
 
-        # Snapshot confidence values before Phase 3 (after historical verification)
+        # Snapshot confidence values before Phase 3 (after historical verification).
+        # Skipped under NoOpTraceCollector to avoid per-request iteration (#923).
         pre_phase3_confidences: dict[str, list[float]] = {}
-        for pr, res_list in resolution_results:
-            trace_key = _get_trace_key(pr)
-            if trace_key:
-                pre_phase3_confidences[trace_key] = [rr.confidence for rr in res_list]
+        if self.trace_collector.is_enabled:
+            for pr, res_list in resolution_results:
+                trace_key = _get_trace_key(pr)
+                if trace_key:
+                    pre_phase3_confidences[trace_key] = [rr.confidence for rr in res_list]
 
         # Phase 3: AI Disambiguation (for unresolved cases)
         unresolved_cases = []
@@ -1360,62 +1387,67 @@ class RequestOrchestrator:
         self._stats["reciprocal_pairs"] = sum(1 for s in batch_signals.values() if s.is_reciprocal) // 2
 
         # --- Trace: Phase 3 results ---
-        for idx, (pr, res_list) in enumerate(resolution_results):
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            ran_phase3 = idx in phase3_processed
-            pre_confs = pre_phase3_confidences.get(trace_key, [])
-            for intent_idx, rr in enumerate(res_list):
-                rr_meta = rr.metadata or {}
-                # Build candidates sent to AI from the ResolutionResult's candidate list
-                ranked_sel = rr_meta.get("ranked_selections") or []
-                ranked_lookup: dict[int, float] = {
-                    s["person_id"]: s["confidence"]
-                    for s in ranked_sel
-                    if isinstance(s, dict) and "person_id" in s and "confidence" in s
-                }
-                candidates_sent = (
-                    [
-                        {
-                            "person_cm_id": c.cm_id,
-                            "name": c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
-                            **({"grade": c.grade} if hasattr(c, "grade") and c.grade is not None else {}),
-                            **({"ai_confidence": ranked_lookup[c.cm_id]} if c.cm_id in ranked_lookup else {}),
-                        }
-                        for c in (rr.candidates or [])
-                    ]
-                    if ran_phase3
-                    else []
-                )
-                # Phase 3 metadata: ai_confidence, reason, candidates_considered
-                ai_reasoning = rr_meta.get("reason")
-                confidence_before = pre_confs[intent_idx] if intent_idx < len(pre_confs) else None
-                self.trace_collector.record_phase3(
-                    key=trace_key,
-                    intent_idx=intent_idx,
-                    intent_trace=Phase3IntentTrace(
-                        target_name=rr.target_name or "",
-                        ran=ran_phase3,
-                        candidates_sent=candidates_sent,
-                        ai_reasoning=ai_reasoning,
-                        confidence_before=confidence_before,
-                        result=(
-                            "resolved"
-                            if rr.is_resolved
-                            else (
-                                "not_needed"
-                                if not ran_phase3
-                                else rr_meta.get("disambiguation_status", "still_ambiguous")
-                            )
+        # Gated on trace_collector.is_enabled — the ranked_lookup dict and
+        # per-candidate trace construction are pure overhead in production (#923).
+        if self.trace_collector.is_enabled:
+            for idx, (pr, res_list) in enumerate(resolution_results):
+                trace_key = _get_trace_key(pr)
+                if not trace_key:
+                    continue
+                ran_phase3 = idx in phase3_processed
+                pre_confs = pre_phase3_confidences.get(trace_key, [])
+                for intent_idx, rr in enumerate(res_list):
+                    rr_meta = rr.metadata or {}
+                    # Build candidates sent to AI from the ResolutionResult's candidate list
+                    ranked_sel = rr_meta.get("ranked_selections") or []
+                    ranked_lookup: dict[int, float] = {
+                        s["person_id"]: s["confidence"]
+                        for s in ranked_sel
+                        if isinstance(s, dict) and "person_id" in s and "confidence" in s
+                    }
+                    candidates_sent = (
+                        [
+                            {
+                                "person_cm_id": c.cm_id,
+                                "name": c.full_name if hasattr(c, "full_name") else f"{c.first_name} {c.last_name}",
+                                **({"grade": c.grade} if hasattr(c, "grade") and c.grade is not None else {}),
+                                **({"ai_confidence": ranked_lookup[c.cm_id]} if c.cm_id in ranked_lookup else {}),
+                            }
+                            for c in (rr.candidates or [])
+                        ]
+                        if ran_phase3
+                        else []
+                    )
+                    # Phase 3 metadata: ai_confidence, reason, candidates_considered
+                    ai_reasoning = rr_meta.get("reason")
+                    confidence_before = pre_confs[intent_idx] if intent_idx < len(pre_confs) else None
+                    self.trace_collector.record_phase3(
+                        key=trace_key,
+                        intent_idx=intent_idx,
+                        intent_trace=Phase3IntentTrace(
+                            target_name=rr.target_name or "",
+                            ran=ran_phase3,
+                            candidates_sent=candidates_sent,
+                            ai_reasoning=ai_reasoning,
+                            confidence_before=confidence_before,
+                            result=(
+                                "resolved"
+                                if rr.is_resolved
+                                else (
+                                    "not_needed"
+                                    if not ran_phase3
+                                    else rr_meta.get("disambiguation_status", "still_ambiguous")
+                                )
+                            ),
+                            confidence_after=rr.confidence,
+                            reranked=rr_meta.get("reranked", False),
+                            jw_score=rr_meta.get("jw_score"),
+                            ai_confidence=rr_meta.get("ai_confidence"),
+                            no_match_signal=(
+                                rr_meta.get("disambiguation_status") == "no_match" if ran_phase3 else False
+                            ),
                         ),
-                        confidence_after=rr.confidence,
-                        reranked=rr_meta.get("reranked", False),
-                        jw_score=rr_meta.get("jw_score"),
-                        ai_confidence=rr_meta.get("ai_confidence"),
-                        no_match_signal=(rr_meta.get("disambiguation_status") == "no_match" if ran_phase3 else False),
-                    ),
-                )
+                    )
 
         if stop_at_phase == "phase3":
             return {"dry_run": dry_run, "phase": "phase3"}
@@ -1445,14 +1477,23 @@ class RequestOrchestrator:
         self._stats["requests_created"] = len(created_requests)
 
         # --- Trace: Post-Pipeline results ---
+        # Entire block is gated on trace_collector.is_enabled — building the
+        # created_by_key map and the per-intent final_bunk_requests list is
+        # wasted work under NoOpTraceCollector (#923).
+        if not self.trace_collector.is_enabled:
+            resolution_results_for_trace: list[Any] = []
+        else:
+            resolution_results_for_trace = list(resolution_results)
+
         # Build a map from (requester_cm_id, requested_cm_id, target_name) to created BunkRequest for trace linking
         # Key includes requested_cm_id to avoid collisions when different targets share the same name (#788)
         created_by_key: dict[tuple[int, int | None, str], Any] = {}
-        for req in created_requests:
-            req_key = (req.requester_cm_id, req.requested_cm_id, getattr(req, "requested_name", "") or "")
-            created_by_key.setdefault(req_key, req)
+        if self.trace_collector.is_enabled:
+            for req in created_requests:
+                req_key = (req.requester_cm_id, req.requested_cm_id, getattr(req, "requested_name", "") or "")
+                created_by_key.setdefault(req_key, req)
 
-        for pr, res_list in resolution_results:
+        for pr, res_list in resolution_results_for_trace:
             trace_key = _get_trace_key(pr)
             if not trace_key:
                 continue

@@ -38,6 +38,15 @@ class TraceCollector:
         self._traces: dict[str, TraceData] = {}
         self._trace_metadata: dict[str, dict[str, Any]] = {}
 
+    @property
+    def is_enabled(self) -> bool:
+        """Canonical flag used by hot-path gating (issue #923).
+
+        Kept as a property aliasing `enabled` for backwards compatibility with
+        existing callers that read/write `.enabled` directly.
+        """
+        return self.enabled
+
     def _ensure_trace(self, key: str) -> TraceData:
         if key not in self._traces:
             self._traces[key] = TraceData()

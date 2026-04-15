@@ -74,9 +74,15 @@ class TestTraceCollector:
         )
         assert len(tc._traces) == 2
 
+    def test_is_enabled_true_by_default(self):
+        tc = TraceCollector(run_id="test123")
+        assert tc.is_enabled is True
+
     def test_enabled_flag(self):
+        """Backwards-compat alias for is_enabled."""
         tc = TraceCollector(run_id="test123", enabled=True)
         assert tc.enabled is True
+        assert tc.is_enabled is True
 
 
 class TestNoOpTraceCollector:
@@ -98,6 +104,10 @@ class TestNoOpTraceCollector:
     def test_enabled_false(self):
         noop = NoOpTraceCollector()
         assert noop.enabled is False
+
+    def test_is_enabled_false(self):
+        noop = NoOpTraceCollector()
+        assert noop.is_enabled is False
 
 
 class TestSummaryDataDispositionFields:
