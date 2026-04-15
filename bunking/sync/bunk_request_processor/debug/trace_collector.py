@@ -394,10 +394,10 @@ class NoOpTraceCollector(TraceCollector):
     def record_conflict_detection(self, **kwargs: Any) -> None:  # type: ignore[override]
         pass
 
-    def record_disposition(self, **kwargs: Any) -> None:  # type: ignore[override]
+    def record_disposition(self, key: str, disposition: DispositionTrace) -> None:
         pass
 
-    def record_dedup_save(self, **kwargs: Any) -> None:  # type: ignore[override]
+    def record_dedup_save(self, key: str, dedup_save: DedupSaveTrace) -> None:
         pass
 
     async def flush(self, pb_client: Any, run_metadata: dict[str, Any] | None = None) -> str:
