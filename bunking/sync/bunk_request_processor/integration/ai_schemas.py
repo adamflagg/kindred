@@ -173,28 +173,12 @@ class AIDisambiguationResponse(BaseModel):
 
     @model_validator(mode="after")
     def normalize_exclusive_fields(self) -> AIDisambiguationResponse:
-        """Normalize legacy vs. modern fields instead of rejecting benign defaults.
-
-        Fixes #925: GPT-5-nano often returns ``ranked_selections`` populated while the
-        legacy fields carry their defaults (``no_match=False``, ``selected_person_id=None``).
-        The previous strict mutual-exclusivity check treated that case as an error and
-        dropped the entire bunk request.
-
-        Rules:
-        - If ``ranked_selections`` is non-empty, treat it as authoritative. Legacy fields
-          at their defaults are normalized (kept as-is); non-default values on either
-          legacy field are real conflicts and raise.
-        - If ``ranked_selections`` is empty, ``no_match=True`` together with a non-None
-          ``selected_person_id`` is a real conflict and raises. Either field alone is OK.
-        """
+        """Reconcile ranked_selections with legacy fields; see #925."""
         if self.ranked_selections:
             if self.no_match:
                 raise ValueError("ranked_selections and no_match=True are mutually exclusive")
             if self.selected_person_id is not None:
                 raise ValueError("ranked_selections and selected_person_id are mutually exclusive")
-            # Defaults are already False / None; reassign explicitly for clarity.
-            self.no_match = False
-            self.selected_person_id = None
             return self
         if self.no_match and self.selected_person_id is not None:
             raise ValueError("no_match=True and selected_person_id are mutually exclusive")
