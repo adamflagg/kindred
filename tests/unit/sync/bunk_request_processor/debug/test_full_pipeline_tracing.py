@@ -214,13 +214,16 @@ class TestFullPipelineTracing:
         mock_trace_collector.record_historical.assert_called()
 
     @pytest.mark.asyncio
-    async def test_post_pipeline_trace_called(self, mock_orchestrator, mock_trace_collector):
-        """record_post_pipeline() should be called after post-pipeline steps."""
+    async def test_post_pipeline_traces_called(self, mock_orchestrator, mock_trace_collector):
+        """All 4 finalization recorders should be called after post-pipeline steps."""
         raw_requests = [_make_raw_request()]
 
         await mock_orchestrator.process_requests(raw_requests=raw_requests, clear_existing=False)
 
-        mock_trace_collector.record_post_pipeline.assert_called()
+        mock_trace_collector.record_batch_signals.assert_called()
+        mock_trace_collector.record_conflict_detection.assert_called()
+        mock_trace_collector.record_disposition.assert_called()
+        mock_trace_collector.record_dedup_save.assert_called()
 
     @pytest.mark.asyncio
     async def test_all_phases_traced_in_order(self, mock_orchestrator, mock_trace_collector):
@@ -234,7 +237,10 @@ class TestFullPipelineTracing:
         mock_trace_collector.record_validation.assert_called()
         mock_trace_collector.record_phase2.assert_called()
         mock_trace_collector.record_historical.assert_called()
-        mock_trace_collector.record_post_pipeline.assert_called()
+        mock_trace_collector.record_batch_signals.assert_called()
+        mock_trace_collector.record_conflict_detection.assert_called()
+        mock_trace_collector.record_disposition.assert_called()
+        mock_trace_collector.record_dedup_save.assert_called()
 
     @pytest.mark.asyncio
     async def test_phase3_trace_skipped_when_all_resolved(self, mock_orchestrator, mock_trace_collector):

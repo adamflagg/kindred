@@ -1,10 +1,10 @@
-import type { PostPipelineTrace } from '../types'
+import type { ConflictDetectionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { Badge, PanelSection } from './DataRow'
 import { renderUnknownValue } from './panelUtils'
 
 interface ConflictDetailProps {
-  data: PostPipelineTrace
+  data: ConflictDetectionTrace
   onRerunPhase: () => void
   onRunFromHere: () => void
   isRunning?: boolean
@@ -16,7 +16,7 @@ export function ConflictDetail({
   onRunFromHere,
   isRunning,
 }: ConflictDetailProps) {
-  const { conflict_detection } = data
+  const conflict_detection = data
 
   return (
     <div className="space-y-5">

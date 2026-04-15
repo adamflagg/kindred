@@ -138,14 +138,42 @@ class FinalBunkRequestTrace(BaseModel):
     is_reciprocal: bool = False
 
 
-class PostPipelineTrace(BaseModel):
-    conflict_detection: dict[str, Any] = Field(default_factory=lambda: {"has_conflict": False, "details": []})
-    self_reference: dict[str, Any] = Field(default_factory=lambda: {"detected": False})
-    reciprocal: dict[str, Any] = Field(
-        default_factory=lambda: {"detected": False, "boost_applied": False, "boost_amount": None, "pair_cm_id": None}
-    )
-    deduplication: dict[str, Any] = Field(default_factory=lambda: {"was_duplicate": False, "kept_over": None})
+# ---------------------------------------------------------------------------
+# Finalization stage traces — flattened from the former PostPipelineTrace
+# (see issue #877). Each of the four post-pipeline stages now owns its own
+# typed trace. `self_reference` lives on DedupSaveTrace to match where the
+# UI renders it (DedupDetail panel), not on BatchSignalsTrace.
+# ---------------------------------------------------------------------------
+
+
+class ReciprocalSignal(BaseModel):
+    detected: bool = False
+    boost_applied: bool = False
+    boost_amount: float | None = None
+    pair_cm_id: int | None = None
+
+
+class SelfReferenceSignal(BaseModel):
+    detected: bool = False
+
+
+class BatchSignalsTrace(BaseModel):
+    reciprocal: ReciprocalSignal = Field(default_factory=ReciprocalSignal)
+
+
+class ConflictDetectionTrace(BaseModel):
+    has_conflict: bool = False
+    details: list[Any] = Field(default_factory=list)
+
+
+class DispositionTrace(BaseModel):
     final_bunk_requests: list[FinalBunkRequestTrace] = Field(default_factory=list)
+
+
+class DedupSaveTrace(BaseModel):
+    was_duplicate: bool = False
+    kept_over: str | None = None
+    self_reference: SelfReferenceSignal = Field(default_factory=SelfReferenceSignal)
 
 
 class TraceData(BaseModel):
@@ -155,4 +183,8 @@ class TraceData(BaseModel):
     phase2_resolution: list[Phase2IntentTrace] = Field(default_factory=list)
     historical_verification: HistoricalVerificationTrace = Field(default_factory=HistoricalVerificationTrace)
     phase3_disambiguation: list[Phase3IntentTrace] = Field(default_factory=list)
-    post_pipeline: PostPipelineTrace = Field(default_factory=PostPipelineTrace)
+    # Flattened finalization stages (issue #877)
+    batch_signals: BatchSignalsTrace = Field(default_factory=BatchSignalsTrace)
+    conflict_detection: ConflictDetectionTrace = Field(default_factory=ConflictDetectionTrace)
+    disposition: DispositionTrace = Field(default_factory=DispositionTrace)
+    dedup_save: DedupSaveTrace = Field(default_factory=DedupSaveTrace)

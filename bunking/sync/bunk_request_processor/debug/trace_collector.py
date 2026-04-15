@@ -11,12 +11,16 @@ from typing import Any
 from bunking.logging_config import get_logger
 
 from .trace_models import (
+    BatchSignalsTrace,
+    ConflictDetectionTrace,
+    DedupSaveTrace,
+    DispositionTrace,
     HistoricalVerificationTrace,
     Phase1Trace,
     Phase2IntentTrace,
     Phase3IntentTrace,
-    PostPipelineTrace,
     PrePhase1Trace,
+    ReciprocalSignal,
     RequesterInfo,
     SanitizationInfo,
     TraceData,
@@ -160,13 +164,56 @@ class TraceCollector:
             trace.phase3_disambiguation.append(Phase3IntentTrace())
         trace.phase3_disambiguation[intent_idx] = intent_trace
 
-    def record_post_pipeline(
+    def record_batch_signals(
         self,
         key: str,
-        post_trace: PostPipelineTrace,
+        reciprocal: dict[str, Any] | ReciprocalSignal | None = None,
     ) -> None:
+        """Record batch-level signals (reciprocal detection).
+
+        Part of the flattened post-pipeline trace (issue #877). Note that
+        `self_reference` is NOT recorded here — it lives on dedup_save.
+        """
         trace = self._ensure_trace(key)
-        trace.post_pipeline = post_trace
+        if reciprocal is None:
+            rec_signal = ReciprocalSignal()
+        elif isinstance(reciprocal, ReciprocalSignal):
+            rec_signal = reciprocal
+        else:
+            rec_signal = ReciprocalSignal(**reciprocal)
+        trace.batch_signals = BatchSignalsTrace(reciprocal=rec_signal)
+
+    def record_conflict_detection(
+        self,
+        key: str,
+        conflict_detection: dict[str, Any] | ConflictDetectionTrace | None = None,
+    ) -> None:
+        """Record conflict-detection outcome for this request."""
+        trace = self._ensure_trace(key)
+        if conflict_detection is None:
+            trace.conflict_detection = ConflictDetectionTrace()
+        elif isinstance(conflict_detection, ConflictDetectionTrace):
+            trace.conflict_detection = conflict_detection
+        else:
+            trace.conflict_detection = ConflictDetectionTrace(**conflict_detection)
+
+    def record_disposition(
+        self,
+        key: str,
+        disposition: DispositionTrace,
+    ) -> None:
+        """Record final disposition (priority-ordered rule application)."""
+        trace = self._ensure_trace(key)
+        trace.disposition = disposition
+
+    def record_dedup_save(
+        self,
+        key: str,
+        dedup_save: DedupSaveTrace,
+    ) -> None:
+        """Record dedup + save outcome, including self-reference detection."""
+        trace = self._ensure_trace(key)
+        trace.dedup_save = dedup_save
 
     async def flush(self, pb_client: Any, run_metadata: dict[str, Any] | None = None) -> str:
         """Write all traces to PocketBase. Returns the run record ID.
@@ -230,7 +277,7 @@ class TraceCollector:
         for key, trace_data in self._traces.items():
             trace_id = trace_ids.get(key, "")
             meta = self._trace_metadata.get(key, {})
-            for br in trace_data.post_pipeline.final_bunk_requests:
+            for br in trace_data.disposition.final_bunk_requests:
                 summary_data = {
                     "run_id": self.run_id,
                     "trace": trace_id,
@@ -288,13 +335,13 @@ class TraceCollector:
     def _compute_status_breakdown(self) -> dict[str, int]:
         breakdown: dict[str, int] = {"resolved": 0, "pending": 0, "declined": 0, "skipped": 0, "deduped": 0}
         for trace_data in self._traces.values():
-            if not trace_data.post_pipeline.final_bunk_requests:
+            if not trace_data.disposition.final_bunk_requests:
                 breakdown["skipped"] += 1
                 continue
             # Determine the most significant status across all requests in this trace.
             # Priority: pending > declined > deduped > resolved (pending is most actionable).
             trace_status = "resolved"
-            for br in trace_data.post_pipeline.final_bunk_requests:
+            for br in trace_data.disposition.final_bunk_requests:
                 status = br.status.lower()
                 if status == "pending":
                     trace_status = "pending"
@@ -332,7 +379,16 @@ class NoOpTraceCollector(TraceCollector):
     def record_phase3(self, **kwargs: Any) -> None:  # type: ignore[override]
         pass
 
-    def record_post_pipeline(self, **kwargs: Any) -> None:  # type: ignore[override]
+    def record_batch_signals(self, **kwargs: Any) -> None:  # type: ignore[override]
+        pass
+
+    def record_conflict_detection(self, **kwargs: Any) -> None:  # type: ignore[override]
+        pass
+
+    def record_disposition(self, **kwargs: Any) -> None:  # type: ignore[override]
+        pass
+
+    def record_dedup_save(self, **kwargs: Any) -> None:  # type: ignore[override]
         pass
 
     async def flush(self, pb_client: Any, run_metadata: dict[str, Any] | None = None) -> str:

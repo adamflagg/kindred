@@ -1,16 +1,25 @@
-import type { PostPipelineTrace } from '../types'
+import type { DedupSaveTrace, DispositionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { DataRow, Badge, PanelSection } from './DataRow'
 
 interface DedupDetailProps {
-  data: PostPipelineTrace
+  data: DedupSaveTrace
+  disposition: DispositionTrace
   onRerunPhase: () => void
   onRunFromHere: () => void
   isRunning?: boolean
 }
 
-export function DedupDetail({ data, onRerunPhase, onRunFromHere, isRunning }: DedupDetailProps) {
-  const { deduplication, self_reference, final_bunk_requests } = data
+export function DedupDetail({
+  data,
+  disposition,
+  onRerunPhase,
+  onRunFromHere,
+  isRunning,
+}: DedupDetailProps) {
+  const { self_reference } = data
+  const deduplication = { was_duplicate: data.was_duplicate, kept_over: data.kept_over }
+  const { final_bunk_requests } = disposition
 
   return (
     <div className="space-y-5">

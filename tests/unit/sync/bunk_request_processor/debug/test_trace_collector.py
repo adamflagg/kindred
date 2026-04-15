@@ -5,8 +5,11 @@ from bunking.sync.bunk_request_processor.debug.trace_collector import (
     TraceCollector,
 )
 from bunking.sync.bunk_request_processor.debug.trace_models import (
+    ConflictDetectionTrace,
+    DedupSaveTrace,
+    DispositionTrace,
     FinalBunkRequestTrace,
-    PostPipelineTrace,
+    SelfReferenceSignal,
 )
 
 
@@ -113,9 +116,9 @@ class TestSummaryDataDispositionFields:
             session_cm_id=100,
             source_field="bunk_with",
         )
-        # Manually set post_pipeline with disposition fields
+        # Populate disposition via new flattened trace fields
         trace = tc._traces[key]
-        trace.post_pipeline = PostPipelineTrace(
+        trace.disposition = DispositionTrace(
             final_bunk_requests=[
                 FinalBunkRequestTrace(
                     bunk_request_id="br-001",
@@ -138,6 +141,91 @@ class TestSummaryDataDispositionFields:
 
         # Verify the trace data contains disposition fields
         trace_data = tc._traces[key]
-        for br in trace_data.post_pipeline.final_bunk_requests:
+        for br in trace_data.disposition.final_bunk_requests:
             assert br.disposition_reason == "reciprocal_match"
             assert br.is_reciprocal is True
+
+
+class TestRecordDispositionAndRelated:
+    """Test the new discrete recorders for flattened trace fields."""
+
+    def test_record_batch_signals_sets_reciprocal(self):
+        tc = TraceCollector(run_id="test-batch")
+        tc.record_pre_phase1(
+            key="k",
+            action="parsed",
+            original_text="t",
+            requester_cm_id=1,
+            year=2025,
+            session_cm_id=1,
+            source_field="bunk_with",
+        )
+        tc.record_batch_signals(
+            key="k",
+            reciprocal={"detected": True, "boost_applied": True, "boost_amount": 0.1, "pair_cm_id": 99},
+        )
+        bs = tc._traces["k"].batch_signals
+        assert bs.reciprocal.detected is True
+        assert bs.reciprocal.pair_cm_id == 99
+
+    def test_record_conflict_detection(self):
+        tc = TraceCollector(run_id="test-cd")
+        tc.record_pre_phase1(
+            key="k",
+            action="parsed",
+            original_text="t",
+            requester_cm_id=1,
+            year=2025,
+            session_cm_id=1,
+            source_field="bunk_with",
+        )
+        tc.record_conflict_detection(
+            key="k",
+            conflict_detection=ConflictDetectionTrace(has_conflict=True, details=[{"type": "x"}]),
+        )
+        cd = tc._traces["k"].conflict_detection
+        assert cd.has_conflict is True
+        assert cd.details == [{"type": "x"}]
+
+    def test_record_disposition(self):
+        tc = TraceCollector(run_id="test-disp")
+        tc.record_pre_phase1(
+            key="k",
+            action="parsed",
+            original_text="t",
+            requester_cm_id=1,
+            year=2025,
+            session_cm_id=1,
+            source_field="bunk_with",
+        )
+        tc.record_disposition(
+            key="k",
+            disposition=DispositionTrace(final_bunk_requests=[FinalBunkRequestTrace(status="RESOLVED")]),
+        )
+        disp = tc._traces["k"].disposition
+        assert len(disp.final_bunk_requests) == 1
+
+    def test_record_dedup_save_sets_self_reference(self):
+        """self_reference lives on dedup_save, not batch_signals."""
+        tc = TraceCollector(run_id="test-dedup")
+        tc.record_pre_phase1(
+            key="k",
+            action="parsed",
+            original_text="t",
+            requester_cm_id=1,
+            year=2025,
+            session_cm_id=1,
+            source_field="bunk_with",
+        )
+        tc.record_dedup_save(
+            key="k",
+            dedup_save=DedupSaveTrace(
+                was_duplicate=True,
+                kept_over="br-99",
+                self_reference=SelfReferenceSignal(detected=True),
+            ),
+        )
+        ds = tc._traces["k"].dedup_save
+        assert ds.was_duplicate is True
+        assert ds.kept_over == "br-99"
+        assert ds.self_reference.detected is True

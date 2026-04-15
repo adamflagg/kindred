@@ -90,16 +90,16 @@ const minimalTraceData: TraceData = {
     boosted_confidence: null,
   },
   phase3_disambiguation: [],
-  post_pipeline: {
-    conflict_detection: { has_conflict: false, details: [] },
-    self_reference: { detected: false },
-    deduplication: { was_duplicate: false, kept_over: null },
+  batch_signals: {
     reciprocal: {
       detected: false,
       pair_cm_id: null,
       boost_applied: false,
       boost_amount: null,
     },
+  },
+  conflict_detection: { has_conflict: false, details: [] },
+  disposition: {
     final_bunk_requests: [
       {
         bunk_request_id: null,
@@ -117,6 +117,11 @@ const minimalTraceData: TraceData = {
         is_reciprocal: false,
       },
     ],
+  },
+  dedup_save: {
+    was_duplicate: false,
+    kept_over: null,
+    self_reference: { detected: false },
   },
 }
 

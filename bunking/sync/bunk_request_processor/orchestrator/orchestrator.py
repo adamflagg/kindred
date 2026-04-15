@@ -35,11 +35,15 @@ from ..data.repositories.source_link_repository import SourceLinkRepository
 from ..debug.trace_collector import NoOpTraceCollector, TraceCollector
 from ..debug.trace_models import (
     CandidateTrace,
+    ConflictDetectionTrace,
+    DedupSaveTrace,
+    DispositionTrace,
     FinalBunkRequestTrace,
     Phase2FinalResult,
     Phase2IntentTrace,
     Phase3IntentTrace,
-    PostPipelineTrace,
+    ReciprocalSignal,
+    SelfReferenceSignal,
 )
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
@@ -1536,33 +1540,44 @@ class RequestOrchestrator:
                 or c.person_a_cm_id in target_cm_ids
                 or c.person_b_cm_id in target_cm_ids
             ]
-            self.trace_collector.record_post_pipeline(
+            # Flattened post-pipeline trace (issue #877): each of the four
+            # finalization stages owns its own typed trace. `self_reference`
+            # lives on dedup_save (matches the UI's DedupDetail panel), NOT on
+            # batch_signals.
+            self.trace_collector.record_batch_signals(
                 key=trace_key,
-                post_trace=PostPipelineTrace(
-                    conflict_detection={
-                        "has_conflict": len(relevant_conflicts) > 0,
-                        "details": [
-                            {
-                                "conflict_type": c.conflict_type.value,
-                                "person_a_cm_id": c.person_a_cm_id,
-                                "person_b_cm_id": c.person_b_cm_id,
-                                "description": c.description,
-                                "severity": c.severity,
-                                "auto_resolvable": c.auto_resolvable,
-                            }
-                            for c in relevant_conflicts
-                        ],
-                    },
-                    self_reference={"detected": any_self_ref},
-                    reciprocal={
-                        "detected": any_reciprocal,
-                        "pair_cm_id": reciprocal_pair_cm_id,
-                    },
-                    deduplication={
-                        "was_duplicate": any_dedup,
-                        "kept_over": None,
-                    },
-                    final_bunk_requests=final_bunk_requests,
+                reciprocal=ReciprocalSignal(
+                    detected=any_reciprocal,
+                    pair_cm_id=reciprocal_pair_cm_id,
+                ),
+            )
+            self.trace_collector.record_conflict_detection(
+                key=trace_key,
+                conflict_detection=ConflictDetectionTrace(
+                    has_conflict=len(relevant_conflicts) > 0,
+                    details=[
+                        {
+                            "conflict_type": c.conflict_type.value,
+                            "person_a_cm_id": c.person_a_cm_id,
+                            "person_b_cm_id": c.person_b_cm_id,
+                            "description": c.description,
+                            "severity": c.severity,
+                            "auto_resolvable": c.auto_resolvable,
+                        }
+                        for c in relevant_conflicts
+                    ],
+                ),
+            )
+            self.trace_collector.record_disposition(
+                key=trace_key,
+                disposition=DispositionTrace(final_bunk_requests=final_bunk_requests),
+            )
+            self.trace_collector.record_dedup_save(
+                key=trace_key,
+                dedup_save=DedupSaveTrace(
+                    was_duplicate=any_dedup,
+                    kept_over=None,
+                    self_reference=SelfReferenceSignal(detected=any_self_ref),
                 ),
             )
 

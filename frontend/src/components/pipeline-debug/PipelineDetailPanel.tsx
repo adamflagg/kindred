@@ -86,13 +86,25 @@ export function PipelineDetailPanel({
 
       // Finalization — each gets its own panel
       case 'batch_signals':
-        return <BatchSignalsDetail data={traceData.post_pipeline} {...sharedProps} />
+        return (
+          <BatchSignalsDetail
+            data={traceData.batch_signals}
+            disposition={traceData.disposition}
+            {...sharedProps}
+          />
+        )
       case 'conflict_detect':
-        return <ConflictDetail data={traceData.post_pipeline} {...sharedProps} />
+        return <ConflictDetail data={traceData.conflict_detection} {...sharedProps} />
       case 'disposition':
-        return <DispositionDetail data={traceData.post_pipeline} {...sharedProps} />
+        return <DispositionDetail data={traceData.disposition} {...sharedProps} />
       case 'dedup_save':
-        return <DedupDetail data={traceData.post_pipeline} {...sharedProps} />
+        return (
+          <DedupDetail
+            data={traceData.dedup_save}
+            disposition={traceData.disposition}
+            {...sharedProps}
+          />
+        )
 
       default:
         return null

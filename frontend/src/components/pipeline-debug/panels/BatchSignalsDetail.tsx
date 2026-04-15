@@ -1,9 +1,10 @@
-import type { PostPipelineTrace } from '../types'
+import type { BatchSignalsTrace, DispositionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { DataRow, Badge, PanelSection } from './DataRow'
 
 interface BatchSignalsDetailProps {
-  data: PostPipelineTrace
+  data: BatchSignalsTrace
+  disposition: DispositionTrace
   onRerunPhase: () => void
   onRunFromHere: () => void
   isRunning?: boolean
@@ -11,11 +12,12 @@ interface BatchSignalsDetailProps {
 
 export function BatchSignalsDetail({
   data,
+  disposition,
   onRerunPhase,
   onRunFromHere,
   isRunning,
 }: BatchSignalsDetailProps) {
-  const reciprocalBRs = data.final_bunk_requests.filter((br) => br.is_reciprocal)
+  const reciprocalBRs = disposition.final_bunk_requests.filter((br) => br.is_reciprocal)
 
   return (
     <div className="space-y-5">
