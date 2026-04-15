@@ -36,6 +36,7 @@ import {
   CONFIDENCE_AUTO_ACCEPT,
   CONFIDENCE_RESOLVED,
   MUTUAL_BADGE_CLASSES,
+  PINNED_BADGE_CLASSES,
 } from '../utils/dispositionColors'
 import { usePinnedRequest } from '../hooks/usePinnedRequest'
 import EditableRequestType from './EditableRequestType'
@@ -73,8 +74,7 @@ export default function RequestReviewPanel({
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  // setPinnedId is wired in Task 9; pinnedId is used by the pinned-row merge in this task.
-  const { pinnedId } = usePinnedRequest()
+  const { pinnedId, setPinnedId } = usePinnedRequest()
 
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
@@ -674,6 +674,31 @@ export default function RequestReviewPanel({
     [hasMultipleSources]
   )
 
+  /**
+   * Pin a request and collapse any other expanded rows. Used by the
+   * "Requests from this camper" panel so clicking another row swaps focus
+   * to the clicked request and records it in the URL via `?pin=<id>`.
+   */
+  const pinAndExpand = useCallback(
+    (id: string) => {
+      setExpandedRows(new Set([id]))
+      setPinnedId(id)
+    },
+    [setPinnedId]
+  )
+
+  // Scroll the pinned row into view when it changes to a new non-null id.
+  useEffect(() => {
+    if (!pinnedId) return
+    const t = window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(
+        `[data-request-row-id="${CSS.escape(pinnedId)}"]`
+      )
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [pinnedId])
+
   const toggleRequestSelection = useCallback((id: string) => {
     setSelectedRequests((prev) => {
       const next = new Set(prev)
@@ -1152,7 +1177,7 @@ export default function RequestReviewPanel({
                     const isExpanded = expandedRows.has(request.id)
 
                     return (
-                      <div key={request.id}>
+                      <div key={request.id} data-request-row-id={request.id}>
                         <div
                           className="request-card-mobile hover:bg-muted/50 cursor-pointer transition-colors"
                           onClick={() => toggleRowExpansion(request.id, request)}
@@ -1188,6 +1213,11 @@ export default function RequestReviewPanel({
                               </button>
                               {request.is_reciprocal && (
                                 <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
+                              )}
+                              {request.id === pinnedId && (
+                                <span data-testid="pinned-badge" className={PINNED_BADGE_CLASSES}>
+                                  Pinned
+                                </span>
                               )}
                             </div>
                             <div className="text-muted-foreground mt-0.5 text-xs">
@@ -1361,6 +1391,7 @@ export default function RequestReviewPanel({
                                 requesterCmId={request.requester_id}
                                 year={year}
                                 currentRequestId={request.id}
+                                onSelect={(id) => pinAndExpand(id)}
                               />
                             </div>
                           </div>
@@ -1379,6 +1410,7 @@ export default function RequestReviewPanel({
                     return (
                       <div
                         key={request.id}
+                        data-request-row-id={request.id}
                         className={clsx(
                           'cursor-pointer border-b transition-colors',
                           selectedRequests.has(request.id)
@@ -1419,6 +1451,11 @@ export default function RequestReviewPanel({
                             </button>
                             {request.is_reciprocal && (
                               <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
+                            )}
+                            {request.id === pinnedId && (
+                              <span data-testid="pinned-badge" className={PINNED_BADGE_CLASSES}>
+                                Pinned
+                              </span>
                             )}
                           </div>
                           <div
@@ -1781,6 +1818,7 @@ export default function RequestReviewPanel({
                                   requesterCmId={request.requester_id}
                                   year={year}
                                   currentRequestId={request.id}
+                                  onSelect={(id) => pinAndExpand(id)}
                                 />
                               </div>
                             </div>
