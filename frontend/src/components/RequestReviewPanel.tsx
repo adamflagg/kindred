@@ -37,6 +37,7 @@ import {
   CONFIDENCE_RESOLVED,
   MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
+import { usePinnedRequest } from '../hooks/usePinnedRequest'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
@@ -72,6 +73,8 @@ export default function RequestReviewPanel({
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  // setPinnedId is wired in Task 9; pinnedId is used by the pinned-row merge in this task.
+  const { pinnedId } = usePinnedRequest()
 
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
@@ -268,6 +271,26 @@ export default function RequestReviewPanel({
     enabled: !!user,
   })
 
+  // Fetch the pinned request separately when the current filter/session combo excludes it,
+  // so the pinned row stays visible even if its status/type was filtered out.
+  const pinnedPresentInRequests = useMemo(
+    () => (pinnedId ? requests.some((r: BunkRequestsResponse) => r.id === pinnedId) : true),
+    [requests, pinnedId]
+  )
+  const { data: pinnedExtraRequest = null } = useQuery({
+    queryKey: ['bunk-request-pinned', pinnedId],
+    queryFn: async () => {
+      if (!pinnedId) return null
+      try {
+        return await pb.collection<BunkRequestsResponse>('bunk_requests').getOne(pinnedId)
+      } catch {
+        return null
+      }
+    },
+    enabled: !!user && !!pinnedId && !pinnedPresentInRequests,
+    staleTime: 30000,
+  })
+
   // Fetch person data for display - use string-based key for stability
   const personIds = useMemo(() => {
     const ids = new Set<number>()
@@ -428,6 +451,11 @@ export default function RequestReviewPanel({
   const sortedRequests = useMemo(() => {
     let filtered = [...requests]
 
+    // Include the pinned request even when filters would exclude it from the main query.
+    if (pinnedExtraRequest && !filtered.some((r) => r.id === pinnedExtraRequest.id)) {
+      filtered.push(pinnedExtraRequest)
+    }
+
     // Search filtering using already-fetched personMap
     if (filters.searchQuery && personMap.size > 0) {
       const searchLower = filters.searchQuery.toLowerCase()
@@ -504,7 +532,7 @@ export default function RequestReviewPanel({
     })
 
     return sorted
-  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
+  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery, pinnedExtraRequest])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {

@@ -27,12 +27,12 @@ export interface BunkRequestRowProps {
    * When provided, renders the row as a <button> and calls this on click.
    * The click event stops propagation so the surrounding expanded-row toggler is not fired.
    */
-  onSelect?: () => void
+  onSelect?: (() => void) | undefined
   /**
    * Optional badge rendered immediately after the mutual badge. Used by the
    * camper-requests panel to inject the "Current request" chip.
    */
-  badge?: React.ReactNode
+  badge?: React.ReactNode | undefined
 }
 
 function statusIcon(status: string) {
