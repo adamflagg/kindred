@@ -115,16 +115,24 @@ export function BunkRequestRow({
     )
     if (onSelect) {
       return (
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           className={clsx(rowClass, 'text-muted-foreground text-xs')}
           onClick={(e) => {
             e.stopPropagation()
             onSelect()
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              onSelect()
+            }
+          }}
         >
           {ageChildren}
-        </button>
+        </div>
       )
     }
     return <div className={clsx(rowClass, 'text-muted-foreground text-xs')}>{ageChildren}</div>
@@ -179,16 +187,24 @@ export function BunkRequestRow({
 
   if (onSelect) {
     return (
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className={rowClass}
         onClick={(e) => {
           e.stopPropagation()
           onSelect()
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            e.stopPropagation()
+            onSelect()
+          }
+        }}
       >
         {children}
-      </button>
+      </div>
     )
   }
 

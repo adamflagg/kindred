@@ -39,6 +39,8 @@ import {
   PINNED_BADGE_CLASSES,
 } from '../utils/dispositionColors'
 import { usePinnedRequest } from '../hooks/usePinnedRequest'
+import { queryKeys } from '../utils/queryKeys'
+import { positionPinnedAdjacent } from '../utils/positionPinnedAdjacent'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
@@ -75,6 +77,12 @@ export default function RequestReviewPanel({
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const { pinnedId, setPinnedId } = usePinnedRequest()
+  // Remembers the row the user was on when the pin was set, so the pinned
+  // row can render directly adjacent to it instead of at its natural sort slot.
+  const [pinOriginatorId, setPinOriginatorId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!pinnedId) setPinOriginatorId(null)
+  }, [pinnedId])
 
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
@@ -290,19 +298,21 @@ export default function RequestReviewPanel({
     () => (pinnedId ? requests.some((r: BunkRequestsResponse) => r.id === pinnedId) : true),
     [requests, pinnedId]
   )
-  const { data: pinnedExtraRequest = null } = useQuery({
-    queryKey: ['bunk-request-pinned', pinnedId],
-    queryFn: async () => {
-      if (!pinnedId) return null
-      try {
-        return await pb.collection<BunkRequestsResponse>('bunk_requests').getOne(pinnedId)
-      } catch {
-        return null
-      }
-    },
+  const { data: pinnedExtraRequest = null, error: pinnedExtraError } = useQuery({
+    queryKey: queryKeys.bunkRequestPinned(pinnedId),
+    queryFn: async () =>
+      pinnedId ? await pb.collection<BunkRequestsResponse>('bunk_requests').getOne(pinnedId) : null,
     enabled: !!user && !!pinnedId && !pinnedPresentInRequests,
     staleTime: 30000,
+    retry: false,
   })
+
+  // Clear stale pin (request deleted or invalid id) from the URL on 404.
+  useEffect(() => {
+    if (pinnedExtraError && (pinnedExtraError as { status?: number }).status === 404) {
+      setPinnedId(null)
+    }
+  }, [pinnedExtraError, setPinnedId])
 
   // Fetch person data for display - use string-based key for stability
   const personIds = useMemo(() => {
@@ -544,8 +554,17 @@ export default function RequestReviewPanel({
       }
     })
 
-    return sorted
-  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery, pinnedExtraRequest])
+    return positionPinnedAdjacent(sorted, pinnedId, pinOriginatorId)
+  }, [
+    requests,
+    sortBy,
+    sortOrder,
+    personMap,
+    filters.searchQuery,
+    pinnedExtraRequest,
+    pinnedId,
+    pinOriginatorId,
+  ])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
@@ -698,7 +717,12 @@ export default function RequestReviewPanel({
    */
   const pinAndExpand = useCallback(
     (id: string) => {
-      setExpandedRows(new Set([id]))
+      setExpandedRows((prev) => {
+        const first = [...prev][0]
+        const originator = first && first !== id ? first : null
+        setPinOriginatorId(originator)
+        return new Set([id])
+      })
       setPinnedId(id)
     },
     [setPinnedId]

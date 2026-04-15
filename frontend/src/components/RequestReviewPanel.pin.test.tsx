@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import RequestReviewPanel from './RequestReviewPanel'
 
 // Mock pb so we control what each collection returns.
@@ -48,7 +48,9 @@ vi.mock('../lib/pocketbase', () => ({
       getFullList: async () => (name === 'bunk_requests' ? requestsInList : persons),
       getOne: async (id: string) => {
         if (id === 'req-pinned') return pinnedHiddenRequest
-        throw new Error('not found')
+        const err = new Error('not found') as Error & { status: number }
+        err.status = 404
+        throw err
       },
       update: async () => ({}),
     }),
@@ -62,11 +64,24 @@ function renderPanel(initialUrl = '/requests') {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialUrl]}>
         <Routes>
-          <Route path="/requests" element={<RequestReviewPanel sessionId={1} year={2026} />} />
+          <Route
+            path="/requests"
+            element={
+              <>
+                <LocationProbe />
+                <RequestReviewPanel sessionId={1} year={2026} />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   )
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="current-search">{location.search}</div>
 }
 
 describe('RequestReviewPanel pinned row', () => {
@@ -82,6 +97,16 @@ describe('RequestReviewPanel pinned row', () => {
     await screen.findAllByTestId('pinned-badge')
     // Olivia Chen is the requestee of the pinned (normally-filtered-out) row.
     await screen.findAllByText(/Olivia Chen/)
+  })
+
+  it('clears the pin from the URL when the pinned id 404s', async () => {
+    renderPanel('/requests?pin=does-not-exist')
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('current-search').textContent).not.toContain('pin=does-not-exist')
+      },
+      { timeout: 2000 }
+    )
   })
 
   it('does not show the pinned badge for non-pinned rows', async () => {

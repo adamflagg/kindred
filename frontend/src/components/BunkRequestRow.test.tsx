@@ -283,6 +283,52 @@ describe('BunkRequestRow', () => {
     expect(screen.queryByRole('button', { name: /bunk with.*olivia chen/i })).toBeNull()
   })
 
+  it('does NOT nest the row in a native <button> when onSelect is provided', () => {
+    // Invalid HTML: CamperLink renders an <a>, which cannot be nested inside <button>.
+    // Outer clickable should be a div[role=button] instead.
+    const { container } = render(
+      <BunkRequestRow
+        request={makeRequest({ id: 'req-a', requestee_id: 200 })}
+        targetPerson={makePerson()}
+        onSelect={() => {}}
+      />
+    )
+    const row = container.firstElementChild as HTMLElement
+    expect(row.tagName).toBe('DIV')
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('fires onSelect when Enter is pressed on the focusable row', async () => {
+    const onSelect = vi.fn()
+    render(
+      <BunkRequestRow
+        request={makeRequest({ id: 'req-a', requestee_id: 200 })}
+        targetPerson={makePerson()}
+        onSelect={onSelect}
+      />
+    )
+    const row = screen.getByRole('button', { name: /bunk with.*olivia chen/i })
+    row.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('fires onSelect when Space is pressed on the focusable row', async () => {
+    const onSelect = vi.fn()
+    render(
+      <BunkRequestRow
+        request={makeRequest({ id: 'req-a', requestee_id: 200 })}
+        targetPerson={makePerson()}
+        onSelect={onSelect}
+      />
+    )
+    const row = screen.getByRole('button', { name: /bunk with.*olivia chen/i })
+    row.focus()
+    await userEvent.keyboard(' ')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
   it('renders the supplied badge node after the mutual badge', () => {
     render(
       <BunkRequestRow
