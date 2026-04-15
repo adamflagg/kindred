@@ -612,8 +612,6 @@ export default function RequestReviewPanel({
     },
   })
 
-  // Approve/reject action handlers — extracted from inline mutate calls
-  // to consolidate the mutation payload shape in one place.
   const handleApprove = (id: string) =>
     updateRequestMutation.mutate({
       id,

@@ -10,9 +10,56 @@
  * 3. Filter and sort functionality
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { render, waitFor } from '../test/testUtils'
 import RequestReviewPanel from './RequestReviewPanel'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
+
+/**
+ * Helper for the approve/reject handler tests: sets up the pb mock with a
+ * single pending request, renders the panel, and returns the spy + a helper
+ * to find the row-level action button by title.
+ */
+async function renderPanelWithRequest(request: Partial<BunkRequestsResponse>) {
+  const { pb } = (await import('../lib/pocketbase')) as unknown as {
+    pb: {
+      collection: ReturnType<typeof vi.fn>
+    }
+  }
+
+  const updateSpy = vi.fn().mockResolvedValue({})
+
+  pb.collection.mockImplementation((name: string) => {
+    if (name === 'bunk_requests') {
+      return {
+        getFullList: vi.fn().mockResolvedValue([request]),
+        getList: vi.fn().mockResolvedValue({ items: [request], totalItems: 1 }),
+        update: updateSpy,
+      }
+    }
+    return {
+      getFullList: vi.fn().mockResolvedValue([]),
+      getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+      update: vi.fn().mockResolvedValue({}),
+    }
+  })
+
+  render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+  const findButtonByTitle = (title: string) =>
+    waitFor(
+      () => {
+        const buttons = screen.getAllByTitle(title)
+        const first = buttons[0]
+        if (!first) throw new Error(`no ${title} button yet`)
+        return first
+      },
+      { timeout: 3000 }
+    )
+
+  return { updateSpy, findButtonByTitle, user: userEvent.setup() }
+}
 
 // Mock the pocketbase module
 vi.mock('../lib/pocketbase', () => ({
@@ -1167,19 +1214,7 @@ describe('RequestReviewPanel', () => {
    */
   describe('Approve / Reject mutation payloads (#918)', () => {
     it('approve button fires update with status=resolved and request_locked=true', async () => {
-      const { screen, fireEvent } = await import('@testing-library/react')
-      const userEventModule = await import('@testing-library/user-event')
-      const user = userEventModule.default.setup()
-
-      // Fresh mock for this test — mocked pb module was set up at top of file.
-      const { pb } = (await import('../lib/pocketbase')) as unknown as {
-        pb: {
-          collection: ReturnType<typeof vi.fn>
-        }
-      }
-
-      const updateSpy = vi.fn().mockResolvedValue({})
-      const pendingRequest: Partial<BunkRequestsResponse> = {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-approve-1',
         requester_id: 100,
         requestee_id: 101,
@@ -1190,36 +1225,11 @@ describe('RequestReviewPanel', () => {
         confidence_score: 0.9,
         priority: 1,
         request_locked: false,
-      }
-
-      pb.collection.mockImplementation((name: string) => {
-        if (name === 'bunk_requests') {
-          return {
-            getFullList: vi.fn().mockResolvedValue([pendingRequest]),
-            getList: vi.fn().mockResolvedValue({ items: [pendingRequest], totalItems: 1 }),
-            update: updateSpy,
-          }
-        }
-        return {
-          getFullList: vi.fn().mockResolvedValue([]),
-          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
-          update: vi.fn().mockResolvedValue({}),
-        }
       })
-
-      render(<RequestReviewPanel sessionId={1001} year={2025} />)
 
       // Wait for at least one row-level Approve button to appear
       // (both mobile and desktop markup render in jsdom — take the first).
-      const approveButton = await waitFor(
-        () => {
-          const buttons = screen.getAllByTitle('Approve')
-          const first = buttons[0]
-          if (!first) throw new Error('no Approve button yet')
-          return first
-        },
-        { timeout: 3000 }
-      )
+      const approveButton = await findButtonByTitle('Approve')
 
       // fireEvent.click (not userEvent) because the onClick handler reads
       // e.currentTarget.getBoundingClientRect() which jsdom + userEvent
@@ -1241,18 +1251,7 @@ describe('RequestReviewPanel', () => {
     }, 10000)
 
     it('reject button fires update with status=declined and request_locked=false', async () => {
-      const { screen, fireEvent } = await import('@testing-library/react')
-      const userEventModule = await import('@testing-library/user-event')
-      const user = userEventModule.default.setup()
-
-      const { pb } = (await import('../lib/pocketbase')) as unknown as {
-        pb: {
-          collection: ReturnType<typeof vi.fn>
-        }
-      }
-
-      const updateSpy = vi.fn().mockResolvedValue({})
-      const pendingRequest: Partial<BunkRequestsResponse> = {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-reject-1',
         requester_id: 200,
         requestee_id: 201,
@@ -1263,35 +1262,13 @@ describe('RequestReviewPanel', () => {
         confidence_score: 0.5,
         priority: 1,
         request_locked: false,
-      }
-
-      pb.collection.mockImplementation((name: string) => {
-        if (name === 'bunk_requests') {
-          return {
-            getFullList: vi.fn().mockResolvedValue([pendingRequest]),
-            getList: vi.fn().mockResolvedValue({ items: [pendingRequest], totalItems: 1 }),
-            update: updateSpy,
-          }
-        }
-        return {
-          getFullList: vi.fn().mockResolvedValue([]),
-          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
-          update: vi.fn().mockResolvedValue({}),
-        }
       })
 
-      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+      const rejectButton = await findButtonByTitle('Reject')
 
-      const rejectButton = await waitFor(
-        () => {
-          const buttons = screen.getAllByTitle('Reject')
-          const first = buttons[0]
-          if (!first) throw new Error('no Reject button yet')
-          return first
-        },
-        { timeout: 3000 }
-      )
-
+      // fireEvent.click (not userEvent) because the onClick handler reads
+      // e.currentTarget.getBoundingClientRect() which jsdom + userEvent
+      // does not populate reliably.
       fireEvent.click(rejectButton)
 
       const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
