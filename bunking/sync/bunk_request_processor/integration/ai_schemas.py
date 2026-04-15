@@ -172,13 +172,14 @@ class AIDisambiguationResponse(BaseModel):
     """Explanation for the selection."""
 
     @model_validator(mode="after")
-    def check_mutually_exclusive(self) -> AIDisambiguationResponse:
-        """ranked_selections, no_match, and selected_person_id are mutually exclusive."""
-        set_fields = [
-            bool(self.ranked_selections),
-            self.no_match,
-            self.selected_person_id is not None,
-        ]
-        if sum(set_fields) > 1:
-            raise ValueError("ranked_selections, no_match, and selected_person_id are mutually exclusive")
+    def normalize_exclusive_fields(self) -> AIDisambiguationResponse:
+        """Reconcile ranked_selections with legacy fields; see #925."""
+        if self.ranked_selections:
+            if self.no_match:
+                raise ValueError("ranked_selections and no_match=True are mutually exclusive")
+            if self.selected_person_id is not None:
+                raise ValueError("ranked_selections and selected_person_id are mutually exclusive")
+            return self
+        if self.no_match and self.selected_person_id is not None:
+            raise ValueError("no_match=True and selected_person_id are mutually exclusive")
         return self
