@@ -10,9 +10,56 @@
  * 3. Filter and sort functionality
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { render, waitFor } from '../test/testUtils'
 import RequestReviewPanel from './RequestReviewPanel'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
+
+/**
+ * Helper for the approve/reject handler tests: sets up the pb mock with a
+ * single pending request, renders the panel, and returns the spy + a helper
+ * to find the row-level action button by title.
+ */
+async function renderPanelWithRequest(request: Partial<BunkRequestsResponse>) {
+  const { pb } = (await import('../lib/pocketbase')) as unknown as {
+    pb: {
+      collection: ReturnType<typeof vi.fn>
+    }
+  }
+
+  const updateSpy = vi.fn().mockResolvedValue({})
+
+  pb.collection.mockImplementation((name: string) => {
+    if (name === 'bunk_requests') {
+      return {
+        getFullList: vi.fn().mockResolvedValue([request]),
+        getList: vi.fn().mockResolvedValue({ items: [request], totalItems: 1 }),
+        update: updateSpy,
+      }
+    }
+    return {
+      getFullList: vi.fn().mockResolvedValue([]),
+      getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+      update: vi.fn().mockResolvedValue({}),
+    }
+  })
+
+  render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+  const findButtonByTitle = (title: string) =>
+    waitFor(
+      () => {
+        const buttons = screen.getAllByTitle(title)
+        const first = buttons[0]
+        if (!first) throw new Error(`no ${title} button yet`)
+        return first
+      },
+      { timeout: 3000 }
+    )
+
+  return { updateSpy, findButtonByTitle, user: userEvent.setup() }
+}
 
 // Mock the pocketbase module
 vi.mock('../lib/pocketbase', () => ({
@@ -1152,5 +1199,89 @@ describe('RequestReviewPanel', () => {
         expect(props.sessionName).toBe('TOC2')
       })
     })
+  })
+
+  /**
+   * Regression tests for #918 (handleApprove / handleReject extraction).
+   *
+   * The refactor is a pure extraction of handler functions from inline
+   * mutate calls — behavior must not change. These tests render the
+   * panel, click the row-level approve/reject button, confirm via the
+   * popover, and assert on the payload passed to
+   * pb.collection('bunk_requests').update(...). This exercises the
+   * real handleApprove / handleReject code paths rather than just
+   * asserting on a literal object shape.
+   */
+  describe('Approve / Reject mutation payloads (#918)', () => {
+    it('approve button fires update with status=resolved and request_locked=true', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-approve-1',
+        requester_id: 100,
+        requestee_id: 101,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.9,
+        priority: 1,
+        request_locked: false,
+      })
+
+      // Wait for at least one row-level Approve button to appear
+      // (both mobile and desktop markup render in jsdom — take the first).
+      const approveButton = await findButtonByTitle('Approve')
+
+      // fireEvent.click (not userEvent) because the onClick handler reads
+      // e.currentTarget.getBoundingClientRect() which jsdom + userEvent
+      // does not populate reliably.
+      fireEvent.click(approveButton)
+
+      // Popover portal renders "Confirm" button
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      expect(updateSpy).toHaveBeenCalledWith('req-approve-1', {
+        status: 'resolved',
+        request_locked: true,
+      })
+    }, 10000)
+
+    it('reject button fires update with status=declined and request_locked=false', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-reject-1',
+        requester_id: 200,
+        requestee_id: 201,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.5,
+        priority: 1,
+        request_locked: false,
+      })
+
+      const rejectButton = await findButtonByTitle('Reject')
+
+      // fireEvent.click (not userEvent) because the onClick handler reads
+      // e.currentTarget.getBoundingClientRect() which jsdom + userEvent
+      // does not populate reliably.
+      fireEvent.click(rejectButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      expect(updateSpy).toHaveBeenCalledWith('req-reject-1', {
+        status: 'declined',
+        request_locked: false,
+      })
+    }, 10000)
   })
 })
