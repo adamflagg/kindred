@@ -56,6 +56,29 @@ Split multi-name requests into separate entries:
 - "wants to be with Mia, Ava, and Lily" becomes 3 separate bunk_with requests
 - Use list_position to track order (0, 1, 2...)
 
+=== TWO-WORD TARGETS (NO DELIMITERS) ===
+
+When a target is EXACTLY TWO words separated by a single space, with NO comma,
+"and", "&", "or", "+", or other conjunction:
+
+  PREFER: treat as a single "FirstName LastName" target (one request).
+  SPLIT ONLY IF: surrounding context makes it clear they are two distinct
+  people (e.g., "bunk with Sam or Jordan" — "or" is an explicit signal).
+
+Why this is the safer default:
+- Splitting two words that are both plausible first names produces two wrong
+  matches: one unresolved, and one false-positive where the second word
+  fuzzy-matches someone's preferred_name.
+- Combined as "FirstName LastName", a no-match simply falls through to normal
+  disambiguation — which is a recoverable state — instead of silently
+  mis-assigning to the wrong camper.
+
+Examples:
+- "bunk with Riley Sam"     → ONE bunk_with request, target_name="Riley Sam"
+- "wants Emma and Liam"     → TWO bunk_with requests (conjunction present)
+- "bunk with Olivia, Noah"  → TWO bunk_with requests (comma present)
+- "bunk with Jordan Parker" → ONE bunk_with request, target_name="Jordan Parker"
+
 === INVALID TARGETS (DO NOT EXTRACT) ===
 
 - Physical preferences: "upper bunk", "near window", "bottom bed"
