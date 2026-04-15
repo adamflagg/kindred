@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '../test/testUtils'
+import userEvent from '@testing-library/user-event'
 import { BunkRequestRow } from './BunkRequestRow'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
@@ -255,5 +256,44 @@ describe('BunkRequestRow', () => {
   it('falls back to "Unknown" when neither person nor name is provided', () => {
     render(<BunkRequestRow request={makeRequest({ status: 'pending' })} />)
     expect(screen.getByText(/Unknown/)).toBeInTheDocument()
+  })
+
+  it('renders as a <button> row when onSelect is provided and fires on click', async () => {
+    const onSelect = vi.fn()
+    render(
+      <BunkRequestRow
+        request={makeRequest({ id: 'req-a', requestee_id: 200 })}
+        targetPerson={makePerson()}
+        onSelect={onSelect}
+      />
+    )
+
+    const row = screen.getByRole('button', { name: /bunk with.*olivia chen/i })
+    await userEvent.click(row)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not render as a <button> when onSelect is omitted', () => {
+    render(
+      <BunkRequestRow
+        request={makeRequest({ id: 'req-a', requestee_id: 200 })}
+        targetPerson={makePerson()}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /bunk with.*olivia chen/i })).toBeNull()
+  })
+
+  it('renders the supplied badge node after the mutual badge', () => {
+    render(
+      <BunkRequestRow
+        request={makeRequest({ id: 'req-a', requestee_id: 200, is_reciprocal: true })}
+        targetPerson={makePerson()}
+        badge={<span data-testid="current-badge">Current request</span>}
+      />
+    )
+    const mutual = screen.getByText('mutual')
+    const current = screen.getByTestId('current-badge')
+
+    expect(mutual.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
