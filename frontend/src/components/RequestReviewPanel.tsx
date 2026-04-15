@@ -1139,8 +1139,22 @@ export default function RequestReviewPanel({
                                 <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
                               )}
                             </div>
-                            <div className="text-muted-foreground mt-0.5 text-xs">
-                              {getRequestTypeLabel(request.request_type)}
+                            <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
+                              <EditableRequestType
+                                value={request.request_type}
+                                onChange={(newType) => {
+                                  const updates: Partial<BunkRequestsResponse> = {
+                                    request_type: newType as BunkRequestsResponse['request_type'],
+                                  }
+                                  if (newType === 'age_preference') {
+                                    updates.requestee_id = null as unknown as number
+                                  } else {
+                                    updates.age_preference_target = ''
+                                  }
+                                  handleValidatedUpdate(request, updates)
+                                }}
+                                disabled={request.request_locked || false}
+                              />
                             </div>
                           </div>
 
@@ -1155,17 +1169,17 @@ export default function RequestReviewPanel({
                               {getConfidenceIndicator(request.confidence_score)}
                               {(request.confidence_score * 100).toFixed(0)}%
                             </span>
-                            {getStatusBadge(request.status)}
-                            {request.disposition_reason && (
-                              <span
-                                className={clsx(
-                                  'rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                                  getDispositionClasses(request.disposition_reason)
-                                )}
-                              >
-                                {formatDispositionReason(request.disposition_reason)}
-                              </span>
-                            )}
+                            <div className="flex flex-col items-end gap-0.5">
+                              {getStatusBadge(request.status)}
+                              {shouldShowReasonInStatus(
+                                request.status,
+                                request.disposition_reason
+                              ) && (
+                                <span className="text-muted-foreground max-w-[8rem] truncate text-right text-[11px]">
+                                  {formatReason(request.disposition_reason)}
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           {/* Request target info */}
