@@ -123,6 +123,14 @@ def generate_unresolved_person_id(name_text: str) -> int:
     return unresolved_id
 
 
+def needs_phase3(rr: ResolutionResult) -> bool:
+    """Return True if this resolution result should proceed to Phase 3 disambiguation.
+
+    Age-preference requests are excluded — they are staff-reviewed, not AI-resolved.
+    """
+    return not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value
+
+
 class RequestOrchestrator:
     """Main orchestrator for the three-phase bunk request processing.
 
@@ -964,6 +972,57 @@ class RequestOrchestrator:
             dry_run=dry_run,
         )
 
+    async def run_historical_verification(
+        self,
+        resolution_results: list[tuple[ParseResult, list[ResolutionResult]]],
+    ) -> list[tuple[ParseResult, list[ResolutionResult]]]:
+        """Phase 2.5: Historical Group Verification.
+
+        Snapshots pre-verification confidences, runs the verification service,
+        and records per-request trace events (boost applied, original and boosted
+        confidences). Shared by the full pipeline and PhaseRunner debug cascades
+        so both paths produce identical traces and confidence values.
+
+        Boosts confidence by +0.10 (capped at 0.95) for targets verified to have
+        been in the same bunk in a prior year.
+
+        Args:
+            resolution_results: Phase 2 output (parse result + candidate list pairs).
+                An empty list is a no-op (returns immediately with no side effects).
+
+        Returns:
+            Resolution results with historical boosts applied.
+        """
+        logger.info("=== Phase 2.5: Historical Group Verification ===")
+
+        # Snapshot confidence values before historical verification for trace comparison
+        pre_historical_confidences: dict[str, list[float]] = {}
+        for pr, res_list in resolution_results:
+            trace_key = _get_trace_key(pr)
+            if trace_key:
+                pre_historical_confidences[trace_key] = [rr.confidence for rr in res_list]
+
+        verified_results = await self.historical_verification_service.verify(resolution_results)
+
+        # --- Trace: Historical verification results ---
+        for pr, res_list in verified_results:
+            trace_key = _get_trace_key(pr)
+            if not trace_key:
+                continue
+            boost_applied = any(rr.metadata and rr.metadata.get("historical_verified") is True for rr in res_list)
+            pre_confs = pre_historical_confidences.get(trace_key, [])
+            original_conf = max(pre_confs) if pre_confs else None
+            boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
+            self.trace_collector.record_historical(
+                key=trace_key,
+                ran=True,
+                boost_applied=boost_applied,
+                original_confidence=original_conf if boost_applied else None,
+                boosted_confidence=boosted_conf if boost_applied else None,
+            )
+
+        return verified_results
+
     async def _execute_pipeline(
         self,
         parse_requests: list[ParseRequest],
@@ -1185,38 +1244,7 @@ class RequestOrchestrator:
         if stop_at_phase == "phase2":
             return {"dry_run": dry_run, "phase": "phase2"}
 
-        # Phase 2.5: Historical Group Verification
-        # Verify that multiple targets for same historical year were actually in same bunk
-        # Boost confidence by +0.10 for verified groups (capped at 0.95)
-        logger.info("=== Phase 2.5: Historical Group Verification ===")
-
-        # Snapshot confidence values before historical verification for trace comparison
-        pre_historical_confidences: dict[str, list[float]] = {}
-        for pr, res_list in resolution_results:
-            trace_key = _get_trace_key(pr)
-            if trace_key:
-                pre_historical_confidences[trace_key] = [rr.confidence for rr in res_list]
-
-        resolution_results = await self.historical_verification_service.verify(resolution_results)
-
-        # --- Trace: Historical verification results ---
-        for pr, res_list in resolution_results:
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            # Check if any historical boost was applied
-            boost_applied = any(rr.metadata.get("historical_verified") if rr.metadata else False for rr in res_list)
-            pre_confs = pre_historical_confidences.get(trace_key, [])
-            # Find the max confidence change to report as the boost
-            original_conf = max(pre_confs) if pre_confs else None
-            boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
-            self.trace_collector.record_historical(
-                key=trace_key,
-                ran=True,
-                boost_applied=boost_applied,
-                original_confidence=original_conf if boost_applied else None,
-                boosted_confidence=boosted_conf if boost_applied else None,
-            )
+        resolution_results = await self.run_historical_verification(resolution_results)
 
         if stop_at_phase == "historical":
             return {"dry_run": dry_run, "phase": "historical"}
@@ -1244,9 +1272,7 @@ class RequestOrchestrator:
         # Debug logging for Phase 3 decision
         total_unresolved = 0
         for idx, (pr, resolution_list) in enumerate(resolution_results):
-            unresolved_in_this = sum(
-                1 for rr in resolution_list if not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value
-            )
+            unresolved_in_this = sum(1 for rr in resolution_list if needs_phase3(rr))
             if unresolved_in_this > 0:
                 total_unresolved += unresolved_in_this
                 logger.debug(f"ParseResult {idx} has {unresolved_in_this} unresolved requests")
@@ -1258,9 +1284,7 @@ class RequestOrchestrator:
         for idx, (pr, resolution_list) in enumerate(resolution_results):
             # Check if any resolutions in this ParseResult are unresolved
             # Skip pre-parsed requests (like age preferences from dropdowns)
-            has_unresolved = any(
-                not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value for rr in resolution_list
-            )
+            has_unresolved = any(needs_phase3(rr) for rr in resolution_list)
             if has_unresolved:
                 unresolved_cases.append((pr, resolution_list))
                 unresolved_indices.append(idx)
