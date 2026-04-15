@@ -1,15 +1,9 @@
-"""Tests verifying the AI parse schema no longer accepts group_kind fields.
+"""Regression guard: AI parse schemas reject group_kind / group_metadata.
 
-After removing the group-expansion feature entirely (see
-docs/plans/workstream-b-remove-group-expansion.md), the Pydantic schema
-for AI-structured output must reject `group_kind` and `group_metadata`
-as unknown fields. AI responses are expected to name specific individuals
-or, when that isn't possible, produce a single PENDING staff-review
-record via prompt instructions.
-
-These tests are written first (TDD) and fail on current `main` (which
-still defines `group_kind` / `group_metadata` on `AIBunkRequestItem`).
-They pass after the schema fields are deleted.
+The group-expansion feature has been removed. AI responses are expected to
+name specific individuals, or produce a single PENDING staff-review record
+when that isn't possible. If a stale AI response sends group_kind or
+group_metadata, the schema must fail loudly rather than silently drop it.
 """
 
 from __future__ import annotations

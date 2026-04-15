@@ -14,13 +14,8 @@ SOURCE_FRAGMENT_MAX_LEN = 2000
 
 
 class _ForbidExtraModel(BaseModel):
-    """Base model that rejects unknown fields.
-
-    Parse-schema classes inherit from this so stale AI responses — for
-    example ones still emitting the removed ``group_kind`` / ``group_metadata``
-    fields — surface as a hard validation error instead of silently passing
-    data the pipeline no longer understands.
-    """
+    """Base model that rejects unknown fields so stale AI responses fail loudly
+    instead of silently passing data the pipeline no longer understands."""
 
     model_config = ConfigDict(extra="forbid")
 

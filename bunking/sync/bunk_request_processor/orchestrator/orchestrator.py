@@ -1221,7 +1221,7 @@ class RequestOrchestrator:
         if stop_at_phase == "historical":
             return {"dry_run": dry_run, "phase": "historical"}
 
-        # Count Phase 2 results (on expanded results)
+        # Count Phase 2 results
         for _, resolution_list in resolution_results:
             for res_result in resolution_list:
                 if res_result.is_resolved:

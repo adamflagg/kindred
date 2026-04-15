@@ -15,9 +15,9 @@ from ..shared.constants import SourceField
 
 logger = get_logger(__name__)
 
-# Rule keys that were removed when the group-expansion feature was deleted.
-# If any prod config still has these, log a WARN so the operator notices they
-# are now inert (rather than silently ignoring the stale entries).
+# Rule keys no longer honored by the priority calculator. Presence in a
+# loaded config produces a WARN so operators notice inert entries instead of
+# them being silently ignored.
 _REMOVED_RULE_KEYS = frozenset(
     {
         "last_year_bunkmates_sole",
@@ -85,15 +85,8 @@ class PriorityCalculator:
                 stale,
             )
 
-        # Start with defaults, then overlay config
         rules = dict(DEFAULT_RULES)
-        for rule_name, rule_config in config_rules.items():
-            if rule_name in rules:
-                rules[rule_name] = rule_config
-            else:
-                # Allow new rules from config
-                rules[rule_name] = rule_config
-
+        rules.update(config_rules)
         return rules
 
     def _get_rule_priority(self, rule_name: str) -> int:

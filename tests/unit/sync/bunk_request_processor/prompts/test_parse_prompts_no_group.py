@@ -1,18 +1,10 @@
-"""Tests that parse prompts no longer mention the group-expansion feature.
+"""Regression guard: parse prompts do not mention group-expansion vocabulary.
 
-After the group-expansion deletion (see
-docs/plans/workstream-b-remove-group-expansion.md), the parse prompts
-must no longer instruct the AI to emit group_kind / group_metadata
+Parse prompts must not instruct the AI to emit group_kind / group_metadata
 or reference the LAST_YEAR_BUNKMATES / SIBLING / classmates / congregation
-placeholder vocabulary.
-
-Unresolved / unnamed inputs pass through the existing Phase 2 + Phase 3
-pipeline — they end up as PENDING bunk_requests with a negative
-requested_cm_id (see disposition_rules.py). No prompt-level fallback
-machinery is required.
-
-These tests are written TDD-style: they fail against pre-sweep prompts
-and pass only after the prompt sweep is complete.
+placeholder vocabulary. Unresolved / unnamed inputs pass through Phase 2
++ Phase 3 and land as PENDING bunk_requests with a negative requested_cm_id
+(see disposition_rules.py).
 """
 
 from __future__ import annotations
