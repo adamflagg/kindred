@@ -1,0 +1,65 @@
+name: Semantic PR Title
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+jobs:
+  lint-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 # v5.5.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            style
+            test
+            build
+            config
+            chore
+            ci
+            revert
+          scopes: |
+            frontend
+            api
+            sync
+            pb
+            solver
+            docker
+            ci
+            auth
+            google
+            security
+            logging
+            release
+            config
+            deps
+            deps-dev
+            tests
+            scripts
+            docs
+            metrics
+            graph
+            data
+            rbac
+          requireScope: true
+          subjectPattern: ^[A-Za-z].+$
+          subjectPatternError: |
+            The subject "{subject}" must start with an uppercase or lowercase
+            letter and contain at least two characters.
+          validateSingleCommit: false
