@@ -180,11 +180,19 @@ class PhaseRunner:
             if stop_at_phase == "phase2":
                 return result
 
+            # Phase 2.5: Historical Group Verification. Delegates to the shared
+            # orchestrator method so debug cascades emit identical traces and
+            # confidence boosts as the full pipeline.
+            historical_results = await self._orch.run_historical_verification(phase2_results)
+            result["historical_results"] = historical_results
+
             if stop_at_phase == "historical":
                 return result
 
-            # Continue to Phase 3 with ambiguous cases
-            ambiguous = [(pr, rr_list) for pr, rr_list in phase2_results if any(not rr.is_resolved for rr in rr_list)]
+            # Continue to Phase 3 with ambiguous cases (post-historical-boost)
+            ambiguous = [
+                (pr, rr_list) for pr, rr_list in historical_results if any(not rr.is_resolved for rr in rr_list)
+            ]
             if ambiguous:
                 phase3_results = await self.run_phase3(ambiguous)
                 result["phase3_results"] = phase3_results

@@ -35,6 +35,9 @@ def _make_mock_orchestrator() -> MagicMock:
     orch.phase3_service = MagicMock()
     orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
 
+    # Phase 2.5 historical verification (shared with full pipeline)
+    orch.run_historical_verification = AsyncMock(side_effect=lambda results: results)
+
     # Temporal name cache (needed for phase 2 init)
     orch.temporal_name_cache = MagicMock()
     orch.temporal_name_cache.initialize = MagicMock()

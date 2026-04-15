@@ -147,6 +147,150 @@ class TestStopAtPhase:
         )
 
     @pytest.mark.anyio
+    async def test_run_from_phase2_with_stop_at_historical_runs_verify(self):
+        """stop_at_phase='historical' from phase2 entry must run historical verification.
+
+        Regression test for #921: phase2 branch returned early on 'historical' without
+        ever calling historical_verification_service.verify().
+        """
+        orch = MagicMock()
+
+        # Phase 2 returns an ambiguous result
+        pr = MagicMock()
+        raw_rr = MagicMock()
+        raw_rr.is_resolved = False
+        raw_rr.confidence = 0.70
+        phase2_out = [(pr, [raw_rr])]
+
+        # Verified (post-historical) returns a boosted version
+        boosted_rr = MagicMock()
+        boosted_rr.is_resolved = False
+        boosted_rr.confidence = 0.80
+        verified_out = [(pr, [boosted_rr])]
+
+        orch.phase2_service = MagicMock()
+        orch.phase2_service.batch_resolve = AsyncMock(return_value=phase2_out)
+        orch.run_historical_verification = AsyncMock(return_value=verified_out)
+        orch.phase3_service = MagicMock()
+        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
+        orch.temporal_name_cache = MagicMock()
+        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
+
+        runner = PhaseRunner(orch)
+
+        from bunking.sync.bunk_request_processor.debug.trace_models import (
+            Phase1Trace,
+            PrePhase1Trace,
+            TraceData,
+        )
+
+        trace_data = TraceData(
+            pre_phase1=PrePhase1Trace(action="parsed", original_text="bunk with Emma"),
+            phase1_parse=Phase1Trace(
+                ran=True,
+                parsed_intents=[{"target_name": "Emma", "request_type": "BUNK_WITH", "confidence": 0.95}],
+                is_valid=True,
+            ),
+        )
+
+        result = await runner.run_from_phase("phase2", trace_data=trace_data, dry_run=True, stop_at_phase="historical")
+
+        orch.phase2_service.batch_resolve.assert_called_once()
+        orch.run_historical_verification.assert_called_once_with(phase2_out)
+        orch.phase3_service.batch_disambiguate.assert_not_called()
+        assert result["historical_results"] == verified_out
+
+    @pytest.mark.anyio
+    async def test_run_from_phase2_with_stop_at_phase3_feeds_historical_into_phase3(self):
+        """stop_at_phase='phase3' from phase2 entry must feed VERIFIED results into phase3.
+
+        Regression test for #922: phase2 branch used to cascade raw phase2 output into
+        phase3, skipping the historical boost entirely.
+        """
+        orch = MagicMock()
+
+        pr = MagicMock()
+        raw_rr = MagicMock()
+        raw_rr.is_resolved = False
+        phase2_out = [(pr, [raw_rr])]
+
+        boosted_rr = MagicMock()
+        boosted_rr.is_resolved = False  # still ambiguous so phase3 runs
+        verified_out = [(pr, [boosted_rr])]
+
+        orch.phase2_service = MagicMock()
+        orch.phase2_service.batch_resolve = AsyncMock(return_value=phase2_out)
+        orch.run_historical_verification = AsyncMock(return_value=verified_out)
+        orch.phase3_service = MagicMock()
+        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=verified_out)
+        orch.temporal_name_cache = MagicMock()
+        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
+
+        runner = PhaseRunner(orch)
+
+        from bunking.sync.bunk_request_processor.debug.trace_models import (
+            Phase1Trace,
+            PrePhase1Trace,
+            TraceData,
+        )
+
+        trace_data = TraceData(
+            pre_phase1=PrePhase1Trace(action="parsed", original_text="bunk with Emma"),
+            phase1_parse=Phase1Trace(
+                ran=True,
+                parsed_intents=[{"target_name": "Emma", "request_type": "BUNK_WITH", "confidence": 0.95}],
+                is_valid=True,
+            ),
+        )
+
+        await runner.run_from_phase("phase2", trace_data=trace_data, dry_run=True, stop_at_phase="phase3")
+
+        orch.run_historical_verification.assert_called_once_with(phase2_out)
+        # phase3 must be called with the VERIFIED results, not the raw phase2 output
+        call_args = orch.phase3_service.batch_disambiguate.call_args
+        phase3_input = call_args.args[0] if call_args.args else call_args.kwargs.get("ambiguous_cases")
+        assert phase3_input == verified_out, "phase3 must receive historical-verified results, not raw phase2"
+
+    @pytest.mark.anyio
+    async def test_run_from_phase2_with_stop_at_phase2_does_not_run_historical(self):
+        """stop_at_phase='phase2' must NOT trigger historical verification."""
+        orch = MagicMock()
+
+        mock_rr = MagicMock()
+        mock_rr.is_resolved = False
+        mock_pr = MagicMock()
+        orch.phase2_service = MagicMock()
+        orch.phase2_service.batch_resolve = AsyncMock(return_value=[(mock_pr, [mock_rr])])
+        orch.run_historical_verification = AsyncMock()
+        orch.phase3_service = MagicMock()
+        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
+        orch.temporal_name_cache = MagicMock()
+        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
+
+        runner = PhaseRunner(orch)
+
+        from bunking.sync.bunk_request_processor.debug.trace_models import (
+            Phase1Trace,
+            PrePhase1Trace,
+            TraceData,
+        )
+
+        trace_data = TraceData(
+            pre_phase1=PrePhase1Trace(action="parsed", original_text="bunk with Emma"),
+            phase1_parse=Phase1Trace(
+                ran=True,
+                parsed_intents=[{"target_name": "Emma", "request_type": "BUNK_WITH", "confidence": 0.95}],
+                is_valid=True,
+            ),
+        )
+
+        await runner.run_from_phase("phase2", trace_data=trace_data, dry_run=True, stop_at_phase="phase2")
+
+        orch.phase2_service.batch_resolve.assert_called_once()
+        orch.run_historical_verification.assert_not_called()
+        orch.phase3_service.batch_disambiguate.assert_not_called()
+
+    @pytest.mark.anyio
     async def test_stop_at_same_as_start_runs_only_that_phase(self):
         """run_from_phase with stop_at_phase == start phase runs only that phase."""
         orch = MagicMock()
