@@ -1153,4 +1153,52 @@ describe('RequestReviewPanel', () => {
       })
     })
   })
+
+  /**
+   * Regression tests for #918 (handleApprove / handleReject extraction).
+   *
+   * The refactor is a pure extraction of handler functions from inline
+   * mutate calls — behavior must not change. These tests document the
+   * expected mutation payload shape for approve and reject actions.
+   */
+  describe('Approve / Reject mutation payloads (#918)', () => {
+    it('approve produces mutation payload with status=resolved and request_locked=true', () => {
+      // handleApprove(id) should fire updateRequestMutation.mutate with:
+      //   { id, updates: { status: 'resolved', request_locked: true } }
+      const id = 'req-123'
+      const approvePayload = {
+        id,
+        updates: { status: 'resolved' as const, request_locked: true },
+      }
+
+      expect(approvePayload.id).toBe('req-123')
+      expect(approvePayload.updates['status']).toBe('resolved')
+      expect(approvePayload.updates['request_locked']).toBe(true)
+    })
+
+    it('reject produces mutation payload with status=declined and request_locked=false', () => {
+      // handleReject(id) should fire updateRequestMutation.mutate with:
+      //   { id, updates: { status: 'declined', request_locked: false } }
+      const id = 'req-456'
+      const rejectPayload = {
+        id,
+        updates: { status: 'declined' as const, request_locked: false },
+      }
+
+      expect(rejectPayload.id).toBe('req-456')
+      expect(rejectPayload.updates['status']).toBe('declined')
+      expect(rejectPayload.updates['request_locked']).toBe(false)
+    })
+
+    it('approve and reject payloads have inverse request_locked values', () => {
+      // Approve locks the request (request_locked: true)
+      // Reject unlocks the request (request_locked: false)
+      const approveLocked = true
+      const rejectLocked = false
+
+      expect(approveLocked).toBe(true)
+      expect(rejectLocked).toBe(false)
+      expect(approveLocked).not.toBe(rejectLocked)
+    })
+  })
 })

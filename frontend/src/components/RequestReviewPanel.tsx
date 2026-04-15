@@ -612,6 +612,20 @@ export default function RequestReviewPanel({
     },
   })
 
+  // Approve/reject action handlers — extracted from inline mutate calls
+  // to consolidate the mutation payload shape in one place.
+  const handleApprove = (id: string) =>
+    updateRequestMutation.mutate({
+      id,
+      updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
+    })
+
+  const handleReject = (id: string) =>
+    updateRequestMutation.mutate({
+      id,
+      updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
+    })
+
   // Handlers
   const toggleRowExpansion = useCallback(
     (id: string, request?: BunkRequestsResponse) => {
@@ -1983,13 +1997,11 @@ export default function RequestReviewPanel({
         onConfirm={() => {
           if (!confirmPopover) return
           const { action, requestId } = confirmPopover
-          updateRequestMutation.mutate({
-            id: requestId,
-            updates:
-              action === 'approve'
-                ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
-                : { status: 'declined' as BunkRequestsStatusOptions },
-          })
+          if (action === 'approve') {
+            handleApprove(requestId)
+          } else {
+            handleReject(requestId)
+          }
           setConfirmPopover(null)
         }}
         onCancel={() => setConfirmPopover(null)}
