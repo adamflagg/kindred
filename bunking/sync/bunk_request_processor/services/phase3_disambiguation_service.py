@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar
 
 from bunking.logging_config import get_logger
 
@@ -16,6 +16,8 @@ from .context_builder import ContextBuilder
 from .disambiguation_reranker import rerank_disambiguation_candidates
 
 logger = get_logger(__name__)
+
+T = TypeVar("T")
 
 
 class DisambiguationCase:
@@ -138,7 +140,7 @@ class Phase3DisambiguationService:
         except Exception as e:
             logger.error(f"Phase 3 disambiguation failed: {e}")
             for case in cases:
-                errors = case.disambiguation_metadata.setdefault("errors", {})
+                errors = self._set_meta(case, "errors", dict[int, str]())
                 for idx in case.disambiguation_indices:
                     errors[idx] = str(e)
 
@@ -158,6 +160,11 @@ class Phase3DisambiguationService:
         )
 
         return results
+
+    def _set_meta(self, case: DisambiguationCase, key: str, default: T) -> T:
+        """Return case.disambiguation_metadata[key], inserting *default* if absent."""
+        value: T = case.disambiguation_metadata.setdefault(key, default)
+        return value
 
     def _prepare_individual_disambiguation_requests(
         self, cases: list[DisambiguationCase]
@@ -226,7 +233,15 @@ class Phase3DisambiguationService:
         results: list[Any],
         case_mapping: dict[int, tuple[DisambiguationCase, int]],
     ) -> None:
-        """Process individual AI disambiguation results back to cases"""
+        """Process individual AI disambiguation results back to cases.
+
+        Orchestrates per-result handling. Each iteration:
+          1. Validates non-empty result (else records "No result from AI")
+          2. Tries the JW re-ranker path for ParsedResponse metadata signals
+             (ranked_selections or no_match); short-circuits if handled
+          3. Extracts canonical (selected_id, confidence, reason) fields
+          4. Applies legacy selected_person_id validation & recording
+        """
         for idx, result in enumerate(results):
             if idx not in case_mapping:
                 continue
@@ -234,162 +249,19 @@ class Phase3DisambiguationService:
             case, ambiguous_idx = case_mapping[idx]
 
             if not result:
-                case.disambiguation_metadata.setdefault("errors", {})[ambiguous_idx] = "No result from AI"
+                self._set_meta(case, "errors", dict[int, str]())[ambiguous_idx] = "No result from AI"
                 continue
 
             try:
                 resolution = case.resolution_results[ambiguous_idx]
 
-                # Extract selected_person_id from the result.
-                # The AI provider returns ParsedResponse with target_person_id in
-                # result.requests[0].metadata. Legacy AIDisambiguationResponse has
-                # selected_person_id as a direct attribute.
-                selected_person_id: int | None = None
-                ai_confidence: float = 0.8
-                ai_reason: str | None = None
-
-                if result and not isinstance(result, ParsedResponse) and not hasattr(result, "selected_person_id"):
-                    logger.warning(f"Phase 3 unexpected result type: {type(result).__name__} for case idx={idx}")
-
-                # Track whether re-ranker handled this result
-                reranker_handled = False
-
-                if isinstance(result, ParsedResponse):
-                    # Unwrap ParsedResponse from AI provider
-                    ai_confidence = result.confidence
-                    if result.requests:
-                        req_metadata = result.requests[0].metadata or {}
-                        selected_person_id = req_metadata.get("target_person_id")
-                        ai_reason = req_metadata.get("reason")
-
-                        # --- JW re-ranker path (new ranked_selections) ---
-                        ranked_selections = req_metadata.get("ranked_selections")
-                        if ranked_selections:
-                            ai_no_match = req_metadata.get("no_match", False)
-                            ai_ranked = [
-                                (sel["person_id"], sel["confidence"])
-                                for sel in ranked_selections
-                                if "person_id" in sel and "confidence" in sel
-                            ]
-                            reranked = rerank_disambiguation_candidates(
-                                ai_ranked=ai_ranked,
-                                target_name=resolution.target_name or "",
-                                candidate_persons=resolution.candidates[:10] if resolution.candidates else [],
-                                ai_no_match=ai_no_match,
-                            )
-                            if reranked:
-                                num_candidates = len(resolution.candidates or [])
-                                result_metadata: dict[str, Any] = {
-                                    "ai_confidence": reranked.ai_confidence,
-                                    "disambiguation_reason": reranked.reasoning,
-                                    "original_method": resolution.method,
-                                    "candidates_considered": num_candidates,
-                                    "reranked": True,
-                                    "jw_score": reranked.jw_score,
-                                    "ranked_selections": ranked_selections,
-                                }
-                                case.disambiguated_results[ambiguous_idx] = ResolutionResult(
-                                    person=reranked.person,
-                                    confidence=reranked.confidence,
-                                    method="ai_disambiguation",
-                                    candidates=(resolution.candidates or [])[:10],
-                                    metadata=result_metadata,
-                                )
-                                case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
-                                logger.debug(
-                                    f"Phase 3 re-ranked '{resolution.target_name}' → "
-                                    f"{reranked.person.first_name} {reranked.person.last_name} "
-                                    f"(cm_id={reranked.person.cm_id}, confidence={reranked.confidence:.2f}, "
-                                    f"jw={reranked.jw_score})"
-                                )
-                                reranker_handled = True
-                            else:
-                                # Re-ranker rejected all candidates
-                                case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
-                                case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = (
-                                    "JW re-ranker rejected all candidates"
-                                )
-                                logger.debug(
-                                    f"Phase 3 re-ranker rejected all candidates for '{resolution.target_name}'"
-                                )
-                                reranker_handled = True
-
-                        elif req_metadata.get("no_match", False):
-                            # AI explicitly said no candidate matches — propagate from metadata
-                            case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
-                            case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = (
-                                req_metadata.get("no_match_reason") or "AI determined no candidate matches"
-                            )
-                            logger.debug(f"Phase 3 AI no_match for '{resolution.target_name}'")
-                            reranker_handled = True
-
-                elif hasattr(result, "selected_person_id"):
-                    # Legacy path: direct AIDisambiguationResponse (defensive)
-                    selected_person_id = result.selected_person_id
-                    ai_confidence = getattr(result, "confidence", 0.8)
-                    ai_reason = getattr(result, "reason", None)
-
-                if reranker_handled:
-                    # Re-ranker already produced a result or no_match — skip legacy path
+                if self._try_reranker_path(case, ambiguous_idx, resolution, result):
                     continue
 
-                if selected_person_id:
-                    # AI selected a specific person — find them in candidates
-                    selected_person = None
-                    if resolution.candidates:
-                        for candidate in resolution.candidates[:10]:  # Top 10
-                            if candidate.cm_id == selected_person_id:
-                                selected_person = candidate
-                                break
-
-                    if selected_person:
-                        # Create disambiguated result
-                        num_candidates = len(resolution.candidates or [])
-                        result_metadata = {
-                            "ai_confidence": ai_confidence,
-                            "disambiguation_reason": ai_reason,
-                            "original_method": resolution.method,
-                            "candidates_considered": num_candidates,
-                        }
-                        case.disambiguated_results[ambiguous_idx] = ResolutionResult(
-                            person=selected_person,
-                            confidence=ai_confidence,
-                            method="ai_disambiguation",
-                            candidates=(resolution.candidates or [])[:10],
-                            metadata=result_metadata,
-                        )
-                        case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "success"
-                        logger.debug(
-                            f"Phase 3 disambiguated '{resolution.target_name}' → "
-                            f"{selected_person.first_name} {selected_person.last_name} "
-                            f"(cm_id={selected_person_id}, confidence={ai_confidence:.2f})"
-                        )
-                    else:
-                        # AI selected unknown person (not in candidates)
-                        case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
-                        case.disambiguation_metadata.setdefault("selected_ids", {})[ambiguous_idx] = selected_person_id
-                        logger.debug(
-                            f"Phase 3 no match for '{resolution.target_name}' — "
-                            f"AI selected cm_id={selected_person_id} not in candidates"
-                        )
-
-                elif getattr(result, "no_match", False):
-                    # AI explicitly said no match (legacy path)
-                    case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "no_match"
-                    case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = getattr(
-                        result, "reason", "No suitable match"
-                    )
-
-                else:
-                    # No selection and no legacy no_match flag — AI output was invalid/unparseable
-                    case.disambiguation_metadata.setdefault("status", {})[ambiguous_idx] = "invalid_ai_output"
-                    case.disambiguation_metadata.setdefault("reasons", {})[ambiguous_idx] = (
-                        ai_reason or "No suitable match"
-                    )
-                    logger.debug(
-                        f"Phase 3 invalid AI output for '{resolution.target_name}' — "
-                        f"{ai_reason or 'AI returned no selection'}"
-                    )
+                selected_person_id, ai_confidence, ai_reason = self._extract_ai_result_fields(result)
+                self._apply_legacy_selection(
+                    case, ambiguous_idx, resolution, result, selected_person_id, ai_confidence, ai_reason
+                )
 
             except Exception as e:
                 req_info = (
@@ -400,7 +272,181 @@ class Phase3DisambiguationService:
                 logger.error(
                     f"Error processing disambiguation result for case {req_info}, ambiguous_idx {ambiguous_idx}: {e}"
                 )
-                case.disambiguation_metadata.setdefault("errors", {})[ambiguous_idx] = str(e)
+                self._set_meta(case, "errors", dict[int, str]())[ambiguous_idx] = str(e)
+
+    def _extract_ai_result_fields(self, result: Any) -> tuple[int | None, float, str | None]:
+        """Unwrap an AI result into canonical (selected_person_id, ai_confidence, ai_reason).
+
+        ParsedResponse: reads target_person_id / reason from result.requests[0].metadata
+        and takes confidence from the response itself.
+        Legacy AIDisambiguationResponse: reads selected_person_id / confidence / reason
+        attributes directly.
+        Unknown shapes: returns (None, 0.8, None).
+        """
+        selected_person_id: int | None = None
+        ai_confidence: float = 0.8
+        ai_reason: str | None = None
+
+        if isinstance(result, ParsedResponse):
+            ai_confidence = result.confidence
+            if result.requests:
+                req_metadata = result.requests[0].metadata or {}
+                selected_person_id = req_metadata.get("target_person_id")
+                ai_reason = req_metadata.get("reason")
+        elif hasattr(result, "selected_person_id"):
+            selected_person_id = result.selected_person_id
+            ai_confidence = getattr(result, "confidence", 0.8)
+            ai_reason = getattr(result, "reason", None)
+        elif result:
+            logger.warning(f"Phase 3 unexpected result type: {type(result).__name__}")
+
+        return selected_person_id, ai_confidence, ai_reason
+
+    def _try_reranker_path(
+        self,
+        case: DisambiguationCase,
+        ambiguous_idx: int,
+        resolution: ResolutionResult,
+        result: Any,
+    ) -> bool:
+        """Handle ParsedResponse metadata signals (ranked_selections / no_match).
+
+        Returns True iff the result was fully handled (success or no_match recorded)
+        and the caller should skip the legacy selected_person_id path.
+        """
+        if not isinstance(result, ParsedResponse) or not result.requests:
+            return False
+
+        req_metadata = result.requests[0].metadata or {}
+        ranked_selections = req_metadata.get("ranked_selections")
+
+        if ranked_selections:
+            ai_no_match = req_metadata.get("no_match", False)
+            ai_ranked = [
+                (sel["person_id"], sel["confidence"])
+                for sel in ranked_selections
+                if "person_id" in sel and "confidence" in sel
+            ]
+            reranked = rerank_disambiguation_candidates(
+                ai_ranked=ai_ranked,
+                target_name=resolution.target_name or "",
+                candidate_persons=resolution.candidates[:10] if resolution.candidates else [],
+                ai_no_match=ai_no_match,
+            )
+            if reranked:
+                num_candidates = len(resolution.candidates or [])
+                result_metadata: dict[str, Any] = {
+                    "ai_confidence": reranked.ai_confidence,
+                    "disambiguation_reason": reranked.reasoning,
+                    "original_method": resolution.method,
+                    "candidates_considered": num_candidates,
+                    "reranked": True,
+                    "jw_score": reranked.jw_score,
+                    "ranked_selections": ranked_selections,
+                }
+                case.disambiguated_results[ambiguous_idx] = ResolutionResult(
+                    person=reranked.person,
+                    confidence=reranked.confidence,
+                    method="ai_disambiguation",
+                    candidates=(resolution.candidates or [])[:10],
+                    metadata=result_metadata,
+                )
+                self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "success"
+                logger.debug(
+                    f"Phase 3 re-ranked '{resolution.target_name}' → "
+                    f"{reranked.person.first_name} {reranked.person.last_name} "
+                    f"(cm_id={reranked.person.cm_id}, confidence={reranked.confidence:.2f}, "
+                    f"jw={reranked.jw_score})"
+                )
+                return True
+
+            # Re-ranker rejected all candidates
+            self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "no_match"
+            self._set_meta(case, "reasons", dict[int, str]())[ambiguous_idx] = "JW re-ranker rejected all candidates"
+            logger.debug(f"Phase 3 re-ranker rejected all candidates for '{resolution.target_name}'")
+            return True
+
+        if req_metadata.get("no_match", False):
+            # AI explicitly said no candidate matches — propagate from metadata
+            self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "no_match"
+            self._set_meta(case, "reasons", dict[int, str]())[ambiguous_idx] = (
+                req_metadata.get("no_match_reason") or "AI determined no candidate matches"
+            )
+            logger.debug(f"Phase 3 AI no_match for '{resolution.target_name}'")
+            return True
+
+        return False
+
+    def _apply_legacy_selection(
+        self,
+        case: DisambiguationCase,
+        ambiguous_idx: int,
+        resolution: ResolutionResult,
+        result: Any,
+        selected_person_id: int | None,
+        ai_confidence: float,
+        ai_reason: str | None,
+    ) -> None:
+        """Apply the legacy selected_person_id path.
+
+        Validates that the AI-selected person exists in the resolution's candidate
+        list, and records one of: success / no_match (unknown id or legacy
+        `no_match` attr) / invalid_ai_output (no selection, no no_match signal).
+        """
+        if selected_person_id:
+            # AI selected a specific person — find them in candidates
+            selected_person = None
+            if resolution.candidates:
+                for candidate in resolution.candidates[:10]:  # Top 10
+                    if candidate.cm_id == selected_person_id:
+                        selected_person = candidate
+                        break
+
+            if selected_person:
+                # Create disambiguated result
+                num_candidates = len(resolution.candidates or [])
+                result_metadata: dict[str, Any] = {
+                    "ai_confidence": ai_confidence,
+                    "disambiguation_reason": ai_reason,
+                    "original_method": resolution.method,
+                    "candidates_considered": num_candidates,
+                }
+                case.disambiguated_results[ambiguous_idx] = ResolutionResult(
+                    person=selected_person,
+                    confidence=ai_confidence,
+                    method="ai_disambiguation",
+                    candidates=(resolution.candidates or [])[:10],
+                    metadata=result_metadata,
+                )
+                self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "success"
+                logger.debug(
+                    f"Phase 3 disambiguated '{resolution.target_name}' → "
+                    f"{selected_person.first_name} {selected_person.last_name} "
+                    f"(cm_id={selected_person_id}, confidence={ai_confidence:.2f})"
+                )
+            else:
+                # AI selected unknown person (not in candidates)
+                self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "no_match"
+                self._set_meta(case, "selected_ids", dict[int, int]())[ambiguous_idx] = selected_person_id
+                logger.debug(
+                    f"Phase 3 no match for '{resolution.target_name}' — "
+                    f"AI selected cm_id={selected_person_id} not in candidates"
+                )
+
+        elif getattr(result, "no_match", False):
+            # AI explicitly said no match (legacy path)
+            self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "no_match"
+            self._set_meta(case, "reasons", dict[int, str]())[ambiguous_idx] = getattr(
+                result, "reason", "No suitable match"
+            )
+
+        else:
+            # No selection and no legacy no_match flag — AI output was invalid/unparseable
+            self._set_meta(case, "status", dict[int, str]())[ambiguous_idx] = "invalid_ai_output"
+            self._set_meta(case, "reasons", dict[int, str]())[ambiguous_idx] = ai_reason or "No suitable match"
+            logger.debug(
+                f"Phase 3 invalid AI output for '{resolution.target_name}' — {ai_reason or 'AI returned no selection'}"
+            )
 
     def _build_final_results(
         self,
