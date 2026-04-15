@@ -982,6 +982,9 @@ export default function RequestReviewPanel({
                   )}
                 </div>
               </div>
+              <div className="text-muted-foreground px-4 py-3 text-left text-sm font-medium">
+                Type
+              </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
                 onClick={() => handleSort('request')}
@@ -989,23 +992,6 @@ export default function RequestReviewPanel({
                 <div className="flex items-center gap-1">
                   Request
                   {sortBy === 'request' && (
-                    <span className="text-primary">
-                      {sortOrder === 'asc' ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
-                onClick={() => handleSort('disposition')}
-              >
-                <div className="flex items-center gap-1">
-                  Disposition
-                  {sortBy === 'disposition' && (
                     <span className="text-primary">
                       {sortOrder === 'asc' ? (
                         <ChevronUp className="h-3 w-3" />
