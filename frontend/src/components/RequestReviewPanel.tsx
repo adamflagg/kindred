@@ -1692,43 +1692,9 @@ export default function RequestReviewPanel({
                                   </>
                                 )}
 
-                                {/* Type (moved from column) */}
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="font-medium">Type:</span>
-                                  <EditableRequestType
-                                    value={request.request_type}
-                                    onChange={(newType) => {
-                                      const updates: Partial<BunkRequestsResponse> = {
-                                        request_type:
-                                          newType as BunkRequestsResponse['request_type'],
-                                      }
-                                      // Explicit clear values (not delete) so PocketBase clears the field.
-                                      // Use null (not 0) to properly clear the field — 0 causes
-                                      // unique constraint violations when multiple requests exist.
-                                      if (newType === 'age_preference') {
-                                        updates.requestee_id = null as unknown as number
-                                      } else {
-                                        updates.age_preference_target = ''
-                                      }
-                                      handleValidatedUpdate(request, updates)
-                                    }}
-                                    disabled={request.request_locked || false}
-                                  />
-                                </div>
-
                                 {/* Metadata */}
                                 <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
                                   <span>Source: {request.source}</span>
-                                  {request.disposition_reason && (
-                                    <span
-                                      className={clsx(
-                                        'rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                                        getDispositionClasses(request.disposition_reason)
-                                      )}
-                                    >
-                                      {formatDispositionReason(request.disposition_reason)}
-                                    </span>
-                                  )}
                                   {request.resolution_method && (
                                     <span>
                                       via{' '}
