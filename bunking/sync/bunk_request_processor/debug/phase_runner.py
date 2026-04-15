@@ -189,9 +189,14 @@ class PhaseRunner:
             if stop_at_phase == "historical":
                 return result
 
-            # Continue to Phase 3 with ambiguous cases (post-historical-boost)
+            # Continue to Phase 3 with ambiguous cases (post-historical-boost).
+            # Exclude age-preference entries — mirrors orchestrator.py:1280-1282.
+            from bunking.sync.bunk_request_processor.core.models import RequestType
+
             ambiguous = [
-                (pr, rr_list) for pr, rr_list in historical_results if any(not rr.is_resolved for rr in rr_list)
+                (pr, rr_list)
+                for pr, rr_list in historical_results
+                if any(not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value for rr in rr_list)
             ]
             if ambiguous:
                 phase3_results = await self.run_phase3(ambiguous)

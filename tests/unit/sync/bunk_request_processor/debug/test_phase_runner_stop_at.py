@@ -248,8 +248,7 @@ class TestStopAtPhase:
         orch.run_historical_verification.assert_called_once_with(phase2_out)
         # phase3 must be called with the VERIFIED results, not the raw phase2 output
         call_args = orch.phase3_service.batch_disambiguate.call_args
-        phase3_input = call_args.args[0] if call_args.args else call_args.kwargs.get("ambiguous_cases")
-        assert phase3_input == verified_out, "phase3 must receive historical-verified results, not raw phase2"
+        assert call_args.args[0] == verified_out, "phase3 must receive historical-verified results, not raw phase2"
 
     @pytest.mark.anyio
     async def test_run_from_phase2_with_stop_at_phase2_does_not_run_historical(self):
@@ -288,6 +287,53 @@ class TestStopAtPhase:
 
         orch.phase2_service.batch_resolve.assert_called_once()
         orch.run_historical_verification.assert_not_called()
+        orch.phase3_service.batch_disambiguate.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_run_from_phase2_age_preference_excluded_from_phase3(self):
+        """Unresolved age-preference RRs must NOT be fed to phase3 disambiguation.
+
+        Regression guard: the ambiguous filter must mirror orchestrator.py:1280-1282,
+        which excludes AGE_PREFERENCE entries from phase3. Passing them through would
+        cause debug/full pipeline divergence for age-preference requests.
+        """
+        orch = MagicMock()
+
+        pr = MagicMock()
+        age_pref_rr = MagicMock()
+        age_pref_rr.is_resolved = False
+        age_pref_rr.method = "age_preference"
+        phase2_out = [(pr, [age_pref_rr])]
+        verified_out = [(pr, [age_pref_rr])]
+
+        orch.phase2_service = MagicMock()
+        orch.phase2_service.batch_resolve = AsyncMock(return_value=phase2_out)
+        orch.run_historical_verification = AsyncMock(return_value=verified_out)
+        orch.phase3_service = MagicMock()
+        orch.phase3_service.batch_disambiguate = AsyncMock(return_value=[])
+        orch.temporal_name_cache = MagicMock()
+        orch.temporal_name_cache.is_initialized = MagicMock(return_value=True)
+
+        runner = PhaseRunner(orch)
+
+        from bunking.sync.bunk_request_processor.debug.trace_models import (
+            Phase1Trace,
+            PrePhase1Trace,
+            TraceData,
+        )
+
+        trace_data = TraceData(
+            pre_phase1=PrePhase1Trace(action="parsed", original_text="bunk with Emma age older"),
+            phase1_parse=Phase1Trace(
+                ran=True,
+                parsed_intents=[{"target_name": "Emma", "request_type": "AGE_PREFERENCE", "confidence": 0.95}],
+                is_valid=True,
+            ),
+        )
+
+        await runner.run_from_phase("phase2", trace_data=trace_data, dry_run=True, stop_at_phase="phase3")
+
+        # Age-preference entries must not reach phase3 disambiguation
         orch.phase3_service.batch_disambiguate.assert_not_called()
 
     @pytest.mark.anyio

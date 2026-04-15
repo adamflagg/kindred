@@ -980,6 +980,7 @@ class RequestOrchestrator:
 
         Args:
             resolution_results: Phase 2 output (parse result + candidate list pairs).
+                An empty list is a no-op (returns immediately with no side effects).
 
         Returns:
             Resolution results with historical boosts applied.
@@ -1000,7 +1001,7 @@ class RequestOrchestrator:
             trace_key = _get_trace_key(pr)
             if not trace_key:
                 continue
-            boost_applied = any(rr.metadata.get("historical_verified") if rr.metadata else False for rr in res_list)
+            boost_applied = any(rr.metadata and rr.metadata.get("historical_verified") is True for rr in res_list)
             pre_confs = pre_historical_confidences.get(trace_key, [])
             original_conf = max(pre_confs) if pre_confs else None
             boosted_conf = max(rr.confidence for rr in res_list) if res_list else None
