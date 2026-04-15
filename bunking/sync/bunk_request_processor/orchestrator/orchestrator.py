@@ -123,6 +123,14 @@ def generate_unresolved_person_id(name_text: str) -> int:
     return unresolved_id
 
 
+def needs_phase3(rr: ResolutionResult) -> bool:
+    """Return True if this resolution result should proceed to Phase 3 disambiguation.
+
+    Age-preference requests are excluded — they are staff-reviewed, not AI-resolved.
+    """
+    return not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value
+
+
 class RequestOrchestrator:
     """Main orchestrator for the three-phase bunk request processing.
 
@@ -1264,9 +1272,7 @@ class RequestOrchestrator:
         # Debug logging for Phase 3 decision
         total_unresolved = 0
         for idx, (pr, resolution_list) in enumerate(resolution_results):
-            unresolved_in_this = sum(
-                1 for rr in resolution_list if not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value
-            )
+            unresolved_in_this = sum(1 for rr in resolution_list if needs_phase3(rr))
             if unresolved_in_this > 0:
                 total_unresolved += unresolved_in_this
                 logger.debug(f"ParseResult {idx} has {unresolved_in_this} unresolved requests")
@@ -1278,9 +1284,7 @@ class RequestOrchestrator:
         for idx, (pr, resolution_list) in enumerate(resolution_results):
             # Check if any resolutions in this ParseResult are unresolved
             # Skip pre-parsed requests (like age preferences from dropdowns)
-            has_unresolved = any(
-                not rr.is_resolved and rr.method != RequestType.AGE_PREFERENCE.value for rr in resolution_list
-            )
+            has_unresolved = any(needs_phase3(rr) for rr in resolution_list)
             if has_unresolved:
                 unresolved_cases.append((pr, resolution_list))
                 unresolved_indices.append(idx)
