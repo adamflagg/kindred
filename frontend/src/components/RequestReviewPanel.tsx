@@ -31,8 +31,9 @@ import type {
 import clsx from 'clsx'
 import {
   getDispositionClasses,
-  getDispositionSortRank,
   formatDispositionReason,
+  formatReason,
+  shouldShowReasonInStatus,
   CONFIDENCE_AUTO_ACCEPT,
   CONFIDENCE_RESOLVED,
   MUTUAL_BADGE_CLASSES,
@@ -62,7 +63,7 @@ interface FilterState {
   searchQuery: string
 }
 
-type SortColumn = 'requester' | 'request' | 'disposition' | 'priority' | 'confidence' | 'status'
+type SortColumn = 'requester' | 'request' | 'priority' | 'confidence' | 'status'
 
 export default function RequestReviewPanel({
   sessionId,
@@ -93,7 +94,8 @@ export default function RequestReviewPanel({
       const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
-        if (parsed?.sort?.sortBy) return parsed.sort.sortBy as SortColumn
+        const loaded = parsed?.sort?.sortBy
+        if (loaded && loaded !== 'disposition') return loaded as SortColumn
       }
     } catch {
       // Ignore
@@ -207,7 +209,8 @@ export default function RequestReviewPanel({
         } else {
           setFilters(defaultFilters)
         }
-        if (parsed?.sort?.sortBy) setSortBy(parsed.sort.sortBy as SortColumn)
+        const loadedSortBy = parsed?.sort?.sortBy
+        if (loadedSortBy && loadedSortBy !== 'disposition') setSortBy(loadedSortBy as SortColumn)
         else setSortBy(defaultSortBy)
         if (parsed?.sort?.sortOrder) setSortOrder(parsed.sort.sortOrder as 'asc' | 'desc')
         else setSortOrder(defaultSortOrder)
@@ -466,18 +469,6 @@ export default function RequestReviewPanel({
           bValue = bRequested
             ? `${bRequested.first_name || ''} ${bRequested.last_name || ''}`
             : b.parse_notes || ''
-          break
-        }
-        case 'disposition': {
-          const aRank = getDispositionSortRank(a.disposition_reason ?? '')
-          const bRank = getDispositionSortRank(b.disposition_reason ?? '')
-          if (aRank !== bRank) {
-            aValue = aRank
-            bValue = bRank
-          } else {
-            aValue = a.disposition_reason ?? ''
-            bValue = b.disposition_reason ?? ''
-          }
           break
         }
         case 'priority':
