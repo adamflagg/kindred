@@ -1158,47 +1158,153 @@ describe('RequestReviewPanel', () => {
    * Regression tests for #918 (handleApprove / handleReject extraction).
    *
    * The refactor is a pure extraction of handler functions from inline
-   * mutate calls — behavior must not change. These tests document the
-   * expected mutation payload shape for approve and reject actions.
+   * mutate calls — behavior must not change. These tests render the
+   * panel, click the row-level approve/reject button, confirm via the
+   * popover, and assert on the payload passed to
+   * pb.collection('bunk_requests').update(...). This exercises the
+   * real handleApprove / handleReject code paths rather than just
+   * asserting on a literal object shape.
    */
   describe('Approve / Reject mutation payloads (#918)', () => {
-    it('approve produces mutation payload with status=resolved and request_locked=true', () => {
-      // handleApprove(id) should fire updateRequestMutation.mutate with:
-      //   { id, updates: { status: 'resolved', request_locked: true } }
-      const id = 'req-123'
-      const approvePayload = {
-        id,
-        updates: { status: 'resolved' as const, request_locked: true },
+    it('approve button fires update with status=resolved and request_locked=true', async () => {
+      const { screen, fireEvent } = await import('@testing-library/react')
+      const userEventModule = await import('@testing-library/user-event')
+      const user = userEventModule.default.setup()
+
+      // Fresh mock for this test — mocked pb module was set up at top of file.
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: {
+          collection: ReturnType<typeof vi.fn>
+        }
       }
 
-      expect(approvePayload.id).toBe('req-123')
-      expect(approvePayload.updates['status']).toBe('resolved')
-      expect(approvePayload.updates['request_locked']).toBe(true)
-    })
-
-    it('reject produces mutation payload with status=declined and request_locked=false', () => {
-      // handleReject(id) should fire updateRequestMutation.mutate with:
-      //   { id, updates: { status: 'declined', request_locked: false } }
-      const id = 'req-456'
-      const rejectPayload = {
-        id,
-        updates: { status: 'declined' as const, request_locked: false },
+      const updateSpy = vi.fn().mockResolvedValue({})
+      const pendingRequest: Partial<BunkRequestsResponse> = {
+        id: 'req-approve-1',
+        requester_id: 100,
+        requestee_id: 101,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.9,
+        priority: 1,
+        request_locked: false,
       }
 
-      expect(rejectPayload.id).toBe('req-456')
-      expect(rejectPayload.updates['status']).toBe('declined')
-      expect(rejectPayload.updates['request_locked']).toBe(false)
-    })
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn().mockResolvedValue([pendingRequest]),
+            getList: vi.fn().mockResolvedValue({ items: [pendingRequest], totalItems: 1 }),
+            update: updateSpy,
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
 
-    it('approve and reject payloads have inverse request_locked values', () => {
-      // Approve locks the request (request_locked: true)
-      // Reject unlocks the request (request_locked: false)
-      const approveLocked = true
-      const rejectLocked = false
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
 
-      expect(approveLocked).toBe(true)
-      expect(rejectLocked).toBe(false)
-      expect(approveLocked).not.toBe(rejectLocked)
-    })
+      // Wait for at least one row-level Approve button to appear
+      // (both mobile and desktop markup render in jsdom — take the first).
+      const approveButton = await waitFor(
+        () => {
+          const buttons = screen.getAllByTitle('Approve')
+          const first = buttons[0]
+          if (!first) throw new Error('no Approve button yet')
+          return first
+        },
+        { timeout: 3000 }
+      )
+
+      // fireEvent.click (not userEvent) because the onClick handler reads
+      // e.currentTarget.getBoundingClientRect() which jsdom + userEvent
+      // does not populate reliably.
+      fireEvent.click(approveButton)
+
+      // Popover portal renders "Confirm" button
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      expect(updateSpy).toHaveBeenCalledWith('req-approve-1', {
+        status: 'resolved',
+        request_locked: true,
+      })
+    }, 10000)
+
+    it('reject button fires update with status=declined and request_locked=false', async () => {
+      const { screen, fireEvent } = await import('@testing-library/react')
+      const userEventModule = await import('@testing-library/user-event')
+      const user = userEventModule.default.setup()
+
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: {
+          collection: ReturnType<typeof vi.fn>
+        }
+      }
+
+      const updateSpy = vi.fn().mockResolvedValue({})
+      const pendingRequest: Partial<BunkRequestsResponse> = {
+        id: 'req-reject-1',
+        requester_id: 200,
+        requestee_id: 201,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.5,
+        priority: 1,
+        request_locked: false,
+      }
+
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn().mockResolvedValue([pendingRequest]),
+            getList: vi.fn().mockResolvedValue({ items: [pendingRequest], totalItems: 1 }),
+            update: updateSpy,
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
+
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+      const rejectButton = await waitFor(
+        () => {
+          const buttons = screen.getAllByTitle('Reject')
+          const first = buttons[0]
+          if (!first) throw new Error('no Reject button yet')
+          return first
+        },
+        { timeout: 3000 }
+      )
+
+      fireEvent.click(rejectButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      expect(updateSpy).toHaveBeenCalledWith('req-reject-1', {
+        status: 'declined',
+        request_locked: false,
+      })
+    }, 10000)
   })
 })
