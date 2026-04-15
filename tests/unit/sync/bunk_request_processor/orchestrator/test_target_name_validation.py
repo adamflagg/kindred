@@ -7,8 +7,8 @@ Verifies that _validate_target_names_in_source() rejects:
 And preserves:
 - Names that appear in the source text (full, first-only, last-only)
 - Age placeholders (older, younger, unclear)
-- Empty target_name (pass through early return — staff-review fallback
-  records, age preferences, etc.)
+- Empty target_name (defensive early return — age preferences and any
+  other path that legitimately emits an empty target)
 - age_preference request types
 """
 
@@ -146,25 +146,14 @@ class TestValidateTargetNamesInSource:
         assert rejected == 2
         assert len(result.parsed_requests) == 0
 
-    def test_exempts_empty_target_name_staff_review_fallback(self):
-        """Staff-review fallback records have an empty target_name and
-        pass through the 'if not target_name' early return — validation
-        must not reject them as hallucinated."""
+    def test_exempts_empty_target_name(self):
+        """Empty target_name passes the 'if not target_name' early return —
+        validation must not reject it as hallucinated. This guards any code
+        path that legitimately emits an empty target (age preferences, etc.)."""
         orchestrator = _make_orchestrator()
         result = _make_parse_result(
             [_make_parsed_request("", RequestType.NOT_BUNK_WITH)],
             request_text="no trans campers please",
-        )
-        kept, rejected = orchestrator._validate_target_names_in_source([result])
-        assert kept == 1
-        assert rejected == 0
-
-    def test_exempts_empty_target_name_unnamed_group_fallback(self):
-        """Unnamed-group staff-review fallback also passes the early return."""
-        orchestrator = _make_orchestrator()
-        result = _make_parse_result(
-            [_make_parsed_request("")],
-            request_text="same bunk as last year",
         )
         kept, rejected = orchestrator._validate_target_names_in_source([result])
         assert kept == 1

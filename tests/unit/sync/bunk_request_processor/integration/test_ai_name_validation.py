@@ -119,8 +119,9 @@ class TestIsLikelyPersonName:
             assert is_likely_person_name(placeholder), f"Should accept '{placeholder}'"
 
     def test_rejects_literal_family_words(self):
-        """Literal family words like 'twins' should be rejected (use the
-        staff-review fallback for unnamed group references instead)."""
+        """Literal family words like 'twins' are not camper names and must
+        be rejected — they should pass through as unresolved names instead
+        of being treated as person names."""
         from bunking.sync.bunk_request_processor.integration.batch_processor import (
             is_likely_person_name,
         )

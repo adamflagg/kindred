@@ -101,9 +101,13 @@ class TestSiblingGuardrailsInPrompt:
             request_text="Olivia Chen",
         )
 
-        # Must mention at least some family words so the AI recognizes sibling context
+        # Must mention all family relationship words so the AI recognizes sibling
+        # context across the full range of phrasings. A future prompt edit that
+        # drops any of these silently weakens extraction — fail loudly here.
         lower = formatted.lower()
-        assert "sibling" in lower or "twin" in lower or "brother" in lower or "sister" in lower
+        assert "sibling" in lower
+        assert "twin" in lower
+        assert "brother" in lower
 
 
 class TestPromptLoaderPartials:

@@ -21,41 +21,11 @@ TASK: Extract ALL separation requests from this field. ALL requests are "not_bun
 
 This field ONLY contains separation requests:
 
-"not_bunk_with" - Camper should NOT share a cabin with a specific named individual
-   target_name = person's actual name (always extract the full name when present)
+"not_bunk_with" - Camper should NOT share a cabin with specific person(s)
+   target_name = person's name (always extract the actual name)
 
 IMPORTANT: Do NOT extract bunk_with or age_preference from this field.
 Even if text mentions friendship ("still friends"), the intent is separation.
-
-=== NAMED INDIVIDUAL REQUIRED ===
-
-Every not_bunk_with request MUST name a specific individual camper.
-Demographic or trait exclusions (e.g. categorical references to a group,
-or traits like "loud kids" / "younger immature kids") are NOT valid
-individual separation requests and must NOT be turned into BUNK_APART
-records with guessed target names. Staff review is required — see
-STAFF-REVIEW FALLBACK below.
-
-=== STAFF-REVIEW FALLBACK (NEVER SILENTLY DROP) ===
-
-If the text expresses a separation preference but does NOT name a specific
-individual, emit exactly ONE not_bunk_with request with:
-- target_name = "" (empty string)
-- needs_clarification = true
-- ambiguity_reason = "no_named_individual"
-- parse_notes = the original phrase verbatim
-
-Unnamed / categorical exclusion examples — each produces ONE staff-review
-record:
-- "Not with loud kids" → 1 staff-review fallback
-- "Keep her away from younger immature kids" → 1 staff-review fallback
-- "No kids from her school" → 1 staff-review fallback
-- "Not with anyone she fought with last year" → 1 staff-review fallback
-
-Never invent individual names. Never split a categorical exclusion into
-multiple records. Staff sees the original text and decides. Never silently
-drop the input — every parsed preference must produce at least one visible
-record.
 
 === NAME PATTERN RULES ===
 
@@ -149,11 +119,8 @@ Example: "Previously wanted separate from Mia, now ok to bunk together"
 
 For each valid request, provide:
 - request_type: "not_bunk_with" (always for this field)
-- target_name: Person's full name (always extract actual names), or "" when
-  emitting a staff-review fallback record
+- target_name: Person's full name (always extract actual names, never placeholders)
 - confidence: 0.0-1.0 (lower for (?) entries, uncertain names)
 - keywords_found: Priority words if present
-- needs_clarification: true when emitting a staff-review fallback record
-- ambiguity_reason: "no_named_individual" when needs_clarification is true
 
 {output_field_rules}

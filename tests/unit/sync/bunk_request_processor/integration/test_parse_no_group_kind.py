@@ -73,6 +73,32 @@ class TestAiSchemaRejectsGroupKind:
         assert not hasattr(item, "group_kind")
         assert not hasattr(item, "group_metadata")
 
+    def test_ai_full_parse_request_item_rejects_group_kind(self) -> None:
+        """A stale AI response sending group_kind to AIFullParseRequestItem
+        must raise a validation error. The full-mode (attendee-context) code
+        path uses this schema, so extra="forbid" must be exercised here too."""
+        with pytest.raises(Exception) as exc_info:
+            AIFullParseRequestItem.model_validate(
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Olivia Chen",
+                    "group_kind": "sibling",
+                }
+            )
+        assert "group_kind" in str(exc_info.value)
+
+    def test_ai_full_parse_request_item_rejects_group_metadata(self) -> None:
+        """group_metadata must also be rejected on the full-mode schema."""
+        with pytest.raises(Exception) as exc_info:
+            AIFullParseRequestItem.model_validate(
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Olivia Chen",
+                    "group_metadata": {"school_name": "Oak Valley Middle"},
+                }
+            )
+        assert "group_metadata" in str(exc_info.value)
+
     def test_ai_parse_response_rejects_group_kind_in_items(self) -> None:
         """A full parse response with nested group_kind should fail validation."""
         with pytest.raises(Exception) as exc_info:

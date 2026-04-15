@@ -246,8 +246,6 @@ export function PipelineBatchList({
               <option value="school_disambiguation">School</option>
               <option value="prior_bunkmate_exact">Prior Bunkmate (exact)</option>
               <option value="prior_bunkmate_first_name">Prior Bunkmate (first)</option>
-              <option value="prior_year_bunkmate">Prior Year Bunkmate</option>
-              <option value="sibling_household_lookup">Sibling Lookup</option>
               <option value="ai_id_validated">AI ID Validated</option>
               <option value="ai_candidate_disambiguated">AI Candidate</option>
               <option value="ai_disambiguation">AI Disambiguation</option>

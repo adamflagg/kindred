@@ -317,7 +317,7 @@ export const PHASE_ORDER: PipelinePhase[] = [
 ]
 
 // =============================================================================
-// Granular Pipeline Stages — 12 stages mapped to 7 PipelinePhases
+// Granular Pipeline Stages — 13 stages mapped to 7 PipelinePhases
 // =============================================================================
 
 export type PipelineStage =
@@ -390,7 +390,7 @@ export const STAGE_GROUPS: StageGroupConfig[] = [
   },
 ]
 
-/** Canonical order of all 14 stages. */
+/** Canonical order of all 13 stages. */
 export const STAGE_ORDER: PipelineStage[] = STAGE_GROUPS.flatMap((g) => g.stages)
 
 export interface RunPhaseRequest {

@@ -32,40 +32,6 @@ This field may contain ANY request type:
 3. "age_preference" - Age/grade recommendations
    Keywords: "bunk older", "same age/younger", "would do better with younger kids"
 
-=== NAMED INDIVIDUALS ONLY ===
-
-Every bunk_with / not_bunk_with request MUST name a specific individual camper.
-Group references ("same bunk as last year", "her school friends", "temple kids",
-"her twin", "the siblings") must NOT be expanded into individual requests or
-assigned a guessed name — staff review is required. See STAFF-REVIEW FALLBACK
-below.
-
-=== STAFF-REVIEW FALLBACK (NEVER SILENTLY DROP) ===
-
-If the text expresses a bunking preference but does NOT name a specific
-individual, emit exactly ONE request with:
-- target_name = "" (empty string)
-- needs_clarification = true
-- ambiguity_reason = "no_named_individual"
-- parse_notes = the original phrase verbatim
-
-Unnamed group examples — each produces ONE staff-review record:
-- "Same bunk as last year" / "last year bunkmates in B-4" → 1 bunk_with fallback
-- "Kids from her school" / "schoolmates" → 1 fallback
-- "Temple friends" / "synagogue kids" → 1 fallback
-- "Her twin" / "sibling" / "brother" (no name given) → 1 fallback
-
-For BUNK_APART style categorical or trait exclusions (e.g. "not with loud
-kids", "younger immature kids"), also emit exactly ONE not_bunk_with
-record with:
-- target_name = "" (empty string)
-- needs_clarification = true
-- ambiguity_reason = "no_named_individual"
-- parse_notes = the original phrase verbatim
-
-Never invent individual names. Never split an unnamed group into multiple
-requests. Staff sees the original text and decides.
-
 === NARRATIVE EXTRACTION RULES ===
 
 1. Extract EXPLICIT requests only - don't infer from behavioral observations
@@ -100,27 +66,21 @@ Example 4 - Multi-year progression:
 Input: "'25 bunking - continue to bunk separately from Ava Collins. See '24 notes."
 Output: 1 not_bunk_with "Ava Collins", parse_notes: "continuing from 2024"
 
-Example 5 - Must bunk with unnamed sibling:
-Input: "Must bunk with twin sister, plus ideally also a friend request"
-Output: 1 bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="no_named_individual", keywords_found: ["must"],
-parse_notes: verbatim original text
-
-Example 6 - Mixed requests in narrative:
+Example 5 - Mixed requests in narrative:
 Input: "Tough relationship with Chloe Davis and wants to not be with her. Mom shared that it'll be fine if she can be with Mia as well."
 Output: 2 requests - not_bunk_with "Chloe Davis", bunk_with "Mia"
 
-Example 7 - Behavioral context (no request):
+Example 6 - Behavioral context (no request):
 Input: "Emma is very sensitive and last year needed a lot of support. Be aware of her sensitivity."
 Output: 0 requests (behavioral observation only, no bunking action)
 
-Example 8 - Superseded request:
+Example 7 - Superseded request:
 Input: "Wanted to be without Zoe and then changed a day later in June to say bunk together"
 Output: 2 requests:
 - not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "changed to bunk together"}}
 - bunk_with "Zoe", temporal_info: {{is_superseded: false}}
 
-Example 9 - Unit placement (not bunk request):
+Example 8 - Unit placement (not bunk request):
 Input: "Same unit as twin Lily Thompson if possible"
 Output: 0 requests (unit placement, not cabin assignment - note in parse_notes if helpful)
 
@@ -151,11 +111,8 @@ DO NOT extract:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's actual name, age value ("older"/"younger"/"unclear"),
-  or "" for a staff-review fallback record
+- target_name: Person's name or age value
 - confidence: 0.0-1.0 (lower for old notes, inferred requests)
 - keywords_found: Priority words like "must", "recommend", "counselors noted"
-- needs_clarification: true when emitting a staff-review fallback record
-- ambiguity_reason: "no_named_individual" when needs_clarification is true
 
 {output_field_rules}

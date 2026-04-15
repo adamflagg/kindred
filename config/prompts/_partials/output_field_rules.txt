@@ -6,7 +6,7 @@
   - Comma/semicolon list on one line ("Sasha, Edo, Dean"): fragment = just this person's name ("Edo")
   - Numbered list ("1. Ada Gray, 2. Delia Owens"): fragment = just this entry ("2. Delia Owens")
   - Prose with embedded name: fragment = the minimal phrase naming this person
-  - Leave EMPTY when AI inferred the request without a direct quote (e.g. age preference with no quotable phrase)
+  - Leave EMPTY when AI inferred the request without a direct quote (age preference, group inference)
   - NEVER copy the full input text as the fragment when it contains multiple names
 
 - temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}

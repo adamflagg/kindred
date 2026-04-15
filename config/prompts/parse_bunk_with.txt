@@ -26,11 +26,11 @@ A name alone means "bunk this person with the named friend."
 
 This field commonly contains:
 
-1. "bunk_with" - Wants to share a cabin with a specific named individual
-   target_name = person's actual name (e.g. "Emma Johnson")
+1. "bunk_with" - Wants to share a cabin with specific person(s)
+   target_name = person's name
 
 2. "not_bunk_with" - Embedded negatives (look for "NOT", "don't", "please avoid", "separate from")
-   target_name = person's actual name
+   target_name = person's name
 
 3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
    target_name = "older", "younger", or "unclear"
@@ -38,41 +38,11 @@ This field commonly contains:
 
 IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
 
-=== NAMED INDIVIDUALS ONLY ===
-
-Every bunk_with / not_bunk_with request MUST name a specific individual camper.
-Group references ("last year's bunkmates", "kids from her school", "friends
-from synagogue", "the twins", "her siblings", "my twin") must NOT be expanded
-into individual requests or assigned a guessed name — staff review is required.
-See STAFF-REVIEW FALLBACK below.
-
-=== STAFF-REVIEW FALLBACK (NEVER SILENTLY DROP) ===
-
-If the text expresses a bunking preference but does NOT name a specific
-individual, emit exactly ONE bunk_with (or not_bunk_with) request with:
-- target_name = "" (empty string)
-- needs_clarification = true
-- ambiguity_reason = "no_named_individual"
-- parse_notes = the original phrase verbatim
-
-Unnamed group examples — each produces ONE staff-review record:
-- "Bunk with last year's bunkmates" → 1 bunk_with, staff-review fallback
-- "Last year bunkmates in Session 3 B-4" → 1 bunk_with, staff-review fallback
-- "Kids from her school" / "schoolmates" → 1 staff-review fallback
-- "Friends from her temple" → 1 staff-review fallback
-- "Same bunk as 2024" → 1 bunk_with, staff-review fallback
-- "Her twin" / "siblings" / "my brother" (no name given) → 1 staff-review fallback
-
-Never invent individual names, never split an unnamed group into multiple
-requests. Staff sees the original text and decides.
-
 === SIBLING NAMING GUARDRAILS ===
 
 The requester's last name is included in the requester info above.
 - If a sibling/twin is named explicitly ("bunk with my twin Emma Johnson"),
-  emit a normal bunk_with request with target_name="Emma Johnson".
-- If a sibling/twin is referenced WITHOUT a name ("her twin", "my siblings"),
-  use the staff-review fallback above.
+  extract "Emma Johnson" as target_name.
 - If two people are mentioned wanting to bunk together but have DIFFERENT last
   names (e.g., requester is "Johnson" but text mentions "Olivia Chen"), extract
   the non-requester's full name as a bunk_with target. Different last names
@@ -108,24 +78,14 @@ Example 3 - Embedded negative:
 Input: "Wants to be with Mia. PLEASE DO NOT put with Jake - he bullied Lucas last year"
 Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context in parse_notes
 
-Example 4 - Historical reference (unnamed group):
-Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
-Output: 1 bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="no_named_individual", parse_notes: verbatim "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
-
-Example 4b - Historical bunking with named individuals:
+Example 4 - Historical bunking with named individuals:
 Input: "Same bunk as last year with Emma and Olivia - they were B4 together"
 Output: 2 bunk_with requests for "Emma" and "Olivia", each with historical_year set to
 the year before the current camp season
 
-Example 5 - Unnamed sibling reference:
+Example 5 - Twin context for a named separation:
 Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"
-Output: 1 not_bunk_with for "Ava" (specific named individual), context in parse_notes. The "as twins" commentary is rationale, not a separate group request.
-
-Example 5b - Sibling reference with no name at all:
-Input: "Keep her apart from her twin this summer"
-Output: 1 not_bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="no_named_individual", parse_notes: verbatim original text
+Output: 1 not_bunk_with request for "Ava" (specific named individual). The twin commentary is rationale, in parse_notes.
 
 Example 6 - Age preference with name:
 Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"
