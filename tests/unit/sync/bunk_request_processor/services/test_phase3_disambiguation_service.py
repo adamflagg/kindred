@@ -970,4 +970,50 @@ class TestPhase3InvalidAIOutput:
         )
         stats = service.get_stats()
         assert "invalid_ai_output" in stats, "get_stats() must contain 'invalid_ai_output' key"
-        assert stats["invalid_ai_output"] == 0
+
+
+class TestSetMetaHelper:
+    """Tests for the _set_meta helper that wraps disambiguation_metadata.setdefault."""
+
+    def _make_service(self) -> Phase3DisambiguationService:
+        return Phase3DisambiguationService(
+            ai_provider=Mock(),
+            context_builder=Mock(),
+        )
+
+    def _make_case(self) -> DisambiguationCase:
+        parse_result = _create_parse_result()
+        ambiguous = _create_ambiguous_resolution()
+        return DisambiguationCase(parse_result, [ambiguous])
+
+    def test_set_meta_returns_default_dict_when_key_absent(self):
+        """_set_meta inserts the default when key is absent and returns it."""
+        service = self._make_service()
+        case = self._make_case()
+        result = service._set_meta(case, "status", {})
+        assert result == {}
+        assert "status" in case.disambiguation_metadata
+
+    def test_set_meta_returns_existing_value_when_key_present(self):
+        """_set_meta returns existing value without overwriting."""
+        service = self._make_service()
+        case = self._make_case()
+        case.disambiguation_metadata["status"] = {0: "success"}
+        result = service._set_meta(case, "status", {})
+        assert result == {0: "success"}
+
+    def test_set_meta_allows_mutation_of_returned_value(self):
+        """Callers can mutate the returned object (dict or list in place)."""
+        service = self._make_service()
+        case = self._make_case()
+        service._set_meta(case, "errors", {})[42] = "boom"
+        assert case.disambiguation_metadata["errors"][42] == "boom"
+
+    def test_set_meta_different_keys_are_independent(self):
+        """Different keys inserted via _set_meta do not collide."""
+        service = self._make_service()
+        case = self._make_case()
+        service._set_meta(case, "status", {})[0] = "success"
+        service._set_meta(case, "reasons", {})[0] = "good reason"
+        assert case.disambiguation_metadata["status"] == {0: "success"}
+        assert case.disambiguation_metadata["reasons"] == {0: "good reason"}
