@@ -1374,6 +1374,26 @@ export default function RequestReviewPanel({
                             className="flex items-center px-4 py-3"
                             onClick={(e) => e.stopPropagation()}
                           >
+                            <EditableRequestType
+                              value={request.request_type}
+                              onChange={(newType) => {
+                                const updates: Partial<BunkRequestsResponse> = {
+                                  request_type: newType as BunkRequestsResponse['request_type'],
+                                }
+                                if (newType === 'age_preference') {
+                                  updates.requestee_id = null as unknown as number
+                                } else {
+                                  updates.age_preference_target = ''
+                                }
+                                handleValidatedUpdate(request, updates)
+                              }}
+                              disabled={request.request_locked || false}
+                            />
+                          </div>
+                          <div
+                            className="flex items-center px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <EditableRequestTarget
                               requestType={request.request_type}
                               currentPersonId={request.requestee_id}
@@ -1420,21 +1440,6 @@ export default function RequestReviewPanel({
                               ) : null
                             })()}
                           </div>
-                          <div className="flex items-center gap-1 px-4 py-3">
-                            {request.disposition_reason ? (
-                              <span
-                                className={clsx(
-                                  'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                                  getDispositionClasses(request.disposition_reason)
-                                )}
-                                title={request.disposition_reason}
-                              >
-                                {formatDispositionReason(request.disposition_reason)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </div>
                           <div
                             className="flex items-center justify-center px-4 py-3"
                             onClick={(e) => e.stopPropagation()}
@@ -1461,8 +1466,16 @@ export default function RequestReviewPanel({
                               {(request.confidence_score * 100).toFixed(0)}%
                             </span>
                           </div>
-                          <div className="flex items-center justify-center px-4 py-3">
+                          <div className="flex flex-col items-center justify-center gap-0.5 px-4 py-3">
                             {getStatusBadge(request.status)}
+                            {shouldShowReasonInStatus(
+                              request.status,
+                              request.disposition_reason
+                            ) && (
+                              <span className="text-muted-foreground max-w-full truncate text-[11px]">
+                                {formatReason(request.disposition_reason)}
+                              </span>
+                            )}
                           </div>
                           <div
                             className="flex items-center justify-end px-4 py-3"
