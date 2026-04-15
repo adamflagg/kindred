@@ -42,12 +42,15 @@ function makeTrace(overrides: Partial<TraceData> = {}): TraceData {
       boosted_confidence: null,
     },
     phase3_disambiguation: [],
-    post_pipeline: {
-      conflict_detection: { has_conflict: false, details: [] },
-      self_reference: { detected: false },
+    batch_signals: {
       reciprocal: { detected: false, boost_applied: false, boost_amount: null, pair_cm_id: null },
-      deduplication: { was_duplicate: false, kept_over: null },
-      final_bunk_requests: [],
+    },
+    conflict_detection: { has_conflict: false, details: [] },
+    disposition: { final_bunk_requests: [] },
+    dedup_save: {
+      was_duplicate: false,
+      kept_over: null,
+      self_reference: { detected: false },
     },
     ...overrides,
   }
@@ -121,8 +124,7 @@ describe('deriveStageStatus', () => {
 
   it('returns success for batch_signals when reciprocal detected', () => {
     const trace = makeTrace({
-      post_pipeline: {
-        ...makeTrace().post_pipeline,
+      batch_signals: {
         reciprocal: { detected: true, boost_applied: true, boost_amount: 0.05, pair_cm_id: 456 },
       },
     })
@@ -131,10 +133,7 @@ describe('deriveStageStatus', () => {
 
   it('returns warning for conflict_detect when has_conflict', () => {
     const trace = makeTrace({
-      post_pipeline: {
-        ...makeTrace().post_pipeline,
-        conflict_detection: { has_conflict: true, details: ['session_mismatch'] },
-      },
+      conflict_detection: { has_conflict: true, details: ['session_mismatch'] },
     })
     expect(deriveStageStatus('conflict_detect', trace)).toBe('warning')
   })
@@ -145,8 +144,7 @@ describe('deriveStageStatus', () => {
 
   it('returns success for disposition when final_bunk_requests exist', () => {
     const trace = makeTrace({
-      post_pipeline: {
-        ...makeTrace().post_pipeline,
+      disposition: {
         final_bunk_requests: [
           {
             bunk_request_id: '1',
@@ -167,5 +165,33 @@ describe('deriveStageStatus', () => {
       },
     })
     expect(deriveStageStatus('disposition', trace)).toBe('success')
+  })
+
+  it('returns warning for dedup_save when was_duplicate', () => {
+    const trace = makeTrace({
+      dedup_save: {
+        was_duplicate: true,
+        kept_over: 'br-99',
+        self_reference: { detected: false },
+      },
+    })
+    expect(deriveStageStatus('dedup_save', trace)).toBe('warning')
+  })
+})
+
+describe('DedupDetail self_reference placement', () => {
+  it('self_reference lives on dedup_save, NOT batch_signals (UI alignment)', () => {
+    const trace = makeTrace({
+      dedup_save: {
+        was_duplicate: false,
+        kept_over: null,
+        self_reference: { detected: true },
+      },
+    })
+    // This test is a semantic guard — the refactor moves self_reference to dedup_save
+    // so the DedupDetail panel continues to render it correctly.
+    expect(trace.dedup_save.self_reference.detected).toBe(true)
+    // batch_signals has no self_reference field at all
+    expect('self_reference' in (trace.batch_signals as object)).toBe(false)
   })
 })

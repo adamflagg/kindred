@@ -61,6 +61,11 @@ class PriorityCalculator:
         self._rules = self._load_rules()
         self._source_weights = self._config.get("source_weights", {})
         self._default_priority = self._config.get("defaults", {}).get("base_priority", DEFAULT_BASE_PRIORITY)
+        # Memoize the per-list family_bunk_requests priority scan (#923).
+        # Keyed by id(list) since the list object is reused across the inner loop
+        # and each iteration passes the same list. A weak key would be nicer, but
+        # id() suffices while the calculator is short-lived per batch.
+        self._family_priority_cache: dict[int, bool] = {}
 
     def _load_keywords(self) -> list[str]:
         """Load priority keywords from config or use defaults"""
@@ -119,15 +124,9 @@ class PriorityCalculator:
         """
         has_other_requests = len(all_requests_for_person) > 1
 
-        # Get all bunk_with requests from family source
-        family_bunk_requests = [
-            r
-            for r in all_requests_for_person
-            if r.source_field == SourceField.BUNK_WITH and r.request_type == RequestType.BUNK_WITH
-        ]
-
-        # Check if ANY family bunk request has priority keywords
-        any_family_request_has_priority = any(self._has_priority_keyword(r.raw_text) for r in family_bunk_requests)
+        # Memoize the per-list family_bunk_requests scan to avoid O(N^2) work
+        # when this method is invoked once per request for the same list (#923).
+        any_family_request_has_priority = self._any_family_request_has_priority(all_requests_for_person)
 
         # Priority 4 cases
         if parsed.source_field == SourceField.BUNK_WITH:
@@ -179,3 +178,22 @@ class PriorityCalculator:
             return False
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in self._keywords)
+
+    def _any_family_request_has_priority(self, all_requests_for_person: list[ParsedRequest]) -> bool:
+        """Return True if any bunk_with family request has a priority keyword.
+
+        Memoized by id(list) so a single pass through a batch's inner loop does
+        not rescan the list per request (#923 — O(N^2) removal).
+        """
+        cache_key = id(all_requests_for_person)
+        cached = self._family_priority_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = any(
+            self._has_priority_keyword(r.raw_text)
+            for r in all_requests_for_person
+            if r.source_field == SourceField.BUNK_WITH and r.request_type == RequestType.BUNK_WITH
+        )
+        self._family_priority_cache[cache_key] = result
+        return result

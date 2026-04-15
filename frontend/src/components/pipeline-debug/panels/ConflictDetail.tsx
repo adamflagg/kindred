@@ -1,10 +1,10 @@
-import type { PostPipelineTrace } from '../types'
+import type { ConflictDetectionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { Badge, PanelSection } from './DataRow'
 import { renderUnknownValue } from './panelUtils'
 
 interface ConflictDetailProps {
-  data: PostPipelineTrace
+  data: ConflictDetectionTrace
   onRerunPhase: () => void
   onRunFromHere: () => void
   isRunning?: boolean
@@ -16,8 +16,6 @@ export function ConflictDetail({
   onRunFromHere,
   isRunning,
 }: ConflictDetailProps) {
-  const { conflict_detection } = data
-
   return (
     <div className="space-y-5">
       <div className="border-border border-b pb-4">
@@ -29,20 +27,20 @@ export function ConflictDetail({
             </p>
           </div>
           <Badge
-            label={conflict_detection.has_conflict ? 'Conflicts Found' : 'Clean'}
-            color={conflict_detection.has_conflict ? 'amber' : 'green'}
+            label={data.has_conflict ? 'Conflicts Found' : 'Clean'}
+            color={data.has_conflict ? 'amber' : 'green'}
           />
         </div>
       </div>
 
       <PanelSection label="Results">
-        {!conflict_detection.has_conflict ? (
+        {!data.has_conflict ? (
           <p className="text-sm text-green-700 dark:text-green-400">
             No enrollment, session, or attendance conflicts detected
           </p>
         ) : (
           <div className="space-y-2">
-            {conflict_detection.details.map((detail, idx) => {
+            {data.details.map((detail, idx) => {
               const text = renderUnknownValue(detail)
               const isObject = typeof detail === 'object' && detail !== null
               return (

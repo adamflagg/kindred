@@ -51,7 +51,7 @@ export function RequestContext({
   const intents = traceData.phase1_parse.parsed_intents
   const totalIntents = intents.length
   const activeIntent = intents[activeIntentIndex] ?? intents[0]
-  const finalBRs = traceData.post_pipeline.final_bunk_requests
+  const finalBRs = traceData.disposition.final_bunk_requests
   const activeBR = finalBRs[activeIntentIndex] ?? finalBRs[0]
 
   return (

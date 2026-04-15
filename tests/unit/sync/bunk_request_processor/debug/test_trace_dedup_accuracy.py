@@ -16,8 +16,9 @@ from bunking.sync.bunk_request_processor.core.models import (
 )
 from bunking.sync.bunk_request_processor.debug.trace_collector import TraceCollector
 from bunking.sync.bunk_request_processor.debug.trace_models import (
+    DedupSaveTrace,
+    DispositionTrace,
     FinalBunkRequestTrace,
-    PostPipelineTrace,
 )
 from bunking.sync.bunk_request_processor.processing.deduplicator import (
     Deduplicator,
@@ -118,8 +119,8 @@ class TestDedupTraceAccuracy:
 
         assert final_status == "RESOLVED"
 
-    def test_dedup_flag_set_in_post_pipeline_trace(self):
-        """Post-pipeline trace should report was_duplicate=True when dedup occurred."""
+    def test_dedup_flag_set_in_dedup_save_trace(self):
+        """DedupSaveTrace should report was_duplicate=True when dedup occurred."""
         deduped_keys = {(100, "Emma Johnson")}
 
         # In the orchestrator's trace loop, any_dedup should be set
@@ -129,13 +130,8 @@ class TestDedupTraceAccuracy:
             if (100, target) in deduped_keys:
                 any_dedup = True
 
-        post_trace = PostPipelineTrace(
-            deduplication={
-                "was_duplicate": any_dedup,
-                "kept_over": None,
-            },
-        )
-        assert post_trace.deduplication["was_duplicate"] is True
+        dedup_trace = DedupSaveTrace(was_duplicate=any_dedup, kept_over=None)
+        assert dedup_trace.was_duplicate is True
 
     def test_status_breakdown_counts_deduped(self):
         """Status breakdown should count DEDUPED traces in a separate category."""
@@ -152,10 +148,10 @@ class TestDedupTraceAccuracy:
             source_field="bunk_with",
         )
 
-        # Record a post-pipeline trace with DEDUPED status
-        collector.record_post_pipeline(
+        # Record disposition with DEDUPED status
+        collector.record_disposition(
             key="trace-1",
-            post_trace=PostPipelineTrace(
+            disposition=DispositionTrace(
                 final_bunk_requests=[
                     FinalBunkRequestTrace(
                         requester_cm_id=100,

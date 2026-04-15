@@ -1,9 +1,9 @@
-import type { PostPipelineTrace } from '../types'
+import type { DispositionTrace } from '../types'
 import { ActionButtons } from './ActionButtons'
 import { Badge, PanelSection } from './DataRow'
 
 interface DispositionDetailProps {
-  data: PostPipelineTrace
+  data: DispositionTrace
   onRerunPhase: () => void
   onRunFromHere: () => void
   isRunning?: boolean

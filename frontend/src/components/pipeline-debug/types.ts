@@ -161,25 +161,40 @@ export interface FinalBunkRequestTrace {
   is_reciprocal: boolean
 }
 
-export interface PostPipelineTrace {
-  conflict_detection: {
-    has_conflict: boolean
-    details: unknown[]
-  }
-  self_reference: {
-    detected: boolean
-  }
-  reciprocal: {
-    detected: boolean
-    boost_applied: boolean
-    boost_amount: number | null
-    pair_cm_id: number | null
-  }
-  deduplication: {
-    was_duplicate: boolean
-    kept_over: string | null
-  }
+// ---------------------------------------------------------------------------
+// Finalization stage traces — flattened from the former PostPipelineTrace
+// (issue #877). `self_reference` lives on DedupSaveTrace to match the UI
+// (DedupDetail panel), NOT on BatchSignalsTrace.
+// ---------------------------------------------------------------------------
+
+export interface ReciprocalSignal {
+  detected: boolean
+  boost_applied: boolean
+  boost_amount: number | null
+  pair_cm_id: number | null
+}
+
+export interface SelfReferenceSignal {
+  detected: boolean
+}
+
+export interface BatchSignalsTrace {
+  reciprocal: ReciprocalSignal
+}
+
+export interface ConflictDetectionTrace {
+  has_conflict: boolean
+  details: unknown[]
+}
+
+export interface DispositionTrace {
   final_bunk_requests: FinalBunkRequestTrace[]
+}
+
+export interface DedupSaveTrace {
+  was_duplicate: boolean
+  kept_over: string | null
+  self_reference: SelfReferenceSignal
 }
 
 export interface TraceData {
@@ -189,7 +204,10 @@ export interface TraceData {
   phase2_resolution: Phase2IntentTrace[]
   historical_verification: HistoricalVerificationTrace
   phase3_disambiguation: Phase3IntentTrace[]
-  post_pipeline: PostPipelineTrace
+  batch_signals: BatchSignalsTrace
+  conflict_detection: ConflictDetectionTrace
+  disposition: DispositionTrace
+  dedup_save: DedupSaveTrace
 }
 
 // =============================================================================

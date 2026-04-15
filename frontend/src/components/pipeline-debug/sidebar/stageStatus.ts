@@ -49,15 +49,15 @@ export function deriveStageStatus(stage: PipelineStage, trace: TraceData): Stage
     }
 
     case 'batch_signals':
-      return trace.post_pipeline.reciprocal.detected ? 'success' : 'skipped'
+      return trace.batch_signals.reciprocal.detected ? 'success' : 'skipped'
 
     case 'conflict_detect':
-      return trace.post_pipeline.conflict_detection.has_conflict ? 'warning' : 'success'
+      return trace.conflict_detection.has_conflict ? 'warning' : 'success'
 
     case 'disposition':
-      return trace.post_pipeline.final_bunk_requests.length > 0 ? 'success' : 'skipped'
+      return trace.disposition.final_bunk_requests.length > 0 ? 'success' : 'skipped'
 
     case 'dedup_save':
-      return trace.post_pipeline.deduplication.was_duplicate ? 'warning' : 'success'
+      return trace.dedup_save.was_duplicate ? 'warning' : 'success'
   }
 }

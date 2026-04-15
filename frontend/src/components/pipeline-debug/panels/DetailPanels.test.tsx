@@ -25,7 +25,10 @@ import type {
   Phase2IntentTrace,
   HistoricalVerificationTrace,
   Phase3IntentTrace,
-  PostPipelineTrace,
+  BatchSignalsTrace,
+  ConflictDetectionTrace,
+  DispositionTrace,
+  DedupSaveTrace,
 } from '../types'
 
 // Common action callbacks
@@ -253,11 +256,22 @@ const phase3InvalidAI: Phase3IntentTrace[] = [
   },
 ]
 
-const postPipeline: PostPipelineTrace = {
-  conflict_detection: { has_conflict: false, details: [] },
-  self_reference: { detected: false },
+const batchSignals: BatchSignalsTrace = {
   reciprocal: { detected: true, boost_applied: true, boost_amount: 0.1, pair_cm_id: 67890 },
-  deduplication: { was_duplicate: false, kept_over: null },
+}
+
+const conflictDetection: ConflictDetectionTrace = {
+  has_conflict: false,
+  details: [],
+}
+
+const dedupSave: DedupSaveTrace = {
+  was_duplicate: false,
+  kept_over: null,
+  self_reference: { detected: false },
+}
+
+const disposition: DispositionTrace = {
   final_bunk_requests: [
     {
       bunk_request_id: 'req1',
@@ -562,36 +576,33 @@ describe('Phase3Detail', () => {
 })
 
 // =============================================================================
-// Finalization Panels (slicing PostPipelineTrace)
+// Finalization Panels (flattened top-level trace fields — issue #877)
 // =============================================================================
 describe('BatchSignalsDetail', () => {
   it('renders reciprocal detection info', () => {
-    render(<BatchSignalsDetail data={postPipeline} {...defaultActions} />)
+    render(<BatchSignalsDetail data={batchSignals} disposition={disposition} {...defaultActions} />)
     expect(screen.getAllByText(/reciprocal/i).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders action buttons', () => {
-    render(<BatchSignalsDetail data={postPipeline} {...defaultActions} />)
+    render(<BatchSignalsDetail data={batchSignals} disposition={disposition} {...defaultActions} />)
     expect(screen.getByRole('button', { name: /rerun this phase/i })).toBeInTheDocument()
   })
 })
 
 describe('ConflictDetail', () => {
   it('renders clean state when no conflicts', () => {
-    render(<ConflictDetail data={postPipeline} {...defaultActions} />)
+    render(<ConflictDetail data={conflictDetection} {...defaultActions} />)
     expect(screen.getByText(/no enrollment/i)).toBeInTheDocument()
   })
 
   it('renders object details without [object Object]', () => {
-    const withConflicts: PostPipelineTrace = {
-      ...postPipeline,
-      conflict_detection: {
-        has_conflict: true,
-        details: [
-          { type: 'enrollment', message: 'Not enrolled in session' },
-          'Simple string conflict',
-        ],
-      },
+    const withConflicts: ConflictDetectionTrace = {
+      has_conflict: true,
+      details: [
+        { type: 'enrollment', message: 'Not enrolled in session' },
+        'Simple string conflict',
+      ],
     }
     render(<ConflictDetail data={withConflicts} {...defaultActions} />)
     // Object should be serialized readably, not as [object Object]
@@ -603,24 +614,18 @@ describe('ConflictDetail', () => {
   })
 
   it('renders null and undefined details gracefully', () => {
-    const withNullDetails: PostPipelineTrace = {
-      ...postPipeline,
-      conflict_detection: {
-        has_conflict: true,
-        details: [null, undefined, ''],
-      },
+    const withNullDetails: ConflictDetectionTrace = {
+      has_conflict: true,
+      details: [null, undefined, ''],
     }
     render(<ConflictDetail data={withNullDetails} {...defaultActions} />)
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
   })
 
   it('renders array details without [object Object]', () => {
-    const withArrayDetails: PostPipelineTrace = {
-      ...postPipeline,
-      conflict_detection: {
-        has_conflict: true,
-        details: [['nested', 'array', 'values']],
-      },
+    const withArrayDetails: ConflictDetectionTrace = {
+      has_conflict: true,
+      details: [['nested', 'array', 'values']],
     }
     render(<ConflictDetail data={withArrayDetails} {...defaultActions} />)
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
@@ -630,7 +635,7 @@ describe('ConflictDetail', () => {
 
 describe('DispositionDetail', () => {
   it('renders final bunk requests table', () => {
-    render(<DispositionDetail data={postPipeline} {...defaultActions} />)
+    render(<DispositionDetail data={disposition} {...defaultActions} />)
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
   })
@@ -638,8 +643,20 @@ describe('DispositionDetail', () => {
 
 describe('DedupDetail', () => {
   it('renders dedup and self-reference checks', () => {
-    render(<DedupDetail data={postPipeline} {...defaultActions} />)
+    render(<DedupDetail data={dedupSave} disposition={disposition} {...defaultActions} />)
     expect(screen.getByText('Unique')).toBeInTheDocument()
     expect(screen.getByText('None')).toBeInTheDocument()
+  })
+
+  it('reads self_reference from dedup_save (issue #877 UI alignment)', () => {
+    const withSelfRef: DedupSaveTrace = {
+      was_duplicate: false,
+      kept_over: null,
+      self_reference: { detected: true },
+    }
+    render(<DedupDetail data={withSelfRef} disposition={disposition} {...defaultActions} />)
+    // When self_reference.detected is true the panel should not show the "None" badge
+    // for self-reference (it shows "Detected" instead). Verify by looking for "Detected".
+    expect(screen.getByText(/detected/i)).toBeInTheDocument()
   })
 })
