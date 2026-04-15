@@ -103,3 +103,26 @@ export function getDispositionSortRank(reason: string): number {
   if (RESOLVED_REASONS.has(reason)) return 2
   return 3
 }
+
+/** Alias of `formatDispositionReason` used by the new Status-cell reason line. */
+export const formatReason = formatDispositionReason
+
+/**
+ * Whether the Status cell should render a reason line under the chip.
+ *
+ * - Resolved rows: never (chip alone; mutual-match badge lives elsewhere).
+ * - Declined rows: whenever a reason is present.
+ * - Pending rows: only for triage reasons (needs_review, target_waitlisted,
+ *   undirected_preference). Other pending rows stay chip-only.
+ */
+export function shouldShowReasonInStatus(
+  status: string,
+  reason: string | null | undefined
+): boolean {
+  if (!reason) return false
+  const normalized = status.toLowerCase()
+  if (normalized === 'resolved') return false
+  if (normalized === 'declined') return true
+  if (normalized === 'pending') return PENDING_REASONS.has(reason)
+  return false
+}
