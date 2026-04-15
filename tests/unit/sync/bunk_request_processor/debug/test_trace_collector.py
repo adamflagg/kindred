@@ -9,6 +9,7 @@ from bunking.sync.bunk_request_processor.debug.trace_models import (
     DedupSaveTrace,
     DispositionTrace,
     FinalBunkRequestTrace,
+    ReciprocalSignal,
     SelfReferenceSignal,
 )
 
@@ -74,15 +75,13 @@ class TestTraceCollector:
         )
         assert len(tc._traces) == 2
 
-    def test_is_enabled_true_by_default(self):
+    def test_enabled_true_by_default(self):
         tc = TraceCollector(run_id="test123")
-        assert tc.is_enabled is True
+        assert tc.enabled is True
 
     def test_enabled_flag(self):
-        """Backwards-compat alias for is_enabled."""
         tc = TraceCollector(run_id="test123", enabled=True)
         assert tc.enabled is True
-        assert tc.is_enabled is True
 
 
 class TestNoOpTraceCollector:
@@ -104,10 +103,6 @@ class TestNoOpTraceCollector:
     def test_enabled_false(self):
         noop = NoOpTraceCollector()
         assert noop.enabled is False
-
-    def test_is_enabled_false(self):
-        noop = NoOpTraceCollector()
-        assert noop.is_enabled is False
 
 
 class TestSummaryDataDispositionFields:
@@ -172,7 +167,7 @@ class TestRecordDispositionAndRelated:
         )
         tc.record_batch_signals(
             key="k",
-            reciprocal={"detected": True, "boost_applied": True, "boost_amount": 0.1, "pair_cm_id": 99},
+            reciprocal=ReciprocalSignal(detected=True, boost_applied=True, boost_amount=0.1, pair_cm_id=99),
         )
         bs = tc._traces["k"].batch_signals
         assert bs.reciprocal.detected is True

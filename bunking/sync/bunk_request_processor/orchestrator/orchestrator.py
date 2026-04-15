@@ -1017,7 +1017,7 @@ class RequestOrchestrator:
         # Snapshot confidence values before historical verification for trace comparison.
         # Skipped in production (NoOpTraceCollector) to avoid per-request iteration (#923).
         pre_historical_confidences: dict[str, list[float]] = {}
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             for pr, res_list in resolution_results:
                 trace_key = _get_trace_key(pr)
                 if trace_key:
@@ -1026,7 +1026,7 @@ class RequestOrchestrator:
         verified_results = await self.historical_verification_service.verify(resolution_results)
 
         # --- Trace: Historical verification results ---
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             for pr, res_list in verified_results:
                 trace_key = _get_trace_key(pr)
                 if not trace_key:
@@ -1107,7 +1107,7 @@ class RequestOrchestrator:
 
         # --- Trace: Phase 1 results ---
         # Skipped under NoOpTraceCollector (#923) — avoids per-request dict builds.
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             pre_parsed_ids = {id(r) for r in pre_parsed_results}
             for pr in parse_results:
                 trace_key = _get_trace_key(pr)
@@ -1181,8 +1181,8 @@ class RequestOrchestrator:
                     self._map_age_preference_direction(parsed_req)
 
         # --- Trace: Validation results ---
-        # Gated on trace_collector.is_enabled to skip per-request trace work in prod (#923).
-        if self.trace_collector.is_enabled:
+        # Gated on trace_collector.enabled to skip per-request trace work in prod (#923).
+        if self.trace_collector.enabled:
             for pr in parse_results:
                 trace_key = _get_trace_key(pr)
                 if not trace_key:
@@ -1226,9 +1226,9 @@ class RequestOrchestrator:
         resolution_results = await self.phase2_service.batch_resolve(parse_results)
 
         # --- Trace: Phase 2 results ---
-        # Gated on trace_collector.is_enabled — candidate_factors dict construction
+        # Gated on trace_collector.enabled — candidate_factors dict construction
         # is pure overhead under NoOpTraceCollector (#923).
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             for pr, res_list in resolution_results:
                 trace_key = _get_trace_key(pr)
                 if not trace_key:
@@ -1289,7 +1289,7 @@ class RequestOrchestrator:
         # Snapshot confidence values before Phase 3 (after historical verification).
         # Skipped under NoOpTraceCollector to avoid per-request iteration (#923).
         pre_phase3_confidences: dict[str, list[float]] = {}
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             for pr, res_list in resolution_results:
                 trace_key = _get_trace_key(pr)
                 if trace_key:
@@ -1387,9 +1387,9 @@ class RequestOrchestrator:
         self._stats["reciprocal_pairs"] = sum(1 for s in batch_signals.values() if s.is_reciprocal) // 2
 
         # --- Trace: Phase 3 results ---
-        # Gated on trace_collector.is_enabled — the ranked_lookup dict and
+        # Gated on trace_collector.enabled — the ranked_lookup dict and
         # per-candidate trace construction are pure overhead in production (#923).
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             for idx, (pr, res_list) in enumerate(resolution_results):
                 trace_key = _get_trace_key(pr)
                 if not trace_key:
@@ -1477,10 +1477,10 @@ class RequestOrchestrator:
         self._stats["requests_created"] = len(created_requests)
 
         # --- Trace: Post-Pipeline results ---
-        # Entire block is gated on trace_collector.is_enabled — building the
+        # Entire block is gated on trace_collector.enabled — building the
         # created_by_key map and the per-intent final_bunk_requests list is
         # wasted work under NoOpTraceCollector (#923).
-        if not self.trace_collector.is_enabled:
+        if not self.trace_collector.enabled:
             resolution_results_for_trace: list[Any] = []
         else:
             resolution_results_for_trace = list(resolution_results)
@@ -1488,7 +1488,7 @@ class RequestOrchestrator:
         # Build a map from (requester_cm_id, requested_cm_id, target_name) to created BunkRequest for trace linking
         # Key includes requested_cm_id to avoid collisions when different targets share the same name (#788)
         created_by_key: dict[tuple[int, int | None, str], Any] = {}
-        if self.trace_collector.is_enabled:
+        if self.trace_collector.enabled:
             for req in created_requests:
                 req_key = (req.requester_cm_id, req.requested_cm_id, getattr(req, "requested_name", "") or "")
                 created_by_key.setdefault(req_key, req)

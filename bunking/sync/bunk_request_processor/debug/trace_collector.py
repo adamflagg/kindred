@@ -38,15 +38,6 @@ class TraceCollector:
         self._traces: dict[str, TraceData] = {}
         self._trace_metadata: dict[str, dict[str, Any]] = {}
 
-    @property
-    def is_enabled(self) -> bool:
-        """Canonical flag used by hot-path gating (issue #923).
-
-        Kept as a property aliasing `enabled` for backwards compatibility with
-        existing callers that read/write `.enabled` directly.
-        """
-        return self.enabled
-
     def _ensure_trace(self, key: str) -> TraceData:
         if key not in self._traces:
             self._traces[key] = TraceData()
@@ -176,7 +167,7 @@ class TraceCollector:
     def record_batch_signals(
         self,
         key: str,
-        reciprocal: dict[str, Any] | ReciprocalSignal | None = None,
+        reciprocal: ReciprocalSignal | None = None,
     ) -> None:
         """Record batch-level signals (reciprocal detection).
 
@@ -184,27 +175,16 @@ class TraceCollector:
         `self_reference` is NOT recorded here — it lives on dedup_save.
         """
         trace = self._ensure_trace(key)
-        if reciprocal is None:
-            rec_signal = ReciprocalSignal()
-        elif isinstance(reciprocal, ReciprocalSignal):
-            rec_signal = reciprocal
-        else:
-            rec_signal = ReciprocalSignal(**reciprocal)
-        trace.batch_signals = BatchSignalsTrace(reciprocal=rec_signal)
+        trace.batch_signals = BatchSignalsTrace(reciprocal=reciprocal or ReciprocalSignal())
 
     def record_conflict_detection(
         self,
         key: str,
-        conflict_detection: dict[str, Any] | ConflictDetectionTrace | None = None,
+        conflict_detection: ConflictDetectionTrace | None = None,
     ) -> None:
         """Record conflict-detection outcome for this request."""
         trace = self._ensure_trace(key)
-        if conflict_detection is None:
-            trace.conflict_detection = ConflictDetectionTrace()
-        elif isinstance(conflict_detection, ConflictDetectionTrace):
-            trace.conflict_detection = conflict_detection
-        else:
-            trace.conflict_detection = ConflictDetectionTrace(**conflict_detection)
+        trace.conflict_detection = conflict_detection or ConflictDetectionTrace()
 
     def record_disposition(
         self,

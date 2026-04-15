@@ -17,8 +17,6 @@ export function DedupDetail({
   onRunFromHere,
   isRunning,
 }: DedupDetailProps) {
-  const { self_reference } = data
-  const deduplication = { was_duplicate: data.was_duplicate, kept_over: data.kept_over }
   const { final_bunk_requests } = disposition
 
   return (
@@ -35,21 +33,21 @@ export function DedupDetail({
           <div className="border-border rounded-lg border p-2">
             <p className="text-muted-foreground mb-1 text-xs">Self-Reference</p>
             <Badge
-              label={self_reference.detected ? 'Detected' : 'None'}
-              color={self_reference.detected ? 'red' : 'green'}
+              label={data.self_reference.detected ? 'Detected' : 'None'}
+              color={data.self_reference.detected ? 'red' : 'green'}
             />
           </div>
           <div className="border-border rounded-lg border p-2">
             <p className="text-muted-foreground mb-1 text-xs">Duplicate</p>
             <Badge
-              label={deduplication.was_duplicate ? 'Duplicate' : 'Unique'}
-              color={deduplication.was_duplicate ? 'amber' : 'green'}
+              label={data.was_duplicate ? 'Duplicate' : 'Unique'}
+              color={data.was_duplicate ? 'amber' : 'green'}
             />
           </div>
         </div>
 
-        {deduplication.was_duplicate && deduplication.kept_over && (
-          <DataRow label="Kept Over" value={deduplication.kept_over} />
+        {data.was_duplicate && data.kept_over && (
+          <DataRow label="Kept Over" value={data.kept_over} />
         )}
       </PanelSection>
 
