@@ -414,48 +414,6 @@ class PersonRepository(Repository):
             logger.error("Error bulk finding people by CM IDs: %s", e)
             return result
 
-    def find_siblings(self, cm_id: int, year: int) -> list[Person]:
-        """Find siblings of a person by matching household_id.
-
-        Returns all other persons with the same household_id, excluding
-        the person themselves. Used for expanding SIBLING placeholders
-        when parents say "bunk with twins" or "with sibling".
-
-        Args:
-            cm_id: CampMinder ID of the person whose siblings to find
-            year: Year to filter by (persons table has year-specific records)
-
-        Returns:
-            List of sibling Person objects (empty if no siblings or no household_id)
-        """
-        # First get the person's household_id
-        person = self.find_by_cm_id(cm_id)
-        if not person or not person.household_id:
-            logger.debug(f"No household_id found for person {cm_id}")
-            return []
-
-        try:
-            # Query for other persons with same household_id
-            result = self.pb.collection("persons").get_list(
-                query_params={
-                    "filter": f"household_id = {person.household_id} && cm_id != {cm_id} && year = {year}",
-                    "perPage": 10,  # Most families have 2-3 kids max
-                }
-            )
-
-            siblings = [p for p in (self._map_to_person(item) for item in result.items) if p is not None]
-
-            logger.info("Found %d sibling(s)", len(siblings))
-            logger.debug(
-                f"Found {len(siblings)} sibling(s) for person {cm_id} "
-                f"(household {person.household_id}): {[s.full_name for s in siblings]}"
-            )
-            return siblings
-
-        except Exception as e:
-            logger.error(f"Error finding siblings for person {cm_id}: {e}")
-            return []
-
     def get_all_for_phonetic_matching(self, year: int | None = None) -> list[Person]:
         """Get all persons for phonetic matching.
 

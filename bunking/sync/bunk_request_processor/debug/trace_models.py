@@ -97,13 +97,6 @@ class Phase2IntentTrace(BaseModel):
     spread_filter_applied: bool = False
 
 
-class PlaceholderExpansionTrace(BaseModel):
-    triggered: bool = False
-    type: str | None = None
-    expanded_count: int = 0
-    expanded_targets: list[dict[str, Any]] = Field(default_factory=list)
-
-
 class HistoricalVerificationTrace(BaseModel):
     ran: bool = False
     boost_applied: bool = False
@@ -160,7 +153,6 @@ class TraceData(BaseModel):
     phase1_parse: Phase1Trace = Field(default_factory=Phase1Trace)
     validation: ValidationTrace = Field(default_factory=ValidationTrace)
     phase2_resolution: list[Phase2IntentTrace] = Field(default_factory=list)
-    placeholder_expansion: PlaceholderExpansionTrace = Field(default_factory=PlaceholderExpansionTrace)
     historical_verification: HistoricalVerificationTrace = Field(default_factory=HistoricalVerificationTrace)
     phase3_disambiguation: list[Phase3IntentTrace] = Field(default_factory=list)
     post_pipeline: PostPipelineTrace = Field(default_factory=PostPipelineTrace)

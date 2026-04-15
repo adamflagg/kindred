@@ -45,15 +45,13 @@ ParseRequest (one per field per person)
 ParseResult → [ParsedRequest, ParsedRequest, ...] (multiple targets per field)
   ↓ Phase 2: resolves each name to a person
 (ParseResult, [ResolutionResult, ...])
-  ↓ Group reference expansion: 1 group ref → N individual requests
-Expanded (ParseResult, [ResolutionResult])
   ↓ Phase 3: disambiguates remaining ambiguous cases
 Final (ParsedRequest, resolution_info)
   ↓ Request Builder: determines status, priority, confidence
 BunkRequest → saved to PocketBase bunk_requests table
 ```
 
-**Critical fan-out:** A single parent who writes "bunk with Emma, Liam, and last year's bunkmates" in the `bunk_with` field could generate 5+ individual `bunk_request` records after name resolution and group reference expansion. Group references like classmates or congregation can fan out to dozens of requests.
+**Named individuals only:** Every `bunk_request` must name a specific camper. Unnamed group references ("last year's bunkmates", "kids from her school") and categorical exclusions ("loud kids") produce a single PENDING staff-review record with `ambiguity_reason="no_named_individual"` and the original phrase preserved in `parse_notes`.
 
 ---
 
@@ -283,8 +281,8 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │       └─ Returns list[ParseResult], each containing:
     │           ├─ parsed_requests: list[ParsedRequest] — one per extracted name
     │           │   Each: target_name, request_type, confidence, age_preference,
-    │           │          csv_position, group_kind (GroupKind enum or None),
-    │           │          metadata (including AI reasoning, group_metadata)
+    │           │          csv_position, needs_clarification, ambiguity_reason,
+    │           │          metadata (including AI reasoning)
     │           ├─ needs_historical_context: bool
     │           └─ metadata
     │   Combine with pre_parsed_results (socialize_with)
@@ -298,9 +296,9 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   │       conflicts by temporal_date or csv_position (higher = newer)
     │   └─ _validate_target_names_in_source()
     │       ├─ Reject hallucinated names not found in source text
-    │       ├─ Reject unit/cabin names (nitzanim, galil, eilat, haifa, etc.)
-    │       ├─ Accept valid placeholders and group references (sibling, last_year_bunkmates, classmates, congregation, older, younger)
-    │       └─ Accept age preferences (no target name needed)
+    │       ├─ Reject unit/cabin names
+    │       ├─ Accept age preferences (no target name needed)
+    │       └─ Accept staff-review fallback records (empty target_name + needs_clarification=true)
     │
     ├── 6. INITIALIZE CACHES
     │   ├─ temporal_name_cache.initialize() — O(1) person name lookups
@@ -309,30 +307,14 @@ process_requests(raw_requests, clear_existing, progress_callback)
     ├── 7. PHASE 2: LOCAL NAME RESOLUTION
     │   └─ See "Phase 2 Detail" section below
     │
-    ├── 8. GROUP REFERENCE EXPANSION
-    │   ├─ Build resolver registry (GroupKind → GroupResolver)
-    │   ├─ Detect group references via two paths:
-    │   │   ├─ Modern: parsed_request.group_kind set by AI
-    │   │   └─ Legacy: resolution metadata has placeholder string
-    │   ├─ For each group reference, dispatch to resolver:
-    │   │   ├─ SIBLING → SiblingResolver (household_id lookup, conf 0.95)
-    │   │   ├─ LAST_YEAR_BUNKMATES → BunkmateResolver (prior cabin, conf 0.90)
-    │   │   ├─ CLASSMATES → ClassmateResolver (school match, conf 0.85)
-    │   │   └─ CONGREGATION → CongregationResolver (congregation match, conf 0.85)
-    │   └─ Each resolved member → individual ParseResult + ResolutionResult pair
-    │      See "Group Reference Expansion" section below for detail
-    │
-    ├── 9. POST-EXPANSION CONFLICT FILTER
-    │   └─ Catch conflicts from expansion (same target, opposite types)
-    │
-    ├── 10. PHASE 2.5: HISTORICAL GROUP VERIFICATION
-    │   └─ Verify multiple targets were actually in same bunk in prior year
+    ├── 8. PHASE 2.5: HISTORICAL GROUP VERIFICATION
+    │   └─ Verify multiple named targets were actually in same bunk in prior year
     │   └─ Confidence boost +0.10 (capped at 0.95) if verified
     │
-    ├── 11. PHASE 3: AI DISAMBIGUATION (unresolved cases only)
+    ├── 9. PHASE 3: AI DISAMBIGUATION (unresolved cases only)
     │   └─ See "Phase 3 Detail" section below
     │
-    ├── 12. CONFLICT DETECTION & RESOLUTION
+    ├── 10. CONFLICT DETECTION & RESOLUTION
     │   ├─ Generate unresolved person IDs (deterministic negative MD5 hash)
     │   ├─ ConflictDetector (enriched with AttendeeRepository for full session visibility)
     │   │   ├─ Build session map from requester data + bulk attendee lookup for unknown targets
@@ -342,10 +324,9 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   │   ├─ AG silo: AG sessions are distinct session IDs, so regular↔AG requests
     │   │   │   are caught by cross-session detection (no special AG logic needed)
     │   │   └─ Session metadata (requester_session, target_session) captured for bunk staff review
-    │   ├─ Detect post-expansion conflicts (bunk_with vs not_bunk_with for same pair)
     │   └─ Apply resolution (remove losing side)
     │
-    ├── 13. CREATE BUNK REQUESTS
+    ├── 11. CREATE BUNK REQUESTS
     │   ├─ request_builder.build_requests()
     │   │   ├─ Priority calculation (1-4 scale)
     │   │   └─ Status determination:
@@ -533,120 +514,21 @@ After each scoring call, `ConfidenceScorer.last_score_factors` contains the full
 
 ---
 
-## Group Reference Expansion
+## Group References: Staff-Review Only
 
-**Files:** `services/placeholder_expander.py`, `services/group_resolvers.py`
+**Removed in PR #891.** The pipeline previously auto-expanded unnamed group references (siblings, last-year bunkmates, classmates, congregation) into individual bunk requests via `PlaceholderExpander` and a resolver registry. Production data showed ~61 garbage expansions per 1 useful result, so the feature was deleted.
 
-Group references are requests like "bunk with sibling", "same cabin as last year bunkmates", "with classmates", or "with temple friends" that refer to a category of people rather than a specific person. The system expands these into individual person-to-person bunk requests.
+Current behavior:
 
-### GroupKind Enum
+- Every `bunk_request` must name a specific camper.
+- Unnamed group references ("last year's bunkmates", "kids from her school", "her twin" with no name given) and categorical exclusions ("loud kids") are parsed into a single PENDING `bunk_request` with:
+  - `target_name = ""`
+  - `needs_clarification = true`
+  - `ambiguity_reason = "no_named_individual"`
+  - `parse_notes` = original phrase verbatim
+- Staff reviews each PENDING record and decides manually.
 
-**File:** `core/models.py`
-
-```python
-class GroupKind(Enum):
-    SIBLING = "sibling"
-    LAST_YEAR_BUNKMATES = "last_year_bunkmates"
-    CLASSMATES = "classmates"
-    CONGREGATION = "congregation"
-```
-
-### Resolver Protocol and Registry
-
-**File:** `services/group_resolvers.py`
-
-Each `GroupKind` maps to a resolver that implements the `GroupResolver` protocol:
-
-```python
-class GroupResolver(Protocol):
-    @property
-    def base_confidence(self) -> float: ...
-
-    def resolve(
-        self,
-        requester_cm_id: int,
-        parsed_request: ParsedRequest,
-        session_cm_id: int,
-    ) -> list[ResolvedGroupMember]: ...
-```
-
-The `build_resolver_registry()` factory creates all resolvers and returns a `dict[GroupKind, GroupResolver]`:
-
-| GroupKind | Resolver | Lookup Method | Base Confidence |
-|---|---|---|---|
-| `SIBLING` | `SiblingResolver` | `person_repo.find_siblings()` via household_id | **0.95** |
-| `LAST_YEAR_BUNKMATES` | `BunkmateResolver` | `attendee_repo.find_prior_year_bunkmates()` | **0.90** |
-| `CLASSMATES` | `ClassmateResolver` | Session attendees filtered by school match | **0.85** |
-| `CONGREGATION` | `CongregationResolver` | Session attendees filtered by normalized_congregation | **0.85** |
-
-### Expansion Flow
-
-```text
-PlaceholderExpander.expand(resolution_results, resolver_registry)
-    │
-    ├── For each (ParseResult, [ResolutionResult]):
-    │   │
-    │   ├── _find_group_references()
-    │   │   └── parsed_request.group_kind is set (from AI Phase 1)
-    │   │
-    │   ├── If no group references → pass through unchanged
-    │   │
-    │   └── For each (index, GroupKind):
-    │       │
-    │       ├── Look up resolver in registry
-    │       ├── resolver.resolve(requester_cm_id, parsed_request, session_cm_id)
-    │       │   └── Returns list[ResolvedGroupMember]
-    │       │
-    │       ├── If members found → _create_expanded_requests():
-    │       │   └── For each member:
-    │       │       ├── New ParsedRequest with target_name = member.full_name
-    │       │       ├── New ParseResult with metadata.expanded_from_placeholder = True
-    │       │       └── New ResolutionResult with method = "{kind}_expansion"
-    │       │
-    │       └── If no members → _handle_expansion_failure():
-    │           └── ResolutionResult with confidence=0.0, method="placeholder_expansion_failed"
-```
-
-Multiple group references within a single ParseResult are supported (e.g., "bunk with sibling and classmates"). Each is expanded independently.
-
-### Resolver Details
-
-**SiblingResolver**: Looks up all persons sharing the same `household_id` as the requester (excluding self). Preserves the original `request_type` from the parsed request.
-
-**BunkmateResolver**: Finds the requester's cabin assignment from the prior year, then resolves each returning bunkmate to a Person. Preserves the original `request_type` from the parsed request (e.g., `NOT_BUNK_WITH` for "don't put with last year's bunkmates"). Includes `prior_bunk` and `prior_year` in metadata.
-
-**ClassmateResolver / CongregationResolver**: Both extend `_SchoolCongregationBaseResolver` with a shared filter pipeline:
-
-```text
-1. Look up requester → get field value (school or normalized_congregation)
-2. Get all session attendees → exclude self
-3. Bulk fetch Person records
-4. Filter pipeline:
-   ├── Same field value (school or normalized_congregation)
-   ├── Same session (attendee enrollment)
-   ├── Grade within ±1 of requester
-   └── Same gender
-5. Return matching peers as ResolvedGroupMember
-```
-
-The classmate resolver reads `person.school`; the congregation resolver reads `person.metadata["normalized_congregation"]`.
-
-### AI Parse Integration
-
-Phase 1 AI parse extracts `group_kind` as a new output field on each parsed intent:
-
-**AI schema** (`integration/ai_schemas.py`):
-```python
-group_kind: str | None = None    # "sibling", "last_year_bunkmates", "classmates", "congregation"
-group_metadata: dict[str, str] | None = None  # e.g., {"school_name": "Riverside Elementary"}
-```
-
-**Context enrichment** (`services/phase1_parse_service.py`): The AI receives additional context variables from the requester's row data to help detect group references:
-- `requester_school` — the camper's school name
-- `requester_congregation` — normalized congregation from person metadata
-- `requester_city` — city for geographic context
-
-**Mapping** (`integration/openai_provider.py`): The AI string output is mapped to the `GroupKind` enum via `_GROUP_KIND_MAP`. `group_metadata` (e.g., school name, congregation name) is stored in the parsed request's metadata.
+See the six parse prompt templates under `config/prompts/parse_*.txt` for the AI-facing guidance. `HistoricalVerificationService` and `find_prior_year_bunkmates()` are retained for named-individual lookups like "Mike from last year" where the AI has a concrete name to resolve.
 
 ---
 
@@ -787,8 +669,8 @@ Non-bunking types (35 sessions): `family`, `quest`, `bmitzvah`, `hebrew`, `teen`
 | phonetic_match | 13 | 0 | 11 | 2 | 0.724 |
 | prior_bunkmate_first_name | 5 | 5 | 0 | 0 | 0.960 |
 | school_disambiguation | 4 | 0 | 1 | 3 | 0.698 |
-| placeholder_expansion_failed | 3 | 0 | 3 | 0 | 0.000 |
-| sibling_household_lookup | 1 | 1 | 0 | 0 | 0.950 |
+
+(Note: `placeholder_expansion_failed`, `sibling_household_lookup`, and `prior_year_bunkmate` rows from v3.11 are omitted — the group-expansion feature that produced them was removed in PR #891.)
 
 ### v3.11 Confidence Value Clusters (exact_match)
 
@@ -819,7 +701,6 @@ Non-bunking types (35 sessions): `family`, `quest`, `bmitzvah`, `hebrew`, `teen`
 |---|---|---|---|
 | Temporal conflict filter | All | **0×** | Zero `is_superseded` or `temporal_date` in 2026 data. Only relevant for notes fields. |
 | Phase 2.5 historical verification | All resolved | **6 failures, 0 boosts** | `historical_year=0` in bunk_request metadata despite 6 verification attempts logged. AI may be setting it inconsistently. |
-| Group reference expansion (GroupKind) | All | **0 triggers** | `group_kind=0` in bunk_request metadata. AI is not setting `group_kind` field despite schema support (PR #786). Prior bunkmate requests come from Phase 2's fast path, not group expansion. |
 | Self-reference detection | All | **0 hits** | Free safety net, no production matches. |
 | Staff name detection | All rows | **1 hit + false positives** | Detected "Maya" as staff. Also matched sentence fragments: 'Also add', 'Director', 'Eve to', 'I just', 'This was'. Heuristic needs tightening. |
 
@@ -840,7 +721,7 @@ Known resolution gaps (unchanged from prior analysis):
 - **Single-letter spelling variations**: "Emma Kniffen" vs "Emma Kniffin" — close enough for fuzzy but not always caught.
 - **Input normalization**: " Noah Johnson" (leading whitespace), "EMMA CHEN" (all-caps).
 - **AI misparses from notes**: "AG-identified campers" — staff shorthand parsed as person names.
-- **NOT_BUNK_WITH misparses**: "transgender kids", "trans campers" (×4) parsed as person target names from bunking_notes. These are category references, not individuals.
+- **NOT_BUNK_WITH misparses**: categorical exclusions (demographic or trait references) parsed as person target names from bunking_notes. These are category references, not individuals. Addressed by PR #891: now emitted as a single PENDING staff-review record with `ambiguity_reason="no_named_individual"` rather than an invented target name.
 - **Parent surname index empty**: 0 unique surnames loaded in v3.11 run. The parent surname fallback path in ExactMatchStrategy is effectively dead code. Likely a cache initialization bug.
 
 ---
@@ -855,12 +736,11 @@ Identified from production data analysis (2026-03-18). Pending implementation.
 4. **Scope temporal conflict filter** to notes fields only (zero hits on other fields).
 5. **Scope NA stripping** to `bunk_with` only (zero hits on other fields).
 6. **Guard staff detection** on `source_fields` filter (no-op when processing non-notes fields).
-7. **Conditional post-expansion conflict filter** (only when expansion happened — 0 triggers in production).
+7. ~~**Conditional post-expansion conflict filter**~~ — Superseded: group-expansion feature removed entirely in PR #891.
 8. **Fix Phase 3 string contract.** Phase 3 exclusion uses `rr.method != "age_preference"` (fragile string). Use `RequestType.AGE_PREFERENCE` enum.
 9. ~~**Improve Phase 2 resolution**~~ — Partially addressed by PR #780: jellyfish Jaro-Winkler matching catches close name variants (Zoey/Zoe, Kiefer/Kieffer), `nicknames` library provides broader nickname coverage (Rob→Robert), and preferred_name matching in exact strategy. Remaining gap: prefix matching (Liv→Olivia) not yet implemented.
 10. ~~**Expand conflict detection**~~ — Addressed: ConflictDetector now receives AttendeeRepository for full session visibility. BUNK_WITH cross-session → auto-DECLINED, NOT_BUNK_WITH cross-session → auto-RESOLVED.
 11. ~~**Method-aware auto-resolve thresholds**~~ — Superseded by cross-session auto-decline. The 0.6975 PENDING cases are now correctly DECLINED (BUNK_WITH) or RESOLVED (NOT_BUNK_WITH) based on session enrollment data.
-12. **SIBLING expansion enrollment check.** SiblingResolver uses household_id but doesn't verify enrollment in the same session.
 13. **Extract shared strategy methods to BaseMatchStrategy.** `_apply_session_adjustment_simple()`, `_calculate_confidence()`, and `_disambiguate_with_session()` are duplicated across `FuzzyMatchStrategy` and `PhoneticMatchStrategy`. Extract to base class to reduce ~160 lines of duplication.
 14. **Fix N+1 spread filter query in resolution pipeline.** `resolution_pipeline.py` batch-loads all persons at line 212, but re-queries `person_repo.find_by_cm_id(requester_cm_id)` inside the per-request loop at line 284 when spread filter is enabled. Should reuse the pre-loaded dict.
 
@@ -884,7 +764,6 @@ Input: original_bunk_requests rows
   │                      │
   │                      ├─ [lazy, concurrent]: Cache init (temporal + social graph)
   │                      ├─ Phase 2: Local resolution
-  │                      ├─ [if placeholders found]: Expansion + post-expansion conflict
   │                      ├─ [if unresolved]: Phase 3 AI disambiguation
   │                      │
   │                      ├─ Conflict detection (BUNK_WITH/NOT_BUNK_WITH only)
@@ -971,7 +850,7 @@ Input: original_bunk_requests rows
 #### Data & Models
 | File | Purpose |
 |---|---|
-| `bunk_request_processor/core/models.py` | ParseRequest, ParsedRequest, ParseResult, BunkRequest, Person, GroupKind |
+| `bunk_request_processor/core/models.py` | ParseRequest, ParsedRequest, ParseResult, BunkRequest, Person |
 | `bunk_request_processor/shared/constants.py` | SourceField enum (V2 names), processing fields, patterns, thresholds |
 | `bunk_request_processor/core/constants.py` | AI confidence thresholds |
 | `bunk_request_processor/integration/ai_service.py` | AI provider abstraction |
@@ -1000,7 +879,6 @@ The pipeline debug tool captures trace data at every phase when `collect_traces=
 | **P1 Parse** | `phase1_parse` | Per intent: target name, request type, confidence, keywords, AI reasoning + chain-of-thought, parse notes, needs_clarification, temporal info. Plus: ran flag, token count, processing time, sanitization (suspicious detection, risk level, confidence penalty), raw AI response, is_valid, error message |
 | **Validation** | `validation` | Type validation (passed flag + rejected list), temporal conflicts (filtered count + details), source text validation (rejected count, hallucinated names, unit/cabin names) |
 | **P2 Resolution** | `phase2_resolution[]` | Per intent: target name, fast paths tried + results, all candidates with score breakdowns (session match, grade proximity, social signal, spread filter), pipeline strategies tried in order with confidence/candidate counts, final result (person CM ID, name, confidence, method, resolved/ambiguous flags, **confidence_factors** from scorer — formula, component scores, weights, weighted total), staff filtered flag, hallucination detected, social graph details (enhanced, connection strength, shared friends, smart resolved, reranked), spread filter applied |
-| **Expansion** | `placeholder_expansion` | Triggered flag, expansion type (sibling/last_year_bunkmates/classmates/congregation), expanded count, expanded targets list with names and request types |
 | **P2.5 Historical** | `historical_verification` | Whether verification ran, boost applied flag, original confidence, boosted confidence (boost is +0.10, capped at 0.95) |
 | **P3 Disambiguation** | `phase3_disambiguation[]` | Per intent: target name, ran flag, candidates sent (top 5 with details), AI context, AI selection (person CM ID), AI reasoning + chain-of-thought, result status (not_needed/resolved/no_match/still_ambiguous), confidence before/after |
 | **Post-Pipeline** | `post_pipeline` | Conflict detection (has_conflict + serialized V2Conflict details with type, severity, auto_resolvable), self-reference detected, reciprocal (detected, boost applied, boost amount, pair CM ID), deduplication (was_duplicate, kept_over), final bunk requests list (requester/target CM IDs, names, request type, status [RESOLVED/PENDING/DECLINED/DEDUPED], confidence, priority, resolution method, is_placeholder, declined reason). Deduped-out requests are marked status=DEDUPED in traces rather than showing stale pre-dedup status. |
@@ -1009,7 +887,7 @@ The pipeline debug tool captures trace data at every phase when `collect_traces=
 
 The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 - **Batch overview**: Select a trace-enabled run → see summary table with PB-native filtering (status, confidence, resolution method, session, source field, Phase 3 triggered)
-- **Drill-down**: Click a row → React Flow canvas with 8 phase nodes. Click any node → detail panel showing all captured data for that phase
+- **Drill-down**: Click a row → React Flow canvas with 7 phase nodes. Click any node → detail panel showing all captured data for that phase
 - **New Trace**: Pick a specific camper → run their requests through the pipeline (optionally stop at any phase) → see results immediately
 - **Re-execution**: "Run Again" (single phase, dry-run) or "Run From Here →" (cascade through remaining phases)
 
@@ -1029,7 +907,7 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 **Confidence threshold `> 0.9` should be `>= 0.9`.** `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
 
-**PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Classmates expansion returned 0 results for all 3 attempts for person 1000001. Need to chunk bulk lookups into smaller batches.
+**PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Need to chunk bulk lookups into smaller batches.
 
 **Parent surname index always empty.** `Built parent surname index with 0 unique surnames` logged in v3.11. The entire parent surname fallback resolution path in ExactMatchStrategy is dead code — `_try_parent_surname_match()` can never match anyone. Likely a cache initialization bug where parent data isn't loaded.
 
@@ -1043,11 +921,10 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 **Staff name detection false positives.** Heuristic matches sentence fragments as staff names: 'Also add', 'Director', 'Eve to', 'I just', 'This was'. Needs tighter matching (minimum word count, name-like pattern check).
 
-**NOT_BUNK_WITH AI misparses.** Category references from bunking_notes parsed as person names: "transgender kids", "trans campers" (×4). These are group/category descriptors, not individuals.
+**NOT_BUNK_WITH AI misparses** (historical, fixed in PR #891). Category references from bunking_notes were being parsed as person names. These are group/category descriptors, not individuals; the current pipeline emits a single PENDING staff-review record with `ambiguity_reason="no_named_individual"` instead.
 
 **N/A entries with trailing age preferences.** No-preference detection catches entries like "None. Preference for own grade/older" and "N/A\nOwn Grade/Younger", dropping the trailing age preference content. These should be parsed for the age preference after stripping the N/A prefix.
 
-**GROUP_REFERENCE and historical_year not activating.** Despite PR #786 adding `group_kind` and `historical_year` to the AI schema, v3.11 shows 0 records with either field populated in bunk_request metadata. AI is not setting these fields. May need prompt tuning or model-specific configuration.
 
 **`_estimate_batch_size` uses midpoint average, not actual batch sizes.** When a batch fails, `batch_parse_requests` estimates the failed batch's size as `(MIN_BATCH_SIZE + MAX_BATCH_SIZE) // 2` = 27, but actual batch sizes vary with dynamic sizing. This can silently skip items or double-count them in the failure path. Should track actual batch sizes alongside batch results instead of re-estimating.
 

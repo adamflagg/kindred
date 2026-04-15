@@ -15,7 +15,6 @@ from bunking.logging_config import TRACE, get_logger
 
 from ..core.models import (
     AgePreference,
-    GroupKind,
     ParsedRequest,
     RequestSource,
     RequestType,
@@ -51,13 +50,6 @@ def is_transient_error_string(error_str: str) -> bool:
     """Check if an error string indicates a transient failure."""
     return any(pat in error_str.lower() for pat in TRANSIENT_ERROR_PATTERNS)
 
-
-_GROUP_KIND_MAP: dict[str, GroupKind] = {
-    "sibling": GroupKind.SIBLING,
-    "last_year_bunkmates": GroupKind.LAST_YEAR_BUNKMATES,
-    "classmates": GroupKind.CLASSMATES,
-    "congregation": GroupKind.CONGREGATION,
-}
 
 logger = get_logger(__name__)
 
@@ -448,12 +440,6 @@ class OpenAIProvider(AIProvider):
                     parsed_request.target_name.lower()
                 )  # "unclear" maps to None for manual review
                 parsed_request.target_name = None
-
-            # Handle group_kind from AI output
-            if ai_req.group_kind:
-                parsed_request.group_kind = _GROUP_KIND_MAP.get(ai_req.group_kind)
-                if ai_req.group_metadata:
-                    request_metadata["group_metadata"] = ai_req.group_metadata
 
             v2_requests.append(parsed_request)
 

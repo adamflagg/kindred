@@ -48,12 +48,10 @@ from ..processing.priority_calculator import PriorityCalculator
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..services.context_builder import ContextBuilder
-from ..services.group_resolvers import build_resolver_registry
 from ..services.historical_verification_service import HistoricalVerificationService
 from ..services.phase1_parse_service import Phase1ParseService
 from ..services.phase2_resolution_service import Phase2ResolutionService
 from ..services.phase3_disambiguation_service import Phase3DisambiguationService
-from ..services.placeholder_expander import PlaceholderExpander
 from ..services.request_builder import RequestBuilder
 from ..services.staff_name_detector import StaffNameDetector
 from ..services.staff_note_parser import parse_multi_staff_notes
@@ -618,92 +616,6 @@ class RequestOrchestrator:
 
         return kept_count, rejected_count
 
-    def _filter_post_expansion_conflicts(
-        self,
-        expansion_results: list[tuple[ParseResult, list[ResolutionResult]]],
-    ) -> tuple[list[tuple[ParseResult, list[ResolutionResult]]], int, int]:
-        """Filter conflicts introduced by group reference expansion.
-
-        After group expansion (sibling, bunkmates, classmates, congregation),
-        check for cases where the same person now has bunk_with and not_bunk_with
-        requests targeting the same resolved person_cm_id. This catches conflicts
-        that weren't visible before expansion (when target was a group reference).
-
-        This is a deterministic safety net that doesn't depend on AI correctly
-        marking is_superseded flags.
-
-        Args:
-            expansion_results: List of (ParseResult, ResolutionResult) tuples
-                after placeholder expansion
-
-        Returns:
-            Tuple of (filtered_results, kept_count, filtered_count)
-        """
-        # ADR 7: Only run conflict detection if any expansions actually happened
-        any_expansion = any(pr.metadata.get("expanded_from_placeholder") for pr, _ in expansion_results if pr.metadata)
-        if not any_expansion:
-            total = sum(len(pr.parsed_requests) for pr, _ in expansion_results)
-            return expansion_results, total, 0
-
-        kept_count = 0
-        filtered_count = 0
-
-        for parse_result, resolution_results in expansion_results:
-            if not parse_result.is_valid or not parse_result.parsed_requests:
-                continue
-
-            # Group by resolved person_cm_id
-            by_target: dict[int, list[tuple[ParsedRequest, ResolutionResult]]] = {}
-            unresolved: list[tuple[ParsedRequest, ResolutionResult]] = []
-
-            for req, res in zip(parse_result.parsed_requests, resolution_results, strict=True):
-                if res.person and res.person.cm_id:
-                    target_id = res.person.cm_id
-                    by_target.setdefault(target_id, []).append((req, res))
-                else:
-                    # Unresolved - keep for later processing
-                    unresolved.append((req, res))
-
-            # Check each target for bunk_with vs not_bunk_with conflict
-            final_requests: list[ParsedRequest] = []
-            final_resolutions: list[ResolutionResult] = []
-
-            for target_id, pairs in by_target.items():
-                bunk_with = [(r, res) for r, res in pairs if r.request_type == RequestType.BUNK_WITH]
-                not_bunk = [(r, res) for r, res in pairs if r.request_type == RequestType.NOT_BUNK_WITH]
-
-                if bunk_with and not_bunk:
-                    # Conflict! Pick winner by date/position
-                    all_reqs = [r for r, _ in bunk_with + not_bunk]
-                    winner = self._resolve_by_date_or_position(all_reqs)
-                    # Find the resolution result for the winner
-                    for r, res in bunk_with + not_bunk:
-                        if r is winner:
-                            final_requests.append(r)
-                            final_resolutions.append(res)
-                            kept_count += 1
-                            break
-                    filtered_count += len(bunk_with) + len(not_bunk) - 1
-                    logger.info(f"Post-expansion conflict: kept {winner.request_type.value} for target {target_id}")
-                else:
-                    # No conflict - keep all
-                    for r, res in pairs:
-                        final_requests.append(r)
-                        final_resolutions.append(res)
-                        kept_count += 1
-
-            # Add unresolved requests
-            for req, res in unresolved:
-                final_requests.append(req)
-                final_resolutions.append(res)
-                kept_count += 1
-
-            # Update in-place
-            parse_result.parsed_requests = final_requests
-            resolution_results[:] = final_resolutions
-
-        return expansion_results, kept_count, filtered_count
-
     def _initialize_components(self) -> None:
         """Initialize all components with proper dependency injection.
 
@@ -912,15 +824,8 @@ class RequestOrchestrator:
         """Initialize services extracted from orchestrator for reduced complexity.
 
         These services encapsulate specific orchestrator functionality:
-        - PlaceholderExpander: Expands group references via resolver registry
         - HistoricalVerificationService: Verifies historical bunking groups
         """
-        self.placeholder_expander = PlaceholderExpander(year=self.year)
-        self.resolver_registry = build_resolver_registry(
-            attendee_repo=self._attendee_repo,
-            person_repo=self._person_repo,
-            year=self.year,
-        )
         self.historical_verification_service = HistoricalVerificationService(
             temporal_name_cache=self.temporal_name_cache,
         )
@@ -1087,7 +992,6 @@ class RequestOrchestrator:
             "phase1",
             "validation",
             "phase2",
-            "expansion",
             "historical",
             "phase3",
             "post_pipeline",
@@ -1281,48 +1185,6 @@ class RequestOrchestrator:
         if stop_at_phase == "phase2":
             return {"dry_run": dry_run, "phase": "phase2"}
 
-        # Expand group references (siblings, bunkmates, classmates, congregation)
-        # into individual bunk_with requests via resolver registry
-        logger.info("=== Expanding Group References ===")
-        resolution_results = await self.placeholder_expander.expand(resolution_results, self.resolver_registry)
-
-        # --- Trace: Expansion results ---
-        for pr, res_list in resolution_results:
-            trace_key = _get_trace_key(pr)
-            if not trace_key:
-                continue
-            # Detect if expansion happened — check ParseResult.metadata (set by PlaceholderExpander)
-            pr_meta = pr.metadata or {}
-            has_expansion = bool(pr_meta.get("expanded_from_placeholder"))
-            expansion_type = pr_meta.get("original_placeholder")
-            expanded_targets = (
-                [
-                    {
-                        "target_name": req.target_name or "",
-                        "request_type": req.request_type.value if req.request_type else "",
-                    }
-                    for req in pr.parsed_requests
-                ]
-                if has_expansion
-                else []
-            )
-            self.trace_collector.record_expansion(
-                key=trace_key,
-                triggered=has_expansion,
-                expansion_type=str(expansion_type) if expansion_type else None,
-                expanded_count=len(expanded_targets),
-                expanded_targets=expanded_targets,
-            )
-
-        if stop_at_phase == "expansion":
-            return {"dry_run": dry_run, "phase": "expansion"}
-
-        # Post-expansion conflict detection: catch conflicts that weren't visible before
-        # group expansion (e.g., "not_bunk_with Pippi" vs group_kind=SIBLING → Pippi)
-        resolution_results, post_kept, post_filtered = self._filter_post_expansion_conflicts(resolution_results)
-        if post_filtered > 0:
-            logger.info(f"Post-expansion conflict filter: kept {post_kept}, filtered {post_filtered}")
-
         # Phase 2.5: Historical Group Verification
         # Verify that multiple targets for same historical year were actually in same bunk
         # Boost confidence by +0.10 for verified groups (capped at 0.95)
@@ -1359,7 +1221,7 @@ class RequestOrchestrator:
         if stop_at_phase == "historical":
             return {"dry_run": dry_run, "phase": "historical"}
 
-        # Count Phase 2 results (on expanded results)
+        # Count Phase 2 results
         for _, resolution_list in resolution_results:
             for res_result in resolution_list:
                 if res_result.is_resolved:
@@ -1367,7 +1229,7 @@ class RequestOrchestrator:
                 elif res_result.is_ambiguous:
                     self._stats["phase2_ambiguous"] += 1
 
-        # Snapshot confidence values before Phase 3 (after historical verification + expansion)
+        # Snapshot confidence values before Phase 3 (after historical verification)
         pre_phase3_confidences: dict[str, list[float]] = {}
         for pr, res_list in resolution_results:
             trace_key = _get_trace_key(pr)

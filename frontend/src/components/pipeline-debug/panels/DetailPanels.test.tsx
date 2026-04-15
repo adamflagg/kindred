@@ -12,7 +12,6 @@ import { PrePhase1Detail } from './PrePhase1Detail'
 import { Phase1Detail } from './Phase1Detail'
 import { ValidationDetail } from './ValidationDetail'
 import { Phase2Detail } from './Phase2Detail'
-import { ExpansionDetail } from './ExpansionDetail'
 import { HistoricalDetail } from './HistoricalDetail'
 import { Phase3Detail } from './Phase3Detail'
 import { BatchSignalsDetail } from './BatchSignalsDetail'
@@ -24,7 +23,6 @@ import type {
   Phase1Trace,
   ValidationTrace,
   Phase2IntentTrace,
-  PlaceholderExpansionTrace,
   HistoricalVerificationTrace,
   Phase3IntentTrace,
   PostPipelineTrace,
@@ -173,13 +171,6 @@ const phase2Intents: Phase2IntentTrace[] = [
     spread_filter_applied: false,
   },
 ]
-
-const expansion: PlaceholderExpansionTrace = {
-  triggered: true,
-  type: 'last_year_bunkmates',
-  expanded_count: 3,
-  expanded_targets: [{ name: 'Olivia Chen' }, { name: 'Noah Kim' }, { name: 'Ava Patel' }],
-}
 
 const historical: HistoricalVerificationTrace = {
   ran: true,
@@ -444,51 +435,6 @@ describe('Phase2Detail', () => {
       />
     )
     expect(screen.getAllByText(/fuzzy_match/).length).toBeGreaterThanOrEqual(1)
-  })
-})
-
-// =============================================================================
-// ExpansionDetail
-// =============================================================================
-describe('ExpansionDetail', () => {
-  it('renders expansion type and count', () => {
-    render(<ExpansionDetail data={expansion} {...defaultActions} />)
-    expect(screen.getByText(/last_year_bunkmates/)).toBeInTheDocument()
-    expect(screen.getByText(/3/)).toBeInTheDocument()
-  })
-
-  it('renders expanded target names', () => {
-    render(<ExpansionDetail data={expansion} {...defaultActions} />)
-    expect(screen.getByText(/Olivia Chen/)).toBeInTheDocument()
-  })
-
-  it('renders object targets without [object Object]', () => {
-    const withObjectTargets: PlaceholderExpansionTrace = {
-      triggered: true,
-      type: 'bunkmates',
-      expanded_count: 2,
-      expanded_targets: [
-        { cm_id: 1001, name: 'Emma Johnson' },
-        { cm_id: 1002, first_name: 'Liam', last_name: 'Garcia' },
-      ],
-    }
-    render(<ExpansionDetail data={withObjectTargets} {...defaultActions} />)
-    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
-    // First target has a name field
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    // Second target has no name field but should still render readably
-    expect(screen.getByText(/Liam/)).toBeInTheDocument()
-  })
-
-  it('renders primitive targets directly', () => {
-    const withStringTargets: PlaceholderExpansionTrace = {
-      triggered: true,
-      type: 'siblings',
-      expanded_count: 1,
-      expanded_targets: ['Emma Johnson' as unknown as Record<string, unknown>],
-    }
-    render(<ExpansionDetail data={withStringTargets} {...defaultActions} />)
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
   })
 })
 

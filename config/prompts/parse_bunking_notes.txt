@@ -32,14 +32,6 @@ This field may contain ANY request type:
 3. "age_preference" - Age/grade recommendations
    Keywords: "bunk older", "same age/younger", "would do better with younger kids"
 
-=== GROUP REFERENCES ===
-
-Instead of special placeholder strings, use the group_kind field for group references:
-- group_kind="sibling" for twin/sibling bunking notes (target_name="")
-- group_kind="last_year_bunkmates" for "same bunk as last year" (target_name="")
-- group_kind="classmates" for school group references (target_name="", include group_metadata)
-- group_kind="congregation" for synagogue/temple references (target_name="", include group_metadata)
-
 === NARRATIVE EXTRACTION RULES ===
 
 1. Extract EXPLICIT requests only - don't infer from behavioral observations
@@ -74,25 +66,21 @@ Example 4 - Multi-year progression:
 Input: "'25 bunking - continue to bunk separately from Ava Collins. See '24 notes."
 Output: 1 not_bunk_with "Ava Collins", parse_notes: "continuing from 2024"
 
-Example 5 - Must bunk with sibling:
-Input: "Must bunk with twin sister, plus ideally also a friend request"
-Output: 1 bunk_with with group_kind="sibling", target_name="", keywords_found: ["must"]
-
-Example 6 - Mixed requests in narrative:
+Example 5 - Mixed requests in narrative:
 Input: "Tough relationship with Chloe Davis and wants to not be with her. Mom shared that it'll be fine if she can be with Mia as well."
 Output: 2 requests - not_bunk_with "Chloe Davis", bunk_with "Mia"
 
-Example 7 - Behavioral context (no request):
+Example 6 - Behavioral context (no request):
 Input: "Emma is very sensitive and last year needed a lot of support. Be aware of her sensitivity."
 Output: 0 requests (behavioral observation only, no bunking action)
 
-Example 8 - Superseded request:
+Example 7 - Superseded request:
 Input: "Wanted to be without Zoe and then changed a day later in June to say bunk together"
 Output: 2 requests:
 - not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "changed to bunk together"}}
 - bunk_with "Zoe", temporal_info: {{is_superseded: false}}
 
-Example 9 - Unit placement (not bunk request):
+Example 8 - Unit placement (not bunk request):
 Input: "Same unit as twin Lily Thompson if possible"
 Output: 0 requests (unit placement, not cabin assignment - note in parse_notes if helpful)
 
@@ -123,7 +111,7 @@ DO NOT extract:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name, placeholder, or age value
+- target_name: Person's name or age value
 - confidence: 0.0-1.0 (lower for old notes, inferred requests)
 - keywords_found: Priority words like "must", "recommend", "counselors noted"
 

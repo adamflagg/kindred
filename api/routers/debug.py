@@ -1237,9 +1237,6 @@ VALID_RESOLUTION_METHODS = {
     # Direct parse / special
     "age_preference",
     "placeholder",
-    # Placeholder expansion
-    "prior_year_bunkmate",
-    "sibling_household_lookup",
     # Edge cases (can appear when resolution fails or is skipped)
     "age_preference_missing",
     "no_target_name",
@@ -1247,7 +1244,6 @@ VALID_RESOLUTION_METHODS = {
     "no_resolution",
     "resolution_incomplete",
     "invalid_parse",
-    "placeholder_expansion_failed",
     "unresolved",
 }
 VALID_SOURCE_FIELDS = {

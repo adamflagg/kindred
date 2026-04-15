@@ -27,33 +27,22 @@ A name alone means "bunk this person with the named friend."
 This field commonly contains:
 
 1. "bunk_with" - Wants to share a cabin with specific person(s)
-   target_name = person's name (for specific individuals)
-   OR set group_kind instead for group references (see GROUP REFERENCES below)
+   target_name = person's name
 
 2. "not_bunk_with" - Embedded negatives (look for "NOT", "don't", "please avoid", "separate from")
-   target_name = person's name, or set group_kind for group references
+   target_name = person's name
 
 3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
    target_name = "older", "younger", or "unclear"
    Use when text says "prefers older kids" without naming anyone specific
 
-4. Group references - References to groups rather than specific individuals
-   Set group_kind to:
-   - "sibling" for twins, siblings, brothers, sisters, "my twin", "bunk together" (for twins)
-   - "last_year_bunkmates" for "last year's bunk", "same cabin as 2024", "B-4 bunkmates"
-   - "classmates" for "kids from my school", "schoolmates", or naming a specific school
-   - "congregation" for "Beth Jacob girls", "temple friends", or naming a specific synagogue/temple
-   When group_kind is set, target_name should be empty string "".
-   For classmates, include group_metadata with {{"school_name": "..."}}
-   For congregation, include group_metadata with {{"congregation_name": "..."}}
-
 IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
 
-=== SIBLING DETECTION GUARDRAILS ===
+=== SIBLING NAMING GUARDRAILS ===
 
 The requester's last name is included in the requester info above.
-- ONLY use group_kind="sibling" when the text explicitly mentions a family relationship
-  using words like "sister", "brother", "twin", "sibling", "my twin", etc.
+- If a sibling/twin is named explicitly ("bunk with my twin Emma Johnson"),
+  extract "Emma Johnson" as target_name.
 - If two people are mentioned wanting to bunk together but have DIFFERENT last
   names (e.g., requester is "Johnson" but text mentions "Olivia Chen"), extract
   the non-requester's full name as a bunk_with target. Different last names
@@ -89,18 +78,14 @@ Example 3 - Embedded negative:
 Input: "Wants to be with Mia. PLEASE DO NOT put with Jake - he bullied Lucas last year"
 Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context in parse_notes
 
-Example 4 - Historical reference:
-Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
-Output: 1 bunk_with request with group_kind="last_year_bunkmates", target_name="", parse_notes: "2024 Session 3 B-4"
-
-Example 4b - Historical bunking with year:
+Example 4 - Historical bunking with named individuals:
 Input: "Same bunk as last year with Emma and Olivia - they were B4 together"
 Output: 2 bunk_with requests for "Emma" and "Olivia", each with historical_year set to
 the year before the current camp season
 
-Example 5 - Complex with siblings:
+Example 5 - Twin context for a named separation:
 Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"
-Output: 1 not_bunk_with request with group_kind="sibling", target_name="", context in parse_notes
+Output: 1 not_bunk_with request for "Ava" (specific named individual). The twin commentary is rationale, in parse_notes.
 
 Example 6 - Age preference with name:
 Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"

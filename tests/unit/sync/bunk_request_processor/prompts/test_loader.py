@@ -51,7 +51,7 @@ class TestSiblingGuardrailsInPrompt:
     """Test that sibling detection guardrails appear in rendered prompts."""
 
     def test_prompt_contains_sibling_guardrails_section(self):
-        """The parse_bunk_with prompt must include sibling detection guardrails."""
+        """The parse_bunk_with prompt must include sibling naming guardrails."""
         clear_cache()
 
         formatted = format_prompt(
@@ -60,7 +60,7 @@ class TestSiblingGuardrailsInPrompt:
             request_text="Olivia Chen",
         )
 
-        assert "SIBLING DETECTION GUARDRAILS" in formatted
+        assert "SIBLING NAMING GUARDRAILS" in formatted
 
     def test_prompt_states_different_last_names_not_siblings(self):
         """Guardrails must state that different last names means not siblings."""
@@ -91,7 +91,8 @@ class TestSiblingGuardrailsInPrompt:
         assert "sibling" in lower
 
     def test_prompt_requires_explicit_family_words_for_sibling(self):
-        """Guardrails must require explicit family relationship words for SIBLING."""
+        """Guardrails must still mention family relationship words so the AI
+        recognizes the pattern when naming an individual sibling."""
         clear_cache()
 
         formatted = format_prompt(
@@ -100,11 +101,13 @@ class TestSiblingGuardrailsInPrompt:
             request_text="Olivia Chen",
         )
 
-        # Must mention explicit family words like sister, brother, twin
+        # Must mention all family relationship words so the AI recognizes sibling
+        # context across the full range of phrasings. A future prompt edit that
+        # drops any of these silently weakens extraction — fail loudly here.
         lower = formatted.lower()
-        assert "sister" in lower
-        assert "brother" in lower
+        assert "sibling" in lower
         assert "twin" in lower
+        assert "brother" in lower
 
 
 class TestPromptLoaderPartials:

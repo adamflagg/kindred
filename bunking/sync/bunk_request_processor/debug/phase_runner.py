@@ -28,7 +28,6 @@ PHASE_ORDER: list[str] = [
     "phase1",
     "validation",
     "phase2",
-    "expansion",
     "historical",
     "phase3",
     "post_pipeline",
@@ -179,9 +178,6 @@ class PhaseRunner:
             result["phase2_results"] = phase2_results
 
             if stop_at_phase == "phase2":
-                return result
-
-            if stop_at_phase == "expansion":
                 return result
 
             if stop_at_phase == "historical":

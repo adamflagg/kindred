@@ -39,10 +39,6 @@ class ResolutionCase:
         if parsed_request.request_type == RequestType.AGE_PREFERENCE:
             return False
 
-        # Group references are expanded by resolvers, not name-resolved
-        if parsed_request.group_kind is not None:
-            return False
-
         # Bunk with/not bunk with need resolution if they have a target name
         return bool(parsed_request.target_name)
 
@@ -299,16 +295,6 @@ class Phase2ResolutionService:
                                 metadata={"age_preference": age_pref_value},
                             )
                         )
-                elif parsed_request.group_kind is not None:
-                    # Group references get placeholder resolution — expanded later by resolvers
-                    case.resolution_results.append(
-                        ResolutionResult(
-                            person=None,
-                            confidence=1.0,
-                            method="group_reference",
-                            metadata={"group_kind": parsed_request.group_kind.value},
-                        )
-                    )
                 else:
                     # Other requests that don't need resolution
                     case.resolution_results.append(
@@ -555,16 +541,6 @@ class Phase2ResolutionService:
                         )
                     )
                     self._stats["age_preferences"] += 1
-                elif parsed_request.group_kind is not None:
-                    # Group references are expanded by resolvers later
-                    case.resolution_results.append(
-                        ResolutionResult(
-                            person=None,
-                            confidence=1.0,
-                            method="group_reference",
-                            metadata={"group_kind": parsed_request.group_kind.value},
-                        )
-                    )
                 else:
                     # Shouldn't happen, but handle gracefully
                     case.resolution_results.append(ResolutionResult(confidence=0.0, method="no_resolution_needed"))
@@ -750,8 +726,8 @@ class Phase2ResolutionService:
                 case = case_map[case_id]
                 if case.resolution_results:
                     # Replace None values with fallback results to preserve list length
-                    # IMPORTANT: Length must match parsed_requests for zip(..., strict=True) in
-                    # _filter_post_expansion_conflicts to work correctly
+                    # (downstream consumers rely on equal lengths between parsed_requests
+                    # and resolution_results).
                     filtered_results: list[ResolutionResult] = []
                     for i, r in enumerate(case.resolution_results):
                         if r is not None:

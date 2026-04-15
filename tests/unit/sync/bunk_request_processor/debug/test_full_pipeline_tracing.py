@@ -140,13 +140,6 @@ class TestFullPipelineTracing:
         orch.phase2_service = MagicMock()
         orch.phase2_service.batch_resolve = AsyncMock(return_value=[(parse_result, [resolution_result])])
 
-        # Mock placeholder expander
-        orch.placeholder_expander = MagicMock()
-        orch.placeholder_expander.expand = AsyncMock(return_value=[(parse_result, [resolution_result])])
-
-        # Mock post-expansion conflict filter
-        orch._filter_post_expansion_conflicts = MagicMock(return_value=([(parse_result, [resolution_result])], 1, 0))  # type: ignore[method-assign]
-
         # Mock historical verification
         orch.historical_verification_service = MagicMock()
         orch.historical_verification_service.verify = AsyncMock(return_value=[(parse_result, [resolution_result])])
@@ -160,9 +153,6 @@ class TestFullPipelineTracing:
         conflict_result.has_conflicts = False
         conflict_result.conflicts = []
         orch.conflict_detector.detect_conflicts = MagicMock(return_value=conflict_result)
-
-        # Mock resolver registry (used by placeholder_expander.expand)
-        orch.resolver_registry = {}
 
         # Mock request creation
         orch._prepare_for_conflict_detection = MagicMock(return_value=[])  # type: ignore[method-assign]
@@ -215,15 +205,6 @@ class TestFullPipelineTracing:
         mock_trace_collector.record_phase2.assert_called()
 
     @pytest.mark.asyncio
-    async def test_expansion_trace_called(self, mock_orchestrator, mock_trace_collector):
-        """record_expansion() should be called after placeholder expansion."""
-        raw_requests = [_make_raw_request()]
-
-        await mock_orchestrator.process_requests(raw_requests=raw_requests, clear_existing=False)
-
-        mock_trace_collector.record_expansion.assert_called()
-
-    @pytest.mark.asyncio
     async def test_historical_trace_called(self, mock_orchestrator, mock_trace_collector):
         """record_historical() should be called after historical verification."""
         raw_requests = [_make_raw_request()]
@@ -252,7 +233,6 @@ class TestFullPipelineTracing:
         mock_trace_collector.record_phase1.assert_called()
         mock_trace_collector.record_validation.assert_called()
         mock_trace_collector.record_phase2.assert_called()
-        mock_trace_collector.record_expansion.assert_called()
         mock_trace_collector.record_historical.assert_called()
         mock_trace_collector.record_post_pipeline.assert_called()
 

@@ -29,11 +29,6 @@ This field may contain:
 3. "age_preference" - Age/grade preference
    Keywords: "bunk older", "same age/younger", "bunk with 5th/6th"
 
-=== SPECIAL PLACEHOLDERS ===
-
-- "SIBLING" - For twin/sibling references
-- "LAST_YEAR_BUNKMATES" - For prior cabin references
-
 === STAFF SHORTHAND PATTERNS ===
 
 Example 1 - Age shorthand:
@@ -48,41 +43,37 @@ Example 3 - Grade range:
 Input: "Bunk with 5th/6th"
 Output: 1 age_preference "younger" (relative to camper's grade context)
 
-Example 4 - Twin requirement:
-Input: "Must be bunked with twin sister"
-Output: 1 bunk_with "SIBLING", keywords_found: ["must"]
-
-Example 5 - CO reference with friend:
+Example 4 - CO reference with friend:
 Input: "CO noted friends with Riley Brooks"
 Output: 1 bunk_with "Riley Brooks", parse_notes: "CO noted friendship"
 
-Example 6 - Session-specific friend:
+Example 5 - Session-specific friend:
 Input: "Nora Kim (Ses 3)"
 Output: 1 bunk_with "Nora Kim", parse_notes: "Session 3"
 
-Example 7 - Negative reference:
+Example 6 - Negative reference:
 Input: "not with Ava Mitchell's friends from last year"
 Output: 1 not_bunk_with with target_name: unclear, parse_notes: "Ava Mitchell's 2024 friend group", confidence: 0.5
 
-Example 8 - Priority first choice:
+Example 7 - Priority first choice:
 Input: "Zoe Parker is her first choice but she might have to cancel. If Zoe cancels - MUST be with Lily Chen"
 Output: 2 bunk_with requests - "Zoe Parker" (conditional), "Lily Chen" with "must" keyword
 
-Example 9 - Unit placement (NOT a bunk request):
+Example 8 - Unit placement (NOT a bunk request):
 Input: "Same unit as twin Max Thompson"
 Output: 0 requests (unit ≠ cabin placement)
 
-Example 10 - Physical need (NOT a bunk request):
+Example 9 - Physical need (NOT a bunk request):
 Input: "Needs bottom bunk"
 Output: 0 requests (physical accommodation, not bunking)
 
-Example 11 - Friend from prior year:
+Example 10 - Friend from prior year:
 Input: "Noah Garcia was in 2024 bunk"
 Output: 1 bunk_with "Noah Garcia", parse_notes: "prior bunkmate 2024"
 
-Example 12 - Multiple notes concatenated:
-Input: "Bunk older. CO noted friends with Emma. Must be with twin."
-Output: 3 requests - age_preference "older", bunk_with "Emma", bunk_with "SIBLING"
+Example 11 - Multiple notes concatenated:
+Input: "Bunk older. CO noted friends with Emma."
+Output: 2 requests - age_preference "older", bunk_with "Emma"
 
 === INVALID EXTRACTIONS ===
 
@@ -105,7 +96,7 @@ Staff shorthand can be ambiguous. Use confidence scoring:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name, placeholder, or age value
+- target_name: Person's name or age value
 - confidence: 0.0-1.0 (lower for abbreviated/unclear content)
 - keywords_found: Priority words like "must", "first choice"
 

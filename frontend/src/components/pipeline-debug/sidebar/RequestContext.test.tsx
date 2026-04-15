@@ -83,12 +83,6 @@ const minimalTraceData: TraceData = {
       spread_filter_applied: false,
     },
   ],
-  placeholder_expansion: {
-    triggered: false,
-    type: null,
-    expanded_count: 0,
-    expanded_targets: [],
-  },
   historical_verification: {
     ran: false,
     boost_applied: false,

@@ -8,9 +8,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SOURCE_FRAGMENT_MAX_LEN = 2000
+
+
+class _ForbidExtraModel(BaseModel):
+    """Base model that rejects unknown fields so stale AI responses fail loudly
+    instead of silently passing data the pipeline no longer understands."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class TemporalInfo(BaseModel):
@@ -34,7 +41,7 @@ class TemporalInfo(BaseModel):
     """Why superseded: 'changed minds on 6/5', 'now wants together instead'."""
 
 
-class AIBaseRequestItem(BaseModel):
+class AIBaseRequestItem(_ForbidExtraModel):
     """Fields shared between Phase 1 and Phase 1+2 parsed request items."""
 
     request_type: Literal["bunk_with", "not_bunk_with", "age_preference"]
@@ -59,7 +66,7 @@ class AIBaseRequestItem(BaseModel):
     """Why the AI categorized it this way."""
 
     source_fragment: str = Field("", max_length=SOURCE_FRAGMENT_MAX_LEN)
-    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (age preference, placeholder expansion)."""
+    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (e.g. age preference)."""
 
     ambiguity_reason: str | None = None
     """Explanation if the request is ambiguous."""
@@ -84,14 +91,8 @@ class AIBunkRequestItem(AIBaseRequestItem):
     historical_year: int | None = None
     """Year of historical bunking reference (e.g., 2024 for 'same bunk last year')."""
 
-    group_kind: str | None = None
-    """Group reference type: 'sibling', 'last_year_bunkmates', 'classmates', 'congregation', or None."""
 
-    group_metadata: dict[str, str] | None = None
-    """Additional context for group references (e.g., school_name, congregation_name)."""
-
-
-class AIParseResponse(BaseModel):
+class AIParseResponse(_ForbidExtraModel):
     """Response from parse-only AI request.
 
     This is the Phase 1 response format - extracts structure without ID resolution.
@@ -118,7 +119,7 @@ class AIFullParseRequestItem(AIBaseRequestItem):
     found_in_previous_year_only: bool = False
 
 
-class AIFullParseResponse(BaseModel):
+class AIFullParseResponse(_ForbidExtraModel):
     """Response from full AI request (with ID matching).
 
     Used when attendee context is provided for name-to-ID resolution.
