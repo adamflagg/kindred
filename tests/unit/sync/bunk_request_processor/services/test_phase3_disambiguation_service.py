@@ -1017,3 +1017,310 @@ class TestSetMetaHelper:
         service._set_meta(case, "reasons", {})[0] = "good reason"
         assert case.disambiguation_metadata["status"] == {0: "success"}
         assert case.disambiguation_metadata["reasons"] == {0: "good reason"}
+
+
+class TestExtractAiResultFields:
+    """Tests for the _extract_ai_result_fields helper.
+
+    Unwraps various AI result shapes into a canonical (selected_person_id,
+    ai_confidence, ai_reason) triple. ParsedResponse reads metadata from
+    result.requests[0].metadata; legacy objects read attributes directly.
+    """
+
+    def _make_service(self) -> Phase3DisambiguationService:
+        return Phase3DisambiguationService(
+            ai_provider=Mock(),
+            context_builder=Mock(),
+        )
+
+    def test_extract_from_parsed_response_with_target_person_id(self):
+        """ParsedResponse with target_person_id in metadata yields that id, response confidence, and reason."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        service = self._make_service()
+        result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.92,
+                    csv_position=0,
+                    metadata={"target_person_id": 111, "reason": "last-name match"},
+                )
+            ],
+            confidence=0.92,
+            metadata={},
+        )
+        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(result)
+        assert selected_id == 111
+        assert ai_confidence == 0.92
+        assert ai_reason == "last-name match"
+
+    def test_extract_from_parsed_response_with_empty_requests(self):
+        """ParsedResponse with no requests yields (None, response.confidence, None)."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        service = self._make_service()
+        result = ParsedResponse(requests=[], confidence=0.5, metadata={})
+        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(result)
+        assert selected_id is None
+        assert ai_confidence == 0.5
+        assert ai_reason is None
+
+    def test_extract_from_legacy_response_reads_attributes(self):
+        """Legacy AIDisambiguationResponse (has selected_person_id attribute) is read directly."""
+        service = self._make_service()
+        legacy = Mock(spec=["selected_person_id", "confidence", "reason"])
+        legacy.selected_person_id = 222
+        legacy.confidence = 0.77
+        legacy.reason = "legacy pick"
+        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(legacy)
+        assert selected_id == 222
+        assert ai_confidence == 0.77
+        assert ai_reason == "legacy pick"
+
+    def test_extract_from_unknown_type_returns_defaults(self):
+        """An unknown result type yields default (None, 0.8, None)."""
+        service = self._make_service()
+        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(object())
+        assert selected_id is None
+        assert ai_confidence == 0.8
+        assert ai_reason is None
+
+
+class TestTryRerankerPath:
+    """Tests for the _try_reranker_path helper.
+
+    This covers the ParsedResponse-only paths: JW re-ranker consumption of
+    ranked_selections, and metadata-level AI no_match. Returns True only when
+    the path has fully handled the case (success or no_match recorded).
+    """
+
+    def _make_service(self) -> Phase3DisambiguationService:
+        return Phase3DisambiguationService(
+            ai_provider=Mock(),
+            context_builder=Mock(),
+        )
+
+    def _make_case(self) -> tuple[DisambiguationCase, ResolutionResult]:
+        candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        case = DisambiguationCase(_create_parse_result(), [ambiguous])
+        return case, ambiguous
+
+    def test_returns_false_for_non_parsed_response(self):
+        """Legacy / non-ParsedResponse results are not handled by the re-ranker path."""
+        service = self._make_service()
+        case, resolution = self._make_case()
+        legacy = Mock(spec=["selected_person_id"])
+        legacy.selected_person_id = 111
+        assert service._try_reranker_path(case, 0, resolution, legacy) is False
+
+    def test_returns_false_for_parsed_response_without_signals(self):
+        """ParsedResponse without ranked_selections or no_match does not short-circuit."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        service = self._make_service()
+        case, resolution = self._make_case()
+        result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.8,
+                    csv_position=0,
+                    metadata={"target_person_id": 111},
+                )
+            ],
+            confidence=0.8,
+            metadata={},
+        )
+        assert service._try_reranker_path(case, 0, resolution, result) is False
+
+    def test_handles_no_match_metadata(self):
+        """ParsedResponse metadata no_match=True records no_match status and returns True."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        service = self._make_service()
+        case, resolution = self._make_case()
+        result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.5,
+                    csv_position=0,
+                    metadata={"no_match": True, "no_match_reason": "none fit"},
+                )
+            ],
+            confidence=0.5,
+            metadata={},
+        )
+        handled = service._try_reranker_path(case, 0, resolution, result)
+        assert handled is True
+        assert case.disambiguation_metadata["status"][0] == "no_match"
+        assert case.disambiguation_metadata["reasons"][0] == "none fit"
+
+    def test_handles_ranked_selections_success(self):
+        """Valid ranked_selections populate disambiguated_results and mark success."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        service = self._make_service()
+        case, resolution = self._make_case()
+        # Candidate 111 has last_name "Smith" — matches target "Sarah Smith" via JW.
+        result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={
+                        "ranked_selections": [
+                            {"person_id": 111, "confidence": 0.95},
+                            {"person_id": 222, "confidence": 0.4},
+                        ],
+                    },
+                )
+            ],
+            confidence=0.9,
+            metadata={},
+        )
+        # Ensure resolution has target_name so re-ranker can score
+        resolution.target_name = "Sarah Smith"
+        handled = service._try_reranker_path(case, 0, resolution, result)
+        assert handled is True
+        disambig = case.disambiguated_results[0]
+        assert disambig is not None
+        assert disambig.person is not None
+        assert disambig.method == "ai_disambiguation"
+        assert case.disambiguation_metadata["status"][0] == "success"
+
+    def test_handles_ranked_selections_all_rejected(self):
+        """When re-ranker rejects all candidates (JW too low), records no_match and returns True."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        service = self._make_service()
+        # Target "Zzzzz Qqqqq" won't match either candidate's last name.
+        candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        ambiguous.target_name = "Zzzzz Qqqqq"
+        case = DisambiguationCase(_create_parse_result(), [ambiguous])
+        result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Zzzzz Qqqqq",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Zzzzz Qqqqq",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={
+                        "ranked_selections": [
+                            {"person_id": 111, "confidence": 0.95},
+                            {"person_id": 222, "confidence": 0.4},
+                        ],
+                        "no_match": False,
+                    },
+                )
+            ],
+            confidence=0.9,
+            metadata={},
+        )
+        handled = service._try_reranker_path(case, 0, ambiguous, result)
+        assert handled is True
+        assert case.disambiguation_metadata["status"][0] == "no_match"
+        assert case.disambiguated_results[0] is None
+
+
+class TestApplyLegacySelection:
+    """Tests for the _apply_legacy_selection helper.
+
+    Validates the selected_person_id candidate match (success/no_match) and
+    the legacy `no_match` attribute / invalid_ai_output fallbacks.
+    """
+
+    def _make_service(self) -> Phase3DisambiguationService:
+        return Phase3DisambiguationService(
+            ai_provider=Mock(),
+            context_builder=Mock(),
+        )
+
+    def _make_case(self) -> tuple[DisambiguationCase, ResolutionResult]:
+        candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        case = DisambiguationCase(_create_parse_result(), [ambiguous])
+        return case, ambiguous
+
+    def test_success_when_selected_id_matches_candidate(self):
+        """selected_person_id matching a candidate records success + ResolutionResult."""
+        service = self._make_service()
+        case, resolution = self._make_case()
+        result = Mock()  # Not used for successful matches
+        service._apply_legacy_selection(case, 0, resolution, result, 111, 0.88, "good match")
+        disambig = case.disambiguated_results[0]
+        assert disambig is not None
+        assert disambig.person is not None
+        assert disambig.person.cm_id == 111
+        assert disambig.confidence == 0.88
+        assert disambig.method == "ai_disambiguation"
+        assert disambig.metadata is not None
+        assert disambig.metadata["disambiguation_reason"] == "good match"
+        assert case.disambiguation_metadata["status"][0] == "success"
+
+    def test_no_match_when_selected_id_not_in_candidates(self):
+        """selected_person_id absent from candidates records no_match + selected_ids."""
+        service = self._make_service()
+        case, resolution = self._make_case()
+        result = Mock()
+        service._apply_legacy_selection(case, 0, resolution, result, 999, 0.5, None)
+        assert case.disambiguation_metadata["status"][0] == "no_match"
+        assert case.disambiguation_metadata["selected_ids"][0] == 999
+
+    def test_legacy_no_match_attribute_records_no_match(self):
+        """When selected_id is None but result.no_match is truthy, records no_match."""
+        service = self._make_service()
+        case, resolution = self._make_case()
+        result = Mock(spec=["no_match", "reason"])
+        result.no_match = True
+        result.reason = "legacy no match"
+        service._apply_legacy_selection(case, 0, resolution, result, None, 0.8, None)
+        assert case.disambiguation_metadata["status"][0] == "no_match"
+        assert case.disambiguation_metadata["reasons"][0] == "legacy no match"
+
+    def test_invalid_ai_output_when_no_selection_and_no_no_match(self):
+        """No selection and no legacy no_match flag yields invalid_ai_output status."""
+        service = self._make_service()
+        case, resolution = self._make_case()
+        # Use an object without a no_match attribute to test the invalid_ai_output branch.
+        result = object()
+        service._apply_legacy_selection(case, 0, resolution, result, None, 0.8, "some reason")
+        assert case.disambiguation_metadata["status"][0] == "invalid_ai_output"
+        assert case.disambiguation_metadata["reasons"][0] == "some reason"
