@@ -230,6 +230,19 @@ export default function RequestReviewPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey])
 
+  // Clear any pin when filters/sort change — the new view is the user's
+  // explicit choice and should not keep an implicitly-pinned row alive.
+  const isInitialFilterMount = useRef(true)
+  useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false
+      return
+    }
+    if (pinnedId) setPinnedId(null)
+    // pinnedId/setPinnedId are intentionally not deps — only filter/sort changes trigger unpin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, sortBy, sortOrder])
+
   // Query key only includes server-side filters (sent to PocketBase).
   // Client-side filters (search) are applied in filteredRequests memo.
   const queryKeyFilters = useMemo(
@@ -661,7 +674,11 @@ export default function RequestReviewPanel({
           next.delete(id)
           // Clear the expanded merged request when collapsing
           setExpandedMergedRequestId((currentId) => (currentId === id ? null : currentId))
+          // Collapsing the pinned row unpins it.
+          if (pinnedId === id) setPinnedId(null)
         } else {
+          // Expanding a different row unpins — pin follows the currently-focused row.
+          if (pinnedId && pinnedId !== id) setPinnedId(null)
           next.add(id)
           // Trigger lazy loading for merged requests
           if (request && hasMultipleSources(request)) {
@@ -671,7 +688,7 @@ export default function RequestReviewPanel({
         return next
       })
     },
-    [hasMultipleSources]
+    [hasMultipleSources, pinnedId, setPinnedId]
   )
 
   /**
