@@ -990,7 +990,7 @@ class TestSetMetaHelper:
         """_set_meta inserts the default when key is absent and returns it."""
         service = self._make_service()
         case = self._make_case()
-        result = service._set_meta(case, "status", {})
+        result = service._set_meta(case, "status", dict[int, str]())
         assert result == {}
         assert "status" in case.disambiguation_metadata
 
@@ -999,22 +999,22 @@ class TestSetMetaHelper:
         service = self._make_service()
         case = self._make_case()
         case.disambiguation_metadata["status"] = {0: "success"}
-        result = service._set_meta(case, "status", {})
+        result = service._set_meta(case, "status", dict[int, str]())
         assert result == {0: "success"}
 
     def test_set_meta_allows_mutation_of_returned_value(self):
         """Callers can mutate the returned object (dict or list in place)."""
         service = self._make_service()
         case = self._make_case()
-        service._set_meta(case, "errors", {})[42] = "boom"
+        service._set_meta(case, "errors", dict[int, str]())[42] = "boom"
         assert case.disambiguation_metadata["errors"][42] == "boom"
 
     def test_set_meta_different_keys_are_independent(self):
         """Different keys inserted via _set_meta do not collide."""
         service = self._make_service()
         case = self._make_case()
-        service._set_meta(case, "status", {})[0] = "success"
-        service._set_meta(case, "reasons", {})[0] = "good reason"
+        service._set_meta(case, "status", dict[int, str]())[0] = "success"
+        service._set_meta(case, "reasons", dict[int, str]())[0] = "good reason"
         assert case.disambiguation_metadata["status"] == {0: "success"}
         assert case.disambiguation_metadata["reasons"] == {0: "good reason"}
 
