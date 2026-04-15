@@ -136,18 +136,6 @@ class TestStopAtPhase:
         )
 
     @pytest.mark.anyio
-    async def test_stop_at_expansion_runs_phase1_and_phase2(self):
-        """run_full_trace delegates stop_at_phase='expansion' to process_from_parse_requests."""
-        orch = MagicMock()
-        orch.process_from_parse_requests = AsyncMock(return_value={"dry_run": True, "phase": "expansion"})
-        runner = PhaseRunner(orch)
-        mock_requests = [MagicMock()]
-        await runner.run_full_trace(mock_requests, dry_run=True, stop_at_phase="expansion")  # type: ignore[arg-type]
-        orch.process_from_parse_requests.assert_called_once_with(
-            parse_requests=mock_requests, stop_at_phase="expansion", dry_run=True
-        )
-
-    @pytest.mark.anyio
     async def test_stop_at_phase3_skips_production_write(self):
         """run_full_trace delegates stop_at_phase='phase3' with dry_run=False through."""
         orch = MagicMock()

@@ -52,14 +52,14 @@ If the text expresses a bunking preference but does NOT name a specific
 individual, emit exactly ONE bunk_with (or not_bunk_with) request with:
 - target_name = "" (empty string)
 - needs_clarification = true
-- ambiguity_reason = "unnamed_group_reference"
+- ambiguity_reason = "no_named_individual"
 - parse_notes = the original phrase verbatim
 
 Unnamed group examples — each produces ONE staff-review record:
 - "Bunk with last year's bunkmates" → 1 bunk_with, staff-review fallback
 - "Last year bunkmates in Session 3 B-4" → 1 bunk_with, staff-review fallback
-- "Kids from her school" / "schoolmates" / "from Park Day" → 1 staff-review fallback
-- "Friends from synagogue" / "Beth Jacob girls" → 1 staff-review fallback
+- "Kids from her school" / "schoolmates" → 1 staff-review fallback
+- "Friends from her temple" → 1 staff-review fallback
 - "Same bunk as 2024" → 1 bunk_with, staff-review fallback
 - "Her twin" / "siblings" / "my brother" (no name given) → 1 staff-review fallback
 
@@ -111,7 +111,7 @@ Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context
 Example 4 - Historical reference (unnamed group):
 Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
 Output: 1 bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="unnamed_group_reference", parse_notes: verbatim "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
+ambiguity_reason="no_named_individual", parse_notes: verbatim "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
 
 Example 4b - Historical bunking with named individuals:
 Input: "Same bunk as last year with Emma and Olivia - they were B4 together"
@@ -125,7 +125,7 @@ Output: 1 not_bunk_with for "Ava" (specific named individual), context in parse_
 Example 5b - Sibling reference with no name at all:
 Input: "Keep her apart from her twin this summer"
 Output: 1 not_bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="unnamed_group_reference", parse_notes: verbatim original text
+ambiguity_reason="no_named_individual", parse_notes: verbatim original text
 
 Example 6 - Age preference with name:
 Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"

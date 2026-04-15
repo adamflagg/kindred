@@ -46,7 +46,7 @@ If the text expresses a bunking preference but does NOT name a specific
 individual, emit exactly ONE request with:
 - target_name = "" (empty string)
 - needs_clarification = true
-- ambiguity_reason = "unnamed_group_reference"
+- ambiguity_reason = "no_named_individual"
 - parse_notes = the original phrase verbatim
 
 Unnamed group examples — each produces ONE staff-review record:
@@ -55,12 +55,12 @@ Unnamed group examples — each produces ONE staff-review record:
 - "Temple friends" / "synagogue kids" → 1 fallback
 - "Her twin" / "sibling" / "brother" (no name given) → 1 fallback
 
-For BUNK_APART style demographic or trait exclusions (e.g. "no trans campers",
-"not with loud kids", "younger immature kids"), also emit exactly ONE
-not_bunk_with record with:
+For BUNK_APART style categorical or trait exclusions (e.g. "not with loud
+kids", "younger immature kids"), also emit exactly ONE not_bunk_with
+record with:
 - target_name = "" (empty string)
 - needs_clarification = true
-- ambiguity_reason = "demographic_or_trait_exclusion"
+- ambiguity_reason = "no_named_individual"
 - parse_notes = the original phrase verbatim
 
 Never invent individual names. Never split an unnamed group into multiple
@@ -103,7 +103,7 @@ Output: 1 not_bunk_with "Ava Collins", parse_notes: "continuing from 2024"
 Example 5 - Must bunk with unnamed sibling:
 Input: "Must bunk with twin sister, plus ideally also a friend request"
 Output: 1 bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="unnamed_group_reference", keywords_found: ["must"],
+ambiguity_reason="no_named_individual", keywords_found: ["must"],
 parse_notes: verbatim original text
 
 Example 6 - Mixed requests in narrative:
@@ -156,7 +156,6 @@ For each valid request, provide:
 - confidence: 0.0-1.0 (lower for old notes, inferred requests)
 - keywords_found: Priority words like "must", "recommend", "counselors noted"
 - needs_clarification: true when emitting a staff-review fallback record
-- ambiguity_reason: "unnamed_group_reference" or "demographic_or_trait_exclusion"
-  when needs_clarification is true
+- ambiguity_reason: "no_named_individual" when needs_clarification is true
 
 {output_field_rules}

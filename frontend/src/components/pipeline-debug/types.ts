@@ -317,7 +317,7 @@ export const PHASE_ORDER: PipelinePhase[] = [
 ]
 
 // =============================================================================
-// Granular Pipeline Stages — 14 stages mapped to 8 PipelinePhases
+// Granular Pipeline Stages — 12 stages mapped to 7 PipelinePhases
 // =============================================================================
 
 export type PipelineStage =

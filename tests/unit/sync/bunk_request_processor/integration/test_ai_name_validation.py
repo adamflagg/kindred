@@ -138,7 +138,7 @@ class TestIsLikelyPersonName:
         ]
 
         for word in family_words:
-            assert not is_likely_person_name(word), f"Should reject '{word}' (use SIBLING placeholder)"
+            assert not is_likely_person_name(word), f"Should reject '{word}' (not a real name)"
 
 
 class TestBatchProcessorFiltering:

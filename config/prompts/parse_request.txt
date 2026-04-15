@@ -36,15 +36,15 @@ section below.
 If the text expresses a bunking preference but does not name a specific
 individual, emit exactly ONE request with `needs_clarification: true`,
 an empty target_name, and the original phrase preserved in parse_notes.
-Set `ambiguity_reason` to describe the issue. Examples:
+Always set `ambiguity_reason = "no_named_individual"`. Examples:
 
 - "Bunk with last year's bunkmates" → 1 bunk_with, target_name="",
-  needs_clarification=true, ambiguity_reason="unnamed_group_reference"
+  needs_clarification=true, ambiguity_reason="no_named_individual"
 - "Kids from her school" → 1 bunk_with, target_name="",
-  needs_clarification=true, ambiguity_reason="unnamed_group_reference"
-- "No trans campers" / "not with loud kids" → 1 not_bunk_with,
+  needs_clarification=true, ambiguity_reason="no_named_individual"
+- "Not with loud kids" → 1 not_bunk_with,
   target_name="", needs_clarification=true,
-  ambiguity_reason="demographic_or_trait_exclusion"
+  ambiguity_reason="no_named_individual"
 
 The goal: staff sees the original note and decides. Never silently drop
 input, and never invent specific names.
@@ -106,5 +106,4 @@ For each valid request, provide:
 - list_position: Position in multi-request fields (0-indexed)
 - source_fragment: The EXACT verbatim substring of the input text (copy-paste, do NOT paraphrase) that supports THIS specific request. When a single field contains multiple requests, return a different fragment for each. Use an empty string "" ONLY when the request was inferred without any direct textual support (e.g. an age preference you inferred from context without a quotable phrase). Prefer the shortest fragment that unambiguously supports the request. Include adjacent words ("not X", "definitely X") when they change the meaning.
 - needs_clarification: true when emitting a staff-review fallback record
-- ambiguity_reason: short machine-readable tag (e.g. "unnamed_group_reference",
-  "demographic_or_trait_exclusion") when needs_clarification is true
+- ambiguity_reason: "no_named_individual" when needs_clarification is true

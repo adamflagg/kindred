@@ -71,7 +71,7 @@ class AIBaseRequestItem(_ForbidExtraModel):
     """Why the AI categorized it this way."""
 
     source_fragment: str = Field("", max_length=SOURCE_FRAGMENT_MAX_LEN)
-    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (age preference, placeholder expansion)."""
+    """MINIMAL verbatim substring of the input text that justified THIS specific request. For comma/semicolon-separated lists, use only this person's name — NOT the entire list. For numbered lists use just this entry (e.g. '2. Delia Owens'). Empty when inferred without a direct quote (e.g. age preference)."""
 
     ambiguity_reason: str | None = None
     """Explanation if the request is ambiguous."""

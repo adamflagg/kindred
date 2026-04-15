@@ -7,9 +7,23 @@ from __future__ import annotations
 
 from typing import Any
 
+from bunking.logging_config import get_logger
+
 from ..core.constants import PRIORITY_KEYWORDS
 from ..core.models import ParsedRequest, RequestType
 from ..shared.constants import SourceField
+
+logger = get_logger(__name__)
+
+# Rule keys that were removed when the group-expansion feature was deleted.
+# If any prod config still has these, log a WARN so the operator notices they
+# are now inert (rather than silently ignoring the stale entries).
+_REMOVED_RULE_KEYS = frozenset(
+    {
+        "last_year_bunkmates_sole",
+        "last_year_bunkmates_with_others",
+    }
+)
 
 # Default rule priorities (used when config not provided or incomplete)
 DEFAULT_RULES = {
@@ -63,6 +77,13 @@ class PriorityCalculator:
     def _load_rules(self) -> dict[str, dict[str, Any]]:
         """Load rule priorities from config, merging with defaults"""
         config_rules = self._config.get("rules", {})
+
+        stale = sorted(k for k in config_rules if k in _REMOVED_RULE_KEYS)
+        if stale:
+            logger.warning(
+                "priority_calculator: config contains removed rule keys that no longer apply: %s",
+                stale,
+            )
 
         # Start with defaults, then overlay config
         rules = dict(DEFAULT_RULES)

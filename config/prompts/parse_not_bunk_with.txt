@@ -30,11 +30,11 @@ Even if text mentions friendship ("still friends"), the intent is separation.
 === NAMED INDIVIDUAL REQUIRED ===
 
 Every not_bunk_with request MUST name a specific individual camper.
-Demographic or trait exclusions ("no trans campers", "not with loud kids",
-"keep her away from younger immature boys") are NOT valid individual
-separation requests and must NOT be turned into BUNK_APART records with
-guessed target names. Staff review is required — see STAFF-REVIEW FALLBACK
-below.
+Demographic or trait exclusions (e.g. categorical references to a group,
+or traits like "loud kids" / "younger immature kids") are NOT valid
+individual separation requests and must NOT be turned into BUNK_APART
+records with guessed target names. Staff review is required — see
+STAFF-REVIEW FALLBACK below.
 
 === STAFF-REVIEW FALLBACK (NEVER SILENTLY DROP) ===
 
@@ -42,19 +42,17 @@ If the text expresses a separation preference but does NOT name a specific
 individual, emit exactly ONE not_bunk_with request with:
 - target_name = "" (empty string)
 - needs_clarification = true
-- ambiguity_reason = "demographic_or_trait_exclusion" for demographic/trait
-  exclusions, or "unnamed_group_reference" for unnamed group references
+- ambiguity_reason = "no_named_individual"
 - parse_notes = the original phrase verbatim
 
-Demographic / trait exclusion examples — each produces ONE staff-review
+Unnamed / categorical exclusion examples — each produces ONE staff-review
 record:
-- "No trans campers" → 1 staff-review fallback
 - "Not with loud kids" → 1 staff-review fallback
-- "Keep her away from younger immature boys" → 1 staff-review fallback
+- "Keep her away from younger immature kids" → 1 staff-review fallback
 - "No kids from her school" → 1 staff-review fallback
 - "Not with anyone she fought with last year" → 1 staff-review fallback
 
-Never invent individual names. Never split a demographic exclusion into
+Never invent individual names. Never split a categorical exclusion into
 multiple records. Staff sees the original text and decides. Never silently
 drop the input — every parsed preference must produce at least one visible
 record.
@@ -156,7 +154,6 @@ For each valid request, provide:
 - confidence: 0.0-1.0 (lower for (?) entries, uncertain names)
 - keywords_found: Priority words if present
 - needs_clarification: true when emitting a staff-review fallback record
-- ambiguity_reason: "demographic_or_trait_exclusion" or
-  "unnamed_group_reference" when needs_clarification is true
+- ambiguity_reason: "no_named_individual" when needs_clarification is true
 
 {output_field_rules}

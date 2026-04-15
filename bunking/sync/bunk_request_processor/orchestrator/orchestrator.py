@@ -992,7 +992,6 @@ class RequestOrchestrator:
             "phase1",
             "validation",
             "phase2",
-            "expansion",
             "historical",
             "phase3",
             "post_pipeline",
@@ -1230,7 +1229,7 @@ class RequestOrchestrator:
                 elif res_result.is_ambiguous:
                     self._stats["phase2_ambiguous"] += 1
 
-        # Snapshot confidence values before Phase 3 (after historical verification + expansion)
+        # Snapshot confidence values before Phase 3 (after historical verification)
         pre_phase3_confidences: dict[str, list[float]] = {}
         for pr, res_list in resolution_results:
             trace_key = _get_trace_key(pr)

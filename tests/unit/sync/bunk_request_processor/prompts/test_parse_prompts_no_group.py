@@ -10,9 +10,9 @@ must:
    congregation placeholder vocabulary.
 3. Contain explicit guidance telling the AI to emit a single PENDING
    staff-review record when:
-   - A BUNK_APART (not_bunk_with) input is a demographic or trait
-     exclusion rather than a named individual (e.g. "no trans campers",
-     "not with loud kids").
+   - A BUNK_APART (not_bunk_with) input is a categorical / trait
+     exclusion rather than a named individual (e.g. "not with loud
+     kids").
    - A BUNK_WITH input references an unnamed group (e.g. "last year's
      bunkmates", "kids from her school").
 
@@ -75,7 +75,6 @@ class TestParsePromptsNoGroupVocabulary:
             )
 
     def test_output_field_rules_partial_has_no_group_kind(self) -> None:
-        text = load_prompt("_partials/output_field_rules") if False else None
         # The partial lives under _partials/; load directly via filesystem
         # to avoid relying on load_prompt name rules.
         from bunking.sync.bunk_request_processor.prompts.loader import PARTIALS_DIR
@@ -110,7 +109,6 @@ class TestBunkApartStaffReviewFallback:
         has_demographic_example = any(
             token in text
             for token in (
-                "no trans",
                 "demographic",
                 "trait",
                 "loud kids",

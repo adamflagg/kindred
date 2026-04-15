@@ -1,9 +1,8 @@
-"""Tests for pipeline ADR 4-8 guard clauses.
+"""Tests for pipeline ADR guard clauses.
 
 ADR 4: Temporal conflict filter scoped to notes fields only.
 ADR 5: NA stripping scoped to bunk_with only.
 ADR 6: Staff name detection guarded on notes fields only.
-ADR 7: Post-expansion conflict check only runs when expansions happened.
 ADR 8: Phase 3 exclusion uses RequestType enum instead of raw string.
 """
 
@@ -380,15 +379,6 @@ class TestADR6StaffDetectionNotesGuard:
 
         assert "Staff Person" in staff_calls
         assert service._stats["staff_filtered"] == 1
-
-
-# ===========================================================================
-# ADR 7 — Conditional post-expansion conflict filter
-# ===========================================================================
-
-
-# ADR 7 (post-expansion conflict filter) — removed with the group-expansion
-# deletion. See docs/plans/workstream-b-remove-group-expansion.md.
 
 
 # ===========================================================================

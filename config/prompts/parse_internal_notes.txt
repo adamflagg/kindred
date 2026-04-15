@@ -42,17 +42,17 @@ If the text expresses a bunking preference but does NOT name a specific
 individual, emit exactly ONE request with:
 - target_name = "" (empty string)
 - needs_clarification = true
-- ambiguity_reason = "unnamed_group_reference"
+- ambiguity_reason = "no_named_individual"
 - parse_notes = the original phrase verbatim
 
-Unnamed group examples — each produces ONE staff-review record:
+Unnamed / categorical examples — each produces ONE staff-review record:
 - "Must be bunked with twin sister" → 1 bunk_with fallback
 - "With last year's bunkmates" → 1 bunk_with fallback
 - "Must be with twin" → 1 bunk_with fallback
+- "Not with loud kids" → 1 not_bunk_with fallback
 
-For BUNK_APART style demographic or trait exclusions, also emit exactly ONE
-not_bunk_with record with `ambiguity_reason="demographic_or_trait_exclusion"`
-and the original phrase preserved in parse_notes.
+Never invent individual names. Never split an unnamed group into multiple
+requests.
 
 Never invent individual names. Never split an unnamed group into multiple
 requests.
@@ -74,7 +74,7 @@ Output: 1 age_preference "younger" (relative to camper's grade context)
 Example 4 - Twin requirement (unnamed):
 Input: "Must be bunked with twin sister"
 Output: 1 bunk_with request, target_name="", needs_clarification=true,
-ambiguity_reason="unnamed_group_reference", keywords_found: ["must"],
+ambiguity_reason="no_named_individual", keywords_found: ["must"],
 parse_notes: verbatim original text
 
 Example 5 - CO reference with friend:
@@ -136,8 +136,7 @@ For each valid request, provide:
 - confidence: 0.0-1.0 (lower for abbreviated/unclear content)
 - keywords_found: Priority words like "must", "first choice"
 - needs_clarification: true when emitting a staff-review fallback record
-- ambiguity_reason: "unnamed_group_reference" or "demographic_or_trait_exclusion"
-  when needs_clarification is true
+- ambiguity_reason: "no_named_individual" when needs_clarification is true
 
 Note: temporal_info is rarely needed for internal notes shorthand.
 
