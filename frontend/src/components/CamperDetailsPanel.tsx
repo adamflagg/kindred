@@ -1099,7 +1099,7 @@ export default function CamperDetailsPanel({
               <div className="mt-2 space-y-2 text-xs">
                 {originalBunkData.share_bunk_with && (
                   <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Share Bunk With:</span>
+                    <span className="text-muted-foreground font-medium">Bunk Request Form:</span>
                     <p className="text-foreground mt-1 whitespace-pre-wrap">
                       {originalBunkData.share_bunk_with}
                     </p>
@@ -1107,7 +1107,7 @@ export default function CamperDetailsPanel({
                 )}
                 {originalBunkData.do_not_share_bunk_with && (
                   <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Don't Share With:</span>
+                    <span className="text-muted-foreground font-medium">Do NOT Share Bunk With:</span>
                     <p className="text-foreground mt-1 whitespace-pre-wrap">
                       {originalBunkData.do_not_share_bunk_with}
                     </p>
@@ -1131,7 +1131,7 @@ export default function CamperDetailsPanel({
                 )}
                 {originalBunkData.ret_parent_socialize_with_best && (
                   <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Socializes Best With:</span>
+                    <span className="text-muted-foreground font-medium">Social With Checkbox:</span>
                     <p className="text-foreground mt-1 whitespace-pre-wrap">
                       {originalBunkData.ret_parent_socialize_with_best}
                     </p>
