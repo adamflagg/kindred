@@ -47,7 +47,7 @@ export default function ManualResolutionModal({
     queryKey: ['session-campers', sessionId, year],
     queryFn: async () => {
       // Get attendees for this specific session
-      const attendeeFilter = `session_id = ${sessionId} && status = "enrolled" && year = ${year}`
+      const attendeeFilter = `session.cm_id = ${sessionId} && status = "enrolled" && year = ${year}`
       const attendees = await pb
         .collection('attendees')
         .getFullList<AttendeesResponse>({ filter: attendeeFilter })
