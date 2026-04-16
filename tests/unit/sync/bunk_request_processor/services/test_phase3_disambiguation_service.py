@@ -1324,3 +1324,176 @@ class TestApplyLegacySelection:
         service._apply_legacy_selection(case, 0, resolution, result, None, 0.8, "some reason")
         assert case.disambiguation_metadata["status"][0] == "invalid_ai_output"
         assert case.disambiguation_metadata["reasons"][0] == "some reason"
+
+
+class TestPhase3StatsMatchTrace:
+    """Regression tests for issue #942: Phase 3 stats must mirror trace's result field.
+
+    Acceptance criteria:
+    - Sum of (disambiguated + still_ambiguous + no_match + invalid_ai_output + failed)
+      equals the count of Phase 3 trace rows with ran=true.
+    - Reranker-resolved cases are counted in successfully_disambiguated.
+
+    The trace's result is computed per-intent in the orchestrator as:
+      - "resolved" if rr.is_resolved
+      - "not_needed" if ran_phase3 is False
+      - Otherwise rr.metadata.get("disambiguation_status", "still_ambiguous")
+
+    A trace row has ran=true for every intent in a ParseResult that had any
+    unresolved intent. Therefore stats must count ALL intents in cases that
+    entered Phase 3, not just those in disambiguation_indices.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reranker_resolved_case_counted_in_successfully_disambiguated(self):
+        """A reranker-resolved case (ParsedResponse with ranked_selections) must
+        increment successfully_disambiguated."""
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        # ParsedResponse with ranked_selections — the reranker path will consume this
+        # and successfully pick a candidate because the target name matches.
+        ai_result = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={
+                        "ranked_selections": [
+                            {"person_id": 111, "confidence": 0.95},
+                            {"person_id": 222, "confidence": 0.4},
+                        ],
+                    },
+                )
+            ],
+            confidence=0.9,
+            metadata={},
+        )
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=candidates)
+        ambiguous.target_name = "Sarah Smith"
+        parse_result = _create_parse_result()
+
+        await service.batch_disambiguate([(parse_result, [ambiguous])])
+
+        stats = service.get_stats()
+        assert stats["successfully_disambiguated"] == 1, (
+            f"Reranker-resolved case should count as successfully_disambiguated, got stats: {stats}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stats_sum_equals_trace_ran_rows(self):
+        """Sum of all outcome stats must equal the count of trace rows with ran=true.
+
+        Simulates the orchestrator's trace computation: every intent in a
+        ParseResult that entered Phase 3 has ran=True in the trace. The stats
+        must mirror that — counting every intent, including Phase 2 wins in
+        the same ParseResult.
+        """
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        # Reranker-resolved result for the one ambiguous intent in the mixed case.
+        reranker_success = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={
+                        "ranked_selections": [
+                            {"person_id": 111, "confidence": 0.95},
+                        ],
+                    },
+                )
+            ],
+            confidence=0.9,
+            metadata={},
+        )
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[reranker_success])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        # Mixed ParseResult: one Phase-2-resolved intent, one ambiguous intent
+        # that will be resolved via the reranker path.
+        resolved_candidate = _create_person(cm_id=111, first_name="Sarah", last_name="Smith")
+        ambiguous = _create_ambiguous_resolution(
+            candidates=[
+                resolved_candidate,
+                _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+            ]
+        )
+        ambiguous.target_name = "Sarah Smith"
+
+        phase2_resolved = _create_resolution_result(
+            person=_create_person(cm_id=333, first_name="Liam", last_name="Garcia"),
+            confidence=0.95,
+            method="exact",
+        )
+
+        parse_result = _create_parse_result(
+            parsed_requests=[
+                _create_parsed_request(target_name="Liam Garcia"),
+                _create_parsed_request(target_name="Sarah Smith"),
+            ]
+        )
+
+        await service.batch_disambiguate([(parse_result, [phase2_resolved, ambiguous])])
+
+        stats = service.get_stats()
+
+        # Per orchestrator: every intent in a ParseResult with any unresolved
+        # has ran=True. So both intents here should be ran=True → total 2.
+        expected_ran_count = 2
+        stats_sum = (
+            stats["successfully_disambiguated"]
+            + stats["still_ambiguous"]
+            + stats["no_match"]
+            + stats["invalid_ai_output"]
+            + stats["failed"]
+        )
+        assert stats_sum == expected_ran_count, (
+            f"Stats sum ({stats_sum}) must equal count of trace ran=True rows ({expected_ran_count}). Stats: {stats}"
+        )
+
+        # Both intents end up resolved (Phase 2 win + reranker win).
+        assert stats["successfully_disambiguated"] == 2, (
+            f"Both intents are resolved (Phase 2 win + reranker win), "
+            f"expected successfully_disambiguated=2, got stats: {stats}"
+        )
