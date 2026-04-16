@@ -38,7 +38,6 @@ import {
   CONFIDENCE_RESOLVED,
   MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
-import { queryKeys } from '../utils/queryKeys'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
