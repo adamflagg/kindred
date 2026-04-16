@@ -294,15 +294,11 @@ export default function RequestReviewPanel({
 
   // Fetch the pinned request separately when the current filter/session combo excludes it,
   // so the pinned row stays visible even if its status/type was filtered out.
-  const pinnedPresentInRequests = useMemo(
-    () => (pinnedId ? requests.some((r: BunkRequestsResponse) => r.id === pinnedId) : true),
-    [requests, pinnedId]
-  )
   const { data: pinnedExtraRequest = null, error: pinnedExtraError } = useQuery({
     queryKey: queryKeys.bunkRequestPinned(pinnedId),
-    queryFn: async () =>
-      pinnedId ? await pb.collection<BunkRequestsResponse>('bunk_requests').getOne(pinnedId) : null,
-    enabled: !!user && !!pinnedId && !pinnedPresentInRequests,
+    queryFn: () =>
+      pinnedId ? pb.collection<BunkRequestsResponse>('bunk_requests').getOne(pinnedId) : null,
+    enabled: !!user && !!pinnedId && !requests.some((r) => r.id === pinnedId),
     staleTime: 30000,
     retry: false,
   })
@@ -1432,7 +1428,7 @@ export default function RequestReviewPanel({
                                 requesterCmId={request.requester_id}
                                 year={year}
                                 currentRequestId={request.id}
-                                onSelect={(id) => pinAndExpand(id)}
+                                onSelect={pinAndExpand}
                               />
                             </div>
                           </div>
@@ -1859,7 +1855,7 @@ export default function RequestReviewPanel({
                                   requesterCmId={request.requester_id}
                                   year={year}
                                   currentRequestId={request.id}
-                                  onSelect={(id) => pinAndExpand(id)}
+                                  onSelect={pinAndExpand}
                                 />
                               </div>
                             </div>

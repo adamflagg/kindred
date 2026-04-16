@@ -1,4 +1,4 @@
-import type React from 'react'
+import type { ReactNode } from 'react'
 import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
@@ -32,7 +32,39 @@ export interface BunkRequestRowProps {
    * Optional badge rendered immediately after the mutual badge. Used by the
    * camper-requests panel to inject the "Current request" chip.
    */
-  badge?: React.ReactNode | undefined
+  badge?: ReactNode | undefined
+}
+
+function ClickableRow({
+  className,
+  onSelect,
+  children,
+}: {
+  className: string
+  onSelect?: (() => void) | undefined
+  children: ReactNode
+}) {
+  if (!onSelect) return <div className={className}>{children}</div>
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={className}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect()
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          e.stopPropagation()
+          onSelect()
+        }
+      }}
+    >
+      {children}
+    </div>
+  )
 }
 
 function statusIcon(status: string) {
@@ -113,29 +145,11 @@ export function BunkRequestRow({
         )}
       </>
     )
-    if (onSelect) {
-      return (
-        <div
-          role="button"
-          tabIndex={0}
-          className={clsx(rowClass, 'text-muted-foreground text-xs')}
-          onClick={(e) => {
-            e.stopPropagation()
-            onSelect()
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              e.stopPropagation()
-              onSelect()
-            }
-          }}
-        >
-          {ageChildren}
-        </div>
-      )
-    }
-    return <div className={clsx(rowClass, 'text-muted-foreground text-xs')}>{ageChildren}</div>
+    return (
+      <ClickableRow className={clsx(rowClass, 'text-muted-foreground text-xs')} onSelect={onSelect}>
+        {ageChildren}
+      </ClickableRow>
+    )
   }
 
   const isBunkWith = request.request_type === 'bunk_with'
@@ -185,28 +199,9 @@ export function BunkRequestRow({
     </>
   )
 
-  if (onSelect) {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        className={rowClass}
-        onClick={(e) => {
-          e.stopPropagation()
-          onSelect()
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            e.stopPropagation()
-            onSelect()
-          }
-        }}
-      >
-        {children}
-      </div>
-    )
-  }
-
-  return <div className={rowClass}>{children}</div>
+  return (
+    <ClickableRow className={rowClass} onSelect={onSelect}>
+      {children}
+    </ClickableRow>
+  )
 }
