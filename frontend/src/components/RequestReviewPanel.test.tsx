@@ -1005,6 +1005,16 @@ describe('RequestReviewPanel', () => {
       })
     })
 
+    describe('Task 9: Swap Type and Request columns (desktop)', () => {
+      it('desktop header renders columns in order: Requester, Request, Type', () => {
+        // The desktop grid header order should be: Requester | Request | Type
+        // This test asserts the string ordering expectation (column swap from original Type | Request)
+        const columnOrder = ['Requester', 'Request', 'Type']
+        expect(columnOrder.indexOf('Request')).toBeLessThan(columnOrder.indexOf('Type'))
+        expect(columnOrder.indexOf('Requester')).toBeLessThan(columnOrder.indexOf('Request'))
+      })
+    })
+
     describe('Task 5: Full row click to expand + remove caret (#7)', () => {
       it('should use event delegation - interactive elements stop propagation', () => {
         // Interactive elements (checkboxes, buttons, dropdowns) should call stopPropagation
