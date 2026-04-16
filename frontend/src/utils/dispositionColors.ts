@@ -29,6 +29,7 @@ export const PENDING_REASONS = new Set([
   'needs_review',
   'target_waitlisted',
   'undirected_preference',
+  'self_referential',
 ])
 
 export const DECLINED_REASONS = new Set([
@@ -92,6 +93,7 @@ const DISPOSITION_DISPLAY_NAMES: Record<string, string> = {
   needs_review: 'Needs review',
   target_waitlisted: 'Waitlisted',
   undirected_preference: 'Unclear age preference',
+  self_referential: 'Self-reference — review',
   // Declined
   session_mismatch: 'Different sessions',
   target_not_attending: 'Not attending',
@@ -121,7 +123,7 @@ export const formatReason = formatDispositionReason
  * - Resolved rows: never (chip alone; mutual-match badge lives elsewhere).
  * - Declined rows: whenever a reason is present.
  * - Pending rows: only for triage reasons (needs_review, target_waitlisted,
- *   undirected_preference). Other pending rows stay chip-only.
+ *   undirected_preference, self_referential). Other pending rows stay chip-only.
  */
 export function shouldShowReasonInStatus(
   status: string,
