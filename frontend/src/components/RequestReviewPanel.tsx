@@ -1729,7 +1729,7 @@ export default function RequestReviewPanel({
                                     {/* Single Source Request: Original display */}
                                     <div>
                                       <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                        Notes from Bunk Requests Form
+                                        Bunking Related Notes
                                       </h4>
                                       {(() => {
                                         // Get field name(s) with proper fallback chain:

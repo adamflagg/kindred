@@ -951,12 +951,13 @@ describe('RequestReviewPanel', () => {
    */
   describe('Workstream A: UI Overhaul', () => {
     describe('Task 2: Rename "Source Field & Content" label (#4)', () => {
-      it('should use "Notes from Bunk Requests Form" as heading text', () => {
-        // The expanded row detail heading should read "Notes from Bunk Requests Form"
-        // instead of "Source Field & Content"
-        const expectedLabel = 'Notes from Bunk Requests Form'
+      it('should use "Bunking Related Notes" as heading text', () => {
+        // The expanded row detail heading should read "Bunking Related Notes"
+        // instead of "Source Field & Content" or "Notes from Bunk Requests Form"
+        const expectedLabel = 'Bunking Related Notes'
         expect(expectedLabel).not.toBe('Source Field & Content')
-        expect(expectedLabel).toBe('Notes from Bunk Requests Form')
+        expect(expectedLabel).not.toBe('Notes from Bunk Requests Form')
+        expect(expectedLabel).toBe('Bunking Related Notes')
       })
     })
 
