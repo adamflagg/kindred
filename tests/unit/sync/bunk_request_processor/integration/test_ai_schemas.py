@@ -82,11 +82,13 @@ class TestSourceFragmentMaxLength:
 
 
 class TestAIDisambiguationResponseValidator:
-    """The validator should normalize (not reject) when ranked_selections is populated
-    alongside the default values for legacy fields (no_match=False, selected_person_id=None).
+    """The validator should normalize (not reject) when ranked_selections is populated.
+
+    After #944, `selected_person_id` has been removed from the schema; ranked_selections
+    is the canonical path, with no_match as the alternative terminal state.
     """
 
-    def test_ranked_selections_with_default_legacy_fields_is_accepted(self) -> None:
+    def test_ranked_selections_with_default_fields_is_accepted(self) -> None:
         # Regression for #925.
         response = AIDisambiguationResponse(
             ranked_selections=[
@@ -96,7 +98,6 @@ class TestAIDisambiguationResponseValidator:
         )
         assert len(response.ranked_selections) == 2
         assert response.no_match is False
-        assert response.selected_person_id is None
 
     def test_ranked_selections_with_explicit_no_match_true_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -105,31 +106,16 @@ class TestAIDisambiguationResponseValidator:
                 no_match=True,
             )
 
-    def test_ranked_selections_with_explicit_selected_person_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            AIDisambiguationResponse(
-                ranked_selections=[AIDisambiguationCandidate(person_id=111)],
-                selected_person_id=222,
-            )
-
-    def test_legacy_path_selected_person_id_only_still_works(self) -> None:
-        response = AIDisambiguationResponse(selected_person_id=333, confidence=0.8)
-        assert response.selected_person_id == 333
-        assert response.ranked_selections == []
-        assert response.no_match is False
-
     def test_no_match_only_still_works(self) -> None:
         response = AIDisambiguationResponse(no_match=True, no_match_reason="no plausible match")
         assert response.no_match is True
-        assert response.selected_person_id is None
         assert response.ranked_selections == []
-
-    def test_no_match_true_with_selected_person_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            AIDisambiguationResponse(no_match=True, selected_person_id=444)
 
     def test_empty_response_all_defaults_is_accepted(self) -> None:
         response = AIDisambiguationResponse()
         assert response.ranked_selections == []
         assert response.no_match is False
-        assert response.selected_person_id is None
+
+    def test_schema_has_no_selected_person_id_field(self) -> None:
+        """#944: selected_person_id was removed from the schema as dead legacy."""
+        assert "selected_person_id" not in AIDisambiguationResponse.model_fields

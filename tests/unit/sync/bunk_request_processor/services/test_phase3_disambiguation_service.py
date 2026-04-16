@@ -156,6 +156,48 @@ def _create_ambiguous_resolution(
     )
 
 
+def _create_ranked_ai_response(
+    target_name: str = "Sarah Smith",
+    ranked: list[tuple[int, float]] | None = None,
+    no_match: bool = False,
+    no_match_reason: str = "",
+    confidence: float = 0.85,
+) -> Any:
+    """Create a ParsedResponse as if returned by openai_provider.disambiguate().
+
+    `ranked` is a list of (person_id, confidence) pairs that will be serialized
+    into metadata["ranked_selections"]. If `no_match` is True, writes no_match
+    metadata instead.
+    """
+    from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+    metadata: dict[str, Any] = {}
+    if ranked:
+        metadata["ranked_selections"] = [{"person_id": pid, "confidence": c, "reasoning": ""} for pid, c in ranked]
+        metadata["target_person_id"] = ranked[0][0]
+    if no_match:
+        metadata["no_match"] = True
+        metadata["no_match_reason"] = no_match_reason
+
+    return ParsedResponse(
+        requests=[
+            ParsedRequest(
+                raw_text=f"bunk with {target_name}",
+                request_type=RequestType.BUNK_WITH,
+                target_name=target_name,
+                age_preference=None,
+                source_field="share_bunk_with",
+                source=RequestSource.FAMILY,
+                confidence=confidence,
+                csv_position=0,
+                metadata=metadata,
+            )
+        ],
+        confidence=confidence,
+        metadata={},
+    )
+
+
 class TestPhase3DisambiguationServiceInit:
     """Tests for Phase3DisambiguationService initialization"""
 
@@ -375,11 +417,8 @@ class TestPhase3DisambiguationServiceResultHandling:
 
         selected_person = _create_person(cm_id=111)
 
-        # AI returns a result selecting person 111
-        ai_result = Mock()
-        ai_result.selected_person_id = 111
-        ai_result.confidence = 0.85
-        ai_result.reason = "Best match based on context"
+        # AI returns a ranked_selections result picking person 111
+        ai_result = _create_ranked_ai_response(ranked=[(111, 0.85)], confidence=0.85)
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
@@ -412,11 +451,8 @@ class TestPhase3DisambiguationServiceResultHandling:
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        # AI returns no selection (no person selected, no explicit no_match)
-        ai_result = Mock()
-        ai_result.selected_person_id = None
-        ai_result.no_match = False
-        ai_result.reason = "Could not distinguish between candidates"
+        # AI returns ParsedResponse with no ranked_selections and no no_match
+        ai_result = _create_ranked_ai_response()
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
@@ -445,11 +481,10 @@ class TestPhase3DisambiguationServiceResultHandling:
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        # AI returns no_match
-        ai_result = Mock()
-        ai_result.selected_person_id = None
-        ai_result.no_match = True
-        ai_result.reason = "None of the candidates match the request"
+        # AI returns no_match in ParsedResponse metadata
+        ai_result = _create_ranked_ai_response(
+            no_match=True, no_match_reason="None of the candidates match the request"
+        )
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
@@ -538,17 +573,14 @@ class TestPhase3DisambiguationServiceConfidencePassthrough:
 
     @pytest.mark.asyncio
     async def test_ai_confidence_preserved(self):
-        """AI-reported confidence is used directly without rescoring."""
+        """AI-reported confidence flows through the reranker into the final resolution."""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
         selected_person = _create_person(cm_id=111)
 
-        ai_result = Mock()
-        ai_result.selected_person_id = 111
-        ai_result.confidence = 0.85
-        ai_result.reason = "Best match"
+        ai_result = _create_ranked_ai_response(ranked=[(111, 0.85)], confidence=0.85)
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
@@ -566,8 +598,10 @@ class TestPhase3DisambiguationServiceConfidencePassthrough:
         results = await service.batch_disambiguate([(parse_result, [ambiguous])])
 
         _, resolution_list = results[0]
-        # Should use AI confidence (0.85 or 0.8 default)
-        assert resolution_list[0].confidence in [0.85, 0.8]
+        # Final confidence is the reranker output: min(ai_confidence, max(0.3, jw_score)).
+        # Verify the resolution carries the AI confidence through metadata.
+        assert resolution_list[0].metadata is not None
+        assert resolution_list[0].metadata["ai_confidence"] == pytest.approx(0.85)
 
 
 class TestPhase3DisambiguationServiceStatistics:
@@ -580,9 +614,7 @@ class TestPhase3DisambiguationServiceStatistics:
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        ai_result = Mock()
-        ai_result.selected_person_id = 111
-        ai_result.confidence = 0.85
+        ai_result = _create_ranked_ai_response(ranked=[(111, 0.85)], confidence=0.85)
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
@@ -613,16 +645,11 @@ class TestPhase3DisambiguationServiceStatistics:
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        # First result: success
-        success_result = Mock()
-        success_result.selected_person_id = 111
-        success_result.confidence = 0.85
+        # First result: success via ranked_selections
+        success_result = _create_ranked_ai_response(ranked=[(111, 0.85)], confidence=0.85)
 
-        # Second result: AI returned no selection and no no_match flag — invalid_ai_output
-        ambiguous_result = Mock()
-        ambiguous_result.selected_person_id = None
-        ambiguous_result.no_match = False
-        ambiguous_result.reason = "Could not decide"
+        # Second result: AI returned no ranked_selections and no no_match — invalid_ai_output
+        ambiguous_result = _create_ranked_ai_response()
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[success_result, ambiguous_result])
@@ -650,7 +677,7 @@ class TestPhase3DisambiguationServiceStatistics:
 
         stats = service.get_stats()
         assert stats["successfully_disambiguated"] == 1
-        # When AI returns no selected_person_id and no_match=False, it's counted as "invalid_ai_output"
+        # When AI returns no ranked_selections and no_match=False, it's counted as "invalid_ai_output"
         assert stats["invalid_ai_output"] == 1
         assert stats["failed"] == 0
 
@@ -768,38 +795,22 @@ class TestPhase3ReturnTypeUnwrapping:
     """Tests that Phase 3 correctly unwraps ParsedResponse objects from the AI provider.
 
     The AI provider's disambiguate() method returns ParsedResponse (not AIDisambiguationResponse).
-    The selected person ID is in result.requests[0].metadata["target_person_id"], not
-    result.selected_person_id. These tests verify the unwrapping logic.
+    Canonical path post #944: ranked_selections in result.requests[0].metadata.
     """
 
     @pytest.mark.asyncio
-    async def test_unwraps_parsed_response_with_target_person_id(self):
-        """ParsedResponse with target_person_id in metadata is correctly unwrapped to a successful disambiguation."""
-        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
-
+    async def test_unwraps_parsed_response_with_ranked_selections(self):
+        """ParsedResponse with ranked_selections in metadata is resolved via reranker path."""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
         selected_person = _create_person(cm_id=111, first_name="Sarah", last_name="Smith")
 
-        # Real ParsedResponse as returned by the AI provider
-        ai_result = ParsedResponse(
-            requests=[
-                ParsedRequest(
-                    raw_text="Sarah Smith",
-                    request_type=RequestType.BUNK_WITH,
-                    target_name="Sarah Smith",
-                    age_preference=None,
-                    source_field="share_bunk_with",
-                    source=RequestSource.FAMILY,
-                    confidence=0.9,
-                    csv_position=0,
-                    metadata={"target_person_id": 111},
-                )
-            ],
+        ai_result = _create_ranked_ai_response(
+            target_name="Sarah Smith",
+            ranked=[(111, 0.9), (222, 0.3)],
             confidence=0.9,
-            metadata={},
         )
 
         batch_processor = Mock()
@@ -818,7 +829,7 @@ class TestPhase3ReturnTypeUnwrapping:
         results = await service.batch_disambiguate([(parse_result, [ambiguous])])
 
         _, resolution_list = results[0]
-        assert resolution_list[0].is_resolved, "ParsedResponse with target_person_id should resolve successfully"
+        assert resolution_list[0].is_resolved, "ParsedResponse with ranked_selections should resolve successfully"
         assert resolution_list[0].person is not None
         assert resolution_list[0].person.cm_id == 111
         assert resolution_list[0].method == "ai_disambiguation"
@@ -875,30 +886,16 @@ class TestPhase3ReturnTypeUnwrapping:
 
     @pytest.mark.asyncio
     async def test_unwraps_parsed_response_unknown_person_id(self):
-        """ParsedResponse with target_person_id not in candidates results in no_match."""
-        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
-
+        """ParsedResponse with ranked_selections whose ids aren't in candidates → rejected by reranker (no_match)."""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        # AI selects person 999 which is NOT in the candidate list
-        ai_result = ParsedResponse(
-            requests=[
-                ParsedRequest(
-                    raw_text="Sarah Smith",
-                    request_type=RequestType.BUNK_WITH,
-                    target_name="Sarah Smith",
-                    age_preference=None,
-                    source_field="share_bunk_with",
-                    source=RequestSource.FAMILY,
-                    confidence=0.85,
-                    csv_position=0,
-                    metadata={"target_person_id": 999},  # Not in candidates
-                )
-            ],
+        # AI ranks person 999 — NOT in the candidate list. Reranker rejects it.
+        ai_result = _create_ranked_ai_response(
+            target_name="Sarah Smith",
+            ranked=[(999, 0.85)],
             confidence=0.85,
-            metadata={},
         )
 
         batch_processor = Mock()
@@ -929,16 +926,13 @@ class TestPhase3InvalidAIOutput:
 
     @pytest.mark.asyncio
     async def test_catch_all_path_sets_invalid_ai_output_status(self):
-        """When AI returns no selected_person_id and no no_match flag, status is invalid_ai_output."""
+        """When AI returns no ranked_selections and no no_match flag, status is invalid_ai_output."""
         ai_provider = Mock()
         context_builder = Mock()
         context_builder.build_disambiguation_context.return_value = _create_mock_context()
 
-        # Legacy Mock path: no person selected, no explicit no_match — the catch-all else branch
-        ai_result = Mock()
-        ai_result.selected_person_id = None
-        ai_result.no_match = False
-        ai_result.reason = "Could not distinguish between candidates"
+        # ParsedResponse with empty metadata — no ranked_selections, no no_match
+        ai_result = _create_ranked_ai_response()
 
         batch_processor = Mock()
         batch_processor.batch_disambiguate = AsyncMock(return_value=[ai_result])
@@ -1019,79 +1013,6 @@ class TestSetMetaHelper:
         assert case.disambiguation_metadata["reasons"] == {0: "good reason"}
 
 
-class TestExtractAiResultFields:
-    """Tests for the _extract_ai_result_fields helper.
-
-    Unwraps various AI result shapes into a canonical (selected_person_id,
-    ai_confidence, ai_reason) triple. ParsedResponse reads metadata from
-    result.requests[0].metadata; legacy objects read attributes directly.
-    """
-
-    def _make_service(self) -> Phase3DisambiguationService:
-        return Phase3DisambiguationService(
-            ai_provider=Mock(),
-            context_builder=Mock(),
-        )
-
-    def test_extract_from_parsed_response_with_target_person_id(self):
-        """ParsedResponse with target_person_id in metadata yields that id, response confidence, and reason."""
-        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
-
-        service = self._make_service()
-        result = ParsedResponse(
-            requests=[
-                ParsedRequest(
-                    raw_text="Sarah Smith",
-                    request_type=RequestType.BUNK_WITH,
-                    target_name="Sarah Smith",
-                    age_preference=None,
-                    source_field="share_bunk_with",
-                    source=RequestSource.FAMILY,
-                    confidence=0.92,
-                    csv_position=0,
-                    metadata={"target_person_id": 111, "reason": "last-name match"},
-                )
-            ],
-            confidence=0.92,
-            metadata={},
-        )
-        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(result)
-        assert selected_id == 111
-        assert ai_confidence == 0.92
-        assert ai_reason == "last-name match"
-
-    def test_extract_from_parsed_response_with_empty_requests(self):
-        """ParsedResponse with no requests yields (None, response.confidence, None)."""
-        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
-
-        service = self._make_service()
-        result = ParsedResponse(requests=[], confidence=0.5, metadata={})
-        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(result)
-        assert selected_id is None
-        assert ai_confidence == 0.5
-        assert ai_reason is None
-
-    def test_extract_from_legacy_response_reads_attributes(self):
-        """Legacy AIDisambiguationResponse (has selected_person_id attribute) is read directly."""
-        service = self._make_service()
-        legacy = Mock(spec=["selected_person_id", "confidence", "reason"])
-        legacy.selected_person_id = 222
-        legacy.confidence = 0.77
-        legacy.reason = "legacy pick"
-        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(legacy)
-        assert selected_id == 222
-        assert ai_confidence == 0.77
-        assert ai_reason == "legacy pick"
-
-    def test_extract_from_unknown_type_returns_defaults(self):
-        """An unknown result type yields default (None, 0.8, None)."""
-        service = self._make_service()
-        selected_id, ai_confidence, ai_reason = service._extract_ai_result_fields(object())
-        assert selected_id is None
-        assert ai_confidence == 0.8
-        assert ai_reason is None
-
-
 class TestTryRerankerPath:
     """Tests for the _try_reranker_path helper.
 
@@ -1116,12 +1037,10 @@ class TestTryRerankerPath:
         return case, ambiguous
 
     def test_returns_false_for_non_parsed_response(self):
-        """Legacy / non-ParsedResponse results are not handled by the re-ranker path."""
+        """Non-ParsedResponse results are not handled by the re-ranker path."""
         service = self._make_service()
         case, resolution = self._make_case()
-        legacy = Mock(spec=["selected_person_id"])
-        legacy.selected_person_id = 111
-        assert service._try_reranker_path(case, 0, resolution, legacy) is False
+        assert service._try_reranker_path(case, 0, resolution, object()) is False
 
     def test_returns_false_for_parsed_response_without_signals(self):
         """ParsedResponse without ranked_selections or no_match does not short-circuit."""
@@ -1257,11 +1176,11 @@ class TestTryRerankerPath:
         assert case.disambiguated_results[0] is None
 
 
-class TestApplyLegacySelection:
-    """Tests for the _apply_legacy_selection helper.
+class TestRecordInvalidAiOutput:
+    """Tests for the _record_invalid_ai_output helper.
 
-    Validates the selected_person_id candidate match (success/no_match) and
-    the legacy `no_match` attribute / invalid_ai_output fallbacks.
+    Called when _try_reranker_path returns False — no ranked_selections and no no_match
+    metadata in the AI result. Records invalid_ai_output status on the case.
     """
 
     def _make_service(self) -> Phase3DisambiguationService:
@@ -1279,51 +1198,13 @@ class TestApplyLegacySelection:
         case = DisambiguationCase(_create_parse_result(), [ambiguous])
         return case, ambiguous
 
-    def test_success_when_selected_id_matches_candidate(self):
-        """selected_person_id matching a candidate records success + ResolutionResult."""
+    def test_records_invalid_ai_output_status(self):
+        """_record_invalid_ai_output writes invalid_ai_output status and reason."""
         service = self._make_service()
         case, resolution = self._make_case()
-        result = Mock()  # Not used for successful matches
-        service._apply_legacy_selection(case, 0, resolution, result, 111, 0.88, "good match")
-        disambig = case.disambiguated_results[0]
-        assert disambig is not None
-        assert disambig.person is not None
-        assert disambig.person.cm_id == 111
-        assert disambig.confidence == 0.88
-        assert disambig.method == "ai_disambiguation"
-        assert disambig.metadata is not None
-        assert disambig.metadata["disambiguation_reason"] == "good match"
-        assert case.disambiguation_metadata["status"][0] == "success"
-
-    def test_no_match_when_selected_id_not_in_candidates(self):
-        """selected_person_id absent from candidates records no_match + selected_ids."""
-        service = self._make_service()
-        case, resolution = self._make_case()
-        result = Mock()
-        service._apply_legacy_selection(case, 0, resolution, result, 999, 0.5, None)
-        assert case.disambiguation_metadata["status"][0] == "no_match"
-        assert case.disambiguation_metadata["selected_ids"][0] == 999
-
-    def test_legacy_no_match_attribute_records_no_match(self):
-        """When selected_id is None but result.no_match is truthy, records no_match."""
-        service = self._make_service()
-        case, resolution = self._make_case()
-        result = Mock(spec=["no_match", "reason"])
-        result.no_match = True
-        result.reason = "legacy no match"
-        service._apply_legacy_selection(case, 0, resolution, result, None, 0.8, None)
-        assert case.disambiguation_metadata["status"][0] == "no_match"
-        assert case.disambiguation_metadata["reasons"][0] == "legacy no match"
-
-    def test_invalid_ai_output_when_no_selection_and_no_no_match(self):
-        """No selection and no legacy no_match flag yields invalid_ai_output status."""
-        service = self._make_service()
-        case, resolution = self._make_case()
-        # Use an object without a no_match attribute to test the invalid_ai_output branch.
-        result = object()
-        service._apply_legacy_selection(case, 0, resolution, result, None, 0.8, "some reason")
+        service._record_invalid_ai_output(case, 0, resolution, object())
         assert case.disambiguation_metadata["status"][0] == "invalid_ai_output"
-        assert case.disambiguation_metadata["reasons"][0] == "some reason"
+        assert case.disambiguation_metadata["reasons"][0] == "No suitable match"
 
 
 class TestPhase3StatsMatchTrace:

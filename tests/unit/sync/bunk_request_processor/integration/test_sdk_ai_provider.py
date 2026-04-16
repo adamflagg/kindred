@@ -97,7 +97,6 @@ class TestAISchemas:
         """Disambiguation confidence must be between 0 and 1."""
         # Valid
         response = AIDisambiguationResponse(
-            selected_person_id=12345,
             confidence=0.85,
             reasoning="High confidence match",
         )
@@ -348,9 +347,9 @@ class TestReasoningEffort:
 
         mock_openai_client.responses.parse.return_value = self._mock_response(
             AIDisambiguationResponse(
-                selected_person_id=999,
-                confidence=0.9,
-                reasoning="Strong match",
+                ranked_selections=[
+                    AIDisambiguationCandidate(person_id=999, confidence=0.9, reasoning="Strong match"),
+                ],
             )
         )
 
@@ -516,9 +515,9 @@ class TestReasoningOutputParsing:
         reasoning_item = MagicMock(spec=[])
 
         mock_parsed = AIDisambiguationResponse(
-            selected_person_id=999,
-            confidence=0.9,
-            reasoning="Strong match",
+            ranked_selections=[
+                AIDisambiguationCandidate(person_id=999, confidence=0.9, reasoning="Strong match"),
+            ],
         )
         mock_text = MagicMock()
         mock_text.parsed = mock_parsed
@@ -643,9 +642,9 @@ class TestReasoningOutputParsing:
         reasoning_item.summary = [reasoning_summary]
 
         mock_parsed = AIDisambiguationResponse(
-            selected_person_id=999,
-            confidence=0.9,
-            reasoning="Same school",
+            ranked_selections=[
+                AIDisambiguationCandidate(person_id=999, confidence=0.9, reasoning="Same school"),
+            ],
         )
         mock_text = MagicMock()
         mock_text.parsed = mock_parsed
@@ -792,23 +791,8 @@ class TestAIDisambiguationRankedSchema:
         assert response.ranked_selections == []
         assert response.no_match is False
         assert response.no_match_reason == ""
-        assert response.selected_person_id is None
         assert response.confidence == 0.0
         assert response.reasoning == ""
-
-    def test_backward_compat_selected_person_id(self):
-        """Legacy selected_person_id / confidence / reasoning fields still work."""
-        response = AIDisambiguationResponse(
-            selected_person_id=5555,
-            confidence=0.75,
-            reasoning="Legacy single selection",
-        )
-        assert response.selected_person_id == 5555
-        assert response.confidence == 0.75
-        assert response.reasoning == "Legacy single selection"
-        # New fields default correctly
-        assert response.ranked_selections == []
-        assert response.no_match is False
 
     def test_ranked_and_no_match_mutually_exclusive(self):
         """Cannot set ranked_selections AND no_match=True simultaneously."""
@@ -819,27 +803,6 @@ class TestAIDisambiguationRankedSchema:
                 ],
                 no_match=True,
                 no_match_reason="contradictory",
-            )
-
-    def test_ranked_and_selected_person_id_mutually_exclusive(self):
-        """Cannot set ranked_selections AND selected_person_id simultaneously."""
-        with pytest.raises(ValueError, match="mutually exclusive"):
-            AIDisambiguationResponse(
-                ranked_selections=[
-                    AIDisambiguationCandidate(person_id=1001, confidence=0.90, reasoning="test"),
-                ],
-                selected_person_id=1001,
-                confidence=0.90,
-            )
-
-    def test_no_match_and_selected_person_id_mutually_exclusive(self):
-        """Cannot set no_match=True AND selected_person_id simultaneously."""
-        with pytest.raises(ValueError, match="mutually exclusive"):
-            AIDisambiguationResponse(
-                no_match=True,
-                no_match_reason="no match",
-                selected_person_id=1001,
-                confidence=0.90,
             )
 
 

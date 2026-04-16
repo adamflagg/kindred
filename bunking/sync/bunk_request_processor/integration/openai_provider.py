@@ -548,7 +548,6 @@ class OpenAIProvider(AIProvider):
 
             # Update parsed request with disambiguation result
             if isinstance(response, AIDisambiguationResponse):
-                # New ranked path
                 if response.ranked_selections:
                     parsed_request.metadata["ranked_selections"] = [c.model_dump() for c in response.ranked_selections]
                     # Use top pick for backward compat fields
@@ -561,15 +560,9 @@ class OpenAIProvider(AIProvider):
                     parsed_request.metadata["no_match"] = True
                     parsed_request.metadata["no_match_reason"] = response.no_match_reason
                     parsed_request.confidence = 0.0
-                elif response.selected_person_id:
-                    # Legacy single-selection fallback
-                    parsed_request.metadata["target_person_id"] = response.selected_person_id
-                    parsed_request.confidence = response.confidence
-                    parsed_request.metadata["disambiguation_method"] = "ai_phase3"
-                    parsed_request.metadata["disambiguation_reasoning"] = response.reasoning
                 else:
                     logger.debug(
-                        f"Disambiguation response had no ranked_selections, no_match, or selected_person_id "
+                        f"Disambiguation response had no ranked_selections or no_match "
                         f"for target '{parsed_request.target_name}'"
                     )
 
