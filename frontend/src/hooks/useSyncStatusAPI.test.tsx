@@ -53,8 +53,7 @@ describe('useSyncStatusAPI', () => {
 
   describe('401 error handling', () => {
     it('should swallow 401 errors and return empty response', async () => {
-      const pbError = new Error('Unauthorized') as Record<string, unknown>
-      pbError.status = 401
+      const pbError: Record<string, unknown> = { message: 'Unauthorized', status: 401 }
       ;(pb.send as Mock).mockRejectedValue(pbError)
 
       const { result } = renderHook(() => useSyncStatusAPI(), { wrapper: createWrapper() })
@@ -69,8 +68,7 @@ describe('useSyncStatusAPI', () => {
     })
 
     it('should propagate non-401 errors', async () => {
-      const pbError = new Error('Server Error') as Record<string, unknown>
-      pbError.status = 500
+      const pbError: Record<string, unknown> = { message: 'Server Error', status: 500 }
       ;(pb.send as Mock).mockRejectedValue(pbError)
 
       const { result } = renderHook(() => useSyncStatusAPI(), { wrapper: createWrapper() })
