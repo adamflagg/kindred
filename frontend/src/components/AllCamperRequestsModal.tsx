@@ -11,11 +11,7 @@ import { queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
 import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
 import { highlightSourceText } from '../utils/highlightSourceText'
-import type {
-  BunkRequestsResponse,
-  BunkRequestsStatusOptions,
-  PersonsResponse,
-} from '../types/pocketbase-types'
+import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 export interface AllCamperRequestsModalProps {
   isOpen: boolean
@@ -48,11 +44,7 @@ function RequestCard({
   request: BunkRequestsResponse
   targetName: string | null
   isCurrent?: boolean
-  onAction?: (
-    e: React.MouseEvent<HTMLButtonElement>,
-    action: 'approve' | 'decline',
-    requestId: string
-  ) => void
+  onAction?: (action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) => void
 }) {
   const isBunk = request.request_type === 'bunk_with'
   const isNot = request.request_type === 'not_bunk_with'
@@ -112,7 +104,10 @@ function RequestCard({
                 type="button"
                 aria-label="Approve"
                 title="Approve"
-                onClick={(e) => onAction(e, 'approve', request.id)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction('approve', request.id, e.currentTarget.getBoundingClientRect())
+                }}
                 className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 touch-manipulation rounded-lg p-1.5 transition-colors"
               >
                 <CheckCircle className="h-4 w-4" />
@@ -121,7 +116,10 @@ function RequestCard({
                 type="button"
                 aria-label="Decline"
                 title="Decline"
-                onClick={(e) => onAction(e, 'decline', request.id)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction('decline', request.id, e.currentTarget.getBoundingClientRect())
+                }}
                 className="hover:bg-destructive/10 text-destructive touch-manipulation rounded-lg p-1.5 transition-colors"
               >
                 <XCircle className="h-4 w-4" />
@@ -210,17 +208,8 @@ export function AllCamperRequestsModal({
     },
   })
 
-  function handleAction(
-    e: React.MouseEvent<HTMLButtonElement>,
-    action: 'approve' | 'decline',
-    requestId: string
-  ) {
-    e.stopPropagation()
-    setConfirmPopover({
-      action,
-      anchorRect: e.currentTarget.getBoundingClientRect(),
-      requestId,
-    })
+  function handleAction(action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) {
+    setConfirmPopover({ action, anchorRect, requestId })
   }
 
   const {
@@ -339,16 +328,11 @@ export function AllCamperRequestsModal({
     </div>
   )
 
-  const footer = (
-    <div className="bg-muted/40 border-border/60 border-t px-7 py-3" aria-hidden="true" />
-  )
-
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       header={header}
-      footer={footer}
       size="xl"
       scrollable
       noPadding
@@ -409,29 +393,23 @@ export function AllCamperRequestsModal({
           </div>
         )}
       </div>
-      <ConfirmActionPopover
-        isOpen={confirmPopover !== null}
-        anchorRect={confirmPopover?.anchorRect ?? { top: 0, left: 0, width: 0, height: 0 }}
-        action={confirmPopover?.action ?? 'approve'}
-        onConfirm={() => {
-          if (!confirmPopover) return
-          const { action, requestId } = confirmPopover
-          updateRequestMutation.mutate({
-            id: requestId,
-            updates:
-              action === 'approve'
-                ? {
-                    status: 'resolved' as BunkRequestsStatusOptions,
-                    request_locked: true,
-                  }
-                : {
-                    status: 'declined' as BunkRequestsStatusOptions,
-                    request_locked: false,
-                  },
-          })
-        }}
-        onCancel={() => setConfirmPopover(null)}
-      />
+      {confirmPopover && (
+        <ConfirmActionPopover
+          isOpen
+          anchorRect={confirmPopover.anchorRect}
+          action={confirmPopover.action}
+          onConfirm={() => {
+            updateRequestMutation.mutate({
+              id: confirmPopover.requestId,
+              updates:
+                confirmPopover.action === 'approve'
+                  ? { status: 'resolved', request_locked: true }
+                  : { status: 'declined', request_locked: false },
+            })
+          }}
+          onCancel={() => setConfirmPopover(null)}
+        />
+      )}
     </Modal>
   )
 }
