@@ -961,18 +961,25 @@ describe('RequestReviewPanel', () => {
       })
     })
 
-    describe('Task 3: Rename parse notes to "AI Intent Notes" (#5)', () => {
-      it('should use "AI Intent Notes" as heading for single source', () => {
-        const expectedLabel = 'AI Intent Notes'
+    describe('Task 3: Rename parse notes to "Processing Notes" (#5)', () => {
+      it('should use "Processing Notes" as heading for single source', () => {
+        const expectedLabel = 'Processing Notes'
         expect(expectedLabel).not.toBe('Parse Notes')
-        expect(expectedLabel).toBe('AI Intent Notes')
+        expect(expectedLabel).toBe('Processing Notes')
       })
 
-      it('should use "AI Intent Notes" label in contributing sources view', () => {
-        // In the merged sources dropdown, parse notes label should also read "AI Intent Notes"
-        const expectedLabel = 'AI Intent Notes:'
+      it('should use "Processing Notes" label in contributing sources view', () => {
+        // In the merged sources dropdown, parse notes label should also read "Processing Notes"
+        const expectedLabel = 'Processing Notes:'
         expect(expectedLabel).not.toContain('Parse notes')
-        expect(expectedLabel).toBe('AI Intent Notes:')
+        expect(expectedLabel).toBe('Processing Notes:')
+      })
+
+      it('labels the inferred-notes block as "Processing Notes"', () => {
+        const expectedLabel = 'Processing Notes'
+        expect(expectedLabel).not.toBe('AI Intent Notes')
+        expect(expectedLabel).not.toBe('AI Parse Notes')
+        expect(expectedLabel).toBe('Processing Notes')
       })
     })
 
