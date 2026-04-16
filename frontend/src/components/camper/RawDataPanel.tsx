@@ -166,14 +166,14 @@ export function RawDataPanel({ data, year, defaultExpanded = false }: RawDataPan
       {isExpanded && (
         <div className="space-y-4 p-6">
           <RawDataField
-            label="Share Bunk With"
+            label="Bunk Request Form"
             value={data.share_bunk_with}
             updatedAt={data.share_bunk_with_updated}
             processedAt={data.share_bunk_with_processed}
           />
 
           <RawDataField
-            label="Don't Share Bunk With"
+            label="Do NOT Share Bunk With"
             value={data.do_not_share_bunk_with}
             updatedAt={data.do_not_share_bunk_with_updated}
             processedAt={data.do_not_share_bunk_with_processed}
@@ -195,7 +195,7 @@ export function RawDataPanel({ data, year, defaultExpanded = false }: RawDataPan
           />
 
           <RawDataField
-            label="Socializes Best With"
+            label="Social With Checkbox"
             value={data.ret_parent_socialize_with_best}
             updatedAt={data.ret_parent_socialize_with_best_updated}
             processedAt={data.ret_parent_socialize_with_best_processed}
