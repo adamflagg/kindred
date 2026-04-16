@@ -7,7 +7,7 @@ from typing import Any, TypeVar
 
 from bunking.logging_config import get_logger
 
-from ..core.models import ParsedRequest, ParseResult
+from ..core.models import ParsedRequest, ParseResult, RequestType
 from ..integration.ai_service import AIProvider, AIRequestContext
 from ..integration.ai_types import ParsedResponse
 from ..integration.batch_processor import BatchProcessor
@@ -113,6 +113,9 @@ class Phase3DisambiguationService:
 
         if not cases:
             logger.info("Phase 3: No ambiguous cases to disambiguate")
+            # Still count every incoming intent — the orchestrator trace has
+            # ran=True for these (no-candidate ParseResults).
+            self._update_stats(ambiguous_cases, cases)
             return ambiguous_cases
 
         # Count total ambiguous resolutions across all cases
@@ -126,6 +129,7 @@ class Phase3DisambiguationService:
 
         if not disambiguation_requests:
             logger.info("Phase 3: No disambiguation requests to process")
+            self._update_stats(ambiguous_cases, cases)
             return ambiguous_cases
 
         # Use batch processor for AI disambiguation
@@ -145,10 +149,15 @@ class Phase3DisambiguationService:
                     errors[idx] = str(e)
 
         # Build final results
+        # Ordering invariant: _build_final_results MUST run before _update_stats.
+        # _build_final_results writes metadata["disambiguation_status"] = "failed"
+        # on exception-path intents that have no per-index status; _update_stats
+        # then reads that status. Swapping these would misclassify exception-path
+        # intents from "failed" to "still_ambiguous".
         results = self._build_final_results(ambiguous_cases, cases)
 
         # Update statistics
-        self._update_stats(cases)
+        self._update_stats(ambiguous_cases, cases)
 
         logger.info(
             f"Phase 3 complete: "
@@ -499,38 +508,93 @@ class Phase3DisambiguationService:
 
         return results
 
-    def _update_stats(self, cases: list[DisambiguationCase]) -> None:
-        """Update disambiguation statistics"""
-        # Count total ambiguous resolutions processed, not just cases
-        total_ambiguous = sum(len(case.disambiguation_indices) for case in cases)
-        self._stats["total_processed"] += total_ambiguous
+    def _update_stats(
+        self,
+        ambiguous_cases: list[tuple[ParseResult, list[ResolutionResult]]],
+        cases: list[DisambiguationCase],
+    ) -> None:
+        """Update disambiguation statistics.
 
-        for case in cases:
-            # Count successful disambiguations per resolution
-            for idx in case.disambiguation_indices:
-                if idx < len(case.disambiguated_results):
-                    result = case.disambiguated_results[idx]
-                else:
-                    result = None
-                if result is not None:
-                    if result.is_resolved:
+        Mirrors ``debug_pipeline_traces.phase3_disambiguation[].result`` so the
+        ``Phase 3 complete`` log line matches the trace (issue #942).
+
+        The orchestrator records a Phase 3 trace row per intent with ``ran=True``
+        for every intent in a ParseResult that had any unresolved intent — this
+        includes Phase-2-resolved intents that rode along on the ParseResult
+        **and** ParseResults whose unresolved intents have zero candidates
+        (which the service skips from ``cases`` but the trace still records).
+        Stats therefore count **every** intent across every ``ambiguous_cases``
+        entry, even ones we filtered out of ``cases``.
+
+        Per-intent outcome mirrors the trace's ``result`` field:
+          - ``rr.is_resolved``                          -> ``successfully_disambiguated``
+          - ``disambiguation_status == "no_match"``     -> ``no_match``
+          - ``disambiguation_status == "invalid_ai_output"`` -> ``invalid_ai_output``
+          - ``disambiguation_status == "failed"``       -> ``failed``
+          - anything else                                -> ``still_ambiguous``
+
+        No-candidate intents (unresolved, method != AGE_PREFERENCE, no candidates)
+        are classified as ``no_match`` — there was nothing to match against.
+        """
+        # total_processed == count of trace rows with ran=True (every intent in
+        # every ParseResult that entered Phase 3, including no-candidate ones
+        # that were filtered out of `cases`).
+        total_ran = sum(len(resolution_list) for _pr, resolution_list in ambiguous_cases)
+        self._stats["total_processed"] += total_ran
+
+        # Index cases by the id() of the ParseResult so we can match a case back
+        # to its original ambiguous_cases entry. ParseResult is a @dataclass so
+        # identity comparison is stable here (the service holds the same
+        # objects end-to-end).
+        case_by_parse_result_id = {id(case.parse_result): case for case in cases}
+
+        for parse_result, resolution_list in ambiguous_cases:
+            case = case_by_parse_result_id.get(id(parse_result))
+            if case is None:
+                # No-candidate ParseResult: DisambiguationCase filtered every
+                # unresolved intent out of disambiguation_indices (truthy
+                # candidates check). Classify per intent: resolved (Phase 2
+                # win) stays successfully_disambiguated; unresolved with no
+                # candidates is no_match; anything else (should be rare —
+                # e.g. age_preference) is still_ambiguous.
+                for rr in resolution_list:
+                    if rr.is_resolved:
                         self._stats["successfully_disambiguated"] += 1
-                    elif result.metadata and result.metadata.get("no_match"):
+                    elif not rr.candidates and rr.method != RequestType.AGE_PREFERENCE.value:
                         self._stats["no_match"] += 1
                     else:
-                        # Reached when Phase 3 returns a non-resolved ResolutionResult
-                        # (e.g. candidates present but no match selected by AI)
                         self._stats["still_ambiguous"] += 1
-                else:
-                    # Check disambiguation metadata for specific status
-                    statuses = case.disambiguation_metadata.get("status", {})
-                    status = statuses.get(idx, "")
-                    if status == "no_match":
-                        self._stats["no_match"] += 1
-                    elif status == "invalid_ai_output":
-                        self._stats["invalid_ai_output"] += 1
-                    else:
-                        self._stats["failed"] += 1
+                continue
+
+            self._classify_case(case)
+
+    def _classify_case(self, case: DisambiguationCase) -> None:
+        """Classify every intent in a DisambiguationCase into the stats buckets."""
+        statuses = case.disambiguation_metadata.get("status", {})
+        for idx, original_rr in enumerate(case.resolution_results):
+            # Prefer the disambiguated result when Phase 3 produced one; fall
+            # back to the original resolution (Phase 2 win or not-needed slot).
+            disambig_rr = case.disambiguated_results[idx] if idx < len(case.disambiguated_results) else None
+            final_rr = disambig_rr if disambig_rr is not None else original_rr
+
+            if final_rr is not None and final_rr.is_resolved:
+                self._stats["successfully_disambiguated"] += 1
+                continue
+
+            # Not resolved. Classify by disambiguation_status, mirroring the
+            # trace's fallback: rr_meta.get("disambiguation_status", "still_ambiguous").
+            status = statuses.get(idx, "")
+            if not status and final_rr is not None and final_rr.metadata:
+                status = final_rr.metadata.get("disambiguation_status", "")
+
+            if status == "no_match":
+                self._stats["no_match"] += 1
+            elif status == "invalid_ai_output":
+                self._stats["invalid_ai_output"] += 1
+            elif status == "failed":
+                self._stats["failed"] += 1
+            else:
+                self._stats["still_ambiguous"] += 1
 
     def get_stats(self) -> dict[str, Any]:
         """Get disambiguation statistics"""
