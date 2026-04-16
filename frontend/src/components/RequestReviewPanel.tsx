@@ -731,7 +731,7 @@ export default function RequestReviewPanel({
       const el = document.querySelector<HTMLElement>(
         `[data-request-row-id="${CSS.escape(pinnedId)}"]`
       )
-      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
     }, 50)
     return () => window.clearTimeout(t)
   }, [pinnedId])
