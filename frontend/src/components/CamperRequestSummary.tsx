@@ -117,9 +117,9 @@ export function CamperRequestSummary({
           type="button"
           onClick={() => setModalOpen(true)}
           className="bg-forest-50 text-forest-600 border-forest-300/40 hover:bg-forest-100 dark:bg-forest-900/30 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition"
-          aria-label="View all requests from this camper"
+          aria-label="Manage all camper's requests"
         >
-          View all
+          Manage all camper's requests
           <ArrowRight className="h-3 w-3" />
         </button>
       </div>

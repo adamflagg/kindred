@@ -84,7 +84,8 @@ export function Modal({
       {/* Backdrop */}
       <div
         data-testid="modal-backdrop"
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 backdrop-blur"
+        style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -92,7 +93,11 @@ export function Modal({
       {/* Modal content */}
       <div
         data-testid="modal-content"
-        className={`bg-card border-border relative overflow-hidden rounded-xl border shadow-xl ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
+        className={`bg-card border-border relative overflow-hidden rounded-2xl border ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
+        style={{
+          boxShadow:
+            '0 24px 60px -24px rgba(7, 20, 14, 0.35), 0 8px 24px -12px rgba(7, 20, 14, 0.18)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Custom header mode - header spans full width, close button floats on top */}
@@ -101,7 +106,7 @@ export function Modal({
             {header}
             <button
               onClick={onClose}
-              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 rounded-lg p-2 transition-colors hover:bg-black/10"
+              className="text-muted-foreground hover:text-foreground absolute top-4 right-4 rounded-lg p-2 transition-colors hover:bg-black/10"
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />
