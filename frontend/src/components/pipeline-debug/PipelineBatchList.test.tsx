@@ -172,11 +172,11 @@ describe('PipelineBatchList', () => {
     it('shows source field badges', () => {
       render(<PipelineBatchList {...defaultProps} />)
 
-      const bunkWithBadges = screen.getAllByText('Bunk With')
+      const bunkWithBadges = screen.getAllByText('Bunk Request Form')
       // 2 table badges + 1 dropdown option = 3 matches
       expect(bunkWithBadges.length).toBe(3)
-      // 'Not Bunk With' appears as 1 badge + 1 dropdown option
-      expect(screen.getAllByText('Not Bunk With').length).toBe(2)
+      // 'Do NOT Share Bunk With' appears as 1 badge + 1 dropdown option
+      expect(screen.getAllByText('Do NOT Share Bunk With').length).toBe(2)
     })
 
     it('shows resolution method', () => {
