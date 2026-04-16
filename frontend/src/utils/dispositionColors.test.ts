@@ -10,6 +10,8 @@ import {
   getConfidenceClasses,
   getDispositionSortRank,
   formatDispositionReason,
+  formatReason,
+  shouldShowReasonInStatus,
   RESOLVED_REASONS,
   PENDING_REASONS,
   DECLINED_REASONS,
@@ -201,6 +203,60 @@ describe('formatDispositionReason', () => {
       const fallback = reason.replace(/_/g, ' ')
       expect(display, `${reason} is missing from DISPOSITION_DISPLAY_NAMES`).not.toBe(fallback)
     }
+  })
+})
+
+describe('shouldShowReasonInStatus', () => {
+  it('returns false when status is resolved regardless of reason', () => {
+    expect(shouldShowReasonInStatus('resolved', 'exact_match')).toBe(false)
+    expect(shouldShowReasonInStatus('resolved', 'reciprocal_match')).toBe(false)
+    expect(shouldShowReasonInStatus('RESOLVED', 'exact_match')).toBe(false)
+  })
+
+  it('returns true for declined rows with any non-empty reason', () => {
+    expect(shouldShowReasonInStatus('declined', 'session_mismatch')).toBe(true)
+    expect(shouldShowReasonInStatus('declined', 'target_not_attending')).toBe(true)
+    expect(shouldShowReasonInStatus('declined', 'requester_not_attending')).toBe(true)
+    expect(shouldShowReasonInStatus('DECLINED', 'session_mismatch')).toBe(true)
+  })
+
+  it('returns false for declined rows with no reason', () => {
+    expect(shouldShowReasonInStatus('declined', '')).toBe(false)
+    expect(shouldShowReasonInStatus('declined', null)).toBe(false)
+    expect(shouldShowReasonInStatus('declined', undefined)).toBe(false)
+  })
+
+  it('returns true for pending rows with a triage reason', () => {
+    expect(shouldShowReasonInStatus('pending', 'needs_review')).toBe(true)
+    expect(shouldShowReasonInStatus('pending', 'target_waitlisted')).toBe(true)
+    expect(shouldShowReasonInStatus('pending', 'undirected_preference')).toBe(true)
+    expect(shouldShowReasonInStatus('PENDING', 'needs_review')).toBe(true)
+  })
+
+  it('returns false for pending rows with a non-triage reason', () => {
+    expect(shouldShowReasonInStatus('pending', 'exact_match')).toBe(false)
+    expect(shouldShowReasonInStatus('pending', 'session_mismatch')).toBe(false)
+    expect(shouldShowReasonInStatus('pending', 'random_unknown')).toBe(false)
+  })
+
+  it('returns false for unknown status', () => {
+    expect(shouldShowReasonInStatus('queued', 'needs_review')).toBe(false)
+    expect(shouldShowReasonInStatus('', 'needs_review')).toBe(false)
+  })
+
+  it('returns false when reason is missing regardless of status', () => {
+    expect(shouldShowReasonInStatus('pending', null)).toBe(false)
+    expect(shouldShowReasonInStatus('pending', undefined)).toBe(false)
+    expect(shouldShowReasonInStatus('pending', '')).toBe(false)
+  })
+})
+
+describe('formatReason', () => {
+  it('is an alias of formatDispositionReason', () => {
+    expect(formatReason('exact_match')).toBe(formatDispositionReason('exact_match'))
+    expect(formatReason('session_mismatch')).toBe(formatDispositionReason('session_mismatch'))
+    expect(formatReason('needs_review')).toBe(formatDispositionReason('needs_review'))
+    expect(formatReason('unknown_x')).toBe(formatDispositionReason('unknown_x'))
   })
 })
 
