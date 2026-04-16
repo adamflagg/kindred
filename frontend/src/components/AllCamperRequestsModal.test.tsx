@@ -115,8 +115,8 @@ describe('AllCamperRequestsModal cards', () => {
     ]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
-    // formatSourceField('socialize_with') returns 'Socialize With'
-    expect(await screen.findByText('Socialize With')).toBeTruthy()
+    // formatSourceField('socialize_with') returns 'Social With Checkbox' (renamed in #950)
+    expect(await screen.findByText('Social With Checkbox')).toBeTruthy()
   })
 
   it('renders processing notes from parse_notes', async () => {
@@ -161,6 +161,27 @@ describe('AllCamperRequestsModal cards', () => {
     // findAllByText handles multiple matches (CamperLink + source_fragment)
     expect((await screen.findAllByText('Liam Garcia')).length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText(/Current request/i)).toBeNull()
+  })
+
+  it('renders a "Viewing" chip on the card matching currentRequestId', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'req1',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        priority: 4,
+        confidence_score: 0.98,
+        source_field: 'bunk_with',
+        source_fragment: 'Liam Garcia',
+        parse_notes: 'n',
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal({ currentRequestId: 'req1' })
+    expect(await screen.findByText('Viewing')).toBeTruthy()
   })
 
   it('renders age_preference request below "Age preference" divider', async () => {

@@ -56,7 +56,7 @@ function RequestCard({
 
   return (
     <article
-      className={`border-border bg-card overflow-hidden rounded-xl border${isCurrent ? 'ring-forest-500 dark:ring-forest-400 ring-2' : ''}`}
+      className={`border-border bg-card overflow-hidden rounded-xl border ${isCurrent ? 'ring-forest-500 dark:ring-forest-400 ring-2' : ''}`}
     >
       <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
         <span
