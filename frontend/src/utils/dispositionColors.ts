@@ -76,10 +76,6 @@ export const MUTUAL_BADGE_CLASSES =
 export const CURRENT_REQUEST_BADGE_CLASSES =
   'bg-primary/15 text-primary flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium'
 
-/** Tailwind classes for the "Pinned" badge shown when a request is pinned via the URL. */
-export const PINNED_BADGE_CLASSES =
-  'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium'
-
 /** Friendly display names for disposition reasons. */
 const DISPOSITION_DISPLAY_NAMES: Record<string, string> = {
   // Resolved
