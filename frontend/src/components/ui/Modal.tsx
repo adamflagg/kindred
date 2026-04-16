@@ -12,6 +12,11 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl'
   noPadding?: boolean // Remove default padding for complex layouts
   scrollable?: boolean // Make content area scrollable
+  // Accessibility: callers using the custom `header` slot should thread
+  // either an id referencing the heading element, or a literal label, so
+  // screen readers have a name for the dialog.
+  ariaLabelledBy?: string
+  ariaLabel?: string
 }
 
 const sizeClasses = {
@@ -55,6 +60,8 @@ export function Modal({
   size = 'md',
   noPadding = false,
   scrollable = false,
+  ariaLabelledBy,
+  ariaLabel,
 }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
@@ -74,17 +81,21 @@ export function Modal({
   const hasCustomHeader = header !== undefined
   const hasSimpleTitle = !hasCustomHeader && title !== undefined
 
+  const resolvedLabelledBy = ariaLabelledBy ?? (hasSimpleTitle ? 'modal-title' : undefined)
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={hasSimpleTitle ? 'modal-title' : undefined}
+      aria-labelledby={resolvedLabelledBy}
+      aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
     >
       {/* Backdrop */}
       <div
         data-testid="modal-backdrop"
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 backdrop-blur"
+        style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -92,7 +103,11 @@ export function Modal({
       {/* Modal content */}
       <div
         data-testid="modal-content"
-        className={`bg-card border-border relative overflow-hidden rounded-xl border shadow-xl ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
+        className={`bg-card border-border relative overflow-hidden rounded-2xl border ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
+        style={{
+          boxShadow:
+            '0 24px 60px -24px rgba(7, 20, 14, 0.35), 0 8px 24px -12px rgba(7, 20, 14, 0.18)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Custom header mode - header spans full width, close button floats on top */}
@@ -101,7 +116,7 @@ export function Modal({
             {header}
             <button
               onClick={onClose}
-              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 rounded-lg p-2 transition-colors hover:bg-black/10"
+              className="text-muted-foreground hover:text-foreground absolute top-4 right-4 rounded-lg p-2 transition-colors hover:bg-black/10"
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />

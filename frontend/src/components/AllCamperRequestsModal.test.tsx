@@ -1,16 +1,31 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 
 // Fixture arrays mutated per-test
 let bunkRequestsFixture: Array<Record<string, unknown>> = []
 let personsFixture: Array<Record<string, unknown>> = []
+const updateMock = vi.fn()
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
+vi.mock('react-hot-toast', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    error: (...args: unknown[]) => toastErrorMock(...args),
+  },
+  default: Object.assign(vi.fn(), {
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    error: (...args: unknown[]) => toastErrorMock(...args),
+  }),
+}))
 
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     collection: (name: string) => ({
       getFullList: () => Promise.resolve(name === 'persons' ? personsFixture : bunkRequestsFixture),
+      update: (...args: unknown[]) => updateMock(...args),
     }),
   },
 }))
@@ -29,6 +44,10 @@ vi.mock('react-router', () => ({
 beforeEach(() => {
   bunkRequestsFixture = []
   personsFixture = []
+  updateMock.mockReset()
+  updateMock.mockResolvedValue({})
+  toastSuccessMock.mockReset()
+  toastErrorMock.mockReset()
 })
 
 function renderModal(overrides: Partial<React.ComponentProps<typeof AllCamperRequestsModal>> = {}) {
@@ -223,5 +242,201 @@ describe('AllCamperRequestsModal cards', () => {
     // use the <strong> element which is the age preference target display.
     const ageCard = screen.getByText('older', { selector: 'strong' })
     expect(divider.compareDocumentPosition(ageCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('AllCamperRequestsModal framing (no read-only language)', () => {
+  it('does not mention "read-only" anywhere', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'req1',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'pending',
+        priority: 4,
+        confidence_score: 0.98,
+        source_field: 'bunk_with',
+        source_fragment: 'Liam Garcia',
+        parse_notes: 'n',
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    const { container } = renderModal()
+    await screen.findByRole('button', { name: /^approve$/i })
+    expect(container.textContent?.toLowerCase()).not.toContain('read-only')
+    expect(container.textContent?.toLowerCase()).not.toContain('read only')
+    expect(container.textContent?.toLowerCase()).not.toContain('use the main table to take actions')
+  })
+})
+
+describe('AllCamperRequestsModal inline actions', () => {
+  const pendingBunkWith = {
+    id: 'req1',
+    request_type: 'bunk_with',
+    requestee_id: 1000002,
+    requested_person_name: 'Liam Garcia',
+    status: 'pending',
+    priority: 4,
+    confidence_score: 0.98,
+    source_field: 'bunk_with',
+    source_fragment: 'Liam Garcia',
+    parse_notes: 'n',
+    is_reciprocal: false,
+    year: 2026,
+  }
+
+  it('renders an Approve button per card', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    expect(await screen.findByRole('button', { name: /^approve$/i })).toBeTruthy()
+  })
+
+  it('renders a Decline button per card', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    expect(await screen.findByRole('button', { name: /^decline$/i })).toBeTruthy()
+  })
+
+  it('clicking Approve opens a confirmation popover', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^approve$/i }))
+    expect(screen.getByText(/approve this request\?/i)).toBeTruthy()
+  })
+
+  it('confirming Approve calls pb.update with status=resolved and request_locked=true', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^approve$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }))
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith('req1', {
+        status: 'resolved',
+        request_locked: true,
+      })
+    )
+  })
+
+  it('confirming Decline calls pb.update with status=declined and request_locked=false', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^decline$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }))
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith('req1', {
+        status: 'declined',
+        request_locked: false,
+      })
+    )
+  })
+
+  it('shows a success toast and closes the popover after successful approve', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^approve$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }))
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByText(/approve this request\?/i)).toBeNull())
+  })
+
+  it('shows an error toast and keeps the popover open when the mutation fails', async () => {
+    updateMock.mockReset()
+    updateMock.mockRejectedValue(new Error('network down'))
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^approve$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }))
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalled())
+    // Popover should still be visible so the user can retry or cancel.
+    expect(screen.getByText(/approve this request\?/i)).toBeTruthy()
+  })
+})
+
+describe('AllCamperRequestsModal status counts', () => {
+  it('renders accurate resolved/pending/declined counts in the header', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'r1',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+      {
+        id: 'r2',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+      {
+        id: 'r3',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'pending',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+      {
+        id: 'r4',
+        request_type: 'not_bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'declined',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    // Scope to the header counts row (identified by the "4 requests" label)
+    // so we don't match status words that also appear on card pills.
+    const countsRow = (await screen.findByText(/4 requests/i)).parentElement!
+    expect(countsRow.textContent).toMatch(/2\s+resolved/)
+    expect(countsRow.textContent).toMatch(/1\s+pending/)
+    expect(countsRow.textContent).toMatch(/1\s+declined/)
+  })
+})
+
+describe('AllCamperRequestsModal accessibility', () => {
+  it('labels the dialog with the rendered heading via aria-labelledby', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'r1',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'pending',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    const dialog = await screen.findByRole('dialog')
+    const labelledBy = dialog.getAttribute('aria-labelledby')
+    expect(labelledBy).toBeTruthy()
+    const labelEl = document.getElementById(labelledBy!)
+    expect(labelEl).not.toBeNull()
+    expect(labelEl!.textContent).toMatch(/Emma Johnson/)
   })
 })

@@ -213,7 +213,7 @@ describe('CamperRequestSummary', () => {
     expect(badges).toHaveLength(1)
   })
 
-  it('shows a "View all" button that opens the modal', async () => {
+  it('shows a "Manage this camper\'s requests" button that opens the modal', async () => {
     mockFetch()
     render(
       <CamperRequestSummary
@@ -223,7 +223,7 @@ describe('CamperRequestSummary', () => {
         requesterName="Emma Johnson"
       />
     )
-    const btn = await screen.findByRole('button', { name: /view all/i })
+    const btn = await screen.findByRole('button', { name: /manage this camper's requests/i })
     fireEvent.click(btn)
     expect(await screen.findByRole('dialog')).toBeTruthy()
   })

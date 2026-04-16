@@ -156,4 +156,13 @@ describe('ConfirmActionPopover', () => {
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(cancelBtn)
   })
+
+  it('calls onCancel when a scroll event fires anywhere in the document', () => {
+    const onCancel = vi.fn()
+    render(<ConfirmActionPopover {...defaultProps} onCancel={onCancel} />)
+
+    // Scroll would desync the popover from its captured anchor; dismiss instead.
+    fireEvent.scroll(document, {})
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
 })
