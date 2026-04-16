@@ -272,3 +272,32 @@ describe('confidence constants', () => {
     expect(CONFIDENCE_RESOLVED).toBeGreaterThan(CONFIDENCE_WARNING)
   })
 })
+
+describe('self_referential disposition reason (issue #941)', () => {
+  it('classifies self_referential as a PENDING (triage) reason', () => {
+    expect(PENDING_REASONS.has('self_referential')).toBe(true)
+    expect(RESOLVED_REASONS.has('self_referential')).toBe(false)
+    expect(DECLINED_REASONS.has('self_referential')).toBe(false)
+  })
+
+  it('uses amber/warning badge classes for self_referential', () => {
+    expect(getDispositionClasses('self_referential')).toBe(
+      'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+    )
+  })
+
+  it('has a friendly display name (not a raw underscore-replaced fallback)', () => {
+    const display = formatDispositionReason('self_referential')
+    expect(display).not.toBe('self referential')
+    expect(display.length).toBeGreaterThan(0)
+  })
+
+  it('shows the reason line in the Status cell for PENDING rows', () => {
+    expect(shouldShowReasonInStatus('pending', 'self_referential')).toBe(true)
+    expect(shouldShowReasonInStatus('PENDING', 'self_referential')).toBe(true)
+  })
+
+  it('has pending sort rank', () => {
+    expect(getDispositionSortRank('self_referential')).toBe(1)
+  })
+})

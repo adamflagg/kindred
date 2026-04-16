@@ -369,5 +369,117 @@ class TestFirstNameAmbiguityHandling:
         assert validated_requests[0].metadata.get("requires_clarification") is True
 
 
+class TestSelfReferentialSurfacedViaDispositionReason:
+    """Tests that self-referential requests surface in the existing Status column
+    via `disposition_reason`, since `manual_review_reason` is written but never
+    rendered in the frontend (issue #941).
+
+    Option 1 from the issue: fold the self-referential signal into
+    `disposition_reason` so staff see it in the Status column they already use.
+    """
+
+    @pytest.mark.asyncio
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
+    async def test_self_referential_sets_disposition_reason(self, mock_social_graph, mock_factory):
+        """Self-referential requests should have disposition_reason='self_referential'
+        so the Status column surfaces the flag to staff.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        mock_factory.return_value.create.return_value = Mock()
+        mock_social_graph_instance = Mock()
+        mock_social_graph_instance.initialize = AsyncMock()
+        mock_social_graph.return_value = mock_social_graph_instance
+
+        pb = _create_mock_pocketbase()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025)
+
+        requests = [
+            _create_bunk_request(
+                requester_cm_id=100,
+                requested_cm_id=100,  # Self-ref
+                # Pre-populate a prior disposition_reason to prove it gets overridden
+            ),
+        ]
+        requests[0].disposition_reason = "exact_match"
+
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
+
+        assert len(validated_requests) == 1
+        assert validated_requests[0].disposition_reason == "self_referential", (
+            "Self-referential requests should set disposition_reason='self_referential' "
+            "so the frontend Status column surfaces the flag"
+        )
+
+    @pytest.mark.asyncio
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
+    async def test_self_referential_forces_pending_status(self, mock_social_graph, mock_factory):
+        """Self-referential requests must not remain RESOLVED — they need staff
+        review, so status is forced to PENDING along with the disposition_reason.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        mock_factory.return_value.create.return_value = Mock()
+        mock_social_graph_instance = Mock()
+        mock_social_graph_instance.initialize = AsyncMock()
+        mock_social_graph.return_value = mock_social_graph_instance
+
+        pb = _create_mock_pocketbase()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025)
+
+        requests = [
+            _create_bunk_request(
+                requester_cm_id=100,
+                requested_cm_id=100,  # Self-ref
+            ),
+        ]
+        # Pretend the builder had already marked it RESOLVED before self-ref was detected
+        requests[0].status = RequestStatus.RESOLVED
+
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
+
+        assert len(validated_requests) == 1
+        assert validated_requests[0].status == RequestStatus.PENDING, (
+            "Self-referential requests should be forced to PENDING so staff review them"
+        )
+
+    @pytest.mark.asyncio
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
+    async def test_non_self_referential_disposition_reason_unchanged(self, mock_social_graph, mock_factory):
+        """Requests that are NOT self-referential must keep their existing
+        disposition_reason — the override only applies to self-ref rows.
+        """
+        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+            RequestOrchestrator,
+        )
+
+        mock_factory.return_value.create.return_value = Mock()
+        mock_social_graph_instance = Mock()
+        mock_social_graph_instance.initialize = AsyncMock()
+        mock_social_graph.return_value = mock_social_graph_instance
+
+        pb = _create_mock_pocketbase()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025)
+
+        requests = [
+            _create_bunk_request(requester_cm_id=100, requested_cm_id=200),
+        ]
+        requests[0].disposition_reason = "exact_match"
+
+        validated_requests, _ = orchestrator._apply_validation_pipeline(requests)
+
+        assert len(validated_requests) == 1
+        assert validated_requests[0].disposition_reason == "exact_match", (
+            "Non-self-referential requests should keep their original disposition_reason"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

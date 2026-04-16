@@ -2390,6 +2390,13 @@ class RequestOrchestrator:
                 request.metadata["ambiguity_reason"] = "Self-referential request detected"
                 request.metadata["manual_review_reason"] = "Self-referential request"
 
+                # Surface the self-ref flag in the existing Status column (#941).
+                # The `manual_review_reason` metadata field is persisted but not
+                # rendered anywhere in the frontend, so also overwrite the
+                # promoted `disposition_reason`/`status` fields that are.
+                request.status = RequestStatus.PENDING
+                request.disposition_reason = "self_referential"
+
                 logger.warning(
                     f"Self-referential request detected (kept for review): "
                     f"{request.requester_cm_id} -> original target cleared"
