@@ -101,20 +101,16 @@ function renderPanel() {
 describe('RequestReviewPanel Status cell reason line', () => {
   beforeEach(() => {
     localStorage.clear()
-    vi.clearAllMocks()
   })
 
   it('resolved rows show only the status chip, no reason line', async () => {
     renderPanel()
     // Both the desktop row and mobile card render the badge — 2 matches.
     await waitFor(() => expect(screen.getAllByText('Resolved').length).toBeGreaterThan(0))
-    // The reason-line span is only emitted with text-[11px] styling. The legend uses
-    // text-[10px] font-semibold. Confirm no muted 11px reason line is emitted for
-    // the resolved row.
-    const reasonLines = Array.from(document.querySelectorAll('span.text-muted-foreground'))
+    const matchedReasonLines = screen
+      .queryAllByTestId('status-reason-line')
       .filter((el) => /matched/i.test(el.textContent ?? ''))
-      .filter((el) => el.className.includes('text-[11px]'))
-    expect(reasonLines.length).toBe(0)
+    expect(matchedReasonLines.length).toBe(0)
   })
 
   it('declined rows show the reason line under the chip', async () => {
@@ -128,21 +124,11 @@ describe('RequestReviewPanel Status cell reason line', () => {
     renderPanel()
     // 2 pending rows × (desktop + mobile) = 4 Pending chips in DOM.
     await waitFor(() => expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(2))
-    // "Waitlisted" appears as a reason line under the Pending chip (triage row).
-    const waitlistedReasonLines = Array.from(
-      document.querySelectorAll('span.text-muted-foreground')
-    )
-      .filter((el) => /waitlisted/i.test(el.textContent ?? ''))
-      .filter((el) => el.className.includes('text-[11px]'))
-    expect(waitlistedReasonLines.length).toBeGreaterThan(0)
-    // The plain pending row has no reason — no reason line should render with text
-    // matching "needs review" (legend uses text-[10px], not text-[11px]).
-    const needsReviewReasonLines = Array.from(
-      document.querySelectorAll('span.text-muted-foreground')
-    )
-      .filter((el) => /needs review/i.test(el.textContent ?? ''))
-      .filter((el) => el.className.includes('text-[11px]'))
-    expect(needsReviewReasonLines.length).toBe(0)
+    const reasonLines = screen.queryAllByTestId('status-reason-line')
+    expect(
+      reasonLines.filter((el) => /waitlisted/i.test(el.textContent ?? '')).length
+    ).toBeGreaterThan(0)
+    expect(reasonLines.filter((el) => /needs review/i.test(el.textContent ?? '')).length).toBe(0)
   })
 
   it('no row renders a standalone Disposition column cell', async () => {

@@ -1153,7 +1153,7 @@ export default function RequestReviewPanel({
                                   }
                                   handleValidatedUpdate(request, updates)
                                 }}
-                                disabled={request.request_locked || false}
+                                disabled={request.request_locked}
                               />
                             </div>
                           </div>
@@ -1175,7 +1175,10 @@ export default function RequestReviewPanel({
                                 request.status,
                                 request.disposition_reason
                               ) && (
-                                <span className="text-muted-foreground max-w-[8rem] truncate text-right text-[11px]">
+                                <span
+                                  data-testid="status-reason-line"
+                                  className="text-muted-foreground max-w-[8rem] truncate text-right text-[11px]"
+                                >
                                   {formatReason(request.disposition_reason)}
                                 </span>
                               )}
@@ -1209,7 +1212,7 @@ export default function RequestReviewPanel({
                                 }
                                 handleValidatedUpdate(request, pbUpdates)
                               }}
-                              disabled={request.request_locked || false}
+                              disabled={request.request_locked}
                               originalText={request.original_text}
                               requestedPersonName={request.requested_person_name}
                               parseNotes={request.parse_notes}
@@ -1401,7 +1404,7 @@ export default function RequestReviewPanel({
                                 }
                                 handleValidatedUpdate(request, updates)
                               }}
-                              disabled={request.request_locked || false}
+                              disabled={request.request_locked}
                             />
                           </div>
                           <div
@@ -1434,7 +1437,7 @@ export default function RequestReviewPanel({
                                 }
                                 handleValidatedUpdate(request, pbUpdates)
                               }}
-                              disabled={request.request_locked || false}
+                              disabled={request.request_locked}
                               originalText={request.original_text}
                               requestedPersonName={request.requested_person_name}
                               parseNotes={request.parse_notes}
@@ -1486,7 +1489,10 @@ export default function RequestReviewPanel({
                               request.status,
                               request.disposition_reason
                             ) && (
-                              <span className="text-muted-foreground max-w-full truncate text-[11px]">
+                              <span
+                                data-testid="status-reason-line"
+                                className="text-muted-foreground max-w-full truncate text-[11px]"
+                              >
                                 {formatReason(request.disposition_reason)}
                               </span>
                             )}
