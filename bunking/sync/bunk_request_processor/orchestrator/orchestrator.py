@@ -75,6 +75,7 @@ from ..social.adapters import SocialGraphSignalsAdapter
 from ..social.social_graph import SocialGraph
 from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
+from .reconciliation import log_obr_reconciliation
 
 logger = get_logger(__name__)
 
@@ -281,7 +282,15 @@ class RequestOrchestrator:
             "duplicates_removed": 0,
             "reciprocal_pairs": 0,
             "no_preference_skipped": 0,
+            "no_preference_only": 0,  # #943: subset of no_preference_skipped from BUNK_WITH only
+            "na_only": 0,  # #943: "N/A" sole-content rows (distinct from na_prefix_stripped)
             "na_prefix_stripped": 0,
+            # #943: top-level OBR -> BR reconciliation counters
+            "obr_input": 0,
+            "skipped_empty_field": 0,
+            "ai_parse_requests": 0,
+            "direct_mapped": 0,
+            "pre_dedup_requests": 0,
             "hallucination_rejected": 0,
             "unit_name_rejected": 0,
             "status_resolved": 0,
@@ -946,6 +955,9 @@ class RequestOrchestrator:
             Processing results with statistics
         """
         logger.info(f"Starting three-phase processing for {len(raw_requests)} requests")
+
+        # #943: capture OBR input count for the end-of-pipeline reconciliation log
+        self._stats["obr_input"] = len(raw_requests)
 
         # First pass: detect staff names from all records BEFORE processing
         # This builds a global set for filtering during resolution
@@ -1660,6 +1672,10 @@ class RequestOrchestrator:
                 f"manual_review={self._stats['ai_manual_review']}"
             )
 
+        # #943: emit a single top-level OBR -> BR reconciliation line so the
+        # full pipeline math is verifiable from the log alone.
+        log_obr_reconciliation(self._stats)
+
         # Log cache statistics if monitor is available
         if self.cache_monitor:
             self.cache_monitor.log_statistics()
@@ -1794,6 +1810,7 @@ class RequestOrchestrator:
                     # Check for "no preference" indicators before processing
                     if self._is_no_preference(request_text):
                         self._stats["no_preference_skipped"] += 1
+                        self._stats["no_preference_only"] += 1  # #943: split out NA-only
                         if trace_key:
                             self.trace_collector.record_pre_phase1(
                                 key=trace_key,
@@ -1819,6 +1836,7 @@ class RequestOrchestrator:
                     elif re.match(r"^n/?a[\s\W]*$", request_text, re.IGNORECASE):
                         # N/A with only punctuation/whitespace after (e.g., "N/A -", "NA.")
                         self._stats["no_preference_skipped"] += 1
+                        self._stats["na_only"] += 1  # #943: split out from no_preference
                         if trace_key:
                             self.trace_collector.record_pre_phase1(
                                 key=trace_key,
@@ -1998,6 +2016,11 @@ class RequestOrchestrator:
             f"parse_requests={len(parse_requests)}, "
             f"pre_parsed={len(pre_parsed_results)}"
         )
+
+        # #943: capture top-level reconciliation counters for the end-of-pipeline log
+        self._stats["skipped_empty_field"] = skipped_no_text
+        self._stats["ai_parse_requests"] = len(parse_requests)
+        self._stats["direct_mapped"] = len(pre_parsed_results)
 
         return parse_requests, pre_parsed_results
 
@@ -2184,6 +2207,9 @@ class RequestOrchestrator:
         """
         # Build BunkRequest objects using the request builder
         pending_requests = self.request_builder.build_requests(resolved_requests)
+
+        # #943: capture pre-dedup count for the end-of-pipeline reconciliation log
+        self._stats["pre_dedup_requests"] = len(pending_requests)
 
         # Apply validation pipeline to all requests
         deduped_keys: set[tuple[int, int | None, str]] = set()
