@@ -196,6 +196,7 @@ describe('AllCamperRequestsModal cards', () => {
     // DOM order: bunk_with type chip ("Bunk with") → divider span ("Age preference") → age_preference card with text "older"
     // The divider span is the FIRST "Age preference" span; the type chip on the age card is the SECOND.
     const allAgePrefSpans = await screen.findAllByText('Age preference', { selector: 'span' })
+    expect(allAgePrefSpans.length).toBeGreaterThanOrEqual(1)
     const divider = allAgePrefSpans[0]!
     // 'older' appears both in the age_preference_target <strong> and in source_fragment blockquote;
     // use the <strong> element which is the age preference target display.

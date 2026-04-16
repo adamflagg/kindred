@@ -1326,6 +1326,11 @@ export default function RequestReviewPanel({
                                 requesterCmId={request.requester_id}
                                 year={year}
                                 currentRequestId={request.id}
+                                requesterName={
+                                  requester
+                                    ? `${requester.first_name} ${requester.last_name}`.trim()
+                                    : undefined
+                                }
                               />
                             </div>
                           </div>
@@ -1729,6 +1734,11 @@ export default function RequestReviewPanel({
                                   requesterCmId={request.requester_id}
                                   year={year}
                                   currentRequestId={request.id}
+                                  requesterName={
+                                    requester
+                                      ? `${requester.first_name} ${requester.last_name}`.trim()
+                                      : undefined
+                                  }
                                 />
                               </div>
                             </div>

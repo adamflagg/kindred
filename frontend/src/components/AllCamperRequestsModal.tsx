@@ -35,9 +35,11 @@ function statusBadgeClass(status: string): string {
 function RequestCard({
   request,
   targetName,
+  isCurrent = false,
 }: {
   request: BunkRequestsResponse
   targetName: string | null
+  isCurrent?: boolean
 }) {
   const isBunk = request.request_type === 'bunk_with'
   const isNot = request.request_type === 'not_bunk_with'
@@ -53,7 +55,9 @@ function RequestCard({
   const hasResolvedTarget = !!(request.requestee_id && request.requestee_id > 0 && targetName)
 
   return (
-    <article className="border-border bg-card overflow-hidden rounded-xl border">
+    <article
+      className={`border-border bg-card overflow-hidden rounded-xl border${isCurrent ? 'ring-forest-500 dark:ring-forest-400 ring-2' : ''}`}
+    >
       <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${typeChipClass}`}
@@ -76,6 +80,11 @@ function RequestCard({
             </span>
           )}
           {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
+          {isCurrent && (
+            <span className="bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+              Viewing
+            </span>
+          )}
         </span>
         <span
           className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusBadgeClass(request.status)}`}
@@ -136,6 +145,7 @@ export function AllCamperRequestsModal({
   requesterCmId,
   requesterName,
   year,
+  currentRequestId,
 }: AllCamperRequestsModalProps) {
   const { user } = useAuth()
 
@@ -151,6 +161,7 @@ export function AllCamperRequestsModal({
         sort: '-priority,request_type',
       }),
     enabled: isOpen && !!user && requesterCmId > 0,
+    staleTime: 30_000,
   })
 
   const requesteeIds = useMemo(() => {
@@ -189,10 +200,21 @@ export function AllCamperRequestsModal({
   const agePref = requests.find((r) => r.request_type === 'age_preference')
   const isEmpty = !isLoading && !isError && nonAge.length === 0 && !agePref
 
+  const campMinderUrl = `https://system.campminder.com/ui/person/Record#${requesterCmId}:${year}`
+
   const header = (
     <div>
-      <div className="text-forest-600 font-mono text-[10.5px] font-medium tracking-[0.16em] uppercase">
+      <div className="text-forest-600 flex items-center gap-3 font-mono text-[10.5px] font-medium tracking-[0.16em] uppercase">
         All requests · read-only
+        <a
+          href={campMinderUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-foreground tracking-normal normal-case"
+          title="Open in CampMinder"
+        >
+          CampMinder ↗
+        </a>
       </div>
       <h2 className="font-display text-foreground mt-1 text-2xl font-semibold tracking-tight">
         Requests from <em className="text-forest-600 not-italic">{requesterName}</em>
@@ -227,7 +249,14 @@ export function AllCamperRequestsModal({
               const targetName = target
                 ? `${target.first_name} ${target.last_name}`
                 : (req.requested_person_name ?? null)
-              return <RequestCard key={req.id} request={req} targetName={targetName} />
+              return (
+                <RequestCard
+                  key={req.id}
+                  request={req}
+                  targetName={targetName}
+                  isCurrent={req.id === currentRequestId}
+                />
+              )
             })}
             {agePref && (
               <>
@@ -238,7 +267,11 @@ export function AllCamperRequestsModal({
                     <span className="border-border/60 flex-1 border-t" />
                   </div>
                 )}
-                <RequestCard request={agePref} targetName={null} />
+                <RequestCard
+                  request={agePref}
+                  targetName={null}
+                  isCurrent={agePref.id === currentRequestId}
+                />
               </>
             )}
           </div>

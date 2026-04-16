@@ -13,9 +13,7 @@ interface CamperRequestSummaryProps {
   requesterCmId: number
   year: number
   currentRequestId: string
-  requesterName?: string
-  /** @deprecated No longer used; kept for backward compatibility with RequestReviewPanel. */
-  onSelect?: (requestId: string) => void
+  requesterName?: string | undefined
 }
 
 /**
