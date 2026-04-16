@@ -123,7 +123,7 @@ export const formatReason = formatDispositionReason
  * - Resolved rows: never (chip alone; mutual-match badge lives elsewhere).
  * - Declined rows: whenever a reason is present.
  * - Pending rows: only for triage reasons (needs_review, target_waitlisted,
- *   undirected_preference). Other pending rows stay chip-only.
+ *   undirected_preference, self_referential). Other pending rows stay chip-only.
  */
 export function shouldShowReasonInStatus(
   status: string,
