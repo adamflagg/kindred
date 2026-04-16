@@ -99,6 +99,15 @@ export interface SyncStatusResponse {
   _current_run?: CurrentRunProgress
 }
 
+// Sentinel returned on 401.  pb.afterSend fires synchronously and queues a redirect
+// to /login, so this value is never actually rendered by components — they get
+// unmounted by the navigation before consuming it.  The refetchInterval guard
+// (`if (!data) return false`) also prevents further polling.
+// The double-cast is deliberate: changing the return type to SyncStatusResponse|null
+// would require null-guards in every call-site (AppLayout, SyncTab, etc.); the
+// redirect-then-remount means those sites never see this value.
+const UNAUTHENTICATED_SENTINEL = {} as unknown as SyncStatusResponse
+
 export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
   const { isLoading } = useAuth()
   const outerEnabled = opts.enabled ?? true
@@ -115,7 +124,7 @@ export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
         // Swallow 401 silently — pb.afterSend already clears auth and redirects to /login.
         const status = (err as { status?: number } | null)?.status
         if (status === 401) {
-          return {} as unknown as SyncStatusResponse
+          return UNAUTHENTICATED_SENTINEL
         }
         throw err
       }

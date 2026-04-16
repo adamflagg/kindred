@@ -9,6 +9,8 @@
  * 2. Clickable requester name feature (opens CamperDetailsPanel)
  * 3. Filter and sort functionality
  */
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -1015,11 +1017,27 @@ describe('RequestReviewPanel', () => {
 
     describe('Task 9: Swap Type and Request columns (desktop)', () => {
       it('desktop header renders columns in order: Requester, Request, Type', () => {
-        // The desktop grid header order should be: Requester | Request | Type
-        // This test asserts the string ordering expectation (column swap from original Type | Request)
-        const columnOrder = ['Requester', 'Request', 'Type']
-        expect(columnOrder.indexOf('Request')).toBeLessThan(columnOrder.indexOf('Type'))
-        expect(columnOrder.indexOf('Requester')).toBeLessThan(columnOrder.indexOf('Request'))
+        // Read the component source to verify rendered column order in the sticky
+        // desktop header. Protects against future column-swap regressions without
+        // needing a full component mount.
+        const source = readFileSync(resolve(__dirname, 'RequestReviewPanel.tsx'), 'utf-8')
+        const headerStart = source.indexOf('Table Header - Desktop only')
+        expect(headerStart).toBeGreaterThan(-1)
+        const headerBlock = source.slice(headerStart, headerStart + 2500)
+
+        // Each sortable column has a handleSort call; use those as unique anchors.
+        const requesterIdx = headerBlock.indexOf("handleSort('requester')")
+        const requestIdx = headerBlock.indexOf("handleSort('request')")
+        const priorityIdx = headerBlock.indexOf("handleSort('priority')")
+
+        expect(requesterIdx).toBeGreaterThan(-1)
+        expect(requestIdx).toBeGreaterThan(-1)
+        expect(priorityIdx).toBeGreaterThan(-1)
+        // Requester comes before Request
+        expect(requesterIdx).toBeLessThan(requestIdx)
+        // Request comes before Priority; Type (unsortable) lives between them
+        expect(requestIdx).toBeLessThan(priorityIdx)
+        expect(headerBlock.slice(requestIdx, priorityIdx)).toContain('Type')
       })
     })
 
