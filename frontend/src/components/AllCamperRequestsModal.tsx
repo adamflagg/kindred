@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'react-hot-toast'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
 import Modal from './ui/Modal'
 import CamperLink from './CamperLink'
@@ -185,6 +186,7 @@ export function AllCamperRequestsModal({
 }: AllCamperRequestsModalProps) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const headingId = useId()
 
   const [confirmPopover, setConfirmPopover] = useState<{
     action: 'approve' | 'decline'
@@ -200,6 +202,11 @@ export function AllCamperRequestsModal({
         queryKey: queryKeys.camperRequestSummary(requesterCmId, year),
       })
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      toast.success('Request updated')
+      setConfirmPopover(null)
+    },
+    onError: () => {
+      toast.error('Failed to update request')
     },
   })
 
@@ -283,7 +290,7 @@ export function AllCamperRequestsModal({
 
   const header = (
     <div
-      className="border-border/60 border-b px-7 pt-[22px] pr-16 pb-[18px]"
+      className="border-border/60 border-b pt-[22px] pr-16 pb-[18px] pl-7"
       style={{
         backgroundImage:
           'radial-gradient(120% 160% at 0% 0%, color-mix(in oklch, var(--color-forest-50, oklch(97% 0.01 145)) 85%, transparent) 0%, transparent 60%)',
@@ -301,7 +308,10 @@ export function AllCamperRequestsModal({
           CampMinder ↗
         </a>
       </div>
-      <h2 className="font-display text-foreground mt-1 text-[26px] leading-tight font-semibold tracking-tight">
+      <h2
+        id={headingId}
+        className="font-display text-foreground mt-1 text-[26px] leading-tight font-semibold tracking-tight"
+      >
         Requests from{' '}
         <em className="text-forest-600 dark:text-forest-300 font-medium italic">{requesterName}</em>
       </h2>
@@ -342,6 +352,7 @@ export function AllCamperRequestsModal({
       size="xl"
       scrollable
       noPadding
+      ariaLabelledBy={headingId}
     >
       <div className="px-7 pt-5 pb-6">
         {isLoading && (
@@ -418,7 +429,6 @@ export function AllCamperRequestsModal({
                     request_locked: false,
                   },
           })
-          setConfirmPopover(null)
         }}
         onCancel={() => setConfirmPopover(null)}
       />

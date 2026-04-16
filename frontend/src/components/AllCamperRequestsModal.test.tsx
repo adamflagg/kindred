@@ -7,6 +7,19 @@ import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 let bunkRequestsFixture: Array<Record<string, unknown>> = []
 let personsFixture: Array<Record<string, unknown>> = []
 const updateMock = vi.fn()
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
+vi.mock('react-hot-toast', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    error: (...args: unknown[]) => toastErrorMock(...args),
+  },
+  default: Object.assign(vi.fn(), {
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    error: (...args: unknown[]) => toastErrorMock(...args),
+  }),
+}))
 
 vi.mock('../lib/pocketbase', () => ({
   pb: {
@@ -33,6 +46,8 @@ beforeEach(() => {
   personsFixture = []
   updateMock.mockReset()
   updateMock.mockResolvedValue({})
+  toastSuccessMock.mockReset()
+  toastErrorMock.mockReset()
 })
 
 function renderModal(overrides: Partial<React.ComponentProps<typeof AllCamperRequestsModal>> = {}) {
@@ -320,5 +335,108 @@ describe('AllCamperRequestsModal inline actions', () => {
         request_locked: false,
       })
     )
+  })
+
+  it('shows a success toast and closes the popover after successful approve', async () => {
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^approve$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }))
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByText(/approve this request\?/i)).toBeNull())
+  })
+
+  it('shows an error toast and keeps the popover open when the mutation fails', async () => {
+    updateMock.mockReset()
+    updateMock.mockRejectedValue(new Error('network down'))
+    bunkRequestsFixture = [pendingBunkWith]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: /^approve$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }))
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalled())
+    // Popover should still be visible so the user can retry or cancel.
+    expect(screen.getByText(/approve this request\?/i)).toBeTruthy()
+  })
+})
+
+describe('AllCamperRequestsModal status counts', () => {
+  it('renders accurate resolved/pending/declined counts in the header', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'r1',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+      {
+        id: 'r2',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+      {
+        id: 'r3',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'pending',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+      {
+        id: 'r4',
+        request_type: 'not_bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'declined',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    // Scope to the header counts row (identified by the "4 requests" label)
+    // so we don't match status words that also appear on card pills.
+    const countsRow = (await screen.findByText(/4 requests/i)).parentElement!
+    expect(countsRow.textContent).toMatch(/2\s+resolved/)
+    expect(countsRow.textContent).toMatch(/1\s+pending/)
+    expect(countsRow.textContent).toMatch(/1\s+declined/)
+  })
+})
+
+describe('AllCamperRequestsModal accessibility', () => {
+  it('labels the dialog with the rendered heading via aria-labelledby', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'r1',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'pending',
+        priority: 4,
+        confidence_score: 0.9,
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    const dialog = await screen.findByRole('dialog')
+    const labelledBy = dialog.getAttribute('aria-labelledby')
+    expect(labelledBy).toBeTruthy()
+    const labelEl = document.getElementById(labelledBy!)
+    expect(labelEl).not.toBeNull()
+    expect(labelEl!.textContent).toMatch(/Emma Johnson/)
   })
 })

@@ -12,6 +12,11 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl'
   noPadding?: boolean // Remove default padding for complex layouts
   scrollable?: boolean // Make content area scrollable
+  // Accessibility: callers using the custom `header` slot should thread
+  // either an id referencing the heading element, or a literal label, so
+  // screen readers have a name for the dialog.
+  ariaLabelledBy?: string
+  ariaLabel?: string
 }
 
 const sizeClasses = {
@@ -55,6 +60,8 @@ export function Modal({
   size = 'md',
   noPadding = false,
   scrollable = false,
+  ariaLabelledBy,
+  ariaLabel,
 }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
@@ -74,12 +81,15 @@ export function Modal({
   const hasCustomHeader = header !== undefined
   const hasSimpleTitle = !hasCustomHeader && title !== undefined
 
+  const resolvedLabelledBy = ariaLabelledBy ?? (hasSimpleTitle ? 'modal-title' : undefined)
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={hasSimpleTitle ? 'modal-title' : undefined}
+      aria-labelledby={resolvedLabelledBy}
+      aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
     >
       {/* Backdrop */}
       <div
