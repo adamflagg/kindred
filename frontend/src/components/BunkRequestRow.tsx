@@ -146,7 +146,13 @@ export function BunkRequestRow({
       </>
     )
     return (
-      <ClickableRow className={clsx(rowClass, 'text-muted-foreground text-xs')} onSelect={onSelect}>
+      <ClickableRow
+        className={clsx(
+          rowClass,
+          'text-muted-foreground text-xs ring-1 ring-amber-300/60 dark:ring-amber-700/40'
+        )}
+        onSelect={onSelect}
+      >
         {ageChildren}
       </ClickableRow>
     )

@@ -60,9 +60,7 @@ function RequestCard({
   const hasResolvedTarget = !!(request.requestee_id && request.requestee_id > 0 && targetName)
 
   return (
-    <article
-      className={`border-border bg-card overflow-hidden rounded-xl border ${isCurrent ? 'ring-forest-500 dark:ring-forest-400 ring-2' : ''}`}
-    >
+    <article className="border-border bg-card overflow-hidden rounded-xl border">
       <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${typeChipClass}`}
@@ -154,7 +152,7 @@ function RequestCard({
         </section>
         <section className="p-4">
           <h4 className="text-muted-foreground mb-2 font-mono text-[10.5px] font-medium tracking-[0.14em] uppercase">
-            Processing Notes
+            Processing Notes (AI Generated)
           </h4>
           <div className="text-foreground text-sm leading-relaxed">
             {request.parse_notes || <span className="text-muted-foreground italic">None.</span>}
