@@ -99,17 +99,26 @@ export interface SyncStatusResponse {
   _current_run?: CurrentRunProgress
 }
 
-export function useSyncStatusAPI() {
+export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
   const { isLoading } = useAuth()
+  const outerEnabled = opts.enabled ?? true
 
   return useQuery({
     queryKey: queryKeys.syncStatus(),
     queryFn: async (): Promise<SyncStatusResponse> => {
-      const response = await pb.send('/api/custom/sync/status', {
-        method: 'GET',
-      })
-
-      return response as SyncStatusResponse
+      try {
+        const response = await pb.send('/api/custom/sync/status', {
+          method: 'GET',
+        })
+        return response as SyncStatusResponse
+      } catch (err) {
+        // Swallow 401 silently — pb.afterSend already clears auth and redirects to /login.
+        const status = (err as { status?: number } | null)?.status
+        if (status === 401) {
+          return {} as unknown as SyncStatusResponse
+        }
+        throw err
+      }
     },
     // Poll every 3 seconds if running or queue has items, stop polling otherwise
     refetchInterval: (query) => {
@@ -140,6 +149,6 @@ export function useSyncStatusAPI() {
     },
     // Always refetch on window focus to get latest status
     refetchOnWindowFocus: true,
-    enabled: !isLoading,
+    enabled: !isLoading && outerEnabled,
   })
 }

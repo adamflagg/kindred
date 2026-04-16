@@ -13,11 +13,13 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }))
 
+// Mutable so individual tests can override permission behavior
+let mockPerms = {
+  hasPermission: (_p: string) => false,
+  isAdmin: false,
+}
 vi.mock('../hooks/usePermissions', () => ({
-  usePermissions: () => ({
-    hasPermission: () => false,
-    isAdmin: false,
-  }),
+  usePermissions: () => mockPerms,
 }))
 
 vi.mock('../hooks/useTour', () => ({
@@ -35,8 +37,10 @@ vi.mock('../contexts/ProgramContext', () => ({
   }),
 }))
 
+// Spy so tests can assert on what args AppLayout passes
+const syncStatusSpy = vi.fn((_opts?: unknown) => ({ data: null }))
 vi.mock('../hooks/useSyncStatusAPI', () => ({
-  useSyncStatusAPI: () => ({ data: null }),
+  useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({
@@ -105,6 +109,8 @@ function renderAppLayout() {
 describe('Program Switcher', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    syncStatusSpy.mockImplementation(() => ({ data: null }))
   })
 
   it('renders all program labels in the desktop dropdown', () => {
@@ -143,6 +149,8 @@ describe('Program Switcher', () => {
 describe('Help Menu', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    syncStatusSpy.mockImplementation(() => ({ data: null }))
   })
 
   it('renders the help button with ? icon', () => {
@@ -188,5 +196,29 @@ describe('Help Menu', () => {
 
     expect(screen.getByText('Report a Problem')).toBeInTheDocument()
     expect(screen.queryByText('Tour This Page')).not.toBeInTheDocument()
+  })
+})
+
+describe('AppLayout sync-status polling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    syncStatusSpy.mockImplementation(() => ({ data: null }))
+  })
+
+  it('passes enabled: false when user lacks bunking.manage', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    renderAppLayout()
+    const lastCall = syncStatusSpy.mock.calls.at(-1)
+    expect(lastCall?.[0]).toEqual({ enabled: false })
+  })
+
+  it('passes enabled: true when user has bunking.manage', () => {
+    mockPerms = {
+      hasPermission: (p: string) => p === 'bunking.manage',
+      isAdmin: false,
+    }
+    renderAppLayout()
+    const lastCall = syncStatusSpy.mock.calls.at(-1)
+    expect(lastCall?.[0]).toEqual({ enabled: true })
   })
 })

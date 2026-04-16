@@ -58,7 +58,8 @@ export const AppLayout = () => {
   const [isHelpMenuOpen, setIsHelpMenuOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const helpMenuRef = useRef<HTMLDivElement>(null)
-  const { data: syncStatus } = useSyncStatusAPI()
+  const canSeeSync = hasPermission(Permission.BUNKING_MANAGE)
+  const { data: syncStatus } = useSyncStatusAPI({ enabled: canSeeSync })
   const { tourId, replay } = useTour()
 
   // Determine current program from URL if not set
