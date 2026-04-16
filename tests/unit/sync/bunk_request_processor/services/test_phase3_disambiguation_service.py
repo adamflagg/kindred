@@ -1497,3 +1497,207 @@ class TestPhase3StatsMatchTrace:
             f"Both intents are resolved (Phase 2 win + reranker win), "
             f"expected successfully_disambiguated=2, got stats: {stats}"
         )
+
+    @pytest.mark.asyncio
+    async def test_batch_processor_exception_increments_failed_and_preserves_sum(self):
+        """When batch_processor.batch_disambiguate raises, every intent in every
+        case that entered Phase 3 must be classified as `failed`, and the sum of
+        outcome buckets must still equal the count of trace rows with ran=True.
+
+        Regression pin for the exception path — guards against future refactors
+        that might reorder `_build_final_results` / `_update_stats` or drop the
+        per-case error propagation in the except block.
+        """
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(side_effect=RuntimeError("AI provider down"))
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        # Two ambiguous ParseResults, each with one ambiguous intent.
+        candidates_a = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        candidates_b = [
+            _create_person(cm_id=333, first_name="Liam", last_name="Garcia"),
+            _create_person(cm_id=444, first_name="Liam", last_name="Chen"),
+        ]
+        ambiguous_a = _create_ambiguous_resolution(candidates=candidates_a)
+        ambiguous_b = _create_ambiguous_resolution(candidates=candidates_b)
+        parse_result_a = _create_parse_result()
+        parse_result_b = _create_parse_result()
+
+        await service.batch_disambiguate(
+            [
+                (parse_result_a, [ambiguous_a]),
+                (parse_result_b, [ambiguous_b]),
+            ]
+        )
+
+        stats = service.get_stats()
+
+        # Orchestrator trace: every intent in each ParseResult that entered
+        # Phase 3 has ran=True. Two ParseResults × one intent each = 2.
+        expected_ran_count = 2
+        stats_sum = (
+            stats["successfully_disambiguated"]
+            + stats["still_ambiguous"]
+            + stats["no_match"]
+            + stats["invalid_ai_output"]
+            + stats["failed"]
+        )
+        assert stats_sum == expected_ran_count, (
+            f"Stats sum ({stats_sum}) must equal count of trace ran=True rows ({expected_ran_count}). Stats: {stats}"
+        )
+        assert stats["failed"] == 2, (
+            f"Both intents should be classified as failed when the AI call raises, got stats: {stats}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_candidate_parse_result_counted_in_stats(self):
+        """A ParseResult whose only unresolved intent has zero candidates must
+        still be counted in `_stats`.
+
+        The orchestrator records ran=True for every intent in any ParseResult
+        with any unresolved intent (via `needs_phase3`, which doesn't check
+        candidates). If the service silently drops no-candidate ParseResults,
+        the stats sum undercounts vs. the trace.
+        """
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        batch_processor = Mock()
+        # No candidates anywhere -> batch_processor should not be called, but
+        # AsyncMock keeps it safe if the implementation changes.
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        # A ParseResult with one unresolved intent and zero candidates
+        # (e.g. name not found in CampMinder at all).
+        no_candidate_rr = _create_resolution_result(
+            person=None,
+            confidence=0.0,
+            method="no_match",
+            candidates=[],
+        )
+        parse_result = _create_parse_result()
+
+        await service.batch_disambiguate([(parse_result, [no_candidate_rr])])
+
+        stats = service.get_stats()
+
+        # Orchestrator trace: the single intent has ran=True.
+        expected_ran_count = 1
+        stats_sum = (
+            stats["successfully_disambiguated"]
+            + stats["still_ambiguous"]
+            + stats["no_match"]
+            + stats["invalid_ai_output"]
+            + stats["failed"]
+        )
+        assert stats_sum == expected_ran_count, (
+            f"Stats sum ({stats_sum}) must equal count of trace ran=True rows "
+            f"({expected_ran_count}). {expected_ran_count} rows in trace but only "
+            f"{stats_sum} in stats. Stats: {stats}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_candidate_mixed_with_ambiguous_case_all_counted(self):
+        """With a mix of no-candidate ParseResults and ambiguous ParseResults,
+        stats sum must still equal the count of trace rows with ran=True.
+        """
+        from bunking.sync.bunk_request_processor.integration.ai_types import ParsedResponse
+
+        ai_provider = Mock()
+        context_builder = Mock()
+        context_builder.build_disambiguation_context.return_value = _create_mock_context()
+
+        # Reranker success for the one ambiguous case the batch processor sees.
+        reranker_success = ParsedResponse(
+            requests=[
+                ParsedRequest(
+                    raw_text="Sarah Smith",
+                    request_type=RequestType.BUNK_WITH,
+                    target_name="Sarah Smith",
+                    age_preference=None,
+                    source_field="share_bunk_with",
+                    source=RequestSource.FAMILY,
+                    confidence=0.9,
+                    csv_position=0,
+                    metadata={
+                        "ranked_selections": [
+                            {"person_id": 111, "confidence": 0.95},
+                        ],
+                    },
+                )
+            ],
+            confidence=0.9,
+            metadata={},
+        )
+
+        batch_processor = Mock()
+        batch_processor.batch_disambiguate = AsyncMock(return_value=[reranker_success])
+
+        service = Phase3DisambiguationService(
+            ai_provider=ai_provider,
+            context_builder=context_builder,
+            batch_processor=batch_processor,
+        )
+
+        # Case 1: no candidates (unresolved, nothing to disambiguate).
+        no_candidate_rr = _create_resolution_result(
+            person=None,
+            confidence=0.0,
+            method="no_match",
+            candidates=[],
+        )
+        parse_result_nc = _create_parse_result()
+
+        # Case 2: an ambiguous case the reranker will resolve.
+        ambiguous_candidates = [
+            _create_person(cm_id=111, first_name="Sarah", last_name="Smith"),
+            _create_person(cm_id=222, first_name="Sarah", last_name="Jones"),
+        ]
+        ambiguous = _create_ambiguous_resolution(candidates=ambiguous_candidates)
+        ambiguous.target_name = "Sarah Smith"
+        parse_result_amb = _create_parse_result()
+
+        await service.batch_disambiguate(
+            [
+                (parse_result_nc, [no_candidate_rr]),
+                (parse_result_amb, [ambiguous]),
+            ]
+        )
+
+        stats = service.get_stats()
+
+        # Two intents total; both have ran=True in the trace.
+        expected_ran_count = 2
+        stats_sum = (
+            stats["successfully_disambiguated"]
+            + stats["still_ambiguous"]
+            + stats["no_match"]
+            + stats["invalid_ai_output"]
+            + stats["failed"]
+        )
+        assert stats_sum == expected_ran_count, (
+            f"Stats sum ({stats_sum}) must equal count of trace ran=True rows ({expected_ran_count}). Stats: {stats}"
+        )
+        # Reranker success on the ambiguous case.
+        assert stats["successfully_disambiguated"] == 1, stats
+        # No-candidate intent should land in no_match (nothing to match against).
+        assert stats["no_match"] == 1, stats
