@@ -20,7 +20,7 @@ export function useSessionCamperPersons(
     queryKey: queryKeys.sessionCampers(sessionId, year),
     queryFn: async () => {
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `session_id = ${sessionId} && year = ${year} && status = "enrolled"`,
+        filter: `session.cm_id = ${sessionId} && year = ${year} && status = "enrolled"`,
         expand: 'person',
       })
 
