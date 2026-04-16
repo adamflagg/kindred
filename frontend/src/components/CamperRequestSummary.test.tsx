@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '../test/testUtils'
-import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor, fireEvent } from '../test/testUtils'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 
 // Mock pocketbase
@@ -19,6 +18,22 @@ vi.mock('../contexts/AuthContext', () => ({
     user: { id: 'test-user', email: 'test@example.com' },
     isLoading: false,
   }),
+}))
+
+// Mock AllCamperRequestsModal so it renders a dialog when open
+vi.mock('./AllCamperRequestsModal', () => ({
+  AllCamperRequestsModal: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="All requests">
+        <button onClick={onClose}>Close modal</button>
+      </div>
+    ) : null,
+  default: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="All requests">
+        <button onClick={onClose}>Close modal</button>
+      </div>
+    ) : null,
 }))
 
 const { CamperRequestSummary } = await import('./CamperRequestSummary')
@@ -198,35 +213,18 @@ describe('CamperRequestSummary', () => {
     expect(badges).toHaveLength(1)
   })
 
-  it('calls onSelect with the clicked row id for a non-current row', async () => {
+  it('shows a "View all" button that opens the modal', async () => {
     mockFetch()
-    const onSelect = vi.fn()
     render(
       <CamperRequestSummary
         requesterCmId={100}
         year={2025}
         currentRequestId="req1"
-        onSelect={onSelect}
+        requesterName="Emma Johnson"
       />
     )
-    const otherRow = await screen.findByRole('button', { name: /Liam Garcia/ })
-    await userEvent.click(otherRow)
-    expect(onSelect).toHaveBeenCalledWith('req2')
-  })
-
-  it('does not wire onSelect on the current row', async () => {
-    mockFetch()
-    const onSelect = vi.fn()
-    render(
-      <CamperRequestSummary
-        requesterCmId={100}
-        year={2025}
-        currentRequestId="req1"
-        onSelect={onSelect}
-      />
-    )
-    const currentText = await screen.findByText('Olivia Chen')
-    const clickable = currentText.closest('button')
-    expect(clickable).toBeNull()
+    const btn = await screen.findByRole('button', { name: /view all/i })
+    fireEvent.click(btn)
+    expect(await screen.findByRole('dialog')).toBeTruthy()
   })
 })
