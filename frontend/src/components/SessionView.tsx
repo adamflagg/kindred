@@ -333,29 +333,23 @@ export default function SessionView() {
           />
         </Activity>
 
-        {/* Requests Tab - preserves selection/review state (manage permission required) */}
+        {/* Requests Tab - preserves selection/review state */}
         <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
-          {canManage ? (
-            selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-              <RequestReviewPanel
-                sessionId={parseInt(selectedSession, 10)}
-                relatedSessionIds={
-                  selectedSession === session.cm_id.toString()
-                    ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
-                    : []
-                }
-                year={currentYear}
-                sessionName={
-                  allSessionsForLookup.find((s) => s.cm_id === parseInt(selectedSession, 10))?.name
-                }
-              />
-            ) : (
-              <div className="text-muted-foreground text-center">Loading session data...</div>
-            )
+          {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
+            <RequestReviewPanel
+              sessionId={parseInt(selectedSession, 10)}
+              relatedSessionIds={
+                selectedSession === session.cm_id.toString()
+                  ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
+                  : []
+              }
+              year={currentYear}
+              sessionName={
+                allSessionsForLookup.find((s) => s.cm_id === parseInt(selectedSession, 10))?.name
+              }
+            />
           ) : (
-            <div className="text-muted-foreground py-12 text-center">
-              You need the bunking manage permission to view requests.
-            </div>
+            <div className="text-muted-foreground text-center">Loading session data...</div>
           )}
         </Activity>
 
