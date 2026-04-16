@@ -1605,7 +1605,7 @@ export default function RequestReviewPanel({
                                                 </p>
                                                 <p className="text-muted-foreground bg-muted/50 mt-1.5 rounded px-2 py-1 text-xs">
                                                   <span className="font-medium">
-                                                    Processing Notes:
+                                                    Processing Notes (AI Generated):
                                                   </span>{' '}
                                                   {source.parse_notes?.trim() ? (
                                                     source.parse_notes
@@ -1692,7 +1692,7 @@ export default function RequestReviewPanel({
                                     {/* Processing Notes - always show for single source */}
                                     <div>
                                       <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                        Processing Notes
+                                        Processing Notes (AI Generated)
                                       </h4>
                                       <p className="text-muted-foreground text-sm">
                                         {request.parse_notes || (
