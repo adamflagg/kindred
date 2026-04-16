@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle, ArrowRight } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { BunkRequestRow } from './BunkRequestRow'
+import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { queryKeys } from '../utils/queryKeys'
 import { CURRENT_REQUEST_BADGE_CLASSES } from '../utils/dispositionColors'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
@@ -12,7 +13,8 @@ interface CamperRequestSummaryProps {
   requesterCmId: number
   year: number
   currentRequestId: string
-  /** When provided, non-current rows become clickable and fire this callback with their id. */
+  requesterName?: string
+  /** @deprecated No longer used; kept for backward compatibility with RequestReviewPanel. */
   onSelect?: (requestId: string) => void
 }
 
@@ -26,9 +28,10 @@ export function CamperRequestSummary({
   requesterCmId,
   year,
   currentRequestId,
-  onSelect,
+  requesterName,
 }: CamperRequestSummaryProps) {
   const { user } = useAuth()
+  const [modalOpen, setModalOpen] = useState(false)
 
   const {
     data: requests = [],
@@ -108,9 +111,21 @@ export function CamperRequestSummary({
 
   return (
     <div className="space-y-1">
-      <div className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">
-        Requests from this camper
+      <div className="mb-1 flex items-center justify-between">
+        <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          Requests from this camper
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="bg-forest-50 text-forest-600 border-forest-300/40 hover:bg-forest-100 dark:bg-forest-900/30 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition"
+          aria-label="View all requests from this camper"
+        >
+          View all
+          <ArrowRight className="h-3 w-3" />
+        </button>
       </div>
+
       {nonAgeRequests.map((request) => {
         const targetPerson = request.requestee_id
           ? (personMap.get(request.requestee_id) ?? null)
@@ -122,7 +137,6 @@ export function CamperRequestSummary({
               request={request}
               targetPerson={targetPerson}
               isCurrent={isCurrent}
-              onSelect={isCurrent || !onSelect ? undefined : () => onSelect(request.id)}
               badge={
                 isCurrent ? (
                   <span className={CURRENT_REQUEST_BADGE_CLASSES}>Current request</span>
@@ -132,6 +146,7 @@ export function CamperRequestSummary({
           </div>
         )
       })}
+
       {agePreferenceRequest?.age_preference_target && (
         <div
           className={nonAgeRequests.length > 0 ? 'border-border/50 mt-3 border-t pt-2' : ''}
@@ -140,6 +155,15 @@ export function CamperRequestSummary({
           <BunkRequestRow request={agePreferenceRequest} />
         </div>
       )}
+
+      <AllCamperRequestsModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        requesterCmId={requesterCmId}
+        requesterName={requesterName ?? 'this camper'}
+        year={year}
+        currentRequestId={currentRequestId}
+      />
     </div>
   )
 }
