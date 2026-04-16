@@ -1,13 +1,16 @@
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
+import { useId, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'react-hot-toast'
+import { CheckCircle, Loader2, XCircle } from 'lucide-react'
 import Modal from './ui/Modal'
 import CamperLink from './CamperLink'
+import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
 import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { highlightSourceText } from '../utils/highlightSourceText'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 export interface AllCamperRequestsModalProps {
@@ -36,10 +39,12 @@ function RequestCard({
   request,
   targetName,
   isCurrent = false,
+  onAction,
 }: {
   request: BunkRequestsResponse
   targetName: string | null
   isCurrent?: boolean
+  onAction?: (action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) => void
 }) {
   const isBunk = request.request_type === 'bunk_with'
   const isNot = request.request_type === 'not_bunk_with'
@@ -86,12 +91,42 @@ function RequestCard({
             </span>
           )}
         </span>
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusBadgeClass(request.status)}`}
-        >
-          {request.status}
-          {request.disposition_reason ? ` · ${formatReason(request.disposition_reason)}` : ''}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusBadgeClass(request.status)}`}
+          >
+            {request.status}
+            {request.disposition_reason ? ` · ${formatReason(request.disposition_reason)}` : ''}
+          </span>
+          {onAction && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Approve"
+                title="Approve"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction('approve', request.id, e.currentTarget.getBoundingClientRect())
+                }}
+                className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 touch-manipulation rounded-lg p-1.5 transition-colors"
+              >
+                <CheckCircle className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Decline"
+                title="Decline"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction('decline', request.id, e.currentTarget.getBoundingClientRect())
+                }}
+                className="hover:bg-destructive/10 text-destructive touch-manipulation rounded-lg p-1.5 transition-colors"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2">
         <section className="border-border/60 border-b p-4 md:border-r md:border-b-0">
@@ -103,13 +138,19 @@ function RequestCard({
               </span>
             )}
           </h4>
-          {request.source_fragment || request.source_detail || request.original_text ? (
-            <blockquote className="border-forest-400 bg-muted/50 text-bark-800 dark:text-bark-200 rounded-r-lg border-l-4 p-3 text-sm leading-relaxed">
-              {request.source_fragment || request.source_detail || request.original_text}
-            </blockquote>
-          ) : (
-            <div className="text-muted-foreground text-sm italic">No source text captured.</div>
-          )}
+          {(() => {
+            const body = request.original_text || request.source_detail || request.source_fragment
+            if (!body) {
+              return (
+                <div className="text-muted-foreground text-sm italic">No source text captured.</div>
+              )
+            }
+            return (
+              <blockquote className="border-forest-400 bg-bark-50 text-bark-800 dark:bg-bark-900/30 dark:text-bark-200 rounded-r-lg border-l-[3px] p-3 text-sm leading-relaxed whitespace-pre-wrap">
+                {highlightSourceText(body, request.source_fragment)}
+              </blockquote>
+            )
+          })()}
         </section>
         <section className="p-4">
           <h4 className="text-muted-foreground mb-2 font-mono text-[10.5px] font-medium tracking-[0.14em] uppercase">
@@ -128,12 +169,6 @@ function RequestCard({
         <span className="font-mono text-[11px]">
           {((request.confidence_score ?? 0) * 100).toFixed(0)}%
         </span>
-        {request.csv_position != null && (
-          <>
-            <span>·</span>
-            <span className="font-mono text-[11px]">csv_position {request.csv_position}</span>
-          </>
-        )}
       </footer>
     </article>
   )
@@ -148,6 +183,34 @@ export function AllCamperRequestsModal({
   currentRequestId,
 }: AllCamperRequestsModalProps) {
   const { user } = useAuth()
+  const queryClient = useQueryClient()
+  const headingId = useId()
+
+  const [confirmPopover, setConfirmPopover] = useState<{
+    action: 'approve' | 'decline'
+    anchorRect: Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>
+    requestId: string
+  } | null>(null)
+
+  const updateRequestMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<BunkRequestsResponse> }) =>
+      pb.collection('bunk_requests').update(id, updates),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.camperRequestSummary(requesterCmId, year),
+      })
+      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      toast.success('Request updated')
+      setConfirmPopover(null)
+    },
+    onError: () => {
+      toast.error('Failed to update request')
+    },
+  })
+
+  function handleAction(action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) {
+    setConfirmPopover({ action, anchorRect, requestId })
+  }
 
   const {
     data: requests = [],
@@ -194,6 +257,16 @@ export function AllCamperRequestsModal({
 
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])
 
+  const statusCounts = useMemo(() => {
+    const counts = { resolved: 0, pending: 0, declined: 0 }
+    for (const r of requests) {
+      if (r.status === 'resolved') counts.resolved++
+      else if (r.status === 'pending') counts.pending++
+      else if (r.status === 'declined') counts.declined++
+    }
+    return counts
+  }, [requests])
+
   if (!isOpen) return null
 
   const nonAge = requests.filter((r) => r.request_type !== 'age_preference')
@@ -201,11 +274,19 @@ export function AllCamperRequestsModal({
   const isEmpty = !isLoading && !isError && nonAge.length === 0 && !agePref
 
   const campMinderUrl = `https://system.campminder.com/ui/person/Record#${requesterCmId}:${year}`
+  const totalRequests = requests.length
+  const requestsLabel = `${totalRequests} ${totalRequests === 1 ? 'request' : 'requests'}`
 
   const header = (
-    <div>
-      <div className="text-forest-600 flex items-center gap-3 font-mono text-[10.5px] font-medium tracking-[0.16em] uppercase">
-        All requests · read-only
+    <div
+      className="border-border/60 border-b pt-[22px] pr-16 pb-[18px] pl-7"
+      style={{
+        backgroundImage:
+          'radial-gradient(120% 160% at 0% 0%, color-mix(in oklch, var(--color-forest-50, oklch(97% 0.01 145)) 85%, transparent) 0%, transparent 60%)',
+      }}
+    >
+      <div className="text-forest-700 dark:text-forest-300 flex items-center gap-3 font-mono text-[10.5px] font-medium tracking-[0.16em] uppercase">
+        All requests
         <a
           href={campMinderUrl}
           target="_blank"
@@ -216,15 +297,48 @@ export function AllCamperRequestsModal({
           CampMinder ↗
         </a>
       </div>
-      <h2 className="font-display text-foreground mt-1 text-2xl font-semibold tracking-tight">
-        Requests from <em className="text-forest-600 not-italic">{requesterName}</em>
+      <h2
+        id={headingId}
+        className="font-display text-foreground mt-1 text-[26px] leading-tight font-semibold tracking-tight"
+      >
+        Requests from{' '}
+        <em className="text-forest-600 dark:text-forest-300 font-medium italic">{requesterName}</em>
       </h2>
+      {totalRequests > 0 && (
+        <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span className="font-mono">{year}</span>
+          <span className="text-border">·</span>
+          <span>{requestsLabel}</span>
+          <span className="text-border">·</span>
+          <span>
+            <span className="text-bark-800 dark:text-bark-200">{statusCounts.resolved}</span>{' '}
+            resolved
+          </span>
+          <span className="text-border">·</span>
+          <span>
+            <span className="text-bark-800 dark:text-bark-200">{statusCounts.pending}</span> pending
+          </span>
+          <span className="text-border">·</span>
+          <span>
+            <span className="text-bark-800 dark:text-bark-200">{statusCounts.declined}</span>{' '}
+            declined
+          </span>
+        </div>
+      )}
     </div>
   )
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} header={header} size="xl" scrollable noPadding>
-      <div className="p-6">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      header={header}
+      size="xl"
+      scrollable
+      noPadding
+      ariaLabelledBy={headingId}
+    >
+      <div className="px-7 pt-5 pb-6">
         {isLoading && (
           <div className="text-muted-foreground flex items-center justify-center gap-2 py-12">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -255,6 +369,7 @@ export function AllCamperRequestsModal({
                   request={req}
                   targetName={targetName}
                   isCurrent={req.id === currentRequestId}
+                  onAction={handleAction}
                 />
               )
             })}
@@ -271,12 +386,30 @@ export function AllCamperRequestsModal({
                   request={agePref}
                   targetName={null}
                   isCurrent={agePref.id === currentRequestId}
+                  onAction={handleAction}
                 />
               </>
             )}
           </div>
         )}
       </div>
+      {confirmPopover && (
+        <ConfirmActionPopover
+          isOpen
+          anchorRect={confirmPopover.anchorRect}
+          action={confirmPopover.action}
+          onConfirm={() => {
+            updateRequestMutation.mutate({
+              id: confirmPopover.requestId,
+              updates:
+                confirmPopover.action === 'approve'
+                  ? { status: 'resolved', request_locked: true }
+                  : { status: 'declined', request_locked: false },
+            })
+          }}
+          onCancel={() => setConfirmPopover(null)}
+        />
+      )}
     </Modal>
   )
 }

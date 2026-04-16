@@ -56,12 +56,22 @@ export function ConfirmActionPopover({
       }
     }
 
+    // The popover is positioned using a rect captured at click-time, so any
+    // scroll desyncs it from its anchor button. Dismissing on scroll avoids
+    // a floating, orphaned popover. capture:true catches scrolls on any
+    // scrollable ancestor (e.g. modal body), which don't bubble.
+    function handleScroll() {
+      onCancelRef.current()
+    }
+
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('scroll', handleScroll, true)
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('scroll', handleScroll, true)
       previouslyFocused?.focus()
     }
   }, [isOpen])
