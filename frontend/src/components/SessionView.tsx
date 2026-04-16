@@ -62,6 +62,13 @@ export default function SessionView() {
   // Extract tab from URL path
   const activeTab = (isValidTab(tabPath ?? '') ? tabPath : 'bunks') as ValidTab
 
+  // Redirect non-manage users away from the requests tab
+  useEffect(() => {
+    if (!canManage && activeTab === 'requests' && sessionId) {
+      void navigate(`/summer/session/${sessionId}/bunks`, { replace: true })
+    }
+  }, [canManage, activeTab, sessionId, navigate])
+
   // Session hierarchy hook - handles session lookups, sub-sessions, AG sessions
   const { session, allSessionsForLookup, subSessions, agSessions, showAgArea, selectedSession } =
     useSessionHierarchy({ sessionId, tabPath: tabPath ?? '' })
@@ -276,6 +283,7 @@ export default function SessionView() {
           activeTab={activeTab}
           camperCount={campers.length}
           requestCount={bunkRequestsCount}
+          canManage={canManage}
         />
 
         {/* Contextual Bar - Area filter + Stats (Bunks tab only) */}
@@ -333,25 +341,27 @@ export default function SessionView() {
           />
         </Activity>
 
-        {/* Requests Tab - preserves selection/review state */}
-        <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
-          {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-            <RequestReviewPanel
-              sessionId={parseInt(selectedSession, 10)}
-              relatedSessionIds={
-                selectedSession === session.cm_id.toString()
-                  ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
-                  : []
-              }
-              year={currentYear}
-              sessionName={
-                allSessionsForLookup.find((s) => s.cm_id === parseInt(selectedSession, 10))?.name
-              }
-            />
-          ) : (
-            <div className="text-muted-foreground text-center">Loading session data...</div>
-          )}
-        </Activity>
+        {/* Requests Tab - only mounted for canManage users; non-manage users are redirected away */}
+        {canManage && (
+          <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
+            {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
+              <RequestReviewPanel
+                sessionId={parseInt(selectedSession, 10)}
+                relatedSessionIds={
+                  selectedSession === session.cm_id.toString()
+                    ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
+                    : []
+                }
+                year={currentYear}
+                sessionName={
+                  allSessionsForLookup.find((s) => s.cm_id === parseInt(selectedSession, 10))?.name
+                }
+              />
+            ) : (
+              <div className="text-muted-foreground text-center">Loading session data...</div>
+            )}
+          </Activity>
+        )}
 
         {/* Friends Tab - preserves group selection state */}
         <Activity mode={activeTab === 'friends' ? 'visible' : 'hidden'}>
