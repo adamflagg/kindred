@@ -28,6 +28,7 @@ interface SessionTabsProps {
   activeTab: ValidTab
   camperCount: number
   requestCount: number
+  canManage?: boolean
 }
 
 export default function SessionTabs({
@@ -35,8 +36,11 @@ export default function SessionTabs({
   activeTab,
   camperCount,
   requestCount,
+  canManage = true,
 }: SessionTabsProps) {
-  const tabs = createTabs({ camperCount, requestCount })
+  const tabs = createTabs({ camperCount, requestCount }).filter(
+    (tab) => tab.id !== 'requests' || canManage
+  )
 
   return (
     <nav className="border-border/50 border-b py-2">

@@ -1072,9 +1072,6 @@ export default function RequestReviewPanel({
                   )}
                 </div>
               </div>
-              <div className="text-muted-foreground px-4 py-3 text-left text-sm font-medium">
-                Type
-              </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
                 onClick={() => handleSort('request')}
@@ -1091,6 +1088,9 @@ export default function RequestReviewPanel({
                     </span>
                   )}
                 </div>
+              </div>
+              <div className="text-muted-foreground px-4 py-3 text-left text-sm font-medium">
+                Type
               </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center text-sm font-medium"
@@ -1493,26 +1493,6 @@ export default function RequestReviewPanel({
                             className="flex items-center px-4 py-3"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <EditableRequestType
-                              value={request.request_type}
-                              onChange={(newType) => {
-                                const updates: Partial<BunkRequestsResponse> = {
-                                  request_type: newType as BunkRequestsResponse['request_type'],
-                                }
-                                if (newType === 'age_preference') {
-                                  updates.requestee_id = null as unknown as number
-                                } else {
-                                  updates.age_preference_target = ''
-                                }
-                                handleValidatedUpdate(request, updates)
-                              }}
-                              disabled={request.request_locked}
-                            />
-                          </div>
-                          <div
-                            className="flex items-center px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
                             <EditableRequestTarget
                               requestType={request.request_type}
                               currentPersonId={request.requestee_id}
@@ -1558,6 +1538,26 @@ export default function RequestReviewPanel({
                                 </span>
                               ) : null
                             })()}
+                          </div>
+                          <div
+                            className="flex items-center px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <EditableRequestType
+                              value={request.request_type}
+                              onChange={(newType) => {
+                                const updates: Partial<BunkRequestsResponse> = {
+                                  request_type: newType as BunkRequestsResponse['request_type'],
+                                }
+                                if (newType === 'age_preference') {
+                                  updates.requestee_id = null as unknown as number
+                                } else {
+                                  updates.age_preference_target = ''
+                                }
+                                handleValidatedUpdate(request, updates)
+                              }}
+                              disabled={request.request_locked}
+                            />
                           </div>
                           <div
                             className="flex items-center justify-center px-4 py-3"
@@ -1702,7 +1702,7 @@ export default function RequestReviewPanel({
                                                 </p>
                                                 <p className="text-muted-foreground bg-muted/50 mt-1.5 rounded px-2 py-1 text-xs">
                                                   <span className="font-medium">
-                                                    AI Intent Notes:
+                                                    Processing Notes:
                                                   </span>{' '}
                                                   {source.parse_notes?.trim() ? (
                                                     source.parse_notes
@@ -1729,7 +1729,7 @@ export default function RequestReviewPanel({
                                     {/* Single Source Request: Original display */}
                                     <div>
                                       <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                        Notes from Bunk Requests Form
+                                        Bunking Related Notes
                                       </h4>
                                       {(() => {
                                         // Get field name(s) with proper fallback chain:
@@ -1786,10 +1786,10 @@ export default function RequestReviewPanel({
                                       })()}
                                     </div>
 
-                                    {/* AI Intent Notes - always show for single source */}
+                                    {/* Processing Notes - always show for single source */}
                                     <div>
                                       <h4 className="text-foreground mb-1 text-sm font-semibold">
-                                        AI Intent Notes
+                                        Processing Notes
                                       </h4>
                                       <p className="text-muted-foreground text-sm">
                                         {request.parse_notes || (

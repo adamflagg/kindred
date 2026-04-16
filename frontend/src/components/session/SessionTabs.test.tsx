@@ -105,5 +105,49 @@ describe('SessionTabs', () => {
         unmount()
       })
     })
+
+    describe('canManage permission gating', () => {
+      it('hides the Requests tab when canManage is false', () => {
+        render(
+          <MemoryRouter>
+            <SessionTabs {...defaultProps} canManage={false} />
+          </MemoryRouter>
+        )
+
+        expect(screen.queryByRole('link', { name: /requests/i })).not.toBeInTheDocument()
+      })
+
+      it('still shows the other three tabs when canManage is false', () => {
+        render(
+          <MemoryRouter>
+            <SessionTabs {...defaultProps} canManage={false} />
+          </MemoryRouter>
+        )
+
+        expect(screen.getByRole('link', { name: /bunks/i })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: /campers/i })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: /graph/i })).toBeInTheDocument()
+      })
+
+      it('shows all four tabs when canManage is true', () => {
+        render(
+          <MemoryRouter>
+            <SessionTabs {...defaultProps} canManage={true} />
+          </MemoryRouter>
+        )
+
+        expect(screen.getByRole('link', { name: /requests/i })).toBeInTheDocument()
+      })
+
+      it('shows all four tabs when canManage is omitted (default)', () => {
+        render(
+          <MemoryRouter>
+            <SessionTabs {...defaultProps} />
+          </MemoryRouter>
+        )
+
+        expect(screen.getByRole('link', { name: /requests/i })).toBeInTheDocument()
+      })
+    })
   })
 })

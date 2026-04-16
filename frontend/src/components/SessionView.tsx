@@ -62,6 +62,13 @@ export default function SessionView() {
   // Extract tab from URL path
   const activeTab = (isValidTab(tabPath ?? '') ? tabPath : 'bunks') as ValidTab
 
+  // Redirect non-manage users away from the requests tab
+  useEffect(() => {
+    if (!canManage && activeTab === 'requests' && sessionId) {
+      void navigate(`/summer/session/${sessionId}/bunks`, { replace: true })
+    }
+  }, [canManage, activeTab, sessionId, navigate])
+
   // Session hierarchy hook - handles session lookups, sub-sessions, AG sessions
   const { session, allSessionsForLookup, subSessions, agSessions, showAgArea, selectedSession } =
     useSessionHierarchy({ sessionId, tabPath: tabPath ?? '' })
@@ -276,6 +283,7 @@ export default function SessionView() {
           activeTab={activeTab}
           camperCount={campers.length}
           requestCount={bunkRequestsCount}
+          canManage={canManage}
         />
 
         {/* Contextual Bar - Area filter + Stats (Bunks tab only) */}
@@ -333,10 +341,10 @@ export default function SessionView() {
           />
         </Activity>
 
-        {/* Requests Tab - preserves selection/review state (manage permission required) */}
-        <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
-          {canManage ? (
-            selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
+        {/* Requests Tab - only mounted for canManage users; non-manage users are redirected away */}
+        {canManage && (
+          <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
+            {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
               <RequestReviewPanel
                 sessionId={parseInt(selectedSession, 10)}
                 relatedSessionIds={
@@ -351,13 +359,9 @@ export default function SessionView() {
               />
             ) : (
               <div className="text-muted-foreground text-center">Loading session data...</div>
-            )
-          ) : (
-            <div className="text-muted-foreground py-12 text-center">
-              You need the bunking manage permission to view requests.
-            </div>
-          )}
-        </Activity>
+            )}
+          </Activity>
+        )}
 
         {/* Friends Tab - preserves group selection state */}
         <Activity mode={activeTab === 'friends' ? 'visible' : 'hidden'}>

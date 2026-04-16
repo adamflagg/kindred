@@ -7,11 +7,11 @@
  * user-facing labels for display only.
  */
 const SOURCE_FIELD_LABELS: Record<string, string> = {
-  bunk_with: 'Bunk With',
-  not_bunk_with: 'Not Bunk With',
+  bunk_with: 'Bunk Request Form',
+  not_bunk_with: 'Do NOT Share Bunk With',
   bunking_notes: 'Bunking Notes',
   internal_notes: 'Internal Notes',
-  socialize_with: 'Socialize With',
+  socialize_with: 'Social With Checkbox',
 }
 
 export function formatSourceField(field: string): string {

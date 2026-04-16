@@ -80,7 +80,7 @@ function getSessionShortName(
 export default function CamperDetail() {
   const { camperId } = useParams<{ camperId: string }>()
   const currentYear = useYear()
-  const { hasPermission } = usePermissions()
+  const { hasPermission, isAdmin } = usePermissions()
   const canManageBunking = hasPermission(Permission.BUNKING_MANAGE)
 
   // Parse and validate the person CampMinder ID
@@ -292,7 +292,7 @@ export default function CamperDetail() {
               )}
 
               {/* Parsed Bunk Requests (admin only) */}
-              {canManageBunking && <ParsedRequestsPanel requests={allBunkRequests} />}
+              {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
             </>
           )}
         </div>

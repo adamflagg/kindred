@@ -9,6 +9,8 @@
  * 2. Clickable requester name feature (opens CamperDetailsPanel)
  * 3. Filter and sort functionality
  */
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -951,27 +953,35 @@ describe('RequestReviewPanel', () => {
    */
   describe('Workstream A: UI Overhaul', () => {
     describe('Task 2: Rename "Source Field & Content" label (#4)', () => {
-      it('should use "Notes from Bunk Requests Form" as heading text', () => {
-        // The expanded row detail heading should read "Notes from Bunk Requests Form"
-        // instead of "Source Field & Content"
-        const expectedLabel = 'Notes from Bunk Requests Form'
+      it('should use "Bunking Related Notes" as heading text', () => {
+        // The expanded row detail heading should read "Bunking Related Notes"
+        // instead of "Source Field & Content" or "Notes from Bunk Requests Form"
+        const expectedLabel = 'Bunking Related Notes'
         expect(expectedLabel).not.toBe('Source Field & Content')
-        expect(expectedLabel).toBe('Notes from Bunk Requests Form')
+        expect(expectedLabel).not.toBe('Notes from Bunk Requests Form')
+        expect(expectedLabel).toBe('Bunking Related Notes')
       })
     })
 
-    describe('Task 3: Rename parse notes to "AI Intent Notes" (#5)', () => {
-      it('should use "AI Intent Notes" as heading for single source', () => {
-        const expectedLabel = 'AI Intent Notes'
+    describe('Task 3: Rename parse notes to "Processing Notes" (#5)', () => {
+      it('should use "Processing Notes" as heading for single source', () => {
+        const expectedLabel = 'Processing Notes'
         expect(expectedLabel).not.toBe('Parse Notes')
-        expect(expectedLabel).toBe('AI Intent Notes')
+        expect(expectedLabel).toBe('Processing Notes')
       })
 
-      it('should use "AI Intent Notes" label in contributing sources view', () => {
-        // In the merged sources dropdown, parse notes label should also read "AI Intent Notes"
-        const expectedLabel = 'AI Intent Notes:'
+      it('should use "Processing Notes" label in contributing sources view', () => {
+        // In the merged sources dropdown, parse notes label should also read "Processing Notes"
+        const expectedLabel = 'Processing Notes:'
         expect(expectedLabel).not.toContain('Parse notes')
-        expect(expectedLabel).toBe('AI Intent Notes:')
+        expect(expectedLabel).toBe('Processing Notes:')
+      })
+
+      it('labels the inferred-notes block as "Processing Notes"', () => {
+        const expectedLabel = 'Processing Notes'
+        expect(expectedLabel).not.toBe('AI Intent Notes')
+        expect(expectedLabel).not.toBe('AI Parse Notes')
+        expect(expectedLabel).toBe('Processing Notes')
       })
     })
 
@@ -1002,6 +1012,32 @@ describe('RequestReviewPanel', () => {
         const isNegative = requestType === 'not_bunk_with'
 
         expect(isNegative).toBe(false)
+      })
+    })
+
+    describe('Task 9: Swap Type and Request columns (desktop)', () => {
+      it('desktop header renders columns in order: Requester, Request, Type', () => {
+        // Read the component source to verify rendered column order in the sticky
+        // desktop header. Protects against future column-swap regressions without
+        // needing a full component mount.
+        const source = readFileSync(resolve(__dirname, 'RequestReviewPanel.tsx'), 'utf-8')
+        const headerStart = source.indexOf('Table Header - Desktop only')
+        expect(headerStart).toBeGreaterThan(-1)
+        const headerBlock = source.slice(headerStart, headerStart + 2500)
+
+        // Each sortable column has a handleSort call; use those as unique anchors.
+        const requesterIdx = headerBlock.indexOf("handleSort('requester')")
+        const requestIdx = headerBlock.indexOf("handleSort('request')")
+        const priorityIdx = headerBlock.indexOf("handleSort('priority')")
+
+        expect(requesterIdx).toBeGreaterThan(-1)
+        expect(requestIdx).toBeGreaterThan(-1)
+        expect(priorityIdx).toBeGreaterThan(-1)
+        // Requester comes before Request
+        expect(requesterIdx).toBeLessThan(requestIdx)
+        // Request comes before Priority; Type (unsortable) lives between them
+        expect(requestIdx).toBeLessThan(priorityIdx)
+        expect(headerBlock.slice(requestIdx, priorityIdx)).toContain('Type')
       })
     })
 
