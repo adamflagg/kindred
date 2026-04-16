@@ -51,6 +51,7 @@ export const queryKeys = {
 
   // Bunk Requests (Tier 2 - user data)
   bunkRequests: (sessionId: string, year: number) => ['bunk-requests', sessionId, year] as const,
+  bunkRequestPinned: (id: string | null) => ['bunk-request-pinned', id] as const,
 
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>

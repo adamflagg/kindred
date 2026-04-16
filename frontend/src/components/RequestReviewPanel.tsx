@@ -37,7 +37,11 @@ import {
   CONFIDENCE_AUTO_ACCEPT,
   CONFIDENCE_RESOLVED,
   MUTUAL_BADGE_CLASSES,
+  PINNED_BADGE_CLASSES,
 } from '../utils/dispositionColors'
+import { usePinnedRequest } from '../hooks/usePinnedRequest'
+import { queryKeys } from '../utils/queryKeys'
+import { positionPinnedAdjacent } from '../utils/positionPinnedAdjacent'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
 import EditablePriority from './EditablePriority'
@@ -73,6 +77,13 @@ export default function RequestReviewPanel({
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const { pinnedId, setPinnedId } = usePinnedRequest()
+  // Remembers the row the user was on when the pin was set, so the pinned
+  // row can render directly adjacent to it instead of at its natural sort slot.
+  const [pinOriginatorId, setPinOriginatorId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!pinnedId) setPinOriginatorId(null)
+  }, [pinnedId])
 
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
@@ -230,6 +241,19 @@ export default function RequestReviewPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey])
 
+  // Clear any pin when filters/sort change — the new view is the user's
+  // explicit choice and should not keep an implicitly-pinned row alive.
+  const isInitialFilterMount = useRef(true)
+  useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false
+      return
+    }
+    if (pinnedId) setPinnedId(null)
+    // pinnedId/setPinnedId are intentionally not deps — only filter/sort changes trigger unpin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, sortBy, sortOrder])
+
   // Query key only includes server-side filters (sent to PocketBase).
   // Client-side filters (search) are applied in filteredRequests memo.
   const queryKeyFilters = useMemo(
@@ -270,6 +294,24 @@ export default function RequestReviewPanel({
     staleTime: 30000,
     enabled: !!user,
   })
+
+  // Fetch the pinned request separately when the current filter/session combo excludes it,
+  // so the pinned row stays visible even if its status/type was filtered out.
+  const { data: pinnedExtraRequest = null, error: pinnedExtraError } = useQuery({
+    queryKey: queryKeys.bunkRequestPinned(pinnedId),
+    queryFn: () =>
+      pinnedId ? pb.collection<BunkRequestsResponse>('bunk_requests').getOne(pinnedId) : null,
+    enabled: !!user && !!pinnedId && !requests.some((r) => r.id === pinnedId),
+    staleTime: 30000,
+    retry: false,
+  })
+
+  // Clear stale pin (request deleted or invalid id) from the URL on 404.
+  useEffect(() => {
+    if (pinnedExtraError && (pinnedExtraError as { status?: number }).status === 404) {
+      setPinnedId(null)
+    }
+  }, [pinnedExtraError, setPinnedId])
 
   // Fetch person data for display - use string-based key for stability
   const personIds = useMemo(() => {
@@ -431,6 +473,11 @@ export default function RequestReviewPanel({
   const sortedRequests = useMemo(() => {
     let filtered = [...requests]
 
+    // Include the pinned request even when filters would exclude it from the main query.
+    if (pinnedExtraRequest && !filtered.some((r) => r.id === pinnedExtraRequest.id)) {
+      filtered.push(pinnedExtraRequest)
+    }
+
     // Search filtering using already-fetched personMap
     if (filters.searchQuery && personMap.size > 0) {
       const searchLower = filters.searchQuery.toLowerCase()
@@ -494,8 +541,17 @@ export default function RequestReviewPanel({
       }
     })
 
-    return sorted
-  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
+    return positionPinnedAdjacent(sorted, pinnedId, pinOriginatorId)
+  }, [
+    requests,
+    sortBy,
+    sortOrder,
+    personMap,
+    filters.searchQuery,
+    pinnedExtraRequest,
+    pinnedId,
+    pinOriginatorId,
+  ])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
@@ -624,7 +680,11 @@ export default function RequestReviewPanel({
           next.delete(id)
           // Clear the expanded merged request when collapsing
           setExpandedMergedRequestId((currentId) => (currentId === id ? null : currentId))
+          // Collapsing the pinned row unpins it.
+          if (pinnedId === id) setPinnedId(null)
         } else {
+          // Expanding a different row unpins — pin follows the currently-focused row.
+          if (pinnedId && pinnedId !== id) setPinnedId(null)
           next.add(id)
           // Trigger lazy loading for merged requests
           if (request && hasMultipleSources(request)) {
@@ -634,8 +694,38 @@ export default function RequestReviewPanel({
         return next
       })
     },
-    [hasMultipleSources]
+    [hasMultipleSources, pinnedId, setPinnedId]
   )
+
+  /**
+   * Pin a request and collapse any other expanded rows. Used by the
+   * "Requests from this camper" panel so clicking another row swaps focus
+   * to the clicked request and records it in the URL via `?pin=<id>`.
+   */
+  const pinAndExpand = useCallback(
+    (id: string) => {
+      setExpandedRows((prev) => {
+        const first = [...prev][0]
+        const originator = first && first !== id ? first : null
+        setPinOriginatorId(originator)
+        return new Set([id])
+      })
+      setPinnedId(id)
+    },
+    [setPinnedId]
+  )
+
+  // Scroll the pinned row into view when it changes to a new non-null id.
+  useEffect(() => {
+    if (!pinnedId) return
+    const t = window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(
+        `[data-request-row-id="${CSS.escape(pinnedId)}"]`
+      )
+      el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [pinnedId])
 
   const toggleRequestSelection = useCallback((id: string) => {
     setSelectedRequests((prev) => {
@@ -1101,7 +1191,7 @@ export default function RequestReviewPanel({
                     const isExpanded = expandedRows.has(request.id)
 
                     return (
-                      <div key={request.id}>
+                      <div key={request.id} data-request-row-id={request.id}>
                         <div
                           className="request-card-mobile hover:bg-muted/50 cursor-pointer transition-colors"
                           onClick={() => toggleRowExpansion(request.id, request)}
@@ -1137,6 +1227,11 @@ export default function RequestReviewPanel({
                               </button>
                               {request.is_reciprocal && (
                                 <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
+                              )}
+                              {request.id === pinnedId && (
+                                <span data-testid="pinned-badge" className={PINNED_BADGE_CLASSES}>
+                                  Pinned
+                                </span>
                               )}
                             </div>
                             <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
@@ -1327,6 +1422,7 @@ export default function RequestReviewPanel({
                                 requesterCmId={request.requester_id}
                                 year={year}
                                 currentRequestId={request.id}
+                                onSelect={pinAndExpand}
                               />
                             </div>
                           </div>
@@ -1345,6 +1441,7 @@ export default function RequestReviewPanel({
                     return (
                       <div
                         key={request.id}
+                        data-request-row-id={request.id}
                         className={clsx(
                           'cursor-pointer border-b transition-colors',
                           selectedRequests.has(request.id)
@@ -1385,6 +1482,11 @@ export default function RequestReviewPanel({
                             </button>
                             {request.is_reciprocal && (
                               <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
+                            )}
+                            {request.id === pinnedId && (
+                              <span data-testid="pinned-badge" className={PINNED_BADGE_CLASSES}>
+                                Pinned
+                              </span>
                             )}
                           </div>
                           <div
@@ -1729,6 +1831,7 @@ export default function RequestReviewPanel({
                                   requesterCmId={request.requester_id}
                                   year={year}
                                   currentRequestId={request.id}
+                                  onSelect={pinAndExpand}
                                 />
                               </div>
                             </div>

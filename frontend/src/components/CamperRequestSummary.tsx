@@ -5,12 +5,15 @@ import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { BunkRequestRow } from './BunkRequestRow'
 import { queryKeys } from '../utils/queryKeys'
+import { CURRENT_REQUEST_BADGE_CLASSES } from '../utils/dispositionColors'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 interface CamperRequestSummaryProps {
   requesterCmId: number
   year: number
   currentRequestId: string
+  /** When provided, non-current rows become clickable and fire this callback with their id. */
+  onSelect?: (requestId: string) => void
 }
 
 /**
@@ -23,6 +26,7 @@ export function CamperRequestSummary({
   requesterCmId,
   year,
   currentRequestId,
+  onSelect,
 }: CamperRequestSummaryProps) {
   const { user } = useAuth()
 
@@ -105,18 +109,25 @@ export function CamperRequestSummary({
   return (
     <div className="space-y-1">
       <div className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">
-        Other requests from this camper
+        Requests from this camper
       </div>
       {nonAgeRequests.map((request) => {
         const targetPerson = request.requestee_id
           ? (personMap.get(request.requestee_id) ?? null)
           : null
+        const isCurrent = request.id === currentRequestId
         return (
           <div key={request.id} data-testid={`request-row-${request.id}`}>
             <BunkRequestRow
               request={request}
               targetPerson={targetPerson}
-              isCurrent={request.id === currentRequestId}
+              isCurrent={isCurrent}
+              onSelect={isCurrent || !onSelect ? undefined : () => onSelect(request.id)}
+              badge={
+                isCurrent ? (
+                  <span className={CURRENT_REQUEST_BADGE_CLASSES}>Current request</span>
+                ) : undefined
+              }
             />
           </div>
         )

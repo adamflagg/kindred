@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
@@ -22,6 +23,48 @@ export interface BunkRequestRowProps {
   satisfactionLoading?: boolean
   /** Optional detail text for the satisfaction tooltip. */
   satisfactionDetail?: string | undefined
+  /**
+   * When provided, renders the row as a <button> and calls this on click.
+   * The click event stops propagation so the surrounding expanded-row toggler is not fired.
+   */
+  onSelect?: (() => void) | undefined
+  /**
+   * Optional badge rendered immediately after the mutual badge. Used by the
+   * camper-requests panel to inject the "Current request" chip.
+   */
+  badge?: ReactNode | undefined
+}
+
+function ClickableRow({
+  className,
+  onSelect,
+  children,
+}: {
+  className: string
+  onSelect?: (() => void) | undefined
+  children: ReactNode
+}) {
+  if (!onSelect) return <div className={className}>{children}</div>
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={className}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect()
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          e.stopPropagation()
+          onSelect()
+        }
+      }}
+    >
+      {children}
+    </div>
+  )
 }
 
 function statusIcon(status: string) {
@@ -71,23 +114,28 @@ export function BunkRequestRow({
   showSatisfaction = false,
   satisfactionLoading = false,
   satisfactionDetail,
+  onSelect,
+  badge,
 }: BunkRequestRowProps) {
   const rowClass = clsx(
     'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors',
-    isCurrent ? 'ring-primary/40 bg-primary/5 ring-1' : 'hover:bg-muted/50'
+    isCurrent ? 'ring-primary/40 bg-primary/5 ring-1' : 'hover:bg-muted/50',
+    onSelect &&
+      'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
   )
 
   // Age preference variant
   if (request.request_type === 'age_preference') {
     const prefersOlder = request.age_preference_target === 'older'
-    return (
-      <div className={clsx(rowClass, 'text-muted-foreground text-xs')}>
+    const ageChildren = (
+      <>
         <Sparkles className="h-3 w-3 flex-shrink-0 text-amber-500" />
         <span>
           Prefers bunking with{' '}
           <span className="text-foreground font-medium">{prefersOlder ? 'older' : 'younger'}</span>{' '}
           campers
         </span>
+        {badge}
         {showSatisfaction && (
           <SatisfactionIcon
             satisfaction={satisfaction}
@@ -95,7 +143,12 @@ export function BunkRequestRow({
             satisfactionDetail={satisfactionDetail}
           />
         )}
-      </div>
+      </>
+    )
+    return (
+      <ClickableRow className={clsx(rowClass, 'text-muted-foreground text-xs')} onSelect={onSelect}>
+        {ageChildren}
+      </ClickableRow>
     )
   }
 
@@ -106,8 +159,8 @@ export function BunkRequestRow({
   const resolvedName = targetPerson ? `${targetPerson.first_name} ${targetPerson.last_name}` : null
   const displayName = resolvedName ?? request.requested_person_name ?? 'Unknown'
 
-  return (
-    <div className={rowClass}>
+  const children = (
+    <>
       {/* Status indicator */}
       {statusIcon(request.status)}
 
@@ -132,6 +185,9 @@ export function BunkRequestRow({
       {/* Reciprocal badge - only if reciprocal */}
       {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
 
+      {/* Optional badge slot (e.g. "Current request", "Pinned") */}
+      {badge}
+
       {/* Satisfaction - concise icon only */}
       {showSatisfaction && (
         <SatisfactionIcon
@@ -140,6 +196,12 @@ export function BunkRequestRow({
           satisfactionDetail={satisfactionDetail}
         />
       )}
-    </div>
+    </>
+  )
+
+  return (
+    <ClickableRow className={rowClass} onSelect={onSelect}>
+      {children}
+    </ClickableRow>
   )
 }
