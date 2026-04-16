@@ -54,7 +54,7 @@ def format_obr_reconciliation(stats: dict[str, Any]) -> str:
         Single-line string prefixed with "OBR reconciliation:" and sectioned
         by "|" separators so it survives grep/tail on a single log line.
     """
-    s = {k: int(stats.get(k, 0) or 0) for k in _RECONCILIATION_KEYS}
+    s = {k: stats.get(k, 0) for k in _RECONCILIATION_KEYS}
 
     return (
         f"OBR reconciliation: {s['obr_input']} input"
