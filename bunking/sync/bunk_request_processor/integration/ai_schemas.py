@@ -162,9 +162,6 @@ class AIDisambiguationResponse(BaseModel):
     no_match_reason: str = ""
     """Explanation for no_match."""
 
-    selected_person_id: int | None = None
-    """Legacy: AI's selected person ID. Superseded by ranked_selections."""
-
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     """Confidence in the selection (0.0 to 1.0)."""
 
@@ -173,13 +170,7 @@ class AIDisambiguationResponse(BaseModel):
 
     @model_validator(mode="after")
     def normalize_exclusive_fields(self) -> AIDisambiguationResponse:
-        """Reconcile ranked_selections with legacy fields; see #925."""
-        if self.ranked_selections:
-            if self.no_match:
-                raise ValueError("ranked_selections and no_match=True are mutually exclusive")
-            if self.selected_person_id is not None:
-                raise ValueError("ranked_selections and selected_person_id are mutually exclusive")
-            return self
-        if self.no_match and self.selected_person_id is not None:
-            raise ValueError("no_match=True and selected_person_id are mutually exclusive")
+        """ranked_selections and no_match are mutually exclusive terminal states."""
+        if self.ranked_selections and self.no_match:
+            raise ValueError("ranked_selections and no_match=True are mutually exclusive")
         return self

@@ -69,11 +69,12 @@ class TestBatchProcessorDisambiguation:
         mock_provider.parse_request.assert_not_called()
 
 
-class TestPhase3FieldNameFix:
-    """phase3_disambiguation_service reads selected_person_id, not person_cm_id."""
+class TestPhase3ResponseFields:
+    """AIDisambiguationResponse field shape. Post #944: ranked_selections is canonical."""
 
-    def test_disambiguation_response_uses_selected_person_id(self):
-        """AIDisambiguationResponse has selected_person_id field."""
-        response = AIDisambiguationResponse(selected_person_id=1001, confidence=0.85, reasoning="test")
-        assert response.selected_person_id == 1001
+    def test_response_has_ranked_selections_not_person_cm_id(self):
+        """AIDisambiguationResponse exposes ranked_selections (not legacy person_cm_id)."""
+        response = AIDisambiguationResponse()
+        assert hasattr(response, "ranked_selections")
         assert not hasattr(response, "person_cm_id")
+        assert not hasattr(response, "selected_person_id")

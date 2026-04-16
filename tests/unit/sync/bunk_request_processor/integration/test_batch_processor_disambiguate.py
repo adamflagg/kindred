@@ -54,7 +54,7 @@ class TestBatchProcessorDisambiguate:
     async def test_disambiguate_calls_disambiguate_not_parse_request(self):
         """batch_disambiguate must call ai_provider.disambiguate(), not parse_request()."""
         mock_response = MagicMock()
-        mock_response.selected_person_id = 12345
+        mock_response.ranked_selections = []
         mock_response.confidence = 0.8
         mock_response.reasoning = "Best match"
 
@@ -88,7 +88,8 @@ class TestBatchProcessorDisambiguate:
     async def test_disambiguate_does_not_crash_on_real_context(self):
         """Regression: old code converted AIRequestContext to dict, causing AttributeError."""
         mock_response = MagicMock()
-        mock_response.selected_person_id = None
+        mock_response.ranked_selections = []
+        mock_response.no_match = True
         mock_response.confidence = 0.0
         mock_response.reasoning = "No match"
 
