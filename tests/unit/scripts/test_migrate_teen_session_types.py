@@ -1,8 +1,12 @@
 """Tests for the teen session-type migration script."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from scripts.migrate_teen_session_types import classify_new_session_type, run_migration
+from scripts.migrate_teen_session_types import (
+    classify_new_session_type,
+    main,
+    run_migration,
+)
 
 
 class TestClassifyNewSessionType:
@@ -68,3 +72,13 @@ class TestRunMigration:
         updated = run_migration(fake_pb, dry_run=False)
         assert updated == []
         fake_pb.collection.return_value.update.assert_not_called()
+
+
+class TestMainEnvGuard:
+    def test_main_returns_1_when_env_vars_missing(self, capsys):
+        with patch.dict("os.environ", {}, clear=True), patch("sys.argv", ["migrate_teen_session_types.py"]):
+            rc = main()
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "POCKETBASE_ADMIN_EMAIL" in err
+        assert "POCKETBASE_ADMIN_PASSWORD" in err
