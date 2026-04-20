@@ -34,7 +34,7 @@ const customFieldSynagogue = "Synagogue"
 
 // Session type constants for retention context groupings
 var (
-	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "tli", "training"}
+	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "tli", "training", "scit"}
 	familySessionTypes = []string{"family", "adult"}
 )
 

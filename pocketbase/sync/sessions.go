@@ -616,9 +616,6 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	if strings.Contains(nameLower, "specialist in-training") || strings.Contains(nameLower, "sit") {
 		return sessionTypeSCIT
 	}
-	if strings.Contains(nameLower, "scit") {
-		return sessionTypeSCIT
-	}
 
 	// Quest programs
 	if strings.Contains(nameLower, "quest") {

@@ -1820,7 +1820,7 @@ func TestV2_SessionTypeSelectValues(t *testing.T) {
 	// These are all the valid session types from camp_sessions enum
 	validTypes := []string{
 		"main", "embedded", "ag", "family", "quest", "training",
-		"bmitzvah", "tli", "adult", "school", "hebrew", "teen", "other",
+		"bmitzvah", "tli", "adult", "school", "hebrew", "teen", "other", "scit",
 	}
 
 	// Verify summer types are subset of valid types
