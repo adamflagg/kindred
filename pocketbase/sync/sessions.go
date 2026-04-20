@@ -20,7 +20,8 @@ const (
 	sessionTypeFamily   = "family"
 	sessionTypeEmbedded = "embedded"
 	sessionTypeTLI      = "tli"
-	sessionTypeTraining = "training"
+	sessionTypeSCIT     = "scit"
+	sessionTypeTraining = "training" // retained for legacy data; new classifications use SCIT
 	sessionTypeOther    = "other"
 )
 
@@ -608,12 +609,15 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 		return sessionTypeAdult
 	}
 
-	// Training programs
+	// SCIT programs (Counselor In-Training + Specialist In-Training; camp's collective label)
 	if strings.Contains(nameLower, "counselor in-training") || strings.Contains(nameLower, "cit") {
-		return sessionTypeTraining
+		return sessionTypeSCIT
 	}
 	if strings.Contains(nameLower, "specialist in-training") || strings.Contains(nameLower, "sit") {
-		return sessionTypeTraining
+		return sessionTypeSCIT
+	}
+	if strings.Contains(nameLower, "scit") {
+		return sessionTypeSCIT
 	}
 
 	// Quest programs
@@ -672,10 +676,10 @@ func (s *SessionsSync) getSessionTypeFromGroupID(groupCMID int, sessionName stri
 		return "quest"
 
 	case groupLeadership:
-		// Distinguish between TLI and training programs
+		// Distinguish between TLI and SCIT (Counselor + Specialist In-Training)
 		if strings.Contains(nameLower, "counselor") || strings.Contains(nameLower, "cit") ||
 			strings.Contains(nameLower, "specialist") || strings.Contains(nameLower, "sit") {
-			return sessionTypeTraining
+			return sessionTypeSCIT
 		}
 		return sessionTypeTLI
 

@@ -627,6 +627,21 @@ func TestGetSessionTypeFromName(t *testing.T) {
 			input:    "Teen Leadership Institute",
 			expected: "tli",
 		},
+		{
+			name:     "counselor in-training maps to scit",
+			input:    "Counselor In-Training",
+			expected: "scit",
+		},
+		{
+			name:     "specialist in-training maps to scit",
+			input:    "Specialist In-Training",
+			expected: "scit",
+		},
+		{
+			name:     "scit acronym maps to scit",
+			input:    "SCIT Summer 2026",
+			expected: "scit",
+		},
 		// Family sessions
 		{
 			name:     "family camp",
@@ -706,13 +721,13 @@ func TestGetSessionTypeFromGroupID(t *testing.T) {
 			name:        "leadership group CIT",
 			groupCMID:   groupLeadership,
 			sessionName: "Counselor In-Training",
-			expected:    "training",
+			expected:    "scit",
 		},
 		{
 			name:        "leadership group SIT",
 			groupCMID:   groupLeadership,
 			sessionName: "Specialist In-Training",
-			expected:    "training",
+			expected:    "scit",
 		},
 		// Teen Retreat group (4447)
 		{
@@ -941,6 +956,28 @@ func TestIsAGSession(t *testing.T) {
 			if got != tt.expected {
 				t.Errorf("isAGSession(%q) = %v, want %v",
 					tt.session.name, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetSessionTypeFromGroupID_LeadershipTraining(t *testing.T) {
+	s := &SessionsSync{}
+	tests := []struct {
+		name        string
+		groupCMID   int
+		sessionName string
+		expected    string
+	}{
+		{"CIT in leadership group", groupLeadership, "Counselor In-Training", "scit"},
+		{"SIT in leadership group", groupLeadership, "Specialist In-Training", "scit"},
+		{"TLI in leadership group", groupLeadership, "Teen Leadership Institute", "tli"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := s.getSessionTypeFromGroupID(tc.groupCMID, tc.sessionName)
+			if got != tc.expected {
+				t.Errorf("got %q, want %q", got, tc.expected)
 			}
 		})
 	}
