@@ -16,12 +16,13 @@ from typing import Any
 # - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)
 # - ag: All-Gender sessions (displayed merged into parent main session)
 # - quest: Quest adventure programs (child-oriented, shown in metrics/camper views)
+# - scit: Combined Counselor + Specialist In-Training (teens)
+# - tli: Teen Leadership Institute
 #
 # Excludes:
 # - family: Family camp (adult-focused, separate program)
-# - training: Staff training sessions
-# - tli: Teen Leadership Initiative (different program)
-DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+# - training: Staff training sessions (legacy)
+DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli")
 
 # Session types that have cabin/bunk assignments relevant to the heatmap.
 # Used for filtering _build_session_bunk_breakdown to prevent family camp,
@@ -49,21 +50,16 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
     "unknown": 4,
 }
 
-# Session types that count toward "summers at camp" / "years as camper"
-# Used for metrics calculations: "Summers at Camp", "First Summer Year".
-# Quest counts toward camper history to match CampMinder's years_at_camp.
-#
-# Includes:
-# - main: Standard sessions (Session 1, 2, 3, 4)
-# - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)
-# - ag: All-Gender sessions
-# - quest: Quest adventure programs (child-oriented, counts toward years at camp)
-#
-# Excludes:
-# - family: Family camp (adult-focused)
-# - training: Staff training sessions
-# - tli: Teen Leadership Initiative (different program)
-SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+# SUMMER_PROGRAM_SESSION_TYPES: enrollment tracking across registration & retention
+#   main: Standard sessions
+#   embedded: Standalone partial sessions (2a, 2b, etc.)
+#   ag: All-Gender sessions
+#   quest: Quest adventure programs
+#   scit: Combined Counselor + Specialist In-Training (teens)
+#   tli: Teen Leadership Institute
+# Excluded from years_at_camp history (matches CampMinder's years_at_camp):
+#   family, adult, school, bmitzvah, hebrew, teen winter retreat, training (legacy)
+SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli")
 
 
 def get_session_from_expand(record: Any) -> Any:

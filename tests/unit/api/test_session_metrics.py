@@ -73,6 +73,28 @@ class TestDisplaySessionTypesConstant:
         assert isinstance(DISPLAY_SESSION_TYPES, tuple)
 
 
+def test_display_types_includes_teen_programs():
+    from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+    assert "scit" in DISPLAY_SESSION_TYPES
+    assert "tli" in DISPLAY_SESSION_TYPES
+
+
+def test_summer_program_types_includes_teen_programs():
+    from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
+
+    assert "scit" in SUMMER_PROGRAM_SESSION_TYPES
+    assert "tli" in SUMMER_PROGRAM_SESSION_TYPES
+
+
+def test_bunk_types_excludes_teen_programs():
+    from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+    # Teens don't bunk in Kindred; they bunk separately at camp.
+    assert "scit" not in BUNK_SESSION_TYPES
+    assert "tli" not in BUNK_SESSION_TYPES
+
+
 class TestSummerProgramSessionTypesConstant:
     """Tests for SUMMER_PROGRAM_SESSION_TYPES constant (used for calculations)."""
 
@@ -117,11 +139,23 @@ class TestSummerProgramSessionTypesConstant:
 
         assert "training" not in SUMMER_PROGRAM_SESSION_TYPES
 
-    def test_constant_excludes_tli_sessions(self) -> None:
-        """TLI (Teen Leadership Initiative) sessions should NOT be included."""
+    def test_constant_includes_tli_sessions(self) -> None:
+        """TLI (Teen Leadership Institute) sessions ARE included.
+
+        Teen programs count toward years-at-camp retention metrics.
+        """
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
-        assert "tli" not in SUMMER_PROGRAM_SESSION_TYPES
+        assert "tli" in SUMMER_PROGRAM_SESSION_TYPES
+
+    def test_constant_includes_scit_sessions(self) -> None:
+        """SCIT (Counselor + Specialist In-Training) sessions ARE included.
+
+        Teen programs count toward years-at-camp retention metrics.
+        """
+        from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
+
+        assert "scit" in SUMMER_PROGRAM_SESSION_TYPES
 
     def test_constant_is_tuple_for_in_operator(self) -> None:
         """Constant should be a tuple for efficient 'in' checks."""
