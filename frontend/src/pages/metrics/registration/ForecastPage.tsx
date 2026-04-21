@@ -202,6 +202,11 @@ export default function ForecastPage() {
     [allSessions]
   )
 
+  const teenSessions = useMemo(
+    () => allSessions.filter((s) => s.session_type === 'scit' || s.session_type === 'tli'),
+    [allSessions]
+  )
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -232,7 +237,7 @@ export default function ForecastPage() {
 
   const { grand_total } = data
 
-  const sections = buildForecastSections(campSessions, questSessions)
+  const sections = buildForecastSections(campSessions, questSessions, teenSessions)
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
 

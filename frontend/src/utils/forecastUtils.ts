@@ -1,7 +1,7 @@
 import type { SessionForecast } from '../types/forecast'
 
 export interface ForecastSection {
-  key: 'camp' | 'quest'
+  key: 'camp' | 'quest' | 'teen'
   label: string
   sessions: SessionForecast[]
   total: SessionForecast
@@ -78,7 +78,8 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
  */
 export function buildForecastSections(
   campSessions: SessionForecast[],
-  questSessions: SessionForecast[]
+  questSessions: SessionForecast[],
+  teenSessions: SessionForecast[] = []
 ): ForecastSection[] {
   const sections: ForecastSection[] = []
 
@@ -97,6 +98,15 @@ export function buildForecastSections(
       label: 'Quests',
       sessions: questSessions,
       total: computeSectionTotal(questSessions, 'Quests'),
+    })
+  }
+
+  if (teenSessions.length > 0) {
+    sections.push({
+      key: 'teen',
+      label: 'Teen Programs',
+      sessions: teenSessions,
+      total: computeSectionTotal(teenSessions, 'Teen Programs'),
     })
   }
 

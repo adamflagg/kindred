@@ -335,6 +335,49 @@ describe('buildForecastSections', () => {
 })
 
 // ==========================================================================
+// buildForecastSections teen programs
+// ==========================================================================
+
+describe('buildForecastSections teen programs', () => {
+  it('includes teen section when teen sessions present', () => {
+    const camp: SessionForecast[] = [
+      session({ session_cm_id: 1, session_name: 'Session 2', session_type: 'main' }),
+    ]
+    const quest: SessionForecast[] = []
+    const teen: SessionForecast[] = [
+      session({ session_cm_id: 0, session_name: 'SCIT', session_type: 'scit', enrolled: 30 }),
+      session({ session_cm_id: 0, session_name: 'TLI', session_type: 'tli', enrolled: 40 }),
+    ]
+
+    const sections = buildForecastSections(camp, quest, teen)
+
+    const teenSection = sections.find((s) => s.key === 'teen')
+    expect(teenSection).toBeDefined()
+    expect(teenSection!.label).toBe('Teen Programs')
+    expect(teenSection!.sessions.map((s) => s.session_name)).toEqual(['SCIT', 'TLI'])
+    expect(teenSection!.total.enrolled).toBe(70)
+  })
+
+  it('omits teen section when no teen sessions', () => {
+    const sections = buildForecastSections(
+      [session({ session_cm_id: 1, session_type: 'main' })],
+      [],
+      []
+    )
+    expect(sections.find((s) => s.key === 'teen')).toBeUndefined()
+  })
+
+  it('teenSessions arg defaults to empty (backwards compatible)', () => {
+    // Existing callers that don't pass teenSessions must still work.
+    const sections = buildForecastSections(
+      [session({ session_cm_id: 1, session_type: 'main' })],
+      []
+    )
+    expect(sections.map((s) => s.key)).toEqual(['camp'])
+  })
+})
+
+// ==========================================================================
 // computeSectionTotal gender fields
 // ==========================================================================
 
