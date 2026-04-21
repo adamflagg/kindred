@@ -33,3 +33,13 @@ export const ALL_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest'] as const
 
 /** View mode for metrics: camp sessions, quest sessions, or all combined */
 export type MetricsViewMode = 'sessions' | 'quests' | 'all'
+
+/** All summer + teen program session types (admin/config views) */
+export const ADMIN_SUMMER_SESSION_TYPES = [
+  'main',
+  'embedded',
+  'ag',
+  'quest',
+  'scit',
+  'tli',
+] as const

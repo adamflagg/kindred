@@ -14,29 +14,29 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 
+from bunking.logging_config import configure_logging, get_logger
 from pocketbase import PocketBase
+
+_SCIT_PATTERN = re.compile(
+    r"\b(?:scit|cit|sit)\b|counselor[-\s]+in[-\s]+training|specialist[-\s]+in[-\s]+training",
+    re.IGNORECASE,
+)
 
 
 def classify_new_session_type(name: str, current_type: str) -> str:
     """Return the new session_type for a session given its name and current type.
 
-    Mirrors the Go sync's getSessionTypeFromName for CIT/SIT:
+    Mirrors the Go sync's isSCITSessionName for CIT/SIT:
       - If name matches CIT/SIT AND current type is 'training' -> 'scit'
       - Otherwise returns current_type unchanged (idempotent)
     """
     if current_type == "scit":
         return "scit"
 
-    name_lower = name.lower()
-    cit_sit_match = (
-        "counselor in-training" in name_lower
-        or "specialist in-training" in name_lower
-        or "cit" in name_lower
-        or "sit" in name_lower
-    )
-    if cit_sit_match and current_type == "training":
+    if _SCIT_PATTERN.search(name) and current_type == "training":
         return "scit"
     return current_type
 
@@ -63,6 +63,9 @@ def run_migration(pb: PocketBase, dry_run: bool) -> list[tuple[str, str, str]]:
 
 
 def main() -> int:
+    configure_logging()
+    logger = get_logger(__name__)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Report changes without applying")
     parser.add_argument(
@@ -75,30 +78,28 @@ def main() -> int:
     email = os.environ.get("POCKETBASE_ADMIN_EMAIL")
     password = os.environ.get("POCKETBASE_ADMIN_PASSWORD")
     if not email or not password:
-        print(
-            "ERROR: POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD must be set.",
-            file=sys.stderr,
-        )
+        logger.error("POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD must be set.")
         return 1
 
     pb = PocketBase(args.pb_url)
     pb.collection("_superusers").auth_with_password(email, password)
 
     mode = "DRY RUN" if args.dry_run else "APPLYING"
-    print(f"[{mode}] Scanning camp_sessions for CIT/SIT rows classified as 'training'...")
+    logger.info(f"[{mode}] Scanning camp_sessions for CIT/SIT rows classified as 'training'...")
 
     updates = run_migration(pb, dry_run=args.dry_run)
 
     if not updates:
-        print("No changes needed. Already migrated (or no matching rows).")
+        logger.info("No changes needed. Already migrated (or no matching rows).")
         return 0
 
-    print(f"\n{'Would update' if args.dry_run else 'Updated'} {len(updates)} row(s):")
+    verb = "Would update" if args.dry_run else "Updated"
+    logger.info(f"{verb} {len(updates)} row(s):")
     for rec_id, old, new in updates:
-        print(f"  {rec_id}: {old} -> {new}")
+        logger.info(f"  {rec_id}: {old} -> {new}")
 
     if args.dry_run:
-        print("\nRe-run without --dry-run to apply.")
+        logger.info("Re-run without --dry-run to apply.")
     return 0
 
 

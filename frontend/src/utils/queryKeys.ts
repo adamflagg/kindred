@@ -199,6 +199,9 @@ export const queryKeys = {
       duration,
     ] as const,
 
+  // Populate from Previous Year (Tier 2 - user data)
+  populateSessions: (year: number) => ['populate-sessions', year] as const,
+
   // Registration Config (Tier 2 - user data)
   registrationDatesConfig: (year: number) => ['registration-dates-config', year] as const,
   gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,

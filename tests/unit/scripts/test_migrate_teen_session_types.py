@@ -1,5 +1,6 @@
 """Tests for the teen session-type migration script."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 from scripts.migrate_teen_session_types import (
@@ -23,6 +24,14 @@ class TestClassifyNewSessionType:
         # Defensive: if a non-CIT/SIT session ever had type=training (e.g. staff training),
         # only rename when name matches CIT/SIT.
         assert classify_new_session_type("Staff Training Week", "training") == "training"
+
+    def test_false_positive_city_stays_training(self):
+        # "city" contains "cit" as a substring — must not match
+        assert classify_new_session_type("City Youth Training", "training") == "training"
+
+    def test_false_positive_visit_stays_training(self):
+        # "visit" contains "sit" as a substring — must not match
+        assert classify_new_session_type("Camp Visit Training", "training") == "training"
 
     def test_main_session_unchanged(self):
         assert classify_new_session_type("Session 2", "main") == "main"
@@ -75,10 +84,14 @@ class TestRunMigration:
 
 
 class TestMainEnvGuard:
-    def test_main_returns_1_when_env_vars_missing(self, capsys):
-        with patch.dict("os.environ", {}, clear=True), patch("sys.argv", ["migrate_teen_session_types.py"]):
+    def test_main_returns_1_when_env_vars_missing(self, caplog):
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("sys.argv", ["migrate_teen_session_types.py"]),
+            patch("scripts.migrate_teen_session_types.configure_logging"),
+            caplog.at_level(logging.ERROR),
+        ):
             rc = main()
         assert rc == 1
-        err = capsys.readouterr().err
-        assert "POCKETBASE_ADMIN_EMAIL" in err
-        assert "POCKETBASE_ADMIN_PASSWORD" in err
+        assert "POCKETBASE_ADMIN_EMAIL" in caplog.text
+        assert "POCKETBASE_ADMIN_PASSWORD" in caplog.text

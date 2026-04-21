@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { ADMIN_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 import {
   matchSessions,
@@ -24,15 +25,11 @@ import {
   type PreviewSessionItem,
 } from './populateUtils'
 
-// ── Session type filter (same as SessionConfigTable) ─────────────
-
-const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli']
-
 function useSummerSessions(year: number) {
   return useQuery({
-    queryKey: ['populate-sessions', year],
+    queryKey: queryKeys.populateSessions(year),
     queryFn: async () => {
-      const typeFilter = SUMMER_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
+      const typeFilter = ADMIN_SUMMER_SESSION_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
       return await pb.collection('camp_sessions').getFullList({
         filter: `year = ${year} && (${typeFilter})`,
         sort: 'start_date',

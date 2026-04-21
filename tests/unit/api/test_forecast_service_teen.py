@@ -65,6 +65,7 @@ async def test_scit_row_aggregates_cit_and_sit_enrollments(service, mock_reposit
 
     result = await service.calculate_forecast(year=2026, session_types=["scit", "tli"])
 
+    assert len(result.sessions) == 2, "Expected exactly 2 teen rows (one SCIT, one TLI)"
     by_type = {s.session_type: s for s in result.sessions}
     assert set(by_type) == {"scit", "tli"}, "Expected exactly one SCIT row and one TLI row"
 

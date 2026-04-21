@@ -282,6 +282,27 @@ export function buildPreview(
     })
   }
 
+  // Budget config (per-type keys: type_scit, type_tli, etc.)
+  // These keys are year-independent (the subcategory is the year, the key is the type),
+  // so they carry forward unchanged — no session matching needed.
+  for (const prev of prevBudgetConfig) {
+    if (!prev.config_key.startsWith('type_')) continue
+    if (isEmptyValue(prev.value)) continue
+
+    const existing = curBudgetConfig.find((c) => c.config_key === prev.config_key)
+    const isEmpty = existing && isEmptyValue(existing.value)
+
+    budgetItems.push({
+      sessionName: prev.config_key.replace('type_', '').toUpperCase(),
+      matchType: 'cm_id',
+      previousSessionName: null,
+      previousValue: prev.value,
+      newConfigKey: prev.config_key,
+      existingValue: existing && !isEmpty ? existing.value : null,
+      existingRecordId: isEmpty ? existing.id : null,
+    })
+  }
+
   // Summary
   const allItems = [
     ...registrationDates.map((d) => ({ existing: d.existingValue })),

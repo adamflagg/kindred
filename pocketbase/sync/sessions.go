@@ -552,6 +552,17 @@ func sortSessionsByPriority(sessions []*sessionOverlapInfo) {
 	}
 }
 
+// isSCITSessionName returns true if the (already-lowercased) session name
+// matches CIT or SIT patterns using word boundaries to avoid false positives
+// like "city", "circuit", "visit", or "jurisdiction".
+func isSCITSessionName(nameLower string) bool {
+	matched, _ := regexp.MatchString(
+		`\b(scit|cit|sit)\b|counselor[-\s]+in[-\s]+training|specialist[-\s]+in[-\s]+training`,
+		nameLower,
+	)
+	return matched
+}
+
 // getSessionTypeFromName returns the session type based directly on the session name
 func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	nameLower := strings.ToLower(sessionName)
@@ -610,10 +621,7 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	}
 
 	// SCIT programs (Counselor In-Training + Specialist In-Training; camp's collective label)
-	if strings.Contains(nameLower, "counselor in-training") || strings.Contains(nameLower, "cit") {
-		return sessionTypeSCIT
-	}
-	if strings.Contains(nameLower, "specialist in-training") || strings.Contains(nameLower, "sit") {
+	if isSCITSessionName(nameLower) {
 		return sessionTypeSCIT
 	}
 
@@ -674,8 +682,7 @@ func (s *SessionsSync) getSessionTypeFromGroupID(groupCMID int, sessionName stri
 
 	case groupLeadership:
 		// Distinguish between TLI and SCIT (Counselor + Specialist In-Training)
-		if strings.Contains(nameLower, "counselor") || strings.Contains(nameLower, "cit") ||
-			strings.Contains(nameLower, "specialist") || strings.Contains(nameLower, "sit") {
+		if isSCITSessionName(nameLower) {
 			return sessionTypeSCIT
 		}
 		return sessionTypeTLI

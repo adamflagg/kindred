@@ -155,7 +155,7 @@ class RetentionService:
 
         # Base year attendee sessions (filtered by session_types and base_session_cm_id) for session flow
         _, attendee_sessions_base_filtered = self._filter_base_attendees(
-            attendees_base, session_types, base_session_cm_id, duration_session_ids_base
+            attendees_base, effective_types, base_session_cm_id, duration_session_ids_base
         )
 
         # Calculate returned campers
@@ -248,7 +248,7 @@ class RetentionService:
             attendees_base,
             person_ids_compare_unfiltered,
             sessions_base_all,
-            session_types,
+            effective_types,
             base_session_cm_id,
             aged_out_person_ids=aged_out_person_ids,
             session_cm_ids=duration_session_ids_base,

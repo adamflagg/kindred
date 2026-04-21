@@ -19,6 +19,7 @@ from api.services.reconstruction import (
 )
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
+    SUMMER_PROGRAM_WITH_TEENS_TYPES,
     build_ag_parent_map,
     get_person_from_expand,
     get_session_from_expand,
@@ -191,7 +192,7 @@ class ForecastService:
             ForecastResponse with per-session and grand total data.
         """
         if session_types is None:
-            session_types = ["main", "embedded", "ag", "quest", "scit", "tli"]
+            session_types = list(SUMMER_PROGRAM_WITH_TEENS_TYPES)
 
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
@@ -332,6 +333,9 @@ class ForecastService:
         # for teen aggregates is not yet supported.
         if reconstruction is None:
             for teen_type, teen_sessions_list in teen_session_map.items():
+                sentinel = TEEN_SENTINEL_CM_ID.get(teen_type, 0)
+                if session_cm_id is not None and session_cm_id != sentinel:
+                    continue
                 teen_row = self._build_teen_row(
                     teen_type,
                     teen_sessions_list,
