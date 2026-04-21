@@ -652,26 +652,46 @@ class MetricsSQLRepository:
     # 14. fetch_budget_config
     # ------------------------------------------------------------------
 
-    async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
-        """Fetch budget config: session cm_id → config dict."""
+    async def fetch_budget_config(self, year: int) -> dict[int | str, dict[str, Any]]:
+        """Fetch budget config for all sessions and session_types.
+
+        Keys:
+          - int: CampMinder session cm_id (from config_key 'session_<cm_id>')
+          - str 'type:<name>': session_type-level config (from config_key 'type_<name>')
+
+        Returns dict mapping keys to value dicts containing at least
+        participant_goal and session_fee.
+        """
         rows = self._query(
             """SELECT config_key, value FROM config
                WHERE category = 'budget' AND subcategory = ?""",
             (str(year),),
         )
-        result: dict[int, dict[str, Any]] = {}
+        result: dict[int | str, dict[str, Any]] = {}
         for r in rows:
             key = r["config_key"] or ""
-            if key.startswith("session_"):
+            value = r["value"]
+            # Values are stored as JSON strings in the SQL config table.
+            if isinstance(value, str):
                 try:
-                    cm_id = int(key.replace("session_", ""))
-                    value = r["value"]
-                    if isinstance(value, str):
-                        parsed = json.loads(value)
-                        if isinstance(parsed, dict):
-                            result[cm_id] = parsed
-                except (ValueError, TypeError, json.JSONDecodeError):
-                    pass
+                    parsed = json.loads(value)
+                except (ValueError, json.JSONDecodeError):
+                    continue
+            else:
+                parsed = value
+            if not isinstance(parsed, dict):
+                continue
+
+            if key.startswith("session_"):
+                suffix = key[len("session_") :]
+                try:
+                    result[int(suffix)] = parsed
+                except (ValueError, TypeError):
+                    continue
+            elif key.startswith("type_"):
+                type_name = key[len("type_") :]
+                if type_name:
+                    result[f"type:{type_name}"] = parsed
         return result
 
     # ------------------------------------------------------------------

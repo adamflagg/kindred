@@ -627,6 +627,89 @@ class TestFetchBudgetConfig:
         result = await repo.fetch_budget_config(2030)
         assert result == {}
 
+    @pytest.mark.asyncio
+    async def test_fetch_budget_config_returns_type_keyed_entries(self, sql_db: sqlite3.Connection) -> None:
+        """type_<name> records land under 'type:<name>' keys alongside int session_* keys."""
+        import json
+
+        sql_db.executemany(
+            "INSERT INTO config VALUES (?,?,?,?,?)",
+            [
+                (
+                    "cfg_type_scit",
+                    "budget",
+                    "2025",
+                    "type_scit",
+                    json.dumps({"participant_goal": 50, "session_fee": 1500}),
+                ),
+                (
+                    "cfg_type_tli",
+                    "budget",
+                    "2025",
+                    "type_tli",
+                    json.dumps({"participant_goal": 40, "session_fee": 2000}),
+                ),
+            ],
+        )
+        sql_db.commit()
+
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_budget_config(2025)
+
+        # Existing session_* keys remain int-keyed
+        assert 1000001 in result
+        assert result[1000001]["participant_goal"] == 150
+
+        # type_* keys land under sentinel "type:<name>"
+        assert "type:scit" in result
+        assert result["type:scit"]["participant_goal"] == 50
+        assert result["type:scit"]["session_fee"] == 1500
+        assert "type:tli" in result
+        assert result["type:tli"]["participant_goal"] == 40
+
+    @pytest.mark.asyncio
+    async def test_fetch_budget_config_ignores_malformed_keys(self, sql_db: sqlite3.Connection) -> None:
+        """Bogus keys, empty type names, and non-numeric session ids are dropped."""
+        import json
+
+        sql_db.executemany(
+            "INSERT INTO config VALUES (?,?,?,?,?)",
+            [
+                ("cfg_bogus", "budget", "2026", "bogus_key", json.dumps({"participant_goal": 1})),
+                ("cfg_type_empty", "budget", "2026", "type_", json.dumps({"participant_goal": 2})),
+                (
+                    "cfg_session_nan",
+                    "budget",
+                    "2026",
+                    "session_notanumber",
+                    json.dumps({"participant_goal": 3}),
+                ),
+            ],
+        )
+        sql_db.commit()
+
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_budget_config(2026)
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_fetch_budget_config_skips_non_dict_values(self, sql_db: sqlite3.Connection) -> None:
+        """Values that don't deserialize to a dict are skipped for both session_ and type_ keys."""
+        import json
+
+        sql_db.executemany(
+            "INSERT INTO config VALUES (?,?,?,?,?)",
+            [
+                ("cfg_session_str", "budget", "2027", "session_1234", json.dumps("not a dict")),
+                ("cfg_type_null", "budget", "2027", "type_scit", json.dumps(None)),
+            ],
+        )
+        sql_db.commit()
+
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_budget_config(2027)
+        assert result == {}
+
 
 # ============================================================================
 # Test: fetch_registration_dates
