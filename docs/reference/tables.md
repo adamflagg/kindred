@@ -230,7 +230,7 @@ Session definitions with dates and type information.
 | `year` | number | Camp year |
 | `start_date` | date | Session start |
 | `end_date` | date | Session end |
-| `session_type` | select | main/embedded/ag/family/quest/training/etc. |
+| `session_type` | select | main/embedded/ag/quest/scit/tli/family/adult/school/bmitzvah/hebrew/teen/training (legacy — pre-migration CIT/SIT)/other |
 | `parent_id` | number | CampMinder ID of parent session (AG only) |
 | `session_group` | relation | Link to session_groups |
 | `is_day` | bool | Day camp session |

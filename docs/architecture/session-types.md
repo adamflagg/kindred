@@ -49,3 +49,23 @@ Embedded sessions are **fully independent** sessions that happen during partial 
 - Use `session.session_type === 'main'` to determine if AG area should be shown
 - Use `bunk.gender?.toLowerCase() === 'mixed'` to detect AG bunks
 - Bunk names starting with `AG-` are AG bunks (reliable naming convention)
+
+## Teen Programs
+
+Teens (rising 11th and 12th graders) participate in two distinct programs that
+are tracked for enrollment and revenue but **do not bunk through Kindred** —
+the camp handles their bunking separately due to the small cohort size.
+
+| session_type | Display label | Underlying CampMinder sessions | Typical grade |
+|---|---|---|---|
+| `scit` | SCIT | Counselor In-Training + Specialist In-Training (collective camp name) | Rising 12th |
+| `tli` | TLI | Teen Leadership Institute | Rising 11th |
+
+**Metrics treatment:**
+- Forecast: one row per `session_type`. SCIT aggregates CIT + SIT enrollments into one line item. TLI aggregates any TLI sessions.
+- Bunking board: excluded (`scit`/`tli` not in `BUNK_SESSION_TYPES`). Teens never appear in cabin assignments, requests, or the bunking UI.
+- Years-at-camp / retention: excluded by default — teens are tracked as a separate cohort, not as "main camp returners". A future opt-in toggle (`SUMMER_PROGRAM_WITH_TEENS_TYPES`) will allow including teens in retention calculations.
+
+**Budget config:** Per-program (not per-CampMinder-session) — stored under `config_key='type_scit'` and `config_key='type_tli'` in the PocketBase `config` collection.
+
+**Legacy note:** Pre-2026 historical data may have `session_type='training'` for CIT/SIT sessions. The script `scripts/migrate_teen_session_types.py` flips those to `'scit'`. The legacy `'training'` value is retained in the enum for any rows that haven't been migrated.

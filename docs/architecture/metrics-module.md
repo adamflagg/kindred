@@ -60,7 +60,11 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation:
 
 - **Parallel fetches**: Services use `asyncio.gather()` for all independent repository calls; repository uses `asyncio.to_thread()` for synchronous PocketBase SDK
 - **Batched queries**: Large person ID sets split into `BATCH_SIZE = 100` to avoid oversized PocketBase filter strings
-- **Session type constants**: `DISPLAY_SESSION_TYPES` (main, embedded, ag, quest), `BUNK_SESSION_TYPES` (main, embedded, ag — cabin heatmaps only), `SUMMER_PROGRAM_SESSION_TYPES` (counts toward years at camp)
+- **Session type constants**: defined in `api/utils/session_metrics.py`:
+  - **`DISPLAY_SESSION_TYPES`** — types shown in UI dropdowns and the forecast page (includes `scit`, `tli`)
+  - **`BUNK_SESSION_TYPES`** — types that participate in the bunking board (`main`, `embedded`, `ag` only — teens explicitly excluded)
+  - **`SUMMER_PROGRAM_SESSION_TYPES`** — types that count as "main camp" for retention metrics (excludes teens — they're a separate cohort)
+  - **`SUMMER_PROGRAM_WITH_TEENS_TYPES`** — superset that includes `scit`/`tli`, available for teen-inclusive retention calculations (currently unused — reserved for a future toggle)
 - **Aged-out logic**: Grade >= 10 excluded from retention base (no eligible session to return to)
 - **Demographics**: Use normalized fields when available (`normalized_school`, `normalized_city`, `normalized_congregation`), fall back to raw fields
 - **AG sessions**: Linked to parent via `parent_id`; metrics for AG fold into parent main session
@@ -80,6 +84,16 @@ Week 0 captures enrollments that occur before the registration anchor date (prio
 - `_week_number()` / `_week_start()` in `velocity_service.py` — return 0 / `anchor - 7d` for pre-anchor dates
 - `format_week_date_range()` in `camp_calendar.py` — handles `week_num=0` as a special case
 - `get_week_options()` in `forecast_service.py` — appends Week 0 at the bottom of the dropdown when pre-anchor data exists
+
+## Budget config keys
+
+Budget config records live in the PocketBase `config` collection with
+`category="budget"` and `subcategory="<year>"`. Two `config_key` shapes are supported:
+
+- `session_<cm_id>` — per-CampMinder-session config. Used for main, embedded, ag, and quest sessions where each CampMinder session is configured independently.
+- `type_<session_type>` — per-session-type config. Used for teen programs (`type_scit`, `type_tli`) where multiple underlying sessions roll up into one configurable line item.
+
+`MetricsRepository.fetch_budget_config` returns both shapes in one dict: integer keys for `session_*` (the CampMinder cm_id) and sentinel string keys `f"type:{name}"` for `type_*`. The forecast service uses the int keys for non-teen sessions and the sentinel keys for teen aggregation rows.
 
 ## Adding a New Metric
 
