@@ -26,7 +26,7 @@ import {
 
 // ── Session type filter (same as SessionConfigTable) ─────────────
 
-const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
+const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli']
 
 function useSummerSessions(year: number) {
   return useQuery({

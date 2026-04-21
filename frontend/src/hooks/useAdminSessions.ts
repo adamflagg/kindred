@@ -4,7 +4,7 @@ import { sortSessionsByDate } from '../utils/sessionUtils'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { useAuth } from '../contexts/AuthContext'
 
-const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
+const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli']
 
 export function useAdminSessions(year: number) {
   const { isLoading } = useAuth()
