@@ -26,6 +26,7 @@ from api.schemas.metrics import (
 from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
+    SUMMER_PROGRAM_SESSION_TYPES,
     compute_summer_metrics,
     get_person_from_expand,
     get_session_from_expand,
@@ -99,9 +100,10 @@ class RetentionService:
         sessions_compare_filtered = cast(dict[int, Any], _results[5])
         sessions_compare_all = cast(dict[int, Any], _results[6])
 
-        # Default to summer session types when no filter specified, so non-summer
-        # enrollments (TLI, family, training) don't count toward retention.
-        summer_types = list(DISPLAY_SESSION_TYPES)
+        # Default to main-camp summer session types when no filter specified.
+        # Teen programs (TLI, SCIT) are a separate cohort and must NOT count
+        # toward main-camp returner metrics — see SUMMER_PROGRAM_SESSION_TYPES.
+        summer_types = list(SUMMER_PROGRAM_SESSION_TYPES)
         effective_types = session_types if session_types is not None else summer_types
 
         # Resolve duration filter for both years

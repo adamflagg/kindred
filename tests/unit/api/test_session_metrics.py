@@ -80,11 +80,30 @@ def test_display_types_includes_teen_programs():
     assert "tli" in DISPLAY_SESSION_TYPES
 
 
-def test_summer_program_types_includes_teen_programs():
+def test_summer_program_excludes_teen_programs():
+    """Teens are a separate cohort, not main-camp returners."""
     from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
-    assert "scit" in SUMMER_PROGRAM_SESSION_TYPES
-    assert "tli" in SUMMER_PROGRAM_SESSION_TYPES
+    assert "scit" not in SUMMER_PROGRAM_SESSION_TYPES
+    assert "tli" not in SUMMER_PROGRAM_SESSION_TYPES
+
+
+def test_summer_program_with_teens_includes_teen_programs():
+    """The teen-inclusive variant is used by the forecast service."""
+    from api.utils.session_metrics import SUMMER_PROGRAM_WITH_TEENS_TYPES
+
+    assert "scit" in SUMMER_PROGRAM_WITH_TEENS_TYPES
+    assert "tli" in SUMMER_PROGRAM_WITH_TEENS_TYPES
+
+
+def test_summer_program_with_teens_is_superset():
+    """The teen-inclusive variant must be a superset of the base."""
+    from api.utils.session_metrics import (
+        SUMMER_PROGRAM_SESSION_TYPES,
+        SUMMER_PROGRAM_WITH_TEENS_TYPES,
+    )
+
+    assert set(SUMMER_PROGRAM_SESSION_TYPES).issubset(set(SUMMER_PROGRAM_WITH_TEENS_TYPES))
 
 
 def test_bunk_types_excludes_teen_programs():
@@ -139,23 +158,11 @@ class TestSummerProgramSessionTypesConstant:
 
         assert "training" not in SUMMER_PROGRAM_SESSION_TYPES
 
-    def test_constant_includes_tli_sessions(self) -> None:
-        """TLI (Teen Leadership Institute) sessions ARE included.
-
-        Teen programs count toward years-at-camp retention metrics.
-        """
+    def test_constant_excludes_tli_sessions(self) -> None:
+        """TLI (Teen Leadership Initiative) sessions should NOT be included."""
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
-        assert "tli" in SUMMER_PROGRAM_SESSION_TYPES
-
-    def test_constant_includes_scit_sessions(self) -> None:
-        """SCIT (Counselor + Specialist In-Training) sessions ARE included.
-
-        Teen programs count toward years-at-camp retention metrics.
-        """
-        from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
-
-        assert "scit" in SUMMER_PROGRAM_SESSION_TYPES
+        assert "tli" not in SUMMER_PROGRAM_SESSION_TYPES
 
     def test_constant_is_tuple_for_in_operator(self) -> None:
         """Constant should be a tuple for efficient 'in' checks."""
@@ -167,24 +174,29 @@ class TestSummerProgramSessionTypesConstant:
 class TestConstantRelationship:
     """Tests verifying the relationship between the two constants."""
 
-    def test_display_types_is_subset_of_summer_types(self) -> None:
-        """DISPLAY_SESSION_TYPES should be a subset of SUMMER_PROGRAM_SESSION_TYPES.
+    def test_summer_types_is_subset_of_display_types(self) -> None:
+        """SUMMER_PROGRAM_SESSION_TYPES should be a subset of DISPLAY_SESSION_TYPES.
 
-        Everything displayed should also count toward summer metrics.
+        Everything that counts toward main-camp returner metrics should also
+        appear in display views, but DISPLAY additionally surfaces teen
+        programs (scit, tli).
         """
         from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
 
-        assert set(DISPLAY_SESSION_TYPES).issubset(set(SUMMER_PROGRAM_SESSION_TYPES))
+        assert set(SUMMER_PROGRAM_SESSION_TYPES).issubset(set(DISPLAY_SESSION_TYPES))
 
-    def test_constants_are_equal(self) -> None:
-        """Both constants should now contain the same session types.
+    def test_display_types_equal_summer_with_teens(self) -> None:
+        """DISPLAY_SESSION_TYPES should match SUMMER_PROGRAM_WITH_TEENS_TYPES.
 
-        DISPLAY_SESSION_TYPES and SUMMER_PROGRAM_SESSION_TYPES are equal
-        since quest sessions are now included in display views.
+        The display surface and the teen-inclusive forecast cohort cover the
+        same set of session types.
         """
-        from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
+        from api.utils.session_metrics import (
+            DISPLAY_SESSION_TYPES,
+            SUMMER_PROGRAM_WITH_TEENS_TYPES,
+        )
 
-        assert set(SUMMER_PROGRAM_SESSION_TYPES) == set(DISPLAY_SESSION_TYPES)
+        assert set(DISPLAY_SESSION_TYPES) == set(SUMMER_PROGRAM_WITH_TEENS_TYPES)
 
 
 # ============================================================================

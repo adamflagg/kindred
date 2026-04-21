@@ -55,11 +55,19 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 #   embedded: Standalone partial sessions (2a, 2b, etc.)
 #   ag: All-Gender sessions
 #   quest: Quest adventure programs
-#   scit: Combined Counselor + Specialist In-Training (teens)
-#   tli: Teen Leadership Institute
 # Excluded from years_at_camp history (matches CampMinder's years_at_camp):
-#   family, adult, school, bmitzvah, hebrew, teen winter retreat, training (legacy)
-SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli")
+#   tli: Teen Leadership Institute
+#   family: Family camp
+#   training: Staff training sessions (legacy)
+#   adult, school, bmitzvah, hebrew, teen: non-summer programs
+# Excluded so teens are NOT counted as "returners" to main camp (different cohort).
+SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+
+# SUMMER_PROGRAM_WITH_TEENS_TYPES: superset of SUMMER_PROGRAM that includes teen
+# programs (SCIT, TLI). Used by the forecast service / Teen Programs section so
+# fees, budget goals, and enrollment counts surface alongside main sessions.
+# A future UI toggle will let staff include teens in retention via this constant.
+SUMMER_PROGRAM_WITH_TEENS_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli")
 
 
 def get_session_from_expand(record: Any) -> Any:
