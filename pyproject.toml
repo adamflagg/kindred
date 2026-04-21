@@ -44,7 +44,7 @@ dependencies = [
     # Configuration & validation
     "pydantic>=2.7.0",
     "pydantic-settings>=2.13.1",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
     "PyYAML>=6.0",
     # Auth
     "PyJWT[crypto]>=2.12.0",
