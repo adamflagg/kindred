@@ -32,7 +32,12 @@ const statusEnrolled = "enrolled"
 // customFieldSynagogue is the custom field name for synagogue in household_custom_values
 const customFieldSynagogue = "Synagogue"
 
-// Session type constants for retention context groupings
+// Session type constants for retention context groupings.
+// summerSessionTypes drives the is_returning_summer flag in camper_history rows.
+// NOTE: includes "scit" and "tli" so historical exports flag teens as summer
+// attendees. Python retention computes its own narrower cohort at query time
+// (api/utils/session_metrics.SUMMER_PROGRAM_SESSION_TYPES) — divergence is
+// intentional, not a bug.
 var (
 	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "tli", "training", "scit"}
 	familySessionTypes = []string{"family", "adult"}

@@ -345,8 +345,8 @@ describe('buildForecastSections teen programs', () => {
     ]
     const quest: SessionForecast[] = []
     const teen: SessionForecast[] = [
-      session({ session_cm_id: 0, session_name: 'SCIT', session_type: 'scit', enrolled: 30 }),
-      session({ session_cm_id: 0, session_name: 'TLI', session_type: 'tli', enrolled: 40 }),
+      session({ session_cm_id: -1, session_name: 'SCIT', session_type: 'scit', enrolled: 30 }),
+      session({ session_cm_id: -2, session_name: 'TLI', session_type: 'tli', enrolled: 40 }),
     ]
 
     const sections = buildForecastSections(camp, quest, teen)

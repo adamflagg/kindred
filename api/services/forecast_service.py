@@ -40,6 +40,14 @@ TEEN_DISPLAY_NAMES: dict[str, str] = {
     "tli": "TLI",
 }
 
+# Negative sentinel cm_ids for aggregated teen rows. Real CampMinder session IDs
+# are always positive, so negatives are safe placeholders that prevent React key
+# collisions across multiple aggregated rows in the same forecast response.
+TEEN_SENTINEL_CM_ID: dict[str, int] = {
+    "scit": -1,
+    "tli": -2,
+}
+
 
 class ForecastService:
     """Compute session enrollment forecasts with budget and revenue projections."""
@@ -424,7 +432,7 @@ class ForecastService:
         participants_vs_budget = (enrolled - goal) if goal is not None else None
 
         return SessionForecast(
-            session_cm_id=0,  # sentinel: aggregated row, no single cm_id
+            session_cm_id=TEEN_SENTINEL_CM_ID.get(session_type, 0),
             session_name=TEEN_DISPLAY_NAMES.get(session_type, session_type.upper()),
             session_type=session_type,
             participant_goal=goal,
