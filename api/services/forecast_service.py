@@ -31,6 +31,15 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Teen programs (SCIT, TLI) collapse into ONE forecast row per session_type
+# even when backed by multiple CampMinder sessions (e.g. SCIT = CIT + SIT).
+TEEN_SESSION_TYPES: tuple[str, ...] = ("scit", "tli")
+
+TEEN_DISPLAY_NAMES: dict[str, str] = {
+    "scit": "SCIT",
+    "tli": "TLI",
+}
+
 
 class ForecastService:
     """Compute session enrollment forecasts with budget and revenue projections."""
@@ -174,7 +183,7 @@ class ForecastService:
             ForecastResponse with per-session and grand total data.
         """
         if session_types is None:
-            session_types = ["main", "embedded", "ag", "quest"]
+            session_types = ["main", "embedded", "ag", "quest", "scit", "tli"]
 
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
@@ -220,9 +229,20 @@ class ForecastService:
         # Build AG parent map for session_cm_id filtering
         ag_parent_map = build_ag_parent_map(sessions)
 
+        # Split sessions for teen aggregation: teen programs (SCIT, TLI) collapse
+        # into one row per session_type; non-teen sessions stay one-row-per-session.
+        teen_session_map: dict[str, list[Any]] = {}
+        non_teen_sessions: dict[int, Any] = {}
+        for sid, session in sessions.items():
+            stype = getattr(session, "session_type", "")
+            if stype in TEEN_SESSION_TYPES:
+                teen_session_map.setdefault(stype, []).append(session)
+            else:
+                non_teen_sessions[sid] = session
+
         # Build per-session forecasts (AG sessions as separate rows)
         session_forecasts: list[SessionForecast] = []
-        for sid, session in sessions.items():
+        for sid, session in non_teen_sessions.items():
             session_type = getattr(session, "session_type", "")
 
             # If filtering to specific session, include it + its AG children
@@ -299,6 +319,20 @@ class ForecastService:
                 )
             )
 
+        # Emit one aggregated row per teen session_type (SCIT, TLI).
+        # Skipped in reconstruction mode: historical week-by-week reconstruction
+        # for teen aggregates is not yet supported.
+        if reconstruction is None:
+            for teen_type, teen_sessions_list in teen_session_map.items():
+                teen_row = self._build_teen_row(
+                    teen_type,
+                    teen_sessions_list,
+                    enrolled_attendees,
+                    waitlisted_attendees,
+                    budget_config,
+                )
+                session_forecasts.append(teen_row)
+
         # Grand total
         grand_total = self._compute_grand_total(session_forecasts)
 
@@ -351,6 +385,64 @@ class ForecastService:
                     elif gender == "F":
                         girls += 1
         return count, (boys if has_gender else None), (girls if has_gender else None)
+
+    def _build_teen_row(
+        self,
+        session_type: str,
+        teen_sessions: list[Any],
+        enrolled_attendees: list[Any],
+        waitlisted_attendees: list[Any],
+        budget_config: dict[int | str, dict[str, Any]],
+    ) -> SessionForecast:
+        """Aggregate all sessions of a teen session_type into one forecast row.
+
+        Teen programs (SCIT, TLI) display as a single line item per session_type
+        even when backed by multiple CampMinder sessions (e.g. SCIT = CIT + SIT).
+        Fee and goal come from type-level config (config_key='type_<name>'),
+        keyed in budget_config under the sentinel `type:<name>`.
+        """
+        enrolled = 0
+        waitlisted = 0
+        for sess in teen_sessions:
+            sess_cm_id = getattr(sess, "cm_id", None)
+            if sess_cm_id is None:
+                continue
+            e, _, _ = self._count_attendees_with_gender_for_session(enrolled_attendees, sess_cm_id, set())
+            w = self._count_attendees_for_session(waitlisted_attendees, sess_cm_id, set())
+            enrolled += e
+            waitlisted += w
+
+        cfg = budget_config.get(f"type:{session_type}", {}) or {}
+        goal = cfg.get("participant_goal")
+        fee = cfg.get("session_fee")
+
+        pct = round(enrolled / goal * 100, 1) if goal else None
+        budget_rev = goal * fee if (goal is not None and fee is not None) else None
+        actual_rev = enrolled * fee if fee is not None else None
+        revenue_delta = (actual_rev - budget_rev) if (actual_rev is not None and budget_rev is not None) else None
+        revenue_pct = round(actual_rev / budget_rev * 100, 1) if (budget_rev and actual_rev is not None) else None
+        participants_vs_budget = (enrolled - goal) if goal is not None else None
+
+        return SessionForecast(
+            session_cm_id=0,  # sentinel: aggregated row, no single cm_id
+            session_name=TEEN_DISPLAY_NAMES.get(session_type, session_type.upper()),
+            session_type=session_type,
+            participant_goal=goal,
+            session_fee=fee,
+            enrolled=enrolled,
+            waitlisted=waitlisted,
+            pct_of_goal=pct,
+            prior_year_count=None,
+            two_year_prior_count=None,
+            participants_vs_budget=participants_vs_budget,
+            participants_vs_prior_year=None,
+            budget_revenue=budget_rev,
+            actual_revenue=actual_rev,
+            revenue_delta=revenue_delta,
+            revenue_pct=revenue_pct,
+            enrolled_boys=None,
+            enrolled_girls=None,
+        )
 
     async def _fetch_prior_year_counts(
         self,

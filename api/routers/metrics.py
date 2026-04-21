@@ -548,7 +548,10 @@ async def get_forecast_week_options(
 @router.get("/forecast", response_model=ForecastResponse)
 async def get_forecast(
     year: int = Query(..., description="Year to forecast", ge=2000, le=2100),
-    session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
+    session_types: str | None = Query(
+        "main,embedded,ag,quest,scit,tli",
+        description="Session types (comma-separated)",
+    ),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     day_offset: int | None = Query(
         None, ge=-1, description="Days since registration anchor (week-relative mode); -1 for Week 0"
