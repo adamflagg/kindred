@@ -363,6 +363,22 @@ After `git pull`, the `post-merge` hook detects merged worktree branches and sug
 - Never push without user consent
 - Never add others' changes to your commits (check `git status` first)
 
+## Dependabot PRs — Use `@dependabot recreate`, Not `rebase`
+
+A GitHub Actions workflow in this repo edits dependabot PRs after open to extend
+lockfiles (`uv.lock`, `frontend/package-lock.json`) so all three lockfile families
+stay in sync. When GHA has modified a dependabot PR, `@dependabot rebase` can
+force-push over those edits or leave the branch in an inconsistent state.
+
+**Rule:** When interacting with a dependabot PR (asking it to update against main,
+resolve lockfile conflicts, etc.), always comment `@dependabot recreate` — never
+`@dependabot rebase`. Recreate closes the PR and opens a fresh one from current
+main, which is safe regardless of prior GHA edits.
+
+Exception: if you are manually pushing a lockfile fix to the dependabot branch
+yourself (maintainer edit), skip the dependabot command entirely and push the
+fix directly.
+
 ## Git Hooks (Lefthook)
 
 Hooks are managed by [lefthook](https://github.com/evilmartians/lefthook) via `.lefthook.yml`.
