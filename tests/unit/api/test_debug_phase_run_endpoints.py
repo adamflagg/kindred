@@ -108,7 +108,7 @@ def mock_phase_runner() -> MagicMock:
 @pytest.fixture
 def client_with_mocks(
     mock_pb: MagicMock, mock_phase_runner: MagicMock
-) -> Generator[tuple[TestClient, MagicMock, MagicMock], None, None]:
+) -> Generator[tuple[TestClient, MagicMock, MagicMock]]:
     """Create test client with mocked PB client and PhaseRunner."""
     with patch("api.routers.debug.pb", mock_pb):
         with patch("api.routers.debug._create_phase_runner", return_value=mock_phase_runner):

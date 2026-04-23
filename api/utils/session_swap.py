@@ -20,7 +20,7 @@ def _parse_date(date_str: str | None) -> datetime | None:
     # Try ISO date first (YYYY-MM-DD)
     try:
         return datetime.strptime(date_str[:10], "%Y-%m-%d")
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

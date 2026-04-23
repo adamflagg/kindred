@@ -100,7 +100,7 @@ class TestSplitEndpointSuccess:
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock]]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -245,7 +245,7 @@ class TestSplitEndpointErrors:
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock]]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -361,7 +361,7 @@ class TestSplitEndpointPrimaryValidation:
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock]]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -457,7 +457,7 @@ class TestSplitEndpointMergedFromUpdate:
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock]]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 

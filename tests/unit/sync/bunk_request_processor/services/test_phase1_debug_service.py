@@ -42,7 +42,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         }
 
     @pytest.fixture
-    def debug_service(self, mock_dependencies: dict[str, Mock]) -> "Phase1DebugService":
+    def debug_service(self, mock_dependencies: dict[str, Mock]) -> Phase1DebugService:
         """Create a Phase1DebugService with mocked dependencies."""
         from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
             Phase1DebugService,
@@ -56,7 +56,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
 
     @pytest.mark.asyncio
     async def test_parse_selected_records_loads_and_parses(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that parse_selected_records loads records and runs Phase 1."""
         # Mock no cached result (returns None, not a Mock)
@@ -126,7 +126,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
 
     @pytest.mark.asyncio
     async def test_parse_selected_records_skips_cached_when_not_force(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that cached results are returned when force_reparse=False."""
         # Mock cached result exists
@@ -149,7 +149,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
 
     @pytest.mark.asyncio
     async def test_parse_selected_records_reparses_when_force(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that records are reparsed when force_reparse=True."""
         # Mock cached result exists
@@ -190,7 +190,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
 
     @pytest.mark.asyncio
     async def test_parse_selected_records_handles_mixed_cached_and_new(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test handling mix of cached and new records."""
 
@@ -233,7 +233,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
 
     @pytest.mark.asyncio
     async def test_parse_selected_records_returns_empty_for_empty_input(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that empty input returns empty results."""
         results = await debug_service.parse_selected_records([])
@@ -259,7 +259,7 @@ class TestPhase1DebugServiceParseByFilter:
         }
 
     @pytest.fixture
-    def debug_service(self, mock_dependencies: dict[str, Mock]) -> "Phase1DebugService":
+    def debug_service(self, mock_dependencies: dict[str, Mock]) -> Phase1DebugService:
         """Create a Phase1DebugService with mocked dependencies."""
         from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
             Phase1DebugService,
@@ -273,7 +273,7 @@ class TestPhase1DebugServiceParseByFilter:
 
     @pytest.mark.asyncio
     async def test_parse_by_filter_filters_by_session(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that parse_by_filter applies session filter."""
         mock_dependencies["original_requests_loader"].load_by_filter.return_value = []
@@ -287,7 +287,7 @@ class TestPhase1DebugServiceParseByFilter:
 
     @pytest.mark.asyncio
     async def test_parse_by_filter_filters_by_source_field(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that parse_by_filter applies source field filter."""
         mock_dependencies["original_requests_loader"].load_by_filter.return_value = []
@@ -301,7 +301,7 @@ class TestPhase1DebugServiceParseByFilter:
 
     @pytest.mark.asyncio
     async def test_parse_by_filter_respects_limit(
-        self, debug_service: "Phase1DebugService", mock_dependencies: dict[str, Mock]
+        self, debug_service: Phase1DebugService, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that parse_by_filter respects the limit parameter."""
         mock_dependencies["original_requests_loader"].load_by_filter.return_value = []
@@ -326,7 +326,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
         }
 
     @pytest.fixture
-    def debug_service(self, mock_dependencies: dict[str, Mock]) -> "Phase1DebugService":
+    def debug_service(self, mock_dependencies: dict[str, Mock]) -> Phase1DebugService:
         """Create a Phase1DebugService with mocked dependencies."""
         from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
             Phase1DebugService,
@@ -338,7 +338,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
             phase1_service=mock_dependencies["phase1_service"],
         )
 
-    def test_convert_extracts_requester_info(self, debug_service: "Phase1DebugService") -> None:
+    def test_convert_extracts_requester_info(self, debug_service: Phase1DebugService) -> None:
         """Test that conversion extracts requester name and cm_id."""
         mock_original = Mock()
         mock_original.id = "orig_req_1"
@@ -366,7 +366,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
         assert parse_request.request_text == "With Emma"
         assert parse_request.field_name == SourceField.BUNK_WITH
 
-    def test_convert_uses_first_name_when_no_preferred(self, debug_service: "Phase1DebugService") -> None:
+    def test_convert_uses_first_name_when_no_preferred(self, debug_service: Phase1DebugService) -> None:
         """Test that first_name is used when preferred_name is None."""
         mock_original = Mock()
         mock_original.id = "orig_req_1"
@@ -404,7 +404,7 @@ class TestPhase1DebugServiceFormatResults:
         }
 
     @pytest.fixture
-    def debug_service(self, mock_dependencies: dict[str, Mock]) -> "Phase1DebugService":
+    def debug_service(self, mock_dependencies: dict[str, Mock]) -> Phase1DebugService:
         """Create a Phase1DebugService with mocked dependencies."""
         from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
             Phase1DebugService,
@@ -416,7 +416,7 @@ class TestPhase1DebugServiceFormatResults:
             phase1_service=mock_dependencies["phase1_service"],
         )
 
-    def test_format_results_includes_all_intent_fields(self, debug_service: "Phase1DebugService") -> None:
+    def test_format_results_includes_all_intent_fields(self, debug_service: Phase1DebugService) -> None:
         """Test that formatted results include all required intent fields."""
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
@@ -481,7 +481,7 @@ class TestPhase1DebugServiceFormatResults:
         assert intent_1["target_name"] == "Mia"
         assert intent_1["list_position"] == 1
 
-    def test_format_results_handles_failed_parse(self, debug_service: "Phase1DebugService") -> None:
+    def test_format_results_handles_failed_parse(self, debug_service: Phase1DebugService) -> None:
         """Test that failed parse results are formatted correctly."""
         from bunking.sync.bunk_request_processor.core.models import ParseResult
 
@@ -511,7 +511,7 @@ class TestPhase1DebugServiceGetPromptVersion:
         }
 
     @pytest.fixture
-    def debug_service(self, mock_dependencies: dict[str, Mock]) -> "Phase1DebugService":
+    def debug_service(self, mock_dependencies: dict[str, Mock]) -> Phase1DebugService:
         """Create a Phase1DebugService with mocked dependencies."""
         from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
             Phase1DebugService,
@@ -524,7 +524,7 @@ class TestPhase1DebugServiceGetPromptVersion:
             prompt_version="v1.2.0",
         )
 
-    def test_prompt_version_included_in_results(self, debug_service: "Phase1DebugService") -> None:
+    def test_prompt_version_included_in_results(self, debug_service: Phase1DebugService) -> None:
         """Test that prompt version is included in formatted results."""
         from bunking.sync.bunk_request_processor.core.models import ParseResult
 

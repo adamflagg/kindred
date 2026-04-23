@@ -459,7 +459,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                     parent_last = parent.get("last", "")
                     if parent_last and parent_last.lower() == surname_lower:
                         return True
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             return False
 
         return False

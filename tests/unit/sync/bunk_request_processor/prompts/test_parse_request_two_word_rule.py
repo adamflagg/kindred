@@ -21,7 +21,7 @@ from bunking.sync.bunk_request_processor.prompts.loader import (
 
 
 @pytest.fixture(autouse=True)
-def _reset_prompt_cache() -> Generator[None, None, None]:
+def _reset_prompt_cache() -> Generator[None]:
     clear_cache()
     yield
     clear_cache()

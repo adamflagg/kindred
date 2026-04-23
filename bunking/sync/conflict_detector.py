@@ -141,7 +141,7 @@ class ConflictDetector:
                     reasoning = json.loads(request["ai_reasoning"])
                     if reasoning.get("notes"):
                         all_notes.append(reasoning["notes"])
-                except (KeyError, TypeError):
+                except KeyError, TypeError:
                     pass
 
         # Look for resolution patterns

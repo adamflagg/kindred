@@ -61,7 +61,7 @@ def run_single_scenario(profiler, name, num_campers=500, num_cabins=42, cabin_ca
         elif "objective:" in line and objective is None:
             try:
                 objective = int(line.split("objective:")[1].strip())
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
 
     # Update result with parsed info

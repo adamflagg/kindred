@@ -361,7 +361,7 @@ class OriginalRequestsLoader:
                 if isinstance(val, str):
                     try:
                         return datetime.fromisoformat(val)
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         return None
                 return None
 

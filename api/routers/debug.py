@@ -1150,7 +1150,7 @@ def _parse_pb_datetime(value: Any) -> datetime | None:
         return None
     try:
         return datetime.fromisoformat(str(value))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 

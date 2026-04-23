@@ -100,7 +100,7 @@ def mock_all_external_services():
             with patch("scripts.services.config_service.PocketBase") as mock_config_pb:
                 mock_config_pb.return_value = mock_pb
                 yield {"pocketbase": mock_pb}
-        except (ImportError, ModuleNotFoundError, AttributeError):
+        except ImportError, ModuleNotFoundError, AttributeError:
             yield {"pocketbase": mock_pb}
 
 
