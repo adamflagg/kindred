@@ -86,11 +86,10 @@ async def get_session_social_graph(
             + (f", scenario {scenario_id}" if scenario_id else "")
         )
 
-        # Check cache first. Skip the in-memory session-graph cache when a
-        # scenario_id is supplied — the cache key does not include scenario,
-        # so reusing it would leak CampMinder (production) assignments into a
-        # scenario view (or vice versa).
-        cached_graph = None if scenario_id else graph_cache.get_session_graph(session_cm_id, year)
+        # Check cache first. The cache key is scoped by scenario_id so that
+        # production and scenario graphs are cached independently and cannot
+        # leak into one another.
+        cached_graph = graph_cache.get_session_graph(session_cm_id, year, scenario_id=scenario_id)
         if cached_graph:
             logger.info(f"Using cached graph for session {session_cm_id}")
             graph = cached_graph
@@ -134,9 +133,9 @@ async def get_session_social_graph(
             # from bunk_assignments_draft when a scenario is active.
             graph = builder.build_social_network(year, session_cm_id, scenario_id=scenario_id)
 
-            # Cache only the production (no-scenario) variant — see note above.
-            if not scenario_id:
-                graph_cache.cache_session_graph(session_cm_id, year, graph)
+            # Cache under a scenario-scoped key so production and scenario
+            # graphs are stored independently.
+            graph_cache.cache_session_graph(session_cm_id, year, graph, scenario_id=scenario_id)
 
         # Convert to response format
         nodes = []

@@ -261,5 +261,91 @@ class TestGraphCacheManager(unittest.TestCase):
         assert stats["cache_size"] == 0
 
 
+class TestGraphCacheManagerScenario(unittest.TestCase):
+    """Test scenario-aware caching — production and scenario graphs must not collide."""
+
+    def setUp(self):
+        self.cache = GraphCacheManager(ttl_seconds=60, max_cache_size=10)
+
+        self.prod_graph = nx.DiGraph()
+        self.prod_graph.add_nodes_from([1, 2, 3])
+        self.prod_graph.add_edges_from([(1, 2), (2, 3)])
+
+        self.scenario_graph = nx.DiGraph()
+        self.scenario_graph.add_nodes_from([10, 11, 12])
+        self.scenario_graph.add_edges_from([(10, 11), (11, 12)])
+
+        self.other_scenario_graph = nx.DiGraph()
+        self.other_scenario_graph.add_nodes_from([20, 21])
+        self.other_scenario_graph.add_edge(20, 21)
+
+    def test_prod_and_scenario_are_distinct_keys(self):
+        """Caching under a scenario must not overwrite or serve the prod graph."""
+        self.cache.cache_session_graph(12345, 2025, self.prod_graph)
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+
+        # Prod lookup returns prod graph
+        prod = self.cache.get_session_graph(12345, 2025)
+        assert prod is not None
+        assert set(prod.nodes()) == {1, 2, 3}
+
+        # Scenario lookup returns scenario graph
+        scn = self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc")
+        assert scn is not None
+        assert set(scn.nodes()) == {10, 11, 12}
+
+        # Should be three distinct-capable entries once we add another scenario
+        self.cache.cache_session_graph(12345, 2025, self.other_scenario_graph, scenario_id="scn_xyz")
+        other = self.cache.get_session_graph(12345, 2025, scenario_id="scn_xyz")
+        assert other is not None
+        assert set(other.nodes()) == {20, 21}
+
+        # Previously cached entries still intact
+        assert set(self.cache.get_session_graph(12345, 2025).nodes()) == {1, 2, 3}
+        assert set(self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc").nodes()) == {
+            10,
+            11,
+            12,
+        }
+
+        stats = self.cache.get_stats()
+        assert stats["cache_size"] == 3
+
+    def test_scenario_miss_is_distinct_from_prod(self):
+        """A scenario lookup with no scenario cache must miss even if prod is cached."""
+        self.cache.cache_session_graph(12345, 2025, self.prod_graph)
+
+        # Only prod is cached — scenario lookup misses
+        miss = self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc")
+        assert miss is None
+
+        # And prod lookup still hits
+        hit = self.cache.get_session_graph(12345, 2025)
+        assert hit is not None
+        assert set(hit.nodes()) == {1, 2, 3}
+
+    def test_none_scenario_id_equals_prod(self):
+        """Passing scenario_id=None explicitly must behave the same as omitting it."""
+        self.cache.cache_session_graph(12345, 2025, self.prod_graph, scenario_id=None)
+
+        assert self.cache.get_session_graph(12345, 2025) is not None
+        assert self.cache.get_session_graph(12345, 2025, scenario_id=None) is not None
+
+    def test_repeated_scenario_lookup_hits_cache(self):
+        """Same (cm_id, year, scenario_id) tuple returns cached value on repeat."""
+        self.cache.cache_session_graph(42, 2026, self.scenario_graph, scenario_id="scn_xyz")
+
+        first = self.cache.get_session_graph(42, 2026, scenario_id="scn_xyz")
+        second = self.cache.get_session_graph(42, 2026, scenario_id="scn_xyz")
+
+        assert first is not None
+        assert second is not None
+        assert set(first.nodes()) == set(second.nodes()) == {10, 11, 12}
+
+        stats = self.cache.get_stats()
+        assert stats["hit_count"] == 2
+        assert stats["miss_count"] == 0
+
+
 if __name__ == "__main__":
     unittest.main()

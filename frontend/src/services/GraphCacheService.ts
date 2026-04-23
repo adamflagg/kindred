@@ -17,6 +17,8 @@ interface CacheMetrics {
 type GraphCacheKey =
   | `session-${number}`
   | `session-${number}-${number}`
+  | `session-${number}-${number}-prod`
+  | `session-${number}-${number}-scenario-${string}`
   | `bunk-${number}-${number}`
   | `ego-${number}`
 
@@ -46,14 +48,27 @@ export class GraphCacheService {
   }
 
   /**
-   * Get cached session graph or fetch new data
+   * Get cached session graph or fetch new data.
+   *
+   * The cache key is scoped by scenario so a scenario-sourced graph never
+   * collides with the production (CampMinder) graph for the same session+year.
+   * When `scenarioId` is null/undefined the prod slot is used.
    */
   async getSessionGraph(
     sessionCmId: number,
     fetcher: () => Promise<GraphData>,
-    year?: number
+    year?: number,
+    scenarioId?: string | null
   ): Promise<GraphData> {
-    const key: GraphCacheKey = year ? `session-${sessionCmId}-${year}` : `session-${sessionCmId}`
+    let key: GraphCacheKey
+    if (year !== undefined) {
+      const slug = scenarioId ? `scenario-${scenarioId}` : 'prod'
+      key = `session-${sessionCmId}-${year}-${slug}` as GraphCacheKey
+    } else {
+      // Legacy callers without a year: keep the original key so existing
+      // cached entries and invalidation prefix matching still work.
+      key = `session-${sessionCmId}`
+    }
     return this.getOrFetch(key, fetcher)
   }
 

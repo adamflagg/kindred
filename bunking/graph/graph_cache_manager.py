@@ -39,13 +39,28 @@ class GraphCacheManager:
 
         logger.info(f"GraphCacheManager initialized with TTL={ttl_seconds}s, max_size={max_cache_size}")
 
-    def get_session_graph(self, session_cm_id: int, year: int) -> nx.DiGraph | None:
+    @staticmethod
+    def _scenario_slug(scenario_id: str | None) -> str:
+        """Normalize scenario_id into a cache-key segment.
+
+        The production path is stored under the literal ``"prod"`` slug so
+        that ``None`` and any scenario id land in distinct keyspaces and the
+        prefix match in ``invalidate_session`` is unambiguous.
+        """
+        return scenario_id or "prod"
+
+    def get_session_graph(self, session_cm_id: int, year: int, scenario_id: str | None = None) -> nx.DiGraph | None:
         """Get cached session graph if available and not expired.
 
+        Args:
+            session_cm_id: Session ID
+            year: Year
+            scenario_id: Optional scenario id; ``None`` selects the production cache.
+
         Returns:
             Cached graph copy or None if not found/expired
         """
-        cache_key = f"session_{session_cm_id}_{year}"
+        cache_key = f"session_{session_cm_id}_{year}_{self._scenario_slug(scenario_id)}"
 
         with self._lock:
             if cache_key in self._cache:
@@ -68,13 +83,25 @@ class GraphCacheManager:
             logger.debug(f"Cache miss for {cache_key}")
             return None
 
-    def get_bunk_graph(self, bunk_cm_id: int, session_cm_id: int, year: int) -> nx.DiGraph | None:
+    def get_bunk_graph(
+        self,
+        bunk_cm_id: int,
+        session_cm_id: int,
+        year: int,
+        scenario_id: str | None = None,
+    ) -> nx.DiGraph | None:
         """Get cached bunk graph if available and not expired.
 
+        Args:
+            bunk_cm_id: Bunk ID
+            session_cm_id: Session ID
+            year: Year
+            scenario_id: Optional scenario id; ``None`` selects the production cache.
+
         Returns:
             Cached graph copy or None if not found/expired
         """
-        cache_key = f"bunk_{bunk_cm_id}_{session_cm_id}_{year}"
+        cache_key = f"bunk_{bunk_cm_id}_{session_cm_id}_{year}_{self._scenario_slug(scenario_id)}"
 
         with self._lock:
             if cache_key in self._cache:
@@ -97,15 +124,22 @@ class GraphCacheManager:
             logger.debug(f"Cache miss for {cache_key}")
             return None
 
-    def cache_session_graph(self, session_cm_id: int, year: int, graph: nx.DiGraph) -> None:
+    def cache_session_graph(
+        self,
+        session_cm_id: int,
+        year: int,
+        graph: nx.DiGraph,
+        scenario_id: str | None = None,
+    ) -> None:
         """Cache a session graph.
 
         Args:
             session_cm_id: Session ID
             year: Year
             graph: NetworkX graph to cache
+            scenario_id: Optional scenario id; ``None`` stores under the production cache.
         """
-        cache_key = f"session_{session_cm_id}_{year}"
+        cache_key = f"session_{session_cm_id}_{year}_{self._scenario_slug(scenario_id)}"
 
         with self._lock:
             # Evict LRU if at capacity
@@ -119,7 +153,14 @@ class GraphCacheManager:
 
             logger.debug(f"Cached session graph {cache_key} with {graph.number_of_nodes()} nodes")
 
-    def cache_bunk_graph(self, bunk_cm_id: int, session_cm_id: int, year: int, graph: nx.DiGraph) -> None:
+    def cache_bunk_graph(
+        self,
+        bunk_cm_id: int,
+        session_cm_id: int,
+        year: int,
+        graph: nx.DiGraph,
+        scenario_id: str | None = None,
+    ) -> None:
         """Cache a bunk graph.
 
         Args:
@@ -127,8 +168,9 @@ class GraphCacheManager:
             session_cm_id: Session ID
             year: Year
             graph: NetworkX graph to cache
+            scenario_id: Optional scenario id; ``None`` stores under the production cache.
         """
-        cache_key = f"bunk_{bunk_cm_id}_{session_cm_id}_{year}"
+        cache_key = f"bunk_{bunk_cm_id}_{session_cm_id}_{year}_{self._scenario_slug(scenario_id)}"
 
         with self._lock:
             # Evict LRU if at capacity
