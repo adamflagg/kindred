@@ -81,7 +81,7 @@ dev = [
     "types-requests>=2.32.0",
     "types-PyYAML>=6.0.0",
     "types-psutil>=7.2.2.20260408",
-    "pandas-stubs>=2.0.0",
+    "pandas-stubs>=3.0.0.260204",
     # Security
     "pip-audit>=2.7.0",
     # Code metrics
