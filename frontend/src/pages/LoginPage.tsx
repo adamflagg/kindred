@@ -77,7 +77,6 @@ const LoginPage = () => {
     // Auto-login if there's only one provider and we haven't tried yet
     if (providers.length === 1 && !autoLoginAttemptedRef.current && !error && providers[0]) {
       autoLoginAttemptedRef.current = true
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time auto-login action
       void handleProviderLogin(providers[0])
     }
   }, [user, navigate, from, providers, error, handleProviderLogin])
