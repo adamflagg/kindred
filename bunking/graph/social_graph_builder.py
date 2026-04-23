@@ -12,7 +12,15 @@ from typing import Any
 import community as community_louvain
 import networkx as nx
 
-from api.constants.collections import ATTENDEES, BUNK_ASSIGNMENTS, BUNK_REQUESTS, BUNKS, CAMP_SESSIONS, PERSONS
+from api.constants.collections import (
+    ATTENDEES,
+    BUNK_ASSIGNMENTS,
+    BUNK_ASSIGNMENTS_DRAFT,
+    BUNK_REQUESTS,
+    BUNKS,
+    CAMP_SESSIONS,
+    PERSONS,
+)
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -53,6 +61,23 @@ class SocialGraphBuilder:
         self.person_cache: dict[int, dict[str, Any]] = {}
         self.attendee_cache: dict[int, list[dict[str, Any]]] = {}
         self.random_seed = random_seed
+
+    @staticmethod
+    def _assignment_source(scenario_id: str | None) -> tuple[str, str]:
+        """Pick the bunk assignment collection and scenario filter clause.
+
+        When a scenario is active, bunk membership lives in
+        ``bunk_assignments_draft`` filtered by ``scenario``. Otherwise the
+        production ``bunk_assignments`` collection is used. Returned tuple:
+
+        * collection name to query
+        * scenario clause to AND into the caller's base filter (empty when
+          no scenario is active). The leading ``&&`` and surrounding space
+          are included so callers can append it directly.
+        """
+        if scenario_id:
+            return BUNK_ASSIGNMENTS_DRAFT, f' && scenario = "{scenario_id}"'
+        return BUNK_ASSIGNMENTS, ""
 
     def build_session_graph(self, year: int, session_cm_id: int) -> nx.Graph:
         """Build complete social graph for a session
@@ -95,19 +120,47 @@ class SocialGraphBuilder:
 
         return self.graph
 
-    def build_bunk_graph(self, year: int, bunk_cm_id: int, session_cm_id: int) -> nx.DiGraph:
-        """Build a graph specifically for a single bunk with only request and sibling edges"""
-        logger.info(f"Building bunk-specific graph for bunk {bunk_cm_id} in session {session_cm_id}, year {year}")
+    def build_bunk_graph(
+        self,
+        year: int,
+        bunk_cm_id: int,
+        session_cm_id: int,
+        scenario_id: str | None = None,
+    ) -> nx.DiGraph:
+        """Build a graph specifically for a single bunk with only request and sibling edges.
+
+        Args:
+            year: Camp year.
+            bunk_cm_id: CampMinder bunk ID.
+            session_cm_id: CampMinder session ID.
+            scenario_id: Optional PocketBase scenario record ID. When provided,
+                bunk membership is sourced from ``bunk_assignments_draft``
+                filtered by the scenario; otherwise the production
+                ``bunk_assignments`` collection is used. This mirrors
+                ``OptimizedSocialGraphBuilder.build_social_network``.
+        """
+        logger.info(
+            f"Building bunk-specific graph for bunk {bunk_cm_id} in session {session_cm_id}, year {year}"
+            + (f" (scenario={scenario_id})" if scenario_id else "")
+        )
 
         # Create new DIRECTED graph for this bunk to preserve edge directionality
         bunk_graph = nx.DiGraph()
 
+        # Route the membership query to the scenario's draft collection when a
+        # scenario is active; otherwise hit the production (CampMinder-sourced)
+        # collection. Production path behavior is unchanged.
+        assignment_collection, scenario_clause = self._assignment_source(scenario_id)
+        primary_filter = (
+            f"bunk.cm_id = {bunk_cm_id} && year = {year} && session.cm_id = {session_cm_id}{scenario_clause}"
+        )
+
         # Get all members of this bunk for the specific session (uses relations)
         bunk_members = []
         try:
-            assignments = self.pb.collection(BUNK_ASSIGNMENTS).get_full_list(
+            assignments = self.pb.collection(assignment_collection).get_full_list(
                 query_params={
-                    "filter": f"bunk.cm_id = {bunk_cm_id} && year = {year} && session.cm_id = {session_cm_id}",
+                    "filter": primary_filter,
                     "expand": "person,bunk,session",
                 }
             )
@@ -134,10 +187,16 @@ class SocialGraphBuilder:
                 if "AG" in bunk_name or bunk_name.startswith("AG"):
                     logger.info(f"AG bunk detected: {bunk_name}, checking all sessions for assignments")
 
-                    # Find all sessions this bunk is assigned to (uses relations)
-                    all_assignments = self.pb.collection(BUNK_ASSIGNMENTS).get_full_list(
+                    # Find all sessions this bunk is assigned to (uses relations).
+                    # Stay on the same source (draft vs prod) as the primary
+                    # lookup above so scenario and production data never mix.
+                    if scenario_id:
+                        ag_filter = f'bunk.cm_id = {bunk_cm_id} && year = {year} && scenario = "{scenario_id}"'
+                    else:
+                        ag_filter = f"bunk.cm_id = {bunk_cm_id} && year = {year}"
+                    all_assignments = self.pb.collection(assignment_collection).get_full_list(
                         query_params={
-                            "filter": f"bunk.cm_id = {bunk_cm_id} && year = {year}",
+                            "filter": ag_filter,
                             "expand": "person,session",
                         }
                     )

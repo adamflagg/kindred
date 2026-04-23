@@ -13,7 +13,13 @@ from typing import Any
 
 import networkx as nx
 
-from api.constants.collections import ATTENDEES, BUNK_ASSIGNMENTS, BUNK_REQUESTS, BUNKS, PERSONS
+from api.constants.collections import (
+    ATTENDEES,
+    BUNK_ASSIGNMENTS,
+    BUNK_REQUESTS,
+    BUNKS,
+    PERSONS,
+)
 from bunking.logging_config import get_logger
 
 from .social_graph_builder import SocialGraphBuilder
@@ -24,8 +30,21 @@ logger = get_logger(__name__)
 class OptimizedSocialGraphBuilder(SocialGraphBuilder):
     """Performance-optimized social graph builder using batch operations."""
 
-    def build_social_network(self, year: int, session_cm_id: int) -> nx.DiGraph:
+    def build_social_network(
+        self,
+        year: int,
+        session_cm_id: int,
+        scenario_id: str | None = None,
+    ) -> nx.DiGraph:
         """Build social network with performance optimizations.
+
+        Args:
+            year: Camp year.
+            session_cm_id: CampMinder session ID.
+            scenario_id: Optional PocketBase ID of a saved scenario. When provided,
+                bunk assignments are sourced from the ``bunk_assignments_draft``
+                collection filtered by scenario. When absent, assignments come
+                from the production ``bunk_assignments`` collection (CampMinder).
 
         Optimizations:
         - Batch node/edge operations
@@ -33,7 +52,10 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         - Efficient edge deduplication
         - Rounded decimal values
         """
-        logger.info(f"Building optimized social graph for session {session_cm_id}, year {year}")
+        logger.info(
+            f"Building optimized social graph for session {session_cm_id}, year {year}"
+            + (f", scenario {scenario_id}" if scenario_id else "")
+        )
         start_time = time.perf_counter()
 
         # Initialize graph
@@ -88,11 +110,17 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                 logger.warning(f"Person {person_id} not found, skipping")
                 continue
 
-            # Get bunk assignment (bunk_assignments uses person/session/bunk relations)
+            # Get bunk assignment. When scenario_id is provided, source from the
+            # bunk_assignments_draft collection (scenario data); otherwise use the
+            # production bunk_assignments collection (CampMinder sync data).
             bunk_cm_id = None
+            assignment_collection, scenario_clause = self._assignment_source(scenario_id)
+            assignment_filter = (
+                f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} && year = {year}{scenario_clause}"
+            )
             try:
-                assignment = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
-                    f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} && year = {year}",
+                assignment = self.pb.collection(assignment_collection).get_first_list_item(
+                    assignment_filter,
                     query_params={"expand": "bunk"},
                 )
                 # Get bunk cm_id from expanded relation

@@ -228,7 +228,14 @@ export const queryKeys = {
     ['camper-request-summary-persons', requesteeIds, year] as const,
 
   // Social Graph (Tier 1 - sync data)
-  socialGraph: (sessionCmId: number, year: number) => ['social-graph', sessionCmId, year] as const,
+  socialGraph: (sessionCmId: number, year: number, scenarioId: string | null = null) =>
+    ['social-graph', sessionCmId, year, scenarioId] as const,
+  bunkSocialGraph: (
+    bunkCmId: number,
+    sessionCmId: number,
+    year: number,
+    scenarioId: string | null = null
+  ) => ['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
