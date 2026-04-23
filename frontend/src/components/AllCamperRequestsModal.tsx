@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
 import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { hasMatchedRequestTarget } from '../utils/bunkRequest'
 import { highlightSourceText } from '../utils/highlightSourceText'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
@@ -57,7 +58,7 @@ function RequestCard({
       ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
       : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
 
-  const hasResolvedTarget = !!(request.requestee_id && request.requestee_id > 0 && targetName)
+  const hasResolvedTarget = hasMatchedRequestTarget(request, targetName)
 
   return (
     <article className="border-border bg-card overflow-hidden rounded-xl border">
