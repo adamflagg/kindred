@@ -83,7 +83,7 @@ async def get_session_social_graph(
 
         logger.info(
             f"Building social graph for session {session_cm_id}, year {year}"
-            + (f", scenario {scenario_id}" if scenario_id else "")
+            f"{f', scenario {scenario_id}' if scenario_id else ''}"
         )
 
         # Check cache first. The cache key is scoped by scenario_id so that
@@ -344,7 +344,7 @@ async def get_bunk_social_graph(
 
         logger.info(
             f"Building bunk social graph for bunk {bunk_cm_id}, session {session_cm_id}, year {year}"
-            + (f", scenario {scenario_id}" if scenario_id else "")
+            f"{f', scenario {scenario_id}' if scenario_id else ''}"
         )
 
         # Get bunk details first

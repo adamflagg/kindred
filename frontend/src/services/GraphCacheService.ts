@@ -50,6 +50,15 @@ export class GraphCacheService {
   }
 
   /**
+   * Build the scenario slug used in cache keys. Mirrors
+   * `GraphCacheManager._scenario_slug` on the Python side so the two caches
+   * stay aligned.
+   */
+  private scenarioSlug(scenarioId?: string | null): string {
+    return scenarioId ? `scenario-${scenarioId}` : 'prod'
+  }
+
+  /**
    * Get cached session graph or fetch new data.
    *
    * The cache key is scoped by scenario so a scenario-sourced graph never
@@ -64,8 +73,7 @@ export class GraphCacheService {
   ): Promise<GraphData> {
     let key: GraphCacheKey
     if (year !== undefined) {
-      const slug = scenarioId ? `scenario-${scenarioId}` : 'prod'
-      key = `session-${sessionCmId}-${year}-${slug}` as GraphCacheKey
+      key = `session-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}` as GraphCacheKey
     } else {
       // Legacy callers without a year: keep the original key so existing
       // cached entries and invalidation prefix matching still work.
@@ -92,8 +100,8 @@ export class GraphCacheService {
   ): Promise<GraphData> {
     let key: GraphCacheKey
     if (year !== undefined) {
-      const slug = scenarioId ? `scenario-${scenarioId}` : 'prod'
-      key = `bunk-${bunkCmId}-${sessionCmId}-${year}-${slug}` as GraphCacheKey
+      key =
+        `bunk-${bunkCmId}-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}` as GraphCacheKey
     } else {
       // Legacy callers without a year: keep the original key so existing
       // cached entries and invalidation suffix matching still work.

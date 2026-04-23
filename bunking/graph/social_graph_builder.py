@@ -62,6 +62,23 @@ class SocialGraphBuilder:
         self.attendee_cache: dict[int, list[dict[str, Any]]] = {}
         self.random_seed = random_seed
 
+    @staticmethod
+    def _assignment_source(scenario_id: str | None) -> tuple[str, str]:
+        """Pick the bunk assignment collection and scenario filter clause.
+
+        When a scenario is active, bunk membership lives in
+        ``bunk_assignments_draft`` filtered by ``scenario``. Otherwise the
+        production ``bunk_assignments`` collection is used. Returned tuple:
+
+        * collection name to query
+        * scenario clause to AND into the caller's base filter (empty when
+          no scenario is active). The leading ``&&`` and surrounding space
+          are included so callers can append it directly.
+        """
+        if scenario_id:
+            return BUNK_ASSIGNMENTS_DRAFT, f' && scenario = "{scenario_id}"'
+        return BUNK_ASSIGNMENTS, ""
+
     def build_session_graph(self, year: int, session_cm_id: int) -> nx.Graph:
         """Build complete social graph for a session
 
@@ -133,15 +150,10 @@ class SocialGraphBuilder:
         # Route the membership query to the scenario's draft collection when a
         # scenario is active; otherwise hit the production (CampMinder-sourced)
         # collection. Production path behavior is unchanged.
-        if scenario_id:
-            assignment_collection = BUNK_ASSIGNMENTS_DRAFT
-            primary_filter = (
-                f"bunk.cm_id = {bunk_cm_id} && year = {year} "
-                f'&& session.cm_id = {session_cm_id} && scenario = "{scenario_id}"'
-            )
-        else:
-            assignment_collection = BUNK_ASSIGNMENTS
-            primary_filter = f"bunk.cm_id = {bunk_cm_id} && year = {year} && session.cm_id = {session_cm_id}"
+        assignment_collection, scenario_clause = self._assignment_source(scenario_id)
+        primary_filter = (
+            f"bunk.cm_id = {bunk_cm_id} && year = {year} && session.cm_id = {session_cm_id}{scenario_clause}"
+        )
 
         # Get all members of this bunk for the specific session (uses relations)
         bunk_members = []

@@ -30,6 +30,7 @@ import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { useScenario } from '../hooks/useScenario'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import type { Bunk, Session } from '../types/app-types'
 
 // Register extensions
@@ -124,7 +125,7 @@ export default function BunkSocialGraphModal({
   // Fetch bunk graph data. The query key and in-memory graph cache both
   // include scenarioId so scenario-sourced and production graphs never collide.
   const { data: graphData, isLoading } = useQuery<BunkGraphData>({
-    queryKey: ['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId],
+    queryKey: queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId),
     queryFn: async () => {
       const data = await graphCacheService.getBunkGraph(
         bunkCmId,

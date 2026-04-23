@@ -16,7 +16,6 @@ import networkx as nx
 from api.constants.collections import (
     ATTENDEES,
     BUNK_ASSIGNMENTS,
-    BUNK_ASSIGNMENTS_DRAFT,
     BUNK_REQUESTS,
     BUNKS,
     PERSONS,
@@ -115,15 +114,10 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
             # bunk_assignments_draft collection (scenario data); otherwise use the
             # production bunk_assignments collection (CampMinder sync data).
             bunk_cm_id = None
-            if scenario_id:
-                assignment_collection = BUNK_ASSIGNMENTS_DRAFT
-                assignment_filter = (
-                    f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} "
-                    f'&& year = {year} && scenario = "{scenario_id}"'
-                )
-            else:
-                assignment_collection = BUNK_ASSIGNMENTS
-                assignment_filter = f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} && year = {year}"
+            assignment_collection, scenario_clause = self._assignment_source(scenario_id)
+            assignment_filter = (
+                f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} && year = {year}{scenario_clause}"
+            )
             try:
                 assignment = self.pb.collection(assignment_collection).get_first_list_item(
                     assignment_filter,

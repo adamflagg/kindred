@@ -28,9 +28,6 @@ export function useSocialGraphData(sessionCmId: number) {
     queryKey: queryKeys.socialGraph(sessionCmId, currentYear, scenarioId),
     enabled: !isAuthLoading,
     queryFn: async () => {
-      // The in-memory graph cache is keyed by (session, year, scenario) so
-      // scenario and production graphs are stored independently and cannot
-      // leak into one another.
       return graphCacheService.getSessionGraph(
         sessionCmId,
         async () => {
