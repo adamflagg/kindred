@@ -2,8 +2,8 @@ import type { ReactNode } from 'react'
 import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
-import { MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
-import { isConfirmedRequest } from '../utils/bunkRequest'
+import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { hasMatchedRequestTarget } from '../utils/bunkRequest'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 export type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'unknown' | 'checking'
@@ -159,11 +159,19 @@ export function BunkRequestRow({
   }
 
   const isBunkWith = request.request_type === 'bunk_with'
-  const isConfirmed = isConfirmedRequest(request)
 
   // Prefer resolved person name if we have it; fall back to requested_person_name.
   const resolvedName = targetPerson ? `${targetPerson.first_name} ${targetPerson.last_name}` : null
   const displayName = resolvedName ?? request.requested_person_name ?? 'Unknown'
+
+  // A "matched target" is one with a real requestee_id — true for both resolved
+  // AND declined requests that pointed at a known camper. Shared with
+  // AllCamperRequestsModal so declined rows still get a clickable CamperLink
+  // and don't render "(unresolved)".
+  const hasMatchedTarget = hasMatchedRequestTarget(
+    request,
+    resolvedName ?? request.requested_person_name
+  )
 
   const children = (
     <>
@@ -180,13 +188,24 @@ export function BunkRequestRow({
       {/* Arrow */}
       <span className="text-muted-foreground">→</span>
 
-      {/* Target - clickable if confirmed */}
+      {/* Target - clickable when we have a real requestee match (resolved OR
+          declined-but-matched, e.g. cross-session). Unresolved italic fallback
+          only kicks in for rows without any matched requestee_id. */}
       <CamperLink
         personCmId={request.requestee_id}
         displayName={displayName}
-        isConfirmed={isConfirmed}
-        showUnresolved={!isConfirmed && !!request.requested_person_name}
+        isConfirmed={hasMatchedTarget}
+        showUnresolved={!hasMatchedTarget && !!request.requested_person_name}
       />
+
+      {/* Decline/disposition reason, when present — appended in the same inline
+          style as AllCamperRequestsModal. Skipped for resolved rows where the
+          reason isn't user-meaningful here. */}
+      {request.disposition_reason && request.status !== 'resolved' && (
+        <span className="text-muted-foreground truncate text-[11px]">
+          · {formatReason(request.disposition_reason)}
+        </span>
+      )}
 
       {/* Reciprocal badge - only if reciprocal */}
       {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
