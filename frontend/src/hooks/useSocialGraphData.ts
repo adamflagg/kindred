@@ -9,25 +9,37 @@ import type { GraphData } from '../types/graph'
 import { queryKeys } from '../utils/queryKeys'
 import { useYear } from './useCurrentYear'
 import { useApiWithAuth } from './useApiWithAuth'
+import { useScenario } from './useScenario'
 
 /**
- * Fetch social network graph data for a session
- * Uses the graph cache service for performance
+ * Fetch social network graph data for a session.
+ *
+ * When a scenario is active (from ScenarioContext), the request includes the
+ * scenario ID so the backend sources bunk assignments from that scenario's
+ * draft data instead of CampMinder production assignments.
  */
 export function useSocialGraphData(sessionCmId: number) {
   const currentYear = useYear()
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
+  const { currentScenario } = useScenario()
+  const scenarioId = currentScenario?.id ?? null
 
   return useQuery<GraphData>({
-    queryKey: queryKeys.socialGraph(sessionCmId, currentYear),
+    queryKey: queryKeys.socialGraph(sessionCmId, currentYear, scenarioId),
     enabled: !isAuthLoading,
     queryFn: async () => {
       return graphCacheService.getSessionGraph(
         sessionCmId,
         async () => {
-          return socialGraphService.getSessionSocialGraph(sessionCmId, currentYear, fetchWithAuth)
+          return socialGraphService.getSessionSocialGraph(
+            sessionCmId,
+            currentYear,
+            fetchWithAuth,
+            scenarioId
+          )
         },
-        currentYear
+        currentYear,
+        scenarioId
       )
     },
   })
