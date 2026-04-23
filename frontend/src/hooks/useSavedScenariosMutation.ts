@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb, getCurrentUser } from '../lib/pocketbase'
 import type { SavedScenario } from '../types/app-types'
+import type { BunkAssignmentsDraftRecord } from '../types/pocketbase-types'
 
 interface CreateScenarioParams {
   name: string
@@ -8,6 +9,16 @@ interface CreateScenarioParams {
   year: number
   description?: string
   copyOptions?: { fromProduction: boolean } | { fromScenario: string }
+}
+
+interface AssignmentError {
+  assignment: unknown
+  error: unknown
+}
+
+interface PbLooseError {
+  response?: { data?: unknown }
+  message?: string
 }
 
 export function useCreateScenario() {
@@ -39,8 +50,12 @@ export function useCreateScenario() {
         ...(params.description && { description: params.description }),
       }
 
-      // Create the scenario
-      const scenario = await pb.collection<SavedScenario>('saved_scenarios').create(scenarioData)
+      // Create the scenario — request expand on `session` so downstream
+      // consumers (e.g. savedScenarioToScenario) can read `expand.session.cm_id`
+      // without tripping on a missing `expand` property.
+      const scenario = await pb
+        .collection<SavedScenario>('saved_scenarios')
+        .create(scenarioData, { expand: 'session' })
 
       // Handle copying data if requested
       if (params.copyOptions) {
@@ -88,10 +103,6 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
   console.log(`Copying ${filteredAssignments.length} assignments to scenario ${scenarioId}`)
 
   // Create draft assignments one at a time with error handling
-  interface AssignmentError {
-    assignment: unknown
-    error: unknown
-  }
   const errors: AssignmentError[] = []
 
   for (const assignment of filteredAssignments) {
@@ -112,10 +123,7 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
     try {
       await pb.collection('bunk_assignments_draft').create(draftData)
     } catch (error) {
-      const pbError = error as {
-        response?: { data?: unknown }
-        message?: string
-      }
+      const pbError = error as PbLooseError
       console.error('Failed to create draft assignment:', {
         draftData,
         originalAssignment: assignment,
@@ -131,38 +139,61 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
   }
 }
 
-// Helper function to copy assignments from one scenario to another
+// Helper function to copy assignments from one scenario to another.
+//
+// Historically this fired all creates concurrently via `Promise.all`, which
+// meant ~147 simultaneous POSTs fought for the same SQLite writer lock.
+// Some creates succeeded before a failed one rejected Promise.all, leaving
+// the destination scenario with only ~2/3 of the source assignments and
+// no clear error surface. Mirrors `copyProductionToScenario` below:
+// sequential `for..of await`, per-item try/catch, accumulated errors,
+// aggregate throw at the end.
 async function copyScenarioToScenario(fromScenarioId: string, toScenarioId: string, year: number) {
-  // Get source scenario assignments for the specific year
-  const sourceAssignments = await pb.collection('bunk_assignments_draft').getFullList({
-    filter: `scenario = "${fromScenarioId}" && year = ${year}`,
-  })
+  // Get source scenario assignments for the specific year.
+  // The stored fields on bunk_assignments_draft are already relation IDs
+  // (person, bunk, session, bunk_plan), so no expand is needed here.
+  const sourceAssignments = await pb
+    .collection<BunkAssignmentsDraftRecord>('bunk_assignments_draft')
+    .getFullList({
+      filter: `scenario = "${fromScenarioId}" && year = ${year}`,
+    })
 
-  // Create draft assignments for the new scenario
-  interface DraftAssignment {
-    person?: string
-    bunk?: string
-    session?: string
-    bunk_plan?: string
-    assignment_locked?: boolean
-  }
+  console.log(`Copying ${sourceAssignments.length} assignments to scenario ${toScenarioId}`)
 
-  const createPromises = sourceAssignments.map((assignment) => {
-    const source = assignment as DraftAssignment
+  const errors: AssignmentError[] = []
+
+  for (const source of sourceAssignments) {
     const draftData: Record<string, unknown> = {
-      scenario: toScenarioId, // PocketBase relation to saved_scenarios
-      person: source.person, // Keep the PocketBase relation ID
-      bunk: source.bunk, // Keep the PocketBase relation ID
-      session: source.session, // Keep the PocketBase relation ID
-      bunk_plan: source.bunk_plan, // Keep the PocketBase relation ID if exists
+      scenario: toScenarioId,
+      person: source.person,
+      bunk: source.bunk,
+      session: source.session,
       year: year,
       assignment_locked: source.assignment_locked,
     }
 
-    return pb.collection('bunk_assignments_draft').create(draftData)
-  })
+    // Only include bunk_plan if it exists (mirrors copyProductionToScenario)
+    if (source.bunk_plan) {
+      draftData['bunk_plan'] = source.bunk_plan
+    }
 
-  await Promise.all(createPromises)
+    try {
+      await pb.collection('bunk_assignments_draft').create(draftData)
+    } catch (error) {
+      const pbError = error as PbLooseError
+      console.error('Failed to create draft assignment:', {
+        draftData,
+        originalAssignment: source,
+        error: pbError.response?.data ?? pbError.message ?? error,
+      })
+      errors.push({ assignment: source, error })
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error(`Failed to copy ${errors.length}/${sourceAssignments.length} assignments`)
+    throw new Error(`Failed to copy ${errors.length} assignments. Check console for details.`)
+  }
 }
 
 export function useDeleteScenario() {

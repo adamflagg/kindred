@@ -4,27 +4,11 @@ import { ScenarioContext, type Scenario, type ScenarioContextType } from '../hoo
 import { useSavedScenarios } from '../hooks/useSavedScenarios'
 import { useCreateScenario, useDeleteScenario } from '../hooks/useSavedScenariosMutation'
 import { useUpdateScenario, useClearScenario } from '../hooks/useScenarioOperations'
-import type { SavedScenario } from '../types/app-types'
 import { useYear } from '../hooks/useCurrentYear'
+import { savedScenarioToScenario } from './scenarioTransform'
 
 interface ScenarioProviderProps {
   children: ReactNode
-}
-
-// Convert SavedScenario to Scenario format
-function savedScenarioToScenario(saved: SavedScenario): Scenario {
-  // Get the session CM ID from the expanded relation if available
-  const sessionCmId = saved.expand.session?.cm_id ?? 0
-
-  return {
-    id: saved.id,
-    name: saved.name,
-    session_cm_id: sessionCmId,
-    created: saved.created,
-    updated: saved.updated,
-    is_active: saved.is_active,
-    description: saved.description || '',
-  }
 }
 
 export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
