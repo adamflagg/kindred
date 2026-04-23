@@ -33,13 +33,6 @@ export interface BunkRequestRowProps {
    * camper-requests panel to inject the "Current request" chip.
    */
   badge?: ReactNode | undefined
-  /**
-   * Optional disposition reason (e.g. "session_mismatch"). When present, it is
-   * appended to the target line as " · <formatted reason>". Mirrors what
-   * AllCamperRequestsModal shows so declined cross-session requests expose
-   * their reason in the shorthand column.
-   */
-  dispositionReason?: string | null | undefined
 }
 
 function ClickableRow({
@@ -123,7 +116,6 @@ export function BunkRequestRow({
   satisfactionDetail,
   onSelect,
   badge,
-  dispositionReason,
 }: BunkRequestRowProps) {
   const rowClass = clsx(
     'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors',
@@ -176,14 +168,13 @@ export function BunkRequestRow({
   // A "matched target" is one with a real requestee_id — true for both resolved
   // AND declined requests that pointed at a known camper. This mirrors
   // AllCamperRequestsModal's hasResolvedTarget so declined rows still get a
-  // clickable CamperLink and don't render "(unresolved)". See BunkRequestRow
-  // prop docs for dispositionReason behavior.
+  // clickable CamperLink and don't render "(unresolved)".
   const hasMatchedTarget = Boolean(
     request.requestee_id &&
     request.requestee_id > 0 &&
     (resolvedName ?? request.requested_person_name)
   )
-  const reason = dispositionReason ?? request.disposition_reason
+  const reason = request.disposition_reason
 
   const children = (
     <>

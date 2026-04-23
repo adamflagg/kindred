@@ -354,7 +354,6 @@ describe('BunkRequestRow', () => {
             disposition_reason: 'session_mismatch',
           })}
           targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
-          dispositionReason="session_mismatch"
         />
       )
       // A CamperLink in clickable form renders as an <a> wrapping the name and
@@ -367,7 +366,7 @@ describe('BunkRequestRow', () => {
       expect(screen.queryByText(/\(unresolved\)/i)).toBeNull()
     })
 
-    it('renders the disposition reason text for a declined request', () => {
+    it('renders the disposition reason text from request.disposition_reason for a declined request', () => {
       render(
         <BunkRequestRow
           request={makeRequest({
@@ -377,7 +376,6 @@ describe('BunkRequestRow', () => {
             disposition_reason: 'session_mismatch',
           })}
           targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
-          dispositionReason="session_mismatch"
         />
       )
       // formatReason('session_mismatch') returns 'Different sessions'
@@ -414,7 +412,7 @@ describe('BunkRequestRow', () => {
       expect(screen.getByText(/\(unresolved\)/i)).toBeInTheDocument()
     })
 
-    it('does not render a disposition reason when dispositionReason is not supplied', () => {
+    it('does not render a disposition reason when request.disposition_reason is empty', () => {
       render(
         <BunkRequestRow
           request={makeRequest({
@@ -425,6 +423,22 @@ describe('BunkRequestRow', () => {
           targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
         />
       )
+      expect(screen.queryByText(/Different sessions/)).toBeNull()
+    })
+
+    it('does not render a disposition reason for a resolved request even if set', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'resolved',
+            requestee_id: 200,
+            requested_person_name: 'Olivia Chen',
+            disposition_reason: 'session_mismatch',
+          })}
+          targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
+        />
+      )
+      // Resolved rows suppress the reason render per the component contract.
       expect(screen.queryByText(/Different sessions/)).toBeNull()
     })
   })

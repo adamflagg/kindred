@@ -243,8 +243,8 @@ describe('CamperRequestSummary', () => {
       return Promise.resolve([])
     })
     render(<CamperRequestSummary requesterCmId={100} year={2025} currentRequestId="req-declined" />)
-    // The disposition reason ("Different sessions") should render, via
-    // BunkRequestRow receiving the dispositionReason prop.
+    // The disposition reason ("Different sessions") should render, read
+    // directly from request.disposition_reason inside BunkRequestRow.
     await waitFor(() => {
       expect(screen.getByText(/Different sessions/)).toBeInTheDocument()
     })
