@@ -132,6 +132,53 @@ class TestGraphCacheManager(unittest.TestCase):
         assert self.cache.get_bunk_graph(101, 12345, 2025) is None
         assert self.cache.get_session_graph(99999, 2025) is not None
 
+    def test_invalidate_session_does_not_match_bunk_when_year_appears_as_session_id(self):
+        """Regression: invalidate_session must not falsely match a bunk cache
+        key whose real session_cm_id equals the year.
+
+        Bunk cache key format: ``bunk_{bunk_cm_id}_{session_cm_id}_{year}_{slug}``.
+        Before the fix, ``invalidate_session`` used the broad substring match
+        ``f"_{session_cm_id}_{year}" in key``. For ``invalidate_session(5, 2025)``
+        the target substring is ``_5_2025`` — which also appears inside the key
+        ``bunk_5_2025_2025_prod`` (bunk cm_id 5, session cm_id 2025, year 2025)
+        and caused a false invalidation. After the fix we parse session and
+        year positionally so this no longer matches.
+        """
+        # Session 5, year 2025 – target of invalidation.
+        self.cache.cache_session_graph(5, 2025, self.graph1)
+        # Bunk cm_id 5 that belongs to session 2025 (rare but legal: a camp
+        # could reuse numeric ids across table namespaces). Key has the
+        # substring ``_5_2025`` even though the real session is 2025.
+        self.cache.cache_bunk_graph(5, 2025, 2025, self.graph2)
+        # Bunk that really belongs to session 5 – must be invalidated.
+        self.cache.cache_bunk_graph(50, 5, 2025, self.graph2)
+
+        invalidated = self.cache.invalidate_session(5, 2025)
+
+        # Session_5_2025_prod + bunk_50_5_2025_prod = 2
+        assert invalidated == 2
+        assert self.cache.get_session_graph(5, 2025) is None
+        assert self.cache.get_bunk_graph(50, 5, 2025) is None
+        # The cross-session bunk must survive
+        assert self.cache.get_bunk_graph(5, 2025, 2025) is not None
+
+    def test_invalidate_session_matches_scenario_bunks(self):
+        """Scenario-slug bunks for the target session must still be invalidated."""
+        # Session 12, year 2025
+        self.cache.cache_session_graph(12, 2025, self.graph1)
+        # Scenario bunks for session 12 – must be invalidated
+        self.cache.cache_bunk_graph(11, 12, 2025, self.graph2, scenario_id="s1")
+        self.cache.cache_bunk_graph(12, 12, 2025, self.graph2, scenario_id="s2")
+        # Bunk in a different session – must survive
+        self.cache.cache_bunk_graph(11, 99, 2025, self.graph2)
+
+        invalidated = self.cache.invalidate_session(12, 2025)
+
+        assert invalidated == 3
+        assert self.cache.get_bunk_graph(11, 12, 2025, scenario_id="s1") is None
+        assert self.cache.get_bunk_graph(12, 12, 2025, scenario_id="s2") is None
+        assert self.cache.get_bunk_graph(11, 99, 2025) is not None
+
     def test_lru_eviction(self):
         """Test LRU eviction when cache is full."""
         # Fill cache to capacity (5 items)

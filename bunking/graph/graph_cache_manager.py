@@ -215,9 +215,22 @@ class GraphCacheManager:
         """
         with self._lock:
             session_prefix = f"session_{session_cm_id}_{year}"
-            keys_to_remove = [
-                key for key in self._cache if key.startswith(session_prefix) or f"_{session_cm_id}_{year}" in key
-            ]
+            session_str = str(session_cm_id)
+            year_str = str(year)
+            keys_to_remove: list[str] = []
+            for key in self._cache:
+                if key.startswith(session_prefix):
+                    keys_to_remove.append(key)
+                    continue
+                # Bunk keys are ``bunk_{bunk_id}_{session_id}_{year}_{slug}``.
+                # Parse positionally so we don't false-match a bunk whose
+                # bunk_cm_id coincidentally equals the session_cm_id (e.g. key
+                # ``bunk_5_2025_2025_prod`` should NOT match session 5 in
+                # year 2025 – the real session there is 2025).
+                if key.startswith("bunk_"):
+                    parts = key.split("_")
+                    if len(parts) >= 5 and parts[2] == session_str and parts[3] == year_str:
+                        keys_to_remove.append(key)
 
             for key in keys_to_remove:
                 self._evict(key)
