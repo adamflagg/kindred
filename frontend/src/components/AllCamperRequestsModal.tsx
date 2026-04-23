@@ -5,6 +5,7 @@ import { CheckCircle, Loader2, XCircle } from 'lucide-react'
 import Modal from './ui/Modal'
 import CamperLink from './CamperLink'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
+import EditableRequestTarget from './EditableRequestTarget'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from '../utils/queryKeys'
@@ -12,7 +13,11 @@ import { formatSourceField } from '../utils/formatSourceField'
 import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
 import { hasMatchedRequestTarget } from '../utils/bunkRequest'
 import { highlightSourceText } from '../utils/highlightSourceText'
-import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
+import type {
+  BunkRequestsResponse,
+  BunkRequestsStatusOptions,
+  PersonsResponse,
+} from '../types/pocketbase-types'
 
 export interface AllCamperRequestsModalProps {
   isOpen: boolean
@@ -41,11 +46,15 @@ function RequestCard({
   targetName,
   isCurrent = false,
   onAction,
+  onTargetChange,
+  personMap,
 }: {
   request: BunkRequestsResponse
   targetName: string | null
   isCurrent?: boolean
   onAction?: (action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) => void
+  onTargetChange?: (requestId: string, updates: { requestee_id?: number | null }) => void
+  personMap?: Map<number, PersonsResponse>
 }) {
   const isBunk = request.request_type === 'bunk_with'
   const isNot = request.request_type === 'not_bunk_with'
@@ -59,6 +68,7 @@ function RequestCard({
       : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
 
   const hasResolvedTarget = hasMatchedRequestTarget(request, targetName)
+  const showPicker = !isAge && onTargetChange
 
   return (
     <article className="border-border bg-card overflow-hidden rounded-xl border">
@@ -72,6 +82,24 @@ function RequestCard({
           <span className="text-muted-foreground">→</span>
           {isAge ? (
             <strong>{request.age_preference_target || 'Age preference'}</strong>
+          ) : showPicker ? (
+            <div onClick={(e) => e.stopPropagation()}>
+              <EditableRequestTarget
+                requestType={request.request_type}
+                currentPersonId={request.requestee_id}
+                sessionId={request.session_id}
+                year={request.year}
+                requesterCmId={request.requester_id}
+                requestedPersonName={request.requested_person_name}
+                {...(personMap ? { personMap } : {})}
+                disabled={request.request_locked}
+                onChange={(updates) => {
+                  if (updates.requestee_id !== undefined) {
+                    onTargetChange(request.id, { requestee_id: updates.requestee_id ?? null })
+                  }
+                }}
+              />
+            </div>
           ) : hasResolvedTarget ? (
             <CamperLink
               personCmId={request.requestee_id}
@@ -209,6 +237,19 @@ export function AllCamperRequestsModal({
 
   function handleAction(action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) {
     setConfirmPopover({ action, anchorRect, requestId })
+  }
+
+  function handleTargetChange(requestId: string, updates: { requestee_id?: number | null }) {
+    const pbUpdates: Partial<BunkRequestsResponse> = {}
+    if (updates.requestee_id !== undefined) {
+      // Use null (not 0) to clear — 0 causes unique constraint violations
+      pbUpdates.requestee_id = updates.requestee_id as unknown as number
+    }
+    if (updates.requestee_id && updates.requestee_id > 0) {
+      pbUpdates.status = 'resolved' as BunkRequestsStatusOptions
+      pbUpdates.confidence_score = 1.0
+    }
+    updateRequestMutation.mutate({ id: requestId, updates: pbUpdates })
   }
 
   const {
@@ -369,6 +410,8 @@ export function AllCamperRequestsModal({
                   targetName={targetName}
                   isCurrent={req.id === currentRequestId}
                   onAction={handleAction}
+                  onTargetChange={handleTargetChange}
+                  personMap={personMap}
                 />
               )
             })}

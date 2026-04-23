@@ -21,10 +21,17 @@ vi.mock('react-hot-toast', () => ({
   }),
 }))
 
+// Candidates offered in the target-picker dropdown (session campers for attendees query)
+let attendeesFixture: Array<Record<string, unknown>> = []
+
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     collection: (name: string) => ({
-      getFullList: () => Promise.resolve(name === 'persons' ? personsFixture : bunkRequestsFixture),
+      getFullList: () => {
+        if (name === 'persons') return Promise.resolve(personsFixture)
+        if (name === 'attendees') return Promise.resolve(attendeesFixture)
+        return Promise.resolve(bunkRequestsFixture)
+      },
       update: (...args: unknown[]) => updateMock(...args),
     }),
   },
@@ -44,6 +51,7 @@ vi.mock('react-router', () => ({
 beforeEach(() => {
   bunkRequestsFixture = []
   personsFixture = []
+  attendeesFixture = []
   updateMock.mockReset()
   updateMock.mockResolvedValue({})
   toastSuccessMock.mockReset()
@@ -438,5 +446,85 @@ describe('AllCamperRequestsModal accessibility', () => {
     const labelEl = document.getElementById(labelledBy!)
     expect(labelEl).not.toBeNull()
     expect(labelEl!.textContent).toMatch(/Emma Johnson/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Target-picker in AllCamperRequestsModal (feedback item #7)
+// ---------------------------------------------------------------------------
+describe('AllCamperRequestsModal — target picker', () => {
+  const unresolvedRequest = {
+    id: 'req-target-1',
+    request_type: 'bunk_with',
+    status: 'pending',
+    requester_id: 100,
+    requestee_id: 0,
+    requested_person_name: 'Liam Garcia',
+    session_id: 1000001,
+    year: 2025,
+    priority: 1,
+    confidence_score: 0.5,
+    is_reciprocal: false,
+    request_locked: false,
+    created: '2025-01-01',
+    updated: '2025-01-01',
+  }
+
+  const oliviaChenAttendee = {
+    id: 'att-1',
+    expand: {
+      person: {
+        id: 'p-olivia',
+        cm_id: 200,
+        first_name: 'Olivia',
+        last_name: 'Chen',
+        year: 2025,
+        age: 12,
+        grade: 7,
+        gender: 'F',
+        created: '2025-01-01',
+        updated: '2025-01-01',
+      },
+    },
+  }
+
+  it('shows the EditableRequestTarget dropdown trigger for a non-age-preference request', async () => {
+    // A pending request with a mis-matched name ("Liam Garcia" but no requestee_id resolved)
+    bunkRequestsFixture = [unresolvedRequest]
+    personsFixture = []
+    // Olivia Chen is a session camper staff can pick instead
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+    await screen.findByText(/Liam Garcia/)
+
+    // The EditableRequestTarget renders a button to open the picker
+    const pickerButton = screen.getByRole('button', { name: /Liam Garcia \(unresolved\)/i })
+    expect(pickerButton).toBeInTheDocument()
+  })
+
+  it('updates requestee_id via PocketBase when staff selects a different candidate', async () => {
+    bunkRequestsFixture = [{ ...unresolvedRequest, id: 'req-target-2' }]
+    personsFixture = []
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+    await screen.findByText(/Liam Garcia/)
+
+    // Open the picker dropdown
+    const pickerButton = screen.getByRole('button', { name: /Liam Garcia \(unresolved\)/i })
+    fireEvent.click(pickerButton)
+
+    // Olivia Chen should appear as a selectable option
+    const oliviaOption = await screen.findByRole('button', { name: /Olivia Chen/i })
+    fireEvent.click(oliviaOption)
+
+    // Verify PocketBase update was called with the correct requestee_id
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith(
+        'req-target-2',
+        expect.objectContaining({ requestee_id: 200 })
+      )
+    )
   })
 })
