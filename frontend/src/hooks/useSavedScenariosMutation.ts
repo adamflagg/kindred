@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb, getCurrentUser } from '../lib/pocketbase'
 import type { SavedScenario } from '../types/app-types'
+import type { BunkAssignmentsDraftRecord } from '../types/pocketbase-types'
 
 interface CreateScenarioParams {
   name: string
@@ -8,6 +9,16 @@ interface CreateScenarioParams {
   year: number
   description?: string
   copyOptions?: { fromProduction: boolean } | { fromScenario: string }
+}
+
+interface AssignmentError {
+  assignment: unknown
+  error: unknown
+}
+
+interface PbLooseError {
+  response?: { data?: unknown }
+  message?: string
 }
 
 export function useCreateScenario() {
@@ -92,10 +103,6 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
   console.log(`Copying ${filteredAssignments.length} assignments to scenario ${scenarioId}`)
 
   // Create draft assignments one at a time with error handling
-  interface AssignmentError {
-    assignment: unknown
-    error: unknown
-  }
   const errors: AssignmentError[] = []
 
   for (const assignment of filteredAssignments) {
@@ -116,10 +123,7 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
     try {
       await pb.collection('bunk_assignments_draft').create(draftData)
     } catch (error) {
-      const pbError = error as {
-        response?: { data?: unknown }
-        message?: string
-      }
+      const pbError = error as PbLooseError
       console.error('Failed to create draft assignment:', {
         draftData,
         originalAssignment: assignment,
@@ -148,33 +152,22 @@ async function copyScenarioToScenario(fromScenarioId: string, toScenarioId: stri
   // Get source scenario assignments for the specific year.
   // The stored fields on bunk_assignments_draft are already relation IDs
   // (person, bunk, session, bunk_plan), so no expand is needed here.
-  const sourceAssignments = await pb.collection('bunk_assignments_draft').getFullList({
-    filter: `scenario = "${fromScenarioId}" && year = ${year}`,
-  })
-
-  interface DraftAssignment {
-    person?: string
-    bunk?: string
-    session?: string
-    bunk_plan?: string
-    assignment_locked?: boolean
-  }
+  const sourceAssignments = await pb
+    .collection<BunkAssignmentsDraftRecord>('bunk_assignments_draft')
+    .getFullList({
+      filter: `scenario = "${fromScenarioId}" && year = ${year}`,
+    })
 
   console.log(`Copying ${sourceAssignments.length} assignments to scenario ${toScenarioId}`)
 
-  interface AssignmentError {
-    assignment: unknown
-    error: unknown
-  }
   const errors: AssignmentError[] = []
 
-  for (const assignment of sourceAssignments) {
-    const source = assignment as DraftAssignment
+  for (const source of sourceAssignments) {
     const draftData: Record<string, unknown> = {
-      scenario: toScenarioId, // PocketBase relation to saved_scenarios
-      person: source.person, // Keep the PocketBase relation ID
-      bunk: source.bunk, // Keep the PocketBase relation ID
-      session: source.session, // Keep the PocketBase relation ID
+      scenario: toScenarioId,
+      person: source.person,
+      bunk: source.bunk,
+      session: source.session,
       year: year,
       assignment_locked: source.assignment_locked,
     }
@@ -187,16 +180,13 @@ async function copyScenarioToScenario(fromScenarioId: string, toScenarioId: stri
     try {
       await pb.collection('bunk_assignments_draft').create(draftData)
     } catch (error) {
-      const pbError = error as {
-        response?: { data?: unknown }
-        message?: string
-      }
+      const pbError = error as PbLooseError
       console.error('Failed to create draft assignment:', {
         draftData,
-        originalAssignment: assignment,
+        originalAssignment: source,
         error: pbError.response?.data ?? pbError.message ?? error,
       })
-      errors.push({ assignment, error })
+      errors.push({ assignment: source, error })
     }
   }
 

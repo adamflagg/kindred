@@ -48,10 +48,6 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-// ---------------------------------------------------------------------------
-// Bug A (#17A): Empty scenario "undefined.session" error
-// ---------------------------------------------------------------------------
-
 describe('Bug A: empty scenario does not trigger undefined.session error', () => {
   it('useCreateScenario passes expand: session to create() so returned record has expand.session', async () => {
     // Arrange
@@ -92,10 +88,6 @@ describe('Bug A: empty scenario does not trigger undefined.session error', () =>
     expect(createOptions).toMatchObject({ expand: 'session' })
   })
 })
-
-// ---------------------------------------------------------------------------
-// Bug B (#17B): Copy scenario drops ~1/3 of campers
-// ---------------------------------------------------------------------------
 
 describe('Bug B: copyScenarioToScenario copies ALL source assignments without loss', () => {
   it('copies all 50 source assignments sequentially (no Promise.all concurrency)', async () => {
