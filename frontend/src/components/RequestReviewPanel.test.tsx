@@ -1320,4 +1320,100 @@ describe('RequestReviewPanel', () => {
       })
     }, 10000)
   })
+
+  /**
+   * Regression tests for feedback #11: "After processing several request rows,
+   * the UI stops responding — rows won't close, new rows won't open."
+   *
+   * Root cause: onConfirm for the approve/decline popover only closed the
+   * popover; it never removed the request id from the `expandedRows` Set. As
+   * staff processed more rows, the Set grew unbounded, compounding render cost
+   * and refetch work until click handlers went dead.
+   *
+   * These tests pin the contract: after the user confirms an approve or
+   * decline, the just-processed row MUST collapse.
+   */
+  describe('Row collapse after approve/decline (feedback #11)', () => {
+    it('collapses the expanded row after approving a request', async () => {
+      const { findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-collapse-approve-1',
+        requester_id: 300,
+        requestee_id: 301,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.7,
+        priority: 1,
+        request_locked: false,
+      })
+
+      // Expand the row by clicking the row container. The mobile layout's
+      // expanded block renders the unique "Priority:" label — we use that as
+      // our visible-only-when-expanded signal.
+      const rowContainers = await waitFor(() => {
+        const found = document.querySelectorAll('[data-request-row-id="req-collapse-approve-1"]')
+        if (found.length === 0) throw new Error('row not yet rendered')
+        return found
+      })
+      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      expect(mobileRow).toBeTruthy()
+      fireEvent.click(mobileRow)
+
+      // Expanded content should now be visible
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+      })
+
+      // Click Approve, then confirm in the popover
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      // After confirming, the row should collapse — "Priority:" label disappears
+      await waitFor(() => {
+        expect(screen.queryByText('Priority:')).not.toBeInTheDocument()
+      })
+    }, 10000)
+
+    it('collapses the expanded row after declining a request', async () => {
+      const { findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-collapse-decline-1',
+        requester_id: 400,
+        requestee_id: 401,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.4,
+        priority: 1,
+        request_locked: false,
+      })
+
+      const rowContainers = await waitFor(() => {
+        const found = document.querySelectorAll('[data-request-row-id="req-collapse-decline-1"]')
+        if (found.length === 0) throw new Error('row not yet rendered')
+        return found
+      })
+      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      expect(mobileRow).toBeTruthy()
+      fireEvent.click(mobileRow)
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+      })
+
+      const rejectButton = await findButtonByTitle('Reject')
+      fireEvent.click(rejectButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(screen.queryByText('Priority:')).not.toBeInTheDocument()
+      })
+    }, 10000)
+  })
 })

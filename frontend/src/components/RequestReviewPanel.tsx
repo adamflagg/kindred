@@ -615,20 +615,37 @@ export default function RequestReviewPanel({
     })
 
   // Handlers
+  // Collapse a row by id (mirrors the delete branch of toggleRowExpansion).
+  // Used by toggleRowExpansion and by the approve/decline confirm handler
+  // (feedback #11: after processing a row the expanded state must be cleared
+  // so the expandedRows Set doesn't bloat across successive actions).
+  const collapseRow = useCallback((id: string) => {
+    setExpandedRows((prev) => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    setExpandedMergedRequestId((currentId) => (currentId === id ? null : currentId))
+  }, [])
+
   const toggleRowExpansion = useCallback(
     (id: string, request?: BunkRequestsResponse) => {
       setExpandedRows((prev) => {
-        const next = new Set(prev)
-        if (next.has(id)) {
+        if (prev.has(id)) {
+          // Delegate to the collapse helper (handled below via collapseRow's
+          // own setState path). Returning prev here and calling collapseRow
+          // would double-dispatch; inline the delete to keep behavior stable.
+          const next = new Set(prev)
           next.delete(id)
-          // Clear the expanded merged request when collapsing
           setExpandedMergedRequestId((currentId) => (currentId === id ? null : currentId))
-        } else {
-          next.add(id)
-          // Trigger lazy loading for merged requests
-          if (request && hasMultipleSources(request)) {
-            setExpandedMergedRequestId(id)
-          }
+          return next
+        }
+        const next = new Set(prev)
+        next.add(id)
+        // Trigger lazy loading for merged requests
+        if (request && hasMultipleSources(request)) {
+          setExpandedMergedRequestId(id)
         }
         return next
       })
@@ -1986,6 +2003,9 @@ export default function RequestReviewPanel({
           } else {
             handleReject(requestId)
           }
+          // feedback #11: collapse the row after processing so the
+          // expandedRows Set doesn't bloat across successive actions.
+          collapseRow(requestId)
           setConfirmPopover(null)
         }}
         onCancel={() => setConfirmPopover(null)}
