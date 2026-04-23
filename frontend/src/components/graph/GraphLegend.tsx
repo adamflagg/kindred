@@ -4,7 +4,7 @@
  */
 
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
-import { EDGE_COLORS, GRADE_COLORS, CONFIDENCE_LEVELS } from './constants'
+import { EDGE_COLORS, GRADE_COLORS } from './constants'
 
 export interface GraphLegendProps {
   /** Optional custom edge colors (defaults to EDGE_COLORS) */
@@ -37,9 +37,9 @@ export default function GraphLegend({
         </div>
       </div>
 
-      {/* Node Status */}
+      {/* Camper request status */}
       <div>
-        <div className="mb-1 font-medium">Node Status</div>
+        <div className="mb-1 font-medium">Camper request status</div>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full border-2 border-green-600 bg-gray-400" />
@@ -53,19 +53,6 @@ export default function GraphLegend({
             <div className="h-3 w-3 rounded-full border-2 border-red-600 bg-gray-400" />
             <span>Isolated</span>
           </div>
-        </div>
-      </div>
-
-      {/* Confidence */}
-      <div>
-        <div className="mb-1 font-medium">Edge Confidence</div>
-        <div className="space-y-1 text-xs">
-          {CONFIDENCE_LEVELS.map((level) => (
-            <div key={level.label} className="flex items-center gap-2">
-              <div className="bg-primary h-0.5 w-8" style={{ opacity: level.opacity }} />
-              <span>{level.label}</span>
-            </div>
-          ))}
         </div>
       </div>
 

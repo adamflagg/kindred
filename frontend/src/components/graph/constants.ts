@@ -44,13 +44,6 @@ export const EDGE_LABELS: Record<string, string> = {
   school: 'Classmates',
 }
 
-// Confidence level definitions
-export const CONFIDENCE_LEVELS = [
-  { label: 'High (>90%)', opacity: 1, threshold: 0.9 },
-  { label: 'Medium (50-90%)', opacity: 0.65, threshold: 0.5 },
-  { label: 'Low (<50%)', opacity: 0.3, threshold: 0 },
-] as const
-
 // Zoom settings
 export const ZOOM_SETTINGS = {
   inMultiplier: 1.2,

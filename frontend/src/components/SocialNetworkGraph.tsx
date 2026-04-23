@@ -15,7 +15,6 @@ import {
   GraphControls,
   EdgeFilters,
   GraphLegend,
-  GraphMetrics,
   GraphHelp,
   drawBunkBubbles,
   clearBubbles,
@@ -26,7 +25,6 @@ import {
   prepareWorkerInput,
   setupGraphEventHandlers,
   getLayoutOptions,
-  type ViewMode,
   type BubbleRenderStatus,
   type PopperRef,
 } from './graph'
@@ -65,7 +63,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   // Create refs object for bubble rendering - memoized to avoid recreation on every render
   const bubbleRefs = useMemo(() => ({ bubblesetsRef, pathsRef, poppersRef, containerRef }), [])
 
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [showLabels, setShowLabels] = useState(true)
   const [showBubbles, setShowBubbles] = useState(true)
@@ -276,7 +273,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       setupGraphEventHandlers(cy, {
         onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
         onClearSelection: () => setSelectedNodeId(null),
-        viewMode,
       })
     } // End of runLayout function
 
@@ -300,7 +296,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // The closure reads showBubbles at effect-creation time to restore bubbles
     // after graph rebuilds triggered by other deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, viewMode, bunksData, showEdges, showLabels, bubbleRefs])
+  }, [graphData, bunksData, showEdges, showLabels, bubbleRefs])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
@@ -390,7 +386,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       label="social network"
       emptyMessage={graphData?.warnings?.[0] ?? 'No social network data available'}
     >
-      {(guardedGraphData) => (
+      {() => (
         <>
           {/* Backdrop - only shown when expanded */}
           {isExpanded && (
@@ -413,8 +409,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   Social Network Graph{isExpanded ? ' - Expanded View' : ''}
                 </h3>
                 <GraphControls
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
                   showLabels={showLabels}
                   onToggleLabels={toggleLabels}
                   showHelp={showHelp}
@@ -461,8 +455,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   </div>
                 </div>
               )}
-
-              <GraphMetrics graphData={guardedGraphData} />
 
               {/* Bubble Render Status */}
               {bubbleRenderStatus && bubbleRenderStatus.rendered < bubbleRenderStatus.total && (

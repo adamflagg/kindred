@@ -1,6 +1,6 @@
 import type { RefObject, MutableRefObject } from 'react'
 import type { Core, Layouts } from 'cytoscape'
-import type { ViewMode, PopperRef } from '../../components/graph'
+import type { PopperRef } from '../../components/graph'
 
 /**
  * Configuration for graph initialization
@@ -14,7 +14,6 @@ export interface GraphInitConfig {
     school: boolean
   }
   showBubbles: boolean
-  viewMode: ViewMode
 }
 
 /**

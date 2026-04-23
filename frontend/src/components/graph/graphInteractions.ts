@@ -96,19 +96,6 @@ export function adjustLabelPositions(cy: Core): void {
 }
 
 /**
- * Show ego network for a specific node (highlight the node and its neighbors)
- */
-export function showEgoNetwork(cy: Core, nodeId: string): void {
-  if (cy.destroyed()) return
-
-  const node = cy.$(`#${nodeId}`)
-  const neighborhood = node.closedNeighborhood()
-
-  cy.elements().addClass('faded')
-  neighborhood.removeClass('faded')
-}
-
-/**
  * Update edge visibility based on filter settings
  */
 export function updateEdgeVisibility(cy: Core, showEdges: Record<string, boolean>): void {

@@ -4,8 +4,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
 
-describe('GraphLegend', () => {
+import GraphLegend from './GraphLegend'
+
+describe('GraphLegend constants', () => {
   describe('edge type colors', () => {
     it('should have predefined colors for each edge type', () => {
       const EDGE_COLORS: Record<string, string> = {
@@ -44,86 +47,22 @@ describe('GraphLegend', () => {
       expect(GRADE_COLORS[1]).toBe('#e74c3c')
       expect(GRADE_COLORS[12]).toBe('#34495e')
     })
-
-    it('should follow rainbow gradient pattern', () => {
-      const GRADE_COLORS: Record<number, string> = {
-        1: '#e74c3c',
-        2: '#e67e22',
-        3: '#f39c12',
-        4: '#f1c40f',
-        5: '#2ecc71',
-        6: '#27ae60',
-        7: '#16a085',
-        8: '#3498db',
-        9: '#2980b9',
-        10: '#9b59b6',
-        11: '#8e44ad',
-        12: '#34495e',
-      }
-
-      // Red tones for lower grades
-      expect(GRADE_COLORS[1]).toMatch(/^#e7/)
-      expect(GRADE_COLORS[2]).toMatch(/^#e6/)
-
-      // Blue tones for middle grades
-      expect(GRADE_COLORS[8]).toMatch(/^#34/)
-      expect(GRADE_COLORS[9]).toMatch(/^#29/)
-
-      // Purple/dark for higher grades
-      expect(GRADE_COLORS[10]).toMatch(/^#9b/)
-      expect(GRADE_COLORS[11]).toMatch(/^#8e/)
-    })
-  })
-
-  describe('node status indicators', () => {
-    it('should define status border colors', () => {
-      const statusColors = {
-        satisfied: '#27ae60', // Green
-        partial: '#f39c12', // Yellow
-        isolated: '#e74c3c', // Red
-        default: '#2c3e50', // Gray
-      }
-
-      expect(statusColors.satisfied).toBe('#27ae60')
-      expect(statusColors.partial).toBe('#f39c12')
-      expect(statusColors.isolated).toBe('#e74c3c')
-    })
-  })
-
-  describe('confidence levels', () => {
-    it('should define three confidence ranges', () => {
-      const confidenceLevels = [
-        { label: 'High (>90%)', opacity: 1 },
-        { label: 'Medium (50-90%)', opacity: 0.65 },
-        { label: 'Low (<50%)', opacity: 0.3 },
-      ]
-
-      expect(confidenceLevels).toHaveLength(3)
-      expect(confidenceLevels[0]?.opacity).toBe(1)
-      expect(confidenceLevels[2]?.opacity).toBe(0.3)
-    })
   })
 })
 
-describe('GraphLegend props', () => {
-  it('should accept edgeColors as prop', () => {
-    interface GraphLegendProps {
-      edgeColors: Record<string, string>
-      gradeColors: Record<number, string>
-    }
+describe('GraphLegend rendering', () => {
+  it('renames the node status section to "Camper request status"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('Camper request status')).toBeInTheDocument()
+    expect(screen.queryByText(/^Node Status$/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Node status$/)).not.toBeInTheDocument()
+  })
 
-    const props: GraphLegendProps = {
-      edgeColors: {
-        request: '#3498db',
-        historical: '#95a5a6',
-      },
-      gradeColors: {
-        1: '#e74c3c',
-        2: '#e67e22',
-      },
-    }
-
-    expect(props.edgeColors['request']).toBeDefined()
-    expect(props.gradeColors[1]).toBeDefined()
+  it('does not render an Edge Confidence legend section', () => {
+    render(<GraphLegend />)
+    expect(screen.queryByText(/edge confidence/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/High \(>90%\)/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Medium \(50-90%\)/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Low \(<50%\)/)).not.toBeInTheDocument()
   })
 })

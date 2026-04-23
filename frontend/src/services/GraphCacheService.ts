@@ -22,7 +22,6 @@ type GraphCacheKey =
   | `bunk-${number}-${number}`
   | `bunk-${number}-${number}-${number}-prod`
   | `bunk-${number}-${number}-${number}-scenario-${string}`
-  | `ego-${number}`
 
 /**
  * Service for caching social graph data with automatic expiration and memory management
@@ -107,14 +106,6 @@ export class GraphCacheService {
       // cached entries and invalidation suffix matching still work.
       key = `bunk-${bunkCmId}-${sessionCmId}`
     }
-    return this.getOrFetch(key, fetcher)
-  }
-
-  /**
-   * Get cached ego network or fetch new data
-   */
-  async getEgoNetwork(personCmId: number, fetcher: () => Promise<GraphData>): Promise<GraphData> {
-    const key: GraphCacheKey = `ego-${personCmId}`
     return this.getOrFetch(key, fetcher)
   }
 

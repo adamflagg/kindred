@@ -26,4 +26,15 @@ describe('SocialNetworkGraph safety guards', () => {
   it('clears bubbles when showBubbles is toggled OFF in the resize effect', () => {
     expect(source).toContain('clearBubbles(bubbleRefs)')
   })
+
+  it('does not render or import GraphMetrics (network metrics UI removed)', () => {
+    expect(source).not.toMatch(/<GraphMetrics\b/)
+    expect(source).not.toMatch(/\bGraphMetrics\b/)
+  })
+
+  it('does not reference ego view mode', () => {
+    // Ego network concept fully removed from the graph UI.
+    expect(source).not.toMatch(/['"]ego['"]/)
+    expect(source).not.toMatch(/\bViewMode\b/)
+  })
 })
