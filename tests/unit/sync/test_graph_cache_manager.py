@@ -301,12 +301,12 @@ class TestGraphCacheManagerScenario(unittest.TestCase):
         assert set(other.nodes()) == {20, 21}
 
         # Previously cached entries still intact
-        assert set(self.cache.get_session_graph(12345, 2025).nodes()) == {1, 2, 3}
-        assert set(self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc").nodes()) == {
-            10,
-            11,
-            12,
-        }
+        prod_again = self.cache.get_session_graph(12345, 2025)
+        assert prod_again is not None
+        assert set(prod_again.nodes()) == {1, 2, 3}
+        scn_again = self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc")
+        assert scn_again is not None
+        assert set(scn_again.nodes()) == {10, 11, 12}
 
         stats = self.cache.get_stats()
         assert stats["cache_size"] == 3
