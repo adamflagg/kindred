@@ -319,7 +319,6 @@ export function PortalTooltip({ children, content, className = 'w-64' }: PortalT
   // useLayoutEffect for synchronous DOM measurements before paint
   useLayoutEffect(() => {
     if (isVisible) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
       updatePosition()
     }
   }, [isVisible, updatePosition])
@@ -402,7 +401,6 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
   // useLayoutEffect for synchronous DOM measurements before paint
   useLayoutEffect(() => {
     if (scaleType === 'unknown' || !isVisible) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
     updatePosition()
   }, [isVisible, scale, scaleType, updatePosition])
 
