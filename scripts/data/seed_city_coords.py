@@ -48,7 +48,7 @@ def generate(csv_path: Path) -> None:
         try:
             lat = float(row["lat"])
             lng = float(row["lng"])
-        except (ValueError, KeyError):
+        except ValueError, KeyError:
             continue
 
         canonical = f"{name}, {state}"

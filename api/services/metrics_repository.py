@@ -426,7 +426,7 @@ class MetricsRepository:
                         value = getattr(r, "value", {})
                         if isinstance(value, dict):
                             result[cm_id] = value
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         pass
             return result
         except Exception as e:

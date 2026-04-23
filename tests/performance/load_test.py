@@ -86,7 +86,7 @@ class LoadTester:
                     if "Processed" in line and "requests" in line:
                         try:
                             records_processed = int(line.split()[1])
-                        except (ValueError, IndexError):
+                        except ValueError, IndexError:
                             pass
 
                 self.results["sync_performance"].append(

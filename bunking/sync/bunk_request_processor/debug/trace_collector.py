@@ -312,7 +312,7 @@ class TraceCollector:
                         if oldest.tzinfo is None:
                             oldest = oldest.replace(tzinfo=UTC)
                         needs_cleanup = oldest < datetime.now(UTC) - timedelta(days=MAX_AGE_DAYS)
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         pass
             if needs_cleanup:
                 await asyncio.to_thread(cleanup_old_runs, pb_client)

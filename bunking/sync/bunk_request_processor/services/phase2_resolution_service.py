@@ -971,12 +971,12 @@ class Phase2ResolutionService:
                 if cm_id:
                     try:
                         clean_candidate_ids.append(int(cm_id))
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         logger.warning(f"Invalid candidate ID in dict: {cm_id}")
             elif isinstance(candidate, (int, str)):
                 try:
                     clean_candidate_ids.append(int(candidate))
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(f"Invalid candidate ID format: {candidate}")
             else:
                 logger.warning(f"Unexpected candidate format: {type(candidate)}")
@@ -1037,7 +1037,7 @@ class Phase2ResolutionService:
                         # grade_diff == 2: no adjustment
                         factors["grade"] = 0.0
                     grade_used = True
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
             # Only used when grades not available

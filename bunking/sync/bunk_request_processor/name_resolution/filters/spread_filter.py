@@ -67,7 +67,7 @@ class SpreadFilter:
                     years = int(person.campminder_age.years)
                     months = getattr(person.campminder_age, "months", 0)
                     return years * 12 + months
-            except (AttributeError, ValueError, TypeError):
+            except AttributeError, ValueError, TypeError:
                 pass
 
         return None

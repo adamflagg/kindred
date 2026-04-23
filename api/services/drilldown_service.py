@@ -1018,7 +1018,7 @@ class DrilldownService:
         parts = breakdown_value.split(":")
         try:
             target_session = int(parts[0])
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return []
         target_gender = parts[1] if len(parts) > 1 and parts[1] else None
         target_grade = int(parts[2]) if len(parts) > 2 and parts[2] else None

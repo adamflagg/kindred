@@ -25,7 +25,8 @@ docs/
 ├── reference/
 │   ├── cli-commands.md         # Command reference
 │   ├── configuration.md        # Env vars and config
-│   └── issue-triage.md         # Open issue groups & attack order
+│   ├── issue-triage.md         # Open issue groups & attack order
+│   └── modernization-backlog.md # Language/tooling features not yet adopted
 ├── features/
     ├── request-types-specification.md  # Business rules
     └── bunk_request_business_rules.md  # (needs update)
@@ -38,3 +39,4 @@ docs/
 - **Production deployment** → [docker-deployment.md](./guides/docker-deployment.md)
 - **Troubleshooting** → [troubleshooting.md](./guides/troubleshooting.md)
 - **Staff guides** → [guides/staff/](./guides/staff/)
+- **Modernization backlog** → [reference/modernization-backlog.md](./reference/modernization-backlog.md)
