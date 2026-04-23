@@ -67,7 +67,6 @@ export default function SplitRequestModal({
         .filter((link) => !link.is_primary)
         .map((link) => link.original_request_id)
 
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Valid pattern: reset state when modal opens
       setSelectedSources(new Set(nonPrimarySources))
 
       const defaultTypes: Record<string, BunkRequestsRequestTypeOptions> = {}
