@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
-import { MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
 import { isConfirmedRequest } from '../utils/bunkRequest'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
@@ -33,6 +33,13 @@ export interface BunkRequestRowProps {
    * camper-requests panel to inject the "Current request" chip.
    */
   badge?: ReactNode | undefined
+  /**
+   * Optional disposition reason (e.g. "session_mismatch"). When present, it is
+   * appended to the target line as " · <formatted reason>". Mirrors what
+   * AllCamperRequestsModal shows so declined cross-session requests expose
+   * their reason in the shorthand column.
+   */
+  dispositionReason?: string | null | undefined
 }
 
 function ClickableRow({
@@ -116,6 +123,7 @@ export function BunkRequestRow({
   satisfactionDetail,
   onSelect,
   badge,
+  dispositionReason,
 }: BunkRequestRowProps) {
   const rowClass = clsx(
     'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors',
@@ -159,11 +167,23 @@ export function BunkRequestRow({
   }
 
   const isBunkWith = request.request_type === 'bunk_with'
-  const isConfirmed = isConfirmedRequest(request)
+  const isResolved = isConfirmedRequest(request)
 
   // Prefer resolved person name if we have it; fall back to requested_person_name.
   const resolvedName = targetPerson ? `${targetPerson.first_name} ${targetPerson.last_name}` : null
   const displayName = resolvedName ?? request.requested_person_name ?? 'Unknown'
+
+  // A "matched target" is one with a real requestee_id — true for both resolved
+  // AND declined requests that pointed at a known camper. This mirrors
+  // AllCamperRequestsModal's hasResolvedTarget so declined rows still get a
+  // clickable CamperLink and don't render "(unresolved)". See BunkRequestRow
+  // prop docs for dispositionReason behavior.
+  const hasMatchedTarget = Boolean(
+    request.requestee_id &&
+    request.requestee_id > 0 &&
+    (resolvedName ?? request.requested_person_name)
+  )
+  const reason = dispositionReason ?? request.disposition_reason
 
   const children = (
     <>
@@ -180,13 +200,22 @@ export function BunkRequestRow({
       {/* Arrow */}
       <span className="text-muted-foreground">→</span>
 
-      {/* Target - clickable if confirmed */}
+      {/* Target - clickable when we have a real requestee match (resolved OR
+          declined-but-matched, e.g. cross-session). Unresolved italic fallback
+          only kicks in for rows without any matched requestee_id. */}
       <CamperLink
         personCmId={request.requestee_id}
         displayName={displayName}
-        isConfirmed={isConfirmed}
-        showUnresolved={!isConfirmed && !!request.requested_person_name}
+        isConfirmed={hasMatchedTarget}
+        showUnresolved={!hasMatchedTarget && !!request.requested_person_name}
       />
+
+      {/* Decline/disposition reason, when present — appended in the same inline
+          style as AllCamperRequestsModal. Skipped for resolved rows where the
+          reason isn't user-meaningful here. */}
+      {reason && !isResolved && (
+        <span className="text-muted-foreground truncate text-[11px]">· {formatReason(reason)}</span>
+      )}
 
       {/* Reciprocal badge - only if reciprocal */}
       {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}

@@ -135,6 +135,7 @@ export function CamperRequestSummary({
               request={request}
               targetPerson={targetPerson}
               isCurrent={isCurrent}
+              dispositionReason={request.disposition_reason}
               badge={
                 isCurrent ? (
                   <span className={CURRENT_REQUEST_BADGE_CLASSES}>Current request</span>
