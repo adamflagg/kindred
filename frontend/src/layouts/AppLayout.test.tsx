@@ -38,7 +38,7 @@ vi.mock('../contexts/ProgramContext', () => ({
 }))
 
 // Spy so tests can assert on what args AppLayout passes
-const syncStatusSpy = vi.fn((_opts?: unknown) => ({ data: null }))
+const syncStatusSpy = vi.fn<(opts?: unknown) => { data: unknown }>(() => ({ data: null }))
 vi.mock('../hooks/useSyncStatusAPI', () => ({
   useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
 }))
@@ -220,5 +220,54 @@ describe('AppLayout sync-status polling', () => {
     renderAppLayout()
     const lastCall = syncStatusSpy.mock.calls.at(-1)
     expect(lastCall?.[0]).toEqual({ enabled: true })
+  })
+})
+
+describe('AppLayout sync-status labels', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = {
+      hasPermission: (p: string) => p === 'bunking.manage',
+      isAdmin: false,
+    }
+    const iso = '2026-04-22T12:00:00.000Z' // in the past relative to any test run
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        bunk_assignments: {
+          status: 'success',
+          end_time: iso,
+          start_time: iso,
+          summary: { created: 1, updated: 2, skipped: 0, errors: 0 },
+        },
+        bunk_requests: {
+          status: 'success',
+          end_time: iso,
+          start_time: iso,
+          summary: { created: 3, updated: 4, skipped: 1, errors: 0 },
+        },
+      },
+    }))
+  })
+
+  it('renders "Assignments synced ..." label with lowercase synced', () => {
+    renderAppLayout()
+    // The label should read "Assignments synced <relative time>"
+    expect(screen.getByText(/Assignments synced/)).toBeInTheDocument()
+  })
+
+  it('renders "Requests synced ..." label with lowercase synced', () => {
+    renderAppLayout()
+    expect(screen.getByText(/Requests synced/)).toBeInTheDocument()
+  })
+
+  it('Requests sync label exposes richer detail via tooltip on hover', () => {
+    renderAppLayout()
+    const requestsLabel = screen.getByText(/Requests synced/)
+    // Find the nearest element carrying the tooltip (title attribute)
+    const tooltipHost = requestsLabel.closest('[title]') as HTMLElement | null
+    expect(tooltipHost).not.toBeNull()
+    const title = tooltipHost?.getAttribute('title') ?? ''
+    // Tooltip should contain an exact timestamp (ISO-ish) for richer sync detail
+    expect(title).toMatch(/2026-04-22/)
   })
 })
