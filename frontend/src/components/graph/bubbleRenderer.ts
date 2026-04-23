@@ -5,10 +5,8 @@
 import type { Core, NodeSingular } from 'cytoscape'
 import type { Instance as PopperInstance } from '@popperjs/core'
 import { createPopper } from '@popperjs/core'
-import { getBunkColor } from '../../utils/graphUtils'
-import { getUnitForBunk, UNIT_COLORS } from '../../utils/unitMapping'
-
-const DEFAULT_UNIT_COLOR = '#888888'
+import { getUnitForBunk } from '../../utils/unitMapping'
+import { getUnitColorForBunk, getUnitColorByName } from '../../utils/graphColorUtils'
 
 /** Shared config for bubbleset path rendering (unit and bunk bubbles) */
 const BASE_BUBBLE_OPTIONS = {
@@ -26,6 +24,27 @@ const UNIT_LABEL_FONT = {
   fontWeight: '700',
   letterSpacing: '0.5px',
 } as const
+
+/**
+ * Returns the bubbleset path style for a unit boundary bubble.
+ * The fill is intentionally 'none' — the boundary is shown by stroke only
+ * (#32: fillOpacity: 0 makes any fill color invisible; 'none' is explicit).
+ */
+export function getUnitBubbleStyle(unitColor: string): {
+  fill: string
+  fillOpacity: number
+  stroke: string
+  strokeOpacity: number
+  strokeWidth: number
+} {
+  return {
+    fill: 'none',
+    fillOpacity: 0,
+    stroke: unitColor,
+    strokeOpacity: 0.8,
+    strokeWidth: 4,
+  }
+}
 
 export interface BubbleRenderStatus {
   total: number
@@ -178,9 +197,12 @@ export function drawBunkBubbles(
   const addPath = (bb as { addPath: (...args: unknown[]) => SVGElement }).addPath.bind(bb)
   const updateBubbles = (bb as { update: (force: boolean) => void }).update.bind(bb)
 
+  // Build the list of all bunk names present in this graph — needed for
+  // deterministic color assignment (#31, #33): same bunk set → same colors.
+  const allBunkNames: string[] = bunksData ? Object.values(bunksData) : []
+
   // Collect unit grouping data (needed for both bubble paths and labels)
   const unitGroups: Record<string, NodeSingular[]> = {}
-  const unitBunkColors: Record<string, string[]> = {}
 
   if (showUnits && bunksData) {
     cy.nodes()
@@ -194,12 +216,6 @@ export function drawBunkBubbles(
         if (!unit) return
         const group = (unitGroups[unit] ??= [])
         group.push(node)
-        // Track unique bunk colors per unit for gradient labels
-        const colors = (unitBunkColors[unit] ??= [])
-        const bunkColor = getBunkColor(parseInt(bunkId, 10))
-        if (!colors.includes(bunkColor)) {
-          colors.push(bunkColor)
-        }
       })
   }
 
@@ -207,25 +223,24 @@ export function drawBunkBubbles(
 
   // 1. Add unit bubble paths first so they render behind bunk bubbles
   if (showUnits && bunksData) {
+    // Build sorted unit list from present groups for deterministic palette (#33)
+    const presentUnits = Object.keys(unitGroups)
+
     Object.entries(unitGroups).forEach(([unitName, nodes]) => {
       if (nodes.length === 0) return
 
-      const unitColor = UNIT_COLORS[unitName] ?? DEFAULT_UNIT_COLOR
+      // #31/#33: deterministic unit color — same unit always gets the same hue
+      const unitColor = getUnitColorByName(unitName, presentUnits)
+
       try {
         const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
         const nodeCollection = cy.$(nodeIds)
 
         const path = addPath(nodeCollection, cy.collection(), cy.collection(), {
-          style: {
-            fill: unitColor,
-            fillOpacity: 0.15,
-            stroke: unitColor,
-            strokeOpacity: 0.7,
-            strokeWidth: 3,
-          },
-          // Larger morphBuffer than bunk bubbles (35) so unit bubbles wrap outside them
+          style: getUnitBubbleStyle(unitColor),
+          // #32: significantly wider morphBuffer wraps well outside bunk bubbles
           ...BASE_BUBBLE_OPTIONS,
-          morphBuffer: 120,
+          morphBuffer: 180,
         })
         pathsRef.current.push(path)
       } catch (error) {
@@ -255,7 +270,8 @@ export function drawBunkBubbles(
       if (!nodes || nodes.length === 0) return // Skip empty bunks
 
       const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
-      const bunkColor = getBunkColor(parseInt(bunkId, 10))
+      // #31/#33: all bunks in the same unit share the unit's deterministic color
+      const bunkColor = getUnitColorForBunk(bunkName, allBunkNames)
 
       try {
         const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
@@ -320,13 +336,15 @@ export function drawBunkBubbles(
 
   // --- Labels: unit labels first (higher offset), then bunk labels ---
 
-  // 3. Add unit labels with gradient bunk colors
+  // 3. Add unit labels — solid color matching the unit bubble (#40: no gradient)
   if (showUnits && bunksData) {
+    const presentUnits = Object.keys(unitGroups)
+
     Object.entries(unitGroups).forEach(([unitName, nodes]) => {
       if (nodes.length === 0) return
 
-      const unitColor = UNIT_COLORS[unitName] ?? DEFAULT_UNIT_COLOR
-      const colors = unitBunkColors[unitName] ?? []
+      // #40: use the same deterministic solid color as the unit bubble, no gradient
+      const unitColor = getUnitColorByName(unitName, presentUnits)
 
       const labelEl = document.createElement('div')
       labelEl.className = 'unit-label-popper'
@@ -334,34 +352,19 @@ export function drawBunkBubbles(
       labelEl.style.zIndex = '1'
       const innerDiv = document.createElement('div')
 
-      // Shared pill styling on the outer label element
-      const labelColor = colors[0] ?? unitColor
+      // Pill styling with solid unit color border
       Object.assign(labelEl.style, {
         backgroundColor: 'rgba(255,255,255,0.85)',
         padding: '2px 10px',
         borderRadius: '10px',
         whiteSpace: 'nowrap',
+        border: `2px solid ${unitColor}`,
       })
 
-      // Shared font styles, then color-specific overrides
+      // Font + color — solid, no gradient
       Object.assign(innerDiv.style, UNIT_LABEL_FONT)
+      innerDiv.style.color = unitColor
 
-      if (colors.length >= 2) {
-        const gradientStops = colors.join(', ')
-        Object.assign(labelEl.style, {
-          border: '2px solid transparent',
-          borderImage: `linear-gradient(90deg, ${gradientStops}) 1`,
-        })
-        Object.assign(innerDiv.style, {
-          background: `linear-gradient(90deg, ${gradientStops})`,
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-        })
-      } else {
-        labelEl.style.border = `2px solid ${labelColor}`
-        innerDiv.style.color = labelColor
-      }
       innerDiv.textContent = unitName
       labelEl.appendChild(innerDiv)
 
@@ -375,7 +378,8 @@ export function drawBunkBubbles(
       if (!nodes || nodes.length === 0) return
 
       const bunkName = bunksData?.[parseInt(bunkId, 10)] ?? `Bunk ${bunkId}`
-      const bunkColor = getBunkColor(parseInt(bunkId, 10))
+      // #31/#33: bunk label uses the same deterministic unit color as its bubble
+      const bunkColor = getUnitColorForBunk(bunkName, allBunkNames)
 
       const labelEl = document.createElement('div')
       labelEl.className = 'bunk-label-popper'

@@ -9,6 +9,7 @@ import { useBunkNames } from '../hooks/useBunkNames'
 import { useSocialGraphData } from '../hooks/useSocialGraphData'
 import { Network } from 'lucide-react'
 import { QueryGuard } from './QueryGuard'
+import CamperDetailsPanel from './CamperDetailsPanel'
 import clsx from 'clsx'
 import {
   ZOOM_SETTINGS,
@@ -94,8 +95,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   }, [graphData])
   const { data: bunksData } = useBunkNames(sessionCmId, !!graphData)
 
-  // Suppress unused variable warning - selectedNodeId used for future features
-  void selectedNodeId
+  // selectedNodeId drives the camper detail panel (#35)
 
   // Handle escape key for expanded mode
   useEffect(() => {
@@ -509,6 +509,14 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
             {showHelp && <GraphHelp />}
           </div>
+
+          {/* Camper detail panel — opens when a node is tapped (#35) */}
+          {selectedNodeId != null && (
+            <CamperDetailsPanel
+              camperId={selectedNodeId.toString()}
+              onClose={() => setSelectedNodeId(null)}
+            />
+          )}
         </>
       )}
     </QueryGuard>
