@@ -734,7 +734,7 @@ requires-dist = [
 dev = [
     { name = "coverage", specifier = ">=7.0.0" },
     { name = "mypy", specifier = ">=1.20.1" },
-    { name = "pandas-stubs", specifier = ">=2.0.0" },
+    { name = "pandas-stubs", specifier = ">=3.0.0.260204" },
     { name = "pip-audit", specifier = ">=2.7.0" },
     { name = "playwright", specifier = ">=1.48.0" },
     { name = "pytest", specifier = ">=9.0.3" },
