@@ -214,7 +214,7 @@ Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
 
 ## Important Development Notes
 
-1. **Language Versions** - Python 3.12+, Go 1.24+, Node 22+, TypeScript 5.8+/ES2022
+1. **Language Versions** - Python 3.14+, Go 1.26+, Node 22+, TypeScript 5.8+/ES2022
 2. **Use uv** - `uv sync` to install, `uv run <cmd>` to execute
 3. **CampMinder IDs** - All relationships use CM IDs, never PocketBase IDs
 4. **Sync order matters** - sessions → attendees → persons → bunks → plans → assignments → requests

@@ -1,144 +1,196 @@
 # Kindred
 
-Kindred finds campers who belong together and places them in the right cabins.
+**Kindred finds campers who belong together and places them in the right cabins** — and gives camps the analytics to understand their enrollment, retention, and community at a depth spreadsheets can't reach.
 
-A cabin assignment system that puts relationships first. Using constraint satisfaction and social network analysis, it finds campers who are kindred — compatible, connected, belonging together — and builds cabin communities where friendships thrive.
+A relationship-first cabin assignment platform for summer camps, built on a constraint solver, a CampMinder data integration, and a full analytics suite.
 
-[![CI](https://github.com/adamflagg/kindred/actions/workflows/ci.yml/badge.svg)](https://github.com/adamflagg/kindred/actions/workflows/ci.yml)
-[![CD](https://github.com/adamflagg/kindred/actions/workflows/cd.yml/badge.svg?event=release)](https://github.com/adamflagg/kindred/actions/workflows/cd.yml)
-[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/adamflagg/kindred?utm_source=oss&utm_medium=github&utm_campaign=adamflagg%2Fkindred&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+<!-- TODO: hero screenshot — bunking UI with social graph overlay or scenario comparison -->
+<!-- ![Kindred](docs/assets/hero.png) -->
+
+---
+
+## What Kindred Does
+
+Kindred is organized into two main areas of the app:
+
+### Summer Bunking
+
+The core cabin assignment workflow for the main summer season.
+
+- **Constraint solver** (Google OR-Tools) — respects age, grade, gender, cabin capacity, friend requests, and custom staff preferences
+- **Drag-and-drop UI** — move campers between cabins with real-time validation, lock groups, and visual indicators for conflicts
+- **Scenario planning & comparison** — fork the current assignment, experiment, and compare scenarios side-by-side before committing
+- **Social network graph** — interactive Cytoscape visualization of friend requests across the camper population, by session/bunk/age group
+- **Bunk request pipeline** — CSV upload → AI parsing (GPT-5-nano) → name disambiguation → reviewable request queue, with full pipeline debug traces and a prompt editor for tuning
+
+<!-- TODO: screenshot — summer bunking drag-and-drop + social graph -->
+<!-- ![Summer Bunking](docs/assets/summer-bunking.png) -->
+
+### Camp Analytics
+
+A full analytics dashboard for year-over-year operational insight. Organized into three sections:
+
+- **Registration** — Overview, geography (heatmaps + drill-down by region/school), waitlist analysis, session availability, enrollment forecasting vs. budget goals, cancellations, and Day 1 readiness
+- **Retention** — Returning-camper rates, session-flow Sankey diagrams, per-bunk retention, per-staff cabin cohort analysis
+- **Trends** — Enrollment velocity week-over-week, cancellation velocity, phase-based progress tracking against prior years
+
+<!-- TODO: screenshot — analytics forecast page or Sankey flow -->
+<!-- ![Camp Analytics](docs/assets/analytics.png) -->
+
+---
+
+## Architecture
+
+```
+CampMinder API  ──►  Go Sync Services  ──┐
+                                         │
+         React Frontend  ◄──────────────►│──►  4 Docker Containers
+                                         │
+                OR-Tools Solver  ◄───────┘
+```
+
+| Container | Port | Stack | Purpose |
+|-----------|------|-------|---------|
+| `kindred-caddy` | 8080 | Caddy + static build | Reverse proxy, frontend serving, TLS |
+| `kindred-pocketbase` | 8090 | Go + SQLite | Database, auth (OIDC), CampMinder sync, RBAC |
+| `kindred-api` | 8000 | Python 3.14 + FastAPI | Solver, analytics, social graph, scenarios |
+| `kindred-init` | — | Go + shell | One-shot admin/OIDC bootstrap |
+
+**Routing** follows an inverse pattern: Caddy routes explicit PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/oauth2-redirect`); all other `/api/*` traffic goes to FastAPI. New FastAPI endpoints work automatically without Caddy config changes.
+
+**Data integrity**: Cross-table relationships use PocketBase expandable relations (`expand=person,session,bunk`) for efficient joins, with CampMinder IDs retained alongside for sync lookups. Every CampMinder-sourced record is year-scoped so reused session IDs across years can never contaminate each other.
+
+**Production deployment**: In production we put Caddy behind a separate edge proxy (Traefik + CrowdSec) that handles TLS, rate limiting, bot/WAF rules, and IP reputation. Caddy's role is reduced to internal routing; see [docs/guides/docker-deployment.md](docs/guides/docker-deployment.md).
+
+---
+
+## Tech Stack
+
+- **Frontend**: React 19, TypeScript 5.8, Vite, Tailwind CSS, React Query, @dnd-kit, Cytoscape.js
+- **Backend API**: Python 3.14+, FastAPI, Google OR-Tools, Pydantic v2
+- **Database & Auth**: PocketBase (Go 1.26+) on SQLite (WAL), OIDC auto-discovery for SSO
+- **Sync & Integrations**: Go services for CampMinder, Google Sheets/Drive, OpenAI (GPT-5-nano for bunk request parsing)
+- **Infrastructure**: Docker, Caddy, GitHub Actions CI/CD, Trivy security scanning
+- **Dev tooling**: `uv` for Python, `lefthook` for git hooks, ruff / mypy / golangci-lint / eslint / prettier
+
+---
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/adamflagg/kindred.git
 cd kindred
+cp .env.example .env        # fill in credentials (see Configuration below)
 ./scripts/start_dev.sh
 ```
 
-- App: http://localhost:8080 (via Caddy)
-- PocketBase Admin: http://localhost:8080/_/
-- Vite Dev Server: http://localhost:3000 (HMR)
+Once services are up:
 
-## Features
+- **App**: http://localhost:8080 (Caddy, production-like routing)
+- **Vite dev server**: http://localhost:3000 (HMR for frontend development)
+- **PocketBase Admin**: http://localhost:8080/_/
 
-- **Constraint solver**: OR-Tools optimization respecting age, grade, and friend requests
-- **Drag-and-drop interface**: Visual cabin management
-- **Scenario planning**: Test changes before applying
-- **CampMinder sync**: Automated data synchronization
-- **Historical data**: View past years for returning campers
-
-## Architecture
-
-```
-CampMinder API → Go Sync → PocketBase ← React Frontend
-                               ↓
-                         FastAPI Solver
-```
-
-| Component | Technology |
-|-----------|------------|
-| Database | PocketBase (Go + SQLite) |
-| Solver | FastAPI + Google OR-Tools |
-| Frontend | React 19, TypeScript, Tailwind |
-| Sync | Go services with layered dependencies |
-
-## Requirements
-
-- Python 3.12+
-- Node.js 22+
-- Go 1.24+
-- Ubuntu 24.04 LTS (or compatible)
-
-## Development
+Trigger a CampMinder sync:
 
 ```bash
-# Start services
-./scripts/start_dev.sh
-
-# Quick checks before commit
-lefthook run pre-commit                                   # Formatters (staged files)
-lefthook run pre-push                                     # Full lint + test suite
-
-# Full test suite
-./scripts/ci/run_all_tests.sh
-
-# Frontend
-cd frontend && npm run dev
-
-# Sync data
-curl -X POST http://localhost:8090/api/custom/sync/daily
+curl -X POST "http://localhost:8090/api/custom/sync/run?year=2025&service=all"
 ```
+
+---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and configure:
+Environment variables live in `.env` (see `.env.example` for the full list):
 
 ```bash
-# CampMinder API (required for sync)
-CAMPMINDER_API_KEY=your-api-key
-CAMPMINDER_PRIMARY_KEY=your-subscription-key
-CAMPMINDER_CLIENT_ID=your-client-id
-CAMPMINDER_SEASON_ID=2025
-
-# PocketBase admin
+# PocketBase admin bootstrap
 POCKETBASE_ADMIN_EMAIL=admin@camp.local
 POCKETBASE_ADMIN_PASSWORD=your-password
 
-# AI parsing (required for bunk requests)
+# AI (bunk request parsing & disambiguation)
 AI_API_KEY=your-openai-key
+AI_MODEL=gpt-5-nano
+AI_PROVIDER=openai
 
-# OIDC auth (production)
+# SSO (any OIDC provider: Pocket ID, Authentik, Auth0, Keycloak, etc.)
 OIDC_ISSUER=https://your-oidc-provider.com
 OIDC_CLIENT_ID=your-client-id
 OIDC_CLIENT_SECRET=your-secret
+
+# CampMinder sync
+CAMPMINDER_SEASON_ID=2025
+# (CampMinder API credentials as documented in .env.example)
 ```
 
-See `.env.example` for full configuration options.
+Operational config (solver weights, AI thresholds, session hierarchy, budget goals) lives in the PocketBase `config` collection and is editable through the **Admin → Config** UI — not through static files.
+
+---
 
 ## Testing
 
 ```bash
 # Python
-pytest tests/
+uv run pytest tests/
+uv run pytest tests/ -k "keyword"
 
 # Go
 cd pocketbase && go test ./...
 
 # Frontend
-cd frontend && npm test
+cd frontend && npx vitest run
 ```
 
-CI runs linting and tests on every push. CD builds Docker images on version tags (`v*`).
+Pre-push hooks (via `lefthook`) run type checks, linters, and fast unit tests. Run `./scripts/setup-git-hooks.sh` once after cloning to install them.
+
+---
 
 ## Deployment
 
-Release via GitHub Actions: **Actions → Release → Run workflow**. Uses [git-cliff](https://git-cliff.org/) for auto-versioning.
+Production runs the four containers behind Traefik/CrowdSec. CI runs on every push (~2–3 min); CD builds and pushes Docker images on every merge to `main` (~10–15 min), tagged `latest` and `sha-<commit>`.
+
+Releases are cut through **GitHub Actions → Release → Run workflow** — the workflow promotes existing `sha-<commit>` images to a version tag (e.g. `v1.2.0`), creates the git tag, and publishes a GitHub release. Auto-versioning uses [git-cliff](https://git-cliff.org/); an explicit version can be entered to override.
+
+Pulling the latest images into a running deployment:
 
 ```bash
-# After CD workflow completes (~15 min):
 docker compose pull && docker compose up -d
 ```
 
+See [docs/guides/docker-deployment.md](docs/guides/docker-deployment.md) for full production setup, including OIDC, reverse-proxy, and backup configuration.
+
+---
+
 ## Documentation
 
-- [Development Guide](docs/guides/development.md)
-- [Architecture Overview](docs/architecture/overview.md)
-- [Sync Operations](docs/guides/sync-operations.md)
-- [CLI Reference](docs/reference/cli-commands.md)
-- [Full Index](docs/README.md)
+- [Full documentation index](docs/README.md)
+- [Modernization backlog](docs/reference/modernization-backlog.md) — what language/tooling features we're not yet using
+- [Data model](docs/architecture/data-model.md)
+- [Sync layer architecture](docs/architecture/sync-layer.md)
+- [Bunk request pipeline](docs/architecture/bunk-request-pipeline.md)
+- [Metrics module](docs/architecture/metrics-module.md)
+- [Session types & bunking structure](docs/architecture/session-types.md)
+- [Staff guides](docs/guides/staff/)
+- [Solver configuration](docs/guides/solver-configuration.md)
+- [CSV preparation](docs/guides/csv-preparation.md)
+- [CLI reference](docs/reference/cli-commands.md)
+- [Troubleshooting](docs/guides/troubleshooting.md)
+- [CLAUDE.md](CLAUDE.md) — primary developer reference (architecture, conventions, quality standards)
+
+---
 
 ## Contributing
 
-1. Follow the [Development Guide](docs/guides/development.md)
-2. Write tests for new features
-3. Run `./scripts/setup-git-hooks.sh` once to install lefthook (auto-runs on commit/push)
-4. Submit pull requests for review
+1. Read [CLAUDE.md](CLAUDE.md) for conventions (commit scopes, TDD, worktree workflow)
+2. Run `./scripts/setup-git-hooks.sh` once to install lefthook
+3. Create a feature branch (or a worktree via `./scripts/worktree/new.sh <name>`)
+4. Write tests first, then implementation
+5. Open a pull request — CI must pass before merge (squash-only, no direct pushes to `main`)
+
+---
 
 ## License
 
-AGPL-3.0-or-later — See [LICENSE](LICENSE) for details.
+**AGPL-3.0-or-later** — see [LICENSE](LICENSE).
 
-**Nonprofits and educational institutions:** Free to use.
-
-**Commercial licensing:** Contact kindred@flagg.moi
+- **Nonprofits and educational institutions**: free to use.
+- **Commercial licensing**: contact kindred@flagg.moi
