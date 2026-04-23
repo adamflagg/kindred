@@ -7,6 +7,11 @@ import { useQuery } from '@tanstack/react-query'
 import type { Session, Camper, BunkRequest, Bunk } from '../../types/app-types'
 import { pb } from '../../lib/pocketbase'
 import { fetchCampersForSession } from '../../utils/pocketbaseDataFetchers'
+import { queryKeys } from '../../utils/queryKeys'
+
+// Exported so tests can assert this key shares a prefix with ['bunk-requests']
+// mutations, ensuring React Query prefix-match invalidation covers the count.
+export const BUNK_REQUESTS_COUNT_KEY_PREFIX = 'bunk-requests'
 
 // ============================================================================
 // Types
@@ -266,13 +271,12 @@ export function useBunkRequestsCount({
   agSessions,
 }: UseBunkRequestsCountOptions) {
   return useQuery({
-    queryKey: [
-      'bunk-requests-count',
-      selectedSession,
+    queryKey: queryKeys.bunkRequestsCount(
+      selectedSession ?? '',
       currentYear,
       subSessions.map((s) => s.cm_id).sort(),
-      agSessions.map((s) => s.cm_id).sort(),
-    ],
+      agSessions.map((s) => s.cm_id).sort()
+    ),
     queryFn: async (): Promise<number> => {
       if (!selectedSession) return 0
 

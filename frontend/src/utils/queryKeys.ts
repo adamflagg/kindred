@@ -51,6 +51,10 @@ export const queryKeys = {
 
   // Bunk Requests (Tier 2 - user data)
   bunkRequests: (sessionId: string, year: number) => ['bunk-requests', sessionId, year] as const,
+  // Count uses same 'bunk-requests' prefix so invalidateQueries({ queryKey: ['bunk-requests'] })
+  // automatically invalidates the tab-badge count without additional call sites.
+  bunkRequestsCount: (selectedSession: string, year: number, ...rest: unknown[]) =>
+    ['bunk-requests', 'count', selectedSession, year, ...rest] as const,
 
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>
