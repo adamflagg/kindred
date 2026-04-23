@@ -36,16 +36,26 @@ export const socialGraphService = {
   },
 
   /**
-   * Fetch social network graph data for a specific bunk
+   * Fetch social network graph data for a specific bunk.
+   * When `scenarioId` is provided, the backend sources bunk membership from
+   * the scenario's draft assignments instead of the production (CampMinder) data.
    */
   async getBunkSocialGraph(
     bunkCmId: number,
     sessionCmId: number,
     year: number,
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+    scenarioId?: string | null
   ): Promise<GraphData> {
+    const params = new URLSearchParams({
+      session_cm_id: String(sessionCmId),
+      year: String(year),
+    })
+    if (scenarioId) {
+      params.set('scenario_id', scenarioId)
+    }
     const response = await fetchWithAuth(
-      `${API_BASE}/bunks/${bunkCmId}/social-graph?session_cm_id=${sessionCmId}&year=${year}`
+      `${API_BASE}/bunks/${bunkCmId}/social-graph?${params.toString()}`
     )
     if (!response.ok) {
       const errorText = await response.text()

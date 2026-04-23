@@ -135,3 +135,110 @@ def test_build_social_network_accepts_scenario_id_kwarg(
     # Must not raise TypeError
     builder.build_social_network(year=2026, session_cm_id=999, scenario_id=None)
     builder.build_social_network(year=2026, session_cm_id=999, scenario_id="abc")
+
+
+# --- build_bunk_graph scenario threading tests -----------------------------------
+
+
+def _seed_bunk_fixtures(capture: _CollectionCapture) -> None:
+    """Seed get_full_list so build_bunk_graph sees no members (short-circuits after
+    hitting the expected assignment collection)."""
+    # All queries return empty lists -> bunk_graph built with 0 members, early return.
+    for cname in (
+        "bunk_assignments",
+        "bunk_assignments_draft",
+        "bunk_requests",
+        "persons",
+        "bunks",
+    ):
+        if cname not in capture._collections:
+            capture.make_collection(cname)
+
+
+def test_build_bunk_graph_with_scenario_id_queries_draft_collection(
+    capturing_pb: tuple[MagicMock, _CollectionCapture],
+) -> None:
+    """When scenario_id is provided, bunk membership must come from bunk_assignments_draft."""
+    pb, capture = capturing_pb
+    _seed_bunk_fixtures(capture)
+
+    # Track the filter strings passed to get_full_list per collection as well.
+    assignments_filters: list[str] = []
+    draft_filters: list[str] = []
+
+    def _capture_get_full_list_bunk(*args: object, **kwargs: object) -> list[object]:
+        params = kwargs.get("query_params") or (args[0] if args else {})
+        if isinstance(params, dict):
+            flt = params.get("filter", "")
+            assignments_filters.append(str(flt))
+        return []
+
+    def _capture_get_full_list_draft(*args: object, **kwargs: object) -> list[object]:
+        params = kwargs.get("query_params") or (args[0] if args else {})
+        if isinstance(params, dict):
+            flt = params.get("filter", "")
+            draft_filters.append(str(flt))
+        return []
+
+    capture._collections["bunk_assignments"].get_full_list.side_effect = _capture_get_full_list_bunk
+    capture._collections["bunk_assignments_draft"].get_full_list.side_effect = _capture_get_full_list_draft
+
+    builder = OptimizedSocialGraphBuilder(pb, random_seed=42)
+    builder.build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999, scenario_id="scn_xyz")
+
+    # Draft must have been queried
+    assert draft_filters, (
+        f"Expected bunk_assignments_draft query when scenario_id set. "
+        f"Draft filters: {draft_filters}, prod filters: {assignments_filters}"
+    )
+    # Draft filter must include the scenario clause
+    assert any('scenario = "scn_xyz"' in f for f in draft_filters), (
+        f"Expected scenario filter in draft query, got: {draft_filters}"
+    )
+
+
+def test_build_bunk_graph_without_scenario_preserves_prod_collection(
+    capturing_pb: tuple[MagicMock, _CollectionCapture],
+) -> None:
+    """Without scenario_id, bunk membership must come from bunk_assignments (prod)."""
+    pb, capture = capturing_pb
+    _seed_bunk_fixtures(capture)
+
+    prod_calls: list[str] = []
+    draft_calls: list[str] = []
+
+    def _capture_prod(*args: object, **kwargs: object) -> list[object]:
+        params = kwargs.get("query_params") or (args[0] if args else {})
+        if isinstance(params, dict):
+            prod_calls.append(str(params.get("filter", "")))
+        return []
+
+    def _capture_draft(*args: object, **kwargs: object) -> list[object]:
+        params = kwargs.get("query_params") or (args[0] if args else {})
+        if isinstance(params, dict):
+            draft_calls.append(str(params.get("filter", "")))
+        return []
+
+    capture._collections["bunk_assignments"].get_full_list.side_effect = _capture_prod
+    capture._collections["bunk_assignments_draft"].get_full_list.side_effect = _capture_draft
+
+    builder = OptimizedSocialGraphBuilder(pb, random_seed=42)
+    builder.build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999)
+
+    assert prod_calls, (
+        f"Expected bunk_assignments query when scenario_id absent. prod: {prod_calls}, draft: {draft_calls}"
+    )
+    assert not draft_calls, f"Must not query bunk_assignments_draft without scenario_id. draft: {draft_calls}"
+
+
+def test_build_bunk_graph_accepts_scenario_id_kwarg(
+    capturing_pb: tuple[MagicMock, _CollectionCapture],
+) -> None:
+    """Signature must accept scenario_id as keyword arg (backwards-compatible)."""
+    pb, capture = capturing_pb
+    _seed_bunk_fixtures(capture)
+    builder = OptimizedSocialGraphBuilder(pb, random_seed=42)
+
+    # Must not raise TypeError
+    builder.build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999, scenario_id=None)
+    builder.build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999, scenario_id="abc")

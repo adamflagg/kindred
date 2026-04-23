@@ -20,6 +20,8 @@ type GraphCacheKey =
   | `session-${number}-${number}-prod`
   | `session-${number}-${number}-scenario-${string}`
   | `bunk-${number}-${number}`
+  | `bunk-${number}-${number}-${number}-prod`
+  | `bunk-${number}-${number}-${number}-scenario-${string}`
   | `ego-${number}`
 
 /**
@@ -73,14 +75,30 @@ export class GraphCacheService {
   }
 
   /**
-   * Get cached bunk graph or fetch new data
+   * Get cached bunk graph or fetch new data.
+   *
+   * The cache key is scoped by scenario so a scenario-sourced bunk graph
+   * never collides with the production (CampMinder) bunk graph for the same
+   * bunk+session+year. When `scenarioId` is null/undefined the prod slot is
+   * used. Legacy callers that omit `year` continue to use the original
+   * `bunk-{bunkId}-{sessionCmId}` key for backwards compatibility.
    */
   async getBunkGraph(
     bunkCmId: number,
     sessionCmId: number,
-    fetcher: () => Promise<GraphData>
+    fetcher: () => Promise<GraphData>,
+    year?: number,
+    scenarioId?: string | null
   ): Promise<GraphData> {
-    const key: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}`
+    let key: GraphCacheKey
+    if (year !== undefined) {
+      const slug = scenarioId ? `scenario-${scenarioId}` : 'prod'
+      key = `bunk-${bunkCmId}-${sessionCmId}-${year}-${slug}` as GraphCacheKey
+    } else {
+      // Legacy callers without a year: keep the original key so existing
+      // cached entries and invalidation suffix matching still work.
+      key = `bunk-${bunkCmId}-${sessionCmId}`
+    }
     return this.getOrFetch(key, fetcher)
   }
 
@@ -97,17 +115,31 @@ export class GraphCacheService {
    */
   invalidate(sessionCmId: number): void {
     // Remove all session and bunk graphs for this session.
-    // Session entries may be keyed as `session-{id}` or `session-{id}-{year}`.
+    // Session entries may be keyed as `session-{id}`, `session-{id}-{year}`,
+    // `session-{id}-{year}-prod`, or `session-{id}-{year}-scenario-{id}`.
+    // Bunk entries may be keyed as `bunk-{bunkId}-{sessionCmId}` (legacy) or
+    // `bunk-{bunkId}-{sessionCmId}-{year}-{slug}` (scenario-aware).
     const sessionPrefix = `session-${sessionCmId}`
-    const bunkSuffix = `-${sessionCmId}`
+    const legacyBunkSuffix = `-${sessionCmId}`
 
     for (const key of this.cache.keys()) {
       if (key === sessionPrefix || key.startsWith(`${sessionPrefix}-`)) {
-        // Matches session-{id} and session-{id}-{year}
+        // Matches session-{id}, session-{id}-{year}, and scenario-suffixed forms
         this.removeEntry(key)
-      } else if (key.startsWith('bunk-') && key.endsWith(bunkSuffix)) {
-        // Matches bunk-{bunkId}-{sessionCmId}
-        this.removeEntry(key)
+      } else if (key.startsWith('bunk-')) {
+        if (key.endsWith(legacyBunkSuffix)) {
+          // Legacy bunk-{bunkId}-{sessionCmId}
+          this.removeEntry(key)
+          continue
+        }
+        // Scenario-aware bunk-{bunkId}-{sessionCmId}-{year}-{slug}:
+        // parse the session segment by position so we don't match the
+        // sessionCmId accidentally appearing inside the bunkId.
+        const segments = key.split('-')
+        // segments = ['bunk', bunkId, sessionCmId, year, ...slug]
+        if (segments.length >= 5 && segments[2] === String(sessionCmId)) {
+          this.removeEntry(key)
+        }
       }
     }
 
@@ -120,8 +152,16 @@ export class GraphCacheService {
    * Invalidate cached data for a specific bunk
    */
   invalidateBunk(bunkCmId: number, sessionCmId: number): void {
-    const bunkKey: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}`
-    this.removeEntry(bunkKey)
+    // Remove legacy key and any scenario-aware keys for this bunk+session.
+    const legacyKey: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}`
+    this.removeEntry(legacyKey)
+
+    const scenarioPrefix = `bunk-${bunkCmId}-${sessionCmId}-`
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(scenarioPrefix)) {
+        this.removeEntry(key)
+      }
+    }
 
     // Also invalidate the session graph as it includes this bunk
     this.invalidate(sessionCmId)

@@ -25,7 +25,9 @@ import clsx from 'clsx'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getSessionShorthand } from '../utils/sessionDisplay'
 import { socialGraphService } from '../services/socialGraph'
+import { graphCacheService } from '../services/GraphCacheService'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { useScenario } from '../hooks/useScenario'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { pb } from '../lib/pocketbase'
 import type { Bunk, Session } from '../types/app-types'
@@ -110,6 +112,8 @@ export default function BunkSocialGraphModal({
   const cyRef = useRef<Core | null>(null)
   const layoutRef = useRef<cytoscape.Layouts | null>(null)
   const { fetchWithAuth } = useApiWithAuth()
+  const { currentScenario } = useScenario()
+  const scenarioId = currentScenario?.id ?? null
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [currentBunkIndex, setCurrentBunkIndex] = useState<number>(0)
   const [sessionBunks, setSessionBunks] = useState<
@@ -117,15 +121,25 @@ export default function BunkSocialGraphModal({
   >([])
   const [showLegend, setShowLegend] = useState<boolean>(false)
 
-  // Fetch bunk graph data
+  // Fetch bunk graph data. The query key and in-memory graph cache both
+  // include scenarioId so scenario-sourced and production graphs never collide.
   const { data: graphData, isLoading } = useQuery<BunkGraphData>({
-    queryKey: ['bunk-social-graph', bunkCmId, sessionCmId, year],
+    queryKey: ['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId],
     queryFn: async () => {
-      const data = await socialGraphService.getBunkSocialGraph(
+      const data = await graphCacheService.getBunkGraph(
         bunkCmId,
         sessionCmId,
+        async () => {
+          return socialGraphService.getBunkSocialGraph(
+            bunkCmId,
+            sessionCmId,
+            year,
+            fetchWithAuth,
+            scenarioId
+          )
+        },
         year,
-        fetchWithAuth
+        scenarioId
       )
       return data as unknown as BunkGraphData
     },

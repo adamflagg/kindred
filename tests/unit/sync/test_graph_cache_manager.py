@@ -347,5 +347,72 @@ class TestGraphCacheManagerScenario(unittest.TestCase):
         assert stats["miss_count"] == 0
 
 
+class TestGraphCacheManagerBunkScenario(unittest.TestCase):
+    """Scenario-aware caching for bunk graphs must not collide with prod."""
+
+    def setUp(self):
+        self.cache = GraphCacheManager(ttl_seconds=60, max_cache_size=10)
+
+        self.prod_graph = nx.DiGraph()
+        self.prod_graph.add_nodes_from([1, 2, 3])
+        self.prod_graph.add_edges_from([(1, 2), (2, 3)])
+
+        self.scenario_graph = nx.DiGraph()
+        self.scenario_graph.add_nodes_from([10, 11, 12])
+        self.scenario_graph.add_edges_from([(10, 11), (11, 12)])
+
+        self.other_scenario_graph = nx.DiGraph()
+        self.other_scenario_graph.add_nodes_from([20, 21])
+        self.other_scenario_graph.add_edge(20, 21)
+
+    def test_bunk_prod_and_scenario_are_distinct_keys(self):
+        """Caching a bunk graph under a scenario must not overwrite the prod bunk graph."""
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.prod_graph)
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+
+        # Prod lookup returns prod graph
+        prod = self.cache.get_bunk_graph(101, 12345, 2025)
+        assert prod is not None
+        assert set(prod.nodes()) == {1, 2, 3}
+
+        # Scenario lookup returns scenario graph
+        scn = self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc")
+        assert scn is not None
+        assert set(scn.nodes()) == {10, 11, 12}
+
+        # A second scenario must be independent
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.other_scenario_graph, scenario_id="scn_xyz")
+        other = self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_xyz")
+        assert other is not None
+        assert set(other.nodes()) == {20, 21}
+
+        # Previously cached entries still intact
+        prod_again = self.cache.get_bunk_graph(101, 12345, 2025)
+        assert prod_again is not None
+        assert set(prod_again.nodes()) == {1, 2, 3}
+
+        scn_again = self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc")
+        assert scn_again is not None
+        assert set(scn_again.nodes()) == {10, 11, 12}
+
+    def test_bunk_scenario_miss_is_distinct_from_prod(self):
+        """A scenario bunk lookup with no scenario cache must miss even if prod is cached."""
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.prod_graph)
+
+        miss = self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc")
+        assert miss is None
+
+        hit = self.cache.get_bunk_graph(101, 12345, 2025)
+        assert hit is not None
+        assert set(hit.nodes()) == {1, 2, 3}
+
+    def test_bunk_none_scenario_id_equals_prod(self):
+        """Passing scenario_id=None explicitly must match the default (prod) key."""
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.prod_graph, scenario_id=None)
+
+        assert self.cache.get_bunk_graph(101, 12345, 2025) is not None
+        assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id=None) is not None
+
+
 if __name__ == "__main__":
     unittest.main()

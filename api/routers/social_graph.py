@@ -317,6 +317,10 @@ async def get_bunk_social_graph(
     bunk_cm_id: int,
     session_cm_id: int,
     year: int | None = None,
+    scenario_id: Annotated[
+        str | None,
+        Query(description="Scenario ID — when set, source bunk membership from bunk_assignments_draft"),
+    ] = None,
     user: AuthUser = Depends(get_current_user),
 ) -> BunkGraphResponse:
     """Get the social subgraph for a specific bunk.
@@ -325,6 +329,11 @@ async def get_bunk_social_graph(
         bunk_cm_id: CampMinder bunk ID
         session_cm_id: CampMinder session ID (required)
         year: Year (defaults to current year)
+        scenario_id: When provided, source bunk membership from the scenario's
+            draft assignments so the bunk subgraph matches the active scenario.
+            When absent, production (CampMinder) data is used. Cache entries
+            are keyed separately per scenario so scenario and production graphs
+            never collide.
 
     Returns:
         Bunk subgraph with health metrics and improvement suggestions
@@ -333,7 +342,10 @@ async def get_bunk_social_graph(
         if year is None:
             year = datetime.now(tz=UTC).year
 
-        logger.info(f"Building bunk social graph for bunk {bunk_cm_id}, session {session_cm_id}, year {year}")
+        logger.info(
+            f"Building bunk social graph for bunk {bunk_cm_id}, session {session_cm_id}, year {year}"
+            + (f", scenario {scenario_id}" if scenario_id else "")
+        )
 
         # Get bunk details first
         try:
@@ -342,8 +354,9 @@ async def get_bunk_social_graph(
         except Exception:
             bunk_name = f"Bunk {bunk_cm_id}"
 
-        # Check cache first
-        cached_graph = graph_cache.get_bunk_graph(bunk_cm_id, session_cm_id, year)
+        # Check cache first — scoped by scenario so production and scenario
+        # graphs occupy distinct cache slots for the same bunk+session+year.
+        cached_graph = graph_cache.get_bunk_graph(bunk_cm_id, session_cm_id, year, scenario_id=scenario_id)
         if cached_graph:
             logger.info(f"Using cached graph for bunk {bunk_cm_id}")
             bunk_graph = cached_graph
@@ -351,12 +364,14 @@ async def get_bunk_social_graph(
             # Use optimized builder with centralized random seed setting
             builder = OptimizedSocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
 
-            # Build bunk-specific graph with only request and sibling edges
-            bunk_graph = builder.build_bunk_graph(year, bunk_cm_id, session_cm_id)
+            # Build bunk-specific graph with only request and sibling edges.
+            # Pass scenario_id so membership is sourced from the scenario's
+            # draft assignments when active.
+            bunk_graph = builder.build_bunk_graph(year, bunk_cm_id, session_cm_id, scenario_id=scenario_id)
 
             # Cache it if not empty
             if bunk_graph.number_of_nodes() > 0:
-                graph_cache.cache_bunk_graph(bunk_cm_id, session_cm_id, year, bunk_graph)
+                graph_cache.cache_bunk_graph(bunk_cm_id, session_cm_id, year, bunk_graph, scenario_id=scenario_id)
 
         if bunk_graph.number_of_nodes() == 0:
             logger.info(f"No members found in bunk {bunk_cm_id}, returning empty graph")
