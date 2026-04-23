@@ -59,6 +59,10 @@ async def get_session_social_graph(
     include_historical: Annotated[bool, Query(description="Include historical data")] = False,
     layout: Annotated[str, Query(description="Layout algorithm: force, circle, hierarchical")] = "force",
     edge_types: Annotated[str | None, Query(description="Comma-separated edge types to include")] = None,
+    scenario_id: Annotated[
+        str | None,
+        Query(description="Scenario ID — when set, source bunk assignments from bunk_assignments_draft"),
+    ] = None,
     user: AuthUser = Depends(get_current_user),
 ) -> SocialGraphResponse:
     """Get the full social graph for a session using NetworkX analysis.
@@ -77,10 +81,16 @@ async def get_session_social_graph(
         if year is None:
             year = datetime.now(tz=UTC).year
 
-        logger.info(f"Building social graph for session {session_cm_id}, year {year}")
+        logger.info(
+            f"Building social graph for session {session_cm_id}, year {year}"
+            + (f", scenario {scenario_id}" if scenario_id else "")
+        )
 
-        # Check cache first
-        cached_graph = graph_cache.get_session_graph(session_cm_id, year)
+        # Check cache first. Skip the in-memory session-graph cache when a
+        # scenario_id is supplied — the cache key does not include scenario,
+        # so reusing it would leak CampMinder (production) assignments into a
+        # scenario view (or vice versa).
+        cached_graph = None if scenario_id else graph_cache.get_session_graph(session_cm_id, year)
         if cached_graph:
             logger.info(f"Using cached graph for session {session_cm_id}")
             graph = cached_graph
@@ -120,11 +130,13 @@ async def get_session_social_graph(
             # Use optimized builder with centralized random seed setting
             builder = OptimizedSocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
 
-            # Build the graph
-            graph = builder.build_social_network(year, session_cm_id)
+            # Build the graph — pass scenario_id so bunk assignments are sourced
+            # from bunk_assignments_draft when a scenario is active.
+            graph = builder.build_social_network(year, session_cm_id, scenario_id=scenario_id)
 
-            # Cache it
-            graph_cache.cache_session_graph(session_cm_id, year, graph)
+            # Cache only the production (no-scenario) variant — see note above.
+            if not scenario_id:
+                graph_cache.cache_session_graph(session_cm_id, year, graph)
 
         # Convert to response format
         nodes = []
