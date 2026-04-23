@@ -93,14 +93,17 @@ const mockPersons = [
   { id: 'p3', cm_id: 203, first_name: 'Noah', last_name: 'Smith', year: 2025 },
 ]
 
-function mockFetch(requests: typeof mockRequests = mockRequests) {
+function mockFetch(
+  requests: typeof mockRequests = mockRequests,
+  persons: typeof mockPersons = mockPersons
+) {
   mockGetFullList.mockImplementation((opts: { filter?: string }) => {
     const filter = opts?.filter ?? ''
     if (filter.includes('requester_id')) {
       return Promise.resolve(requests)
     }
     if (filter.includes('cm_id')) {
-      return Promise.resolve(mockPersons)
+      return Promise.resolve(persons)
     }
     return Promise.resolve([])
   })
@@ -214,34 +217,25 @@ describe('CamperRequestSummary', () => {
   })
 
   it('passes disposition_reason through to BunkRequestRow so declined rows show the reason', async () => {
-    mockGetFullList.mockImplementation((opts: { filter?: string }) => {
-      const filter = opts?.filter ?? ''
-      if (filter.includes('requester_id')) {
-        return Promise.resolve([
-          {
-            id: 'req-declined',
-            requester_id: 100,
-            requestee_id: 301,
-            request_type: 'bunk_with',
-            status: 'declined',
-            priority: 1,
-            requested_person_name: 'Erez Example',
-            disposition_reason: 'session_mismatch',
-            year: 2025,
-            session_id: 1001,
-            is_reciprocal: false,
-            confidence_score: 0.95,
-            created: '2025-01-01',
-          },
-        ])
-      }
-      if (filter.includes('cm_id')) {
-        return Promise.resolve([
-          { id: 'p-cy', cm_id: 301, first_name: 'Erez', last_name: 'Example', year: 2025 },
-        ])
-      }
-      return Promise.resolve([])
-    })
+    const declinedRequest = {
+      id: 'req-declined',
+      requester_id: 100,
+      requestee_id: 301,
+      request_type: 'bunk_with',
+      status: 'declined',
+      priority: 1,
+      requested_person_name: 'Erez Example',
+      disposition_reason: 'session_mismatch',
+      year: 2025,
+      session_id: 1001,
+      is_reciprocal: false,
+      confidence_score: 0.95,
+      created: '2025-01-01',
+    } as unknown as BunkRequestsResponse
+    mockFetch(
+      [declinedRequest],
+      [{ id: 'p-cy', cm_id: 301, first_name: 'Erez', last_name: 'Example', year: 2025 }]
+    )
     render(<CamperRequestSummary requesterCmId={100} year={2025} currentRequestId="req-declined" />)
     // The disposition reason ("Different sessions") should render, read
     // directly from request.disposition_reason inside BunkRequestRow.

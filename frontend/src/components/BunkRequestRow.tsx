@@ -3,7 +3,7 @@ import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
 import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
-import { isConfirmedRequest } from '../utils/bunkRequest'
+import { hasMatchedRequestTarget } from '../utils/bunkRequest'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 export type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'unknown' | 'checking'
@@ -159,22 +159,19 @@ export function BunkRequestRow({
   }
 
   const isBunkWith = request.request_type === 'bunk_with'
-  const isResolved = isConfirmedRequest(request)
 
   // Prefer resolved person name if we have it; fall back to requested_person_name.
   const resolvedName = targetPerson ? `${targetPerson.first_name} ${targetPerson.last_name}` : null
   const displayName = resolvedName ?? request.requested_person_name ?? 'Unknown'
 
   // A "matched target" is one with a real requestee_id — true for both resolved
-  // AND declined requests that pointed at a known camper. This mirrors
-  // AllCamperRequestsModal's hasResolvedTarget so declined rows still get a
-  // clickable CamperLink and don't render "(unresolved)".
-  const hasMatchedTarget = Boolean(
-    request.requestee_id &&
-    request.requestee_id > 0 &&
-    (resolvedName ?? request.requested_person_name)
+  // AND declined requests that pointed at a known camper. Shared with
+  // AllCamperRequestsModal so declined rows still get a clickable CamperLink
+  // and don't render "(unresolved)".
+  const hasMatchedTarget = hasMatchedRequestTarget(
+    request,
+    resolvedName ?? request.requested_person_name
   )
-  const reason = request.disposition_reason
 
   const children = (
     <>
@@ -204,8 +201,10 @@ export function BunkRequestRow({
       {/* Decline/disposition reason, when present — appended in the same inline
           style as AllCamperRequestsModal. Skipped for resolved rows where the
           reason isn't user-meaningful here. */}
-      {reason && !isResolved && (
-        <span className="text-muted-foreground truncate text-[11px]">· {formatReason(reason)}</span>
+      {request.disposition_reason && request.status !== 'resolved' && (
+        <span className="text-muted-foreground truncate text-[11px]">
+          · {formatReason(request.disposition_reason)}
+        </span>
       )}
 
       {/* Reciprocal badge - only if reciprocal */}
