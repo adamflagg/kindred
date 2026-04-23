@@ -1,0 +1,138 @@
+/**
+ * Tests for csvExport utility.
+ * TDD: Tests written before implementation.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { buildCsvContent, downloadCsv, slugify } from './csvExport'
+
+// ---------------------------------------------------------------------------
+// slugify
+// ---------------------------------------------------------------------------
+describe('slugify', () => {
+  it('lowercases and replaces spaces with hyphens', () => {
+    expect(slugify('Hello World')).toBe('hello-world')
+  })
+
+  it('removes special characters', () => {
+    expect(slugify('B-6A (Boys)')).toBe('b-6a-boys')
+  })
+
+  it('collapses multiple hyphens', () => {
+    expect(slugify('A  --  B')).toBe('a-b')
+  })
+
+  it('trims leading and trailing hyphens', () => {
+    expect(slugify('  hello  ')).toBe('hello')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildCsvContent
+// ---------------------------------------------------------------------------
+describe('buildCsvContent', () => {
+  it('puts header row first', () => {
+    const csv = buildCsvContent(['Name', 'Age'], [['Emma Johnson', '12']])
+    const lines = csv.split('\n')
+    expect(lines[0]).toBe('Name,Age')
+  })
+
+  it('includes data rows after header', () => {
+    const csv = buildCsvContent(['Name', 'Age'], [['Emma Johnson', '12']])
+    const lines = csv.split('\n')
+    expect(lines[1]).toBe('Emma Johnson,12')
+  })
+
+  it('escapes commas by quoting the field', () => {
+    const csv = buildCsvContent(['Name'], [['Johnson, Emma']])
+    const lines = csv.split('\n')
+    expect(lines[1]).toBe('"Johnson, Emma"')
+  })
+
+  it('escapes double-quotes by doubling them (RFC 4180)', () => {
+    const csv = buildCsvContent(['Note'], [['"quoted"']])
+    const lines = csv.split('\n')
+    expect(lines[1]).toBe('"""quoted"""')
+  })
+
+  it('escapes newlines inside a field', () => {
+    const csv = buildCsvContent(['Note'], [['line1\nline2']])
+    const lines = csv.split('\n')
+    // The field containing a newline should be quoted — result has > 2 lines total
+    // but the first data field must start with a quote
+    expect(lines[1]).toMatch(/^"/)
+  })
+
+  it('handles empty rows list with just a header', () => {
+    const csv = buildCsvContent(['Name', 'Age'], [])
+    expect(csv).toBe('Name,Age')
+  })
+
+  it('produces correct row count', () => {
+    const csv = buildCsvContent(['Name'], [['Emma Johnson'], ['Liam Garcia'], ['Olivia Chen']])
+    const lines = csv.split('\n')
+    expect(lines).toHaveLength(4) // header + 3 rows
+  })
+
+  it('handles numeric values (converts to string)', () => {
+    const csv = buildCsvContent(['Name', 'Grade'], [['Emma Johnson', '7']])
+    expect(csv).toContain('7')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// downloadCsv
+// ---------------------------------------------------------------------------
+describe('downloadCsv', () => {
+  beforeEach(() => {
+    // Mock DOM APIs that aren't available in jsdom by default
+    const mockUrl = 'blob:mock-url'
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => mockUrl),
+      revokeObjectURL: vi.fn(),
+    })
+  })
+
+  it('creates an anchor element and triggers click', () => {
+    const clickSpy = vi.fn()
+    const mockAnchor = {
+      href: '',
+      download: '',
+      click: clickSpy,
+    }
+    vi.spyOn(document, 'createElement').mockReturnValueOnce(
+      mockAnchor as unknown as HTMLAnchorElement
+    )
+
+    downloadCsv('test content', 'test-file.csv')
+
+    expect(clickSpy).toHaveBeenCalledOnce()
+    expect(mockAnchor.download).toBe('test-file.csv')
+  })
+
+  it('revokes the object URL after triggering download', () => {
+    const mockAnchor = {
+      href: '',
+      download: '',
+      click: vi.fn(),
+    }
+    vi.spyOn(document, 'createElement').mockReturnValueOnce(
+      mockAnchor as unknown as HTMLAnchorElement
+    )
+
+    downloadCsv('test content', 'test-file.csv')
+
+    expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
+  })
+
+  it('uses text/csv MIME type', () => {
+    const blobSpy = vi.spyOn(globalThis, 'Blob')
+    const mockAnchor = { href: '', download: '', click: vi.fn() }
+    vi.spyOn(document, 'createElement').mockReturnValueOnce(
+      mockAnchor as unknown as HTMLAnchorElement
+    )
+
+    downloadCsv('a,b', 'file.csv')
+
+    expect(blobSpy).toHaveBeenCalledWith(['a,b'], { type: 'text/csv;charset=utf-8;' })
+  })
+})

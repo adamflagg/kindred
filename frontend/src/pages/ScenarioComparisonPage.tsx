@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Percent,
   Table2,
+  Download,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
@@ -46,6 +47,8 @@ import {
 } from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
+import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
+import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
 
 // Types for comparison
 interface CamperAssignment {
@@ -54,6 +57,7 @@ interface CamperAssignment {
   name: string
   firstName: string
   lastName: string
+  age: number
   grade: number
   gender: string
   bunkId: string
@@ -312,8 +316,9 @@ export default function ScenarioComparisonPage() {
             name: `${firstName} ${person.last_name}`,
             firstName,
             lastName: person.last_name,
-            grade: person.grade,
-            gender: person.gender,
+            age: person.age ?? 0,
+            grade: person.grade ?? 0,
+            gender: person.gender ?? '',
             bunkId: bunk.id,
             bunkName: bunk.name,
             bunkPlanId: a.bunk_plan ?? '',
@@ -806,7 +811,7 @@ export default function ScenarioComparisonPage() {
 
             {/* Change Filter (for changes view) */}
             {viewMode === 'changes' && (
-              <div className="mb-4 flex items-center gap-2">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
                 <Filter className="text-muted-foreground h-4 w-4" />
                 <span className="text-muted-foreground mr-2 text-sm">Show:</span>
                 {[
@@ -837,6 +842,35 @@ export default function ScenarioComparisonPage() {
                     {filter.label}
                   </button>
                 ))}
+                {/* Export moved campers when on Moved filter */}
+                {(changeFilter === 'moved' || changeFilter === 'all') &&
+                  filteredChanges.moved.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const movedEntries = filteredChanges.moved.map((change) => ({
+                          personCmId: change.camper.personCmId,
+                          firstName: change.camper.firstName,
+                          lastName: change.camper.lastName,
+                          bunkName: change.toBunk.name,
+                          sessionName: session?.name ?? '',
+                          age: change.camper.age,
+                          grade: change.camper.grade,
+                          priorBunkName: change.fromBunk.name,
+                        }))
+                        const rows = buildMovedRows(movedEntries)
+                        const csv = buildCsvContent([...MOVED_CSV_HEADERS], rows)
+                        const rightName = rightScenarioName
+                          .replace(/[^a-z0-9]/gi, '-')
+                          .toLowerCase()
+                        downloadCsv(csv, `scenario-moved-${slugify(rightName)}-${todayIso()}.csv`)
+                      }}
+                      className="bg-muted/50 text-muted-foreground hover:bg-muted ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
+                      title="Export moved campers to CSV"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Export Moved</span>
+                    </button>
+                  )}
               </div>
             )}
 

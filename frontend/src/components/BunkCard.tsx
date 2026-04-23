@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
-import { Network } from 'lucide-react'
+import { Network, Download } from 'lucide-react'
 import type { BunkWithCampers, Camper } from '../types/app-types'
 import CamperCard from './CamperCard'
 import { useBunkRequestsFromContext } from '../hooks'
@@ -12,6 +12,8 @@ import { useYear } from '../hooks/useCurrentYear'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { BunkUtilizationBar } from './BunkUtilizationBar'
 import { BunkWarnings } from './BunkWarnings'
+import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
+import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
 
 interface BunkCardProps {
   bunk: BunkWithCampers
@@ -385,6 +387,25 @@ function BunkCard({
         </div>
 
         <div className="flex items-center gap-2">
+          {bunk.campers.length > 0 && (
+            <button
+              onClick={() => {
+                // Derive a session map from the campers' expand data
+                // (campers already carry their session names via expand)
+                const sessions = bunk.campers
+                  .filter((c) => c.expand?.session)
+                  .map((c) => c.expand!.session!)
+                  .filter((s, idx, arr) => arr.findIndex((x) => x.cm_id === s.cm_id) === idx)
+                const rows = buildCamperRows(bunk.campers, sessions)
+                const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
+                downloadCsv(csv, `bunk-${slugify(bunk.name)}-${todayIso()}.csv`)
+              }}
+              className="btn-ghost p-2"
+              title="Export bunk to CSV"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          )}
           {onShowSocialGraph && bunk.campers.length > 0 && (
             <button
               onClick={onShowSocialGraph}
