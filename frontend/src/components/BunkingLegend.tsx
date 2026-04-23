@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { HelpCircle, X, Lock, AlertTriangle, Users, Home, Network, Layers } from 'lucide-react'
+import {
+  HelpCircle,
+  X,
+  Lock,
+  AlertTriangle,
+  Users,
+  Home,
+  Network,
+  Layers,
+  History,
+} from 'lucide-react'
 
 interface BunkingLegendProps {
   isOpen: boolean
@@ -96,6 +106,36 @@ export default function BunkingLegend({ isOpen, onClose }: BunkingLegendProps) {
                   </p>
                 </div>
               </div>
+
+              {/* Gender Card Color */}
+              <div className="flex items-start gap-4">
+                <div className="flex w-12 flex-shrink-0 items-center justify-center gap-1">
+                  <div className="h-5 w-3 rounded border-2 border-blue-300 bg-blue-100 dark:border-blue-700 dark:bg-blue-900/30" />
+                  <div className="h-5 w-3 rounded border-2 border-pink-300 bg-pink-100 dark:border-pink-700 dark:bg-pink-900/30" />
+                  <div className="h-5 w-3 rounded border-2 border-purple-300 bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30" />
+                </div>
+                <div>
+                  <p className="text-foreground font-medium">Gender Card Color</p>
+                  <p className="text-muted-foreground text-sm">
+                    Card background color reflects gender identity: blue = boy/man, pink =
+                    girl/woman, purple = all other identities
+                  </p>
+                </div>
+              </div>
+
+              {/* Prior Year History */}
+              <div className="flex items-start gap-4">
+                <div className="flex w-12 flex-shrink-0 justify-center">
+                  <History className="text-muted-foreground h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-foreground font-medium">Prior-Year History</p>
+                  <p className="text-muted-foreground text-sm">
+                    Dim text on the right of the card shows where this camper bunked last year
+                    (e.g.&nbsp;"S1 B-4"). Blank if this is the camper's first year.
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -168,7 +208,7 @@ export default function BunkingLegend({ isOpen, onClose }: BunkingLegendProps) {
                   <ul className="text-muted-foreground space-y-1 text-sm">
                     <li className="flex items-center gap-2">
                       <span className="bg-muted-foreground h-1 w-1 rounded-full" />
-                      Over capacity (more than 12 campers)
+                      Over capacity (exceeds bunk's configured capacity)
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="bg-muted-foreground h-1 w-1 rounded-full" />
@@ -183,6 +223,20 @@ export default function BunkingLegend({ isOpen, onClose }: BunkingLegendProps) {
                       More than 2 different grades in bunk
                     </li>
                   </ul>
+                </div>
+              </div>
+
+              {/* Active Drop Target */}
+              <div className="flex items-start gap-4">
+                <div className="flex w-12 flex-shrink-0 justify-center">
+                  <div className="ring-primary bg-primary/5 h-8 w-10 rounded-lg ring-2" />
+                </div>
+                <div>
+                  <p className="text-foreground font-medium">Active Drop Target</p>
+                  <p className="text-muted-foreground text-sm">
+                    Blue ring highlights the bunk currently being dragged over, showing it will
+                    accept the camper on release
+                  </p>
                 </div>
               </div>
 
