@@ -314,7 +314,7 @@ class ConfigLoader:
         """Get an integer config value."""
         try:
             return cast(int, self.get(key))
-        except (MissingKeyError, UnknownKeyError):
+        except MissingKeyError, UnknownKeyError:
             if default is not None:
                 return default
             raise
@@ -323,7 +323,7 @@ class ConfigLoader:
         """Get a float config value."""
         try:
             return cast(float, self.get(key))
-        except (MissingKeyError, UnknownKeyError):
+        except MissingKeyError, UnknownKeyError:
             if default is not None:
                 return default
             raise
@@ -332,7 +332,7 @@ class ConfigLoader:
         """Get a boolean config value."""
         try:
             return cast(bool, self.get(key))
-        except (MissingKeyError, UnknownKeyError):
+        except MissingKeyError, UnknownKeyError:
             if default is not None:
                 return default
             raise
@@ -341,7 +341,7 @@ class ConfigLoader:
         """Get a string config value."""
         try:
             return cast(str, self.get(key))
-        except (MissingKeyError, UnknownKeyError):
+        except MissingKeyError, UnknownKeyError:
             if default is not None:
                 return default
             raise

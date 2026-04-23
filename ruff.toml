@@ -17,8 +17,8 @@ exclude = [
     "docs/reference/skeleton-*.py",  # Documentation skeletons, not meant to run
 ]
 
-# Target Python 3.12+
-target-version = "py312"
+# Target Python 3.14+
+target-version = "py314"
 
 # Line length
 line-length = 120

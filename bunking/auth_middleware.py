@@ -37,7 +37,7 @@ def _is_docker_environment() -> bool:
     try:
         with open("/proc/1/cgroup") as f:
             return "docker" in f.read()
-    except (FileNotFoundError, PermissionError):
+    except FileNotFoundError, PermissionError:
         pass
     return False
 

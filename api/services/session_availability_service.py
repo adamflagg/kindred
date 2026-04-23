@@ -223,7 +223,7 @@ class SessionAvailabilityService:
                 continue
             try:
                 cm_id = int(key)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
             if isinstance(value, dict):
                 result[cm_id] = value

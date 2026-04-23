@@ -189,7 +189,7 @@ class Person:
 
             parsed = json.loads(self.parent_names)
             return parsed if isinstance(parsed, list) else []
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             return []
 
     @property

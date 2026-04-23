@@ -355,7 +355,7 @@ class MetricsSQLRepository:
                 raw = rows[0]["value"]
                 parsed = json.loads(raw) if isinstance(raw, str) else raw
                 return int(parsed)
-            except (ValueError, TypeError, json.JSONDecodeError):
+            except ValueError, TypeError, json.JSONDecodeError:
                 pass
         return 12
 
@@ -670,7 +670,7 @@ class MetricsSQLRepository:
                         parsed = json.loads(value)
                         if isinstance(parsed, dict):
                             result[cm_id] = parsed
-                except (ValueError, TypeError, json.JSONDecodeError):
+                except ValueError, TypeError, json.JSONDecodeError:
                     pass
         return result
 

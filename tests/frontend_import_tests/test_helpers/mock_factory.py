@@ -179,7 +179,7 @@ class MockFactory:
         return MockFactory.create_pocketbase_record("friend_groups", defaults)
 
     @staticmethod
-    def create_solver_camper(camper_id: str = "1", **kwargs: Any) -> "Camper":
+    def create_solver_camper(camper_id: str = "1", **kwargs: Any) -> Camper:
         """Create a mock Camper object for solver"""
         # Import here to avoid circular imports
         from bunking.models import Camper
@@ -196,7 +196,7 @@ class MockFactory:
         return Camper(**defaults)
 
     @staticmethod
-    def create_solver_cabin(cabin_id: str = "1", **kwargs: Any) -> "Cabin":
+    def create_solver_cabin(cabin_id: str = "1", **kwargs: Any) -> Cabin:
         """Create a mock Cabin object for solver"""
         # Import here to avoid circular imports
         from bunking.models import Cabin

@@ -224,7 +224,7 @@ def get_session_length_category(start_date: str, end_date: str) -> str:
             return "3-week"
         else:
             return "4-week+"
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         return "unknown"
 
 
@@ -312,7 +312,7 @@ def compute_summer_metrics(
                     try:
                         year_str = str(start_date).split("-")[0]
                         years.add(int(year_str))
-                    except (ValueError, IndexError):
+                    except ValueError, IndexError:
                         pass
 
         summer_years_by_person[pid] = len(years)

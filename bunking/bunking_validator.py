@@ -382,7 +382,7 @@ class BunkingValidator:
                 if isinstance(ai_reasoning, str):
                     try:
                         ai_reasoning = json.loads(ai_reasoning)
-                    except (json.JSONDecodeError, ValueError):
+                    except json.JSONDecodeError, ValueError:
                         ai_reasoning = {}
 
                 if isinstance(ai_reasoning, dict):
@@ -396,7 +396,7 @@ class BunkingValidator:
                 if isinstance(ai_reasoning, str):
                     try:
                         ai_reasoning = json.loads(ai_reasoning)
-                    except (json.JSONDecodeError, ValueError):
+                    except json.JSONDecodeError, ValueError:
                         ai_reasoning = {}
 
                 if isinstance(ai_reasoning, dict):
@@ -675,7 +675,7 @@ class BunkingValidator:
                 if hasattr(person, "grade") and person.grade is not None:
                     try:
                         grades.append(int(person.grade))
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         continue
 
             # Calculate age spread in months
@@ -821,7 +821,7 @@ class BunkingValidator:
                 if person and hasattr(person, "grade") and person.grade is not None:
                     try:
                         grades.append(int(person.grade))
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         continue
 
             if len(grades) < 2:

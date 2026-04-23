@@ -141,7 +141,7 @@ def mock_pb() -> MagicMock:
 
 
 @pytest.fixture
-def client_with_mock_pb(mock_pb: MagicMock) -> Generator[tuple[TestClient, MagicMock], None, None]:
+def client_with_mock_pb(mock_pb: MagicMock) -> Generator[tuple[TestClient, MagicMock]]:
     """Create test client with mocked PB client.
 
     Patches the pb module-level variable in the debug router so all

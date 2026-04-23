@@ -487,7 +487,7 @@ class PersonRepository(Repository):
             if hasattr(db_record, "age") and db_record.age:
                 try:
                     cm_age = float(db_record.age)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass  # Invalid age value, leave as None
 
             # Get parent_names JSON (for name resolution via parent surnames)
@@ -500,7 +500,7 @@ class PersonRepository(Repository):
             if hasattr(db_record, "household_id") and db_record.household_id:
                 try:
                     household_id = int(db_record.household_id)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
             # Promote gender and congregation to first-class fields

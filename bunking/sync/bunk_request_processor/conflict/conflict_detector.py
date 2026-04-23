@@ -224,7 +224,7 @@ class ConflictDetector:
                 maps["pending_enrollment_targets"] = {
                     cm_id for cm_id, info in enrollment_info.items() if info.is_pending_enrollment
                 }
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 logger.debug("bulk_get_enrollment_for_persons not available; skipping enrollment-aware detection")
 
         # Enrich requester enrollment status
@@ -245,7 +245,7 @@ class ConflictDetector:
                 maps["inactive_requesters"] = {
                     cm_id for cm_id, info in requester_enrollment.items() if info.is_inactive
                 }
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 logger.debug("bulk_get_enrollment_for_persons not available; skipping requester enrollment check")
 
         return maps

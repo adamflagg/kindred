@@ -49,9 +49,7 @@ class TestListParseAnalysisEndpoint:
         }
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked repositories."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
@@ -181,9 +179,7 @@ class TestGetParseAnalysisDetailEndpoint:
         return {"debug_repo": Mock()}
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked repositories."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             mock_get_debug_repo.return_value = mock_repos["debug_repo"]
@@ -241,9 +237,7 @@ class TestPhase1OnlyEndpoint:
         return {"debug_service": AsyncMock()}
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_services: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_services: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked services."""
         with patch("api.routers.debug.get_phase1_debug_service") as mock_get_service:
             mock_get_service.return_value = mock_services["debug_service"]
@@ -344,9 +338,7 @@ class TestClearParseAnalysisEndpoint:
         return {"debug_repo": Mock()}
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked repositories."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             mock_get_debug_repo.return_value = mock_repos["debug_repo"]
@@ -393,7 +385,7 @@ class TestListOriginalRequestsEndpoint:
         return Mock()
 
     @pytest.fixture
-    def client_with_mocks(self, mock_loader: Mock) -> Generator[tuple[TestClient, Mock], None, None]:
+    def client_with_mocks(self, mock_loader: Mock) -> Generator[tuple[TestClient, Mock]]:
         """Create test client with mocked dependencies."""
         # Patch the OriginalRequestsLoader class since impl instantiates it directly
         with patch("api.routers.debug.OriginalRequestsLoader") as MockLoaderClass:
@@ -731,7 +723,7 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
     @pytest.fixture
     def client_with_mocks(
         self, mock_repos: dict[str, Mock], mock_loader: Mock
-    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock], None, None]:
+    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
@@ -827,9 +819,7 @@ class TestGetParseResultWithFallbackEndpoint:
         }
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_deps: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_deps: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.get_original_requests_loader") as mock_get_loader:
@@ -1016,9 +1006,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         }
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_deps: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_deps: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.get_original_requests_loader") as mock_get_loader:
@@ -1202,7 +1190,7 @@ class TestBatchParseStatusEndpoint:
     @pytest.fixture
     def client_with_mocks(
         self, mock_deps: dict[str, Mock], mock_loader: Mock
-    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock], None, None]:
+    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.OriginalRequestsLoader") as MockLoaderClass:
@@ -1287,7 +1275,7 @@ class TestGroupedByCamperEndpoint:
     @pytest.fixture
     def client_with_mocks(
         self, mock_deps: dict[str, Mock], mock_loader: Mock
-    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock], None, None]:
+    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.OriginalRequestsLoader") as MockLoaderClass:
@@ -1445,9 +1433,7 @@ class TestClearSingleDebugResultEndpoint:
         return {"debug_repo": Mock()}
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked repositories."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             mock_get_debug_repo.return_value = mock_repos["debug_repo"]
@@ -1501,9 +1487,7 @@ class TestScopedClearEndpoint:
         }
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked repositories."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
@@ -1616,9 +1600,7 @@ class TestProductionRequestsEndpoint:
         }
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_deps: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_deps: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_bunk_requests_repository") as mock_get_bunk_repo:
             with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
@@ -1802,9 +1784,7 @@ class TestProductionRequestsResponseSchema:
         }
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_deps: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+    def client_with_mocks(self, mock_deps: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
         """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_bunk_requests_repository") as mock_get_bunk_repo:
             mock_get_bunk_repo.return_value = mock_deps["bunk_requests_repo"]

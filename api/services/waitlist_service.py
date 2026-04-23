@@ -353,7 +353,7 @@ class WaitlistService:
             return None
         try:
             return datetime.strptime(str(value)[:10], "%Y-%m-%d")
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return None
 
     @classmethod

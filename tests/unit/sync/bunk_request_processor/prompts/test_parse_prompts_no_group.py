@@ -41,7 +41,7 @@ PARSE_PROMPT_NAMES = (
 
 
 @pytest.fixture(autouse=True)
-def _reset_prompt_cache() -> Generator[None, None, None]:
+def _reset_prompt_cache() -> Generator[None]:
     # Ensure every test reads the current on-disk prompt, not a cached copy
     # left behind by another test.
     clear_cache()
