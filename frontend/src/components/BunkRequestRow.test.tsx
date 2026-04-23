@@ -342,4 +342,104 @@ describe('BunkRequestRow', () => {
 
     expect(mutual.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
+
+  describe('declined requests with a valid requestee', () => {
+    it('renders a clickable CamperLink for a declined request with a valid requestee_id', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'declined',
+            requestee_id: 200,
+            requested_person_name: 'Olivia Chen',
+            disposition_reason: 'session_mismatch',
+          })}
+          targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
+        />
+      )
+      // A CamperLink in clickable form renders as an <a> wrapping the name and
+      // an ExternalLink icon. The unresolved span never renders.
+      const link = screen.getByRole('link', { name: /Olivia Chen/ })
+      expect(link).toBeInTheDocument()
+      expect(link.getAttribute('href')).toBe('/camper/200')
+      // The "(unresolved)" suffix is only rendered on the plain-text branch;
+      // guard against regressing back to that branch.
+      expect(screen.queryByText(/\(unresolved\)/i)).toBeNull()
+    })
+
+    it('renders the disposition reason text from request.disposition_reason for a declined request', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'declined',
+            requestee_id: 200,
+            requested_person_name: 'Olivia Chen',
+            disposition_reason: 'session_mismatch',
+          })}
+          targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
+        />
+      )
+      // formatReason('session_mismatch') returns 'Different sessions'
+      expect(screen.getByText(/Different sessions/)).toBeInTheDocument()
+    })
+
+    it('still renders resolved requests with a clickable link (regression guard)', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'resolved',
+            requestee_id: 200,
+            requested_person_name: 'Olivia Chen',
+          })}
+          targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
+        />
+      )
+      const link = screen.getByRole('link', { name: /Olivia Chen/ })
+      expect(link).toBeInTheDocument()
+      expect(link.getAttribute('href')).toBe('/camper/200')
+    })
+
+    it('pending request without a valid requestee_id still shows as unresolved plain text', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'pending',
+            requested_person_name: 'Liam Garcia',
+          })}
+        />
+      )
+      // No <a> link: falls back to the italic unresolved text path.
+      expect(screen.queryByRole('link')).toBeNull()
+      expect(screen.getByText(/\(unresolved\)/i)).toBeInTheDocument()
+    })
+
+    it('does not render a disposition reason when request.disposition_reason is empty', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'declined',
+            requestee_id: 200,
+            requested_person_name: 'Olivia Chen',
+          })}
+          targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
+        />
+      )
+      expect(screen.queryByText(/Different sessions/)).toBeNull()
+    })
+
+    it('does not render a disposition reason for a resolved request even if set', () => {
+      render(
+        <BunkRequestRow
+          request={makeRequest({
+            status: 'resolved',
+            requestee_id: 200,
+            requested_person_name: 'Olivia Chen',
+            disposition_reason: 'session_mismatch',
+          })}
+          targetPerson={makePerson({ first_name: 'Olivia', last_name: 'Chen' })}
+        />
+      )
+      // Resolved rows suppress the reason render per the component contract.
+      expect(screen.queryByText(/Different sessions/)).toBeNull()
+    })
+  })
 })
