@@ -18,7 +18,15 @@ export interface ScenarioContextType {
   scenarios: Scenario[]
 
   // Loading states
+  // `isLoading` reflects the initial React Query fetch — use this for
+  // empty/placeholder UI. `isMutating` reflects any in-flight mutation
+  // (create/update/delete/clear) — don't use it to hide list content, since
+  // doing so causes the list to "vanish" mid-mutation. `loading` is the
+  // combined flag, retained for existing consumers that only care that
+  // *something* is happening.
   loading: boolean
+  isLoading: boolean
+  isMutating: boolean
   error: string | null
 
   // Actions
