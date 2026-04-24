@@ -27,6 +27,7 @@ import {
   filterSummerCampBunks,
   getDropdownSessions,
   getSessionRelationshipsForCamperView,
+  getCampersHeadlineNoun,
 } from '../utils/allCampersUtils'
 import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
 import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
@@ -218,6 +219,15 @@ export default function AllCampersView() {
     () => getSessionRelationshipsForCamperView(allSessions),
     [allSessions]
   )
+
+  // Determine which sessions are currently "in scope" for the headline noun.
+  // When filterSession === 'all', all dropdown sessions are in scope.
+  // When a specific session is selected, only that session is in scope.
+  const scopedSessions = useMemo(() => {
+    if (filterSession === 'all') return dropdownSessions
+    const session = dropdownSessions.find((s) => s.id === filterSession)
+    return session ? [session] : dropdownSessions
+  }, [filterSession, dropdownSessions])
 
   // Filter and sort campers
   const filteredCampers = useMemo(() => {
@@ -443,7 +453,7 @@ export default function AllCampersView() {
               {filteredCampers.length}
             </span>
             <span className="text-stone-500 dark:text-stone-400">
-              {filteredCampers.length === 1 ? 'camper' : 'campers'}
+              {getCampersHeadlineNoun(scopedSessions, filteredCampers.length)}
               {filteredCampers.length !== mergedCampers.length && (
                 <span className="text-stone-400 dark:text-stone-500">
                   {' '}

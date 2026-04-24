@@ -15,9 +15,14 @@ export type SessionWithType = Session
 // Session types that are valid for summer camp views
 const SUMMER_CAMP_SESSION_TYPES = ['main', 'ag', 'embedded', 'quest'] as const
 
-// Session types that should appear in the dropdown
-// (AG is excluded because it's grouped with parent main session)
+// Session types that should appear in the /campers picker dropdown.
+// AG is excluded because it's grouped with parent main session.
+// tli and teen are excluded because teen programs (TLI / SCIT) are not
+// relevant to the cabin-assignment workflow on the /campers page.
 const DROPDOWN_SESSION_TYPES = ['main', 'embedded', 'quest'] as const
+
+// At-camp session types (main, embedded, ag) — drives the headline noun
+const AT_CAMP_SESSION_TYPES = ['main', 'embedded', 'ag'] as const
 
 /**
  * Filter bunks to only include those linked to summer camp sessions (main, ag, embedded)
@@ -117,4 +122,35 @@ export function getSessionRelationshipsForCamperView(
   })
 
   return relationships
+}
+
+/**
+ * Return the collective noun for the /campers page header based on which
+ * session types are represented in `sessions`.
+ *
+ * Rules (spec #5):
+ *   - At-camp only (main / embedded / ag)  → "camper" / "campers"
+ *   - Quest only                            → "quester" / "questers"
+ *   - Mixed at-camp + quest                 → "camper and quester" / "campers and questers"
+ *
+ * `count` controls singular vs plural.
+ * Only collective count nouns are affected; individual-referring copy
+ * ("this camper's…") is NOT changed by this function.
+ */
+export function getCampersHeadlineNoun(sessions: Session[], count: number): string {
+  const plural = count !== 1
+
+  const hasAtCamp = sessions.some((s) =>
+    AT_CAMP_SESSION_TYPES.includes(s.session_type as (typeof AT_CAMP_SESSION_TYPES)[number])
+  )
+  const hasQuest = sessions.some((s) => s.session_type === 'quest')
+
+  if (hasAtCamp && hasQuest) {
+    return plural ? 'campers and questers' : 'camper and quester'
+  }
+  if (hasQuest) {
+    return plural ? 'questers' : 'quester'
+  }
+  // Default: at-camp only (or empty list — fall back to "campers")
+  return plural ? 'campers' : 'camper'
 }

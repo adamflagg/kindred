@@ -3,6 +3,7 @@ import {
   filterSummerCampBunks,
   getDropdownSessions,
   getSessionRelationshipsForCamperView,
+  getCampersHeadlineNoun,
   type SessionWithType,
 } from './allCampersUtils'
 import type { BunksResponse, BunkPlansResponse } from '../types/pocketbase-types'
@@ -457,6 +458,120 @@ describe('allCampersUtils', () => {
       expect(mainRelated).toContain('main-3')
       expect(mainRelated).toContain('ag-3a')
       expect(mainRelated).toContain('ag-3b')
+    })
+  })
+
+  // ── #6: Teen-program exclusion ───────────────────────────────────────────
+  describe('getDropdownSessions — teen program exclusion (#6)', () => {
+    it('should EXCLUDE tli sessions from the picker', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
+      ]
+      const result = getDropdownSessions(sessions)
+      expect(result).toHaveLength(1)
+      expect(result[0]?.name).toBe('Session 2')
+    })
+
+    it('should EXCLUDE teen sessions from the picker', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 3', session_type: 'main' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'teen' }),
+      ]
+      const result = getDropdownSessions(sessions)
+      expect(result).toHaveLength(1)
+      expect(result[0]?.name).toBe('Session 3')
+    })
+
+    it('should still include quest sessions after teen exclusion', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+        createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'teen' }),
+      ]
+      const result = getDropdownSessions(sessions)
+      expect(result).toHaveLength(2)
+      expect(result.map((s: Session) => s.name)).toContain('Session 2')
+      expect(result.map((s: Session) => s.name)).toContain('Quest: Pacific Crest')
+      expect(result.map((s: Session) => s.name)).not.toContain('TLI: Rising 11th')
+      expect(result.map((s: Session) => s.name)).not.toContain('SCIT: Rising 12th')
+    })
+  })
+
+  // ── #5: Headline noun swap ────────────────────────────────────────────────
+  describe('getCampersHeadlineNoun (#5)', () => {
+    it('returns "camper"/"campers" when only at-camp sessions are selected', () => {
+      const atCampSessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Session 2a', session_type: 'embedded' }),
+      ]
+      expect(getCampersHeadlineNoun(atCampSessions, 1)).toBe('camper')
+      expect(getCampersHeadlineNoun(atCampSessions, 5)).toBe('campers')
+    })
+
+    it('returns "quester"/"questers" when only quest sessions are selected', () => {
+      const questSessions = [
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+        createMockSession({ name: 'Quest: Adirondacks', session_type: 'quest' }),
+      ]
+      expect(getCampersHeadlineNoun(questSessions, 1)).toBe('quester')
+      expect(getCampersHeadlineNoun(questSessions, 3)).toBe('questers')
+    })
+
+    it('returns "camper(s) and quester(s)" when mixed at-camp + quest sessions', () => {
+      const mixedSessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+      ]
+      expect(getCampersHeadlineNoun(mixedSessions, 1)).toBe('camper and quester')
+      expect(getCampersHeadlineNoun(mixedSessions, 7)).toBe('campers and questers')
+    })
+
+    it('returns "campers" for no selection (all sessions shown, includes at-camp)', () => {
+      // When allSessions contains both types and nothing is filtered, treat as "mixed"
+      // but the "all sessions" case means the noun is based on what's visible
+      // Empty selectedSessions means "all" — which is at-camp + quest → mixed
+      const allSessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+      ]
+      expect(getCampersHeadlineNoun(allSessions, 10)).toBe('campers and questers')
+    })
+
+    it('ag sessions count as at-camp for noun purposes', () => {
+      const agSessions = [createMockSession({ name: 'AG Session 2', session_type: 'ag' })]
+      expect(getCampersHeadlineNoun(agSessions, 4)).toBe('campers')
+    })
+
+    it('embedded sessions count as at-camp for noun purposes', () => {
+      const embeddedSessions = [createMockSession({ name: 'Session 2a', session_type: 'embedded' })]
+      expect(getCampersHeadlineNoun(embeddedSessions, 2)).toBe('campers')
+    })
+  })
+
+  // ── #4: Picker independence regression ───────────────────────────────────
+  // The /campers page uses local useState for filterSession, while /metrics
+  // uses URL search params via MetricsSessionContext. These are architecturally
+  // separate — this test documents that getDropdownSessions and
+  // getCampersHeadlineNoun are pure functions with no shared mutable state.
+  describe('picker state independence (#4)', () => {
+    it('getDropdownSessions is a pure function — no shared state with metrics', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+      ]
+      // Call twice — should return the same result, no side effects
+      const result1 = getDropdownSessions(sessions)
+      const result2 = getDropdownSessions(sessions)
+      expect(result1).toEqual(result2)
+    })
+
+    it('getCampersHeadlineNoun is a pure function — no shared state with metrics', () => {
+      const sessions = [createMockSession({ name: 'Session 2', session_type: 'main' })]
+      const noun1 = getCampersHeadlineNoun(sessions, 5)
+      const noun2 = getCampersHeadlineNoun(sessions, 5)
+      expect(noun1).toBe(noun2)
     })
   })
 })
