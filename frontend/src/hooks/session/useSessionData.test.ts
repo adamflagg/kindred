@@ -110,8 +110,11 @@ describe('buildBunkRequestsFilter', () => {
 // prefix-matching picks it up in every existing invalidation.
 
 describe('bunk-requests-count query key alignment', () => {
-  it('BUNK_REQUESTS_COUNT_KEY_PREFIX equals "bunk-requests" so mutations invalidate the count', () => {
-    expect(BUNK_REQUESTS_COUNT_KEY_PREFIX).toBe('bunk-requests')
+  it('BUNK_REQUESTS_COUNT_KEY_PREFIX is derived from queryKeys.bunkRequestsCount factory prefix (not a separate hardcoded string)', () => {
+    // This is the invariant that matters: the constant must equal the first element
+    // of the factory key so React Query prefix-match invalidation covers the count.
+    // If either the factory prefix or the constant drifts, this test will catch it.
+    expect(BUNK_REQUESTS_COUNT_KEY_PREFIX).toBe(queryKeys.bunkRequestsCount('session_x', 2026)[0])
   })
 
   it('queryKeys.bunkRequestsCount starts with "bunk-requests"', () => {

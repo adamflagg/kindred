@@ -11,7 +11,7 @@ import { queryKeys } from '../../utils/queryKeys'
 
 // Exported so tests can assert this key shares a prefix with ['bunk-requests']
 // mutations, ensuring React Query prefix-match invalidation covers the count.
-export const BUNK_REQUESTS_COUNT_KEY_PREFIX = 'bunk-requests'
+export const BUNK_REQUESTS_COUNT_KEY_PREFIX = queryKeys.bunkRequestsCount('', 0)[0]
 
 // ============================================================================
 // Types
