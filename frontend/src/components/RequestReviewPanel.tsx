@@ -19,9 +19,11 @@ import {
   Users,
   Loader2,
   Star,
+  Undo2,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
+import { useUndoStack } from '../hooks/useUndoStack'
 // Virtual scrolling removed for better dropdown compatibility
 import type {
   BunkRequestsResponse,
@@ -73,6 +75,7 @@ export default function RequestReviewPanel({
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const undoStack = useUndoStack()
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
   const defaultFilters: FilterState = useMemo(
@@ -602,17 +605,67 @@ export default function RequestReviewPanel({
     },
   })
 
-  const handleApprove = (id: string) =>
-    updateRequestMutation.mutate({
-      id,
-      updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
-    })
+  const handleApprove = (id: string) => {
+    // Capture prior state for undo before mutating
+    const req = requests.find((r: BunkRequestsResponse) => r.id === id)
+    const priorStatus = req?.status ?? 'pending'
+    const priorLocked = req?.request_locked ?? false
 
-  const handleReject = (id: string) =>
-    updateRequestMutation.mutate({
-      id,
-      updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
-    })
+    // Build a label for the undo toast
+    const requesterPerson = req ? personMap.get(req.requester_id) : undefined
+    const requesterName = requesterPerson
+      ? `${requesterPerson.first_name ?? ''} ${requesterPerson.last_name ?? ''}`.trim()
+      : `#${req?.requester_id ?? id}`
+
+    updateRequestMutation.mutate(
+      { id, updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true } },
+      {
+        onSuccess: () => {
+          undoStack.push({
+            id,
+            label: `Reverted approval of ${requesterName}`,
+            inverse: async () => {
+              await pb
+                .collection('bunk_requests')
+                .update(id, { status: priorStatus, request_locked: priorLocked })
+              void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+            },
+          })
+        },
+      }
+    )
+  }
+
+  const handleReject = (id: string) => {
+    // Capture prior state for undo before mutating
+    const req = requests.find((r: BunkRequestsResponse) => r.id === id)
+    const priorStatus = req?.status ?? 'pending'
+    const priorLocked = req?.request_locked ?? false
+
+    // Build a label for the undo toast
+    const requesterPerson = req ? personMap.get(req.requester_id) : undefined
+    const requesterName = requesterPerson
+      ? `${requesterPerson.first_name ?? ''} ${requesterPerson.last_name ?? ''}`.trim()
+      : `#${req?.requester_id ?? id}`
+
+    updateRequestMutation.mutate(
+      { id, updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false } },
+      {
+        onSuccess: () => {
+          undoStack.push({
+            id,
+            label: `Reverted decline of ${requesterName}`,
+            inverse: async () => {
+              await pb
+                .collection('bunk_requests')
+                .update(id, { status: priorStatus, request_locked: priorLocked })
+              void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+            },
+          })
+        },
+      }
+    )
+  }
 
   // Handlers
   const toggleRowExpansion = useCallback(
@@ -872,6 +925,32 @@ export default function RequestReviewPanel({
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Create</span>
             </button>
+
+            {/* Undo Button — appears when undo stack is non-empty */}
+            {undoStack.canUndo && (
+              <button
+                onClick={() => {
+                  const entry = undoStack.pop()
+                  if (!entry) return
+                  entry.inverse().then(
+                    () => {
+                      toast.success(entry.label)
+                    },
+                    () => {
+                      // On failure, push it back so user can retry
+                      undoStack.push(entry)
+                      toast.error('Undo failed — try again')
+                    }
+                  )
+                }}
+                className="btn-secondary flex touch-manipulation items-center gap-1.5 px-3 py-2 text-sm"
+                title={undoStack.peek()?.label ?? 'Undo last action'}
+                aria-label={`Undo (${undoStack.stackSize})`}
+              >
+                <Undo2 className="h-4 w-4" />
+                <span>Undo ({undoStack.stackSize})</span>
+              </button>
+            )}
 
             {/* Total count */}
             <div className="text-muted-foreground hidden flex-shrink-0 text-xs sm:block">

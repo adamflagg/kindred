@@ -1320,4 +1320,169 @@ describe('RequestReviewPanel', () => {
       })
     }, 10000)
   })
+
+  /**
+   * TDD TESTS: In-session Undo Stack (scoreboard #14)
+   *
+   * Approve/decline actions push an inverse mutation onto a 3-entry stack.
+   * Clicking the Undo button pops and executes the most recent inverse.
+   * Stack is client-only — refresh clears it.
+   *
+   * Tests written FIRST per TDD discipline (red phase).
+   */
+  describe('Undo stack for approve/decline (#14)', () => {
+    it('Undo button appears after approving a request', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-1',
+        requester_id: 300,
+        requestee_id: 301,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.8,
+        priority: 1,
+        request_locked: false,
+      })
+
+      // Stub the update so inverse call also resolves
+      updateSpy.mockResolvedValue({})
+
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      // Wait for update to complete
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      // Undo button should now appear (with count "(1)")
+      await waitFor(
+        () => {
+          const undoBtn = screen.queryByRole('button', { name: /undo/i })
+          expect(undoBtn).not.toBeNull()
+        },
+        { timeout: 3000 }
+      )
+    }, 10000)
+
+    it('Undo button shows stack depth and disappears when stack is empty', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-2',
+        requester_id: 310,
+        requestee_id: 311,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.75,
+        priority: 1,
+        request_locked: false,
+      })
+
+      updateSpy.mockResolvedValue({})
+
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      // Undo button appears with "(1)" in its text
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+
+      expect(undoBtn.textContent).toMatch(/1/)
+
+      // Click undo — inverse fires (restores status to pending)
+      await user.click(undoBtn)
+
+      await waitFor(
+        () => {
+          // inverse mutation: PATCH back to pending
+          expect(updateSpy).toHaveBeenCalledWith('req-undo-2', {
+            status: 'pending',
+            request_locked: false,
+          })
+        },
+        { timeout: 3000 }
+      )
+
+      // Stack now empty: undo button gone or shows (0)
+      await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          // Either hidden or shows 0
+          if (btn) {
+            expect(btn.textContent).toMatch(/0/)
+          } else {
+            expect(btn).toBeNull()
+          }
+        },
+        { timeout: 3000 }
+      )
+    }, 15000)
+
+    it('clicking Undo after decline restores status to pending', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-3',
+        requester_id: 320,
+        requestee_id: 321,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'not_bunk_with',
+        confidence_score: 0.6,
+        priority: 2,
+        request_locked: false,
+      })
+
+      updateSpy.mockResolvedValue({})
+
+      const rejectButton = await findButtonByTitle('Reject')
+      fireEvent.click(rejectButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledWith('req-undo-3', {
+          status: 'declined',
+          request_locked: false,
+        })
+      })
+
+      // Undo button visible
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+
+      await user.click(undoBtn)
+
+      // Inverse: restore to pending (prior state was pending, request_locked false)
+      await waitFor(
+        () => {
+          const calls = updateSpy.mock.calls
+          const undoCall = calls.find((c) => c[1]?.status === 'pending')
+          expect(undoCall).toBeDefined()
+        },
+        { timeout: 3000 }
+      )
+    }, 15000)
+  })
 })
