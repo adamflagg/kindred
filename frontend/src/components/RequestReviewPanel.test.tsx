@@ -1334,6 +1334,22 @@ describe('RequestReviewPanel', () => {
    * decline, the just-processed row MUST collapse.
    */
   describe('Row collapse after approve/decline (feedback #11)', () => {
+    // Expand a request row by ID. The mobile layout's expanded block renders
+    // the "Priority:" label — used as the visible-only-when-expanded signal.
+    async function expandRowById(requestId: string) {
+      const rowContainers = await waitFor(() => {
+        const found = document.querySelectorAll(`[data-request-row-id="${requestId}"]`)
+        if (found.length === 0) throw new Error('row not yet rendered')
+        return found
+      })
+      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      expect(mobileRow).toBeTruthy()
+      fireEvent.click(mobileRow)
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+      })
+    }
+
     it('collapses the expanded row after approving a request', async () => {
       const { findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-collapse-approve-1',
@@ -1348,22 +1364,7 @@ describe('RequestReviewPanel', () => {
         request_locked: false,
       })
 
-      // Expand the row by clicking the row container. The mobile layout's
-      // expanded block renders the unique "Priority:" label — we use that as
-      // our visible-only-when-expanded signal.
-      const rowContainers = await waitFor(() => {
-        const found = document.querySelectorAll('[data-request-row-id="req-collapse-approve-1"]')
-        if (found.length === 0) throw new Error('row not yet rendered')
-        return found
-      })
-      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
-      expect(mobileRow).toBeTruthy()
-      fireEvent.click(mobileRow)
-
-      // Expanded content should now be visible
-      await waitFor(() => {
-        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
-      })
+      await expandRowById('req-collapse-approve-1')
 
       // Click Approve, then confirm in the popover
       const approveButton = await findButtonByTitle('Approve')
@@ -1392,18 +1393,7 @@ describe('RequestReviewPanel', () => {
         request_locked: false,
       })
 
-      const rowContainers = await waitFor(() => {
-        const found = document.querySelectorAll('[data-request-row-id="req-collapse-decline-1"]')
-        if (found.length === 0) throw new Error('row not yet rendered')
-        return found
-      })
-      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
-      expect(mobileRow).toBeTruthy()
-      fireEvent.click(mobileRow)
-
-      await waitFor(() => {
-        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
-      })
+      await expandRowById('req-collapse-decline-1')
 
       const rejectButton = await findButtonByTitle('Reject')
       fireEvent.click(rejectButton)
@@ -1514,9 +1504,6 @@ describe('RequestReviewPanel', () => {
       await waitFor(() => {
         expect(screen.getAllByText('Priority:').length).toBe(1)
       })
-
-      // Row A must still be expanded — the remaining "Priority:" is from row A
-      expect(screen.getAllByText('Priority:').length).toBe(1)
     }, 15000)
   })
 })

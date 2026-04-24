@@ -2003,8 +2003,6 @@ export default function RequestReviewPanel({
           } else {
             handleReject(requestId)
           }
-          // feedback #11: collapse the row after processing so the
-          // expandedRows Set doesn't bloat across successive actions.
           collapseRow(requestId)
           setConfirmPopover(null)
         }}
