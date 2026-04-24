@@ -527,4 +527,64 @@ describe('AllCamperRequestsModal — target picker', () => {
       )
     )
   })
+
+  // ---------------------------------------------------------------------------
+  // Fix #1 — resolved-request CamperLink regression
+  // hasResolvedTarget must be checked BEFORE showPicker so that resolved rows
+  // always render the read-only CamperLink, not the editable picker.
+  // ---------------------------------------------------------------------------
+
+  it('renders CamperLink (not EditableRequestTarget) for a resolved non-age request when onTargetChange is provided', async () => {
+    // A fully-resolved bunk_with request: requestee_id matches a known person
+    const resolvedRequest = {
+      id: 'req-resolved-1',
+      request_type: 'bunk_with',
+      status: 'resolved',
+      requester_id: 100,
+      requestee_id: 200,
+      requested_person_name: 'Olivia Chen',
+      session_id: 1000001,
+      year: 2025,
+      priority: 1,
+      confidence_score: 1.0,
+      is_reciprocal: false,
+      request_locked: true,
+      created: '2025-01-01',
+      updated: '2025-01-01',
+    }
+    bunkRequestsFixture = [resolvedRequest]
+    // Person record so hasMatchedRequestTarget returns true (targetName resolves)
+    personsFixture = [{ cm_id: 200, first_name: 'Olivia', last_name: 'Chen', year: 2025 }]
+    attendeesFixture = []
+
+    // Pass onTargetChange so showPicker would be truthy — the bug path
+    renderModal({ requesterCmId: 100, year: 2025 })
+
+    // Must find the CamperLink container (rendered as <a> by react-router Link mock)
+    const camperLinkContainers = await screen.findAllByTestId('camper-link-container')
+    expect(camperLinkContainers.length).toBeGreaterThanOrEqual(1)
+    // The CamperLink is an anchor (canLink=true: personCmId=200 > 0, isConfirmed=true)
+    const linkEl = camperLinkContainers.find((el) => el.tagName === 'A')
+    expect(linkEl).toBeDefined()
+    expect(linkEl!.textContent).toMatch(/Olivia Chen/)
+
+    // Must NOT find the editable picker button
+    expect(screen.queryByRole('button', { name: /Olivia Chen \(unresolved\)/i })).toBeNull()
+  })
+
+  it('renders EditableRequestTarget (not CamperLink) for an unresolved non-age request when onTargetChange is provided', async () => {
+    // Unresolved: requestee_id is 0, no person match
+    bunkRequestsFixture = [unresolvedRequest]
+    personsFixture = []
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+
+    // Must find the editable picker trigger
+    const pickerButton = await screen.findByRole('button', { name: /Liam Garcia \(unresolved\)/i })
+    expect(pickerButton).toBeInTheDocument()
+
+    // Must NOT find a CamperLink (no resolved target)
+    expect(screen.queryByRole('link', { name: /Liam Garcia/i })).toBeNull()
+  })
 })

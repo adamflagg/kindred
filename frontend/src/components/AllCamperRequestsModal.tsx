@@ -68,7 +68,7 @@ function RequestCard({
       : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
 
   const hasResolvedTarget = hasMatchedRequestTarget(request, targetName)
-  const showPicker = !isAge && onTargetChange
+  const showPicker = !isAge && !hasResolvedTarget && onTargetChange
 
   return (
     <article className="border-border bg-card overflow-hidden rounded-xl border">
