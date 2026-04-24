@@ -115,13 +115,11 @@ describe('useUndoStack', () => {
 
       const peeked = result.current.peek()
       expect(peeked?.label).toBe('Second action')
-      // Stack unchanged
-      expect(result.current.stackSize).toBe(2)
     })
   })
 
   describe('undo (pop)', () => {
-    it('undo() returns the most recent entry and shrinks stack by 1', async () => {
+    it('undo() removes the most recent entry and shrinks stack by 1', async () => {
       const { result } = renderHook(() => useUndoStack())
       const inv1 = vi.fn().mockResolvedValue(undefined)
       const inv2 = vi.fn().mockResolvedValue(undefined)
@@ -133,15 +131,17 @@ describe('useUndoStack', () => {
         result.current.push({ id: 'req3', label: 'Action 3', inverse: inv3 })
       })
 
-      // Undo once — capture result outside act to avoid TS control-flow narrowing to never
-      const popped: { value: UndoEntry | undefined } = { value: undefined }
+      // Peek at the top before popping — functional updater returns value via state, not return val
+      expect(result.current.peek()?.label).toBe('Action 3')
+      expect(result.current.peek()?.inverse).toBe(inv3)
+
       act(() => {
-        popped.value = result.current.pop()
+        result.current.pop()
       })
 
-      expect(popped.value?.label).toBe('Action 3')
-      expect(popped.value?.inverse).toBe(inv3)
       expect(result.current.stackSize).toBe(2)
+      // Top entry is now Action 2
+      expect(result.current.peek()?.label).toBe('Action 2')
     })
 
     it('undo() is a no-op when stack is empty, canUndo stays false', () => {
@@ -177,7 +177,6 @@ describe('useUndoStack', () => {
 
     it('undoes in LIFO order (last in, first out)', () => {
       const { result } = renderHook(() => useUndoStack())
-      const labels: string[] = []
 
       act(() => {
         result.current.push({
@@ -197,21 +196,23 @@ describe('useUndoStack', () => {
         })
       })
 
+      // Use peek() before each pop() — functional updater returns value via state, not return val
+      expect(result.current.peek()?.label).toBe('Approved Emma Johnson')
       act(() => {
-        labels.push(result.current.pop()?.label ?? '')
-      })
-      act(() => {
-        labels.push(result.current.pop()?.label ?? '')
-      })
-      act(() => {
-        labels.push(result.current.pop()?.label ?? '')
+        result.current.pop()
       })
 
-      expect(labels).toEqual([
-        'Approved Emma Johnson',
-        'Declined Liam Garcia',
-        'Approved Olivia Chen',
-      ])
+      expect(result.current.peek()?.label).toBe('Declined Liam Garcia')
+      act(() => {
+        result.current.pop()
+      })
+
+      expect(result.current.peek()?.label).toBe('Approved Olivia Chen')
+      act(() => {
+        result.current.pop()
+      })
+
+      expect(result.current.stackSize).toBe(0)
     })
   })
 

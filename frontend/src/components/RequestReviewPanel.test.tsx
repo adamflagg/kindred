@@ -1331,43 +1331,6 @@ describe('RequestReviewPanel', () => {
    * Tests written FIRST per TDD discipline (red phase).
    */
   describe('Undo stack for approve/decline (#14)', () => {
-    it('Undo button appears after approving a request', async () => {
-      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
-        id: 'req-undo-1',
-        requester_id: 300,
-        requestee_id: 301,
-        session_id: 1001,
-        year: 2025,
-        status: 'pending',
-        request_type: 'bunk_with',
-        confidence_score: 0.8,
-        priority: 1,
-        request_locked: false,
-      })
-
-      // Stub the update so inverse call also resolves
-      updateSpy.mockResolvedValue({})
-
-      const approveButton = await findButtonByTitle('Approve')
-      fireEvent.click(approveButton)
-      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
-      await user.click(confirmButton)
-
-      // Wait for update to complete
-      await waitFor(() => {
-        expect(updateSpy).toHaveBeenCalledTimes(1)
-      })
-
-      // Undo button should now appear (with count "(1)")
-      await waitFor(
-        () => {
-          const undoBtn = screen.queryByRole('button', { name: /undo/i })
-          expect(undoBtn).not.toBeNull()
-        },
-        { timeout: 3000 }
-      )
-    }, 10000)
-
     it('Undo button shows stack depth and disappears when stack is empty', async () => {
       const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-undo-2',

@@ -50,23 +50,24 @@ export function useUndoStack(): UseUndoStackResult {
       const deduped = prev.filter((e) => e.id !== entry.id)
       const next = [...deduped, entry]
       // If over capacity, drop the oldest (index 0).
-      if (next.length > MAX_STACK_SIZE) {
-        return next.slice(next.length - MAX_STACK_SIZE)
-      }
-      return next
+      return next.slice(-MAX_STACK_SIZE)
     })
   }, [])
 
   const pop = useCallback((): UndoEntry | undefined => {
-    if (stack.length === 0) return undefined
-    const popped = stack[stack.length - 1]
-    setStack(stack.slice(0, stack.length - 1))
+    let popped: UndoEntry | undefined
+    setStack((prev) => {
+      if (prev.length === 0) {
+        popped = undefined
+        return prev
+      }
+      popped = prev[prev.length - 1]
+      return prev.slice(0, -1)
+    })
     return popped
-  }, [stack])
+  }, [])
 
-  const peek = useCallback((): UndoEntry | undefined => {
-    return stack[stack.length - 1]
-  }, [stack])
+  const peek = (): UndoEntry | undefined => stack[stack.length - 1]
 
   const clear = useCallback(() => {
     setStack([])

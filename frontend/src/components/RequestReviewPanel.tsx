@@ -572,15 +572,14 @@ export default function RequestReviewPanel({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Mutations
-  const updateRequestMutation = useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: string
-      updates: Partial<BunkRequestsResponse>
-      suppressToast?: boolean
-    }) => {
+  interface UpdateRequestVars {
+    id: string
+    updates: Partial<BunkRequestsResponse>
+    suppressToast?: boolean
+  }
+
+  const updateRequestMutation = useMutation<BunkRequestsResponse, Error, UpdateRequestVars>({
+    mutationFn: async ({ id, updates }: UpdateRequestVars) => {
       return pb.collection('bunk_requests').update(id, updates)
     },
     onSuccess: (_data, variables) => {
@@ -614,75 +613,60 @@ export default function RequestReviewPanel({
     },
   })
 
-  const handleApprove = (id: string) => {
-    // Capture prior state for undo before mutating
-    const req = requests.find((r: BunkRequestsResponse) => r.id === id)
-    const priorStatus = req?.status ?? 'pending'
-    const priorLocked = req?.request_locked ?? false
+  const handleAction = useCallback(
+    ({
+      id,
+      updates,
+      labelVerb,
+    }: {
+      id: string
+      updates: Partial<BunkRequestsResponse>
+      labelVerb: string
+    }) => {
+      const req = requests.find((r: BunkRequestsResponse) => r.id === id)
+      if (!req) return
+      const priorStatus = req.status
+      const priorLocked = req.request_locked
 
-    // Build a label for the undo toast
-    const requesterPerson = req ? personMap.get(req.requester_id) : undefined
-    const requesterName = requesterPerson
-      ? `${requesterPerson.first_name ?? ''} ${requesterPerson.last_name ?? ''}`.trim()
-      : `#${req?.requester_id ?? id}`
+      const requesterPerson = personMap.get(req.requester_id)
+      const requesterName = requesterPerson
+        ? `${requesterPerson.first_name ?? ''} ${requesterPerson.last_name ?? ''}`.trim()
+        : `#${req.requester_id}`
 
-    updateRequestMutation.mutate(
-      {
-        id,
-        updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
-        suppressToast: true,
-      },
-      {
-        onSuccess: () => {
-          undoStack.push({
-            id,
-            label: `Reverted approval of ${requesterName}`,
-            inverse: async () => {
-              await pb
-                .collection('bunk_requests')
-                .update(id, { status: priorStatus, request_locked: priorLocked })
-              void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-            },
-          })
-        },
-      }
-    )
-  }
+      updateRequestMutation.mutate(
+        { id, updates, suppressToast: true },
+        {
+          onSuccess: () => {
+            undoStack.push({
+              id,
+              label: `Reverted ${labelVerb} of ${requesterName}`,
+              inverse: async () => {
+                await pb
+                  .collection('bunk_requests')
+                  .update(id, { status: priorStatus, request_locked: priorLocked })
+                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+              },
+            })
+          },
+        }
+      )
+    },
+    [requests, personMap, undoStack, updateRequestMutation, queryClient]
+  )
 
-  const handleReject = (id: string) => {
-    // Capture prior state for undo before mutating
-    const req = requests.find((r: BunkRequestsResponse) => r.id === id)
-    const priorStatus = req?.status ?? 'pending'
-    const priorLocked = req?.request_locked ?? false
+  const handleApprove = (id: string) =>
+    handleAction({
+      id,
+      updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
+      labelVerb: 'approval',
+    })
 
-    // Build a label for the undo toast
-    const requesterPerson = req ? personMap.get(req.requester_id) : undefined
-    const requesterName = requesterPerson
-      ? `${requesterPerson.first_name ?? ''} ${requesterPerson.last_name ?? ''}`.trim()
-      : `#${req?.requester_id ?? id}`
-
-    updateRequestMutation.mutate(
-      {
-        id,
-        updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
-        suppressToast: true,
-      },
-      {
-        onSuccess: () => {
-          undoStack.push({
-            id,
-            label: `Reverted decline of ${requesterName}`,
-            inverse: async () => {
-              await pb
-                .collection('bunk_requests')
-                .update(id, { status: priorStatus, request_locked: priorLocked })
-              void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-            },
-          })
-        },
-      }
-    )
-  }
+  const handleReject = (id: string) =>
+    handleAction({
+      id,
+      updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
+      labelVerb: 'decline',
+    })
 
   // Handlers
   const toggleRowExpansion = useCallback(
