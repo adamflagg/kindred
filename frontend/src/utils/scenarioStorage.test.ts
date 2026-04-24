@@ -110,5 +110,36 @@ describe('scenarioStorage', () => {
         '1001': 'scenario-abc',
       })
     })
+
+    // Finding 3: write-side error handling — clearStoredScenarioId must not throw
+    it('does not throw when localStorage.setItem throws SecurityError', () => {
+      localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify({ '1001': 'scenario-abc' }))
+      const originalSetItem = localStorage.setItem.bind(localStorage)
+      localStorage.setItem = vi.fn(() => {
+        throw new DOMException('SecurityError', 'SecurityError')
+      })
+      expect(() => clearStoredScenarioId(1001)).not.toThrow()
+      // Restore
+      localStorage.setItem = originalSetItem
+    })
+  })
+
+  // Finding 3: write-side error handling for setStoredScenarioId
+  describe('setStoredScenarioId — error handling', () => {
+    it('does not throw when localStorage.setItem throws QuotaExceededError', () => {
+      localStorage.setItem = vi.fn(() => {
+        const err = new DOMException('QuotaExceededError')
+        Object.defineProperty(err, 'name', { value: 'QuotaExceededError' })
+        throw err
+      })
+      expect(() => setStoredScenarioId(1001, 'scenario-abc')).not.toThrow()
+    })
+
+    it('does not throw when localStorage.setItem throws SecurityError', () => {
+      localStorage.setItem = vi.fn(() => {
+        throw new DOMException('SecurityError', 'SecurityError')
+      })
+      expect(() => setStoredScenarioId(1001, 'scenario-abc')).not.toThrow()
+    })
   })
 })

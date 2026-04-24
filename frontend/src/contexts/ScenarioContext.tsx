@@ -141,23 +141,34 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     [clearScenarioMutation]
   )
 
-  // Track whether the restore phase has completed for the current session.
-  // Until restore runs, we must not write null to localStorage (which would
-  // delete the stored key before we've had a chance to read it back).
-  const restoreCompletedRef = useRef(false)
+  // Track which session has completed its restore phase.
+  // We store the sessionId (not just a boolean) so the persist effect can check
+  // "has restore run for THIS session?" rather than "has restore ever run?".
+  // This prevents two races:
+  //   1. (Finding 1) On session switch, persist fires before restore — the boolean-only
+  //      guard would be true from the previous session's restore, causing a premature clear.
+  //   2. (Finding 4) Same root cause as Finding 1; covered by the same fix.
+  const restoreCompletedForSessionRef = useRef<number | undefined>(undefined)
 
   // Persist current scenario selection to localStorage (per session).
-  // Uses useEffectEvent so currentSessionId is always fresh without being a dep.
+  // Uses useEffectEvent so currentSessionId / currentScenario are always fresh without
+  // being reactive dependencies (which would cause double-fire loops).
   const persistScenarioSelection = useEffectEvent(
     (sessionId: number | undefined, scenarioId: string | null) => {
       if (!sessionId) return
 
       if (scenarioId) {
+        // Finding 2 fix: only write if the scenario actually belongs to this session.
+        // When the user switches sessions, currentScenario still holds the previous
+        // session's scenario for one render cycle. Writing it under the new session key
+        // would corrupt that session's stored selection.
+        if (currentScenario && currentScenario.session_cm_id !== sessionId) return
         setStoredScenarioId(sessionId, scenarioId)
-      } else if (restoreCompletedRef.current) {
-        // Only clear the key once the restore phase is done. If we're still
-        // in the initial mount cycle (restore hasn't run yet), the null is the
-        // default React state — not an intentional "switch to production" action.
+      } else if (restoreCompletedForSessionRef.current === sessionId) {
+        // Only clear the key once the restore phase for THIS session is done.
+        // If we're still in the session-switch cycle (restore hasn't run yet for
+        // sessionId), the null is the default React state — not an intentional
+        // "switch to production" action.
         clearStoredScenarioId(sessionId)
       }
     }
@@ -222,8 +233,11 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: syncs scenario state when external data (scenarios list, session) changes; useEffectEvent prevents re-run loops
       setCurrentScenario(validatedResult)
     }
-    // Mark restore phase complete so subsequent null writes can clear localStorage.
-    restoreCompletedRef.current = true
+    // Mark restore phase complete for this specific session.
+    // Using the sessionId (not a boolean) prevents Finding 1: the persist effect
+    // checks restoreCompletedForSessionRef.current === sessionId, so a prior
+    // session's completion can't unlock writes for the new session.
+    restoreCompletedForSessionRef.current = currentSessionId
   }, [scenarios, currentSessionId])
 
   const value: ScenarioContextType = {

@@ -36,7 +36,12 @@ export function setStoredScenarioId(sessionCmId: number, scenarioId: string): vo
   if (!sessionCmId) return
   const store = readStore()
   store[String(sessionCmId)] = scenarioId
-  localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
+  try {
+    localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
+  } catch {
+    // Swallow storage errors (QuotaExceededError, SecurityError, etc.).
+    // Persistence is best-effort; the app continues without it.
+  }
 }
 
 /**
@@ -46,5 +51,10 @@ export function clearStoredScenarioId(sessionCmId: number): void {
   if (!sessionCmId) return
   const store = readStore()
   Reflect.deleteProperty(store, String(sessionCmId))
-  localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
+  try {
+    localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
+  } catch {
+    // Swallow storage errors (QuotaExceededError, SecurityError, etc.).
+    // Persistence is best-effort; the app continues without it.
+  }
 }
