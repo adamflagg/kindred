@@ -342,6 +342,7 @@ export function useCamperMovement({
           queryKey: ['campers', selectedSession],
         })
         void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
+        void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
         onPendingMoveCleared?.()
         toast.success('Camper moved successfully')
         return
@@ -353,6 +354,7 @@ export function useCamperMovement({
       // Always invalidate queries to keep UI in sync
       void queryClient.invalidateQueries({ queryKey: ['campers', selectedSession] })
       void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
       onPendingMoveCleared?.()
 
       // Invalidate graph cache for the session
