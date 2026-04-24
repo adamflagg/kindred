@@ -39,28 +39,6 @@ import { MANAGE_TABS } from '../config/manageTabs'
 import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
-import type { SyncStatus } from '../hooks/useSyncStatusAPI'
-
-/**
- * Build a tooltip string exposing richer sync detail:
- * exact end timestamp, status, and key counts when available.
- */
-function buildSyncTooltip(kind: string, status: SyncStatus): string {
-  const parts = [`Last ${kind} sync`]
-  if (status.end_time) {
-    parts.push(new Date(status.end_time).toISOString())
-  }
-  if (status.status) {
-    parts.push(`status: ${status.status}`)
-  }
-  const s = status.summary
-  if (s) {
-    parts.push(
-      `created ${s.created}, updated ${s.updated}, skipped ${s.skipped}, errors ${s.errors}`
-    )
-  }
-  return parts.join(' • ')
-}
 
 export const AppLayout = () => {
   const location = useLocation()
@@ -709,27 +687,24 @@ export const AppLayout = () => {
               </div>
               {activeProgram === 'summer' &&
                 syncStatus &&
-                (syncStatus.bunk_assignments.end_time ?? syncStatus.bunk_requests.end_time) && (
+                (syncStatus.bunk_assignments?.end_time ?? syncStatus.bunk_requests?.end_time) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                    {syncStatus.bunk_assignments.end_time && (
+                    {syncStatus.bunk_assignments?.end_time && (
                       <span
                         className="flex items-center gap-1.5"
-                        title={buildSyncTooltip('bunk assignments', syncStatus.bunk_assignments)}
+                        title="Last bunk assignments sync"
                       >
                         <Home className="h-3 w-3" />
-                        Assignments synced{' '}
+                        Assignments{' '}
                         {formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), {
                           addSuffix: true,
                         })}
                       </span>
                     )}
-                    {syncStatus.bunk_requests.end_time && (
-                      <span
-                        className="flex items-center gap-1.5"
-                        title={buildSyncTooltip('bunk requests', syncStatus.bunk_requests)}
-                      >
+                    {syncStatus.bunk_requests?.end_time && (
+                      <span className="flex items-center gap-1.5" title="Last bunk requests sync">
                         <Clock className="h-3 w-3" />
-                        Requests synced{' '}
+                        Requests{' '}
                         {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), {
                           addSuffix: true,
                         })}
