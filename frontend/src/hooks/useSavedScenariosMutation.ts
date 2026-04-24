@@ -201,17 +201,11 @@ export function useDeleteScenario() {
 
   return useMutation({
     mutationFn: async (scenarioId: string) => {
-      // Must delete all draft assignments first (PocketBase enforces referential integrity)
-      const draftAssignments = await pb.collection('bunk_assignments_draft').getFullList({
-        filter: `scenario = "${scenarioId}"`,
-      })
-
-      // Delete in batches to avoid overwhelming the server
-      for (const assignment of draftAssignments) {
-        await pb.collection('bunk_assignments_draft').delete(assignment.id)
-      }
-
-      // Now delete the scenario
+      // PocketBase cascades bunk_assignments_draft rows via
+      // cascadeDelete: true on the scenario relation (migration
+      // 1500000098). One server-side call replaces the previous N+1
+      // client-side pre-delete loop that made scenario deletion take
+      // several seconds on real sessions.
       return await pb.collection<SavedScenario>('saved_scenarios').delete(scenarioId)
     },
     onSuccess: () => {
