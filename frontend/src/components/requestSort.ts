@@ -57,16 +57,16 @@ export function sortRequests(
       if (aGrade === null) return 1 // a goes after b regardless of direction
       if (bGrade === null) return -1 // a goes before b regardless of direction
 
-      if (aGrade !== bGrade) return sortOrder === 'desc' ? bGrade - aGrade : aGrade - bGrade
+      if (aGrade !== bGrade) return (aGrade - bGrade) * direction
 
       const aLast = (aP?.last_name ?? '').toLowerCase()
       const bLast = (bP?.last_name ?? '').toLowerCase()
-      if (aLast !== bLast) return aLast < bLast ? -direction : direction
+      if (aLast !== bLast) return (aLast < bLast ? -1 : 1) * direction
 
       const aFirst = (aP?.first_name ?? '').toLowerCase()
       const bFirst = (bP?.first_name ?? '').toLowerCase()
       if (aFirst === bFirst) return 0
-      return aFirst < bFirst ? -direction : direction
+      return (aFirst < bFirst ? -1 : 1) * direction
     })
   }
 
