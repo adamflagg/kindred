@@ -38,6 +38,7 @@ dependencies = [
     "ortools @ https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
     # Data processing
     "pandas>=3.0.2",
+    "tzdata>=2026.1",
     "numpy>=1.26.0",
     "networkx>=3.0",
     "python-louvain>=0.16",

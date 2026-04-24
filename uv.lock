@@ -677,6 +677,7 @@ dependencies = [
     { name = "rich" },
     { name = "tqdm" },
     { name = "typer" },
+    { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -727,6 +728,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0.0" },
     { name = "tqdm", specifier = ">=4.65.0" },
     { name = "typer", specifier = ">=0.12.0" },
+    { name = "tzdata", specifier = ">=2026.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
 ]
 
