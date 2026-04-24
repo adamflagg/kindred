@@ -221,11 +221,12 @@ export function drawBunkBubbles(
 
   // --- Draw order: unit bubbles FIRST (behind), then bunk bubbles ON TOP ---
 
+  // Build sorted unit list from present groups for deterministic palette (#33)
+  // Hoisted: shared by both unit-bubble drawing (step 1) and unit-label drawing (step 3)
+  const presentUnits = Object.keys(unitGroups)
+
   // 1. Add unit bubble paths first so they render behind bunk bubbles
   if (showUnits && bunksData) {
-    // Build sorted unit list from present groups for deterministic palette (#33)
-    const presentUnits = Object.keys(unitGroups)
-
     Object.entries(unitGroups).forEach(([unitName, nodes]) => {
       if (nodes.length === 0) return
 
@@ -338,8 +339,6 @@ export function drawBunkBubbles(
 
   // 3. Add unit labels — solid color matching the unit bubble (#40: no gradient)
   if (showUnits && bunksData) {
-    const presentUnits = Object.keys(unitGroups)
-
     Object.entries(unitGroups).forEach(([unitName, nodes]) => {
       if (nodes.length === 0) return
 
