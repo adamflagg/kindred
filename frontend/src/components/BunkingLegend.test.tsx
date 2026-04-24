@@ -51,10 +51,7 @@ describe('BunkingLegend', () => {
       render(<BunkingLegend isOpen={true} onClose={() => {}} />)
       // CamperCard applies blue/pink/purple background from getGenderColorClasses()
       // Must have a dedicated heading entry — not just a passing mention
-      const matches = screen.getAllByText(
-        /card color|gender.*(color|background|blue|pink|purple)|color.*gender/i
-      )
-      expect(matches.length).toBeGreaterThan(0)
+      expect(screen.getByText('Gender Card Color')).toBeInTheDocument()
     })
 
     it('documents the last-year history indicator', () => {

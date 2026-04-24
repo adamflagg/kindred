@@ -234,8 +234,8 @@ export default function BunkingLegend({ isOpen, onClose }: BunkingLegendProps) {
                 <div>
                   <p className="text-foreground font-medium">Active Drop Target</p>
                   <p className="text-muted-foreground text-sm">
-                    Blue ring highlights the bunk currently being dragged over, showing it will
-                    accept the camper on release
+                    Primary-colored ring highlights the bunk currently being dragged over, showing
+                    it will accept the camper on release
                   </p>
                 </div>
               </div>
