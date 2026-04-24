@@ -91,7 +91,7 @@ function RequestCard({
                 year={request.year}
                 requesterCmId={request.requester_id}
                 requestedPersonName={request.requested_person_name}
-                {...(personMap ? { personMap } : {})}
+                personMap={personMap}
                 disabled={request.request_locked}
                 onChange={(updates) => {
                   if (updates.requestee_id !== undefined) {

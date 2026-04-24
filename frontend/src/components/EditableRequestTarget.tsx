@@ -19,7 +19,7 @@ interface EditableRequestTargetProps {
   parseNotes?: string
   requestedPersonName?: string
   onViewCamper?: (personCmId: number) => void
-  personMap?: Map<number, PersonsResponse>
+  personMap?: Map<number, PersonsResponse> | undefined
   sessionName?: string | undefined // Session display name for the "Looking in session X for:" banner
 }
 
