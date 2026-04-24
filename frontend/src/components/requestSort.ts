@@ -40,9 +40,24 @@ export function sortRequests(
       // Missing/zero grades sort after real grades regardless of direction:
       // staff reviewing by grade want the graded campers grouped together,
       // with the unknown-grade rows parked at the bottom.
-      const aGrade = aP?.grade && aP.grade > 0 ? aP.grade : Number.POSITIVE_INFINITY
-      const bGrade = bP?.grade && bP.grade > 0 ? bP.grade : Number.POSITIVE_INFINITY
-      if (aGrade !== bGrade) return (aGrade - bGrade) * direction
+      const aGrade = aP?.grade && aP.grade > 0 ? aP.grade : null
+      const bGrade = bP?.grade && bP.grade > 0 ? bP.grade : null
+
+      // Ungraded rows always sort to the bottom regardless of sort direction.
+      // Handle the ungraded cases before applying the direction multiplier.
+      if (aGrade === null && bGrade === null) {
+        // Both ungraded — tiebreak by name, always ascending (stable, not direction-inverted).
+        const aLast = (aP?.last_name ?? '').toLowerCase()
+        const bLast = (bP?.last_name ?? '').toLowerCase()
+        if (aLast !== bLast) return aLast < bLast ? -1 : 1
+        const aFirst = (aP?.first_name ?? '').toLowerCase()
+        const bFirst = (bP?.first_name ?? '').toLowerCase()
+        return aFirst < bFirst ? -1 : aFirst > bFirst ? 1 : 0
+      }
+      if (aGrade === null) return 1 // a goes after b regardless of direction
+      if (bGrade === null) return -1 // a goes before b regardless of direction
+
+      if (aGrade !== bGrade) return sortOrder === 'desc' ? bGrade - aGrade : aGrade - bGrade
 
       const aLast = (aP?.last_name ?? '').toLowerCase()
       const bLast = (bP?.last_name ?? '').toLowerCase()

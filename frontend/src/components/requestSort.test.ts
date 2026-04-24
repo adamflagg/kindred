@@ -112,6 +112,61 @@ describe('sortRequests — grade default', () => {
   })
 })
 
+describe('sortRequests — ungraded always at bottom regardless of direction', () => {
+  it('desc: graded requester comes BEFORE ungraded requester', () => {
+    const personMap = new Map<number, PersonsResponse>([
+      [1, person({ cm_id: 1, first_name: 'Emma', last_name: 'Johnson', grade: 3 })],
+      [2, person({ cm_id: 2, first_name: 'Liam', last_name: 'Garcia' })], // no grade
+    ])
+    const requests = [
+      request({ id: 'rUngraded', requester_id: 2 }),
+      request({ id: 'rGraded', requester_id: 1 }),
+    ]
+
+    const sorted = sortRequests(requests, personMap, 'grade', 'desc')
+    // Graded must come first; ungraded parked at the bottom even in desc mode.
+    expect(sorted.map((r) => r.id)).toEqual(['rGraded', 'rUngraded'])
+  })
+
+  it('asc: ungraded requester stays at the bottom', () => {
+    const personMap = new Map<number, PersonsResponse>([
+      [1, person({ cm_id: 1, first_name: 'Emma', last_name: 'Johnson', grade: 3 })],
+      [2, person({ cm_id: 2, first_name: 'Liam', last_name: 'Garcia' })], // no grade
+    ])
+    const requests = [
+      request({ id: 'rUngraded', requester_id: 2 }),
+      request({ id: 'rGraded', requester_id: 1 }),
+    ]
+
+    const sorted = sortRequests(requests, personMap, 'grade', 'asc')
+    expect(sorted.map((r) => r.id)).toEqual(['rGraded', 'rUngraded'])
+  })
+
+  it('both ungraded → tiebreak by last name then first name (stable, not direction-inverted)', () => {
+    const personMap = new Map<number, PersonsResponse>([
+      [1, person({ cm_id: 1, first_name: 'Zelda', last_name: 'Morris' })],
+      [2, person({ cm_id: 2, first_name: 'Ada', last_name: 'Morris' })],
+    ])
+    const requests = [
+      request({ id: 'rZelda', requester_id: 1 }),
+      request({ id: 'rAda', requester_id: 2 }),
+    ]
+
+    // In asc mode: Ada < Zelda → rAda first
+    expect(sortRequests(requests, personMap, 'grade', 'asc').map((r) => r.id)).toEqual([
+      'rAda',
+      'rZelda',
+    ])
+    // In desc mode: direction flips the grade ordering but NOT the ungraded-bottom rule.
+    // Both are ungraded, so name tiebreak should still put Ada before Zelda
+    // (or at minimum the direction flip should not push ungraded rows to the top).
+    const descSorted = sortRequests(requests, personMap, 'grade', 'desc')
+    // Both are ungraded → they should both still be at the "bottom" of their peer group;
+    // we only assert they stay in a stable relative order, not pushed above graded rows.
+    expect(descSorted.map((r) => r.id)).toEqual(['rAda', 'rZelda'])
+  })
+})
+
 describe('sortRequests — column click behavior preserved', () => {
   const personMap = new Map<number, PersonsResponse>([
     [1, person({ cm_id: 1, first_name: 'Emma', last_name: 'Johnson', grade: 8 })],
