@@ -39,6 +39,7 @@ import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { findSessionByUrlSegment } from '../utils/sessionUtils'
 import {
+  compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
   type BunkArea,
@@ -387,15 +388,7 @@ export default function ScenarioComparisonPage() {
     // Sort change lists alphabetically by camper name (last, then first) so both
     // sides of the comparison present a stable, scannable order.
     const sortByCamper = <T extends { camper: CamperAssignment }>(arr: T[]): T[] =>
-      arr.slice().sort((a, b) => {
-        const lastCmp = a.camper.lastName.localeCompare(b.camper.lastName, undefined, {
-          sensitivity: 'base',
-        })
-        if (lastCmp !== 0) return lastCmp
-        return a.camper.firstName.localeCompare(b.camper.firstName, undefined, {
-          sensitivity: 'base',
-        })
-      })
+      arr.slice().sort((a, b) => compareCamperByName(a.camper, b.camper))
 
     return {
       moved: sortByCamper(moved),

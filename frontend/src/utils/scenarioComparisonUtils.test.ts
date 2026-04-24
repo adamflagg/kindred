@@ -8,11 +8,50 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
   type SortableCamper,
   type BunkWithGender,
 } from './scenarioComparisonUtils'
+
+describe('compareCamperByName', () => {
+  it('sorts by last name first', () => {
+    const a: SortableCamper = { firstName: 'Zed', lastName: 'Adams' }
+    const b: SortableCamper = { firstName: 'Ada', lastName: 'Zimmerman' }
+    expect(compareCamperByName(a, b)).toBeLessThan(0)
+    expect(compareCamperByName(b, a)).toBeGreaterThan(0)
+  })
+
+  it('breaks ties by first name', () => {
+    const a: SortableCamper = { firstName: 'Adam', lastName: 'Johnson' }
+    const b: SortableCamper = { firstName: 'Emma', lastName: 'Johnson' }
+    expect(compareCamperByName(a, b)).toBeLessThan(0)
+    expect(compareCamperByName(b, a)).toBeGreaterThan(0)
+  })
+
+  it('returns 0 for identical names', () => {
+    const a: SortableCamper = { firstName: 'Olivia', lastName: 'Chen' }
+    const b: SortableCamper = { firstName: 'Olivia', lastName: 'Chen' }
+    expect(compareCamperByName(a, b)).toBe(0)
+  })
+
+  it('is locale-aware and case-insensitive (accented chars collate correctly)', () => {
+    // 'Álvarez' should sort after 'Alvarez' in locale-aware compare (or at least
+    // not throw; sensitivity:'base' treats them as equal)
+    const base: SortableCamper = { firstName: 'Liam', lastName: 'Alvarez' }
+    const accented: SortableCamper = { firstName: 'Liam', lastName: 'Álvarez' }
+    // sensitivity:'base' treats base and accented as equal → result is 0
+    expect(compareCamperByName(base, accented)).toBe(0)
+  })
+
+  it('handles empty strings without throwing', () => {
+    const a: SortableCamper = { firstName: '', lastName: '' }
+    const b: SortableCamper = { firstName: 'Emma', lastName: 'Johnson' }
+    expect(() => compareCamperByName(a, b)).not.toThrow()
+    expect(() => compareCamperByName(b, a)).not.toThrow()
+  })
+})
 
 describe('sortCampersByName', () => {
   it('sorts campers alphabetically by last name then first name', () => {
