@@ -32,6 +32,9 @@ import type {
   BunksResponse,
   BunkPlansResponse,
   CampSessionsResponse,
+  LockedGroupsResponse,
+  LockedGroupMembersResponse,
+  AttendeesResponse,
 } from '../types/pocketbase-types'
 import { useYear } from '../hooks/useCurrentYear'
 import { useAuth } from '../contexts/AuthContext'
@@ -43,12 +46,86 @@ import {
   compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
+  diffGroups,
   type BunkArea,
+  type LockGroupSummary,
+  type GroupDiffResult,
 } from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
+
+// Group color palette mirrors LockGroupPanel.tsx GROUP_COLORS (bunking-board palette).
+// Colors are stored in the DB (locked_groups.color) and retrieved via API queries;
+// this array is retained here only for documentation purposes — actual rendering
+// uses the color value directly from the fetched LockGroupSummary.color field.
+// Do NOT import from graph modules.
+
+// Expanded member type for locked_group_members with attendee.person_id.
+type ExpandedGroupMember = LockedGroupMembersResponse & {
+  expand?: {
+    attendee?: AttendeesResponse & {
+      expand?: {
+        person?: { id: string; cm_id: number }
+      }
+    }
+  }
+}
+
+/**
+ * Fetch locked groups and their members for a given scenario+session, then
+ * return a Map of personCmId → LockGroupSummary.
+ */
+async function fetchGroupMap(
+  scenarioId: string,
+  sessionPbId: string,
+  year: number
+): Promise<Map<number, LockGroupSummary>> {
+  const groups = await pb.collection('locked_groups').getFullList<LockedGroupsResponse>({
+    filter: pb.filter('scenario = {:scenario} && session = {:session} && year = {:year}', {
+      scenario: scenarioId,
+      session: sessionPbId,
+      year,
+    }),
+    sort: 'created',
+  })
+
+  if (groups.length === 0) return new Map()
+
+  const groupIds = groups.map((g) => g.id)
+  const filterParts = groupIds.map((_, i) => `group = {:g${i}}`)
+  const filterParams = groupIds.reduce((acc, id, i) => ({ ...acc, [`g${i}`]: id }), {})
+  const filter = pb.filter(filterParts.join(' || '), filterParams)
+
+  const members = await pb.collection('locked_group_members').getFullList<ExpandedGroupMember>({
+    filter,
+    expand: 'attendee,attendee.person',
+  })
+
+  // Build group id → summary
+  const summaryById = new Map<string, LockGroupSummary>()
+  for (const g of groups) {
+    summaryById.set(g.id, { id: g.id, name: g.name, color: g.color, memberCmIds: [] })
+  }
+  for (const m of members) {
+    const personCmId = m.expand?.attendee?.person_id
+    const groupSummary = summaryById.get(m.group)
+    if (personCmId && groupSummary) {
+      groupSummary.memberCmIds.push(personCmId)
+    }
+  }
+
+  // Build personCmId → group summary map
+  const personToGroup = new Map<number, LockGroupSummary>()
+  for (const summary of summaryById.values()) {
+    for (const cmId of summary.memberCmIds) {
+      personToGroup.set(cmId, summary)
+    }
+  }
+
+  return personToGroup
+}
 
 // Types for comparison
 interface CamperAssignment {
@@ -241,6 +318,25 @@ export default function ScenarioComparisonPage() {
     },
     ...userDataOptions,
     enabled: !!user && rightScenarioId !== 'production' && rightScenarioId !== '',
+  })
+
+  // PocketBase session ID (needed for locked-group queries)
+  const sessionPbId = session?.id ?? ''
+
+  // Fetch locked-group → member maps for each scenario.
+  // Production has no locked groups (they are scenario-specific draft data).
+  const { data: leftGroupMap = new Map<number, LockGroupSummary>() } = useQuery({
+    queryKey: ['compare-locked-groups', leftScenarioId, sessionPbId, currentYear],
+    queryFn: () => fetchGroupMap(leftScenarioId, sessionPbId, currentYear),
+    ...userDataOptions,
+    enabled: !!user && leftScenarioId !== 'production' && leftScenarioId !== '' && !!sessionPbId,
+  })
+
+  const { data: rightGroupMap = new Map<number, LockGroupSummary>() } = useQuery({
+    queryKey: ['compare-locked-groups', rightScenarioId, sessionPbId, currentYear],
+    queryFn: () => fetchGroupMap(rightScenarioId, sessionPbId, currentYear),
+    ...userDataOptions,
+    enabled: !!user && rightScenarioId !== 'production' && rightScenarioId !== '' && !!sessionPbId,
   })
 
   // Fetch validation scores for both scenarios
@@ -500,6 +596,18 @@ export default function ScenarioComparisonPage() {
     })
   }, [filteredBunks, leftAssignments, rightAssignments])
 
+  // Build group-diff summary for the header chip.
+  // Collect unique LockGroupSummary objects from each side's group map.
+  const groupDiff = useMemo(() => {
+    const leftGroups = Array.from(
+      new Map(Array.from(leftGroupMap.values()).map((g) => [g.id, g])).values()
+    )
+    const rightGroups = Array.from(
+      new Map(Array.from(rightGroupMap.values()).map((g) => [g.id, g])).values()
+    )
+    return diffGroups(leftGroups, rightGroups)
+  }, [leftGroupMap, rightGroupMap])
+
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
     switch (changeFilter) {
@@ -745,6 +853,11 @@ export default function ScenarioComparisonPage() {
               </div>
             )}
 
+            {/* Friend Group Diff Summary — only shown when at least one side has groups */}
+            {(groupDiff.leftCount > 0 || groupDiff.rightCount > 0) && (
+              <FriendGroupDiffChip diff={groupDiff} />
+            )}
+
             {/* Metrics Summary */}
             <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
               <MetricCard
@@ -884,6 +997,8 @@ export default function ScenarioComparisonPage() {
                     comparison={bunkComp}
                     leftLabel={leftScenarioName}
                     rightLabel={rightScenarioName}
+                    leftGroupMap={leftGroupMap}
+                    rightGroupMap={rightGroupMap}
                   />
                 ))}
               </div>
@@ -1148,14 +1263,74 @@ function MetricCard({ label, value, sublabel, icon: Icon, color, trend }: Metric
   )
 }
 
+// ---------------------------------------------------------------------------
+// FriendGroupDiffChip — summary bar showing group counts across scenarios
+// ---------------------------------------------------------------------------
+
+interface FriendGroupDiffChipProps {
+  diff: GroupDiffResult
+}
+
+function FriendGroupDiffChip({ diff }: FriendGroupDiffChipProps) {
+  const parts = [
+    { label: `Left: ${diff.leftCount}` },
+    { label: `Right: ${diff.rightCount}` },
+    { label: `Identical: ${diff.identical.length}`, accent: diff.identical.length > 0 },
+    {
+      label: `Unique to L: ${diff.uniqueL.length}`,
+      warn: diff.uniqueL.length > 0,
+    },
+    {
+      label: `Unique to R: ${diff.uniqueR.length}`,
+      warn: diff.uniqueR.length > 0,
+    },
+    {
+      label: `Modified: ${diff.modified.length}`,
+      modified: diff.modified.length > 0,
+    },
+  ]
+
+  return (
+    <div className="card-lodge mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+      <span className="text-muted-foreground mr-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
+        <Users className="h-3.5 w-3.5" />
+        Friend Groups
+      </span>
+      {parts.map((p, i) => (
+        <span
+          key={i}
+          className={clsx(
+            'text-sm font-medium',
+            p.accent && 'text-forest-600 dark:text-forest-400',
+            p.warn && 'text-amber-600 dark:text-amber-400',
+            p.modified && 'text-bark-600 dark:text-bark-400',
+            !p.accent && !p.warn && !p.modified && 'text-muted-foreground'
+          )}
+        >
+          {i > 0 && <span className="text-muted-foreground/40 mr-3">·</span>}
+          {p.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // Bunk Comparison Card (Split View)
 interface BunkComparisonCardProps {
   comparison: BunkComparison
   leftLabel: string
   rightLabel: string
+  leftGroupMap: Map<number, LockGroupSummary>
+  rightGroupMap: Map<number, LockGroupSummary>
 }
 
-function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkComparisonCardProps) {
+function BunkComparisonCard({
+  comparison,
+  leftLabel,
+  rightLabel,
+  leftGroupMap,
+  rightGroupMap,
+}: BunkComparisonCardProps) {
   const hasChanges = comparison.movedIn.length > 0 || comparison.movedOut.length > 0
   const movedInIds = new Set(comparison.movedIn.map((c) => c.camper.personCmId))
   const movedOutIds = new Set(comparison.movedOut.map((c) => c.camper.personCmId))
@@ -1211,6 +1386,8 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
                   camper={camper}
                   status={movedOutIds.has(camper.personCmId) ? 'moved-out' : 'unchanged'}
                   destination={movedOutDestinations.get(camper.personCmId)}
+                  groupColor={leftGroupMap.get(camper.personCmId)?.color}
+                  groupName={leftGroupMap.get(camper.personCmId)?.name}
                 />
               ))
             )}
@@ -1232,6 +1409,8 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
                   camper={camper}
                   status={movedInIds.has(camper.personCmId) ? 'moved-in' : 'unchanged'}
                   origin={movedInOrigins.get(camper.personCmId)}
+                  groupColor={rightGroupMap.get(camper.personCmId)?.color}
+                  groupName={rightGroupMap.get(camper.personCmId)?.name}
                 />
               ))
             )}
@@ -1242,15 +1421,24 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
   )
 }
 
-// Camper Pill Component with origin/destination info
+// Camper Pill Component with origin/destination info and optional friend-group dot
 interface CamperPillProps {
   camper: CamperAssignment
   status: 'unchanged' | 'moved-in' | 'moved-out'
   origin?: string | undefined // Where they came from (for moved-in)
   destination?: string | undefined // Where they went (for moved-out)
+  groupColor?: string | undefined // Hex color from locked_groups.color
+  groupName?: string | undefined // Group name for tooltip
 }
 
-function CamperPill({ camper, status, origin, destination }: CamperPillProps) {
+function CamperPill({
+  camper,
+  status,
+  origin,
+  destination,
+  groupColor,
+  groupName,
+}: CamperPillProps) {
   return (
     <div
       className={clsx(
@@ -1262,6 +1450,15 @@ function CamperPill({ camper, status, origin, destination }: CamperPillProps) {
           'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
     >
+      {/* Friend-group color dot */}
+      {groupColor && (
+        <span
+          className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+          style={{ backgroundColor: groupColor }}
+          title={groupName ? `Friend group: ${groupName}` : 'Friend group'}
+          aria-label={groupName ? `Friend group: ${groupName}` : 'Friend group'}
+        />
+      )}
       <span className={clsx('font-medium', status === 'moved-out' && 'line-through')}>
         {camper.name}
       </span>

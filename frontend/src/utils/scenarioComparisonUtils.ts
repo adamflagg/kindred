@@ -5,6 +5,43 @@
  * mocking PocketBase, React Query, auth, or the router.
  */
 
+// ---------------------------------------------------------------------------
+// Locked-group diff types
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape of a locked group needed for diffing across scenarios.
+ * `memberCmIds` is the set of CampMinder person IDs that belong to this group.
+ */
+export interface LockGroupSummary {
+  id: string
+  name: string
+  color: string
+  memberCmIds: number[]
+}
+
+/** Pair of matching groups from left and right scenarios. */
+export interface MatchedGroupPair {
+  left: LockGroupSummary
+  right: LockGroupSummary
+}
+
+/** Result of diffing locked groups across two scenarios. */
+export interface GroupDiffResult {
+  /** Total group count from the left scenario. */
+  leftCount: number
+  /** Total group count from the right scenario. */
+  rightCount: number
+  /** Groups whose member CM_ID sets are exactly equal on both sides. */
+  identical: MatchedGroupPair[]
+  /** Left-scenario groups that share NO members with any right-scenario group. */
+  uniqueL: LockGroupSummary[]
+  /** Right-scenario groups that share NO members with any left-scenario group. */
+  uniqueR: LockGroupSummary[]
+  /** Groups that share at least one member but differ (partial overlap). */
+  modified: MatchedGroupPair[]
+}
+
 /** Minimal shape needed to sort campers by name. */
 export interface SortableCamper {
   firstName: string
@@ -57,5 +94,100 @@ export function getAvailableBunkAreas(bunks: readonly BunkWithGender[]): BunkAre
   if (bunks.some((b) => b.gender === 'M')) result.push('boys')
   if (bunks.some((b) => b.gender === 'F')) result.push('girls')
   if (bunks.some((b) => b.gender === 'Mixed')) result.push('ag')
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// diffGroups
+// ---------------------------------------------------------------------------
+
+/**
+ * Classify locked groups from two scenarios into identical, uniqueL, uniqueR,
+ * and modified buckets.
+ *
+ * Matching is done by CM_ID member sets:
+ * - **identical**: same exact set of member CM IDs on both sides.
+ * - **uniqueL / uniqueR**: no overlap at all with any group on the other side.
+ * - **modified**: at least one shared member, but the sets differ.
+ *
+ * Each left group is matched to at most one right group (the one with the
+ * greatest overlap, preferring exact matches). Unmatched right groups become
+ * uniqueR.
+ *
+ * Pure function — no side effects, no I/O.
+ */
+export function diffGroups(
+  leftGroups: readonly LockGroupSummary[],
+  rightGroups: readonly LockGroupSummary[]
+): GroupDiffResult {
+  const result: GroupDiffResult = {
+    leftCount: leftGroups.length,
+    rightCount: rightGroups.length,
+    identical: [],
+    uniqueL: [],
+    uniqueR: [],
+    modified: [],
+  }
+
+  if (leftGroups.length === 0 && rightGroups.length === 0) return result
+
+  // Build a set of CM IDs for each right group (for O(1) membership tests).
+  const rightSets = rightGroups.map((g) => new Set(g.memberCmIds))
+
+  // Track which right groups have been claimed by a left group.
+  const rightClaimed = new Set<number>()
+
+  for (const leftGrp of leftGroups) {
+    const leftSet = new Set(leftGrp.memberCmIds)
+
+    // Find the best matching right group: prefer exact match, then most overlap.
+    let bestIdx = -1
+    let bestOverlap = 0
+    let bestIsExact = false
+
+    for (let i = 0; i < rightGroups.length; i++) {
+      if (rightClaimed.has(i)) continue
+
+      const rSet = rightSets[i]
+      if (!rSet) continue
+      // Count intersection
+      let overlap = 0
+      for (const id of leftSet) {
+        if (rSet.has(id)) overlap++
+      }
+      if (overlap === 0) continue
+
+      const isExact = overlap === leftSet.size && overlap === rSet.size
+
+      if (bestIdx === -1 || (isExact && !bestIsExact) || (!bestIsExact && overlap > bestOverlap)) {
+        bestIdx = i
+        bestOverlap = overlap
+        bestIsExact = isExact
+      }
+    }
+
+    if (bestIdx === -1) {
+      // No right group shares any member — unique to left.
+      result.uniqueL.push(leftGrp)
+    } else {
+      const rightGrp = rightGroups[bestIdx]
+      if (!rightGrp) continue
+      if (bestIsExact) {
+        result.identical.push({ left: leftGrp, right: rightGrp })
+      } else {
+        result.modified.push({ left: leftGrp, right: rightGrp })
+      }
+      rightClaimed.add(bestIdx)
+    }
+  }
+
+  // Any unclaimed right groups are unique to right.
+  for (let i = 0; i < rightGroups.length; i++) {
+    if (!rightClaimed.has(i)) {
+      const rightGrp = rightGroups[i]
+      if (rightGrp) result.uniqueR.push(rightGrp)
+    }
+  }
+
   return result
 }
