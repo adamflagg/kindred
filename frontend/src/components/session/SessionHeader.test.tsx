@@ -100,8 +100,8 @@ describe('SessionHeader scenario name truncation', () => {
   it('scenario dropdown button has a max-width class to prevent unbounded growth', () => {
     renderSessionHeader()
     const button = screen.getByRole('button', { name: new RegExp(LONG_SCENARIO_NAME.slice(0, 20)) })
-    // Should contain a Tailwind max-w-* class
-    expect(button.className).toMatch(/max-w-/)
+    // Should contain a Tailwind max-w-* class clamped to ~130px (matching action button width)
+    expect(button.className).toMatch(/max-w-\[130px\]/)
   })
 
   it('scenario name span has truncate class to clip overflow text with ellipsis', () => {
@@ -110,6 +110,20 @@ describe('SessionHeader scenario name truncation', () => {
     // The inner span should carry the truncate utility
     const nameSpan = button.querySelector('span.truncate')
     expect(nameSpan).toBeInTheDocument()
+  })
+
+  it('short scenario name is fully present in the DOM without being cut', () => {
+    const SHORT_NAME = 'Default'
+    renderSessionHeader({
+      currentScenario: { id: 'sc1', name: SHORT_NAME },
+      scenarios: [{ id: 'sc1', name: SHORT_NAME }],
+    })
+    // The title attribute must match the full name (tooltip fallback for truncation)
+    const button = screen.getByRole('button', { name: new RegExp(SHORT_NAME) })
+    expect(button).toHaveAttribute('title', SHORT_NAME)
+    // The inner span must contain the full text — no visual clipping of short names
+    const nameSpan = button.querySelector('span.truncate')
+    expect(nameSpan?.textContent).toBe(SHORT_NAME)
   })
 })
 

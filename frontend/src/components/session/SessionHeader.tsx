@@ -134,7 +134,7 @@ export default function SessionHeader({
                   disabled={scenarioLoading || isSolving || isApplyingResults}
                 >
                   <ListboxButton
-                    className="listbox-button-compact max-w-[200px] min-w-[130px]"
+                    className="listbox-button-compact max-w-[130px] min-w-[130px]"
                     title={currentScenario?.name ?? 'CampMinder'}
                   >
                     <span className="flex-1 truncate text-left">
