@@ -13,7 +13,7 @@ const mockGetFullListPersons = vi.fn()
 const mockGetFullListAttendees = vi.fn()
 const mockGetFullListBunkAssignments = vi.fn()
 const mockGetFullListBunkRequests = vi.fn()
-const mockGetFullListOriginalBunkRequests = vi.fn()
+const mockGetListOriginalBunkRequests = vi.fn()
 const mockGetListPersons = vi.fn()
 
 // Mock the pocketbase module with per-collection dispatch
@@ -33,7 +33,7 @@ vi.mock('../lib/pocketbase', () => ({
         case 'bunk_requests':
           return { getFullList: mockGetFullListBunkRequests }
         case 'original_bunk_requests':
-          return { getList: mockGetFullListOriginalBunkRequests }
+          return { getList: mockGetListOriginalBunkRequests }
         default:
           return {
             getFullList: vi.fn().mockResolvedValue([]),
@@ -143,7 +143,7 @@ function setupDeclinedRequestMocks() {
   // First call: look up the main camper by cm_id (filter includes person cm_id)
   // Second call: look up requestees by cm_id (filter includes requestee cm_id list)
   mockGetFullListPersons.mockImplementation((opts: { filter?: string }) => {
-    const filter = opts?.filter ?? ''
+    const filter = opts.filter ?? ''
     if (filter.includes('cm_id = 201')) {
       // requestee lookup
       return Promise.resolve([LIAM])
@@ -155,7 +155,7 @@ function setupDeclinedRequestMocks() {
   mockGetFullListBunkAssignments.mockResolvedValue([])
   mockGetFullListBunkRequests.mockResolvedValue([DECLINED_REQUEST])
   mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
-  mockGetFullListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
+  mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
 }
 
 describe('CamperDetailsPanel', () => {
@@ -169,7 +169,7 @@ describe('CamperDetailsPanel', () => {
     mockGetFullListBunkAssignments.mockResolvedValue([])
     mockGetFullListBunkRequests.mockResolvedValue([])
     mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
-    mockGetFullListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
+    mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
   })
 
   describe('Loading and Error States', () => {
@@ -308,7 +308,7 @@ describe('CamperDetailsPanel', () => {
 
       // formatReason('session_mismatch') === 'Different sessions'
       await waitFor(() => {
-        expect(screen.getByText(/Different sessions/i)).toBeInTheDocument()
+        expect(screen.getByText(/·\s*Different sessions$/)).toBeInTheDocument()
       })
     })
 
