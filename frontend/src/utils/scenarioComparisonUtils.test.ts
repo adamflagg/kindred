@@ -11,8 +11,10 @@ import {
   compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
+  computeImpactedCabins,
   type SortableCamper,
   type BunkWithGender,
+  type MovedEntry,
 } from './scenarioComparisonUtils'
 
 describe('compareCamperByName', () => {
@@ -132,6 +134,95 @@ describe('sortCampersByName', () => {
       { firstName: 'Olivia', lastName: 'Chen' },
     ]
     expect(sortCampersByName(a)).toEqual(sortCampersByName(b))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeImpactedCabins
+// ---------------------------------------------------------------------------
+
+describe('computeImpactedCabins', () => {
+  // Helper to build a moved entry with the minimum fields needed.
+  // Uses a counter rather than Math.random() for determinism.
+  let moveCounter = 0
+  const makeMove = (fromBunk: string, toBunk: string): MovedEntry => ({
+    camper: { personCmId: ++moveCounter },
+    fromBunk: { id: 'id-' + fromBunk, name: fromBunk },
+    toBunk: { id: 'id-' + toBunk, name: toBunk },
+  })
+
+  it('returns empty array when moved list is empty', () => {
+    expect(computeImpactedCabins([])).toEqual([])
+  })
+
+  it('collects distinct cabin names from both From and To columns', () => {
+    const moved = [makeMove('Olive', 'Maple')]
+    const chips = computeImpactedCabins(moved)
+    expect(chips.map((c) => c.name)).toContain('Olive')
+    expect(chips.map((c) => c.name)).toContain('Maple')
+    expect(chips).toHaveLength(2)
+  })
+
+  it('counts each camper only once per cabin even if they touch it as both origin and destination', () => {
+    // Camper A: Olive → Maple  (Olive = from, Maple = to)
+    // Camper B: Maple → Olive  (Maple = from, Olive = to)
+    // Each cabin has 2 campers affected — no double-count
+    const moved = [makeMove('Olive', 'Maple'), makeMove('Maple', 'Olive')]
+    const chips = computeImpactedCabins(moved)
+    const olive = chips.find((c) => c.name === 'Olive')!
+    const maple = chips.find((c) => c.name === 'Maple')!
+    expect(olive.count).toBe(2)
+    expect(maple.count).toBe(2)
+  })
+
+  it('counts a camper who moves from Olive to Maple exactly once for each cabin', () => {
+    const moved = [makeMove('Olive', 'Maple')]
+    const chips = computeImpactedCabins(moved)
+    const olive = chips.find((c) => c.name === 'Olive')!
+    const maple = chips.find((c) => c.name === 'Maple')!
+    expect(olive.count).toBe(1)
+    expect(maple.count).toBe(1)
+  })
+
+  it('does NOT double-count a camper who moves between two listed cabins (single move, both cabins listed)', () => {
+    // 3 campers move Olive→Maple; Olive and Maple each have 3, not 6
+    const moved = [
+      makeMove('Olive', 'Maple'),
+      makeMove('Olive', 'Maple'),
+      makeMove('Olive', 'Maple'),
+    ]
+    const chips = computeImpactedCabins(moved)
+    const olive = chips.find((c) => c.name === 'Olive')!
+    const maple = chips.find((c) => c.name === 'Maple')!
+    expect(olive.count).toBe(3)
+    expect(maple.count).toBe(3)
+  })
+
+  it('returns cabins in alphabetical order', () => {
+    const moved = [makeMove('Spruce', 'Alder'), makeMove('Birch', 'Fir')]
+    const chips = computeImpactedCabins(moved)
+    const names = chips.map((c) => c.name)
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)))
+  })
+
+  it('deduplicates cabin names that appear in multiple rows', () => {
+    const moved = [makeMove('Olive', 'Cedar'), makeMove('Maple', 'Olive')]
+    const chips = computeImpactedCabins(moved)
+    // Olive appears as both from and to — only one chip for Olive
+    const oliveChips = chips.filter((c) => c.name === 'Olive')
+    expect(oliveChips).toHaveLength(1)
+  })
+
+  it('accumulates counts across multiple moves touching the same cabin', () => {
+    // 2 campers leave Olive; 1 camper arrives at Olive — 3 total affected
+    const moved = [
+      makeMove('Olive', 'Cedar'),
+      makeMove('Olive', 'Maple'),
+      makeMove('Birch', 'Olive'),
+    ]
+    const chips = computeImpactedCabins(moved)
+    const olive = chips.find((c) => c.name === 'Olive')!
+    expect(olive.count).toBe(3)
   })
 })
 

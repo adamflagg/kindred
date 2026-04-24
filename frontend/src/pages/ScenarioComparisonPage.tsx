@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -43,8 +43,10 @@ import {
   compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
+  computeImpactedCabins,
   type BunkArea,
 } from '../utils/scenarioComparisonUtils'
+import ImpactedCabinChipRow from '../components/ImpactedCabinChipRow'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
@@ -530,6 +532,18 @@ export default function ScenarioComparisonPage() {
     }
   }, [comparison, changeFilter])
 
+  // Compute impacted cabin chips from the Moved tab data
+  const impactedCabins = useMemo(() => computeImpactedCabins(comparison.moved), [comparison.moved])
+
+  // Ref for the split view container — used to query cabin section elements
+  const splitViewRef = useRef<HTMLDivElement>(null)
+
+  // Returns all elements with data-cabin attribute in the split view
+  const getCabinSectionElements = useCallback((): Element[] => {
+    if (!splitViewRef.current) return []
+    return Array.from(splitViewRef.current.querySelectorAll('[data-cabin]'))
+  }, [])
+
   const leftScenarioName =
     leftScenarioId === 'production'
       ? 'CampMinder (Production)'
@@ -607,7 +621,7 @@ export default function ScenarioComparisonPage() {
 
       {/* Scenario Selectors */}
       <div className="bg-background border-border sticky top-0 z-10 mt-4 border-b">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex flex-col items-center gap-4 lg:flex-row lg:gap-8">
             {/* Left Scenario */}
             <div className="w-full flex-1">
@@ -723,12 +737,15 @@ export default function ScenarioComparisonPage() {
           <>
             {/* Validation Score Comparison - Detailed breakdown */}
             {(leftValidation ?? rightValidation) && (
-              <div className="card-lodge mb-6 p-4">
-                <div className="mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="text-forest-600 h-5 w-5" />
-                  <h3 className="font-semibold">Validation Details</h3>
+              <div className="card-lodge mb-6 overflow-hidden">
+                {/* Tinted header band — matches SolverProgressModal pattern */}
+                <div className="border-border bg-forest-50 dark:bg-forest-900/20 flex items-center gap-2 border-b px-4 py-3">
+                  <CheckCircle2 className="text-forest-600 dark:text-forest-400 h-5 w-5" />
+                  <h3 className="text-forest-900 dark:text-forest-100 font-semibold">
+                    Validation Details
+                  </h3>
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="bg-muted/20 grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
                   {/* Left Scenario Score */}
                   <ValidationScoreCard
                     label={leftScenarioName}
@@ -877,16 +894,25 @@ export default function ScenarioComparisonPage() {
 
             {/* Split View */}
             {viewMode === 'split' && (
-              <div className="space-y-4">
-                {bunkComparisons.map((bunkComp) => (
-                  <BunkComparisonCard
-                    key={bunkComp.bunkId}
-                    comparison={bunkComp}
-                    leftLabel={leftScenarioName}
-                    rightLabel={rightScenarioName}
+              <>
+                {/* Impacted cabin chip row — only shown when there are moved campers */}
+                {impactedCabins.length > 0 && (
+                  <ImpactedCabinChipRow
+                    chips={impactedCabins}
+                    getCabinSectionElements={getCabinSectionElements}
                   />
-                ))}
-              </div>
+                )}
+                <div ref={splitViewRef} className="space-y-4">
+                  {bunkComparisons.map((bunkComp) => (
+                    <BunkComparisonCard
+                      key={bunkComp.bunkId}
+                      comparison={bunkComp}
+                      leftLabel={leftScenarioName}
+                      rightLabel={rightScenarioName}
+                    />
+                  ))}
+                </div>
+              </>
             )}
 
             {/* Changes Table View */}
@@ -1016,8 +1042,8 @@ function ValidationScoreCard({ label, validation, side }: ValidationScoreCardPro
       className={clsx(
         'rounded-xl border-2 p-4',
         side === 'left'
-          ? 'border-bark-200 dark:border-bark-700'
-          : 'border-forest-200 dark:border-forest-700'
+          ? 'border-bark-200 bg-bark-50 dark:border-bark-700 dark:bg-bark-900/20'
+          : 'border-forest-200 bg-forest-50 dark:border-forest-700 dark:bg-forest-900/20'
       )}
     >
       <div className="mb-3 truncate text-sm font-semibold">{label}</div>
@@ -1168,16 +1194,17 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
 
   return (
     <div
+      data-cabin={comparison.bunkName}
       className={clsx(
         'card-lodge overflow-hidden transition-all',
         hasChanges && 'ring-2 ring-amber-400/50'
       )}
     >
-      {/* Bunk Header */}
+      {/* Bunk Header — sticky so it stays visible during manual scroll */}
       <div
         className={clsx(
-          'border-border flex items-center justify-between border-b px-4 py-3',
-          hasChanges ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-muted/30'
+          'border-border sticky top-40 z-10 flex items-center justify-between border-b px-4 py-3',
+          hasChanges ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-muted/50 backdrop-blur-sm'
         )}
       >
         <div className="flex items-center gap-3">

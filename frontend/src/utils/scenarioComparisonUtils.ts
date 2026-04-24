@@ -11,6 +11,59 @@ export interface SortableCamper {
   lastName: string
 }
 
+/** Minimal camper shape used by computeImpactedCabins. */
+export interface MovedCamper {
+  personCmId: number
+}
+
+/** A single moved entry from the comparison result. */
+export interface MovedEntry {
+  camper: MovedCamper
+  fromBunk: { id: string; name: string }
+  toBunk: { id: string; name: string }
+}
+
+/** A chip representing a single impacted cabin. */
+export interface ImpactedCabinChip {
+  name: string
+  count: number
+}
+
+/**
+ * Compute the list of impacted cabin chips from the "moved" entries.
+ *
+ * Each cabin that appears as either a From or a To is represented once.
+ * The count is the number of distinct campers (by personCmId) whose move
+ * touched that cabin — each camper counted once per cabin even if the move
+ * makes them both leave AND arrive at that cabin (which can't happen for a
+ * single move, but does happen when a cabin is both the from-bunk of one
+ * camper and the to-bunk of another camper in the same list).
+ *
+ * Returned in ascending alphabetical order.
+ */
+export function computeImpactedCabins(moved: readonly MovedEntry[]): ImpactedCabinChip[] {
+  // Map from cabin name → set of personCmIds who touched that cabin
+  const cabinCampers = new Map<string, Set<number>>()
+
+  for (const entry of moved) {
+    const { fromBunk, toBunk, camper } = entry
+
+    if (!cabinCampers.has(fromBunk.name)) {
+      cabinCampers.set(fromBunk.name, new Set())
+    }
+    cabinCampers.get(fromBunk.name)!.add(camper.personCmId)
+
+    if (!cabinCampers.has(toBunk.name)) {
+      cabinCampers.set(toBunk.name, new Set())
+    }
+    cabinCampers.get(toBunk.name)!.add(camper.personCmId)
+  }
+
+  return Array.from(cabinCampers.entries())
+    .map(([name, campers]) => ({ name, count: campers.size }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 /** Minimal bunk shape used to decide which area-filter buttons to render. */
 export interface BunkWithGender {
   gender: string
