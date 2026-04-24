@@ -690,6 +690,15 @@ export default function CamperDetailsPanel({
     }
   )
 
+  // Derived request lists — declared here so renderContent() (defined below)
+  // and the embedded early-return both see them. Previously these were declared
+  // after the embedded-mode return, causing a TDZ ReferenceError in that path.
+  const nonAgeRequests = bunkRequests.filter((r) => r.request_type !== 'age_preference')
+  const hasOtherRequests = nonAgeRequests.length > 0
+  const ageSatisfaction = agePreferenceRequest
+    ? satisfactionData[agePreferenceRequest.id]
+    : undefined
+
   // Loading state
   if (camperLoading) {
     return embedded ? (
@@ -1254,13 +1263,6 @@ export default function CamperDetailsPanel({
       </div>
     )
   }
-
-  // Derived request lists (used in the bunk requests section of the render)
-  const nonAgeRequests = bunkRequests.filter((r) => r.request_type !== 'age_preference')
-  const hasOtherRequests = nonAgeRequests.length > 0
-  const ageSatisfaction = agePreferenceRequest
-    ? satisfactionData[agePreferenceRequest.id]
-    : undefined
 
   // Slide-in panel with semi-transparent backdrop for click-outside close
   // Uses CSS animations instead of transitions for React Compiler compatibility
