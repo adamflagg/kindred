@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
+import { mockPerson } from '../test/mockData'
 
 // Configurable per-collection mock factories
 const mockGetFullListPersons = vi.fn()
@@ -59,23 +60,10 @@ vi.mock('../hooks/useCurrentYear', () => ({
 // ---------------------------------------------------------------------------
 
 /** A minimal persons record for Emma Johnson, cm_id=100 */
-const EMMA: Record<string, unknown> = {
-  id: 'pb-emma',
-  cm_id: 100,
-  first_name: 'Emma',
-  last_name: 'Johnson',
-  gender: 'F',
-  grade: 6,
-  year: 2025,
-  household_id: 0,
-  collectionId: 'persons',
-  collectionName: 'persons',
-  created: '2025-01-01T00:00:00Z',
-  updated: '2025-01-01T00:00:00Z',
-}
+const EMMA = mockPerson({ id: 'pb-emma', cm_id: 100, grade: 6, year: 2025, household_id: 0 })
 
 /** Liam Garcia is the bunk-request target (different session, so declined) */
-const LIAM: Record<string, unknown> = {
+const LIAM = mockPerson({
   id: 'pb-liam',
   cm_id: 201,
   first_name: 'Liam',
@@ -84,11 +72,7 @@ const LIAM: Record<string, unknown> = {
   grade: 6,
   year: 2025,
   household_id: 0,
-  collectionId: 'persons',
-  collectionName: 'persons',
-  created: '2025-01-01T00:00:00Z',
-  updated: '2025-01-01T00:00:00Z',
-}
+})
 
 /** Emma's declined bunk-with request targeting Liam Garcia (different session) */
 const DECLINED_REQUEST: Record<string, unknown> = {
@@ -144,11 +128,9 @@ function setupDeclinedRequestMocks() {
   // Second call: look up requestees by cm_id (filter includes requestee cm_id list)
   mockGetFullListPersons.mockImplementation((opts: { filter?: string }) => {
     const filter = opts.filter ?? ''
-    if (filter.includes('cm_id = 201')) {
-      // requestee lookup
+    if (filter.includes(`cm_id = ${LIAM.cm_id}`)) {
       return Promise.resolve([LIAM])
     }
-    // main camper lookup
     return Promise.resolve([EMMA])
   })
   mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
