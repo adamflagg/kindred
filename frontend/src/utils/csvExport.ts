@@ -10,8 +10,13 @@
  * Returns the field (possibly quoted) as a string.
  */
 function escapeField(value: string): string {
-  // If the value contains a comma, double-quote, newline, or carriage-return,
-  // wrap in double-quotes and double any existing double-quotes.
+  // OWASP formula-injection guard: neutralize leading =, +, -, @, \t, \r
+  // by prefixing with a literal apostrophe so spreadsheets treat it as text.
+  if (value.length > 0 && /^[=+\-@\t\r]/.test(value)) {
+    value = `'${value}`
+  }
+  // RFC 4180: wrap in double-quotes if the value contains commas, double-quotes,
+  // newlines, or carriage-returns; double any existing double-quotes.
   if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return `"${value.replace(/"/g, '""')}"`
   }

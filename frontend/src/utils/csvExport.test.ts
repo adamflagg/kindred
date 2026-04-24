@@ -27,6 +27,54 @@ describe('slugify', () => {
 })
 
 // ---------------------------------------------------------------------------
+// escapeField — formula-injection guard
+// ---------------------------------------------------------------------------
+// Import the unexported escapeField indirectly via buildCsvContent:
+// buildCsvContent(['H'], [[value]]).split('\n')[1] gives the escaped field.
+function escape(value: string): string {
+  return buildCsvContent(['H'], [[value]]).split('\n')[1]
+}
+
+describe('escapeField — formula injection guard', () => {
+  it('prefixes = with apostrophe to neutralize spreadsheet formula', () => {
+    expect(escape('=SUM(A1)')).toBe("'=SUM(A1)")
+  })
+
+  it('prefixes + with apostrophe', () => {
+    expect(escape('+12')).toBe("'+12")
+  })
+
+  it('prefixes - with apostrophe', () => {
+    expect(escape('-Alice')).toBe("'-Alice")
+  })
+
+  it('prefixes @ with apostrophe', () => {
+    expect(escape('@handle')).toBe("'@handle")
+  })
+
+  it('prefixes tab character with apostrophe', () => {
+    expect(escape('\tfoo')).toBe("'\tfoo")
+  })
+
+  it('prefixes carriage-return character with apostrophe', () => {
+    // \r triggers the CSV quoting too, so the result is quoted
+    expect(escape('\rbar')).toBe(`"'\rbar"`)
+  })
+
+  it('does NOT prefix normal field values', () => {
+    expect(escape('Alice Smith')).toBe('Alice Smith')
+  })
+
+  it('does NOT prefix empty string', () => {
+    expect(escape('')).toBe('')
+  })
+
+  it('does NOT prefix a field starting with a digit', () => {
+    expect(escape('12345')).toBe('12345')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // buildCsvContent
 // ---------------------------------------------------------------------------
 describe('buildCsvContent', () => {
