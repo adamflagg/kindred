@@ -57,8 +57,7 @@ describe('BunkingLegend', () => {
     it('documents the last-year history indicator', () => {
       render(<BunkingLegend isOpen={true} onClose={() => {}} />)
       // CamperCard shows historyDisplay text (e.g. "S1 B-4") when getLastYearHistory returns data
-      const matches = screen.getAllByText(/prior.year|last.year|previous.year|history/i)
-      expect(matches.length).toBeGreaterThan(0)
+      expect(screen.getByText('Prior-Year History')).toBeInTheDocument()
     })
   })
 
