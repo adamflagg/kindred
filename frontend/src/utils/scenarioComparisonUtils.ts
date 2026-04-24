@@ -13,7 +13,6 @@ export interface SortableCamper {
 
 /** Minimal bunk shape used to decide which area-filter buttons to render. */
 export interface BunkWithGender {
-  name: string
   gender: string
 }
 

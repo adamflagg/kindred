@@ -140,27 +140,17 @@ describe('getAvailableBunkAreas', () => {
   })
 
   it('omits "ag" when no AG (Mixed-gender) bunks are present', () => {
-    const bunks: BunkWithGender[] = [
-      { name: 'B-Cedar', gender: 'M' },
-      { name: 'G-Oak', gender: 'F' },
-    ]
+    const bunks: BunkWithGender[] = [{ gender: 'M' }, { gender: 'F' }]
     expect(getAvailableBunkAreas(bunks)).toEqual(['all', 'boys', 'girls'])
   })
 
   it('includes "ag" when at least one AG bunk is present', () => {
-    const bunks: BunkWithGender[] = [
-      { name: 'B-Cedar', gender: 'M' },
-      { name: 'G-Oak', gender: 'F' },
-      { name: 'AG-Maple', gender: 'Mixed' },
-    ]
+    const bunks: BunkWithGender[] = [{ gender: 'M' }, { gender: 'F' }, { gender: 'Mixed' }]
     expect(getAvailableBunkAreas(bunks)).toEqual(['all', 'boys', 'girls', 'ag'])
   })
 
   it('omits "boys" when no male-gender bunks are present', () => {
-    const bunks: BunkWithGender[] = [
-      { name: 'G-Oak', gender: 'F' },
-      { name: 'AG-Maple', gender: 'Mixed' },
-    ]
+    const bunks: BunkWithGender[] = [{ gender: 'F' }, { gender: 'Mixed' }]
     const areas = getAvailableBunkAreas(bunks)
     expect(areas).toContain('all')
     expect(areas).toContain('girls')
@@ -169,10 +159,7 @@ describe('getAvailableBunkAreas', () => {
   })
 
   it('omits "girls" when no female-gender bunks are present', () => {
-    const bunks: BunkWithGender[] = [
-      { name: 'B-Cedar', gender: 'M' },
-      { name: 'AG-Maple', gender: 'Mixed' },
-    ]
+    const bunks: BunkWithGender[] = [{ gender: 'M' }, { gender: 'Mixed' }]
     const areas = getAvailableBunkAreas(bunks)
     expect(areas).toContain('all')
     expect(areas).toContain('boys')
@@ -181,17 +168,13 @@ describe('getAvailableBunkAreas', () => {
   })
 
   it('always keeps "all" as the first option', () => {
-    const bunks: BunkWithGender[] = [{ name: 'AG-Maple', gender: 'Mixed' }]
+    const bunks: BunkWithGender[] = [{ gender: 'Mixed' }]
     const areas = getAvailableBunkAreas(bunks)
     expect(areas[0]).toBe('all')
   })
 
   it('returns filter options in stable order: all, boys, girls, ag', () => {
-    const bunks: BunkWithGender[] = [
-      { name: 'AG-Maple', gender: 'Mixed' },
-      { name: 'G-Oak', gender: 'F' },
-      { name: 'B-Cedar', gender: 'M' },
-    ]
+    const bunks: BunkWithGender[] = [{ gender: 'Mixed' }, { gender: 'F' }, { gender: 'M' }]
     expect(getAvailableBunkAreas(bunks)).toEqual(['all', 'boys', 'girls', 'ag'])
   })
 })
