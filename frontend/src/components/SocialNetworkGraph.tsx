@@ -13,7 +13,6 @@ import clsx from 'clsx'
 import {
   ZOOM_SETTINGS,
   GraphControls,
-  EdgeFilters,
   GraphLegend,
   GraphHelp,
   drawBunkBubbles,
@@ -70,10 +69,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showHelp, setShowHelp] = useState(false)
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
-  const [showEdges, setShowEdges] = useState({
-    request: true,
-    sibling: true,
-  })
+  // Request and sibling edges are always-on — no user toggle
+  const showEdges = { request: true, sibling: true } as const
   const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
@@ -323,13 +320,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     return () => clearTimeout(timeoutId)
   }, [isExpanded, showBubbles, showUnits, bunksData, bubbleRefs])
 
-  // Update edge visibility when filters change
-  useEffect(() => {
-    if (cyRef.current) {
-      updateEdgeVisibility(cyRef.current, showEdges)
-    }
-  }, [showEdges])
-
   // Update labels without re-rendering the whole graph
   useEffect(() => {
     if (cyRef.current) {
@@ -402,12 +392,37 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 : 'card-lodge'
             )}
           >
-            <div className="border-border relative z-20 border-b p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-display text-foreground flex items-center gap-2 font-semibold">
-                  <Network className="text-primary h-5 w-5" />
-                  Social Network Graph{isExpanded ? ' - Expanded View' : ''}
+            <div className="border-border relative z-20 border-b px-4 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-foreground flex min-w-0 shrink items-center gap-2 font-semibold">
+                  <Network className="text-primary h-5 w-5 shrink-0" />
+                  <span className="truncate">
+                    Social Network Graph{isExpanded ? ' - Expanded View' : ''}
+                  </span>
                 </h3>
+
+                {/* Bunks / Units toggles — inline in header top row */}
+                <div className="flex shrink-0 items-center gap-3 text-sm">
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={showBubbles}
+                      onChange={(e) => setShowBubbles(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-muted-foreground">Bunks</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={showUnits}
+                      onChange={(e) => setShowUnits(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-muted-foreground">Units</span>
+                  </label>
+                </div>
+
                 <GraphControls
                   showLabels={showLabels}
                   onToggleLabels={toggleLabels}
@@ -420,15 +435,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   onFit={handleFit}
                 />
               </div>
-
-              <EdgeFilters
-                showEdges={showEdges}
-                onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
-                showBubbles={showBubbles}
-                onToggleBubbles={setShowBubbles}
-                showUnits={showUnits}
-                onToggleUnits={setShowUnits}
-              />
             </div>
 
             {/* Graph container - ALWAYS in same tree position */}

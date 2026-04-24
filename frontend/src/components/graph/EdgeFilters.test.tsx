@@ -1,125 +1,67 @@
 /**
  * Tests for EdgeFilters component
- * TDD - tests written first, implementation follows
+ * Updated spec: edge-type checkboxes removed; bunks/units toggles moved to graph header top row.
  */
 
 import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
 
-describe('EdgeFilters', () => {
-  describe('edge type visibility', () => {
-    it('should track visibility state for each edge type', () => {
-      const showEdges = {
-        request: true,
-        historical: true,
-        sibling: true,
-        school: true,
-      }
+import EdgeFilters from './EdgeFilters'
 
-      expect(showEdges.request).toBe(true)
-      expect(showEdges.historical).toBe(true)
-    })
+// ---------------------------------------------------------------------------
+// New spec: EdgeFilters must NOT render any edge-type toggle UI
+// ---------------------------------------------------------------------------
 
-    it('should toggle individual edge type visibility', () => {
-      const showEdges = {
-        request: true,
-        historical: true,
-        sibling: true,
-        school: true,
-      }
+describe('EdgeFilters — new slim spec', () => {
+  const baseProps = {
+    showEdges: { request: true, sibling: true },
+    onEdgeFilterChange: vi.fn(),
+    showBubbles: true,
+    onToggleBubbles: vi.fn(),
+  }
 
-      const updatedEdges = { ...showEdges, request: false }
-
-      expect(updatedEdges.request).toBe(false)
-      expect(updatedEdges.historical).toBe(true)
-    })
-
-    it('should call onEdgeFilterChange when filter changes', () => {
-      const mockOnChange = vi.fn()
-      const newState = {
-        request: false,
-        historical: true,
-        sibling: true,
-        school: true,
-      }
-
-      mockOnChange(newState)
-
-      expect(mockOnChange).toHaveBeenCalledWith(newState)
-    })
+  it('does NOT render a "Show edges:" label', () => {
+    render(<EdgeFilters {...baseProps} />)
+    expect(screen.queryByText(/show edges/i)).not.toBeInTheDocument()
   })
 
-  describe('edge type labels', () => {
-    it('should display human-readable labels for edge types', () => {
-      const edgeLabels: Record<string, string> = {
-        request: 'Requests',
-        historical: 'Historical',
-        sibling: 'Siblings',
-        school: 'Classmates',
-      }
-
-      expect(edgeLabels['request']).toBe('Requests')
-      expect(edgeLabels['school']).toBe('Classmates')
-    })
+  it('does NOT render a Filter icon (edge section removed)', () => {
+    render(<EdgeFilters {...baseProps} />)
+    // The Filter icon from lucide-react renders an svg; the surrounding span
+    // used to contain "Show edges:" — confirm that entire section is gone.
+    expect(screen.queryByText(/show edges/i)).not.toBeInTheDocument()
   })
 
-  describe('bubble toggle', () => {
-    it('should toggle bunk bubble visibility', () => {
-      const mockToggleBubbles = vi.fn()
+  it('does NOT render a checkbox for the "requests" edge type', () => {
+    render(<EdgeFilters {...baseProps} />)
+    // Previously there was a labelled checkbox for "Requests"
+    expect(screen.queryByRole('checkbox', { name: /requests/i })).not.toBeInTheDocument()
+  })
 
-      mockToggleBubbles()
+  it('does NOT render a checkbox for the "siblings" edge type', () => {
+    render(<EdgeFilters {...baseProps} />)
+    expect(screen.queryByRole('checkbox', { name: /siblings/i })).not.toBeInTheDocument()
+  })
 
-      expect(mockToggleBubbles).toHaveBeenCalled()
-    })
+  it('does NOT render any edge-type checkbox at all', () => {
+    // If somehow new edge types were added as toggleable this would catch them.
+    render(<EdgeFilters {...baseProps} />)
+    // The only checkboxes allowed are bunks/units (tested separately in SocialNetworkGraph)
+    // EdgeFilters itself should render zero checkboxes now.
+    const checkboxes = screen.queryAllByRole('checkbox')
+    expect(checkboxes).toHaveLength(0)
   })
 })
 
-describe('EdgeFilters props interface', () => {
-  it('should define required props', () => {
-    interface EdgeFiltersProps {
-      showEdges: Record<string, boolean>
-      onEdgeFilterChange: (filters: Record<string, boolean>) => void
-      edgeColors: Record<string, string>
-      showBubbles: boolean
-      onToggleBubbles: (show: boolean) => void
-    }
+// ---------------------------------------------------------------------------
+// Regression: getEdgeLabel utility still works
+// ---------------------------------------------------------------------------
 
-    const props: EdgeFiltersProps = {
-      showEdges: {
-        request: true,
-        historical: true,
-        sibling: false,
-        school: true,
-      },
-      onEdgeFilterChange: vi.fn(),
-      edgeColors: {
-        request: '#3498db',
-        historical: '#95a5a6',
-      },
-      showBubbles: false,
-      onToggleBubbles: vi.fn(),
-    }
-
-    expect(props.showEdges['request']).toBe(true)
-    expect(props.showBubbles).toBe(false)
-  })
-})
-
-describe('edge type to label mapping', () => {
-  it('should map all edge types to display labels', () => {
-    function getEdgeLabel(type: string): string {
-      const labels: Record<string, string> = {
-        request: 'Requests',
-        historical: 'Historical',
-        sibling: 'Siblings',
-        school: 'Classmates',
-      }
-      return labels[type] ?? type
-    }
-
+describe('getEdgeLabel utility', () => {
+  it('maps known edge types to display labels', async () => {
+    const { getEdgeLabel } = await import('./EdgeFilters')
     expect(getEdgeLabel('request')).toBe('Requests')
-    expect(getEdgeLabel('historical')).toBe('Historical')
     expect(getEdgeLabel('sibling')).toBe('Siblings')
-    expect(getEdgeLabel('school')).toBe('Classmates')
     expect(getEdgeLabel('unknown')).toBe('unknown')
   })
 })

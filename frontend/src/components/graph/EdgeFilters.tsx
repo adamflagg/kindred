@@ -1,15 +1,20 @@
 /**
- * EdgeFilters component
- * Extracted from SocialNetworkGraph.tsx - handles edge type filtering
+ * EdgeFilters — edge visibility utilities
+ *
+ * The edge-filter UI (checkboxes, "Show edges:" label) has been removed.
+ * Request and sibling edges are now always-on. The bunks/units toggles
+ * have moved to the graph header top row in SocialNetworkGraph.
+ *
+ * This file is retained for the `getEdgeLabel` utility and the
+ * `EdgeFiltersProps` / `showEdges` type surface used by the parent.
  */
 
-import { Filter } from 'lucide-react'
-import { EDGE_COLORS, EDGE_LABELS } from './constants'
+import { EDGE_LABELS } from './constants'
 
 export interface EdgeFiltersProps {
-  /** Current edge visibility state */
+  /** Current edge visibility state (always-on; kept for prop compatibility) */
   showEdges: Record<string, boolean>
-  /** Callback when edge filter changes */
+  /** Callback when edge filter changes (kept for prop compatibility) */
   onEdgeFilterChange: (filters: Record<string, boolean>) => void
   /** Whether bunk bubbles are visible */
   showBubbles: boolean
@@ -29,63 +34,11 @@ export function getEdgeLabel(type: string): string {
   return EDGE_LABELS[type] ?? type
 }
 
-export default function EdgeFilters({
-  showEdges,
-  onEdgeFilterChange,
-  showBubbles,
-  onToggleBubbles,
-  showUnits,
-  onToggleUnits,
-}: EdgeFiltersProps) {
-  const handleEdgeToggle = (type: string, enabled: boolean) => {
-    onEdgeFilterChange({ ...showEdges, [type]: enabled })
-  }
-
-  return (
-    <div className="mt-4 flex items-center gap-4">
-      <span className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Filter className="h-4 w-4" />
-        Show edges:
-      </span>
-
-      {Object.entries(showEdges).map(([type, enabled]) => (
-        <label key={type} className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => handleEdgeToggle(type, e.target.checked)}
-            className="rounded"
-          />
-          <span className="flex items-center gap-1">
-            <span className="h-0.5 w-3" style={{ backgroundColor: EDGE_COLORS[type] }} />
-            {getEdgeLabel(type)}
-          </span>
-        </label>
-      ))}
-
-      {/* Bunk Bubbles Toggle */}
-      <label className="ml-4 flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={showBubbles}
-          onChange={(e) => onToggleBubbles(e.target.checked)}
-          className="rounded"
-        />
-        <span>Bunks</span>
-      </label>
-
-      {/* Unit Grouping Toggle */}
-      {onToggleUnits != null && (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={showUnits ?? false}
-            onChange={(e) => onToggleUnits(e.target.checked)}
-            className="rounded"
-          />
-          <span>Units</span>
-        </label>
-      )}
-    </div>
-  )
+/**
+ * EdgeFilters renders nothing — the filter UI has been removed.
+ * Request and sibling edges are hardcoded visible; bunks/units toggles
+ * live in the graph header top row.
+ */
+export default function EdgeFilters(_props: EdgeFiltersProps) {
+  return null
 }
