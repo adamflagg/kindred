@@ -44,6 +44,7 @@ import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
 import { BunkRequestRow } from './BunkRequestRow'
+import { CamperCohortsSection } from './CamperCohortsSection'
 import {
   getStatusIndicator,
   filterEnrollmentsByStatus,
@@ -880,6 +881,15 @@ export default function CamperDetailsPanel({
       </div>
 
       <div className="space-y-3 px-4">
+        {/* Cohort Rows: "Also from [X]: N campers" — school/congregation/city */}
+        {camper.person_cm_id && camper.session_cm_id > 0 && (
+          <CamperCohortsSection
+            personCmId={camper.person_cm_id}
+            sessionCmId={camper.session_cm_id}
+            year={currentYear}
+          />
+        )}
+
         {/* Bunking Preferences - Compact view */}
         {bunkRequests.length > 0 && (
           <section>
