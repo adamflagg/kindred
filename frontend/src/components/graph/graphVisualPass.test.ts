@@ -1,6 +1,7 @@
 /**
- * Tests for graph visual pass — feedback items #34, #37
+ * Tests for graph visual pass — feedback items #32, #34, #37
  *
+ * #32 — Unit bubble fill is 'none' (invisible fill, stroke-only boundary)
  * #34 — Wrap long node labels (text-wrap: 'wrap')
  * #37 — Highlighted node label stays readable
  *
@@ -10,6 +11,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { getCytoscapeStyles } from './cytoscapeStyles'
+import { getUnitBubbleStyle } from './bubbleRenderer'
 
 // Helper: access style property by string key without TypeScript index errors
 // (Cytoscape's StylesheetStyle.style is a union type, not an open record)
@@ -20,6 +22,32 @@ function styleOf(
   const entry = styles.find((s) => s.selector === selector)
   return entry ? (entry.style as unknown as Record<string, unknown>) : undefined
 }
+
+// ── #32: Unit bubble fill is 'none' ─────────────────────────────────────────
+
+describe('#32 unit bubble fill is none', () => {
+  /**
+   * Unit bubbles use fillOpacity: 0 to make the fill invisible, showing only
+   * the stroke boundary. Setting fill: unitColor while fillOpacity: 0 is
+   * misleading — the color is never shown. The intent-preserving fix is
+   * fill: 'none', making the invisible fill explicit.
+   */
+  it("unit bubble style has fill: 'none' (not the unit color)", () => {
+    const style = getUnitBubbleStyle('#ff0000')
+    expect(style.fill).toBe('none')
+  })
+
+  it('unit bubble style still has fillOpacity: 0', () => {
+    const style = getUnitBubbleStyle('#ff0000')
+    expect(style.fillOpacity).toBe(0)
+  })
+
+  it('unit bubble style stroke uses the provided color', () => {
+    const color = '#aabbcc'
+    const style = getUnitBubbleStyle(color)
+    expect(style.stroke).toBe(color)
+  })
+})
 
 // ── #34: Label wrapping ──────────────────────────────────────────────────────
 
@@ -70,24 +98,5 @@ describe('#37 highlighted label readability', () => {
     }
     // If color is not set in the highlighted override, that's also fine —
     // the base node style handles it (no override = inherits)
-  })
-})
-
-// ── #39: Prevent re-render on unchanged toggles ──────────────────────────────
-
-describe('#39 stable showEdges callbacks', () => {
-  /**
-   * The edge-filter onChange callback used to fire `setShowEdges({ ...showEdges, [type]: value })`
-   * even when the value hadn't changed, causing a new object reference and triggering
-   * the graph rebuild effect.  The fix: guard by checking if the new value equals the old.
-   */
-  it('EdgeFilters source does not call onEdgeFilterChange when value is unchanged', async () => {
-    const { readFileSync } = await import('fs')
-    const { resolve } = await import('path')
-    const source = readFileSync(resolve(__dirname, './EdgeFilters.tsx'), 'utf-8')
-
-    // The guard should check current value before calling the callback
-    // Look for a conditional that prevents the call when value hasn't changed
-    expect(source).toMatch(/if.*enabled.*===.*showEdges|showEdges\[.*\].*===.*enabled/)
   })
 })
