@@ -58,7 +58,7 @@ function makeContext(overrides: Partial<ScenarioContextType>): ScenarioContextTy
     deleteScenario: vi.fn().mockResolvedValue(undefined),
     clearScenario: vi.fn().mockResolvedValue(undefined),
     ...overrides,
-  } as ScenarioContextType
+  }
 }
 
 function renderModal(ctx: ScenarioContextType) {
