@@ -3,7 +3,119 @@
  * Following TDD - tests written first, implementation follows
  */
 
+import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
+
+// ---------------------------------------------------------------------------
+// Mocks for SessionHeader's heavy deps (DOM rendering tests)
+// ---------------------------------------------------------------------------
+vi.mock('../PreValidateRequestsButton', () => ({
+  default: () => <button>Pre-check</button>,
+}))
+vi.mock('../ValidateBunkingButton', () => ({
+  default: () => <button>Validate Bunking</button>,
+}))
+vi.mock('../BunkingLegend', () => ({
+  BunkingLegendButton: () => <button>Legend</button>,
+}))
+vi.mock('../ModeBadge', () => ({
+  default: ({ isProductionMode }: { isProductionMode: boolean }) => (
+    <span>{isProductionMode ? 'Live' : 'Draft'}</span>
+  ),
+}))
+vi.mock('../OptimizeBunksButton', () => ({
+  default: () => <button>Optimize Bunks</button>,
+}))
+vi.mock('../../utils/sessionDisplay', () => ({
+  getFormattedSessionName: () => 'Session 1',
+}))
+vi.mock('../../utils/sessionUtils', () => ({
+  sessionNameToUrl: (n: string) => n.toLowerCase().replace(/\s+/g, '-'),
+  sortSessionsByDate: (s: unknown[]) => s,
+  filterSelectableSessions: (s: unknown[]) => s,
+}))
+
+import SessionHeader from './SessionHeader'
+import type { SessionHeaderProps } from './SessionHeader'
+
+const LONG_SCENARIO_NAME =
+  'copy scenario test to scenario copy scenario very long name that overflows'
+
+import type { Session } from '../../types/app-types'
+
+const mockSession = {
+  id: 's1',
+  cm_id: 1001,
+  name: 'Session 1',
+  session_type: 'main',
+  start_date: '',
+  end_date: '',
+  year: 2026,
+} as unknown as Session
+
+const defaultProps: SessionHeaderProps = {
+  session: mockSession,
+  allSessions: [mockSession],
+  currentYear: 2026,
+  isProductionMode: false,
+  currentScenario: { id: 'sc1', name: LONG_SCENARIO_NAME },
+  scenarios: [{ id: 'sc1', name: LONG_SCENARIO_NAME }],
+  scenarioLoading: false,
+  isSolving: false,
+  isApplyingResults: false,
+  capturedScenarioId: null,
+  onSessionChange: vi.fn(),
+  onRunSolver: vi.fn(),
+  respectLocks: false,
+  onRespectLocksChange: vi.fn(),
+  onShowClearDialog: vi.fn(),
+  onShowNewScenarioModal: vi.fn(),
+  onShowScenarioManagement: vi.fn(),
+  onSelectScenario: vi.fn(),
+  canManage: true,
+}
+
+function renderSessionHeader(overrides: Partial<SessionHeaderProps> = {}) {
+  const props = { ...defaultProps, ...overrides }
+  return render(
+    <MemoryRouter>
+      <SessionHeader {...props} />
+    </MemoryRouter>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// DOM rendering tests — scenario name truncation (feedback item #53)
+// ---------------------------------------------------------------------------
+describe('SessionHeader scenario name truncation', () => {
+  it('scenario dropdown button has a title attribute containing the full scenario name', () => {
+    renderSessionHeader()
+    // The ListboxButton renders as a <button> containing the scenario name text
+    // We find it by its text content
+    const button = screen.getByRole('button', { name: new RegExp(LONG_SCENARIO_NAME.slice(0, 20)) })
+    expect(button).toHaveAttribute('title', LONG_SCENARIO_NAME)
+  })
+
+  it('scenario dropdown button has a max-width class to prevent unbounded growth', () => {
+    renderSessionHeader()
+    const button = screen.getByRole('button', { name: new RegExp(LONG_SCENARIO_NAME.slice(0, 20)) })
+    // Should contain a Tailwind max-w-* class
+    expect(button.className).toMatch(/max-w-/)
+  })
+
+  it('scenario name span has truncate class to clip overflow text with ellipsis', () => {
+    renderSessionHeader()
+    const button = screen.getByRole('button', { name: new RegExp(LONG_SCENARIO_NAME.slice(0, 20)) })
+    // The inner span should carry the truncate utility
+    const nameSpan = button.querySelector('span.truncate')
+    expect(nameSpan).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Logic-only tests (no DOM) — existing coverage
+// ---------------------------------------------------------------------------
 
 // Test the logic that should be in the component
 describe('SessionHeader', () => {
