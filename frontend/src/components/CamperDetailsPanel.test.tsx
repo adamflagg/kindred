@@ -55,6 +55,42 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))
 
+// Mock AuthContext — AllCamperRequestsModal calls useAuth() at module load,
+// even when isOpen=false, so tests need an AuthContext-shaped stub.
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    pb: {},
+    user: { id: 'admin', email: 'test@example.com' },
+    isLoading: false,
+    isAuthenticated: true,
+    isBypassMode: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    error: null,
+    checkAuth: vi.fn().mockResolvedValue(true),
+  }),
+}))
+
+// Mock LockGroupContext — CamperDetailsPanel uses it for alert derivation
+vi.mock('../contexts/LockGroupContext', () => ({
+  useLockGroupContext: () => ({
+    isDraftMode: false,
+    groups: [],
+    pendingCampers: [],
+    addPendingCamper: vi.fn(),
+    removePendingCamper: vi.fn(),
+    getPendingAnimationDelay: () => 0,
+    addCamperToGroup: vi.fn(),
+    getCamperLockGroup: () => null,
+    getCamperLockState: () => 'none' as const,
+    getCamperLockGroupColor: () => undefined,
+    getGroupMembers: () => [],
+    createLockGroup: vi.fn(),
+    deleteLockGroup: vi.fn(),
+    isLoading: false,
+  }),
+}))
+
 // ---------------------------------------------------------------------------
 // Shared fixture data (fictional names per CLAUDE.md)
 // ---------------------------------------------------------------------------

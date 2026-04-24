@@ -50,6 +50,10 @@ import {
   filterEnrollmentsByStatus,
   toDisplayList,
 } from '../utils/enrollmentFilter'
+import { CamperAlertSection } from './CamperAlertSection'
+import type { CamperAlert } from './CamperAlertSection'
+import { AllCamperRequestsModal } from './AllCamperRequestsModal'
+import { useLockGroupContext } from '../contexts/LockGroupContext'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -529,6 +533,12 @@ export default function CamperDetailsPanel({
   // Get age preference request for socializes best with
   const agePreferenceRequest = bunkRequests.find((r) => r.request_type === 'age_preference')
 
+  // Lock group context — used to compute friend-group alert
+  const { getCamperLockState, getCamperLockGroup, getGroupMembers } = useLockGroupContext()
+
+  // State for the manage-all-requests modal (opened from alert row click)
+  const [isAllRequestsModalOpen, setIsAllRequestsModalOpen] = useState(false)
+
   // Lazy-load satisfaction checks - cached per camper for efficient switching
   const { data: satisfactionData = {}, isLoading: satisfactionLoading } = useQuery<SatisfactionMap>(
     {
@@ -802,6 +812,49 @@ export default function CamperDetailsPanel({
       ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
       : null
 
+  // ── Build alert catalog from card-mirrored data ────────────────────────────
+  const buildAlerts = (): CamperAlert[] => {
+    const alerts: CamperAlert[] = []
+
+    // 1. Unsatisfied requests warning (mirrors orange triangle on CamperCard)
+    //    Only relevant when camper is assigned to a bunk.
+    if (camper.assigned_bunk_cm_id) {
+      const totalRequests = bunkRequests.filter(
+        (r) => r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
+      ).length
+      // Count satisfied based on satisfactionData from the panel's own query
+      const satisfiedCount = Object.values(satisfactionData).filter(
+        (r) => r.status === 'satisfied'
+      ).length
+      if (totalRequests > 0 && satisfiedCount === 0) {
+        alerts.push({
+          id: 'unsatisfied-requests',
+          severity: 'yellow',
+          label: `Has ${totalRequests} ${totalRequests === 1 ? 'request' : 'requests'}, none satisfied`,
+          requestRelated: true,
+        })
+      }
+    }
+
+    // 2. Friend group (mirrors lock icon on CamperCard)
+    //    Only shown in draft mode (lockState === 'locked').
+    const lockState = getCamperLockState(camper.person_cm_id)
+    if (lockState === 'locked') {
+      const lockGroup = getCamperLockGroup(camper.person_cm_id)
+      const groupSize = lockGroup ? getGroupMembers(lockGroup.id).length : 0
+      alerts.push({
+        id: 'friend-group',
+        severity: 'blue',
+        label: `In friend group (${groupSize} ${groupSize === 1 ? 'member' : 'members'})`,
+        requestRelated: false,
+      })
+    }
+
+    return alerts
+  }
+
+  const camperAlerts = buildAlerts()
+
   // Render the panel content
   const renderContent = () => (
     <div className={embedded ? 'space-y-3' : 'flex-1 space-y-4 overflow-auto'}>
@@ -881,6 +934,24 @@ export default function CamperDetailsPanel({
       </div>
 
       <div className="space-y-3 px-4">
+        {/* ── Alerts (mirrored from bunking-board camper card) ────────────── */}
+        {camperAlerts.length > 0 && (
+          <CamperAlertSection
+            alerts={camperAlerts}
+            onRequestAlertClick={() => setIsAllRequestsModalOpen(true)}
+          />
+        )}
+
+        {/* AllCamperRequestsModal — opened from request-related alert rows */}
+        <AllCamperRequestsModal
+          isOpen={isAllRequestsModalOpen}
+          onClose={() => setIsAllRequestsModalOpen(false)}
+          requesterCmId={camper.person_cm_id}
+          requesterName={camper.name}
+          year={currentYear}
+          currentRequestId={null}
+        />
+
         {/* Cohort Rows: "Also from [X]: N campers" — school/congregation/city */}
         {camper.person_cm_id && camper.session_cm_id > 0 && (
           <CamperCohortsSection
@@ -890,6 +961,7 @@ export default function CamperDetailsPanel({
             selfDisplayName={camper.preferred_name?.trim() || camper.first_name || 'this camper'}
           />
         )}
+
 
         {/* Bunking Preferences - Compact view */}
         {bunkRequests.length > 0 && (
