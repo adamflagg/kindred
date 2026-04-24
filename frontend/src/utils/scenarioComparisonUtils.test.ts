@@ -323,4 +323,28 @@ describe('diffGroups', () => {
     expect(result.identical).toHaveLength(0)
     expect(result.modified).toHaveLength(0)
   })
+
+  // Finding 5: empty-member group edge case — an empty left group must land in
+  // uniqueL, not be treated as "identical" to an empty right group.
+  it('empty left group lands in uniqueL, not identical', () => {
+    const leftGroups = [grp('lg-empty', 'Placeholder', '#6b7280', [])]
+    const rightGroups = [grp('rg-empty', 'Placeholder', '#6b7280', [])]
+
+    const result = diffGroups(leftGroups, rightGroups)
+    expect(result.uniqueL).toHaveLength(1)
+    expect(result.uniqueL[0]!.id).toBe('lg-empty')
+    expect(result.identical).toHaveLength(0)
+  })
+
+  it('empty left group is uniqueL even when right groups have members', () => {
+    const leftGroups = [grp('lg-empty', 'Empty', '#6b7280', [])]
+    const rightGroups = [grp('rg1', 'Full', '#3b82f6', [1001, 1002])]
+
+    const result = diffGroups(leftGroups, rightGroups)
+    expect(result.uniqueL).toHaveLength(1)
+    expect(result.uniqueL[0]!.id).toBe('lg-empty')
+    expect(result.uniqueR).toHaveLength(1)
+    expect(result.identical).toHaveLength(0)
+    expect(result.modified).toHaveLength(0)
+  })
 })

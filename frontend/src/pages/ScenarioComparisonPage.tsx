@@ -62,7 +62,7 @@ import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
 // uses the color value directly from the fetched LockGroupSummary.color field.
 // Do NOT import from graph modules.
 
-// Expanded member type for locked_group_members with attendee.person_id.
+// Expanded member type for locked_group_members with attendee.person (double-expanded).
 type ExpandedGroupMember = LockedGroupMembersResponse & {
   expand?: {
     attendee?: AttendeesResponse & {
@@ -109,7 +109,10 @@ async function fetchGroupMap(
     summaryById.set(g.id, { id: g.id, name: g.name, color: g.color, memberCmIds: [] })
   }
   for (const m of members) {
-    const personCmId = m.expand?.attendee?.person_id
+    // Use the double-expanded person.cm_id — the expand key is 'attendee,attendee.person',
+    // so cm_id is guaranteed present on the typed expand (unlike person_id which is a
+    // top-level field whose PocketBase serialization is version-specific).
+    const personCmId = m.expand?.attendee?.expand?.person?.cm_id
     const groupSummary = summaryById.get(m.group)
     if (personCmId && groupSummary) {
       groupSummary.memberCmIds.push(personCmId)
@@ -270,7 +273,10 @@ export default function ScenarioComparisonPage() {
           bunk_plan: BunkPlansResponse
         }>
       >({
-        filter: `session.cm_id = ${sessionCmId} && year = ${currentYear}`,
+        filter: pb.filter('session.cm_id = {:sessionCmId} && year = {:year}', {
+          sessionCmId,
+          year: currentYear,
+        }),
         expand: 'person,bunk,bunk_plan',
       })
       return result
@@ -291,7 +297,10 @@ export default function ScenarioComparisonPage() {
           bunk_plan: BunkPlansResponse
         }>
       >({
-        filter: `scenario = "${leftScenarioId}" && year = ${currentYear}`,
+        filter: pb.filter('scenario = {:scenario} && year = {:year}', {
+          scenario: leftScenarioId,
+          year: currentYear,
+        }),
         expand: 'person,bunk,bunk_plan',
       })
       return result
@@ -311,7 +320,10 @@ export default function ScenarioComparisonPage() {
           bunk_plan: BunkPlansResponse
         }>
       >({
-        filter: `scenario = "${rightScenarioId}" && year = ${currentYear}`,
+        filter: pb.filter('scenario = {:scenario} && year = {:year}', {
+          scenario: rightScenarioId,
+          year: currentYear,
+        }),
         expand: 'person,bunk,bunk_plan',
       })
       return result
@@ -326,14 +338,14 @@ export default function ScenarioComparisonPage() {
   // Fetch locked-group → member maps for each scenario.
   // Production has no locked groups (they are scenario-specific draft data).
   const { data: leftGroupMap = new Map<number, LockGroupSummary>() } = useQuery({
-    queryKey: ['compare-locked-groups', leftScenarioId, sessionPbId, currentYear],
+    queryKey: queryKeys.lockedGroups(leftScenarioId, sessionPbId, currentYear),
     queryFn: () => fetchGroupMap(leftScenarioId, sessionPbId, currentYear),
     ...userDataOptions,
     enabled: !!user && leftScenarioId !== 'production' && leftScenarioId !== '' && !!sessionPbId,
   })
 
   const { data: rightGroupMap = new Map<number, LockGroupSummary>() } = useQuery({
-    queryKey: ['compare-locked-groups', rightScenarioId, sessionPbId, currentYear],
+    queryKey: queryKeys.lockedGroups(rightScenarioId, sessionPbId, currentYear),
     queryFn: () => fetchGroupMap(rightScenarioId, sessionPbId, currentYear),
     ...userDataOptions,
     enabled: !!user && rightScenarioId !== 'production' && rightScenarioId !== '' && !!sessionPbId,
@@ -1450,7 +1462,10 @@ function CamperPill({
           'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
     >
-      {/* Friend-group color dot */}
+      {/* Friend-group color dot.
+          Native `title` is intentional — no generic <Tooltip> component exists
+          in this project (only domain-specific variants). Replace if a shared
+          Tooltip primitive is added to frontend/src/components/. */}
       {groupColor && (
         <span
           className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"

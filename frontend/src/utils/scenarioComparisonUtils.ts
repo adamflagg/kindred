@@ -140,6 +140,14 @@ export function diffGroups(
   for (const leftGrp of leftGroups) {
     const leftSet = new Set(leftGrp.memberCmIds)
 
+    // Empty groups can never overlap with anything — treat as unique-left.
+    // This also prevents `overlap === leftSet.size` (0 === 0) from falsely
+    // marking two empty groups as identical.
+    if (leftSet.size === 0) {
+      result.uniqueL.push(leftGrp)
+      continue
+    }
+
     // Find the best matching right group: prefer exact match, then most overlap.
     let bestIdx = -1
     let bestOverlap = 0
