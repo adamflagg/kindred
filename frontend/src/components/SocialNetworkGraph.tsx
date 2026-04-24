@@ -46,8 +46,9 @@ interface SocialNetworkGraphProps {
   sessionCmId: number
 }
 
-// Import worker types
+// Import worker types and lifecycle guards
 import type { LayoutWorkerOutput } from '../workers/layoutWorker'
+import { makeLayoutToken, isStaleLayoutMessage } from '../workers/layoutWorkerGuards'
 
 // Module-level constant: request + sibling edges are always-on (not user-toggleable).
 // Hoisted outside the component so the reference is stable across renders —
@@ -68,6 +69,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   // into a new position shortly after labels appear).
   const hasMountedExpandRef = useRef(false)
   const hasMountedBubblesRef = useRef(false)
+  /** Monotonically-increasing token issued per layout job.
+   *  The worker echoes it back; stale responses (old token ≠ current) are dropped
+   *  before they can call cy.batch() on a destroyed instance. */
+  const layoutTokenRef = useRef<number>(0)
   useYear() // Ensure year context is available
 
   // Create refs object for bubble rendering - memoized to avoid recreation on every render
@@ -226,9 +231,30 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
         const worker = layoutWorkerRef.current
 
+        // Issue a new instance token for this layout job.
+        // The worker echoes it back; if cy has been replaced before the
+        // message arrives, the stale token prevents cy.batch() from running
+        // against a destroyed instance (avoiding the endBatch → null.notify crash).
+        layoutTokenRef.current = makeLayoutToken()
+
         // Handle worker response
-        const handleMessage = (event: MessageEvent<LayoutWorkerOutput>) => {
+        const handleMessage = (
+          event: MessageEvent<LayoutWorkerOutput & { token?: number }>
+        ) => {
           const { type, positions, error } = event.data
+          const messageToken = event.data.token
+
+          // Stale-guard: drop responses for a cy that has been replaced. Without
+          // this, late worker messages call cy.batch() on a destroyed instance
+          // (endBatch → null.notify crash) — see layoutWorkerGuards.ts.
+          if (isStaleLayoutMessage(messageToken, layoutTokenRef.current)) {
+            worker.removeEventListener('message', handleMessage)
+            return
+          }
+          if (cy.destroyed()) {
+            worker.removeEventListener('message', handleMessage)
+            return
+          }
 
           if (type === 'positions' && positions) {
             // Apply positions to visible graph
@@ -252,7 +278,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             onLayoutComplete()
           } else if (type === 'error') {
             console.error('[SocialNetworkGraph] Worker error:', error)
-            // Fallback to main thread layout
             runFallbackLayout()
           }
 
@@ -261,7 +286,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         }
 
         worker.addEventListener('message', handleMessage)
-        worker.postMessage(workerInput)
+        worker.postMessage({ ...workerInput, token: layoutTokenRef.current })
       } catch (error) {
         console.warn('[SocialNetworkGraph] WebWorker failed, using main thread:', error)
         runFallbackLayout()
