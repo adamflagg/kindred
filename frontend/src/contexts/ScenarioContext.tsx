@@ -141,13 +141,8 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     [clearScenarioMutation]
   )
 
-  // Track which session has completed its restore phase.
-  // We store the sessionId (not just a boolean) so the persist effect can check
-  // "has restore run for THIS session?" rather than "has restore ever run?".
-  // This prevents two races:
-  //   1. (Finding 1) On session switch, persist fires before restore — the boolean-only
-  //      guard would be true from the previous session's restore, causing a premature clear.
-  //   2. (Finding 4) Same root cause as Finding 1; covered by the same fix.
+  // Tracks the sessionId whose restore phase has completed; prevents persist effect from
+  // clearing the stored key before restore runs.
   const restoreCompletedForSessionRef = useRef<number | undefined>(undefined)
 
   // Persist current scenario selection to localStorage (per session).
@@ -158,17 +153,13 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
       if (!sessionId) return
 
       if (scenarioId) {
-        // Finding 2 fix: only write if the scenario actually belongs to this session.
-        // When the user switches sessions, currentScenario still holds the previous
-        // session's scenario for one render cycle. Writing it under the new session key
-        // would corrupt that session's stored selection.
+        // Only write if the scenario belongs to this session — on session switch,
+        // currentScenario still holds the previous session's value for one render cycle.
         if (currentScenario && currentScenario.session_cm_id !== sessionId) return
         setStoredScenarioId(sessionId, scenarioId)
       } else if (restoreCompletedForSessionRef.current === sessionId) {
-        // Only clear the key once the restore phase for THIS session is done.
-        // If we're still in the session-switch cycle (restore hasn't run yet for
-        // sessionId), the null is the default React state — not an intentional
-        // "switch to production" action.
+        // Only clear once restore has run for this session; null before that is
+        // default React state, not a user "switch to production" action.
         clearStoredScenarioId(sessionId)
       }
     }
@@ -188,37 +179,33 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     (availableScenarios: Scenario[]): Scenario | null | undefined => {
       const storedScenarioId = currentSessionId ? getStoredScenarioId(currentSessionId) : null
 
-      // If we already have a current scenario, verify it still exists in this session.
       if (currentScenario) {
         const stillExists = availableScenarios.find((s) => s.id === currentScenario.id)
         if (!stillExists) {
-          // Current scenario was deleted or doesn't belong here — try stored fallback.
           if (storedScenarioId) {
             const savedScenario = availableScenarios.find((s) => s.id === storedScenarioId)
             if (savedScenario) {
               return savedScenario
             }
           }
-          // No valid scenario for this session — reset to production mode.
           return null
         }
-        // Current scenario is valid; no change needed.
+        // undefined = no change needed
         return undefined
       }
 
-      // No current scenario yet — attempt to restore from localStorage.
       if (storedScenarioId && availableScenarios.length > 0) {
         const scenario = availableScenarios.find((s) => s.id === storedScenarioId)
         if (scenario) {
           return scenario
         }
-        // Stored id doesn't match any loaded scenario (was deleted) — clear stale key.
+        // Stale key — stored scenario was deleted; clear it.
         if (currentSessionId) {
           clearStoredScenarioId(currentSessionId)
         }
       }
 
-      // No restoration possible; stay in production mode.
+      // undefined = no change needed
       return undefined
     }
   )

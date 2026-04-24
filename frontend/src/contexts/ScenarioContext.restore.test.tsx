@@ -267,22 +267,9 @@ describe('ScenarioContext — last-active-scenario restore', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Finding 1 (critical) + Finding 4 (high): race condition — persist effect
-  // clears localStorage before restore effect can read it.
-  //
-  // Sequence that triggers the bug on the original code:
-  //   1. Initial mount with currentSessionId=undefined → useSavedScenarios returns []
-  //      → Effect 2 (restore) fires, sets restoreCompletedRef.current=true
-  //   2. loadScenarios(1001) → currentSessionId=1001
-  //   3. useSavedScenarios(1001) first returns [] (loading phase)
-  //      → Effect 1 (persist) fires: currentScenario=null, restoreCompletedRef.current=true
-  //        → clearStoredScenarioId(1001) is called — key is WIPED before restore reads it
-  //   4. Scenarios arrive → restore fires but key is already gone → stays production mode
-  //
-  // The fix tracks which session completed restore (restoreCompletedForSessionRef stores
-  // the sessionId, not a boolean). Persist only clears when
-  // restoreCompletedForSessionRef.current === sessionId, so a prior session's restore
-  // completion cannot unlock the new session's clear.
+  // Finding 1 (critical): race condition — persist clears localStorage before
+  // restore runs. Fixed by tracking per-session restore completion (sessionId,
+  // not boolean) so a prior session's restore can't unlock the new session's clear.
   // ---------------------------------------------------------------------------
   it('does not clear localStorage before restore runs (async useSavedScenarios path)', async () => {
     // User had scenario-alpha active for session 1001 on last visit
@@ -337,8 +324,7 @@ describe('ScenarioContext — last-active-scenario restore', () => {
       error: null,
     })
 
-    // Load another session ID and back to force a state-change re-render that
-    // picks up the new mockSavedScenarios return value.
+    // Bounce through session 1002 → 1001 to force a re-render with the new mock data.
     await act(async () => {
       screen.getByText('Load session 1002').click()
     })
@@ -388,27 +374,7 @@ describe('ScenarioContext — last-active-scenario restore', () => {
       return { data: [scenarioAlpha], isLoading: false, error: null }
     })
 
-    const TestConsumer = () => {
-      const { currentScenario, isProductionMode, loadScenarios } = useScenario()
-      return (
-        <div>
-          <div data-testid="scenario-id">{currentScenario?.id ?? 'none'}</div>
-          <div data-testid="production-mode">{isProductionMode ? 'production' : 'scenario'}</div>
-          <button onClick={() => void loadScenarios(1001)}>Load session 1001</button>
-          <button onClick={() => void loadScenarios(1002)}>Load session 1002</button>
-        </div>
-      )
-    }
-
-    function TestWrapper({ children }: { children: ReactNode }) {
-      return (
-        <QueryClientProvider client={createQueryClient()}>
-          <ScenarioProvider>{children}</ScenarioProvider>
-        </QueryClientProvider>
-      )
-    }
-
-    render(<TestConsumer />, { wrapper: TestWrapper })
+    render(<ScenarioConsumer />, { wrapper: Wrapper })
 
     // Step 1: load session 1001 and wait for scenario-alpha to be restored
     await act(async () => {

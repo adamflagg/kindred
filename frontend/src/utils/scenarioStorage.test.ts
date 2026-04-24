@@ -4,7 +4,7 @@
  * Covers scoreboard item #49: bunking board should restore the last active scenario
  * on refresh/mount instead of defaulting to CampMinder source-of-truth.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   getStoredScenarioId,
   setStoredScenarioId,
@@ -12,7 +12,8 @@ import {
   SCENARIO_STORAGE_KEY,
 } from './scenarioStorage'
 
-// Use a real in-memory localStorage so read/write/clear actually work.
+// The global test setup stubs localStorage with non-functional vi.fn()s.
+// Override with a real in-memory implementation so read/write/clear actually work.
 function makeLocalStorageMock() {
   let store: Record<string, string> = {}
   return {
@@ -35,6 +36,10 @@ describe('scenarioStorage', () => {
   beforeEach(() => {
     const mock = makeLocalStorageMock()
     Object.defineProperty(window, 'localStorage', { value: mock, writable: true })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   describe('getStoredScenarioId', () => {
@@ -114,20 +119,17 @@ describe('scenarioStorage', () => {
     // Finding 3: write-side error handling — clearStoredScenarioId must not throw
     it('does not throw when localStorage.setItem throws SecurityError', () => {
       localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify({ '1001': 'scenario-abc' }))
-      const originalSetItem = localStorage.setItem.bind(localStorage)
-      localStorage.setItem = vi.fn(() => {
+      vi.spyOn(localStorage, 'setItem').mockImplementationOnce(() => {
         throw new DOMException('SecurityError', 'SecurityError')
       })
       expect(() => clearStoredScenarioId(1001)).not.toThrow()
-      // Restore
-      localStorage.setItem = originalSetItem
     })
   })
 
   // Finding 3: write-side error handling for setStoredScenarioId
   describe('setStoredScenarioId — error handling', () => {
     it('does not throw when localStorage.setItem throws QuotaExceededError', () => {
-      localStorage.setItem = vi.fn(() => {
+      vi.spyOn(localStorage, 'setItem').mockImplementationOnce(() => {
         const err = new DOMException('QuotaExceededError')
         Object.defineProperty(err, 'name', { value: 'QuotaExceededError' })
         throw err
@@ -136,7 +138,7 @@ describe('scenarioStorage', () => {
     })
 
     it('does not throw when localStorage.setItem throws SecurityError', () => {
-      localStorage.setItem = vi.fn(() => {
+      vi.spyOn(localStorage, 'setItem').mockImplementationOnce(() => {
         throw new DOMException('SecurityError', 'SecurityError')
       })
       expect(() => setStoredScenarioId(1001, 'scenario-abc')).not.toThrow()

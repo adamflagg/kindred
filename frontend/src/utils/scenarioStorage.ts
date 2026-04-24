@@ -1,14 +1,4 @@
-/**
- * localStorage helpers for last-active-scenario persistence.
- *
- * Stores scenario selections per session so:
- *  - switching sessions doesn't lose your choice for another session
- *  - refreshing the page restores the last selected scenario
- *
- * Storage format: { [sessionCmId: string]: scenarioId }
- * Key: SCENARIO_STORAGE_KEY
- */
-
+// Storage format: { [sessionCmId]: scenarioId }
 export const SCENARIO_STORAGE_KEY = 'kindred.scenarioBySession'
 
 function readStore(): Record<string, string> {
@@ -20,41 +10,31 @@ function readStore(): Record<string, string> {
   }
 }
 
-/**
- * Returns the stored scenario id for the given session, or null if none.
- */
+function writeStore(store: Record<string, string>): void {
+  try {
+    localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
+  } catch {
+    // Swallow storage errors (QuotaExceededError, SecurityError, etc.).
+    // Persistence is best-effort; the app continues without it.
+  }
+}
+
 export function getStoredScenarioId(sessionCmId: number): string | null {
   if (!sessionCmId) return null
   const store = readStore()
   return store[String(sessionCmId)] ?? null
 }
 
-/**
- * Persists the selected scenario id for the given session.
- */
 export function setStoredScenarioId(sessionCmId: number, scenarioId: string): void {
   if (!sessionCmId) return
   const store = readStore()
   store[String(sessionCmId)] = scenarioId
-  try {
-    localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
-  } catch {
-    // Swallow storage errors (QuotaExceededError, SecurityError, etc.).
-    // Persistence is best-effort; the app continues without it.
-  }
+  writeStore(store)
 }
 
-/**
- * Removes the stored scenario id for the given session (user switched to production mode).
- */
 export function clearStoredScenarioId(sessionCmId: number): void {
   if (!sessionCmId) return
   const store = readStore()
   Reflect.deleteProperty(store, String(sessionCmId))
-  try {
-    localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(store))
-  } catch {
-    // Swallow storage errors (QuotaExceededError, SecurityError, etc.).
-    // Persistence is best-effort; the app continues without it.
-  }
+  writeStore(store)
 }
