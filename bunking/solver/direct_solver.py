@@ -98,6 +98,8 @@ class DirectBunkingSolver:
 
         # Track soft constraint violations for penalty-based optimization
         self.soft_constraint_violations: dict[str, tuple[cp_model.IntVar, int]] = {}
+        # Track soft constraint bonuses (rewards for good configurations)
+        self.soft_constraint_bonuses: dict[str, tuple[cp_model.IntVar, int]] = {}
 
         # Limit debug logging for pair reduction (only first 5 pairs)
         self._pair_reduction_logged = 0
@@ -139,6 +141,7 @@ class DirectBunkingSolver:
             constraint_logger=self.constraint_logger,
             debug_constraints=self.debug_constraints,
             soft_constraint_violations=self.soft_constraint_violations,
+            soft_constraint_bonuses=self.soft_constraint_bonuses,
         )
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
@@ -569,6 +572,10 @@ class DirectBunkingSolver:
         # Subtract penalties for soft constraint violations
         for violation_var, penalty in self.soft_constraint_violations.values():
             objective_terms.append(-penalty * violation_var)
+
+        # Add bonuses for soft constraint rewards (e.g., preferred age spread)
+        for bonus_var, bonus in self.soft_constraint_bonuses.values():
+            objective_terms.append(bonus * bonus_var)
 
         # Maximize objective
         self.model.Maximize(sum(objective_terms))

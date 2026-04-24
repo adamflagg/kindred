@@ -70,6 +70,21 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         description="Penalty for age spread violations",
         min_value=0,
     ),
+    "constraint.age_spread.preferred_months": ConfigKey(
+        key="constraint.age_spread.preferred_months",
+        config_type=ConfigType.INT,
+        required=True,
+        description="Preferred age spread in months — cabins at or below this spread earn a bonus (0 = disabled)",
+        min_value=0,
+        max_value=60,
+    ),
+    "constraint.age_spread.preferred_bonus": ConfigKey(
+        key="constraint.age_spread.preferred_bonus",
+        config_type=ConfigType.INT,
+        required=True,
+        description="Bonus weight for cabins whose age spread is within the preferred threshold",
+        min_value=0,
+    ),
     # =========================================================================
     # SOLVER CONSTRAINTS - Must Satisfy One
     # =========================================================================

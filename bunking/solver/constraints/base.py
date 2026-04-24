@@ -64,6 +64,9 @@ class SolverContext:
 
     # Soft constraint tracking
     soft_constraint_violations: dict[str, Any] = field(default_factory=dict)
+    # Soft constraint bonuses (inverse of violations — reward good configurations)
+    # Keys map to (BoolVar, weight) where BoolVar=1 means bonus earned
+    soft_constraint_bonuses: dict[str, Any] = field(default_factory=dict)
 
     def is_constraint_disabled(self, constraint_name: str) -> bool:
         """Check if a constraint is disabled in debug mode."""
