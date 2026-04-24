@@ -2,7 +2,7 @@
  * Tests for scenario comparison page helpers.
  *
  * Covers:
- * - sortCampersByName: alphabetical sort (last name, then first name), locale-aware
+ * - sortCampersByName: alphabetical sort (first name, then last name), locale-aware
  * - getAvailableBunkAreas: derives which area-filter buttons to show based on bunk genders
  */
 
@@ -16,15 +16,15 @@ import {
 } from './scenarioComparisonUtils'
 
 describe('compareCamperByName', () => {
-  it('sorts by last name first', () => {
-    const a: SortableCamper = { firstName: 'Zed', lastName: 'Adams' }
-    const b: SortableCamper = { firstName: 'Ada', lastName: 'Zimmerman' }
+  it('sorts by first name first', () => {
+    const a: SortableCamper = { firstName: 'Ada', lastName: 'Zimmerman' }
+    const b: SortableCamper = { firstName: 'Zed', lastName: 'Adams' }
     expect(compareCamperByName(a, b)).toBeLessThan(0)
     expect(compareCamperByName(b, a)).toBeGreaterThan(0)
   })
 
-  it('breaks ties by first name', () => {
-    const a: SortableCamper = { firstName: 'Adam', lastName: 'Johnson' }
+  it('breaks ties by last name', () => {
+    const a: SortableCamper = { firstName: 'Emma', lastName: 'Chen' }
     const b: SortableCamper = { firstName: 'Emma', lastName: 'Johnson' }
     expect(compareCamperByName(a, b)).toBeLessThan(0)
     expect(compareCamperByName(b, a)).toBeGreaterThan(0)
@@ -54,7 +54,7 @@ describe('compareCamperByName', () => {
 })
 
 describe('sortCampersByName', () => {
-  it('sorts campers alphabetically by last name then first name', () => {
+  it('sorts campers alphabetically by first name then last name', () => {
     const campers: SortableCamper[] = [
       { firstName: 'Liam', lastName: 'Garcia' },
       { firstName: 'Emma', lastName: 'Johnson' },
@@ -63,10 +63,10 @@ describe('sortCampersByName', () => {
     ]
     const sorted = sortCampersByName(campers)
     expect(sorted.map((c) => `${c.firstName} ${c.lastName}`)).toEqual([
-      'Olivia Chen',
-      'Liam Garcia',
       'Adam Johnson',
       'Emma Johnson',
+      'Liam Garcia',
+      'Olivia Chen',
     ])
   })
 
@@ -105,17 +105,18 @@ describe('sortCampersByName', () => {
       { firstName: 'Emma', lastName: 'Johnson', personCmId: 1, bunkName: 'G-Oak' },
     ]
     const sorted = sortCampersByName(campers)
+    // First-name primary: Emma (E) sorts before Liam (L)
     expect(sorted[0]).toEqual({
-      firstName: 'Liam',
-      lastName: 'Garcia',
-      personCmId: 2,
-      bunkName: 'B-Cedar',
-    })
-    expect(sorted[1]).toEqual({
       firstName: 'Emma',
       lastName: 'Johnson',
       personCmId: 1,
       bunkName: 'G-Oak',
+    })
+    expect(sorted[1]).toEqual({
+      firstName: 'Liam',
+      lastName: 'Garcia',
+      personCmId: 2,
+      bunkName: 'B-Cedar',
     })
   })
 

@@ -20,20 +20,20 @@ export interface BunkWithGender {
 export type BunkArea = 'all' | 'boys' | 'girls' | 'ag'
 
 /**
- * Compare two campers by name (last name, then first name).
+ * Compare two campers by name (first name, then last name).
  * Locale-aware and case-insensitive. Returns negative / 0 / positive,
  * suitable for use directly as an Array.sort comparator.
  */
 export function compareCamperByName(a: SortableCamper, b: SortableCamper): number {
-  const lastCmp = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
-  if (lastCmp !== 0) return lastCmp
-  return a.firstName.localeCompare(b.firstName, undefined, { sensitivity: 'base' })
+  const firstCmp = a.firstName.localeCompare(b.firstName, undefined, { sensitivity: 'base' })
+  if (firstCmp !== 0) return firstCmp
+  return a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
 }
 
 /**
- * Sort campers alphabetically by last name, then first name.
- * Locale-aware and case-insensitive — matches the convention used elsewhere
- * in the app (see DrillDownModal, ManualResolutionModal).
+ * Sort campers alphabetically by first name, then last name.
+ * Locale-aware and case-insensitive — staff scan by first name when
+ * reconciling cabin rosters.
  *
  * Returns a new array; does not mutate the input.
  */
