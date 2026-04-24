@@ -93,7 +93,6 @@ interface BunkComparison {
   rightCampers: CamperAssignment[]
   movedIn: Array<{ camper: CamperAssignment; fromBunk: string }>
   movedOut: Array<{ camper: CamperAssignment; toBunk: string }>
-  unchanged: CamperAssignment[]
 }
 
 // Validation score types
@@ -492,7 +491,6 @@ export default function ScenarioComparisonPage() {
         rightCampers: sortCampersByName(rightCampers),
         movedIn,
         movedOut,
-        unchanged: rightCampers.filter((c) => leftPersonIds.has(c.personCmId)),
       }
     })
   }, [filteredBunks, leftAssignments, rightAssignments])
