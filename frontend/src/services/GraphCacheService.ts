@@ -15,11 +15,8 @@ interface CacheMetrics {
 }
 
 type GraphCacheKey =
-  | `session-${number}`
-  | `session-${number}-${number}`
   | `session-${number}-${number}-prod`
   | `session-${number}-${number}-scenario-${string}`
-  | `bunk-${number}-${number}`
   | `bunk-${number}-${number}-${number}-prod`
   | `bunk-${number}-${number}-${number}-scenario-${string}`
 
@@ -53,7 +50,7 @@ export class GraphCacheService {
    * `GraphCacheManager._scenario_slug` on the Python side so the two caches
    * stay aligned.
    */
-  private scenarioSlug(scenarioId?: string | null): string {
+  private scenarioSlug(scenarioId?: string | null): 'prod' | `scenario-${string}` {
     return scenarioId ? `scenario-${scenarioId}` : 'prod'
   }
 
@@ -67,17 +64,10 @@ export class GraphCacheService {
   async getSessionGraph(
     sessionCmId: number,
     fetcher: () => Promise<GraphData>,
-    year?: number,
+    year: number,
     scenarioId?: string | null
   ): Promise<GraphData> {
-    let key: GraphCacheKey
-    if (year !== undefined) {
-      key = `session-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}` as GraphCacheKey
-    } else {
-      // Legacy callers without a year: keep the original key so existing
-      // cached entries and invalidation prefix matching still work.
-      key = `session-${sessionCmId}`
-    }
+    const key: GraphCacheKey = `session-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}`
     return this.getOrFetch(key, fetcher)
   }
 
@@ -87,25 +77,16 @@ export class GraphCacheService {
    * The cache key is scoped by scenario so a scenario-sourced bunk graph
    * never collides with the production (CampMinder) bunk graph for the same
    * bunk+session+year. When `scenarioId` is null/undefined the prod slot is
-   * used. Legacy callers that omit `year` continue to use the original
-   * `bunk-{bunkId}-{sessionCmId}` key for backwards compatibility.
+   * used.
    */
   async getBunkGraph(
     bunkCmId: number,
     sessionCmId: number,
     fetcher: () => Promise<GraphData>,
-    year?: number,
+    year: number,
     scenarioId?: string | null
   ): Promise<GraphData> {
-    let key: GraphCacheKey
-    if (year !== undefined) {
-      key =
-        `bunk-${bunkCmId}-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}` as GraphCacheKey
-    } else {
-      // Legacy callers without a year: keep the original key so existing
-      // cached entries and invalidation suffix matching still work.
-      key = `bunk-${bunkCmId}-${sessionCmId}`
-    }
+    const key: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}`
     return this.getOrFetch(key, fetcher)
   }
 
@@ -114,26 +95,15 @@ export class GraphCacheService {
    */
   invalidate(sessionCmId: number): void {
     // Remove all session and bunk graphs for this session.
-    // Session entries may be keyed as `session-{id}`, `session-{id}-{year}`,
-    // `session-{id}-{year}-prod`, or `session-{id}-{year}-scenario-{id}`.
-    // Bunk entries may be keyed as `bunk-{bunkId}-{sessionCmId}` (legacy) or
-    // `bunk-{bunkId}-{sessionCmId}-{year}-{slug}` (scenario-aware).
-    const sessionPrefix = `session-${sessionCmId}`
-    const legacyBunkSuffix = `-${sessionCmId}`
+    // Session entries: `session-{id}-{year}-prod` or `session-{id}-{year}-scenario-{id}`.
+    // Bunk entries: `bunk-{bunkId}-{sessionCmId}-{year}-{slug}`.
+    const sessionPrefix = `session-${sessionCmId}-`
 
     for (const key of this.cache.keys()) {
-      if (key === sessionPrefix || key.startsWith(`${sessionPrefix}-`)) {
-        // Matches session-{id}, session-{id}-{year}, and scenario-suffixed forms
+      if (key.startsWith(sessionPrefix)) {
         this.removeEntry(key)
       } else if (key.startsWith('bunk-')) {
-        if (key.endsWith(legacyBunkSuffix)) {
-          // Legacy bunk-{bunkId}-{sessionCmId}
-          this.removeEntry(key)
-          continue
-        }
-        // Scenario-aware bunk-{bunkId}-{sessionCmId}-{year}-{slug}:
-        // parse the session segment by position so we don't match the
-        // sessionCmId accidentally appearing inside the bunkId.
+        // bunk-{bunkId}-{sessionCmId}-{year}-{slug}: match sessionCmId by position
         const segments = key.split('-')
         // segments = ['bunk', bunkId, sessionCmId, year, ...slug]
         if (segments.length >= 5 && segments[2] === String(sessionCmId)) {
@@ -151,13 +121,10 @@ export class GraphCacheService {
    * Invalidate cached data for a specific bunk
    */
   invalidateBunk(bunkCmId: number, sessionCmId: number): void {
-    // Remove legacy key and any scenario-aware keys for this bunk+session.
-    const legacyKey: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}`
-    this.removeEntry(legacyKey)
-
-    const scenarioPrefix = `bunk-${bunkCmId}-${sessionCmId}-`
+    // Remove all scenario-aware keys for this bunk+session.
+    const bunkPrefix = `bunk-${bunkCmId}-${sessionCmId}-`
     for (const key of this.cache.keys()) {
-      if (key.startsWith(scenarioPrefix)) {
+      if (key.startsWith(bunkPrefix)) {
         this.removeEntry(key)
       }
     }

@@ -215,9 +215,19 @@ export default function SessionView() {
     if (!isNaN(sessionCmId)) {
       // Pre-fetch the session graph in the background
       graphCacheService
-        .getSessionGraph(sessionCmId, async () => {
-          return socialGraphService.getSessionSocialGraph(sessionCmId, currentYear, fetchWithAuth)
-        })
+        .getSessionGraph(
+          sessionCmId,
+          async () => {
+            return socialGraphService.getSessionSocialGraph(
+              sessionCmId,
+              currentYear,
+              fetchWithAuth,
+              currentScenario?.id ?? null
+            )
+          },
+          currentYear,
+          currentScenario?.id ?? null
+        )
         .catch((error) => {
           // Only log actual errors, not empty graphs
           if (!error.message?.includes('no social graph data')) {
@@ -225,7 +235,7 @@ export default function SessionView() {
           }
         })
     }
-  }, [authLoading, selectedSession, currentYear, bunkRequestsCount, fetchWithAuth])
+  }, [authLoading, selectedSession, currentYear, bunkRequestsCount, fetchWithAuth, currentScenario])
 
   // Handle clear dialog close after successful clear
   const onClearAssignments = async () => {
