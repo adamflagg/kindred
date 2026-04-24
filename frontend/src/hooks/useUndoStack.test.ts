@@ -86,6 +86,24 @@ describe('useUndoStack', () => {
       expect(result.current.peek()?.label).toBe('Action 4')
     })
 
+    it('deduplicates by id — pushing same id twice yields stack length 1 with latest entry', () => {
+      const { result } = renderHook(() => useUndoStack())
+      const inv1 = vi.fn().mockResolvedValue(undefined)
+      const inv2 = vi.fn().mockResolvedValue(undefined)
+
+      act(() => {
+        result.current.push({ id: 'req-a', label: 'First push for req-a', inverse: inv1 })
+      })
+      act(() => {
+        result.current.push({ id: 'req-a', label: 'Second push for req-a', inverse: inv2 })
+      })
+
+      // Only one entry — the second replaces the first
+      expect(result.current.stackSize).toBe(1)
+      expect(result.current.peek()?.label).toBe('Second push for req-a')
+      expect(result.current.peek()?.inverse).toBe(inv2)
+    })
+
     it('peek() returns the top (most recent) entry without modifying the stack', () => {
       const { result } = renderHook(() => useUndoStack())
       const inverse = vi.fn().mockResolvedValue(undefined)

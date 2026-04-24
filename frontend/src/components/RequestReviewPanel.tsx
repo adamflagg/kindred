@@ -573,12 +573,21 @@ export default function RequestReviewPanel({
 
   // Mutations
   const updateRequestMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<BunkRequestsResponse> }) => {
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string
+      updates: Partial<BunkRequestsResponse>
+      suppressToast?: boolean
+    }) => {
       return pb.collection('bunk_requests').update(id, updates)
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      toast.success('Request updated')
+      if (!variables.suppressToast) {
+        toast.success('Request updated')
+      }
     },
     onError: () => {
       toast.error('Failed to update request')
@@ -618,7 +627,11 @@ export default function RequestReviewPanel({
       : `#${req?.requester_id ?? id}`
 
     updateRequestMutation.mutate(
-      { id, updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true } },
+      {
+        id,
+        updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
+        suppressToast: true,
+      },
       {
         onSuccess: () => {
           undoStack.push({
@@ -649,7 +662,11 @@ export default function RequestReviewPanel({
       : `#${req?.requester_id ?? id}`
 
     updateRequestMutation.mutate(
-      { id, updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false } },
+      {
+        id,
+        updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
+        suppressToast: true,
+      },
       {
         onSuccess: () => {
           undoStack.push({
@@ -943,7 +960,8 @@ export default function RequestReviewPanel({
                     }
                   )
                 }}
-                className="btn-secondary flex touch-manipulation items-center gap-1.5 px-3 py-2 text-sm"
+                disabled={updateRequestMutation.isPending}
+                className="btn-secondary flex touch-manipulation items-center gap-1.5 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 title={undoStack.peek()?.label ?? 'Undo last action'}
                 aria-label={`Undo (${undoStack.stackSize})`}
               >

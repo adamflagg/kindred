@@ -1434,6 +1434,63 @@ describe('RequestReviewPanel', () => {
       )
     }, 15000)
 
+    it('keeps the entry on the stack when the inverse mutation fails (retry possible)', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-fail',
+        requester_id: 330,
+        requestee_id: 331,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.85,
+        priority: 1,
+        request_locked: false,
+      })
+
+      // Approve succeeds; first undo attempt fails; second attempt succeeds.
+      updateSpy
+        .mockResolvedValueOnce({}) // approve
+        .mockRejectedValueOnce(new Error('network')) // first undo attempt
+        .mockResolvedValue({}) // retry
+
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      // Wait for approve to complete and Undo button to appear
+      await waitFor(
+        () => {
+          expect(updateSpy).toHaveBeenCalledTimes(1)
+        },
+        { timeout: 5000 }
+      )
+
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+
+      // First undo attempt — inverse mutation rejects
+      await user.click(undoBtn)
+
+      // After failure, entry is re-pushed: Undo button should still show depth ≥ 1
+      await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          // Should still show count 1 (re-pushed after failure)
+          expect(btn!.textContent).toMatch(/1/)
+        },
+        { timeout: 5000 }
+      )
+    }, 20000)
+
     it('clicking Undo after decline restores status to pending', async () => {
       const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-undo-3',

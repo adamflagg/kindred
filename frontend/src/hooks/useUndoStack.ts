@@ -42,14 +42,14 @@ const MAX_STACK_SIZE = 3
 
 export function useUndoStack(): UseUndoStackResult {
   const [stack, setStack] = useState<UndoEntry[]>([])
-  // Expose an imperative ref so pop() can synchronously read + mutate.
-  const stackRef = { current: stack }
-  stackRef.current = stack
 
   const push = useCallback((entry: UndoEntry) => {
     setStack((prev) => {
-      // Append new entry; if over capacity, drop the oldest (index 0).
-      const next = [...prev, entry]
+      // Dedup by id: if an entry with the same id exists, replace it.
+      // This ensures repeated actions on the same request produce one stack entry.
+      const deduped = prev.filter((e) => e.id !== entry.id)
+      const next = [...deduped, entry]
+      // If over capacity, drop the oldest (index 0).
       if (next.length > MAX_STACK_SIZE) {
         return next.slice(next.length - MAX_STACK_SIZE)
       }
@@ -58,12 +58,10 @@ export function useUndoStack(): UseUndoStackResult {
   }, [])
 
   const pop = useCallback((): UndoEntry | undefined => {
-    const current = stackRef.current
-    if (current.length === 0) return undefined
-    const popped = current[current.length - 1]
-    setStack(current.slice(0, current.length - 1))
+    if (stack.length === 0) return undefined
+    const popped = stack[stack.length - 1]
+    setStack(stack.slice(0, stack.length - 1))
     return popped
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stack])
 
   const peek = useCallback((): UndoEntry | undefined => {
