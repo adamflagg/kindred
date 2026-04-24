@@ -129,10 +129,8 @@ export function diffGroups(
     modified: [],
   }
 
-  if (leftGroups.length === 0 && rightGroups.length === 0) return result
-
   // Build a set of CM IDs for each right group (for O(1) membership tests).
-  const rightSets = rightGroups.map((g) => new Set(g.memberCmIds))
+  const rightSets: Array<Set<number>> = rightGroups.map((g) => new Set(g.memberCmIds))
 
   // Track which right groups have been claimed by a left group.
   const rightClaimed = new Set<number>()
@@ -153,11 +151,9 @@ export function diffGroups(
     let bestOverlap = 0
     let bestIsExact = false
 
-    for (let i = 0; i < rightGroups.length; i++) {
+    for (const [i, rSet] of rightSets.entries()) {
       if (rightClaimed.has(i)) continue
 
-      const rSet = rightSets[i]
-      if (!rSet) continue
       // Count intersection
       let overlap = 0
       for (const id of leftSet) {
@@ -178,8 +174,9 @@ export function diffGroups(
       // No right group shares any member — unique to left.
       result.uniqueL.push(leftGrp)
     } else {
-      const rightGrp = rightGroups[bestIdx]
-      if (!rightGrp) continue
+      // bestIdx is always a valid index: it was set from rightSets.entries().
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const rightGrp = rightGroups[bestIdx]!
       if (bestIsExact) {
         result.identical.push({ left: leftGrp, right: rightGrp })
       } else {
@@ -190,10 +187,9 @@ export function diffGroups(
   }
 
   // Any unclaimed right groups are unique to right.
-  for (let i = 0; i < rightGroups.length; i++) {
+  for (const [i, rightGrp] of rightGroups.entries()) {
     if (!rightClaimed.has(i)) {
-      const rightGrp = rightGroups[i]
-      if (rightGrp) result.uniqueR.push(rightGrp)
+      result.uniqueR.push(rightGrp)
     }
   }
 

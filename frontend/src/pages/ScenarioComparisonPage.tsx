@@ -56,12 +56,6 @@ import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
 
-// Group color palette mirrors LockGroupPanel.tsx GROUP_COLORS (bunking-board palette).
-// Colors are stored in the DB (locked_groups.color) and retrieved via API queries;
-// this array is retained here only for documentation purposes — actual rendering
-// uses the color value directly from the fetched LockGroupSummary.color field.
-// Do NOT import from graph modules.
-
 // Expanded member type for locked_group_members with attendee.person (double-expanded).
 type ExpandedGroupMember = LockedGroupMembersResponse & {
   expand?: {
@@ -128,6 +122,11 @@ async function fetchGroupMap(
   }
 
   return personToGroup
+}
+
+/** Deduplicate LockGroupSummary values from a Map by group id. */
+function uniqueById(map: Map<number, LockGroupSummary>): LockGroupSummary[] {
+  return Array.from(new Map(Array.from(map.values()).map((g) => [g.id, g])).values())
 }
 
 // Types for comparison
@@ -200,6 +199,21 @@ interface ValidationResult {
 
 type ViewMode = 'split' | 'changes'
 type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
+
+function useGroupMap(
+  scenarioId: string,
+  sessionPbId: string,
+  currentYear: number,
+  user: ReturnType<typeof useAuth>['user']
+) {
+  const { data: groupMap = new Map<number, LockGroupSummary>() } = useQuery({
+    queryKey: queryKeys.lockedGroups(scenarioId, sessionPbId, currentYear),
+    queryFn: () => fetchGroupMap(scenarioId, sessionPbId, currentYear),
+    ...userDataOptions,
+    enabled: !!user && scenarioId !== 'production' && scenarioId !== '' && !!sessionPbId,
+  })
+  return groupMap
+}
 
 export default function ScenarioComparisonPage() {
   const { sessionId: sessionUrlSegment } = useParams<{ sessionId: string }>()
@@ -337,19 +351,8 @@ export default function ScenarioComparisonPage() {
 
   // Fetch locked-group → member maps for each scenario.
   // Production has no locked groups (they are scenario-specific draft data).
-  const { data: leftGroupMap = new Map<number, LockGroupSummary>() } = useQuery({
-    queryKey: queryKeys.lockedGroups(leftScenarioId, sessionPbId, currentYear),
-    queryFn: () => fetchGroupMap(leftScenarioId, sessionPbId, currentYear),
-    ...userDataOptions,
-    enabled: !!user && leftScenarioId !== 'production' && leftScenarioId !== '' && !!sessionPbId,
-  })
-
-  const { data: rightGroupMap = new Map<number, LockGroupSummary>() } = useQuery({
-    queryKey: queryKeys.lockedGroups(rightScenarioId, sessionPbId, currentYear),
-    queryFn: () => fetchGroupMap(rightScenarioId, sessionPbId, currentYear),
-    ...userDataOptions,
-    enabled: !!user && rightScenarioId !== 'production' && rightScenarioId !== '' && !!sessionPbId,
-  })
+  const leftGroupMap = useGroupMap(leftScenarioId, sessionPbId, currentYear, user)
+  const rightGroupMap = useGroupMap(rightScenarioId, sessionPbId, currentYear, user)
 
   // Fetch validation scores for both scenarios
   const isReady =
@@ -610,15 +613,10 @@ export default function ScenarioComparisonPage() {
 
   // Build group-diff summary for the header chip.
   // Collect unique LockGroupSummary objects from each side's group map.
-  const groupDiff = useMemo(() => {
-    const leftGroups = Array.from(
-      new Map(Array.from(leftGroupMap.values()).map((g) => [g.id, g])).values()
-    )
-    const rightGroups = Array.from(
-      new Map(Array.from(rightGroupMap.values()).map((g) => [g.id, g])).values()
-    )
-    return diffGroups(leftGroups, rightGroups)
-  }, [leftGroupMap, rightGroupMap])
+  const groupDiff = useMemo(
+    () => diffGroups(uniqueById(leftGroupMap), uniqueById(rightGroupMap)),
+    [leftGroupMap, rightGroupMap]
+  )
 
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
@@ -1398,8 +1396,7 @@ function BunkComparisonCard({
                   camper={camper}
                   status={movedOutIds.has(camper.personCmId) ? 'moved-out' : 'unchanged'}
                   destination={movedOutDestinations.get(camper.personCmId)}
-                  groupColor={leftGroupMap.get(camper.personCmId)?.color}
-                  groupName={leftGroupMap.get(camper.personCmId)?.name}
+                  group={leftGroupMap.get(camper.personCmId)}
                 />
               ))
             )}
@@ -1421,8 +1418,7 @@ function BunkComparisonCard({
                   camper={camper}
                   status={movedInIds.has(camper.personCmId) ? 'moved-in' : 'unchanged'}
                   origin={movedInOrigins.get(camper.personCmId)}
-                  groupColor={rightGroupMap.get(camper.personCmId)?.color}
-                  groupName={rightGroupMap.get(camper.personCmId)?.name}
+                  group={rightGroupMap.get(camper.personCmId)}
                 />
               ))
             )}
@@ -1439,18 +1435,10 @@ interface CamperPillProps {
   status: 'unchanged' | 'moved-in' | 'moved-out'
   origin?: string | undefined // Where they came from (for moved-in)
   destination?: string | undefined // Where they went (for moved-out)
-  groupColor?: string | undefined // Hex color from locked_groups.color
-  groupName?: string | undefined // Group name for tooltip
+  group?: Pick<LockGroupSummary, 'color' | 'name'> | undefined
 }
 
-function CamperPill({
-  camper,
-  status,
-  origin,
-  destination,
-  groupColor,
-  groupName,
-}: CamperPillProps) {
+function CamperPill({ camper, status, origin, destination, group }: CamperPillProps) {
   return (
     <div
       className={clsx(
@@ -1462,16 +1450,12 @@ function CamperPill({
           'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
     >
-      {/* Friend-group color dot.
-          Native `title` is intentional — no generic <Tooltip> component exists
-          in this project (only domain-specific variants). Replace if a shared
-          Tooltip primitive is added to frontend/src/components/. */}
-      {groupColor && (
+      {group?.color && (
         <span
           className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
-          style={{ backgroundColor: groupColor }}
-          title={groupName ? `Friend group: ${groupName}` : 'Friend group'}
-          aria-label={groupName ? `Friend group: ${groupName}` : 'Friend group'}
+          style={{ backgroundColor: group.color }}
+          title={group.name ? `Friend group: ${group.name}` : 'Friend group'}
+          aria-label={group.name ? `Friend group: ${group.name}` : 'Friend group'}
         />
       )}
       <span className={clsx('font-medium', status === 'moved-out' && 'line-through')}>
