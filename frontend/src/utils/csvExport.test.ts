@@ -32,7 +32,7 @@ describe('slugify', () => {
 // Import the unexported escapeField indirectly via buildCsvContent:
 // buildCsvContent(['H'], [[value]]).split('\n')[1] gives the escaped field.
 function escape(value: string): string {
-  return buildCsvContent(['H'], [[value]]).split('\n')[1]
+  return buildCsvContent(['H'], [[value]]).split('\n')[1] ?? ''
 }
 
 describe('escapeField — formula injection guard', () => {

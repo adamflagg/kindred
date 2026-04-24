@@ -859,10 +859,10 @@ export default function ScenarioComparisonPage() {
                         }))
                         const rows = buildMovedRows(movedEntries)
                         const csv = buildCsvContent([...MOVED_CSV_HEADERS], rows)
-                        const rightName = rightScenarioName
-                          .replace(/[^a-z0-9]/gi, '-')
-                          .toLowerCase()
-                        downloadCsv(csv, `scenario-moved-${slugify(rightName)}-${todayIso()}.csv`)
+                        downloadCsv(
+                          csv,
+                          `scenario-moved-${slugify(rightScenarioName)}-${todayIso()}.csv`
+                        )
                       }}
                       className="bg-muted/50 text-muted-foreground hover:bg-muted ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
                       title="Export moved campers to CSV"
