@@ -7,12 +7,12 @@ import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-
 export interface RequestEditableHeaderProps {
   request: BunkRequestsResponse
   year: number
-  sessionId?: number
-  sessionName?: string
-  personMap?: Map<number, PersonsResponse>
+  sessionId?: number | undefined
+  sessionName?: string | undefined
+  personMap?: Map<number, PersonsResponse> | undefined
   onUpdate: (updates: Partial<BunkRequestsResponse>) => void
-  onViewCamper?: (personCmId: number) => void
-  isCurrent?: boolean
+  onViewCamper?: ((personCmId: number) => void) | undefined
+  isCurrent?: boolean | undefined
 }
 
 export function RequestEditableHeader({
@@ -47,11 +47,11 @@ export function RequestEditableHeader({
           year={year}
           requesterCmId={request.requester_id}
           requestedPersonName={request.requested_person_name}
-          {...(personMap ? { personMap } : {})}
-          {...(sessionName ? { sessionName } : {})}
+          personMap={personMap}
+          sessionName={sessionName}
           disabled={disabled}
           onChange={(updates) => onUpdate(computeTargetUpdate(updates))}
-          {...(onViewCamper ? { onViewCamper } : {})}
+          onViewCamper={onViewCamper}
         />
       </div>
       {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}

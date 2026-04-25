@@ -5,6 +5,7 @@ export function computeTypeUpdate(
 ): Partial<BunkRequestsResponse> {
   const updates: Partial<BunkRequestsResponse> = { request_type: newType }
   if (newType === 'age_preference') {
+    // PocketBase requires null (not 0) to clear; 0 causes unique constraint violations.
     updates.requestee_id = null as unknown as number
   } else {
     updates.age_preference_target = ''

@@ -43,7 +43,6 @@ function RequestCard({
   personMap,
 }: {
   request: BunkRequestsResponse
-  targetName: string | null
   isCurrent?: boolean
   onAction?: (action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) => void
   onUpdate?: (requestId: string, updates: Partial<BunkRequestsResponse>) => void
@@ -324,26 +323,16 @@ export function AllCamperRequestsModal({
         )}
         {!isLoading && !isError && (nonAge.length > 0 || agePref) && (
           <div className="space-y-3">
-            {nonAge.map((req) => {
-              const target =
-                req.requestee_id && req.requestee_id > 0
-                  ? (personMap.get(req.requestee_id) ?? null)
-                  : null
-              const targetName = target
-                ? `${target.first_name} ${target.last_name}`
-                : (req.requested_person_name ?? null)
-              return (
-                <RequestCard
-                  key={req.id}
-                  request={req}
-                  targetName={targetName}
-                  isCurrent={req.id === currentRequestId}
-                  onAction={handleAction}
-                  onUpdate={handleRequestUpdate}
-                  personMap={personMap}
-                />
-              )
-            })}
+            {nonAge.map((req) => (
+              <RequestCard
+                key={req.id}
+                request={req}
+                isCurrent={req.id === currentRequestId}
+                onAction={handleAction}
+                onUpdate={handleRequestUpdate}
+                personMap={personMap}
+              />
+            ))}
             {agePref && (
               <>
                 {nonAge.length > 0 && (
@@ -355,7 +344,6 @@ export function AllCamperRequestsModal({
                 )}
                 <RequestCard
                   request={agePref}
-                  targetName={null}
                   isCurrent={agePref.id === currentRequestId}
                   onAction={handleAction}
                   onUpdate={handleRequestUpdate}
