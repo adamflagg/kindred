@@ -40,8 +40,16 @@ export interface ImpactedCabinChip {
  * camper and the to-bunk of another camper in the same list).
  *
  * Returned in ascending alphabetical order.
+ *
+ * @param visibleCabinNames  When provided (e.g. a gender-area filter is active in
+ *   split view), only chips for cabins present in this set are returned. Chips for
+ *   cabins outside the visible set are silently dropped, preventing dead chips that
+ *   would scroll to nothing.  When omitted (or `undefined`), all cabins are included.
  */
-export function computeImpactedCabins(moved: readonly MovedEntry[]): ImpactedCabinChip[] {
+export function computeImpactedCabins(
+  moved: readonly MovedEntry[],
+  visibleCabinNames?: ReadonlySet<string>
+): ImpactedCabinChip[] {
   // Map from cabin name → set of personCmIds who touched that cabin
   const cabinCampers = new Map<string, Set<number>>()
 
@@ -60,6 +68,7 @@ export function computeImpactedCabins(moved: readonly MovedEntry[]): ImpactedCab
   }
 
   return Array.from(cabinCampers.entries())
+    .filter(([name]) => visibleCabinNames === undefined || visibleCabinNames.has(name))
     .map(([name, campers]) => ({ name, count: campers.size }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }

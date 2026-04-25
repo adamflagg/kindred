@@ -532,8 +532,15 @@ export default function ScenarioComparisonPage() {
     }
   }, [comparison, changeFilter])
 
-  // Compute impacted cabin chips from the Moved tab data
-  const impactedCabins = useMemo(() => computeImpactedCabins(comparison.moved), [comparison.moved])
+  // Compute impacted cabin chips from the Moved tab data.
+  // When a gender-area filter is active, restrict chips to cabins that are
+  // actually rendered in the split view — prevents dead chips that scroll
+  // to sections that aren't visible under the current filter.
+  const impactedCabins = useMemo(() => {
+    const visibleCabinNames =
+      effectiveBunkArea === 'all' ? undefined : new Set(filteredBunks.map((b) => b.name))
+    return computeImpactedCabins(comparison.moved, visibleCabinNames)
+  }, [comparison.moved, effectiveBunkArea, filteredBunks])
 
   // Ref for the split view container — used to query cabin section elements
   const splitViewRef = useRef<HTMLDivElement>(null)

@@ -226,6 +226,88 @@ describe('computeImpactedCabins', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// computeImpactedCabins — visibleCabinNames filter (gender area filter)
+// ---------------------------------------------------------------------------
+
+describe('computeImpactedCabins — visibleCabinNames filter', () => {
+  // Each test builds its own counter so ordering is deterministic.
+  let counter = 0
+  const move = (fromBunk: string, toBunk: string): MovedEntry => ({
+    camper: { personCmId: ++counter },
+    fromBunk: { id: 'id-' + fromBunk, name: fromBunk },
+    toBunk: { id: 'id-' + toBunk, name: toBunk },
+  })
+
+  it('returns all chips when visibleCabinNames is not provided (backwards compat)', () => {
+    const moved = [move('B-Cedar', 'B-Oak'), move('G-Pine', 'G-Birch')]
+    const chips = computeImpactedCabins(moved)
+    expect(chips.map((c) => c.name)).toEqual(['B-Cedar', 'B-Oak', 'G-Birch', 'G-Pine'])
+  })
+
+  it('returns all chips when visibleCabinNames contains all cabin names', () => {
+    const moved = [move('B-Cedar', 'B-Oak'), move('G-Pine', 'G-Birch')]
+    const all = new Set(['B-Cedar', 'B-Oak', 'G-Pine', 'G-Birch'])
+    const chips = computeImpactedCabins(moved, all)
+    expect(chips).toHaveLength(4)
+  })
+
+  it('filters out chips for cabins outside the visible set (boys filter active)', () => {
+    // Moves span both boys cabins (B-*) and girls cabins (G-*)
+    const moved = [
+      move('B-Cedar', 'B-Oak'), // boys move — both cabins visible under boys filter
+      move('G-Pine', 'G-Birch'), // girls move — not visible under boys filter
+    ]
+    const boysCabins = new Set(['B-Cedar', 'B-Oak'])
+    const chips = computeImpactedCabins(moved, boysCabins)
+    expect(chips.map((c) => c.name)).toEqual(['B-Cedar', 'B-Oak'])
+    expect(chips.find((c) => c.name === 'G-Pine')).toBeUndefined()
+    expect(chips.find((c) => c.name === 'G-Birch')).toBeUndefined()
+  })
+
+  it('filters out chips for cabins outside the visible set (girls filter active)', () => {
+    const moved = [move('B-Cedar', 'B-Oak'), move('G-Pine', 'G-Birch')]
+    const girlsCabins = new Set(['G-Pine', 'G-Birch'])
+    const chips = computeImpactedCabins(moved, girlsCabins)
+    expect(chips.map((c) => c.name)).toEqual(['G-Birch', 'G-Pine'])
+    expect(chips.find((c) => c.name === 'B-Cedar')).toBeUndefined()
+  })
+
+  it('handles cross-gender move: shows only the half visible in the active filter', () => {
+    // Emma moves from a boys cabin (B-Cedar) to a girls cabin (G-Oak) — unusual but
+    // should not crash. Under boys filter only B-Cedar is visible.
+    const moved = [move('B-Cedar', 'G-Oak')]
+    const boysCabins = new Set(['B-Cedar'])
+    const chips = computeImpactedCabins(moved, boysCabins)
+    expect(chips.map((c) => c.name)).toEqual(['B-Cedar'])
+    expect(chips.find((c) => c.name === 'G-Oak')).toBeUndefined()
+  })
+
+  it('returns empty array when no moves touch visible cabins', () => {
+    const moved = [move('G-Pine', 'G-Birch')]
+    const boysCabins = new Set(['B-Cedar', 'B-Oak'])
+    const chips = computeImpactedCabins(moved, boysCabins)
+    expect(chips).toEqual([])
+  })
+
+  it('preserves correct counts after filtering', () => {
+    // 2 boys campers move B-Cedar → B-Oak; 3 girls campers move G-Pine → G-Birch.
+    // Boys filter: B-Cedar count=2, B-Oak count=2. Girls chips should be absent.
+    const moved = [
+      move('B-Cedar', 'B-Oak'),
+      move('B-Cedar', 'B-Oak'),
+      move('G-Pine', 'G-Birch'),
+      move('G-Pine', 'G-Birch'),
+      move('G-Pine', 'G-Birch'),
+    ]
+    const boysCabins = new Set(['B-Cedar', 'B-Oak'])
+    const chips = computeImpactedCabins(moved, boysCabins)
+    expect(chips).toHaveLength(2)
+    expect(chips.find((c) => c.name === 'B-Cedar')!.count).toBe(2)
+    expect(chips.find((c) => c.name === 'B-Oak')!.count).toBe(2)
+  })
+})
+
 describe('getAvailableBunkAreas', () => {
   it('returns only "all" when there are no bunks', () => {
     expect(getAvailableBunkAreas([])).toEqual(['all'])
