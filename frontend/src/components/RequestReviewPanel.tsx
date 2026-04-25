@@ -40,6 +40,7 @@ import {
 } from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
+import { computeTypeUpdate, computeTargetUpdate } from './RequestEditableHeader'
 import EditablePriority from './EditablePriority'
 import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
@@ -1141,17 +1142,14 @@ export default function RequestReviewPanel({
                             <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
                               <EditableRequestType
                                 value={request.request_type}
-                                onChange={(newType) => {
-                                  const updates: Partial<BunkRequestsResponse> = {
-                                    request_type: newType as BunkRequestsResponse['request_type'],
-                                  }
-                                  if (newType === 'age_preference') {
-                                    updates.requestee_id = null as unknown as number
-                                  } else {
-                                    updates.age_preference_target = ''
-                                  }
-                                  handleValidatedUpdate(request, updates)
-                                }}
+                                onChange={(newType) =>
+                                  handleValidatedUpdate(
+                                    request,
+                                    computeTypeUpdate(
+                                      newType as BunkRequestsResponse['request_type']
+                                    )
+                                  )
+                                }
                                 disabled={request.request_locked}
                               />
                             </div>
@@ -1194,22 +1192,7 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
-                                // Use null (not 0) to clear requestee_id — 0 causes
-                                // unique constraint violations when multiple requests exist.
-                                const pbUpdates: Partial<BunkRequestsResponse> = {}
-                                if (updates.requestee_id !== undefined) {
-                                  // Pass null through to PocketBase to clear the field.
-                                  // Using 0 causes unique constraint violations.
-                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
-                                }
-                                if (updates.age_preference_target !== undefined) {
-                                  pbUpdates.age_preference_target = updates.age_preference_target
-                                }
-                                if (updates.requestee_id && updates.requestee_id > 0) {
-                                  pbUpdates.status = 'resolved' as BunkRequestsStatusOptions
-                                  pbUpdates.confidence_score = 1.0
-                                }
-                                handleValidatedUpdate(request, pbUpdates)
+                                handleValidatedUpdate(request, computeTargetUpdate(updates))
                               }}
                               disabled={request.request_locked}
                               originalText={request.original_text}
@@ -1404,23 +1387,7 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
-                                // Use null (not 0) to clear requestee_id — 0 causes
-                                // unique constraint violations when multiple requests exist.
-                                const pbUpdates: Partial<BunkRequestsResponse> = {}
-                                if (updates.requestee_id !== undefined) {
-                                  // Pass null through to PocketBase to clear the field.
-                                  // Using 0 causes unique constraint violations.
-                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
-                                }
-                                if (updates.age_preference_target !== undefined) {
-                                  pbUpdates.age_preference_target = updates.age_preference_target
-                                }
-                                // When resolving, also mark as resolved
-                                if (updates.requestee_id && updates.requestee_id > 0) {
-                                  pbUpdates.status = 'resolved' as BunkRequestsStatusOptions
-                                  pbUpdates.confidence_score = 1.0
-                                }
-                                handleValidatedUpdate(request, pbUpdates)
+                                handleValidatedUpdate(request, computeTargetUpdate(updates))
                               }}
                               disabled={request.request_locked}
                               originalText={request.original_text}
@@ -1448,17 +1415,12 @@ export default function RequestReviewPanel({
                           >
                             <EditableRequestType
                               value={request.request_type}
-                              onChange={(newType) => {
-                                const updates: Partial<BunkRequestsResponse> = {
-                                  request_type: newType as BunkRequestsResponse['request_type'],
-                                }
-                                if (newType === 'age_preference') {
-                                  updates.requestee_id = null as unknown as number
-                                } else {
-                                  updates.age_preference_target = ''
-                                }
-                                handleValidatedUpdate(request, updates)
-                              }}
+                              onChange={(newType) =>
+                                handleValidatedUpdate(
+                                  request,
+                                  computeTypeUpdate(newType as BunkRequestsResponse['request_type'])
+                                )
+                              }
                               disabled={request.request_locked}
                             />
                           </div>

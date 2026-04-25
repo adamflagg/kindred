@@ -4,19 +4,14 @@ import { toast } from 'react-hot-toast'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
 import Modal from './ui/Modal'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
-import EditableRequestTarget from './EditableRequestTarget'
-import EditableRequestType from './EditableRequestType'
+import { RequestEditableHeader } from './RequestEditableHeader'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
-import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
+import { formatReason } from '../utils/dispositionColors'
 import { highlightSourceText } from '../utils/highlightSourceText'
-import type {
-  BunkRequestsResponse,
-  BunkRequestsStatusOptions,
-  PersonsResponse,
-} from '../types/pocketbase-types'
+import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 export interface AllCamperRequestsModalProps {
   isOpen: boolean
@@ -42,73 +37,28 @@ function statusBadgeClass(status: string): string {
 
 function RequestCard({
   request,
-  targetName,
   isCurrent = false,
   onAction,
-  onTargetChange,
-  onTypeChange,
+  onUpdate,
   personMap,
 }: {
   request: BunkRequestsResponse
   targetName: string | null
   isCurrent?: boolean
   onAction?: (action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) => void
-  onTargetChange?: (requestId: string, updates: { requestee_id?: number | null }) => void
-  onTypeChange?: (requestId: string, newType: BunkRequestsResponse['request_type']) => void
+  onUpdate?: (requestId: string, updates: Partial<BunkRequestsResponse>) => void
   personMap?: Map<number, PersonsResponse>
 }) {
-  const isAge = request.request_type === 'age_preference'
-
-  const showPicker = !isAge && onTargetChange
-
   return (
     <article className="border-border bg-card overflow-hidden rounded-xl border">
-      <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
-        <div onClick={(e) => e.stopPropagation()}>
-          <EditableRequestType
-            value={request.request_type}
-            onChange={(newType) => {
-              if (onTypeChange) {
-                onTypeChange(request.id, newType as BunkRequestsResponse['request_type'])
-              }
-            }}
-            disabled={request.request_locked || !onTypeChange}
-          />
-        </div>
-        <span className="text-foreground flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">→</span>
-          {isAge ? (
-            <strong>{request.age_preference_target || 'Age preference'}</strong>
-          ) : showPicker ? (
-            <div onClick={(e) => e.stopPropagation()}>
-              <EditableRequestTarget
-                requestType={request.request_type}
-                currentPersonId={request.requestee_id}
-                sessionId={request.session_id}
-                year={request.year}
-                requesterCmId={request.requester_id}
-                requestedPersonName={request.requested_person_name}
-                personMap={personMap}
-                disabled={request.request_locked}
-                onChange={(updates) => {
-                  if (updates.requestee_id !== undefined) {
-                    onTargetChange(request.id, { requestee_id: updates.requestee_id ?? null })
-                  }
-                }}
-              />
-            </div>
-          ) : (
-            <span className="text-muted-foreground">
-              {targetName || request.requested_person_name || 'Unresolved'}
-            </span>
-          )}
-          {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
-          {isCurrent && (
-            <span className="bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-              Viewing
-            </span>
-          )}
-        </span>
+      <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
+        <RequestEditableHeader
+          request={request}
+          year={request.year}
+          {...(personMap ? { personMap } : {})}
+          onUpdate={(updates) => onUpdate?.(request.id, updates)}
+          isCurrent={isCurrent}
+        />
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusBadgeClass(request.status)}`}
@@ -230,27 +180,8 @@ export function AllCamperRequestsModal({
     setConfirmPopover({ action, anchorRect, requestId })
   }
 
-  function handleTargetChange(requestId: string, updates: { requestee_id?: number | null }) {
-    const pbUpdates: Partial<BunkRequestsResponse> = {}
-    if (updates.requestee_id !== undefined) {
-      // Use null (not 0) to clear — 0 causes unique constraint violations
-      pbUpdates.requestee_id = updates.requestee_id as unknown as number
-    }
-    if (updates.requestee_id && updates.requestee_id > 0) {
-      pbUpdates.status = 'resolved' as BunkRequestsStatusOptions
-      pbUpdates.confidence_score = 1.0
-    }
-    updateRequestMutation.mutate({ id: requestId, updates: pbUpdates })
-  }
-
-  function handleTypeChange(requestId: string, newType: BunkRequestsResponse['request_type']) {
-    const pbUpdates: Partial<BunkRequestsResponse> = { request_type: newType }
-    if (newType === 'age_preference') {
-      pbUpdates.requestee_id = null as unknown as number
-    } else {
-      pbUpdates.age_preference_target = ''
-    }
-    updateRequestMutation.mutate({ id: requestId, updates: pbUpdates })
+  function handleRequestUpdate(requestId: string, updates: Partial<BunkRequestsResponse>) {
+    updateRequestMutation.mutate({ id: requestId, updates })
   }
 
   const {
@@ -408,8 +339,7 @@ export function AllCamperRequestsModal({
                   targetName={targetName}
                   isCurrent={req.id === currentRequestId}
                   onAction={handleAction}
-                  onTargetChange={handleTargetChange}
-                  onTypeChange={handleTypeChange}
+                  onUpdate={handleRequestUpdate}
                   personMap={personMap}
                 />
               )
@@ -428,7 +358,8 @@ export function AllCamperRequestsModal({
                   targetName={null}
                   isCurrent={agePref.id === currentRequestId}
                   onAction={handleAction}
-                  onTypeChange={handleTypeChange}
+                  onUpdate={handleRequestUpdate}
+                  personMap={personMap}
                 />
               </>
             )}

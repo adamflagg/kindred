@@ -246,10 +246,11 @@ describe('AllCamperRequestsModal cards', () => {
     const allAgePrefSpans = await screen.findAllByText('Age preference', { selector: 'span' })
     expect(allAgePrefSpans.length).toBeGreaterThanOrEqual(1)
     const divider = allAgePrefSpans[0]!
-    // 'older' appears both in the age_preference_target <strong> and in source_fragment blockquote;
-    // use the <strong> element which is the age preference target display.
-    const ageCard = screen.getByText('older', { selector: 'strong' })
-    expect(divider.compareDocumentPosition(ageCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // age_preference_target now shows in the EditableRequestTarget button as "Prefers older".
+    const ageCardButton = screen.getByRole('button', { name: /Prefers older/i })
+    expect(
+      divider.compareDocumentPosition(ageCardButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 })
 
