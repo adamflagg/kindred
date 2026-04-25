@@ -27,7 +27,7 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
     """Add aggregated soft constraints for age spread within bunks.
 
     Two-tier age spread system:
-    - Hard limit (soft-penalty): when spread > max_age_spread_months, a violation flag is set
+    - Soft penalty (violation-based): when spread > max_age_spread_months, a violation flag is set
       and penalised in the objective (preserves existing 24mo behaviour).
     - Preferred threshold (soft-bonus): when spread <= preferred_age_spread_months, a bonus
       flag is set and added to the objective, encouraging tighter age grouping.
@@ -62,7 +62,9 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
         f" preferred_active={preferred_active})"
     )
 
-    constraints_added = 0
+    violation_count = 0
+    bonus_count = 0
+    bunk_count = 0
 
     # For each bunk, track min and max age
     for bunk_idx, bunk in enumerate(ctx.bunks):
@@ -75,6 +77,8 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
 
         if len(eligible_campers) < 2:
             continue
+
+        bunk_count += 1
 
         # Convert ages to months for all eligible campers
         age_months_data = []
@@ -128,7 +132,7 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
         if age_spread_weight > 0:
             ctx.soft_constraint_violations[f"age_spread_b{bunk_idx}"] = (has_violation, age_spread_weight)
 
-            constraints_added += 1
+            violation_count += 1
 
         # New: preferred bonus — cabins with spread <= preferred_age_spread_months earn a bonus
         if preferred_active:
@@ -145,6 +149,9 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
                 preferred_age_spread_bonus,
             )
 
-            constraints_added += 1
+            bonus_count += 1
 
-    logger.debug(f"Age spread: Using TRUE min/max aggregation for {constraints_added} bunks")
+    logger.debug(
+        f"Age spread: applied {violation_count} violation entries + {bonus_count} bonus entries"
+        f" across {bunk_count} bunks"
+    )

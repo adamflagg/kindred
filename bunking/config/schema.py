@@ -84,6 +84,7 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         required=True,
         description="Bonus weight for cabins whose age spread is within the preferred threshold",
         min_value=0,
+        max_value=10000,
     ),
     # =========================================================================
     # SOLVER CONSTRAINTS - Must Satisfy One

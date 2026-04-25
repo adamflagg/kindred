@@ -78,7 +78,7 @@ def _solve_with_age_spread(campers, bunks, config_overrides=None):
         objective_terms.append(-weight * var)
 
     # Bonus terms: the bonus for preferred threshold
-    for var, weight in getattr(ctx, "soft_constraint_bonuses", {}).values():
+    for var, weight in ctx.soft_constraint_bonuses.values():
         objective_terms.append(weight * var)
 
     if objective_terms:
@@ -210,7 +210,7 @@ class TestNew12moPreferredThreshold:
         assert is_optimal_or_feasible(status)
 
         # Should have a bonus entry for the bunk
-        bonuses = getattr(ctx, "soft_constraint_bonuses", {})
+        bonuses = ctx.soft_constraint_bonuses
         assert len(bonuses) >= 1, "Expected at least one preferred-spread bonus entry"
         bunk_bonuses = {k: v for k, v in bonuses.items() if "age_spread_preferred" in k}
         assert len(bunk_bonuses) >= 1, f"Expected preferred_spread bonus, got bonuses: {list(bonuses.keys())}"
@@ -251,7 +251,7 @@ class TestNew12moPreferredThreshold:
                 assert solver.Value(var) == 0, f"Expected no violation for {key} (18mo spread ≤ 24mo max)"
 
         # No preferred bonus (spread > 12mo preferred)
-        bonuses = getattr(ctx, "soft_constraint_bonuses", {})
+        bonuses = ctx.soft_constraint_bonuses
         for key, (var, _weight) in bonuses.items():
             if "age_spread_preferred" in key:
                 assert solver.Value(var) == 0, f"Expected no bonus for {key} (18mo spread > 12mo preferred)"
@@ -277,7 +277,7 @@ class TestNew12moPreferredThreshold:
 
         add_age_spread_constraints(ctx)
 
-        bonuses = getattr(ctx, "soft_constraint_bonuses", {})
+        bonuses = ctx.soft_constraint_bonuses
         preferred_bonuses = {k: v for k, v in bonuses.items() if "age_spread_preferred" in k}
         assert len(preferred_bonuses) == 0, (
             f"Expected no preferred bonuses when preferred_months=0, got: {list(preferred_bonuses.keys())}"
@@ -304,7 +304,7 @@ class TestNew12moPreferredThreshold:
 
         add_age_spread_constraints(ctx)
 
-        bonuses = getattr(ctx, "soft_constraint_bonuses", {})
+        bonuses = ctx.soft_constraint_bonuses
         preferred_bonuses = {k: v for k, v in bonuses.items() if "age_spread_preferred" in k}
         assert len(preferred_bonuses) == 0, (
             f"Expected no preferred bonuses when preferred_months==max, got: {list(preferred_bonuses.keys())}"
@@ -344,7 +344,7 @@ class TestNew12moPreferredThreshold:
         objective_terms = []
         for var, weight in ctx.soft_constraint_violations.values():
             objective_terms.append(-weight * var)
-        for var, weight in getattr(ctx, "soft_constraint_bonuses", {}).values():
+        for var, weight in ctx.soft_constraint_bonuses.values():
             objective_terms.append(weight * var)
 
         if objective_terms:
@@ -356,7 +356,7 @@ class TestNew12moPreferredThreshold:
         assert is_optimal_or_feasible(status)
 
         # The preferred bonus should be active (all 3 in B-1 with 10mo spread)
-        bonuses = getattr(ctx, "soft_constraint_bonuses", {})
+        bonuses = ctx.soft_constraint_bonuses
         bunk_bonuses = {k: v for k, v in bonuses.items() if "age_spread_preferred" in k}
         assert len(bunk_bonuses) >= 1
         for key, (var, _weight) in bunk_bonuses.items():
@@ -408,7 +408,7 @@ class TestNew12moPreferredThreshold:
         objective_terms = []
         for var, weight in ctx.soft_constraint_violations.values():
             objective_terms.append(-weight * var)
-        for var, weight in getattr(ctx, "soft_constraint_bonuses", {}).values():
+        for var, weight in ctx.soft_constraint_bonuses.values():
             objective_terms.append(weight * var)
 
         if objective_terms:
@@ -419,7 +419,7 @@ class TestNew12moPreferredThreshold:
 
         assert is_optimal_or_feasible(status)
 
-        bonuses = getattr(ctx, "soft_constraint_bonuses", {})
+        bonuses = ctx.soft_constraint_bonuses
         preferred_bonuses = {k: v for k, v in bonuses.items() if "age_spread_preferred" in k}
         assert len(preferred_bonuses) >= 1, "Expected at least one preferred bonus entry"
 
