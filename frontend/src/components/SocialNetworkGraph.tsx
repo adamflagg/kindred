@@ -405,7 +405,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 </h3>
 
                 {/* Bunks / Units toggles — inline in header top row */}
-                <div className="flex shrink-0 items-center gap-3 text-sm">
+                <div className="flex shrink-0 items-center justify-center gap-3 text-sm">
+                  <span className="text-muted-foreground font-medium">Show or hide:</span>
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <input
                       type="checkbox"
