@@ -1,11 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import {
-  RequestEditableHeader,
-  computeTypeUpdate,
-  computeTargetUpdate,
-} from './RequestEditableHeader'
+import { RequestEditableHeader } from './RequestEditableHeader'
+import { computeTypeUpdate, computeTargetUpdate } from './requestEditableHelpers'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 
 const baseRequest: Partial<BunkRequestsResponse> = {

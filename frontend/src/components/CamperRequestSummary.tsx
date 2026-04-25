@@ -81,30 +81,57 @@ export function CamperRequestSummary({
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])
 
   const isLoading = isLoadingRequests || isLoadingPersons
+  const nonAgeRequests = requests.filter((r) => r.request_type !== 'age_preference')
+  const agePreferenceRequest = requests.find((r) => r.request_type === 'age_preference')
+  const isEmpty =
+    !isLoading && !isErrorRequests && nonAgeRequests.length === 0 && !agePreferenceRequest
+
+  // Modal is rendered outside the branched body so that a transient loading
+  // state — e.g. when the user updates a request's target from inside the
+  // modal, the resulting requestee_id change forces the persons query into a
+  // fresh isLoading=true cycle — does not unmount the modal mid-flow.
+  const modalNode = (
+    <AllCamperRequestsModal
+      isOpen={modalOpen}
+      onClose={() => setModalOpen(false)}
+      requesterCmId={requesterCmId}
+      requesterName={requesterName ?? 'this camper'}
+      year={year}
+      currentRequestId={currentRequestId}
+    />
+  )
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-4 text-sm">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="text-muted-foreground">Loading requests...</span>
-      </div>
+      <>
+        <div className="flex items-center gap-2 py-4 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-muted-foreground">Loading requests...</span>
+        </div>
+        {modalNode}
+      </>
     )
   }
 
   if (isErrorRequests) {
     return (
-      <div className="text-destructive flex items-center gap-2 py-2 text-sm">
-        <AlertCircle className="h-4 w-4 flex-shrink-0" />
-        Failed to load requests
-      </div>
+      <>
+        <div className="text-destructive flex items-center gap-2 py-2 text-sm">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          Failed to load requests
+        </div>
+        {modalNode}
+      </>
     )
   }
 
-  const nonAgeRequests = requests.filter((r) => r.request_type !== 'age_preference')
-  const agePreferenceRequest = requests.find((r) => r.request_type === 'age_preference')
-
-  if (nonAgeRequests.length === 0 && !agePreferenceRequest) {
-    return <div className="text-muted-foreground py-2 text-sm italic">No other requests</div>
+  if (isEmpty) {
+    return (
+      <>
+        <div className="text-muted-foreground py-2 text-sm italic">No other requests</div>
+        {modalNode}
+      </>
+    )
   }
 
   return (
@@ -154,14 +181,7 @@ export function CamperRequestSummary({
         </div>
       )}
 
-      <AllCamperRequestsModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        requesterCmId={requesterCmId}
-        requesterName={requesterName ?? 'this camper'}
-        year={year}
-        currentRequestId={currentRequestId}
-      />
+      {modalNode}
     </div>
   )
 }

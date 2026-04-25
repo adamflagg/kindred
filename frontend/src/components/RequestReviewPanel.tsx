@@ -40,7 +40,7 @@ import {
 } from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
-import { computeTypeUpdate, computeTargetUpdate } from './RequestEditableHeader'
+import { computeTypeUpdate, computeTargetUpdate } from './requestEditableHelpers'
 import EditablePriority from './EditablePriority'
 import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
