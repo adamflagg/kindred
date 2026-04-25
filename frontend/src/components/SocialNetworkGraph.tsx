@@ -405,8 +405,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 </h3>
 
                 {/* Bunks / Units toggles — inline in header top row */}
-                <fieldset className="m-0 flex shrink-0 items-center justify-center gap-3 border-0 p-0 text-sm">
-                  <legend className="text-muted-foreground font-medium">Show or hide:</legend>
+                <div
+                  role="group"
+                  aria-label="Show / Hide"
+                  className="flex shrink-0 items-center justify-center gap-3 text-sm"
+                >
+                  <span className="text-muted-foreground font-bold">Show / Hide</span>
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <input
                       type="checkbox"
@@ -425,7 +429,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                     />
                     <span className="text-muted-foreground">Units</span>
                   </label>
-                </fieldset>
+                </div>
 
                 <GraphControls
                   showLabels={showLabels}
@@ -466,20 +470,22 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 </div>
               )}
 
-              {/* Bubble Render Status */}
-              {bubbleRenderStatus && bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
-                <div className="shadow-lodge-sm absolute top-4 left-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
-                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="font-medium">Bubble Rendering Issue</span>
+              {/* Bubble Render Status — only meaningful when bubbles are actually requested */}
+              {(showBubbles || showUnits) &&
+                bubbleRenderStatus &&
+                bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
+                  <div className="shadow-lodge-sm absolute top-4 left-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
+                    <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="font-medium">Bubble Rendering Issue</span>
+                    </div>
+                    <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                      Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles
+                      rendered. This is a known library limitation. The graph is still fully
+                      functional.
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                    Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles
-                    rendered. This is a known library limitation. The graph is still fully
-                    functional.
-                  </div>
-                </div>
-              )}
+                )}
 
               <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
             </div>
