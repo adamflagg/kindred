@@ -73,7 +73,7 @@ export function applyLayoutPositions(
   cy: Core
 ): ApplyResult {
   const { type, positions } = event.data
-  const messageToken = (event.data as { token?: number }).token
+  const messageToken = event.data.token
 
   if (type !== 'positions' || !positions) {
     return 'not-positions'
