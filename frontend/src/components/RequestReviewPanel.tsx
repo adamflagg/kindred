@@ -19,9 +19,11 @@ import {
   Users,
   Loader2,
   Star,
+  Undo2,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
+import { useUndoStack } from '../hooks/useUndoStack'
 // Virtual scrolling removed for better dropdown compatibility
 import type {
   BunkRequestsResponse,
@@ -75,6 +77,7 @@ export default function RequestReviewPanel({
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const undoStack = useUndoStack()
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
   const defaultFilters: FilterState = useMemo(
@@ -496,13 +499,21 @@ export default function RequestReviewPanel({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Mutations
-  const updateRequestMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<BunkRequestsResponse> }) => {
+  interface UpdateRequestVars {
+    id: string
+    updates: Partial<BunkRequestsResponse>
+    suppressToast?: boolean
+  }
+
+  const updateRequestMutation = useMutation<BunkRequestsResponse, Error, UpdateRequestVars>({
+    mutationFn: async ({ id, updates }: UpdateRequestVars) => {
       return pb.collection('bunk_requests').update(id, updates)
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      toast.success('Request updated')
+      if (!variables.suppressToast) {
+        toast.success('Request updated')
+      }
     },
     onError: () => {
       toast.error('Failed to update request')
@@ -529,17 +540,99 @@ export default function RequestReviewPanel({
     },
   })
 
+  const handleAction = useCallback(
+    ({
+      id,
+      updates,
+      labelVerb,
+    }: {
+      id: string
+      updates: Partial<BunkRequestsResponse>
+      labelVerb: string
+    }) => {
+      const req = requests.find((r: BunkRequestsResponse) => r.id === id)
+      if (!req) return
+      const priorStatus = req.status
+      const priorLocked = req.request_locked
+
+      const requesterPerson = personMap.get(req.requester_id)
+      const requesterName = requesterPerson
+        ? `${requesterPerson.first_name ?? ''} ${requesterPerson.last_name ?? ''}`.trim()
+        : `#${req.requester_id}`
+
+      updateRequestMutation.mutate(
+        { id, updates, suppressToast: true },
+        {
+          onSuccess: () => {
+            undoStack.push({
+              id,
+              label: `Reverted ${labelVerb} of ${requesterName}`,
+              inverse: async () => {
+                await pb
+                  .collection('bunk_requests')
+                  .update(id, { status: priorStatus, request_locked: priorLocked })
+                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+              },
+            })
+          },
+        }
+      )
+    },
+    [requests, personMap, undoStack, updateRequestMutation, queryClient]
+  )
+
   const handleApprove = (id: string) =>
-    updateRequestMutation.mutate({
+    handleAction({
       id,
       updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
+      labelVerb: 'approval',
     })
 
   const handleReject = (id: string) =>
-    updateRequestMutation.mutate({
+    handleAction({
       id,
       updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
+      labelVerb: 'decline',
     })
+
+  const handleBulkConfirm = useCallback(
+    (action: 'approve' | 'decline') => {
+      const ids = Array.from(selectedRequests)
+      if (ids.length === 0) return
+      const priors = ids
+        .map((id) => requests.find((r: BunkRequestsResponse) => r.id === id))
+        .filter((r): r is BunkRequestsResponse => Boolean(r))
+        .map((r) => ({ id: r.id, status: r.status, request_locked: r.request_locked }))
+      const updates: Partial<BunkRequestsResponse> =
+        action === 'approve'
+          ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
+          : { status: 'declined' as BunkRequestsStatusOptions, request_locked: false }
+      const labelVerb = action === 'approve' ? 'approval' : 'decline'
+      bulkUpdateMutation.mutate(
+        { ids, updates },
+        {
+          onSuccess: () => {
+            if (priors.length === 0) return
+            undoStack.push({
+              id: `bulk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              label: `Reverted ${labelVerb} of ${priors.length} request${priors.length === 1 ? '' : 's'}`,
+              inverse: async () => {
+                await Promise.all(
+                  priors.map((p) =>
+                    pb
+                      .collection('bunk_requests')
+                      .update(p.id, { status: p.status, request_locked: p.request_locked })
+                  )
+                )
+                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+              },
+            })
+          },
+        }
+      )
+    },
+    [selectedRequests, requests, bulkUpdateMutation, undoStack, queryClient]
+  )
 
   // Handlers
   // Collapse a row by id (mirrors the delete branch of toggleRowExpansion).
@@ -816,6 +909,33 @@ export default function RequestReviewPanel({
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Create</span>
             </button>
+
+            {/* Undo Button — appears when undo stack is non-empty */}
+            {undoStack.canUndo && (
+              <button
+                onClick={() => {
+                  const entry = undoStack.pop()
+                  if (!entry) return
+                  entry.inverse().then(
+                    () => {
+                      toast.success(entry.label)
+                    },
+                    () => {
+                      // On failure, push it back so user can retry
+                      undoStack.push(entry)
+                      toast.error('Undo failed — try again')
+                    }
+                  )
+                }}
+                disabled={updateRequestMutation.isPending}
+                className="btn-secondary flex touch-manipulation items-center gap-1.5 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                title={undoStack.peek()?.label ?? 'Undo last action'}
+                aria-label={`Undo (${undoStack.stackSize})`}
+              >
+                <Undo2 className="h-4 w-4" />
+                <span>Undo ({undoStack.stackSize})</span>
+              </button>
+            )}
 
             {/* Total count */}
             <div className="text-muted-foreground hidden flex-shrink-0 text-xs sm:block">
@@ -1942,14 +2062,7 @@ export default function RequestReviewPanel({
               <button
                 type="button"
                 onClick={() => {
-                  const ids = Array.from(selectedRequests)
-                  bulkUpdateMutation.mutate({
-                    ids,
-                    updates:
-                      bulkConfirm.action === 'approve'
-                        ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
-                        : { status: 'declined' as BunkRequestsStatusOptions },
-                  })
+                  handleBulkConfirm(bulkConfirm.action)
                   setBulkConfirm(null)
                 }}
                 className={

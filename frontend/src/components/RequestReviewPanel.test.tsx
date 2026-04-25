@@ -12,7 +12,7 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render, waitFor } from '../test/testUtils'
 import RequestReviewPanel from './RequestReviewPanel'
@@ -1504,6 +1504,462 @@ describe('RequestReviewPanel', () => {
       await waitFor(() => {
         expect(screen.getAllByText('Priority:').length).toBe(1)
       })
+    }, 15000)
+  })
+
+  /**
+   * TDD TESTS: In-session Undo Stack (scoreboard #14)
+   *
+   * Approve/decline actions push an inverse mutation onto a 3-entry stack.
+   * Clicking the Undo button pops and executes the most recent inverse.
+   * Stack is client-only — refresh clears it.
+   *
+   * Tests written FIRST per TDD discipline (red phase).
+   */
+  describe('Undo stack for approve/decline (#14)', () => {
+    it('Undo button shows stack depth and disappears when stack is empty', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-2',
+        requester_id: 310,
+        requestee_id: 311,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.75,
+        priority: 1,
+        request_locked: false,
+      })
+
+      updateSpy.mockResolvedValue({})
+
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      // Undo button appears with "(1)" in its text
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+
+      expect(undoBtn.textContent).toMatch(/1/)
+
+      // Click undo — inverse fires (restores status to pending)
+      await user.click(undoBtn)
+
+      await waitFor(
+        () => {
+          // inverse mutation: PATCH back to pending
+          expect(updateSpy).toHaveBeenCalledWith('req-undo-2', {
+            status: 'pending',
+            request_locked: false,
+          })
+        },
+        { timeout: 3000 }
+      )
+
+      // Stack now empty: undo button gone or shows (0)
+      await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          // Either hidden or shows 0
+          if (btn) {
+            expect(btn.textContent).toMatch(/0/)
+          } else {
+            expect(btn).toBeNull()
+          }
+        },
+        { timeout: 3000 }
+      )
+    }, 15000)
+
+    it('keeps the entry on the stack when the inverse mutation fails (retry possible)', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-fail',
+        requester_id: 330,
+        requestee_id: 331,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.85,
+        priority: 1,
+        request_locked: false,
+      })
+
+      // Approve succeeds; first undo attempt fails; second attempt succeeds.
+      updateSpy
+        .mockResolvedValueOnce({}) // approve
+        .mockRejectedValueOnce(new Error('network')) // first undo attempt
+        .mockResolvedValue({}) // retry
+
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      // Wait for approve to complete and Undo button to appear
+      await waitFor(
+        () => {
+          expect(updateSpy).toHaveBeenCalledTimes(1)
+        },
+        { timeout: 5000 }
+      )
+
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+
+      // First undo attempt — inverse mutation rejects
+      await user.click(undoBtn)
+
+      // After failure, entry is re-pushed: Undo button should still show depth ≥ 1
+      await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          // Should still show count 1 (re-pushed after failure)
+          expect(btn!.textContent).toMatch(/1/)
+        },
+        { timeout: 5000 }
+      )
+    }, 20000)
+
+    /**
+     * Regression: undo must actually restore the rendered status badge to
+     * "Pending" after the user reverts an approve/decline. Previous tests
+     * with non-stateful mocks could not catch this — getFullList always
+     * returned the same stale fixture regardless of preceding pb.update
+     * calls, so the badge appeared "correct" by coincidence. This test
+     * uses a stateful mock that mutates a single record in memory and
+     * is filtered to all 3 statuses so the row stays in view.
+     */
+    it('rendered status badge returns to Pending after Undo (stateful)', async () => {
+      // Persist filter state so the panel renders all three statuses,
+      // keeping the row visible across pending → declined → pending.
+      window.localStorage.setItem(
+        'kindred-requests-filters-1001',
+        JSON.stringify({
+          filters: {
+            requestTypes: [],
+            statuses: ['pending', 'declined', 'resolved'],
+            searchQuery: '',
+          },
+          sort: { sortBy: 'requester', sortOrder: 'asc' },
+        })
+      )
+
+      const record: BunkRequestsResponse = {
+        id: 'req-undo-stateful',
+        requester_id: 410,
+        requestee_id: 411,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.9,
+        priority: 1,
+        request_locked: false,
+      } as BunkRequestsResponse
+
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: { collection: ReturnType<typeof vi.fn> }
+      }
+
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn(async () => [{ ...record }]),
+            getList: vi.fn(async () => ({ items: [{ ...record }], totalItems: 1 })),
+            update: vi.fn(async (_id: string, updates: Partial<BunkRequestsResponse>) => {
+              Object.assign(record, updates)
+              return { ...record }
+            }),
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
+
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+      const user = userEvent.setup()
+
+      // Initial render: badge shows Pending
+      await waitFor(
+        () => {
+          expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
+        },
+        { timeout: 3000 }
+      )
+
+      // Click Reject → Confirm
+      const rejectButton = (await waitFor(() => screen.getAllByTitle('Reject')[0]!, {
+        timeout: 3000,
+      })) as HTMLElement
+      fireEvent.click(rejectButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      // After decline: record is mutated, badge eventually shows Declined
+      await waitFor(
+        () => {
+          expect(record.status).toBe('declined')
+          expect(screen.getAllByText('Declined').length).toBeGreaterThan(0)
+        },
+        { timeout: 3000 }
+      )
+
+      // Click Undo
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+      await user.click(undoBtn)
+
+      // After undo: record back to pending AND rendered badge shows Pending
+      await waitFor(
+        () => {
+          expect(record.status).toBe('pending')
+        },
+        { timeout: 3000 }
+      )
+      await waitFor(
+        () => {
+          // Pending badge must be present (this is the regression assertion)
+          expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
+          // And no Declined badge for this row should remain
+          expect(screen.queryAllByText('Declined').length).toBe(0)
+        },
+        { timeout: 3000 }
+      )
+    }, 20000)
+
+    /**
+     * Bulk-action regression: when the user "checks" multiple requests via
+     * the row checkboxes and clicks the sticky bottom bar's Reject button,
+     * the bulk action MUST push a single undo entry that reverts every
+     * affected record. This caught a real bug where the bulk path bypassed
+     * the undo stack entirely (only single-row approve/decline pushed
+     * entries), so clicking Undo did nothing for bulk-declined requests.
+     */
+    it('bulk decline pushes one undo entry that restores all selected records', async () => {
+      window.localStorage.setItem(
+        'kindred-requests-filters-1001',
+        JSON.stringify({
+          filters: {
+            requestTypes: [],
+            statuses: ['pending', 'declined', 'resolved'],
+            searchQuery: '',
+          },
+          sort: { sortBy: 'requester', sortOrder: 'asc' },
+        })
+      )
+
+      const records: BunkRequestsResponse[] = [
+        {
+          id: 'bulk-rec-1',
+          requester_id: 510,
+          requestee_id: 511,
+          session_id: 1001,
+          year: 2025,
+          status: 'pending',
+          request_type: 'bunk_with',
+          confidence_score: 0.8,
+          priority: 1,
+          request_locked: false,
+        } as BunkRequestsResponse,
+        {
+          id: 'bulk-rec-2',
+          requester_id: 520,
+          requestee_id: 521,
+          session_id: 1001,
+          year: 2025,
+          status: 'pending',
+          request_type: 'bunk_with',
+          confidence_score: 0.7,
+          priority: 1,
+          request_locked: false,
+        } as BunkRequestsResponse,
+      ]
+
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: { collection: ReturnType<typeof vi.fn> }
+      }
+
+      const updateCalls: Array<{ id: string; updates: Partial<BunkRequestsResponse> }> = []
+
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn(async () => records.map((r) => ({ ...r }))),
+            getList: vi.fn(async () => ({
+              items: records.map((r) => ({ ...r })),
+              totalItems: records.length,
+            })),
+            update: vi.fn(async (id: string, updates: Partial<BunkRequestsResponse>) => {
+              updateCalls.push({ id, updates: { ...updates } })
+              const rec = records.find((r) => r.id === id)
+              if (rec) Object.assign(rec, updates)
+              return { ...rec }
+            }),
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
+
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+      const user = userEvent.setup()
+
+      // Wait for both rows to render with Pending badges
+      await waitFor(
+        () => {
+          expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(2)
+        },
+        { timeout: 3000 }
+      )
+
+      // Select both rows via the requester-name buttons mapped to checkboxes.
+      // Each rendered row has a checkbox at `name=""` role=checkbox; the
+      // "Select All" header is also a checkbox. Pick checkboxes whose
+      // closest <tr>/<div> has data for our two distinct request IDs.
+      // Simpler: use toggleRequestSelection by clicking checkboxes one at
+      // a time and waiting for selectedRequests.size to grow (proxied by
+      // the sticky toolbar's "{N} selected" text).
+      const allCheckboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+      // Click checkboxes until we reach 2 selected (skipping select-all toggles).
+      for (const cb of allCheckboxes) {
+        if (cb.checked) continue
+        fireEvent.click(cb)
+        const toolbar = screen.queryByRole('toolbar', { name: /bulk actions/i })
+        if (toolbar && within(toolbar).queryByText(/^2 selected$/)) break
+      }
+
+      // Bulk Reject lives inside the sticky toolbar — scope to it to avoid
+      // matching the row-level "Reject" buttons.
+      const toolbar = await waitFor(
+        () => {
+          const t = screen.queryByRole('toolbar', { name: /bulk actions/i })
+          if (!t) throw new Error('no toolbar yet')
+          if (!within(t).queryByText(/^2 selected$/)) throw new Error('not 2 selected yet')
+          return t
+        },
+        { timeout: 3000 }
+      )
+      const rejectBtn = within(toolbar).getByRole('button', { name: /reject/i })
+      await user.click(rejectBtn)
+
+      // Confirm in the bulk dialog (role=dialog with bulk-confirm-label).
+      const dialog = await screen.findByRole('dialog')
+      const declineConfirm = within(dialog).getByRole('button', { name: 'Decline' })
+      await user.click(declineConfirm)
+
+      // Both records now declined on the server
+      await waitFor(
+        () => {
+          expect(records.every((r) => r.status === 'declined')).toBe(true)
+        },
+        { timeout: 5000 }
+      )
+
+      // Undo button now visible — click it
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+      await user.click(undoBtn)
+
+      // Both records back to pending
+      await waitFor(
+        () => {
+          expect(records.every((r) => r.status === 'pending')).toBe(true)
+        },
+        { timeout: 5000 }
+      )
+
+      // PATCH calls: 2 bulk declines + 2 inverse PATCHes back to pending = 4 calls min
+      const pendingPatches = updateCalls.filter((c) => c.updates.status === 'pending')
+      expect(pendingPatches.length).toBeGreaterThanOrEqual(2)
+    }, 30000)
+
+    it('clicking Undo after decline restores status to pending', async () => {
+      const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-undo-3',
+        requester_id: 320,
+        requestee_id: 321,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'not_bunk_with',
+        confidence_score: 0.6,
+        priority: 2,
+        request_locked: false,
+      })
+
+      updateSpy.mockResolvedValue({})
+
+      const rejectButton = await findButtonByTitle('Reject')
+      fireEvent.click(rejectButton)
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledWith('req-undo-3', {
+          status: 'declined',
+          request_locked: false,
+        })
+      })
+
+      // Undo button visible
+      const undoBtn = await waitFor(
+        () => {
+          const btn = screen.queryByRole('button', { name: /undo/i })
+          expect(btn).not.toBeNull()
+          return btn!
+        },
+        { timeout: 3000 }
+      )
+
+      await user.click(undoBtn)
+
+      // Inverse: restore to pending (prior state was pending, request_locked false)
+      await waitFor(
+        () => {
+          const calls = updateSpy.mock.calls
+          const undoCall = calls.find((c) => c[1]?.status === 'pending')
+          expect(undoCall).toBeDefined()
+        },
+        { timeout: 3000 }
+      )
     }, 15000)
   })
 })
