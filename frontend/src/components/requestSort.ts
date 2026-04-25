@@ -16,8 +16,8 @@ export const DEFAULT_SORT_ORDER: 'asc' | 'desc' = 'asc'
  * Stable sort of bunk requests for the requests tab.
  *
  * The `grade` sort is the requests-tab default: it orders rows by the
- * requester's grade (ascending → youngest first) with a last-name /
- * first-name tiebreaker so same-grade campers stay alphabetized. Campers
+ * requester's grade (ascending → youngest first) with a first-name /
+ * last-name tiebreaker so same-grade campers stay alphabetized. Campers
  * with no grade (0 or undefined) land at the end of an ascending sort.
  *
  * All other columns are pure single-key sorts that match the column
@@ -47,26 +47,26 @@ export function sortRequests(
       // Handle the ungraded cases before applying the direction multiplier.
       if (aGrade === null && bGrade === null) {
         // Both ungraded — tiebreak by name, always ascending (stable, not direction-inverted).
-        const aLast = (aP?.last_name ?? '').toLowerCase()
-        const bLast = (bP?.last_name ?? '').toLowerCase()
-        if (aLast !== bLast) return aLast < bLast ? -1 : 1
         const aFirst = (aP?.first_name ?? '').toLowerCase()
         const bFirst = (bP?.first_name ?? '').toLowerCase()
-        return aFirst < bFirst ? -1 : aFirst > bFirst ? 1 : 0
+        if (aFirst !== bFirst) return aFirst < bFirst ? -1 : 1
+        const aLast = (aP?.last_name ?? '').toLowerCase()
+        const bLast = (bP?.last_name ?? '').toLowerCase()
+        return aLast < bLast ? -1 : aLast > bLast ? 1 : 0
       }
       if (aGrade === null) return 1 // a goes after b regardless of direction
       if (bGrade === null) return -1 // a goes before b regardless of direction
 
       if (aGrade !== bGrade) return (aGrade - bGrade) * direction
 
-      const aLast = (aP?.last_name ?? '').toLowerCase()
-      const bLast = (bP?.last_name ?? '').toLowerCase()
-      if (aLast !== bLast) return (aLast < bLast ? -1 : 1) * direction
-
       const aFirst = (aP?.first_name ?? '').toLowerCase()
       const bFirst = (bP?.first_name ?? '').toLowerCase()
-      if (aFirst === bFirst) return 0
-      return (aFirst < bFirst ? -1 : 1) * direction
+      if (aFirst !== bFirst) return (aFirst < bFirst ? -1 : 1) * direction
+
+      const aLast = (aP?.last_name ?? '').toLowerCase()
+      const bLast = (bP?.last_name ?? '').toLowerCase()
+      if (aLast === bLast) return 0
+      return (aLast < bLast ? -1 : 1) * direction
     })
   }
 

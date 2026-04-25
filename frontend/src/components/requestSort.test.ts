@@ -70,7 +70,7 @@ describe('sortRequests — grade default', () => {
     expect(sorted.map((r) => r.id)).toEqual(['r2', 'r3', 'r1'])
   })
 
-  it('tiebreaks same-grade requesters by last name then first name', () => {
+  it('tiebreaks same-grade requesters by first name then last name', () => {
     const personMap = new Map<number, PersonsResponse>([
       [1, person({ cm_id: 1, first_name: 'Riley', last_name: 'Sam', grade: 5 })],
       [2, person({ cm_id: 2, first_name: 'Samuel', last_name: 'Johnson', grade: 5 })],
@@ -83,8 +83,23 @@ describe('sortRequests — grade default', () => {
     ]
 
     const sorted = sortRequests(requests, personMap, 'grade', 'asc')
-    // Same grade → last name asc (Johnson < Sam), then first name asc (Ada < Samuel).
-    expect(sorted.map((r) => r.id)).toEqual(['rAda', 'rSamuel', 'rSam'])
+    // Same grade → first name asc (Ada < Riley < Samuel).
+    expect(sorted.map((r) => r.id)).toEqual(['rAda', 'rSam', 'rSamuel'])
+  })
+
+  it('tiebreaks same first name within same grade by last name', () => {
+    const personMap = new Map<number, PersonsResponse>([
+      [1, person({ cm_id: 1, first_name: 'Riley', last_name: 'Zimmerman', grade: 5 })],
+      [2, person({ cm_id: 2, first_name: 'Riley', last_name: 'Adams', grade: 5 })],
+    ])
+    const requests = [
+      request({ id: 'rZim', requester_id: 1 }),
+      request({ id: 'rAdm', requester_id: 2 }),
+    ]
+
+    const sorted = sortRequests(requests, personMap, 'grade', 'asc')
+    // Same grade + same first name → last name asc (Adams < Zimmerman).
+    expect(sorted.map((r) => r.id)).toEqual(['rAdm', 'rZim'])
   })
 
   it('places requesters with missing / zero grade at the bottom (ascending)', () => {
@@ -142,7 +157,7 @@ describe('sortRequests — ungraded always at bottom regardless of direction', (
     expect(sorted.map((r) => r.id)).toEqual(['rGraded', 'rUngraded'])
   })
 
-  it('both ungraded → tiebreak by last name then first name (stable, not direction-inverted)', () => {
+  it('both ungraded → tiebreak by first name then last name (stable, not direction-inverted)', () => {
     const personMap = new Map<number, PersonsResponse>([
       [1, person({ cm_id: 1, first_name: 'Zelda', last_name: 'Morris' })],
       [2, person({ cm_id: 2, first_name: 'Ada', last_name: 'Morris' })],
