@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -51,9 +51,9 @@ import {
   toDisplayList,
 } from '../utils/enrollmentFilter'
 import { CamperAlertSection } from './CamperAlertSection'
-import type { CamperAlert } from './CamperAlertSection'
 import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
+import { buildCamperAlerts } from '../utils/camperAlertUtils'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -710,6 +710,34 @@ export default function CamperDetailsPanel({
     ? satisfactionData[agePreferenceRequest.id]
     : undefined
 
+  // ── Build alert catalog from card-mirrored data ────────────────────────────
+  // Placed before early returns so useMemo is called unconditionally (Rules of Hooks).
+  // Memoized so the alert list reference is stable across renders when inputs
+  // have not changed.  The dependency list mirrors every value consumed by
+  // buildCamperAlerts: bunk assignment, resolved requests, satisfaction results,
+  // and lock-group membership.
+  const lockState = getCamperLockState(camper?.person_cm_id ?? 0)
+  const lockGroup = getCamperLockGroup(camper?.person_cm_id ?? 0)
+  const lockGroupSize = lockGroup ? getGroupMembers(lockGroup.id).length : 0
+  // Stable string keys to avoid referential inequality on derived arrays/objects
+  const bunkRequestsKey = bunkRequests.map((r) => `${r.id}:${r.status}`).join(',')
+  const satisfactionKey = Object.entries(satisfactionData)
+    .map(([k, v]) => `${k}:${v.status}`)
+    .join(',')
+
+  const camperAlerts = useMemo(
+    () =>
+      buildCamperAlerts({
+        assignedBunkCmId: camper?.assigned_bunk_cm_id ?? null,
+        bunkRequests,
+        satisfactionData,
+        lockState,
+        lockGroupSize,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [camper?.assigned_bunk_cm_id, bunkRequestsKey, satisfactionKey, lockState, lockGroupSize]
+  )
+
   // Loading state
   if (camperLoading) {
     return embedded ? (
@@ -812,48 +840,6 @@ export default function CamperDetailsPanel({
       ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
       : null
 
-  // ── Build alert catalog from card-mirrored data ────────────────────────────
-  const buildAlerts = (): CamperAlert[] => {
-    const alerts: CamperAlert[] = []
-
-    // 1. Unsatisfied requests warning (mirrors orange triangle on CamperCard)
-    //    Only relevant when camper is assigned to a bunk.
-    if (camper.assigned_bunk_cm_id) {
-      const totalRequests = bunkRequests.filter(
-        (r) => r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
-      ).length
-      // Count satisfied based on satisfactionData from the panel's own query
-      const satisfiedCount = Object.values(satisfactionData).filter(
-        (r) => r.status === 'satisfied'
-      ).length
-      if (totalRequests > 0 && satisfiedCount === 0) {
-        alerts.push({
-          id: 'unsatisfied-requests',
-          severity: 'yellow',
-          label: `Has ${totalRequests} ${totalRequests === 1 ? 'request' : 'requests'}, none satisfied`,
-          requestRelated: true,
-        })
-      }
-    }
-
-    // 2. Friend group (mirrors lock icon on CamperCard)
-    //    Only shown in draft mode (lockState === 'locked').
-    const lockState = getCamperLockState(camper.person_cm_id)
-    if (lockState === 'locked') {
-      const lockGroup = getCamperLockGroup(camper.person_cm_id)
-      const groupSize = lockGroup ? getGroupMembers(lockGroup.id).length : 0
-      alerts.push({
-        id: 'friend-group',
-        severity: 'blue',
-        label: `In friend group (${groupSize} ${groupSize === 1 ? 'member' : 'members'})`,
-        requestRelated: false,
-      })
-    }
-
-    return alerts
-  }
-
-  const camperAlerts = buildAlerts()
 
   // Render the panel content
   const renderContent = () => (
