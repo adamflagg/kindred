@@ -64,7 +64,8 @@ interface FilterState {
   searchQuery: string
 }
 
-type SortColumn = 'requester' | 'request' | 'priority' | 'confidence' | 'status'
+import { sortRequests, DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from './requestSort'
+import type { SortColumn } from './requestSort'
 
 export default function RequestReviewPanel({
   sessionId,
@@ -84,36 +85,13 @@ export default function RequestReviewPanel({
     }),
     []
   )
-  const defaultSortBy: SortColumn = 'confidence'
-  const defaultSortOrder: 'asc' | 'desc' = 'asc'
-
+  // Sort is not persisted across refreshes — staff asked (April 2026) for
+  // the grade-grouped view to return on page load even if they clicked a
+  // column header during the session.
   const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set())
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [sortBy, setSortBy] = useState<SortColumn>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        const loaded = parsed?.sort?.sortBy
-        if (loaded && loaded !== 'disposition') return loaded as SortColumn
-      }
-    } catch {
-      // Ignore
-    }
-    return defaultSortBy
-  })
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed?.sort?.sortOrder) return parsed.sort.sortOrder as 'asc' | 'desc'
-      }
-    } catch {
-      // Ignore
-    }
-    return defaultSortOrder
-  })
+  const [sortBy, setSortBy] = useState<SortColumn>(DEFAULT_SORT_BY)
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(DEFAULT_SORT_ORDER)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
@@ -169,7 +147,8 @@ export default function RequestReviewPanel({
     return defaultFilters
   })
 
-  // Task 7: Persist filters and sort config to localStorage on changes
+  // Persist filters to localStorage on changes. Sort state is intentionally
+  // excluded so the grade-grouped default is restored on every page load.
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -180,13 +159,12 @@ export default function RequestReviewPanel({
             statuses: filters.statuses,
             searchQuery: filters.searchQuery,
           },
-          sort: { sortBy, sortOrder },
         })
       )
     } catch {
       // Ignore quota errors
     }
-  }, [storageKey, filters, sortBy, sortOrder])
+  }, [storageKey, filters])
 
   // Rehydrate filters/sort when sessionId changes (component stays mounted via Activity)
   const isInitialMount = useRef(true)
@@ -195,7 +173,9 @@ export default function RequestReviewPanel({
       isInitialMount.current = false
       return
     }
-    // Session changed — reload from localStorage or reset to defaults
+    // Session changed — reload filters from localStorage or reset to
+    // defaults. Sort is always reset to the grade-grouped default; it is
+    // not persisted per the staff-feedback feature.
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
@@ -209,21 +189,14 @@ export default function RequestReviewPanel({
         } else {
           setFilters(defaultFilters)
         }
-        const loadedSortBy = parsed?.sort?.sortBy
-        if (loadedSortBy && loadedSortBy !== 'disposition') setSortBy(loadedSortBy as SortColumn)
-        else setSortBy(defaultSortBy)
-        if (parsed?.sort?.sortOrder) setSortOrder(parsed.sort.sortOrder as 'asc' | 'desc')
-        else setSortOrder(defaultSortOrder)
       } else {
         setFilters(defaultFilters)
-        setSortBy(defaultSortBy)
-        setSortOrder(defaultSortOrder)
       }
     } catch {
       setFilters(defaultFilters)
-      setSortBy(defaultSortBy)
-      setSortOrder(defaultSortOrder)
     }
+    setSortBy(DEFAULT_SORT_BY)
+    setSortOrder(DEFAULT_SORT_ORDER)
     // Clear selection state from previous session
     setSelectedRequests(new Set())
     setExpandedRows(new Set())
@@ -447,54 +420,7 @@ export default function RequestReviewPanel({
       })
     }
 
-    // Sort filtered results
-    const sorted = filtered.sort((a, b) => {
-      let aValue: string | number | Date
-      let bValue: string | number | Date
-
-      switch (sortBy) {
-        case 'requester': {
-          const aRequester = personMap.get(a.requester_id)
-          const bRequester = personMap.get(b.requester_id)
-          aValue = aRequester ? `${aRequester.first_name || ''} ${aRequester.last_name || ''}` : ''
-          bValue = bRequester ? `${bRequester.first_name || ''} ${bRequester.last_name || ''}` : ''
-          break
-        }
-        case 'request': {
-          const aRequested = a.requestee_id ? personMap.get(a.requestee_id) : null
-          const bRequested = b.requestee_id ? personMap.get(b.requestee_id) : null
-          aValue = aRequested
-            ? `${aRequested.first_name || ''} ${aRequested.last_name || ''}`
-            : a.parse_notes || ''
-          bValue = bRequested
-            ? `${bRequested.first_name || ''} ${bRequested.last_name || ''}`
-            : b.parse_notes || ''
-          break
-        }
-        case 'priority':
-          aValue = a.priority
-          bValue = b.priority
-          break
-        case 'confidence':
-          aValue = a.confidence_score
-          bValue = b.confidence_score
-          break
-        case 'status':
-          aValue = a.status
-          bValue = b.status
-          break
-        default:
-          return 0
-      }
-
-      if (sortOrder === 'asc') {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
-      }
-    })
-
-    return sorted
+    return sortRequests(filtered, personMap, sortBy, sortOrder)
   }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
