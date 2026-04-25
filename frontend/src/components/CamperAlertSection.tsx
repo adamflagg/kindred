@@ -114,5 +114,3 @@ export function CamperAlertSection({ alerts, onRequestAlertClick }: CamperAlertS
     </section>
   )
 }
-
-export default CamperAlertSection
