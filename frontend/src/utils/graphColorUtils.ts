@@ -10,21 +10,21 @@
 import { getUnitForBunk, UNIT_NAMES } from './unitMapping'
 
 /**
- * Palette of distinct colors for unit grouping.
- * Chosen to be visually distinct and accessible; cycles if more than 7 units.
- * Reuses the muted tone aesthetic already present in UNIT_COLORS from unitMapping.ts
- * but brighter for better visibility.
+ * Palette of distinct colors for unit grouping. Sierra-Nevada-at-Tawonga
+ * theme: anchored on Camp Tawonga's brand (forest green nav, golden sun)
+ * and extended with Sierra nature hues (lake water, sequoia bark, lupine
+ * wildflower, sage scrub, granite stone, sandstone cliff). 8 distinct hues
+ * cover the 7 canonical units with one cushion before cycling.
  */
 export const UNIT_PALETTE: readonly string[] = [
-  '#5b8fa8', // muted blue
-  '#8a7355', // warm tan
-  '#6b8a5e', // sage green
-  '#8a5e7a', // muted mauve
-  '#5e7a8a', // slate
-  '#8a6b5e', // terracotta
-  '#7a8a5e', // olive
-  '#6b5e8a', // dusty violet
-  '#5e8a7a', // teal-grey
+  '#006d4a', // Tawonga forest (brand primary nav)
+  '#d99935', // Sun gold (brand sun, muted for accessibility)
+  '#3d6c8a', // Alpine lake
+  '#a85c3a', // Sequoia bark
+  '#7a5b9a', // Lupine wildflower
+  '#94a574', // Sage scrub
+  '#7a7a85', // Granite stone
+  '#c9986a', // Sandstone cliff
 ]
 
 /**
