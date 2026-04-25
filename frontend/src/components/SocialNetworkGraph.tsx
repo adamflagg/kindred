@@ -189,23 +189,26 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       if (!cyRef.current) return
       const cy = cyRef.current
 
-      // Post-layout completion handler
+      // Post-layout completion handler.
+      // Bubbles need a tick for the bubblesets DOM to settle so they're scheduled
+      // on a microtask rather than a 500ms timer; node-label adjustment runs
+      // synchronously alongside the cy.fit() call (see worker handler) so labels
+      // don't visibly shift after the initial paint.
       const onLayoutComplete = () => {
         setIsComputingLayout(false)
-        setTimeout(() => {
-          try {
-            adjustLabelPositions(cy)
-            // Redraw bubbles after layout if enabled (showBubbles is read from
-            // the closure at effect-creation time, which is correct — if bubbles
-            // were on when the graph rebuilt, they should be restored).
-            if ((showBubbles || showUnits) && bunksData) {
+        if ((showBubbles || showUnits) && bunksData) {
+          // RAF lets cy emit its final pan/zoom events before bubbles snapshot
+          // node positions, avoiding a stale draw.
+          requestAnimationFrame(() => {
+            if (cy.destroyed()) return
+            try {
               clearBubbles(bubbleRefs)
               drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
+            } catch (error) {
+              console.error('Error drawing bubbles:', error)
             }
-          } catch (error) {
-            console.error('Error after layout complete:', error)
-          }
-        }, 500)
+          })
+        }
       }
 
       // Prepare data for worker
@@ -243,6 +246,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             // the resize effect later fires (e.g. on first checkbox toggle).
             cy.resize()
             cy.fit(undefined, 50)
+            // Adjust node-label positions synchronously after fit so labels are
+            // at their final positions on first paint (no visible settle).
+            adjustLabelPositions(cy)
             onLayoutComplete()
           } else if (type === 'error') {
             console.error('[SocialNetworkGraph] Worker error:', error)
