@@ -44,6 +44,13 @@ export const EDGE_LABELS: Record<string, string> = {
   school: 'Classmates',
 }
 
+/**
+ * Get display label for an edge type
+ */
+export function getEdgeLabel(type: string): string {
+  return EDGE_LABELS[type] ?? type
+}
+
 // Zoom settings
 export const ZOOM_SETTINGS = {
   inMultiplier: 1.2,

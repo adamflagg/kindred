@@ -3,7 +3,14 @@
  */
 
 // Constants
-export { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS, EDGE_LABELS, ZOOM_SETTINGS } from './constants'
+export {
+  GRADE_COLORS,
+  EDGE_COLORS,
+  STATUS_COLORS,
+  EDGE_LABELS,
+  ZOOM_SETTINGS,
+  getEdgeLabel,
+} from './constants'
 
 // Cytoscape styles and graph data transformations
 export {
@@ -21,8 +28,6 @@ export {
 
 // Components
 export { default as GraphControls, type GraphControlsProps } from './GraphControls'
-
-export { default as EdgeFilters, getEdgeLabel, type EdgeFiltersProps } from './EdgeFilters'
 
 export { default as GraphLegend, type GraphLegendProps } from './GraphLegend'
 
