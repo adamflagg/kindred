@@ -93,7 +93,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
         className={
           compact ? 'btn-secondary px-3 py-1.5' : 'btn-secondary nav-btn-icon-only px-4 py-2'
         }
-        title="Upload Bunk Requests CSV"
+        title="Camper report: API Bunking Info"
       >
         <Upload className="h-4 w-4 flex-shrink-0" />
         {compact ? (
