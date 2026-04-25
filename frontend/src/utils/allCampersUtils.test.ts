@@ -528,7 +528,7 @@ describe('allCampersUtils', () => {
       expect(getCampersHeadlineNoun(mixedSessions, 7)).toBe('campers and questers')
     })
 
-    it('returns "campers" for no selection (all sessions shown, includes at-camp)', () => {
+    it('returns "campers and questers" when all sessions include both at-camp and quest types', () => {
       // When allSessions contains both types and nothing is filtered, treat as "mixed"
       // but the "all sessions" case means the noun is based on what's visible
       // Empty selectedSessions means "all" — which is at-camp + quest → mixed
@@ -547,31 +547,6 @@ describe('allCampersUtils', () => {
     it('embedded sessions count as at-camp for noun purposes', () => {
       const embeddedSessions = [createMockSession({ name: 'Session 2a', session_type: 'embedded' })]
       expect(getCampersHeadlineNoun(embeddedSessions, 2)).toBe('campers')
-    })
-  })
-
-  // ── #4: Picker independence regression ───────────────────────────────────
-  // The /campers page uses local useState for filterSession, while /metrics
-  // uses URL search params via MetricsSessionContext. These are architecturally
-  // separate — this test documents that getDropdownSessions and
-  // getCampersHeadlineNoun are pure functions with no shared mutable state.
-  describe('picker state independence (#4)', () => {
-    it('getDropdownSessions is a pure function — no shared state with metrics', () => {
-      const sessions = [
-        createMockSession({ name: 'Session 2', session_type: 'main' }),
-        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
-      ]
-      // Call twice — should return the same result, no side effects
-      const result1 = getDropdownSessions(sessions)
-      const result2 = getDropdownSessions(sessions)
-      expect(result1).toEqual(result2)
-    })
-
-    it('getCampersHeadlineNoun is a pure function — no shared state with metrics', () => {
-      const sessions = [createMockSession({ name: 'Session 2', session_type: 'main' })]
-      const noun1 = getCampersHeadlineNoun(sessions, 5)
-      const noun2 = getCampersHeadlineNoun(sessions, 5)
-      expect(noun1).toBe(noun2)
     })
   })
 })

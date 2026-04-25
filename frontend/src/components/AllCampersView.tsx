@@ -226,7 +226,8 @@ export default function AllCampersView() {
   const scopedSessions = useMemo(() => {
     if (filterSession === 'all') return dropdownSessions
     const session = dropdownSessions.find((s) => s.id === filterSession)
-    return session ? [session] : dropdownSessions
+    // Unknown filter ID → empty scope (produces default "campers" headline)
+    return session ? [session] : []
   }, [filterSession, dropdownSessions])
 
   // Filter and sort campers

@@ -21,9 +21,6 @@ const SUMMER_CAMP_SESSION_TYPES = ['main', 'ag', 'embedded', 'quest'] as const
 // relevant to the cabin-assignment workflow on the /campers page.
 const DROPDOWN_SESSION_TYPES = ['main', 'embedded', 'quest'] as const
 
-// At-camp session types (main, embedded, ag) — drives the headline noun
-const AT_CAMP_SESSION_TYPES = ['main', 'embedded', 'ag'] as const
-
 /**
  * Filter bunks to only include those linked to summer camp sessions (main, ag, embedded)
  * Excludes family camp bunks like Acorns, Azaleas, etc.
@@ -140,8 +137,8 @@ export function getSessionRelationshipsForCamperView(
 export function getCampersHeadlineNoun(sessions: Session[], count: number): string {
   const plural = count !== 1
 
-  const hasAtCamp = sessions.some((s) =>
-    AT_CAMP_SESSION_TYPES.includes(s.session_type as (typeof AT_CAMP_SESSION_TYPES)[number])
+  const hasAtCamp = sessions.some(
+    (s) => s.session_type === 'main' || s.session_type === 'embedded' || s.session_type === 'ag'
   )
   const hasQuest = sessions.some((s) => s.session_type === 'quest')
 
