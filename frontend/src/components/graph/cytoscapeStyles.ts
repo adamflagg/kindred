@@ -96,10 +96,6 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
           const edgeType = ele.data('edge_type')
           return EDGE_COLORS[edgeType] ?? '#95a5a6'
         },
-        'line-opacity': (ele: EdgeSingular) => {
-          const confidence = ele.data('confidence') ?? 0.5
-          return 0.3 + confidence * 0.7 // 0.3-1.0 range
-        },
         'target-arrow-shape': 'triangle',
         'target-arrow-color': (ele: EdgeSingular) => {
           const edgeType = ele.data('edge_type')

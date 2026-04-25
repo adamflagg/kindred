@@ -1,28 +1,12 @@
 /**
  * GraphControls component
- * Extracted from SocialNetworkGraph.tsx - handles view mode, zoom, and toggle controls
+ * Extracted from SocialNetworkGraph.tsx - handles zoom and toggle controls
  */
 
-import {
-  Eye,
-  EyeOff,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Minimize2,
-  HelpCircle,
-  ChevronDown,
-} from 'lucide-react'
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
+import { Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Minimize2, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 
-export type ViewMode = 'all' | 'ego'
-
 export interface GraphControlsProps {
-  /** Current view mode */
-  viewMode: ViewMode
-  /** Callback when view mode changes */
-  onViewModeChange: (mode: ViewMode) => void
   /** Whether labels are visible */
   showLabels: boolean
   /** Toggle label visibility */
@@ -44,8 +28,6 @@ export interface GraphControlsProps {
 }
 
 export default function GraphControls({
-  viewMode,
-  onViewModeChange,
   showLabels,
   onToggleLabels,
   showHelp,
@@ -58,31 +40,6 @@ export default function GraphControls({
 }: GraphControlsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-      {/* View Mode Selector */}
-      <Listbox value={viewMode} onChange={onViewModeChange}>
-        <div className="relative">
-          <ListboxButton
-            className="listbox-button-compact min-h-[44px] text-xs sm:text-sm"
-            title={
-              viewMode === 'ego'
-                ? 'Click on a camper to see their direct connections'
-                : 'Shows all social connections in the session'
-            }
-          >
-            <span>{viewMode === 'all' ? 'All Connections' : 'Ego Network'}</span>
-            <ChevronDown className="text-muted-foreground h-4 w-4" />
-          </ListboxButton>
-          <ListboxOptions className="listbox-options w-auto min-w-[140px]">
-            <ListboxOption value="all" className="listbox-option py-1.5">
-              All Connections
-            </ListboxOption>
-            <ListboxOption value="ego" className="listbox-option py-1.5">
-              Ego Network
-            </ListboxOption>
-          </ListboxOptions>
-        </div>
-      </Listbox>
-
       {/* Label Toggle - Hidden on small mobile, visible on larger screens */}
       <button
         onClick={onToggleLabels}

@@ -14,22 +14,9 @@ export default function GraphHelp() {
       </h4>
       <div className="text-forest-700 dark:text-forest-300 space-y-2 text-sm">
         <div>
-          <strong className="text-forest-800 dark:text-forest-200">View Modes:</strong>
-          <ul className="mt-1 ml-4 list-inside list-disc space-y-1">
-            <li>
-              <strong className="text-forest-800 dark:text-forest-200">All Connections:</strong>{' '}
-              Shows the complete social network with all request types
-            </li>
-            <li>
-              <strong className="text-forest-800 dark:text-forest-200">Ego Network:</strong> Click
-              on any camper to see only their direct connections (1-hop network)
-            </li>
-          </ul>
-        </div>
-        <div>
           <strong className="text-forest-800 dark:text-forest-200">Edge Directionality:</strong>{' '}
-          Arrows show the direction of requests. More opaque lines = higher confidence. Dashed lines
-          indicate bundled relationships (multiple types between same campers).
+          Arrows show the direction of requests. Dashed lines indicate bundled relationships
+          (multiple types between same campers).
         </div>
         <div>
           <strong className="text-forest-800 dark:text-forest-200">Node Size:</strong> Larger nodes

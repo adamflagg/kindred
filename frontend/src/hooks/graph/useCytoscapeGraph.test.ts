@@ -45,18 +45,14 @@ describe('useCytoscapeGraph', () => {
         showLabels: true,
         showEdges: {
           request: true,
-          historical: false,
           sibling: true,
-          school: false,
         },
         showBubbles: false,
-        viewMode: 'all',
       }
 
       expect(config.showLabels).toBe(true)
       expect(config.showEdges.request).toBe(true)
       expect(config.showBubbles).toBe(false)
-      expect(config.viewMode).toBe('all')
     })
   })
 

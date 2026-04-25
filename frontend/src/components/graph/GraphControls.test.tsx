@@ -4,27 +4,11 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+import GraphControls from './GraphControls'
 
 describe('GraphControls', () => {
-  describe('view mode selection', () => {
-    it('should support all and ego view modes', () => {
-      type ViewMode = 'all' | 'ego'
-      const validModes: ViewMode[] = ['all', 'ego']
-
-      expect(validModes).toContain('all')
-      expect(validModes).toContain('ego')
-    })
-
-    it('should call onViewModeChange when mode changes', () => {
-      const mockOnChange = vi.fn()
-      const newMode = 'ego'
-
-      mockOnChange(newMode)
-
-      expect(mockOnChange).toHaveBeenCalledWith('ego')
-    })
-  })
-
   describe('label toggle', () => {
     it('should toggle label visibility', () => {
       const mockToggleLabels = vi.fn()
@@ -95,37 +79,22 @@ describe('GraphControls', () => {
   })
 })
 
-describe('GraphControls props interface', () => {
-  it('should define all required props', () => {
-    interface GraphControlsProps {
-      viewMode: 'all' | 'ego'
-      onViewModeChange: (mode: 'all' | 'ego') => void
-      showLabels: boolean
-      onToggleLabels: () => void
-      showHelp: boolean
-      onToggleHelp: () => void
-      isExpanded: boolean
-      onToggleExpand: () => void
-      onZoomIn: () => void
-      onZoomOut: () => void
-      onFit: () => void
-    }
+describe('GraphControls rendering', () => {
+  const baseProps = {
+    showLabels: true,
+    onToggleLabels: vi.fn(),
+    showHelp: false,
+    onToggleHelp: vi.fn(),
+    isExpanded: false,
+    onToggleExpand: vi.fn(),
+    onZoomIn: vi.fn(),
+    onZoomOut: vi.fn(),
+    onFit: vi.fn(),
+  }
 
-    const props: GraphControlsProps = {
-      viewMode: 'all',
-      onViewModeChange: vi.fn(),
-      showLabels: true,
-      onToggleLabels: vi.fn(),
-      showHelp: false,
-      onToggleHelp: vi.fn(),
-      isExpanded: false,
-      onToggleExpand: vi.fn(),
-      onZoomIn: vi.fn(),
-      onZoomOut: vi.fn(),
-      onFit: vi.fn(),
-    }
-
-    expect(props.viewMode).toBe('all')
-    expect(props.showLabels).toBe(true)
+  it('does not render an Ego Network control', () => {
+    render(<GraphControls {...baseProps} />)
+    expect(screen.queryByText(/ego network/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/all connections/i)).not.toBeInTheDocument()
   })
 })

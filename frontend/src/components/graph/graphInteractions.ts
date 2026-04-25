@@ -43,9 +43,13 @@ export function adjustLabelPositions(cy: Core): void {
       let offsetY = 5
       let collision = true
       let attempts = 0
+      // Cap at 3 attempts (max ~50px below node) — beyond this, labels are
+      // visibly orphaned from their nodes. Accept some collision in dense
+      // areas rather than push labels arbitrarily far.
+      const MAX_ATTEMPTS = 3
 
       // Try different positions to avoid overlap
-      while (collision && attempts < 10) {
+      while (collision && attempts < MAX_ATTEMPTS) {
         const labelTop = bb.y2 + offsetY
         const labelBottom = labelTop + labelHeight
         const labelLeft = pos.x - labelWidth / 2
@@ -93,19 +97,6 @@ export function adjustLabelPositions(cy: Core): void {
       // This can happen during view transitions
     }
   })
-}
-
-/**
- * Show ego network for a specific node (highlight the node and its neighbors)
- */
-export function showEgoNetwork(cy: Core, nodeId: string): void {
-  if (cy.destroyed()) return
-
-  const node = cy.$(`#${nodeId}`)
-  const neighborhood = node.closedNeighborhood()
-
-  cy.elements().addClass('faded')
-  neighborhood.removeClass('faded')
 }
 
 /**

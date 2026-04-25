@@ -407,6 +407,17 @@ export function drawBunkBubbles(
   }
 
   cy.on('pan zoom resize', updatePoppers)
+
+  // Initial visibility prime: Popper.js positions elements asynchronously
+  // (its first layout runs on the next animation frame), so the visibility
+  // modifier reading getBoundingClientRect() during createPopper sees the
+  // unpositioned popper at (0,0) — which is "outside container" — and hides
+  // the label. Without this, labels stay hidden until the user pans/zooms
+  // and the existing listener triggers a re-update. Forcing an update on
+  // the next frame primes correct visibility on initial draw.
+  requestAnimationFrame(() => {
+    updatePoppers()
+  })
 }
 
 /**
