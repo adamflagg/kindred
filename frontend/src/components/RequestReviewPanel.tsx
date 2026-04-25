@@ -668,6 +668,45 @@ export default function RequestReviewPanel({
       labelVerb: 'decline',
     })
 
+  const handleBulkConfirm = useCallback(
+    (action: 'approve' | 'decline') => {
+      const ids = Array.from(selectedRequests)
+      if (ids.length === 0) return
+      const priors = ids
+        .map((id) => requests.find((r: BunkRequestsResponse) => r.id === id))
+        .filter((r): r is BunkRequestsResponse => Boolean(r))
+        .map((r) => ({ id: r.id, status: r.status, request_locked: r.request_locked }))
+      const updates: Partial<BunkRequestsResponse> =
+        action === 'approve'
+          ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
+          : { status: 'declined' as BunkRequestsStatusOptions, request_locked: false }
+      const labelVerb = action === 'approve' ? 'approval' : 'decline'
+      bulkUpdateMutation.mutate(
+        { ids, updates },
+        {
+          onSuccess: () => {
+            if (priors.length === 0) return
+            undoStack.push({
+              id: `bulk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              label: `Reverted ${labelVerb} of ${priors.length} request${priors.length === 1 ? '' : 's'}`,
+              inverse: async () => {
+                await Promise.all(
+                  priors.map((p) =>
+                    pb
+                      .collection('bunk_requests')
+                      .update(p.id, { status: p.status, request_locked: p.request_locked })
+                  )
+                )
+                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+              },
+            })
+          },
+        }
+      )
+    },
+    [selectedRequests, requests, bulkUpdateMutation, undoStack, queryClient]
+  )
+
   // Handlers
   const toggleRowExpansion = useCallback(
     (id: string, request?: BunkRequestsResponse) => {
@@ -2117,14 +2156,7 @@ export default function RequestReviewPanel({
               <button
                 type="button"
                 onClick={() => {
-                  const ids = Array.from(selectedRequests)
-                  bulkUpdateMutation.mutate({
-                    ids,
-                    updates:
-                      bulkConfirm.action === 'approve'
-                        ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
-                        : { status: 'declined' as BunkRequestsStatusOptions },
-                  })
+                  handleBulkConfirm(bulkConfirm.action)
                   setBulkConfirm(null)
                 }}
                 className={

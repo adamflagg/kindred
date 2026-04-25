@@ -12,7 +12,7 @@
  *   const { push, pop, peek, clear, stackSize, canUndo } = useUndoStack()
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 export interface UndoEntry {
   /** The PocketBase record ID of the affected request. */
@@ -41,35 +41,38 @@ export interface UseUndoStackResult {
 const MAX_STACK_SIZE = 3
 
 export function useUndoStack(): UseUndoStackResult {
+  // The ref is the source of truth for synchronous reads (pop must return
+  // the popped entry within the same tick — relying on a setState updater
+  // closure to mutate a local variable was unreliable in concurrent React,
+  // because the updater runs lazily during reconciliation, not at the
+  // setState call site). The state mirrors the ref purely to drive
+  // re-renders when stackSize / canUndo / peek change.
+  const stackRef = useRef<UndoEntry[]>([])
   const [stack, setStack] = useState<UndoEntry[]>([])
 
   const push = useCallback((entry: UndoEntry) => {
-    setStack((prev) => {
-      // Dedup by id: if an entry with the same id exists, replace it.
-      // This ensures repeated actions on the same request produce one stack entry.
-      const deduped = prev.filter((e) => e.id !== entry.id)
-      const next = [...deduped, entry]
-      // If over capacity, drop the oldest (index 0).
-      return next.slice(-MAX_STACK_SIZE)
-    })
+    // Dedup by id: if an entry with the same id exists, replace it.
+    // This ensures repeated actions on the same request produce one stack entry.
+    const deduped = stackRef.current.filter((e) => e.id !== entry.id)
+    const next = [...deduped, entry].slice(-MAX_STACK_SIZE)
+    stackRef.current = next
+    setStack(next)
   }, [])
 
   const pop = useCallback((): UndoEntry | undefined => {
-    let popped: UndoEntry | undefined
-    setStack((prev) => {
-      if (prev.length === 0) {
-        popped = undefined
-        return prev
-      }
-      popped = prev[prev.length - 1]
-      return prev.slice(0, -1)
-    })
+    const cur = stackRef.current
+    if (cur.length === 0) return undefined
+    const popped = cur[cur.length - 1]
+    const next = cur.slice(0, -1)
+    stackRef.current = next
+    setStack(next)
     return popped
   }, [])
 
   const peek = (): UndoEntry | undefined => stack[stack.length - 1]
 
   const clear = useCallback(() => {
+    stackRef.current = []
     setStack([])
   }, [])
 
