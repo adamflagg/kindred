@@ -64,16 +64,21 @@ export function getUnitBubbleOptions(): {
   return {
     ...BASE_BUBBLE_OPTIONS,
     // Lower threshold widens the energy-field contour beyond the nodes.
-    threshold: 1,
-    // Larger node radius range pushes the contour ~30px past each bunk's
-    // outer edge (bunk uses default nodeR1≈10, threshold=2). Net visible
-    // gap is ~20px of whitespace between bunk edge and unit boundary.
-    nodeR0: 10,
-    nodeR1: 40,
-    edgeR0: 10,
-    edgeR1: 50,
+    // Bunk uses BASE_BUBBLE_OPTIONS.threshold = 2; unit halves it to push
+    // the contour outward from the same node positions.
+    threshold: 0.5,
+    // upsetjs/bubblesets defaults are nodeR1=50 / edgeR1=20. Bunk bubbles
+    // inherit those defaults, so to put ~20px of visible whitespace OUTSIDE
+    // each bunk's contour, the unit's nodeR1/edgeR1 must be substantially
+    // larger than 50/20 — not smaller.
+    nodeR0: 20,
+    nodeR1: 90,
+    edgeR0: 20,
+    edgeR1: 80,
     pixelGroup: 8,
-    morphBuffer: 80,
+    // morphBuffer just sizes the marching-squares grid — doesn't affect
+    // visible extent. 30 is enough headroom for the larger nodeR1.
+    morphBuffer: 30,
   }
 }
 
