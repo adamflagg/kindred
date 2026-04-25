@@ -49,6 +49,11 @@ interface SocialNetworkGraphProps {
 // Import worker types
 import type { LayoutWorkerOutput } from '../workers/layoutWorker'
 
+// Module-level constant: request + sibling edges are always-on (not user-toggleable).
+// Hoisted outside the component so the reference is stable across renders —
+// passing a fresh object literal in deps arrays causes infinite re-renders.
+const SHOW_EDGES = { request: true, sibling: true } as const
+
 export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
@@ -69,8 +74,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showHelp, setShowHelp] = useState(false)
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
-  // Request and sibling edges are always-on — no user toggle
-  const showEdges = { request: true, sibling: true } as const
   const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
@@ -144,7 +147,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      showEdges
+      SHOW_EDGES
     )
 
     // Staged rendering for smoother loading
@@ -172,7 +175,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       await stageElements(nodes as cytoscape.ElementDefinition[], 30)
 
       // Apply edge visibility before adding edges
-      updateEdgeVisibility(cy, showEdges)
+      updateEdgeVisibility(cy, SHOW_EDGES)
 
       // Add edges last in larger batches
       await stageElements(edges as cytoscape.ElementDefinition[], 50)
@@ -293,7 +296,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // The closure reads showBubbles at effect-creation time to restore bubbles
     // after graph rebuilds triggered by other deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, bunksData, showEdges, showLabels, bubbleRefs])
+  }, [graphData, bunksData, showLabels, bubbleRefs])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
