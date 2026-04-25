@@ -22,17 +22,11 @@ export function CamperCohortsSection({ personCmId, sessionCmId, year }: CamperCo
   if (isLoading || !cohorts) return null
 
   // Build visible rows: only entries where count > 0
-  const rows: Array<{ kind: 'school' | 'congregation' | 'city'; label: string; count: number }> = []
-
-  if (cohorts.school && cohorts.school.count > 0) {
-    rows.push({ kind: 'school', ...cohorts.school })
-  }
-  if (cohorts.congregation && cohorts.congregation.count > 0) {
-    rows.push({ kind: 'congregation', ...cohorts.congregation })
-  }
-  if (cohorts.city && cohorts.city.count > 0) {
-    rows.push({ kind: 'city', ...cohorts.city })
-  }
+  const KINDS = ['school', 'congregation', 'city'] as const
+  const rows = KINDS.flatMap((kind) => {
+    const entry = cohorts[kind]
+    return entry && entry.count > 0 ? [{ kind, ...entry }] : []
+  })
 
   if (rows.length === 0) return null
 
