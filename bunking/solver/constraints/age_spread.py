@@ -145,4 +145,6 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
                 preferred_age_spread_bonus,
             )
 
+            constraints_added += 1
+
     logger.debug(f"Age spread: Using TRUE min/max aggregation for {constraints_added} bunks")
