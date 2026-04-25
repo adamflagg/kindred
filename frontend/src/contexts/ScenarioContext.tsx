@@ -1,11 +1,16 @@
 import type { ReactNode } from 'react'
-import { type FC, useState, useEffect, useCallback, useMemo, useEffectEvent } from 'react'
+import { type FC, useState, useEffect, useCallback, useMemo, useEffectEvent, useRef } from 'react'
 import { ScenarioContext, type Scenario, type ScenarioContextType } from '../hooks/useScenario'
 import { useSavedScenarios } from '../hooks/useSavedScenarios'
 import { useCreateScenario, useDeleteScenario } from '../hooks/useSavedScenariosMutation'
 import { useUpdateScenario, useClearScenario } from '../hooks/useScenarioOperations'
 import { useYear } from '../hooks/useCurrentYear'
 import { savedScenarioToScenario } from './scenarioTransform'
+import {
+  getStoredScenarioId,
+  setStoredScenarioId,
+  clearStoredScenarioId,
+} from '../utils/scenarioStorage'
 
 interface ScenarioProviderProps {
   children: ReactNode
@@ -136,83 +141,90 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     [clearScenarioMutation]
   )
 
-  // Stable localStorage sync using useEffectEvent
-  // Stores scenario selection PER SESSION so switching sessions doesn't lose your choice
-  const syncToLocalStorage = useEffectEvent(
+  // Tracks the sessionId whose restore phase has completed; prevents persist effect from
+  // clearing the stored key before restore runs.
+  const restoreCompletedForSessionRef = useRef<number | undefined>(undefined)
+
+  // Persist current scenario selection to localStorage (per session).
+  // Uses useEffectEvent so currentSessionId / currentScenario are always fresh without
+  // being reactive dependencies (which would cause double-fire loops).
+  const persistScenarioSelection = useEffectEvent(
     (sessionId: number | undefined, scenarioId: string | null) => {
       if (!sessionId) return
 
-      // Get existing per-session storage
-      const stored = localStorage.getItem('scenarioBySession')
-      const scenarioBySession: Record<string, string> = stored ? JSON.parse(stored) : {}
-
       if (scenarioId) {
-        scenarioBySession[sessionId] = scenarioId
-      } else {
-        // Use Reflect.deleteProperty to satisfy no-dynamic-delete rule
-        Reflect.deleteProperty(scenarioBySession, String(sessionId))
+        // Only write if the scenario belongs to this session — on session switch,
+        // currentScenario still holds the previous session's value for one render cycle.
+        if (currentScenario && currentScenario.session_cm_id !== sessionId) return
+        setStoredScenarioId(sessionId, scenarioId)
+      } else if (restoreCompletedForSessionRef.current === sessionId) {
+        // Only clear once restore has run for this session; null before that is
+        // default React state, not a user "switch to production" action.
+        clearStoredScenarioId(sessionId)
       }
-
-      localStorage.setItem('scenarioBySession', JSON.stringify(scenarioBySession))
     }
   )
 
-  // Store current scenario in localStorage for persistence (per session)
+  // Write to localStorage whenever the selected scenario changes.
+  // Depends on currentScenario?.id so it fires on user-driven scenario changes.
   useEffect(() => {
-    syncToLocalStorage(currentSessionId, currentScenario?.id ?? null)
+    persistScenarioSelection(currentSessionId, currentScenario?.id ?? null)
   }, [currentScenario?.id, currentSessionId])
 
-  // Pure function to determine validated scenario state
+  // Restore the last active scenario for the session when scenarios first load.
   // Uses useEffectEvent to read currentScenario without adding it as a dependency
-  // Returns the scenario to set (or null to clear), or undefined if no change needed
+  // (which would cause an infinite re-run loop).
+  // Returns the scenario to set (or null to clear), or undefined if no change needed.
   const getValidatedScenario = useEffectEvent(
     (availableScenarios: Scenario[]): Scenario | null | undefined => {
-      // Get stored scenario for THIS session
-      const stored = localStorage.getItem('scenarioBySession')
-      const scenarioBySession: Record<string, string> = stored ? JSON.parse(stored) : {}
-      const storedScenarioId = currentSessionId ? scenarioBySession[currentSessionId] : null
+      const storedScenarioId = currentSessionId ? getStoredScenarioId(currentSessionId) : null
 
-      // If we have a current scenario, check if it exists in the new session's scenarios
       if (currentScenario) {
         const stillExists = availableScenarios.find((s) => s.id === currentScenario.id)
         if (!stillExists) {
-          // Current scenario doesn't exist in this session - try to restore this session's saved scenario
           if (storedScenarioId) {
             const savedScenario = availableScenarios.find((s) => s.id === storedScenarioId)
             if (savedScenario) {
               return savedScenario
             }
           }
-          // No saved scenario for this session - reset to production
           return null
         }
-        // Current scenario is valid, no change needed
+        // undefined = no change needed
         return undefined
       }
 
-      // No current scenario - try to restore from localStorage for this session
       if (storedScenarioId && availableScenarios.length > 0) {
         const scenario = availableScenarios.find((s) => s.id === storedScenarioId)
         if (scenario) {
           return scenario
         }
+        // Stale key — stored scenario was deleted; clear it.
+        if (currentSessionId) {
+          clearStoredScenarioId(currentSessionId)
+        }
       }
 
-      // No restoration possible, stay as-is
+      // undefined = no change needed
       return undefined
     }
   )
 
-  // Validate scenario exists when scenarios list or session changes
-  // Only depends on scenarios + currentSessionId, not currentScenario (avoids re-run loop)
-  // setState is called here, not inside useEffectEvent
+  // Validate / restore scenario when the scenarios list or session changes.
+  // Only depends on scenarios + currentSessionId, not currentScenario (avoids re-run loop).
+  // setState is called here, not inside useEffectEvent.
   useEffect(() => {
     const validatedResult = getValidatedScenario(scenarios)
-    // undefined means no change needed, null/Scenario means update
+    // undefined means no change needed; null or a Scenario means update state.
     if (validatedResult !== undefined) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: syncs scenario state when external data (scenarios list, session) changes; useEffectEvent prevents re-run loops
       setCurrentScenario(validatedResult)
     }
+    // Mark restore phase complete for this specific session.
+    // Using the sessionId (not a boolean) prevents Finding 1: the persist effect
+    // checks restoreCompletedForSessionRef.current === sessionId, so a prior
+    // session's completion can't unlock writes for the new session.
+    restoreCompletedForSessionRef.current = currentSessionId
   }, [scenarios, currentSessionId])
 
   const value: ScenarioContextType = {
