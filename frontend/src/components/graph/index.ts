@@ -3,14 +3,7 @@
  */
 
 // Constants
-export {
-  GRADE_COLORS,
-  EDGE_COLORS,
-  STATUS_COLORS,
-  EDGE_LABELS,
-  ZOOM_SETTINGS,
-  getEdgeLabel,
-} from './constants'
+export { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS, EDGE_LABELS, ZOOM_SETTINGS } from './constants'
 
 // Cytoscape styles and graph data transformations
 export {

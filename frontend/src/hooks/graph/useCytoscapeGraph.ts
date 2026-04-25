@@ -9,9 +9,7 @@ export interface GraphInitConfig {
   showLabels: boolean
   showEdges: {
     request: boolean
-    historical: boolean
     sibling: boolean
-    school: boolean
   }
   showBubbles: boolean
 }

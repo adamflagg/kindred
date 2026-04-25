@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
@@ -371,14 +371,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }
   }
 
-  const handleToggleBubbles = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setShowBubbles(e.target.checked)
-  }, [])
-
-  const handleToggleUnits = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setShowUnits(e.target.checked)
-  }, [])
-
   return (
     <QueryGuard
       isLoading={isLoading}
@@ -414,14 +406,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
                 {/* Bunks / Units toggles — inline in header top row */}
                 <fieldset className="m-0 flex shrink-0 items-center justify-center gap-3 border-0 p-0 text-sm">
-                  <legend className="text-muted-foreground float-left font-medium">
-                    Show or hide:
-                  </legend>
+                  <legend className="text-muted-foreground font-medium">Show or hide:</legend>
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <input
                       type="checkbox"
                       checked={showBubbles}
-                      onChange={handleToggleBubbles}
+                      onChange={(e) => setShowBubbles(e.target.checked)}
                       className="rounded"
                     />
                     <span className="text-muted-foreground">Bunks</span>
@@ -430,7 +420,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                     <input
                       type="checkbox"
                       checked={showUnits}
-                      onChange={handleToggleUnits}
+                      onChange={(e) => setShowUnits(e.target.checked)}
                       className="rounded"
                     />
                     <span className="text-muted-foreground">Units</span>
