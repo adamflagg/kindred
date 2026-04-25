@@ -18,6 +18,49 @@ const BASE_BUBBLE_OPTIONS = {
   virtualEdges: true,
 } as const
 
+/**
+ * Options for BUNK bubbles. Tuned and validated by staff — do NOT change
+ * morphBuffer or pixelGroup without re-validating; bunk bubble shape is
+ * intentionally tight against the cluster (#32 spec lock).
+ */
+export function getBunkBubbleOptions(): {
+  maxRoutingIterations: number
+  threshold: number
+  pixelGroup: number
+  includeLabels: boolean
+  includeMainLabels: boolean
+  virtualEdges: boolean
+  morphBuffer: number
+} {
+  return {
+    ...BASE_BUBBLE_OPTIONS,
+    morphBuffer: 35,
+  }
+}
+
+/**
+ * Options for UNIT bubbles (#32 spec lock 2026-04-24):
+ *   - morphBuffer significantly wider than bunks → clear whitespace gap
+ *     between unit boundary and contained bunk bubbles.
+ *   - pixelGroup larger than bunks → smoother, less wiggly contour
+ *     (Photoshop-feather aesthetic, not stair-stepped marching squares).
+ */
+export function getUnitBubbleOptions(): {
+  maxRoutingIterations: number
+  threshold: number
+  pixelGroup: number
+  includeLabels: boolean
+  includeMainLabels: boolean
+  virtualEdges: boolean
+  morphBuffer: number
+} {
+  return {
+    ...BASE_BUBBLE_OPTIONS,
+    pixelGroup: 8,
+    morphBuffer: 220,
+  }
+}
+
 /** Shared font styles for unit labels */
 const UNIT_LABEL_FONT = {
   fontSize: '14px',
@@ -239,9 +282,7 @@ export function drawBunkBubbles(
 
         const path = addPath(nodeCollection, cy.collection(), cy.collection(), {
           style: getUnitBubbleStyle(unitColor),
-          // #32: significantly wider morphBuffer wraps well outside bunk bubbles
-          ...BASE_BUBBLE_OPTIONS,
-          morphBuffer: 180,
+          ...getUnitBubbleOptions(),
         })
         pathsRef.current.push(path)
       } catch (error) {
@@ -290,8 +331,7 @@ export function drawBunkBubbles(
               strokeOpacity: 0.8,
               strokeWidth: 3,
             },
-            ...BASE_BUBBLE_OPTIONS,
-            morphBuffer: 35,
+            ...getBunkBubbleOptions(),
           }
         )
 

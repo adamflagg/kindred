@@ -86,6 +86,38 @@ describe('getUnitColorByName', () => {
   })
 })
 
+describe('globally stable colors across sessions (#33)', () => {
+  /**
+   * Spec lock 2026-04-24: a unit's color must depend only on its canonical
+   * name, not on the other units present in the current graph. Repro: TOC2
+   * (Chalutzim 1, Chalutzim 2) and Session 3 (Carmel, Galil, Eilat, Haifa)
+   * both rendered a greyish-blue but for different units, because the per-
+   * session sorted-index assignment landed Galil at index 0 in Session 3 and
+   * Chalutzim 1 at index 0 in TOC2.
+   */
+  it('Eilat gets the same color regardless of which other units are present', () => {
+    const sessionA = getUnitColorByName('Eilat', ['Carmel', 'Eilat', 'Haifa'])
+    const sessionB = getUnitColorByName('Eilat', ['Eilat', 'Chalutzim 1'])
+    const sessionC = getUnitColorByName('Eilat', ['Eilat'])
+    expect(sessionA).toBe(sessionB)
+    expect(sessionB).toBe(sessionC)
+  })
+
+  it('Galil and Chalutzim 1 do not collide on greyish-blue across sessions', () => {
+    const galilSession3 = getUnitColorByName('Galil', ['Carmel', 'Galil', 'Eilat', 'Haifa'])
+    const chalutzim1TOC2 = getUnitColorByName('Chalutzim 1', ['Chalutzim 1', 'Chalutzim 2'])
+    expect(galilSession3).not.toBe(chalutzim1TOC2)
+  })
+
+  it('B-5 (Eilat) gets the same color in any bunk set that contains Eilat', () => {
+    const setA = getUnitColorForBunk('B-5', ['B-5', 'G-5', 'B-7', 'G-7'])
+    const setB = getUnitColorForBunk('B-5', ['B-1', 'B-3', 'B-5'])
+    const setC = getUnitColorForBunk('B-5', ['B-5'])
+    expect(setA).toBe(setB)
+    expect(setB).toBe(setC)
+  })
+})
+
 describe('UNIT_PALETTE', () => {
   it('is a non-empty array of color strings', () => {
     expect(Array.isArray(UNIT_PALETTE)).toBe(true)

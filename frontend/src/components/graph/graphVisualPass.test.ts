@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { getCytoscapeStyles } from './cytoscapeStyles'
-import { getUnitBubbleStyle } from './bubbleRenderer'
+import { getUnitBubbleStyle, getUnitBubbleOptions, getBunkBubbleOptions } from './bubbleRenderer'
 
 // Helper: access style property by string key without TypeScript index errors
 // (Cytoscape's StylesheetStyle.style is a union type, not an open record)
@@ -46,6 +46,36 @@ describe('#32 unit bubble fill is none', () => {
     const color = '#aabbcc'
     const style = getUnitBubbleStyle(color)
     expect(style.stroke).toBe(color)
+  })
+})
+
+// ── #32: Unit bubble feather + gap (unit-only, bunks unchanged) ─────────────
+
+describe('#32 unit bubble feather + whitespace gap', () => {
+  /**
+   * Spec lock 2026-04-24:
+   *   (a) Clear whitespace gap between unit boundary and contained bunk bubbles
+   *       → unit morphBuffer must be substantially larger than bunk morphBuffer
+   *   (b) Smoother spline (Photoshop-feather style, not wiggly)
+   *       → unit pixelGroup must be larger than bunk pixelGroup (smoother contour)
+   *   Bunk bubbles must be unchanged.
+   */
+  it('unit bubble morphBuffer is substantially larger than bunk morphBuffer (gap)', () => {
+    const unitOpts = getUnitBubbleOptions()
+    const bunkOpts = getBunkBubbleOptions()
+    expect(unitOpts.morphBuffer).toBeGreaterThan(bunkOpts.morphBuffer * 4)
+  })
+
+  it('unit bubble pixelGroup is larger than bunk pixelGroup (smoother contour)', () => {
+    const unitOpts = getUnitBubbleOptions()
+    const bunkOpts = getBunkBubbleOptions()
+    expect(unitOpts.pixelGroup).toBeGreaterThan(bunkOpts.pixelGroup)
+  })
+
+  it('bunk bubble options preserve the existing tuned values (do not touch bunks)', () => {
+    const bunkOpts = getBunkBubbleOptions()
+    expect(bunkOpts.morphBuffer).toBe(35)
+    expect(bunkOpts.pixelGroup).toBe(4)
   })
 })
 

@@ -3,7 +3,9 @@
  *
  * Covers feedback items:
  * #31 — One color per unit applied to all bunks in that unit
- * #33 — Deterministic/static colors (same set of units → same colors every render)
+ * #33 — Globally stable colors keyed on canonical unit name. The same unit
+ *       (e.g. "Chalutzim 1") gets the same color across every session/scenario,
+ *       regardless of which other units happen to be present in the current graph.
  */
 import { getUnitForBunk, UNIT_NAMES } from './unitMapping'
 
@@ -25,74 +27,51 @@ export const UNIT_PALETTE: readonly string[] = [
   '#5e8a7a', // teal-grey
 ]
 
-/** Cache: sorted unit list key → (unit name → color) */
-const _colorCache = new Map<string, Map<string, string>>()
-
 /**
- * Build a stable unit-name → color mapping for a given set of unit names.
- * Unit names are sorted in canonical age order (youngest→oldest per UNIT_NAMES),
- * then assigned palette colors by sorted index so identical sets always map
- * to identical colors regardless of insertion order.
+ * Fallback color for unit names not in UNIT_NAMES. Stable hash → palette index
+ * so unknown units still get a consistent color across renders.
  */
-function buildUnitColorMap(unitNames: Iterable<string>): Map<string, string> {
-  const unique = new Set(unitNames)
-
-  // Sort by canonical UNIT_NAMES order first; unknowns go alphabetically at end
-  const sorted = [...unique].sort((a, b) => {
-    const ia = UNIT_NAMES.indexOf(a as (typeof UNIT_NAMES)[number])
-    const ib = UNIT_NAMES.indexOf(b as (typeof UNIT_NAMES)[number])
-    if (ia !== -1 && ib !== -1) return ia - ib
-    if (ia !== -1) return -1
-    if (ib !== -1) return 1
-    return a.localeCompare(b)
-  })
-
-  const map = new Map<string, string>()
-  sorted.forEach((unitName, idx) => {
-    map.set(unitName, UNIT_PALETTE[idx % UNIT_PALETTE.length] as string)
-  })
-  return map
+function hashStringToPaletteIndex(name: string): number {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % UNIT_PALETTE.length
 }
 
 /**
- * Get a stable color for a unit name, given the full list of unit names present.
+ * Get a stable color for a unit name. The color depends ONLY on the canonical
+ * unit name — not on which other units are present in the current graph.
+ *
+ * `allUnits` is accepted for backward compatibility but ignored (#33).
  *
  * @param unitName  - The unit name (e.g. "Eilat")
- * @param allUnits  - All unit names present in the current graph
+ * @param _allUnits - Unused. Retained for API compatibility with prior per-session impl.
  */
-export function getUnitColorByName(unitName: string, allUnits: string[]): string {
-  const cacheKey = [...new Set(allUnits)].sort().join('|')
-  let map = _colorCache.get(cacheKey)
-  if (!map) {
-    map = buildUnitColorMap(allUnits)
-    _colorCache.set(cacheKey, map)
+export function getUnitColorByName(unitName: string, _allUnits?: string[]): string {
+  void _allUnits
+  const idx = UNIT_NAMES.indexOf(unitName as (typeof UNIT_NAMES)[number])
+  if (idx !== -1) {
+    return UNIT_PALETTE[idx % UNIT_PALETTE.length] as string
   }
-  return map.get(unitName) ?? (UNIT_PALETTE[0] as string)
+  return UNIT_PALETTE[hashStringToPaletteIndex(unitName)] as string
 }
 
 /**
  * Get a stable color for a bunk by resolving it to its unit, then looking up
- * the unit color within the palette assignment for the present bunk set.
+ * the canonical unit color (#33: globally stable, not per-bunk-set).
  *
- * All bunks in the same unit get the same color.
- * Same set of bunk names → same mapping every time (deterministic).
+ * All bunks in the same unit get the same color across all sessions.
  *
  * @param bunkName   - The bunk name (e.g. "B-5", "G-12", "Aleph")
- * @param allBunks   - All bunk names present in the current graph
+ * @param _allBunks  - Unused. Retained for API compatibility.
  */
-export function getUnitColorForBunk(bunkName: string, allBunks: string[]): string {
-  // Derive the set of units present in this graph
-  const unitSet = new Set<string>()
-  for (const name of allBunks) {
-    const unit = getUnitForBunk(name)
-    if (unit) unitSet.add(unit)
-  }
-
+export function getUnitColorForBunk(bunkName: string, _allBunks?: string[]): string {
+  void _allBunks
   const unit = getUnitForBunk(bunkName)
   if (!unit) {
     // Unknown bunk — use a neutral fallback color
     return '#888888'
   }
-
-  return getUnitColorByName(unit, [...unitSet])
+  return getUnitColorByName(unit)
 }
