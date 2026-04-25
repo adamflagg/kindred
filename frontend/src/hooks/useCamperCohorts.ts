@@ -14,6 +14,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 
 export interface CohortEntry {
   label: string
@@ -60,7 +61,7 @@ export function useCamperCohorts(
   const enabled = !!personCmId && sessionCmId > 0
 
   const { data: cohorts = null, isLoading } = useQuery({
-    queryKey: ['camper-cohorts', personCmId, sessionCmId, year],
+    queryKey: queryKeys.camperCohorts(personCmId, sessionCmId, year),
     queryFn: async (): Promise<CamperCohorts | null> => {
       if (!personCmId || sessionCmId <= 0) return null
 

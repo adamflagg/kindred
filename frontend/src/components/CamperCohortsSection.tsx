@@ -22,16 +22,16 @@ export function CamperCohortsSection({ personCmId, sessionCmId, year }: CamperCo
   if (isLoading || !cohorts) return null
 
   // Build visible rows: only entries where count > 0
-  const rows: Array<{ label: string; count: number }> = []
+  const rows: Array<{ kind: 'school' | 'congregation' | 'city'; label: string; count: number }> = []
 
   if (cohorts.school && cohorts.school.count > 0) {
-    rows.push(cohorts.school)
+    rows.push({ kind: 'school', ...cohorts.school })
   }
   if (cohorts.congregation && cohorts.congregation.count > 0) {
-    rows.push(cohorts.congregation)
+    rows.push({ kind: 'congregation', ...cohorts.congregation })
   }
   if (cohorts.city && cohorts.city.count > 0) {
-    rows.push(cohorts.city)
+    rows.push({ kind: 'city', ...cohorts.city })
   }
 
   if (rows.length === 0) return null
@@ -41,9 +41,10 @@ export function CamperCohortsSection({ personCmId, sessionCmId, year }: CamperCo
       <div className="space-y-1">
         {rows.map((row) => (
           <div
-            key={row.label}
+            key={`${row.kind}-${row.label}`}
             className="text-muted-foreground flex items-center gap-1.5 text-xs"
             data-testid="cohort-row"
+            data-cohort-kind={row.kind}
           >
             <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
             <span data-cohort-label={row.label}>

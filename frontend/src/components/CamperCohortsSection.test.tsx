@@ -162,4 +162,47 @@ describe('CamperCohortsSection', () => {
       expect(mockUseCamperCohorts).toHaveBeenCalledWith(1000042, 301, 2025)
     })
   })
+
+  describe('key collision guard', () => {
+    it('renders both rows distinctly when school and city share the same normalized label', async () => {
+      // "Springfield" appears as both school and city label — key={row.label} would collide
+      const cohorts: CamperCohorts = {
+        school: { label: 'Springfield', count: 3 },
+        congregation: null,
+        city: { label: 'Springfield', count: 7 },
+      }
+      mockUseCamperCohorts.mockReturnValue({ cohorts, isLoading: false })
+
+      render(<CamperCohortsSection {...defaultProps} />)
+
+      await waitFor(() => {
+        // Both rows must render — getByText would throw if there were a collision
+        // causing only one to render
+        const rows = screen.getAllByTestId('cohort-row')
+        expect(rows).toHaveLength(2)
+
+        // Each row has its distinct count visible
+        expect(screen.getByText(/Also from Springfield: 3 campers/)).toBeInTheDocument()
+        expect(screen.getByText(/Also from Springfield: 7 campers/)).toBeInTheDocument()
+      })
+    })
+
+    it('each row element carries a composite data-cohort-kind attribute for distinct identity', async () => {
+      const cohorts: CamperCohorts = {
+        school: { label: 'Springfield', count: 3 },
+        congregation: null,
+        city: { label: 'Springfield', count: 7 },
+      }
+      mockUseCamperCohorts.mockReturnValue({ cohorts, isLoading: false })
+
+      render(<CamperCohortsSection {...defaultProps} />)
+
+      await waitFor(() => {
+        const rows = screen.getAllByTestId('cohort-row')
+        const kinds = rows.map((r) => r.getAttribute('data-cohort-kind'))
+        expect(kinds).toContain('school')
+        expect(kinds).toContain('city')
+      })
+    })
+  })
 })
