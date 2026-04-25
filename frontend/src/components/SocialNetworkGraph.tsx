@@ -7,7 +7,7 @@ import BubbleSets from 'cytoscape-bubblesets'
 import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
 import { useSocialGraphData } from '../hooks/useSocialGraphData'
-import { Network, AlertCircle } from 'lucide-react'
+import { Network } from 'lucide-react'
 import { QueryGuard } from './QueryGuard'
 import clsx from 'clsx'
 import {
@@ -24,7 +24,6 @@ import {
   prepareWorkerInput,
   setupGraphEventHandlers,
   getLayoutOptions,
-  type BubbleRenderStatus,
   type PopperRef,
 } from './graph'
 import { batchElements, cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
@@ -74,7 +73,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showHelp, setShowHelp] = useState(false)
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
-  const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
   const { data: graphData, isLoading, error } = useSocialGraphData(sessionCmId)
@@ -196,14 +194,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             // were on when the graph rebuilt, they should be restored).
             if ((showBubbles || showUnits) && bunksData) {
               clearBubbles(bubbleRefs)
-              drawBunkBubbles(
-                cy,
-                bunksData,
-                bubbleRefs,
-                setBubbleRenderStatus,
-                showUnits,
-                showBubbles
-              )
+              drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
             }
           } catch (error) {
             console.error('Error after layout complete:', error)
@@ -240,7 +231,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 }
               })
             })
-            cy.fit(undefined, 80)
+            // Resize before fitting so we measure against the actual container size —
+            // without this, the initial fit can be calculated against a partially-laid-out
+            // container, causing a slight off-center on first render that "snaps" when
+            // the resize effect later fires (e.g. on first checkbox toggle).
+            cy.resize()
+            cy.fit(undefined, 50)
             onLayoutComplete()
           } else if (type === 'error') {
             console.error('[SocialNetworkGraph] Worker error:', error)
@@ -313,7 +309,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         if ((showBubbles || showUnits) && bunksData) {
           // Clear existing bubblesets using the utility
           clearBubbles(bubbleRefs)
-          drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits, showBubbles)
+          drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
         } else if (!showBubbles && !showUnits) {
           clearBubbles(bubbleRefs)
         }
@@ -469,23 +465,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   </div>
                 </div>
               )}
-
-              {/* Bubble Render Status — only meaningful when bubbles are actually requested */}
-              {(showBubbles || showUnits) &&
-                bubbleRenderStatus &&
-                bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
-                  <div className="shadow-lodge-sm absolute top-4 left-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
-                    <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-                      <AlertCircle className="h-4 w-4" />
-                      <span className="font-medium">Bubble Rendering Issue</span>
-                    </div>
-                    <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                      Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles
-                      rendered. This is a known library limitation. The graph is still fully
-                      functional.
-                    </div>
-                  </div>
-                )}
 
               <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
             </div>

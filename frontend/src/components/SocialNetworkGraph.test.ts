@@ -19,7 +19,7 @@ describe('SocialNetworkGraph safety guards', () => {
     // onLayoutComplete must redraw bubbles on the new Cytoscape instance.
     // Without this, bubbles vanish until the user toggles off/on.
     expect(source).toContain(
-      'drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits, showBubbles)'
+      'drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)'
     )
   })
 
