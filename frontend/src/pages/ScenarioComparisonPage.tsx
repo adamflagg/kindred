@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Percent,
   Table2,
+  Download,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
@@ -38,14 +39,25 @@ import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { findSessionByUrlSegment } from '../utils/sessionUtils'
+import {
+  compareCamperByName,
+  sortCampersByName,
+  getAvailableBunkAreas,
+  type BunkArea,
+} from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
+import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
+import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
 
 // Types for comparison
 interface CamperAssignment {
   personId: string
   personCmId: number
   name: string
+  firstName: string
+  lastName: string
+  age: number
   grade: number
   gender: string
   bunkId: string
@@ -85,7 +97,6 @@ interface BunkComparison {
   rightCampers: CamperAssignment[]
   movedIn: Array<{ camper: CamperAssignment; fromBunk: string }>
   movedOut: Array<{ camper: CamperAssignment; toBunk: string }>
-  unchanged: CamperAssignment[]
 }
 
 // Validation score types
@@ -121,7 +132,7 @@ export default function ScenarioComparisonPage() {
   const [rightScenarioId, setRightScenarioId] = useState<string>('')
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [changeFilter, setChangeFilter] = useState<ChangeFilter>('all')
-  const [selectedBunkArea, setSelectedBunkArea] = useState<'all' | 'boys' | 'girls' | 'ag'>('all')
+  const [selectedBunkArea, setSelectedBunkArea] = useState<BunkArea>('all')
 
   // Fetch all sessions for the current year to resolve the URL segment
   const { data: allSessions = [] } = useQuery({
@@ -298,12 +309,16 @@ export default function ScenarioComparisonPage() {
             // This should never happen due to the filter above, but TypeScript needs the guard
             throw new Error('Missing expand data')
           }
+          const firstName = person.preferred_name || person.first_name
           return {
             personId: person.id,
             personCmId: person.cm_id,
-            name: `${person.preferred_name || person.first_name} ${person.last_name}`,
-            grade: person.grade,
-            gender: person.gender,
+            name: `${firstName} ${person.last_name}`,
+            firstName,
+            lastName: person.last_name,
+            age: person.age ?? 0,
+            grade: person.grade ?? 0,
+            gender: person.gender ?? '',
             bunkId: bunk.id,
             bunkName: bunk.name,
             bunkPlanId: a.bunk_plan ?? '',
@@ -374,11 +389,16 @@ export default function ScenarioComparisonPage() {
     const totalChanges = moved.length + newlyAssigned.length + newlyUnassigned.length
     const totalInvolved = Math.max(leftAssignments.length, rightAssignments.length)
 
+    // Sort change lists alphabetically by camper name (last, then first) so both
+    // sides of the comparison present a stable, scannable order.
+    const sortByCamper = <T extends { camper: CamperAssignment }>(arr: T[]): T[] =>
+      arr.slice().sort((a, b) => compareCamperByName(a.camper, b.camper))
+
     return {
-      moved,
-      newlyAssigned,
-      newlyUnassigned,
-      unchanged,
+      moved: sortByCamper(moved),
+      newlyAssigned: sortByCamper(newlyAssigned),
+      newlyUnassigned: sortByCamper(newlyUnassigned),
+      unchanged: sortCampersByName(unchanged),
       metrics: {
         totalCampers: {
           left: leftAssignments.length,
@@ -413,15 +433,26 @@ export default function ScenarioComparisonPage() {
     return Array.from(bunkMap.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [leftAssignments, rightAssignments])
 
+  // Determine which area-filter buttons are meaningful given the bunks in scope.
+  // Hides "ag" entirely when no AG (Mixed-gender) cabins are present (#24).
+  const availableBunkAreas = useMemo(() => getAvailableBunkAreas(allBunks), [allBunks])
+
+  // If the persisted selection is no longer valid (e.g. a data refresh removed
+  // all AG bunks while "ag" was active), treat it as "all" for this render.
+  // Computing during render avoids the setState-in-effect anti-pattern.
+  const effectiveBunkArea: BunkArea = availableBunkAreas.includes(selectedBunkArea)
+    ? selectedBunkArea
+    : 'all'
+
   // Filter bunks by selected area
   const filteredBunks = useMemo(() => {
     return allBunks.filter((bunk) => {
-      if (selectedBunkArea === 'all') return true
-      if (selectedBunkArea === 'boys') return bunk.gender === 'M'
-      if (selectedBunkArea === 'girls') return bunk.gender === 'F'
+      if (effectiveBunkArea === 'all') return true
+      if (effectiveBunkArea === 'boys') return bunk.gender === 'M'
+      if (effectiveBunkArea === 'girls') return bunk.gender === 'F'
       return bunk.gender === 'Mixed'
     })
-  }, [allBunks, selectedBunkArea])
+  }, [allBunks, effectiveBunkArea])
 
   // Create bunk comparison data with movement tracking
   const bunkComparisons = useMemo((): BunkComparison[] => {
@@ -461,11 +492,10 @@ export default function ScenarioComparisonPage() {
       return {
         bunkId: bunk.id,
         bunkName: bunk.name,
-        leftCampers,
-        rightCampers,
+        leftCampers: sortCampersByName(leftCampers),
+        rightCampers: sortCampersByName(rightCampers),
         movedIn,
         movedOut,
-        unchanged: rightCampers.filter((c) => leftPersonIds.has(c.personCmId)),
       }
     })
   }, [filteredBunks, leftAssignments, rightAssignments])
@@ -756,13 +786,13 @@ export default function ScenarioComparisonPage() {
               <div className="mb-4 flex items-center gap-2">
                 <Filter className="text-muted-foreground h-4 w-4" />
                 <span className="text-muted-foreground mr-2 text-sm">Area:</span>
-                {['all', 'boys', 'girls', 'ag'].map((area) => (
+                {availableBunkAreas.map((area) => (
                   <button
                     key={area}
-                    onClick={() => setSelectedBunkArea(area as typeof selectedBunkArea)}
+                    onClick={() => setSelectedBunkArea(area)}
                     className={clsx(
                       'rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-                      selectedBunkArea === area
+                      effectiveBunkArea === area
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                     )}
@@ -781,7 +811,7 @@ export default function ScenarioComparisonPage() {
 
             {/* Change Filter (for changes view) */}
             {viewMode === 'changes' && (
-              <div className="mb-4 flex items-center gap-2">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
                 <Filter className="text-muted-foreground h-4 w-4" />
                 <span className="text-muted-foreground mr-2 text-sm">Show:</span>
                 {[
@@ -812,6 +842,36 @@ export default function ScenarioComparisonPage() {
                     {filter.label}
                   </button>
                 ))}
+                {/* Export moved campers when on Moved filter */}
+                {(changeFilter === 'moved' || changeFilter === 'all') &&
+                  filteredChanges.moved.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const movedEntries = filteredChanges.moved.map((change) => ({
+                          personCmId: change.camper.personCmId,
+                          firstName: change.camper.firstName,
+                          lastName: change.camper.lastName,
+                          bunkName: change.toBunk.name,
+                          sessionName: session?.name ?? '',
+                          age: change.camper.age,
+                          grade: change.camper.grade,
+                          priorBunkName: change.fromBunk.name,
+                        }))
+                        const rows = buildMovedRows(movedEntries)
+                        const csv = buildCsvContent([...MOVED_CSV_HEADERS], rows)
+                        const sessionPart = session?.name ? `-${slugify(session.name)}` : ''
+                        downloadCsv(
+                          csv,
+                          `scenario-moved-${slugify(leftScenarioName)}-vs-${slugify(rightScenarioName)}${sessionPart}-${todayIso()}.csv`
+                        )
+                      }}
+                      className="bg-muted/50 text-muted-foreground hover:bg-muted ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
+                      title="Export moved campers to CSV"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Export Moved</span>
+                    </button>
+                  )}
               </div>
             )}
 

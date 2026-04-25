@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
@@ -99,22 +100,36 @@ export interface SyncStatusResponse {
   _current_run?: CurrentRunProgress
 }
 
-// Sentinel returned on 401.  pb.afterSend fires synchronously and queues a redirect
-// to /login, so this value is never actually rendered by components — they get
-// unmounted by the navigation before consuming it.  The refetchInterval guard
-// (`if (!data) return false`) also prevents further polling.
-// The double-cast is deliberate: changing the return type to SyncStatusResponse|null
-// would require null-guards in every call-site (AppLayout, SyncTab, etc.); the
-// redirect-then-remount means those sites never see this value.
-const UNAUTHENTICATED_SENTINEL = {} as unknown as SyncStatusResponse
+// On 401 the hook returns null instead of a fake `{}` cast to SyncStatusResponse.
+// The previous empty-object sentinel lied to TypeScript — every field looked
+// populated and consumers crashed at runtime when they accessed nested data.
+// `null` forces every call site to guard, which the compiler now enforces.
 
 export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
   const { isLoading } = useAuth()
   const outerEnabled = opts.enabled ?? true
+  const queryClient = useQueryClient()
 
-  return useQuery({
+  // Fresh-login race: the very first /sync/status request can fire before
+  // PocketBase has attached the auth token to the SDK's outbound headers,
+  // returning 401. Without this subscription the page sits forever showing
+  // a null season-dropdown — staff have to manually reload to recover.
+  // Invalidating on the invalid→valid transition makes the page un-stall
+  // on its own as soon as the auth store catches up.
+  useEffect(() => {
+    let prevValid = pb.authStore.isValid
+    return pb.authStore.onChange(() => {
+      const nowValid = pb.authStore.isValid
+      if (nowValid && !prevValid) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+      }
+      prevValid = nowValid
+    })
+  }, [queryClient])
+
+  return useQuery<SyncStatusResponse | null>({
     queryKey: queryKeys.syncStatus(),
-    queryFn: async (): Promise<SyncStatusResponse> => {
+    queryFn: async (): Promise<SyncStatusResponse | null> => {
       try {
         const response = await pb.send('/api/custom/sync/status', {
           method: 'GET',
@@ -124,7 +139,7 @@ export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
         // Swallow 401 silently — pb.afterSend already clears auth and redirects to /login.
         const status = (err as { status?: number } | null)?.status
         if (status === 401) {
-          return UNAUTHENTICATED_SENTINEL
+          return null
         }
         throw err
       }

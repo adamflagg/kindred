@@ -5,7 +5,6 @@
 import type { Core, NodeSingular } from 'cytoscape'
 import type { LayoutWorkerInput } from '../../workers/layoutWorker'
 import type { ParentNodeElement, CamperNodeElement, EdgeElement } from './cytoscapeStyles'
-import { showEgoNetwork } from './graphInteractions'
 
 /**
  * FCOSE layout options for force-directed graph layout
@@ -102,7 +101,6 @@ export function prepareWorkerInput(
 export interface SetupEventHandlersOptions {
   onNodeSelect: (nodeId: number) => void
   onClearSelection: () => void
-  viewMode: 'all' | 'community' | 'ego'
 }
 
 /**
@@ -111,21 +109,17 @@ export interface SetupEventHandlersOptions {
  */
 export function setupGraphEventHandlers(
   cy: Core,
-  { onNodeSelect, onClearSelection, viewMode }: SetupEventHandlersOptions
+  { onNodeSelect, onClearSelection }: SetupEventHandlersOptions
 ): void {
   // Track last tapped node for tap-to-reveal on touch devices
   let lastHighlightedNode: NodeSingular | null = null
   let hideTimeout: ReturnType<typeof setTimeout> | null = null
 
-  // Event handlers - skip parent (compound) nodes for selection/ego
+  // Event handlers - skip parent (compound) nodes for selection
   cy.on('tap', 'node', (event) => {
     const node = event.target
     if (node.data('isBunkParent')) return // Skip parent nodes
     onNodeSelect(node.data('id'))
-
-    if (viewMode === 'ego') {
-      showEgoNetwork(cy, node.id())
-    }
 
     // Tap-to-reveal for touch devices: highlight node and show label
     // Clear previous timeout if any
@@ -161,9 +155,6 @@ export function setupGraphEventHandlers(
   cy.on('tap', (event) => {
     if (event.target === cy) {
       onClearSelection()
-      if (viewMode === 'ego') {
-        cy.elements().removeClass('faded')
-      }
 
       // Clear highlighted node on background tap
       if (hideTimeout) {

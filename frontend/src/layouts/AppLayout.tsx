@@ -687,9 +687,9 @@ export const AppLayout = () => {
               </div>
               {activeProgram === 'summer' &&
                 syncStatus &&
-                (syncStatus.bunk_assignments.end_time ?? syncStatus.bunk_requests.end_time) && (
+                (syncStatus.bunk_assignments?.end_time ?? syncStatus.bunk_requests?.end_time) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                    {syncStatus.bunk_assignments.end_time && (
+                    {syncStatus.bunk_assignments?.end_time && (
                       <span
                         className="flex items-center gap-1.5"
                         title="Last bunk assignments sync"
@@ -701,7 +701,7 @@ export const AppLayout = () => {
                         })}
                       </span>
                     )}
-                    {syncStatus.bunk_requests.end_time && (
+                    {syncStatus.bunk_requests?.end_time && (
                       <span className="flex items-center gap-1.5" title="Last bunk requests sync">
                         <Clock className="h-3 w-3" />
                         Requests{' '}

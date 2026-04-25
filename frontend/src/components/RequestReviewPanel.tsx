@@ -42,6 +42,7 @@ import {
 } from '../utils/dispositionColors'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
+import { computeTypeUpdate, computeTargetUpdate } from './requestEditableHelpers'
 import EditablePriority from './EditablePriority'
 import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
@@ -65,7 +66,8 @@ interface FilterState {
   searchQuery: string
 }
 
-type SortColumn = 'requester' | 'request' | 'priority' | 'confidence' | 'status'
+import { sortRequests, DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from './requestSort'
+import type { SortColumn } from './requestSort'
 
 export default function RequestReviewPanel({
   sessionId,
@@ -86,36 +88,13 @@ export default function RequestReviewPanel({
     }),
     []
   )
-  const defaultSortBy: SortColumn = 'confidence'
-  const defaultSortOrder: 'asc' | 'desc' = 'asc'
-
+  // Sort is not persisted across refreshes — staff asked (April 2026) for
+  // the grade-grouped view to return on page load even if they clicked a
+  // column header during the session.
   const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set())
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [sortBy, setSortBy] = useState<SortColumn>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        const loaded = parsed?.sort?.sortBy
-        if (loaded && loaded !== 'disposition') return loaded as SortColumn
-      }
-    } catch {
-      // Ignore
-    }
-    return defaultSortBy
-  })
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed?.sort?.sortOrder) return parsed.sort.sortOrder as 'asc' | 'desc'
-      }
-    } catch {
-      // Ignore
-    }
-    return defaultSortOrder
-  })
+  const [sortBy, setSortBy] = useState<SortColumn>(DEFAULT_SORT_BY)
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(DEFAULT_SORT_ORDER)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
@@ -171,7 +150,8 @@ export default function RequestReviewPanel({
     return defaultFilters
   })
 
-  // Task 7: Persist filters and sort config to localStorage on changes
+  // Persist filters to localStorage on changes. Sort state is intentionally
+  // excluded so the grade-grouped default is restored on every page load.
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -182,13 +162,12 @@ export default function RequestReviewPanel({
             statuses: filters.statuses,
             searchQuery: filters.searchQuery,
           },
-          sort: { sortBy, sortOrder },
         })
       )
     } catch {
       // Ignore quota errors
     }
-  }, [storageKey, filters, sortBy, sortOrder])
+  }, [storageKey, filters])
 
   // Rehydrate filters/sort when sessionId changes (component stays mounted via Activity)
   const isInitialMount = useRef(true)
@@ -197,7 +176,9 @@ export default function RequestReviewPanel({
       isInitialMount.current = false
       return
     }
-    // Session changed — reload from localStorage or reset to defaults
+    // Session changed — reload filters from localStorage or reset to
+    // defaults. Sort is always reset to the grade-grouped default; it is
+    // not persisted per the staff-feedback feature.
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
@@ -211,21 +192,14 @@ export default function RequestReviewPanel({
         } else {
           setFilters(defaultFilters)
         }
-        const loadedSortBy = parsed?.sort?.sortBy
-        if (loadedSortBy && loadedSortBy !== 'disposition') setSortBy(loadedSortBy as SortColumn)
-        else setSortBy(defaultSortBy)
-        if (parsed?.sort?.sortOrder) setSortOrder(parsed.sort.sortOrder as 'asc' | 'desc')
-        else setSortOrder(defaultSortOrder)
       } else {
         setFilters(defaultFilters)
-        setSortBy(defaultSortBy)
-        setSortOrder(defaultSortOrder)
       }
     } catch {
       setFilters(defaultFilters)
-      setSortBy(defaultSortBy)
-      setSortOrder(defaultSortOrder)
     }
+    setSortBy(DEFAULT_SORT_BY)
+    setSortOrder(DEFAULT_SORT_ORDER)
     // Clear selection state from previous session
     setSelectedRequests(new Set())
     setExpandedRows(new Set())
@@ -449,54 +423,7 @@ export default function RequestReviewPanel({
       })
     }
 
-    // Sort filtered results
-    const sorted = filtered.sort((a, b) => {
-      let aValue: string | number | Date
-      let bValue: string | number | Date
-
-      switch (sortBy) {
-        case 'requester': {
-          const aRequester = personMap.get(a.requester_id)
-          const bRequester = personMap.get(b.requester_id)
-          aValue = aRequester ? `${aRequester.first_name || ''} ${aRequester.last_name || ''}` : ''
-          bValue = bRequester ? `${bRequester.first_name || ''} ${bRequester.last_name || ''}` : ''
-          break
-        }
-        case 'request': {
-          const aRequested = a.requestee_id ? personMap.get(a.requestee_id) : null
-          const bRequested = b.requestee_id ? personMap.get(b.requestee_id) : null
-          aValue = aRequested
-            ? `${aRequested.first_name || ''} ${aRequested.last_name || ''}`
-            : a.parse_notes || ''
-          bValue = bRequested
-            ? `${bRequested.first_name || ''} ${bRequested.last_name || ''}`
-            : b.parse_notes || ''
-          break
-        }
-        case 'priority':
-          aValue = a.priority
-          bValue = b.priority
-          break
-        case 'confidence':
-          aValue = a.confidence_score
-          bValue = b.confidence_score
-          break
-        case 'status':
-          aValue = a.status
-          bValue = b.status
-          break
-        default:
-          return 0
-      }
-
-      if (sortOrder === 'asc') {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
-      }
-    })
-
-    return sorted
+    return sortRequests(filtered, personMap, sortBy, sortOrder)
   }, [requests, sortBy, sortOrder, personMap, filters.searchQuery])
 
   // Check if merge is possible: 2+ requests selected with same requester and session
@@ -708,20 +635,37 @@ export default function RequestReviewPanel({
   )
 
   // Handlers
+  // Collapse a row by id (mirrors the delete branch of toggleRowExpansion).
+  // Used by toggleRowExpansion and by the approve/decline confirm handler
+  // (feedback #11: after processing a row the expanded state must be cleared
+  // so the expandedRows Set doesn't bloat across successive actions).
+  const collapseRow = useCallback((id: string) => {
+    setExpandedRows((prev) => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    setExpandedMergedRequestId((currentId) => (currentId === id ? null : currentId))
+  }, [])
+
   const toggleRowExpansion = useCallback(
     (id: string, request?: BunkRequestsResponse) => {
       setExpandedRows((prev) => {
-        const next = new Set(prev)
-        if (next.has(id)) {
+        if (prev.has(id)) {
+          // Delegate to the collapse helper (handled below via collapseRow's
+          // own setState path). Returning prev here and calling collapseRow
+          // would double-dispatch; inline the delete to keep behavior stable.
+          const next = new Set(prev)
           next.delete(id)
-          // Clear the expanded merged request when collapsing
           setExpandedMergedRequestId((currentId) => (currentId === id ? null : currentId))
-        } else {
-          next.add(id)
-          // Trigger lazy loading for merged requests
-          if (request && hasMultipleSources(request)) {
-            setExpandedMergedRequestId(id)
-          }
+          return next
+        }
+        const next = new Set(prev)
+        next.add(id)
+        // Trigger lazy loading for merged requests
+        if (request && hasMultipleSources(request)) {
+          setExpandedMergedRequestId(id)
         }
         return next
       })
@@ -1261,17 +1205,14 @@ export default function RequestReviewPanel({
                             <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
                               <EditableRequestType
                                 value={request.request_type}
-                                onChange={(newType) => {
-                                  const updates: Partial<BunkRequestsResponse> = {
-                                    request_type: newType as BunkRequestsResponse['request_type'],
-                                  }
-                                  if (newType === 'age_preference') {
-                                    updates.requestee_id = null as unknown as number
-                                  } else {
-                                    updates.age_preference_target = ''
-                                  }
-                                  handleValidatedUpdate(request, updates)
-                                }}
+                                onChange={(newType) =>
+                                  handleValidatedUpdate(
+                                    request,
+                                    computeTypeUpdate(
+                                      newType as BunkRequestsResponse['request_type']
+                                    )
+                                  )
+                                }
                                 disabled={request.request_locked}
                               />
                             </div>
@@ -1314,22 +1255,7 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
-                                // Use null (not 0) to clear requestee_id — 0 causes
-                                // unique constraint violations when multiple requests exist.
-                                const pbUpdates: Partial<BunkRequestsResponse> = {}
-                                if (updates.requestee_id !== undefined) {
-                                  // Pass null through to PocketBase to clear the field.
-                                  // Using 0 causes unique constraint violations.
-                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
-                                }
-                                if (updates.age_preference_target !== undefined) {
-                                  pbUpdates.age_preference_target = updates.age_preference_target
-                                }
-                                if (updates.requestee_id && updates.requestee_id > 0) {
-                                  pbUpdates.status = 'resolved' as BunkRequestsStatusOptions
-                                  pbUpdates.confidence_score = 1.0
-                                }
-                                handleValidatedUpdate(request, pbUpdates)
+                                handleValidatedUpdate(request, computeTargetUpdate(updates))
                               }}
                               disabled={request.request_locked}
                               originalText={request.original_text}
@@ -1524,23 +1450,7 @@ export default function RequestReviewPanel({
                               year={year}
                               requesterCmId={request.requester_id}
                               onChange={(updates) => {
-                                // Use null (not 0) to clear requestee_id — 0 causes
-                                // unique constraint violations when multiple requests exist.
-                                const pbUpdates: Partial<BunkRequestsResponse> = {}
-                                if (updates.requestee_id !== undefined) {
-                                  // Pass null through to PocketBase to clear the field.
-                                  // Using 0 causes unique constraint violations.
-                                  pbUpdates.requestee_id = updates.requestee_id as unknown as number
-                                }
-                                if (updates.age_preference_target !== undefined) {
-                                  pbUpdates.age_preference_target = updates.age_preference_target
-                                }
-                                // When resolving, also mark as resolved
-                                if (updates.requestee_id && updates.requestee_id > 0) {
-                                  pbUpdates.status = 'resolved' as BunkRequestsStatusOptions
-                                  pbUpdates.confidence_score = 1.0
-                                }
-                                handleValidatedUpdate(request, pbUpdates)
+                                handleValidatedUpdate(request, computeTargetUpdate(updates))
                               }}
                               disabled={request.request_locked}
                               originalText={request.original_text}
@@ -1568,17 +1478,12 @@ export default function RequestReviewPanel({
                           >
                             <EditableRequestType
                               value={request.request_type}
-                              onChange={(newType) => {
-                                const updates: Partial<BunkRequestsResponse> = {
-                                  request_type: newType as BunkRequestsResponse['request_type'],
-                                }
-                                if (newType === 'age_preference') {
-                                  updates.requestee_id = null as unknown as number
-                                } else {
-                                  updates.age_preference_target = ''
-                                }
-                                handleValidatedUpdate(request, updates)
-                              }}
+                              onChange={(newType) =>
+                                handleValidatedUpdate(
+                                  request,
+                                  computeTypeUpdate(newType as BunkRequestsResponse['request_type'])
+                                )
+                              }
                               disabled={request.request_locked}
                             />
                           </div>
@@ -2106,6 +2011,7 @@ export default function RequestReviewPanel({
           } else {
             handleReject(requestId)
           }
+          collapseRow(requestId)
           setConfirmPopover(null)
         }}
         onCancel={() => setConfirmPopover(null)}

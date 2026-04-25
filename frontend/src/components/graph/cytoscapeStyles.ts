@@ -69,8 +69,8 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'text-outline-color': '#1a1a1a',
         'text-valign': 'bottom',
         'text-margin-y': 6,
-        'text-max-width': '100px',
-        'text-wrap': 'ellipsis',
+        'text-max-width': '80px',
+        'text-wrap': 'wrap',
         'border-width': 3,
         'border-color': (ele: NodeSingular) => {
           const status = ele.data('satisfaction_status')
@@ -95,10 +95,6 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'line-color': (ele: EdgeSingular) => {
           const edgeType = ele.data('edge_type')
           return EDGE_COLORS[edgeType] ?? '#95a5a6'
-        },
-        'line-opacity': (ele: EdgeSingular) => {
-          const confidence = ele.data('confidence') ?? 0.5
-          return 0.3 + confidence * 0.7 // 0.3-1.0 range
         },
         'target-arrow-shape': 'triangle',
         'target-arrow-color': (ele: EdgeSingular) => {
@@ -142,8 +138,11 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'z-index': 999,
         'font-weight': 'bold',
         'font-size': '14px',
+        // Dark outline keeps the label readable on both light and dark backgrounds.
+        // White outline (#fff) washed out names on light canvas backgrounds (#37).
         'text-outline-width': 2,
-        'text-outline-color': '#fff',
+        'text-outline-color': '#1a1a1a',
+        color: '#f5f5f5',
       },
     },
     {

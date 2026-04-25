@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link } from 'react-router'
-import { Search, Home, X, Users, ChevronDown } from 'lucide-react'
+import { Search, Home, X, Users, ChevronDown, Download } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { CampMinderIcon } from './icons'
 import {
@@ -13,6 +13,8 @@ import { useVirtualTable } from '../hooks/useVirtualTable'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import type { Camper, Bunk, Session } from '../types/app-types'
+import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
+import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
 
 // Bunk area color based on bunk prefix with dark mode support
 function getBunkAreaColor(bunkName: string | undefined): string {
@@ -297,14 +299,44 @@ export default function CampersView({
             </span>
           </div>
 
-          {/* Quick stats */}
-          {!hasActiveFilters && !searchTerm && (
-            <div className="dark:text-muted-foreground hidden items-center gap-4 text-sm text-stone-500 sm:flex">
-              <span>{campers.filter((c) => c.assigned_bunk).length} assigned</span>
-              <span className="dark:text-muted-foreground/50 text-stone-300">|</span>
-              <span>{campers.filter((c) => !c.assigned_bunk).length} unassigned</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Quick stats */}
+            {!hasActiveFilters && !searchTerm && (
+              <div className="dark:text-muted-foreground hidden items-center gap-4 text-sm text-stone-500 sm:flex">
+                <span>{campers.filter((c) => c.assigned_bunk).length} assigned</span>
+                <span className="dark:text-muted-foreground/50 text-stone-300">|</span>
+                <span>{campers.filter((c) => !c.assigned_bunk).length} unassigned</span>
+              </div>
+            )}
+            {/* CSV export */}
+            {filteredCampers.length > 0 && (
+              <button
+                onClick={() => {
+                  const sessions = _session ? [_session] : []
+                  const rows = buildCamperRows(filteredCampers, sessions)
+                  const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
+                  const sessionSlug = _session ? slugify(_session.name) : 'session'
+                  const genderPart = filterSex === 'M' ? '-boys' : filterSex === 'F' ? '-girls' : ''
+                  let bunkPart = ''
+                  if (filterBunk === 'unassigned') {
+                    bunkPart = '-unassigned'
+                  } else if (filterBunk !== 'all') {
+                    const bunkName = bunks.find((b) => b.id === filterBunk)?.name
+                    if (bunkName) bunkPart = `-${slugify(bunkName)}`
+                  }
+                  downloadCsv(
+                    csv,
+                    `session-${sessionSlug}${genderPart}${bunkPart}-${todayIso()}.csv`
+                  )
+                }}
+                className="btn-ghost flex items-center gap-1.5 px-2 py-1.5 text-sm"
+                title="Export to CSV"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Results List */}

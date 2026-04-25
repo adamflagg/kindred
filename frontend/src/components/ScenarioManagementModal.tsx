@@ -30,6 +30,10 @@ export default function ScenarioManagementModal({
   onClose,
 }: ScenarioManagementModalProps) {
   const currentYear = useYear()
+  // Read `isLoading` (initial query fetch) rather than the combined
+  // `loading` flag — otherwise the scenario list is replaced with a
+  // "Loading scenarios..." placeholder while a delete/clear is in flight,
+  // making the list appear to vanish behind the confirmation dialog.
   const {
     scenarios,
     currentScenario,
@@ -37,7 +41,7 @@ export default function ScenarioManagementModal({
     updateScenario,
     deleteScenario,
     clearScenario,
-    loading,
+    isLoading,
   } = useScenario()
   const { data: syncStatus } = useSyncStatusAPI()
 
@@ -140,7 +144,7 @@ export default function ScenarioManagementModal({
                   <div>
                     <h3 className="font-semibold">CampMinder</h3>
                     <p className="text-muted-foreground text-sm">
-                      {syncStatus?.bunk_assignments.end_time
+                      {syncStatus?.bunk_assignments?.end_time
                         ? `Synced ${formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), { addSuffix: true })}`
                         : 'Production bunking assignments'}
                     </p>
@@ -157,7 +161,7 @@ export default function ScenarioManagementModal({
 
           {/* Scenarios List */}
           <div className="flex-1 space-y-3 overflow-y-auto p-6 pt-4">
-            {loading ? (
+            {isLoading ? (
               <div className="text-muted-foreground py-8 text-center">Loading scenarios...</div>
             ) : scenarios.length === 0 ? (
               <div className="py-8 text-center">

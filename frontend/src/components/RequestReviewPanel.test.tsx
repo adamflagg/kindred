@@ -1322,6 +1322,192 @@ describe('RequestReviewPanel', () => {
   })
 
   /**
+   * Regression tests for feedback #11: "After processing several request rows,
+   * the UI stops responding — rows won't close, new rows won't open."
+   *
+   * Root cause: onConfirm for the approve/decline popover only closed the
+   * popover; it never removed the request id from the `expandedRows` Set. As
+   * staff processed more rows, the Set grew unbounded, compounding render cost
+   * and refetch work until click handlers went dead.
+   *
+   * These tests pin the contract: after the user confirms an approve or
+   * decline, the just-processed row MUST collapse.
+   */
+  describe('Row collapse after approve/decline (feedback #11)', () => {
+    // Expand a request row by ID. The mobile layout's expanded block renders
+    // the "Priority:" label — used as the visible-only-when-expanded signal.
+    async function expandRowById(requestId: string) {
+      const rowContainers = await waitFor(() => {
+        const found = document.querySelectorAll(`[data-request-row-id="${requestId}"]`)
+        if (found.length === 0) throw new Error('row not yet rendered')
+        return found
+      })
+      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      expect(mobileRow).toBeTruthy()
+      fireEvent.click(mobileRow)
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+      })
+    }
+
+    it('collapses the expanded row after approving a request', async () => {
+      const { findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-collapse-approve-1',
+        requester_id: 300,
+        requestee_id: 301,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.7,
+        priority: 1,
+        request_locked: false,
+      })
+
+      await expandRowById('req-collapse-approve-1')
+
+      // Click Approve, then confirm in the popover
+      const approveButton = await findButtonByTitle('Approve')
+      fireEvent.click(approveButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      // After confirming, the row should collapse — "Priority:" label disappears
+      await waitFor(() => {
+        expect(screen.queryByText('Priority:')).not.toBeInTheDocument()
+      })
+    }, 10000)
+
+    it('collapses the expanded row after declining a request', async () => {
+      const { findButtonByTitle, user } = await renderPanelWithRequest({
+        id: 'req-collapse-decline-1',
+        requester_id: 400,
+        requestee_id: 401,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.4,
+        priority: 1,
+        request_locked: false,
+      })
+
+      await expandRowById('req-collapse-decline-1')
+
+      const rejectButton = await findButtonByTitle('Reject')
+      fireEvent.click(rejectButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(screen.queryByText('Priority:')).not.toBeInTheDocument()
+      })
+    }, 10000)
+
+    it('does not collapse an unrelated expanded row when a different row is approved', async () => {
+      // Two-row setup: row A (req-unrelated-a) stays expanded;
+      // row B (req-unrelated-b) is approved and must collapse.
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: { collection: ReturnType<typeof vi.fn> }
+      }
+
+      const updateSpy = vi.fn().mockResolvedValue({})
+      const rowA: Partial<BunkRequestsResponse> = {
+        id: 'req-unrelated-a',
+        requester_id: 500,
+        requestee_id: 501,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.8,
+        priority: 1,
+        request_locked: false,
+      }
+      const rowB: Partial<BunkRequestsResponse> = {
+        id: 'req-unrelated-b',
+        requester_id: 600,
+        requestee_id: 601,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.6,
+        priority: 2,
+        request_locked: false,
+      }
+
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn().mockResolvedValue([rowA, rowB]),
+            getList: vi.fn().mockResolvedValue({ items: [rowA, rowB], totalItems: 2 }),
+            update: updateSpy,
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
+
+      const user = userEvent.setup()
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+      // Expand row A
+      const rowAContainers = await waitFor(() => {
+        const found = document.querySelectorAll('[data-request-row-id="req-unrelated-a"]')
+        if (found.length === 0) throw new Error('row A not yet rendered')
+        return found
+      })
+      const mobileRowA = rowAContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      expect(mobileRowA).toBeTruthy()
+      fireEvent.click(mobileRowA)
+
+      // Confirm row A is expanded
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+      })
+
+      // Also expand row B so both rows are expanded simultaneously
+      const rowBContainers = await waitFor(() => {
+        const found = document.querySelectorAll('[data-request-row-id="req-unrelated-b"]')
+        if (found.length === 0) throw new Error('row B not yet rendered')
+        return found
+      })
+      const mobileRowB = rowBContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      expect(mobileRowB).toBeTruthy()
+      fireEvent.click(mobileRowB)
+
+      // Both rows expanded — two "Priority:" labels visible
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBeGreaterThanOrEqual(2)
+      })
+
+      // Now approve row B via its Approve button
+      const approveButtons = rowBContainers[0]?.querySelectorAll('[title="Approve"]')
+      const approveButton = approveButtons?.[0] as HTMLElement
+      expect(approveButton).toBeTruthy()
+      fireEvent.click(approveButton)
+
+      const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1)
+      })
+
+      // Row B must collapse — total "Priority:" count drops back to 1 (only row A's)
+      await waitFor(() => {
+        expect(screen.getAllByText('Priority:').length).toBe(1)
+      })
+    }, 15000)
+  })
+
+  /**
    * TDD TESTS: In-session Undo Stack (scoreboard #14)
    *
    * Approve/decline actions push an inverse mutation onto a 3-entry stack.

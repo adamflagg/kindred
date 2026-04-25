@@ -9,8 +9,27 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React, { type ReactNode } from 'react'
 import { useSyncStatusAPI } from './useSyncStatusAPI'
 
+// authChangeListeners simulates pb.authStore.onChange — tests can call them
+// to drive the auto-refetch behavior on auth-state transitions.
+const authChangeListeners: Array<() => void> = []
+const authStoreState = { isValid: false }
+
 vi.mock('../lib/pocketbase', () => ({
-  pb: { send: vi.fn() },
+  pb: {
+    send: vi.fn(),
+    authStore: {
+      get isValid() {
+        return authStoreState.isValid
+      },
+      onChange: (cb: () => void) => {
+        authChangeListeners.push(cb)
+        return () => {
+          const i = authChangeListeners.indexOf(cb)
+          if (i >= 0) authChangeListeners.splice(i, 1)
+        }
+      },
+    },
+  },
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -19,6 +38,11 @@ vi.mock('../contexts/AuthContext', () => ({
 
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
+
+function fireAuthChange(nextValid: boolean) {
+  authStoreState.isValid = nextValid
+  authChangeListeners.slice().forEach((cb) => cb())
+}
 
 function createWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -52,7 +76,7 @@ describe('useSyncStatusAPI', () => {
   })
 
   describe('401 error handling', () => {
-    it('should swallow 401 errors and return empty response', async () => {
+    it('should swallow 401 errors and return null (typed sentinel, not empty object)', async () => {
       const pbError: Record<string, unknown> = { message: 'Unauthorized', status: 401 }
       ;(pb.send as Mock).mockRejectedValue(pbError)
 
@@ -62,8 +86,10 @@ describe('useSyncStatusAPI', () => {
         expect(result.current.isSuccess).toBe(true)
       })
 
-      // Verify that the response is an empty object (no sync status fields)
-      expect(result.current.data).toEqual({})
+      // null forces consumers to guard explicitly — `{}` lied to TypeScript and
+      // let stale-shape access (e.g. `syncStatus.bunk_assignments.end_time`)
+      // through unchecked. See issue #1011 for context.
+      expect(result.current.data).toBeNull()
       expect(result.current.isError).toBe(false)
     })
 
@@ -127,6 +153,57 @@ describe('useSyncStatusAPI', () => {
 
       expect(result.current.data).toEqual(mockResponse)
       expect(result.current.isError).toBe(false)
+    })
+  })
+
+  describe('auth-state recovery (#1011 — fresh-login un-stall)', () => {
+    it('refetches automatically when authStore transitions to valid', async () => {
+      // Simulate the fresh-login race: the first request returns 401 (token
+      // wasn't attached yet), then the auth store becomes valid and the page
+      // should recover without a manual refresh.
+      authStoreState.isValid = false
+      authChangeListeners.length = 0
+
+      const pbError: Record<string, unknown> = { message: 'Unauthorized', status: 401 }
+      const realResponse = { _configured_year: 2026, bunk_assignments: { status: 'idle' } }
+      ;(pb.send as Mock).mockRejectedValueOnce(pbError).mockResolvedValueOnce(realResponse)
+
+      const { result } = renderHook(() => useSyncStatusAPI(), { wrapper: createWrapper() })
+
+      // First fetch settled — returns null sentinel (the 401 path).
+      await waitFor(() => {
+        expect(result.current.data).toBeNull()
+      })
+
+      // Auth store flips to valid (e.g. authRefresh resolved). The hook must
+      // invalidate the query so the next render gets real data — no human
+      // refresh required.
+      fireAuthChange(true)
+
+      await waitFor(() => {
+        expect(result.current.data).toEqual(realResponse)
+      })
+      expect(pb.send).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not refetch on auth-store changes that do not gain validity', async () => {
+      authStoreState.isValid = false
+      authChangeListeners.length = 0
+      ;(pb.send as Mock).mockResolvedValue({})
+
+      renderHook(() => useSyncStatusAPI(), { wrapper: createWrapper() })
+
+      await waitFor(() => {
+        expect(pb.send).toHaveBeenCalledTimes(1)
+      })
+
+      // Spurious onChange while still invalid (e.g. token refresh started but
+      // not yet completed) — must NOT thrash the query.
+      fireAuthChange(false)
+
+      // Give it a moment to misbehave if it's going to.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(pb.send).toHaveBeenCalledTimes(1)
     })
   })
 

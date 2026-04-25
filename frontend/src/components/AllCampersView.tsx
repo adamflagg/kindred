@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { Search, Home, X, ChevronDown, Settings } from 'lucide-react'
+import { Search, Home, X, ChevronDown, Settings, Download } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { CampMinderIcon } from './icons'
 import { StatusBadge } from './StatusBadge'
@@ -32,6 +32,8 @@ import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
 import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
 import type { Camper, Session } from '../types/app-types'
 import type { BunksResponse } from '../types/pocketbase-types'
+import { buildCsvContent, downloadCsv, todayIso } from '../utils/csvExport'
+import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
 
 // Helper function to properly case a name
 function properCase(str: string | undefined): string {
@@ -451,14 +453,32 @@ export default function AllCampersView() {
             </span>
           </div>
 
-          {/* Quick stats */}
-          {!hasActiveFilters && !searchTerm && (
-            <div className="hidden items-center gap-4 text-sm text-stone-500 sm:flex dark:text-stone-400">
-              <span>{mergedCampers.filter((c) => c.assigned_bunk).length} assigned</span>
-              <span className="text-stone-300 dark:text-stone-600">|</span>
-              <span>{mergedCampers.filter((c) => !c.assigned_bunk).length} unassigned</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Quick stats */}
+            {!hasActiveFilters && !searchTerm && (
+              <div className="hidden items-center gap-4 text-sm text-stone-500 sm:flex dark:text-stone-400">
+                <span>{mergedCampers.filter((c) => c.assigned_bunk).length} assigned</span>
+                <span className="text-stone-300 dark:text-stone-600">|</span>
+                <span>{mergedCampers.filter((c) => !c.assigned_bunk).length} unassigned</span>
+              </div>
+            )}
+            {/* CSV export — respects active filters */}
+            {filteredCampers.length > 0 && (
+              <button
+                onClick={() => {
+                  const rows = buildCamperRows(filteredCampers as Camper[], allSessions)
+                  const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
+                  const genderPart = filterSex === 'M' ? '-boys' : filterSex === 'F' ? '-girls' : ''
+                  downloadCsv(csv, `all-campers${genderPart}-${todayIso()}.csv`)
+                }}
+                className="btn-ghost flex items-center gap-1.5 px-2 py-1.5 text-sm"
+                title="Export to CSV"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Results List */}

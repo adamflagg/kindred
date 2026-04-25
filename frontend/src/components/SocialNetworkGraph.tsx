@@ -7,15 +7,14 @@ import BubbleSets from 'cytoscape-bubblesets'
 import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
 import { useSocialGraphData } from '../hooks/useSocialGraphData'
-import { Network, AlertCircle } from 'lucide-react'
+import { Network } from 'lucide-react'
 import { QueryGuard } from './QueryGuard'
+import CamperDetailsPanel from './CamperDetailsPanel'
 import clsx from 'clsx'
 import {
   ZOOM_SETTINGS,
   GraphControls,
-  EdgeFilters,
   GraphLegend,
-  GraphMetrics,
   GraphHelp,
   drawBunkBubbles,
   clearBubbles,
@@ -26,8 +25,6 @@ import {
   prepareWorkerInput,
   setupGraphEventHandlers,
   getLayoutOptions,
-  type ViewMode,
-  type BubbleRenderStatus,
   type PopperRef,
 } from './graph'
 import { batchElements, cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
@@ -52,6 +49,11 @@ interface SocialNetworkGraphProps {
 // Import worker types
 import type { LayoutWorkerOutput } from '../workers/layoutWorker'
 
+// Module-level constant: request + sibling edges are always-on (not user-toggleable).
+// Hoisted outside the component so the reference is stable across renders —
+// passing a fresh object literal in deps arrays causes infinite re-renders.
+const SHOW_EDGES = { request: true, sibling: true } as const
+
 export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
@@ -60,12 +62,17 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const pathsRef = useRef<SVGElement[]>([])
   const poppersRef = useRef<PopperRef[]>([])
   const layoutWorkerRef = useRef<Worker | null>(null)
+  // First-run guards: the init effect handles initial fit + bubble draw, so
+  // the resize-on-expand and bubble-toggle effects must skip their first run
+  // to avoid duplicating that work (which causes the graph to visibly settle
+  // into a new position shortly after labels appear).
+  const hasMountedExpandRef = useRef(false)
+  const hasMountedBubblesRef = useRef(false)
   useYear() // Ensure year context is available
 
   // Create refs object for bubble rendering - memoized to avoid recreation on every render
   const bubbleRefs = useMemo(() => ({ bubblesetsRef, pathsRef, poppersRef, containerRef }), [])
 
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [showLabels, setShowLabels] = useState(true)
   const [showBubbles, setShowBubbles] = useState(true)
@@ -73,11 +80,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showHelp, setShowHelp] = useState(false)
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
-  const [showEdges, setShowEdges] = useState({
-    request: true,
-    sibling: true,
-  })
-  const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null)
 
   // Fetch graph and bunk data using custom hooks
   const { data: graphData, isLoading, error } = useSocialGraphData(sessionCmId)
@@ -93,8 +95,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   }, [graphData])
   const { data: bunksData } = useBunkNames(sessionCmId, !!graphData)
 
-  // Suppress unused variable warning - selectedNodeId used for future features
-  void selectedNodeId
+  // selectedNodeId drives the camper detail panel (#35)
 
   // Handle escape key for expanded mode
   useEffect(() => {
@@ -150,7 +151,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      showEdges
+      SHOW_EDGES
     )
 
     // Staged rendering for smoother loading
@@ -178,7 +179,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       await stageElements(nodes as cytoscape.ElementDefinition[], 30)
 
       // Apply edge visibility before adding edges
-      updateEdgeVisibility(cy, showEdges)
+      updateEdgeVisibility(cy, SHOW_EDGES)
 
       // Add edges last in larger batches
       await stageElements(edges as cytoscape.ElementDefinition[], 50)
@@ -188,30 +189,26 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       if (!cyRef.current) return
       const cy = cyRef.current
 
-      // Post-layout completion handler
+      // Post-layout completion handler.
+      // Bubbles need a tick for the bubblesets DOM to settle so they're scheduled
+      // on a microtask rather than a 500ms timer; node-label adjustment runs
+      // synchronously alongside the cy.fit() call (see worker handler) so labels
+      // don't visibly shift after the initial paint.
       const onLayoutComplete = () => {
         setIsComputingLayout(false)
-        setTimeout(() => {
-          try {
-            adjustLabelPositions(cy)
-            // Redraw bubbles after layout if enabled (showBubbles is read from
-            // the closure at effect-creation time, which is correct — if bubbles
-            // were on when the graph rebuilt, they should be restored).
-            if ((showBubbles || showUnits) && bunksData) {
+        if ((showBubbles || showUnits) && bunksData) {
+          // RAF lets cy emit its final pan/zoom events before bubbles snapshot
+          // node positions, avoiding a stale draw.
+          requestAnimationFrame(() => {
+            if (cy.destroyed()) return
+            try {
               clearBubbles(bubbleRefs)
-              drawBunkBubbles(
-                cy,
-                bunksData,
-                bubbleRefs,
-                setBubbleRenderStatus,
-                showUnits,
-                showBubbles
-              )
+              drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
+            } catch (error) {
+              console.error('Error drawing bubbles:', error)
             }
-          } catch (error) {
-            console.error('Error after layout complete:', error)
-          }
-        }, 500)
+          })
+        }
       }
 
       // Prepare data for worker
@@ -243,7 +240,15 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 }
               })
             })
-            cy.fit(undefined, 80)
+            // Resize before fitting so we measure against the actual container size —
+            // without this, the initial fit can be calculated against a partially-laid-out
+            // container, causing a slight off-center on first render that "snaps" when
+            // the resize effect later fires (e.g. on first checkbox toggle).
+            cy.resize()
+            cy.fit(undefined, 50)
+            // Adjust node-label positions synchronously after fit so labels are
+            // at their final positions on first paint (no visible settle).
+            adjustLabelPositions(cy)
             onLayoutComplete()
           } else if (type === 'error') {
             console.error('[SocialNetworkGraph] Worker error:', error)
@@ -276,7 +281,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       setupGraphEventHandlers(cy, {
         onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
         onClearSelection: () => setSelectedNodeId(null),
-        viewMode,
       })
     } // End of runLayout function
 
@@ -300,39 +304,58 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // The closure reads showBubbles at effect-creation time to restore bubbles
     // after graph rebuilds triggered by other deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, viewMode, bunksData, showEdges, showLabels, bubbleRefs])
+  }, [graphData, bunksData, showLabels, bubbleRefs])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
     const cy = cyRef.current
     if (!cy || cy.destroyed()) return
 
+    // Skip first run on initial mount — the init effect's worker handler
+    // already does cy.resize() + cy.fit(). Without this guard, we re-fit
+    // 200ms later against a possibly-different container size and the graph
+    // visibly "settles" into a new spot after labels render.
+    if (!hasMountedExpandRef.current) {
+      hasMountedExpandRef.current = true
+      return
+    }
+
     // Longer delay to allow CSS layout to stabilize in expanded mode
     const timeoutId = setTimeout(() => {
       if (!cy.destroyed()) {
         cy.resize()
         cy.fit(undefined, 50)
+      }
+    }, 200)
 
-        // Redraw bubbles after resize if enabled
-        if ((showBubbles || showUnits) && bunksData) {
-          // Clear existing bubblesets using the utility
-          clearBubbles(bubbleRefs)
-          drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus, showUnits, showBubbles)
-        } else if (!showBubbles && !showUnits) {
-          clearBubbles(bubbleRefs)
+    return () => clearTimeout(timeoutId)
+  }, [isExpanded])
+
+  // Bubble draw/clear when toggling Bunks/Units checkboxes.
+  // Skip first run on initial mount — the init effect's onLayoutComplete
+  // (500ms after the worker returns) handles the initial draw. Without this
+  // guard, bubbles get drawn at t=200ms then cleared+redrawn at t=550ms,
+  // which is visible as labels jumping during initial render.
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy || cy.destroyed() || !bunksData) return
+
+    if (!hasMountedBubblesRef.current) {
+      hasMountedBubblesRef.current = true
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      if (!cy.destroyed()) {
+        clearBubbles(bubbleRefs)
+        if (showBubbles || showUnits) {
+          drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
         }
       }
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [isExpanded, showBubbles, showUnits, bunksData, bubbleRefs])
-
-  // Update edge visibility when filters change
-  useEffect(() => {
-    if (cyRef.current) {
-      updateEdgeVisibility(cyRef.current, showEdges)
-    }
-  }, [showEdges])
+  }, [showBubbles, showUnits, bunksData, bubbleRefs])
 
   // Update labels without re-rendering the whole graph
   useEffect(() => {
@@ -390,7 +413,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       label="social network"
       emptyMessage={graphData?.warnings?.[0] ?? 'No social network data available'}
     >
-      {(guardedGraphData) => (
+      {() => (
         <>
           {/* Backdrop - only shown when expanded */}
           {isExpanded && (
@@ -406,15 +429,43 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 : 'card-lodge'
             )}
           >
-            <div className="border-border relative z-20 border-b p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-display text-foreground flex items-center gap-2 font-semibold">
-                  <Network className="text-primary h-5 w-5" />
-                  Social Network Graph{isExpanded ? ' - Expanded View' : ''}
+            <div className="border-border relative z-20 border-b px-4 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-foreground flex min-w-0 shrink items-center gap-2 font-semibold">
+                  <Network className="text-primary h-5 w-5 shrink-0" />
+                  <span className="truncate">
+                    Social Network Graph{isExpanded ? ' - Expanded View' : ''}
+                  </span>
                 </h3>
+
+                {/* Bunks / Units toggles — inline in header top row */}
+                <div
+                  role="group"
+                  aria-label="Show / Hide"
+                  className="flex shrink-0 items-center justify-center gap-3 text-sm"
+                >
+                  <span className="text-muted-foreground font-bold">Show / Hide</span>
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={showBubbles}
+                      onChange={(e) => setShowBubbles(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-muted-foreground">Bunks</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={showUnits}
+                      onChange={(e) => setShowUnits(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-muted-foreground">Units</span>
+                  </label>
+                </div>
+
                 <GraphControls
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
                   showLabels={showLabels}
                   onToggleLabels={toggleLabels}
                   showHelp={showHelp}
@@ -426,15 +477,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   onFit={handleFit}
                 />
               </div>
-
-              <EdgeFilters
-                showEdges={showEdges}
-                onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
-                showBubbles={showBubbles}
-                onToggleBubbles={setShowBubbles}
-                showUnits={showUnits}
-                onToggleUnits={setShowUnits}
-              />
             </div>
 
             {/* Graph container - ALWAYS in same tree position */}
@@ -462,28 +504,19 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 </div>
               )}
 
-              <GraphMetrics graphData={guardedGraphData} />
-
-              {/* Bubble Render Status */}
-              {bubbleRenderStatus && bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
-                <div className="shadow-lodge-sm absolute top-4 left-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
-                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="font-medium">Bubble Rendering Issue</span>
-                  </div>
-                  <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                    Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles
-                    rendered. This is a known library limitation. The graph is still fully
-                    functional.
-                  </div>
-                </div>
-              )}
-
               <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
             </div>
 
             {showHelp && <GraphHelp />}
           </div>
+
+          {/* Camper detail panel — opens when a node is tapped (#35) */}
+          {selectedNodeId != null && (
+            <CamperDetailsPanel
+              camperId={selectedNodeId.toString()}
+              onClose={() => setSelectedNodeId(null)}
+            />
+          )}
         </>
       )}
     </QueryGuard>

@@ -5,7 +5,9 @@ import {
   deduplicateBunksByName,
   mergeCampers,
   buildBunkRequestsFilter,
+  BUNK_REQUESTS_COUNT_KEY_PREFIX,
 } from './useSessionData'
+import { queryKeys } from '../../utils/queryKeys'
 
 describe('extractBunkIds', () => {
   it('extracts unique bunk IDs, filtering nulls', () => {
@@ -94,5 +96,34 @@ describe('buildBunkRequestsFilter', () => {
     expect(filter).toMatch(/session_id = 999/)
     expect(filter).toMatch(/year = 2026/)
     expect(filter).not.toMatch(/session_id=|year=/)
+  })
+})
+
+// ============================================================================
+// Tab badge key alignment: count query must share prefix with list query
+// ============================================================================
+// Regression test for: "Requests tab number is stale without refresh"
+// Root cause: useBunkRequestsCount used a separate top-level key
+// ('bunk-requests-count') that was never invalidated when request
+// mutations fired invalidateQueries({ queryKey: ['bunk-requests'] }).
+// Fix: the count key must start with 'bunk-requests' so React Query
+// prefix-matching picks it up in every existing invalidation.
+
+describe('bunk-requests-count query key alignment', () => {
+  it('BUNK_REQUESTS_COUNT_KEY_PREFIX is derived from queryKeys.bunkRequestsCount factory prefix (not a separate hardcoded string)', () => {
+    // This is the invariant that matters: the constant must equal the first element
+    // of the factory key so React Query prefix-match invalidation covers the count.
+    // If either the factory prefix or the constant drifts, this test will catch it.
+    expect(BUNK_REQUESTS_COUNT_KEY_PREFIX).toBe(queryKeys.bunkRequestsCount('session_x', 2026)[0])
+  })
+
+  it('queryKeys.bunkRequestsCount starts with "bunk-requests"', () => {
+    const key = queryKeys.bunkRequestsCount('1000001', 2025)
+    expect(key[0]).toBe('bunk-requests')
+  })
+
+  it('queryKeys.bunkRequestsCount second element is "count" to distinguish from list query', () => {
+    const key = queryKeys.bunkRequestsCount('1000001', 2025)
+    expect(key[1]).toBe('count')
   })
 })

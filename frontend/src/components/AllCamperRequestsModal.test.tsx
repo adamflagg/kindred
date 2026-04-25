@@ -21,10 +21,17 @@ vi.mock('react-hot-toast', () => ({
   }),
 }))
 
+// Candidates offered in the target-picker dropdown (session campers for attendees query)
+let attendeesFixture: Array<Record<string, unknown>> = []
+
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     collection: (name: string) => ({
-      getFullList: () => Promise.resolve(name === 'persons' ? personsFixture : bunkRequestsFixture),
+      getFullList: () => {
+        if (name === 'persons') return Promise.resolve(personsFixture)
+        if (name === 'attendees') return Promise.resolve(attendeesFixture)
+        return Promise.resolve(bunkRequestsFixture)
+      },
       update: (...args: unknown[]) => updateMock(...args),
     }),
   },
@@ -44,6 +51,7 @@ vi.mock('react-router', () => ({
 beforeEach(() => {
   bunkRequestsFixture = []
   personsFixture = []
+  attendeesFixture = []
   updateMock.mockReset()
   updateMock.mockResolvedValue({})
   toastSuccessMock.mockReset()
@@ -238,10 +246,11 @@ describe('AllCamperRequestsModal cards', () => {
     const allAgePrefSpans = await screen.findAllByText('Age preference', { selector: 'span' })
     expect(allAgePrefSpans.length).toBeGreaterThanOrEqual(1)
     const divider = allAgePrefSpans[0]!
-    // 'older' appears both in the age_preference_target <strong> and in source_fragment blockquote;
-    // use the <strong> element which is the age preference target display.
-    const ageCard = screen.getByText('older', { selector: 'strong' })
-    expect(divider.compareDocumentPosition(ageCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // age_preference_target now shows in the EditableRequestTarget button as "Prefers older".
+    const ageCardButton = screen.getByRole('button', { name: /Prefers older/i })
+    expect(
+      divider.compareDocumentPosition(ageCardButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 })
 
@@ -438,5 +447,190 @@ describe('AllCamperRequestsModal accessibility', () => {
     const labelEl = document.getElementById(labelledBy!)
     expect(labelEl).not.toBeNull()
     expect(labelEl!.textContent).toMatch(/Emma Johnson/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Target-picker in AllCamperRequestsModal (feedback item #7)
+// ---------------------------------------------------------------------------
+describe('AllCamperRequestsModal — target picker', () => {
+  const unresolvedRequest = {
+    id: 'req-target-1',
+    request_type: 'bunk_with',
+    status: 'pending',
+    requester_id: 100,
+    requestee_id: 0,
+    requested_person_name: 'Liam Garcia',
+    session_id: 1000001,
+    year: 2025,
+    priority: 1,
+    confidence_score: 0.5,
+    is_reciprocal: false,
+    request_locked: false,
+    created: '2025-01-01',
+    updated: '2025-01-01',
+  }
+
+  const oliviaChenAttendee = {
+    id: 'att-1',
+    expand: {
+      person: {
+        id: 'p-olivia',
+        cm_id: 200,
+        first_name: 'Olivia',
+        last_name: 'Chen',
+        year: 2025,
+        age: 12,
+        grade: 7,
+        gender: 'F',
+        created: '2025-01-01',
+        updated: '2025-01-01',
+      },
+    },
+  }
+
+  it('shows the EditableRequestTarget dropdown trigger for a non-age-preference request', async () => {
+    // A pending request with a mis-matched name ("Liam Garcia" but no requestee_id resolved)
+    bunkRequestsFixture = [unresolvedRequest]
+    personsFixture = []
+    // Olivia Chen is a session camper staff can pick instead
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+    await screen.findByText(/Liam Garcia/)
+
+    // The EditableRequestTarget renders a button to open the picker
+    const pickerButton = screen.getByRole('button', { name: /Liam Garcia \(unresolved\)/i })
+    expect(pickerButton).toBeInTheDocument()
+  })
+
+  it('updates requestee_id via PocketBase when staff selects a different candidate', async () => {
+    bunkRequestsFixture = [{ ...unresolvedRequest, id: 'req-target-2' }]
+    personsFixture = []
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+    await screen.findByText(/Liam Garcia/)
+
+    // Open the picker dropdown
+    const pickerButton = screen.getByRole('button', { name: /Liam Garcia \(unresolved\)/i })
+    fireEvent.click(pickerButton)
+
+    // Olivia Chen should appear as a selectable option
+    const oliviaOption = await screen.findByRole('button', { name: /Olivia Chen/i })
+    fireEvent.click(oliviaOption)
+
+    // Verify PocketBase update was called with the correct requestee_id
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith(
+        'req-target-2',
+        expect.objectContaining({ requestee_id: 200 })
+      )
+    )
+  })
+
+  // ---------------------------------------------------------------------------
+  // Modal target/type pickers must mirror row-level behavior: visible for ANY
+  // status (resolved/declined/pending), disabled only by request_locked.
+  // ---------------------------------------------------------------------------
+
+  it('renders EditableRequestTarget (disabled) for a locked resolved request', async () => {
+    const resolvedRequest = {
+      id: 'req-resolved-1',
+      request_type: 'bunk_with',
+      status: 'resolved',
+      requester_id: 100,
+      requestee_id: 200,
+      requested_person_name: 'Olivia Chen',
+      session_id: 1000001,
+      year: 2025,
+      priority: 1,
+      confidence_score: 1.0,
+      is_reciprocal: false,
+      request_locked: true,
+      created: '2025-01-01',
+      updated: '2025-01-01',
+    }
+    bunkRequestsFixture = [resolvedRequest]
+    personsFixture = [{ cm_id: 200, first_name: 'Olivia', last_name: 'Chen', year: 2025 }]
+    attendeesFixture = []
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+
+    // Picker button shows the resolved name (no "(unresolved)" suffix) and is disabled.
+    const pickerButton = await screen.findByRole('button', { name: /^Olivia Chen$/i })
+    expect(pickerButton).toBeInTheDocument()
+    expect(pickerButton).toBeDisabled()
+  })
+
+  it('renders EditableRequestTarget (enabled) for a declined unlocked request', async () => {
+    const declinedRequest = {
+      id: 'req-declined-1',
+      request_type: 'bunk_with',
+      status: 'declined',
+      requester_id: 100,
+      requestee_id: 200,
+      requested_person_name: 'Olivia Chen',
+      session_id: 1000001,
+      year: 2025,
+      priority: 1,
+      confidence_score: 0.6,
+      is_reciprocal: false,
+      request_locked: false,
+      created: '2025-01-01',
+      updated: '2025-01-01',
+    }
+    bunkRequestsFixture = [declinedRequest]
+    personsFixture = [{ cm_id: 200, first_name: 'Olivia', last_name: 'Chen', year: 2025 }]
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+
+    const pickerButton = await screen.findByRole('button', { name: /^Olivia Chen$/i })
+    expect(pickerButton).toBeInTheDocument()
+    expect(pickerButton).not.toBeDisabled()
+  })
+
+  it('renders EditableRequestType picker for any non-age request', async () => {
+    const resolvedRequest = {
+      id: 'req-type-1',
+      request_type: 'bunk_with',
+      status: 'resolved',
+      requester_id: 100,
+      requestee_id: 200,
+      requested_person_name: 'Olivia Chen',
+      session_id: 1000001,
+      year: 2025,
+      priority: 1,
+      confidence_score: 1.0,
+      is_reciprocal: false,
+      request_locked: false,
+      created: '2025-01-01',
+      updated: '2025-01-01',
+    }
+    bunkRequestsFixture = [resolvedRequest]
+    personsFixture = [{ cm_id: 200, first_name: 'Olivia', last_name: 'Chen', year: 2025 }]
+    attendeesFixture = []
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+
+    // EditableRequestType renders a button labeled "Bunk With"
+    expect(await screen.findByRole('button', { name: /^Bunk With$/i })).toBeInTheDocument()
+  })
+
+  it('renders EditableRequestTarget (not CamperLink) for an unresolved non-age request when onTargetChange is provided', async () => {
+    // Unresolved: requestee_id is 0, no person match
+    bunkRequestsFixture = [unresolvedRequest]
+    personsFixture = []
+    attendeesFixture = [oliviaChenAttendee]
+
+    renderModal({ requesterCmId: 100, year: 2025 })
+
+    // Must find the editable picker trigger
+    const pickerButton = await screen.findByRole('button', { name: /Liam Garcia \(unresolved\)/i })
+    expect(pickerButton).toBeInTheDocument()
+
+    // Must NOT find a CamperLink (no resolved target)
+    expect(screen.queryByRole('link', { name: /Liam Garcia/i })).toBeNull()
   })
 })
