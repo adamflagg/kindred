@@ -61,6 +61,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const pathsRef = useRef<SVGElement[]>([])
   const poppersRef = useRef<PopperRef[]>([])
   const layoutWorkerRef = useRef<Worker | null>(null)
+  // First-run guards: the init effect handles initial fit + bubble draw, so
+  // the resize-on-expand and bubble-toggle effects must skip their first run
+  // to avoid duplicating that work (which causes the graph to visibly settle
+  // into a new position shortly after labels appear).
+  const hasMountedExpandRef = useRef(false)
+  const hasMountedBubblesRef = useRef(false)
   useYear() // Ensure year context is available
 
   // Create refs object for bubble rendering - memoized to avoid recreation on every render
@@ -299,25 +305,51 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     const cy = cyRef.current
     if (!cy || cy.destroyed()) return
 
+    // Skip first run on initial mount — the init effect's worker handler
+    // already does cy.resize() + cy.fit(). Without this guard, we re-fit
+    // 200ms later against a possibly-different container size and the graph
+    // visibly "settles" into a new spot after labels render.
+    if (!hasMountedExpandRef.current) {
+      hasMountedExpandRef.current = true
+      return
+    }
+
     // Longer delay to allow CSS layout to stabilize in expanded mode
     const timeoutId = setTimeout(() => {
       if (!cy.destroyed()) {
         cy.resize()
         cy.fit(undefined, 50)
+      }
+    }, 200)
 
-        // Redraw bubbles after resize if enabled
-        if ((showBubbles || showUnits) && bunksData) {
-          // Clear existing bubblesets using the utility
-          clearBubbles(bubbleRefs)
+    return () => clearTimeout(timeoutId)
+  }, [isExpanded])
+
+  // Bubble draw/clear when toggling Bunks/Units checkboxes.
+  // Skip first run on initial mount — the init effect's onLayoutComplete
+  // (500ms after the worker returns) handles the initial draw. Without this
+  // guard, bubbles get drawn at t=200ms then cleared+redrawn at t=550ms,
+  // which is visible as labels jumping during initial render.
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy || cy.destroyed() || !bunksData) return
+
+    if (!hasMountedBubblesRef.current) {
+      hasMountedBubblesRef.current = true
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      if (!cy.destroyed()) {
+        clearBubbles(bubbleRefs)
+        if (showBubbles || showUnits) {
           drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
-        } else if (!showBubbles && !showUnits) {
-          clearBubbles(bubbleRefs)
         }
       }
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [isExpanded, showBubbles, showUnits, bunksData, bubbleRefs])
+  }, [showBubbles, showUnits, bunksData, bubbleRefs])
 
   // Update labels without re-rendering the whole graph
   useEffect(() => {
