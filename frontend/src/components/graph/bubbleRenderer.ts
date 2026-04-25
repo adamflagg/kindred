@@ -40,10 +40,13 @@ export function getBunkBubbleOptions(): {
 
 /**
  * Options for UNIT bubbles (#32 spec lock 2026-04-24):
- *   - morphBuffer significantly wider than bunks → clear whitespace gap
- *     between unit boundary and contained bunk bubbles.
- *   - pixelGroup larger than bunks → smoother, less wiggly contour
- *     (Photoshop-feather aesthetic, not stair-stepped marching squares).
+ *   (a) Clear whitespace gap (~20px) between unit boundary and the outer
+ *       edge of the contained bunk bubbles. The bubbleset visual extent is
+ *       controlled by `nodeR1`/`edgeR1` (energy-field falloff radius) and
+ *       `threshold` (contour cutoff), NOT by morphBuffer alone — morphBuffer
+ *       just sizes the marching-squares grid.
+ *   (b) Smoother spline (Photoshop-feather aesthetic) → larger pixelGroup so
+ *       marching squares quantizes the contour into fewer, longer segments.
  */
 export function getUnitBubbleOptions(): {
   maxRoutingIterations: number
@@ -53,11 +56,24 @@ export function getUnitBubbleOptions(): {
   includeMainLabels: boolean
   virtualEdges: boolean
   morphBuffer: number
+  nodeR0: number
+  nodeR1: number
+  edgeR0: number
+  edgeR1: number
 } {
   return {
     ...BASE_BUBBLE_OPTIONS,
+    // Lower threshold widens the energy-field contour beyond the nodes.
+    threshold: 1,
+    // Larger node radius range pushes the contour ~30px past each bunk's
+    // outer edge (bunk uses default nodeR1≈10, threshold=2). Net visible
+    // gap is ~20px of whitespace between bunk edge and unit boundary.
+    nodeR0: 10,
+    nodeR1: 40,
+    edgeR0: 10,
+    edgeR1: 50,
     pixelGroup: 8,
-    morphBuffer: 220,
+    morphBuffer: 80,
   }
 }
 

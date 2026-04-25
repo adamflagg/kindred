@@ -60,10 +60,21 @@ describe('#32 unit bubble feather + whitespace gap', () => {
    *       → unit pixelGroup must be larger than bunk pixelGroup (smoother contour)
    *   Bunk bubbles must be unchanged.
    */
-  it('unit bubble morphBuffer is substantially larger than bunk morphBuffer (gap)', () => {
+  it('unit bubble nodeR1 is substantially larger than bunk nodeR1 (visible gap)', () => {
+    const unitOpts = getUnitBubbleOptions() as { nodeR1?: number }
+    const bunkOpts = getBunkBubbleOptions() as { nodeR1?: number }
+    // Bunk uses bubbleset default (nodeR1≈10) since it's not overridden.
+    const bunkNodeR1 = bunkOpts.nodeR1 ?? 10
+    // Unit must extend its contour at least 20px beyond bunk's contour
+    // (visual whitespace gap between bunk edge and unit boundary).
+    expect(unitOpts.nodeR1).toBeDefined()
+    expect(unitOpts.nodeR1!).toBeGreaterThanOrEqual(bunkNodeR1 + 20)
+  })
+
+  it('unit bubble threshold is lower than bunk threshold (contour reaches further)', () => {
     const unitOpts = getUnitBubbleOptions()
     const bunkOpts = getBunkBubbleOptions()
-    expect(unitOpts.morphBuffer).toBeGreaterThan(bunkOpts.morphBuffer * 4)
+    expect(unitOpts.threshold).toBeLessThan(bunkOpts.threshold)
   })
 
   it('unit bubble pixelGroup is larger than bunk pixelGroup (smoother contour)', () => {
