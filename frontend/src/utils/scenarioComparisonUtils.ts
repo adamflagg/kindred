@@ -56,15 +56,13 @@ export function computeImpactedCabins(
   for (const entry of moved) {
     const { fromBunk, toBunk, camper } = entry
 
-    if (!cabinCampers.has(fromBunk.name)) {
-      cabinCampers.set(fromBunk.name, new Set())
+    const addToCabin = (cabin: string, id: number) => {
+      const set = cabinCampers.get(cabin) ?? new Set<number>()
+      set.add(id)
+      cabinCampers.set(cabin, set)
     }
-    cabinCampers.get(fromBunk.name)!.add(camper.personCmId)
-
-    if (!cabinCampers.has(toBunk.name)) {
-      cabinCampers.set(toBunk.name, new Set())
-    }
-    cabinCampers.get(toBunk.name)!.add(camper.personCmId)
+    addToCabin(fromBunk.name, camper.personCmId)
+    addToCabin(toBunk.name, camper.personCmId)
   }
 
   return Array.from(cabinCampers.entries())
