@@ -23,7 +23,7 @@ vi.mock('../lib/pocketbase', () => {
 })
 
 import { pb } from '../lib/pocketbase'
-import { useCreateScenario } from './useSavedScenariosMutation'
+import { useCreateScenario, useDeleteScenario } from './useSavedScenariosMutation'
 import type { SavedScenario } from '../types/app-types'
 
 function createWrapper() {
@@ -217,5 +217,25 @@ describe('Bug B: copyScenarioToScenario copies ALL source assignments without lo
       // mutation is settled
       expect(result.current.isError).toBe(true)
     })
+  })
+})
+
+describe('useDeleteScenario: relies on server-side cascade', () => {
+  it('deletes only the saved_scenarios row — does not pre-delete draft assignments', async () => {
+    const savedScenarios = getCollection('saved_scenarios')
+    const drafts = getCollection('bunk_assignments_draft')
+    savedScenarios.delete.mockResolvedValue(true)
+
+    const { result } = renderHook(() => useDeleteScenario(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.mutateAsync('scenario-to-delete')
+    })
+
+    // Single server call — no N+1 pre-delete loop.
+    expect(savedScenarios.delete).toHaveBeenCalledTimes(1)
+    expect(savedScenarios.delete).toHaveBeenCalledWith('scenario-to-delete')
+    expect(drafts.getFullList).not.toHaveBeenCalled()
+    expect(drafts.delete).not.toHaveBeenCalled()
   })
 })
