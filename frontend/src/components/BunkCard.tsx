@@ -398,7 +398,9 @@ function BunkCard({
                   .filter((s, idx, arr) => arr.findIndex((x) => x.cm_id === s.cm_id) === idx)
                 const rows = buildCamperRows(bunk.campers, sessions)
                 const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
-                downloadCsv(csv, `bunk-${slugify(bunk.name)}-${todayIso()}.csv`)
+                const sessionName = sessions[0]?.name ?? ''
+                const sessionPart = sessionName ? `-${slugify(sessionName)}` : ''
+                downloadCsv(csv, `bunk-${slugify(bunk.name)}${sessionPart}-${todayIso()}.csv`)
               }}
               className="btn-ghost p-2"
               title="Export bunk to CSV"

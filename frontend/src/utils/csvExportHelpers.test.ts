@@ -150,6 +150,17 @@ describe('buildCamperRows', () => {
     const rows = buildCamperRows(campers, [makeSession()])
     expect(rows).toHaveLength(2)
   })
+
+  it('sorts rows by first name (case-insensitive), then last name', () => {
+    const campers = [
+      makeCamper({ person_cm_id: 1, first_name: 'liam', last_name: 'Garcia' }),
+      makeCamper({ person_cm_id: 2, first_name: 'Ava', last_name: 'Brown' }),
+      makeCamper({ person_cm_id: 3, first_name: 'ava', last_name: 'Adams' }),
+    ]
+    const rows = buildCamperRows(campers, [makeSession()])
+    expect(rows.map((r) => r[1])).toEqual(['ava', 'Ava', 'liam'])
+    expect(rows.map((r) => r[2])).toEqual(['Adams', 'Brown', 'Garcia'])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -189,7 +200,7 @@ describe('buildMovedRows', () => {
     expect(rows).toHaveLength(2)
   })
 
-  it('includes cm_id, first_name, last_name, bunk, session, age, grade, prior_bunk', () => {
+  it('includes cm_id, first_name, last_name, bunk, prior_bunk, session, age, grade', () => {
     const move = makeMove({
       personCmId: 2000001,
       firstName: 'Emma',
@@ -207,15 +218,26 @@ describe('buildMovedRows', () => {
     expect(row![1]).toBe('Emma') // first_name
     expect(row![2]).toBe('Johnson') // last_name
     expect(row![3]).toBe('G-7') // bunk (new)
-    expect(row![4]).toBe('Session 1A') // session
-    expect(row![5]).toBe('12.5') // age
-    expect(row![6]).toBe('7') // grade
-    expect(row![7]).toBe('G-6') // prior_bunk
+    expect(row![4]).toBe('G-6') // prior_bunk (next to bunk)
+    expect(row![5]).toBe('Session 1A') // session
+    expect(row![6]).toBe('12.5') // age
+    expect(row![7]).toBe('7') // grade
   })
 
   it('handles empty moved list', () => {
     const rows = buildMovedRows([])
     expect(rows).toHaveLength(0)
+  })
+
+  it('sorts moved rows by first name (case-insensitive), then last name', () => {
+    const moves = [
+      makeMove({ personCmId: 1, firstName: 'liam', lastName: 'Garcia' }),
+      makeMove({ personCmId: 2, firstName: 'Ava', lastName: 'Brown' }),
+      makeMove({ personCmId: 3, firstName: 'ava', lastName: 'Adams' }),
+    ]
+    const rows = buildMovedRows(moves)
+    expect(rows.map((r) => r[1])).toEqual(['ava', 'Ava', 'liam'])
+    expect(rows.map((r) => r[2])).toEqual(['Adams', 'Brown', 'Garcia'])
   })
 })
 
@@ -237,7 +259,9 @@ describe('CSV header constants', () => {
     expect(CAMPER_CSV_HEADERS[0]).toBe('cm_id')
   })
 
-  it('MOVED_CSV_HEADERS last column is prior_bunk', () => {
-    expect(MOVED_CSV_HEADERS[MOVED_CSV_HEADERS.length - 1]).toBe('prior_bunk')
+  it('MOVED_CSV_HEADERS places prior_bunk directly after bunk', () => {
+    const bunkIdx = MOVED_CSV_HEADERS.indexOf('bunk')
+    expect(bunkIdx).toBeGreaterThanOrEqual(0)
+    expect(MOVED_CSV_HEADERS[bunkIdx + 1]).toBe('prior_bunk')
   })
 })

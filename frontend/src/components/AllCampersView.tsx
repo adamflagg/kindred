@@ -468,7 +468,8 @@ export default function AllCampersView() {
                 onClick={() => {
                   const rows = buildCamperRows(filteredCampers as Camper[], allSessions)
                   const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
-                  downloadCsv(csv, `all-campers-${todayIso()}.csv`)
+                  const genderPart = filterSex === 'M' ? '-boys' : filterSex === 'F' ? '-girls' : ''
+                  downloadCsv(csv, `all-campers${genderPart}-${todayIso()}.csv`)
                 }}
                 className="btn-ghost flex items-center gap-1.5 px-2 py-1.5 text-sm"
                 title="Export to CSV"

@@ -8,8 +8,11 @@
  * Column spec (shared for bunk, session, and all-campers exports):
  *   cm_id | first_name | last_name | bunk | session | age | grade
  *
- * Moved export adds one column:
- *   cm_id | first_name | last_name | bunk | session | age | grade | prior_bunk
+ * Moved export interleaves prior_bunk next to bunk:
+ *   cm_id | first_name | last_name | bunk | prior_bunk | session | age | grade
+ *
+ * Rows are always sorted by first_name (case-insensitive), then last_name as
+ * tiebreak, so spreadsheet output is human-readable without re-sorting.
  */
 
 import type { Camper, Session } from '../types/app-types'
@@ -33,11 +36,21 @@ export const MOVED_CSV_HEADERS = [
   'first_name',
   'last_name',
   'bunk',
+  'prior_bunk',
   'session',
   'age',
   'grade',
-  'prior_bunk',
 ] as const
+
+// ---------------------------------------------------------------------------
+// Sort helpers
+// ---------------------------------------------------------------------------
+
+function compareNames(aFirst: string, aLast: string, bFirst: string, bLast: string): number {
+  const first = aFirst.toLocaleLowerCase().localeCompare(bFirst.toLocaleLowerCase())
+  if (first !== 0) return first
+  return aLast.toLocaleLowerCase().localeCompare(bLast.toLocaleLowerCase())
+}
 
 // ---------------------------------------------------------------------------
 // buildCamperRows
@@ -71,7 +84,11 @@ export function buildCamperRows(
     filtered = campers.filter((c) => c.gender === options.filterGender)
   }
 
-  return filtered.map((c) => {
+  const sorted = [...filtered].sort((a, b) =>
+    compareNames(a.first_name ?? '', a.last_name ?? '', b.first_name ?? '', b.last_name ?? '')
+  )
+
+  return sorted.map((c) => {
     const bunkName = c.expand?.assigned_bunk?.name ?? ''
     const sessionName = sessionMap.get(c.session_cm_id) ?? ''
     return [
@@ -109,14 +126,17 @@ export interface MovedEntry {
  * @returns     - Array of string[] where each inner array is one CSV data row
  */
 export function buildMovedRows(moves: MovedEntry[]): string[][] {
-  return moves.map((m) => [
+  const sorted = [...moves].sort((a, b) =>
+    compareNames(a.firstName, a.lastName, b.firstName, b.lastName)
+  )
+  return sorted.map((m) => [
     String(m.personCmId),
     m.firstName,
     m.lastName,
     m.bunkName,
+    m.priorBunkName,
     m.sessionName,
     String(m.age),
     String(m.grade),
-    m.priorBunkName,
   ])
 }

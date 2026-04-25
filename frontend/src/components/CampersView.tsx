@@ -316,7 +316,18 @@ export default function CampersView({
                   const rows = buildCamperRows(filteredCampers, sessions)
                   const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
                   const sessionSlug = _session ? slugify(_session.name) : 'session'
-                  downloadCsv(csv, `session-${sessionSlug}-${todayIso()}.csv`)
+                  const genderPart = filterSex === 'M' ? '-boys' : filterSex === 'F' ? '-girls' : ''
+                  let bunkPart = ''
+                  if (filterBunk === 'unassigned') {
+                    bunkPart = '-unassigned'
+                  } else if (filterBunk !== 'all') {
+                    const bunkName = bunks.find((b) => b.id === filterBunk)?.name
+                    if (bunkName) bunkPart = `-${slugify(bunkName)}`
+                  }
+                  downloadCsv(
+                    csv,
+                    `session-${sessionSlug}${genderPart}${bunkPart}-${todayIso()}.csv`
+                  )
                 }}
                 className="btn-ghost flex items-center gap-1.5 px-2 py-1.5 text-sm"
                 title="Export to CSV"
