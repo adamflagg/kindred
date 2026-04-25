@@ -3,14 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
 import Modal from './ui/Modal'
-import CamperLink from './CamperLink'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
+import { RequestEditableHeader } from './RequestEditableHeader'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
-import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
-import { hasMatchedRequestTarget } from '../utils/bunkRequest'
+import { formatReason } from '../utils/dispositionColors'
 import { highlightSourceText } from '../utils/highlightSourceText'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
@@ -38,58 +37,27 @@ function statusBadgeClass(status: string): string {
 
 function RequestCard({
   request,
-  targetName,
   isCurrent = false,
   onAction,
+  onUpdate,
+  personMap,
 }: {
   request: BunkRequestsResponse
-  targetName: string | null
   isCurrent?: boolean
   onAction?: (action: 'approve' | 'decline', requestId: string, anchorRect: DOMRect) => void
+  onUpdate?: (requestId: string, updates: Partial<BunkRequestsResponse>) => void
+  personMap?: Map<number, PersonsResponse>
 }) {
-  const isBunk = request.request_type === 'bunk_with'
-  const isNot = request.request_type === 'not_bunk_with'
-  const isAge = request.request_type === 'age_preference'
-
-  const typeLabel = isBunk ? 'Bunk with' : isNot ? 'Not with' : 'Age preference'
-  const typeChipClass = isBunk
-    ? 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-300'
-    : isNot
-      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-
-  const hasResolvedTarget = hasMatchedRequestTarget(request, targetName)
-
   return (
     <article className="border-border bg-card overflow-hidden rounded-xl border">
-      <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${typeChipClass}`}
-        >
-          {typeLabel}
-        </span>
-        <span className="font-display text-foreground flex items-center gap-2 text-base font-semibold tracking-tight">
-          <span className="text-muted-foreground">→</span>
-          {isAge ? (
-            <strong>{request.age_preference_target || 'Age preference'}</strong>
-          ) : hasResolvedTarget ? (
-            <CamperLink
-              personCmId={request.requestee_id}
-              displayName={targetName}
-              isConfirmed={true}
-            />
-          ) : (
-            <span className="text-muted-foreground italic">
-              {request.requested_person_name || 'Unresolved'}
-            </span>
-          )}
-          {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
-          {isCurrent && (
-            <span className="bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-              Viewing
-            </span>
-          )}
-        </span>
+      <header className="border-border/60 from-forest-50/50 dark:from-forest-900/10 grid grid-cols-[1fr_auto] items-center gap-3 border-b bg-gradient-to-b to-transparent px-4 py-3">
+        <RequestEditableHeader
+          request={request}
+          year={request.year}
+          {...(personMap ? { personMap } : {})}
+          onUpdate={(updates) => onUpdate?.(request.id, updates)}
+          isCurrent={isCurrent}
+        />
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusBadgeClass(request.status)}`}
@@ -211,6 +179,10 @@ export function AllCamperRequestsModal({
     setConfirmPopover({ action, anchorRect, requestId })
   }
 
+  function handleRequestUpdate(requestId: string, updates: Partial<BunkRequestsResponse>) {
+    updateRequestMutation.mutate({ id: requestId, updates })
+  }
+
   const {
     data: requests = [],
     isLoading,
@@ -296,12 +268,9 @@ export function AllCamperRequestsModal({
           CampMinder ↗
         </a>
       </div>
-      <h2
-        id={headingId}
-        className="font-display text-foreground mt-1 text-[26px] leading-tight font-semibold tracking-tight"
-      >
+      <h2 id={headingId} className="text-foreground mt-1 text-xl font-semibold">
         Requests from{' '}
-        <em className="text-forest-600 dark:text-forest-300 font-medium italic">{requesterName}</em>
+        <span className="text-forest-700 dark:text-forest-300 font-semibold">{requesterName}</span>
       </h2>
       {totalRequests > 0 && (
         <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -354,24 +323,16 @@ export function AllCamperRequestsModal({
         )}
         {!isLoading && !isError && (nonAge.length > 0 || agePref) && (
           <div className="space-y-3">
-            {nonAge.map((req) => {
-              const target =
-                req.requestee_id && req.requestee_id > 0
-                  ? (personMap.get(req.requestee_id) ?? null)
-                  : null
-              const targetName = target
-                ? `${target.first_name} ${target.last_name}`
-                : (req.requested_person_name ?? null)
-              return (
-                <RequestCard
-                  key={req.id}
-                  request={req}
-                  targetName={targetName}
-                  isCurrent={req.id === currentRequestId}
-                  onAction={handleAction}
-                />
-              )
-            })}
+            {nonAge.map((req) => (
+              <RequestCard
+                key={req.id}
+                request={req}
+                isCurrent={req.id === currentRequestId}
+                onAction={handleAction}
+                onUpdate={handleRequestUpdate}
+                personMap={personMap}
+              />
+            ))}
             {agePref && (
               <>
                 {nonAge.length > 0 && (
@@ -383,9 +344,10 @@ export function AllCamperRequestsModal({
                 )}
                 <RequestCard
                   request={agePref}
-                  targetName={null}
                   isCurrent={agePref.id === currentRequestId}
                   onAction={handleAction}
+                  onUpdate={handleRequestUpdate}
+                  personMap={personMap}
                 />
               </>
             )}

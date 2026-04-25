@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '../test/testUtils'
+import { render, screen, waitFor, fireEvent, act } from '../test/testUtils'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BrowserRouter } from 'react-router'
+import { render as rtlRender } from '@testing-library/react'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 
 // Mock pocketbase
@@ -260,5 +263,59 @@ describe('CamperRequestSummary', () => {
     const btn = await screen.findByRole('button', { name: /manage this camper's requests/i })
     fireEvent.click(btn)
     expect(await screen.findByRole('dialog')).toBeTruthy()
+  })
+
+  it('keeps the modal mounted when a refetch puts the persons query into loading', async () => {
+    // Repro for feedback follow-up on item #7: when the user updates a
+    // request's target from inside the modal, the requestee_id changes,
+    // queryKeys.camperRequestSummaryPersons gets a NEW key (no cached data),
+    // isLoadingPersons flips to true, and the loading branch unmounts the
+    // modal mid-flow. The modal must survive the transient loading state.
+    mockFetch()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    rtlRender(
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <CamperRequestSummary
+            requesterCmId={100}
+            year={2025}
+            currentRequestId="req1"
+            requesterName="Emma Johnson"
+          />
+        </BrowserRouter>
+      </QueryClientProvider>
+    )
+
+    await screen.findByText('Olivia Chen')
+    fireEvent.click(screen.getByRole('button', { name: /manage this camper's requests/i }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    // Simulate the user updating a request target: requests refetch with a
+    // brand-new requestee_id (999) the persons cache has never seen, so the
+    // persons query goes into a fresh isLoading=true state.
+    const updatedRequests = mockRequests.map((r) =>
+      r.id === 'req2' ? ({ ...r, requestee_id: 999 } as unknown as BunkRequestsResponse) : r
+    )
+    mockGetFullList.mockImplementation((opts: { filter?: string }) => {
+      const filter = opts?.filter ?? ''
+      if (filter.includes('requester_id')) return Promise.resolve(updatedRequests)
+      // Persons fetch hangs to keep isLoadingPersons=true.
+      if (filter.includes('cm_id')) return new Promise(() => {})
+      return Promise.resolve([])
+    })
+
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['camper-request-summary', 100, 2025] })
+    })
+
+    // Wait for the loading branch to take effect (proves the bug condition is exercised).
+    await waitFor(() => {
+      expect(screen.getByText(/Loading requests/)).toBeInTheDocument()
+    })
+
+    // Modal must still be in the DOM despite isLoadingPersons going true.
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })
