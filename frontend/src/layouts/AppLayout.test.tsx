@@ -227,6 +227,53 @@ describe('AppLayout sync-status polling', () => {
   })
 })
 
+describe('AppLayout sync-status labels', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = {
+      hasPermission: (p: string) => p === 'bunking.manage',
+      isAdmin: false,
+    }
+    const iso = '2026-04-22T12:00:00.000Z'
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        bunk_assignments: {
+          status: 'success',
+          end_time: iso,
+          start_time: iso,
+          summary: { created: 1, updated: 2, skipped: 0, errors: 0 },
+        },
+        bunk_requests: {
+          status: 'success',
+          end_time: iso,
+          start_time: iso,
+          summary: { created: 3, updated: 4, skipped: 1, errors: 0 },
+        },
+      } as SyncStatusResponse,
+    }))
+  })
+
+  it('renders "Assignments synced ..." label with lowercase synced', () => {
+    renderAppLayout()
+    expect(screen.getByText(/Assignments synced/)).toBeInTheDocument()
+  })
+
+  it('renders "Requests synced ..." label with lowercase synced', () => {
+    renderAppLayout()
+    expect(screen.getByText(/Requests synced/)).toBeInTheDocument()
+  })
+
+  it('Requests sync label exposes richer detail via tooltip on hover', () => {
+    renderAppLayout()
+    const requestsLabel = screen.getByText(/Requests synced/)
+    const tooltipHost = requestsLabel.closest('[title]') as HTMLElement | null
+    expect(tooltipHost).not.toBeNull()
+    const title = tooltipHost?.getAttribute('title') ?? ''
+    expect(title).toMatch(/2026-04-22/)
+    expect(title).toMatch(/created 3, updated 4, skipped 1, errors 0/)
+  })
+})
+
 // Regression boundary: sentinel shape returned on 401, not the full
 // pb.afterSend async-redirect race. See #1011 for the discriminated-union fix.
 describe('AppLayout fresh-login crash guard', () => {
