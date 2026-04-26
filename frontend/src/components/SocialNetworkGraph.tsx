@@ -238,9 +238,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         layoutTokenRef.current = makeLayoutToken()
 
         // Handle worker response
-        const handleMessage = (
-          event: MessageEvent<LayoutWorkerOutput & { token?: number }>
-        ) => {
+        const handleMessage = (event: MessageEvent<LayoutWorkerOutput & { token?: number }>) => {
           const { type, positions, error } = event.data
           const messageToken = event.data.token
 
