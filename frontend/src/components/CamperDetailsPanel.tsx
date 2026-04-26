@@ -840,7 +840,6 @@ export default function CamperDetailsPanel({
       ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
       : null
 
-
   // Render the panel content
   const renderContent = () => (
     <div className={embedded ? 'space-y-3' : 'flex-1 space-y-4 overflow-auto'}>
