@@ -25,6 +25,7 @@ import toast from 'react-hot-toast'
 import YearSelector from '../components/YearSelector'
 import CacheStatus from '../components/CacheStatus'
 import BunkRequestsUpload from '../components/BunkRequestsUpload'
+import CsvPipelineIndicator from '../components/CsvPipelineIndicator'
 import { BrandedLogo } from '../components/BrandedLogo'
 import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
@@ -652,6 +653,7 @@ export const AppLayout = () => {
                 {/* Summer-only: Bunking controls (manage permission required) */}
                 {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                   <>
+                    <CsvPipelineIndicator />
                     <BunkRequestsUpload />
                     <button
                       onClick={() => {
@@ -739,6 +741,7 @@ export const AppLayout = () => {
             <div className="flex items-center gap-2">
               {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                 <>
+                  <CsvPipelineIndicator />
                   <BunkRequestsUpload />
                   <button
                     onClick={() => {
