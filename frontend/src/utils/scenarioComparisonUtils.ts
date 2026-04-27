@@ -11,66 +11,6 @@ export interface SortableCamper {
   lastName: string
 }
 
-/** Minimal camper shape used by computeImpactedCabins. */
-export interface MovedCamper {
-  personCmId: number
-}
-
-/** A single moved entry from the comparison result. */
-export interface MovedEntry {
-  camper: MovedCamper
-  fromBunk: { id: string; name: string }
-  toBunk: { id: string; name: string }
-}
-
-/** A chip representing a single impacted cabin. */
-export interface ImpactedCabinChip {
-  name: string
-  count: number
-}
-
-/**
- * Compute the list of impacted cabin chips from the "moved" entries.
- *
- * Each cabin that appears as either a From or a To is represented once.
- * The count is the number of distinct campers (by personCmId) whose move
- * touched that cabin — each camper counted once per cabin even if the move
- * makes them both leave AND arrive at that cabin (which can't happen for a
- * single move, but does happen when a cabin is both the from-bunk of one
- * camper and the to-bunk of another camper in the same list).
- *
- * Returned in ascending alphabetical order.
- *
- * @param visibleCabinNames  When provided (e.g. a gender-area filter is active in
- *   split view), only chips for cabins present in this set are returned. Chips for
- *   cabins outside the visible set are silently dropped, preventing dead chips that
- *   would scroll to nothing.  When omitted (or `undefined`), all cabins are included.
- */
-export function computeImpactedCabins(
-  moved: readonly MovedEntry[],
-  visibleCabinNames?: ReadonlySet<string>
-): ImpactedCabinChip[] {
-  // Map from cabin name → set of personCmIds who touched that cabin
-  const cabinCampers = new Map<string, Set<number>>()
-
-  for (const entry of moved) {
-    const { fromBunk, toBunk, camper } = entry
-
-    const addToCabin = (cabin: string, id: number) => {
-      const set = cabinCampers.get(cabin) ?? new Set<number>()
-      set.add(id)
-      cabinCampers.set(cabin, set)
-    }
-    addToCabin(fromBunk.name, camper.personCmId)
-    addToCabin(toBunk.name, camper.personCmId)
-  }
-
-  return Array.from(cabinCampers.entries())
-    .filter(([name]) => visibleCabinNames === undefined || visibleCabinNames.has(name))
-    .map(([name, campers]) => ({ name, count: campers.size }))
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
 /** Minimal bunk shape used to decide which area-filter buttons to render. */
 export interface BunkWithGender {
   gender: string

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useParams, Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -43,10 +43,8 @@ import {
   compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
-  computeImpactedCabins,
   type BunkArea,
 } from '../utils/scenarioComparisonUtils'
-import ImpactedCabinChipRow from '../components/ImpactedCabinChipRow'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
@@ -532,25 +530,6 @@ export default function ScenarioComparisonPage() {
     }
   }, [comparison, changeFilter])
 
-  // Compute impacted cabin chips from the Moved tab data.
-  // When a gender-area filter is active, restrict chips to cabins that are
-  // actually rendered in the split view — prevents dead chips that scroll
-  // to sections that aren't visible under the current filter.
-  const impactedCabins = useMemo(() => {
-    const visibleCabinNames =
-      effectiveBunkArea === 'all' ? undefined : new Set(filteredBunks.map((b) => b.name))
-    return computeImpactedCabins(comparison.moved, visibleCabinNames)
-  }, [comparison.moved, effectiveBunkArea, filteredBunks])
-
-  // Ref for the split view container — used to query cabin section elements
-  const splitViewRef = useRef<HTMLDivElement>(null)
-
-  // Returns all elements with data-cabin attribute in the split view
-  const getCabinSectionElements = useCallback((): Element[] => {
-    if (!splitViewRef.current) return []
-    return Array.from(splitViewRef.current.querySelectorAll('[data-cabin]'))
-  }, [])
-
   const leftScenarioName =
     leftScenarioId === 'production'
       ? 'CampMinder (Production)'
@@ -901,25 +880,16 @@ export default function ScenarioComparisonPage() {
 
             {/* Split View */}
             {viewMode === 'split' && (
-              <>
-                {/* Impacted cabin chip row — only shown when there are moved campers */}
-                {impactedCabins.length > 0 && (
-                  <ImpactedCabinChipRow
-                    chips={impactedCabins}
-                    getCabinSectionElements={getCabinSectionElements}
+              <div className="space-y-4">
+                {bunkComparisons.map((bunkComp) => (
+                  <BunkComparisonCard
+                    key={bunkComp.bunkId}
+                    comparison={bunkComp}
+                    leftLabel={leftScenarioName}
+                    rightLabel={rightScenarioName}
                   />
-                )}
-                <div ref={splitViewRef} className="space-y-4">
-                  {bunkComparisons.map((bunkComp) => (
-                    <BunkComparisonCard
-                      key={bunkComp.bunkId}
-                      comparison={bunkComp}
-                      leftLabel={leftScenarioName}
-                      rightLabel={rightScenarioName}
-                    />
-                  ))}
-                </div>
-              </>
+                ))}
+              </div>
             )}
 
             {/* Changes Table View */}
@@ -1201,17 +1171,16 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
 
   return (
     <div
-      data-cabin={comparison.bunkName}
       className={clsx(
         'card-lodge overflow-hidden transition-all',
         hasChanges && 'ring-2 ring-amber-400/50'
       )}
     >
-      {/* Bunk Header — sticky so it stays visible during manual scroll */}
+      {/* Bunk Header */}
       <div
         className={clsx(
-          'border-border sticky top-40 z-10 flex items-center justify-between border-b px-4 py-3',
-          hasChanges ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-muted/50 backdrop-blur-sm'
+          'border-border flex items-center justify-between border-b px-4 py-3',
+          hasChanges ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-muted/50'
         )}
       >
         <div className="flex items-center gap-3">
