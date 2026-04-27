@@ -705,19 +705,19 @@ requires-dist = [
     { name = "croniter", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "jellyfish", specifier = ">=1.1.0" },
+    { name = "jellyfish", specifier = ">=1.2.1" },
     { name = "networkx", specifier = ">=3.0" },
-    { name = "nicknames", specifier = ">=1.0.0" },
+    { name = "nicknames", specifier = ">=1.0.1" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "openai", specifier = ">=2.0.0" },
     { name = "openpyxl", specifier = ">=3.1.0" },
-    { name = "ortools", url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" },
+    { name = "ortools", specifier = ">=9.15" },
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pocketbase", specifier = ">=0.15.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
-    { name = "pydantic-settings", specifier = ">=2.13.1" },
-    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.12.0" },
+    { name = "pydantic-settings", specifier = ">=2.14.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.12.1" },
     { name = "pypdf", specifier = ">=6.10.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "python-louvain", specifier = ">=0.16" },
@@ -1018,7 +1018,7 @@ wheels = [
 [[package]]
 name = "ortools"
 version = "9.15.6755"
-source = { url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "absl-py" },
     { name = "immutabledict" },
@@ -1028,17 +1028,13 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7181183cdcafe2b0d83ca5505b65048c7953dc7b5ad479361dded607964cc1b3" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "absl-py", specifier = ">=2.0.0" },
-    { name = "immutabledict", specifier = ">=3.0.0" },
-    { name = "numpy", specifier = ">=2.0.2" },
-    { name = "pandas", specifier = ">=2.0.0" },
-    { name = "protobuf", specifier = ">=6.33.1,<6.34" },
-    { name = "typing-extensions", specifier = ">=4.12" },
+    { url = "https://files.pythonhosted.org/packages/53/ef/53a172ad12cf0d762b9a5af681b1f13f1b4105b38bf65c2b383d530ed97f/ortools-9.15.6755-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:acdf06a167933307608e7eba23a9490255933504df44c8de5f62c48656c29688", size = 23916963, upload-time = "2026-01-14T15:39:13.282Z" },
+    { url = "https://files.pythonhosted.org/packages/13/54/ed73ec00369fb6d6c71049d62e4b7c87c918b61f86ddd55a11c20ada395e/ortools-9.15.6755-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:1a0677270b0cd317a6b8dae42514264eaf5da5756c5bc7215eeea409424577df", size = 21923649, upload-time = "2026-01-14T15:39:16.831Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/e0/ac57dd43eaadd73748bb542b30912e16c7dbf3a75f393f69efb8a1a2f032/ortools-9.15.6755-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:899b92afe3f775ab5867b9a8aa2850f81f2d95232db9b4ceec3456d69e6b8528", size = 27657273, upload-time = "2026-01-14T15:38:18.375Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/e0/11144feb4ddadc491dc9d833d3a2080e6556245f912bebe2c0c7e174f2a1/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7181183cdcafe2b0d83ca5505b65048c7953dc7b5ad479361dded607964cc1b3", size = 29843939, upload-time = "2026-01-14T15:38:21.457Z" },
+    { url = "https://files.pythonhosted.org/packages/96/97/771515ba3a05da3903b7da55a190d9f88f36a08c4bf848852e0ea4e3a731/ortools-9.15.6755-cp314-cp314-win_amd64.whl", hash = "sha256:afabb869e5fabeb704bd8147b22bf8139dee042e55fabd0d447a996428009e0c", size = 24673633, upload-time = "2026-01-14T15:39:51.212Z" },
+    { url = "https://files.pythonhosted.org/packages/46/99/0932d6d7d6ad326adf68f4ce9063ef07db7e9859859dddbcd200102aedff/ortools-9.15.6755-cp314-cp314t-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d9d07cddca201e25e2e219006a9d6cda10c7e9ee2c712c50d19d508f9ed8a888", size = 27682088, upload-time = "2026-01-14T15:38:25.174Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/4d/bd75961e2c82db69bb41dd2c4a82131ca580e997485be2d5f59f8d26f31e/ortools-9.15.6755-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:990838ad66a052e72a50e69da500878710e3420e91717fe88bf3071995caba9e", size = 29851493, upload-time = "2026-01-14T15:38:28.168Z" },
 ]
 
 [[package]]

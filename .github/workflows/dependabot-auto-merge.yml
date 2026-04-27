@@ -11,7 +11,7 @@ jobs:
     if: github.triggering_actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: dependabot/fetch-metadata@ffa630c65fa7e0ecfa0625b5ceda64399aea1b36 # v2
+      - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v2
         id: metadata
       - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"

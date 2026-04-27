@@ -65,4 +65,27 @@ describe('GraphLegend rendering', () => {
     expect(screen.queryByText(/Medium \(50-90%\)/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Low \(<50%\)/)).not.toBeInTheDocument()
   })
+
+  it('labels the green status as "1+ satisfied requests"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('1+ satisfied requests')).toBeInTheDocument()
+    expect(screen.queryByText(/^Satisfied$/)).not.toBeInTheDocument()
+  })
+
+  it('labels the red status as "0 satisfied requests"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('0 satisfied requests')).toBeInTheDocument()
+    expect(screen.queryByText(/^Isolated$/)).not.toBeInTheDocument()
+  })
+
+  it('does not render a "Partial" row — collapsed into 1+ satisfied requests', () => {
+    render(<GraphLegend />)
+    expect(screen.queryByText(/^Partial$/)).not.toBeInTheDocument()
+  })
+
+  it('renders a neutral "No requests" row distinct from "0 satisfied requests"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('No requests')).toBeInTheDocument()
+    expect(screen.getByText('0 satisfied requests')).toBeInTheDocument()
+  })
 })
