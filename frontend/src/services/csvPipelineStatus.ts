@@ -50,7 +50,8 @@ export function derivePhase(
     if (debugIsFresh && debug && sync.finishedAt) {
       const finishedAt = new Date(sync.finishedAt).getTime()
       const debugAt = new Date(debug.created).getTime()
-      if (debugAt - finishedAt <= GRACE_WINDOW_MS) return doneFromDebug(debug)
+      const delta = debugAt - finishedAt
+      if (delta >= 0 && delta <= GRACE_WINDOW_MS) return doneFromDebug(debug)
     }
     return {
       phase: 'error',

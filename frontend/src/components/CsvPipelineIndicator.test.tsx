@@ -226,4 +226,27 @@ describe('CsvPipelineIndicator', () => {
     fireEvent.click(btn)
     expect(screen.queryByRole('region', { name: /pipeline detail/i })).not.toBeInTheDocument()
   })
+
+  it('closes the popover on outside mousedown', () => {
+    setData({ phase: 'importing', startedAt: new Date().toISOString() })
+    render(
+      <div>
+        <CsvPipelineIndicator />
+        <button type="button">outside</button>
+      </div>
+    )
+    fireEvent.click(screen.getByRole('button', { name: /CSV pipeline status/i }))
+    expect(screen.getByRole('region', { name: /pipeline detail/i })).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('button', { name: /outside/i }))
+    expect(screen.queryByRole('region', { name: /pipeline detail/i })).not.toBeInTheDocument()
+  })
+
+  it('closes the popover when Escape is pressed', () => {
+    setData({ phase: 'importing', startedAt: new Date().toISOString() })
+    render(<CsvPipelineIndicator />)
+    fireEvent.click(screen.getByRole('button', { name: /CSV pipeline status/i }))
+    expect(screen.getByRole('region', { name: /pipeline detail/i })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('region', { name: /pipeline detail/i })).not.toBeInTheDocument()
+  })
 })

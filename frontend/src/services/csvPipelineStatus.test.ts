@@ -91,6 +91,25 @@ describe('derivePhase', () => {
     expect(derivePhase(sync, orphan).phase).toBe('done')
   })
 
+  it('keeps error when debug row predates finishedAt (negative grace delta is rejected)', () => {
+    // Sync started 60 min ago, debug created at 50 min ago, sync finished 40 min ago.
+    // debugIsFresh is true (debug.created >= startedAt) but debug.created < finishedAt,
+    // so delta is negative — must NOT be treated as orphan recovery.
+    const sync: SyncJobStatus = {
+      name: 'bunk_requests',
+      status: 'failed',
+      startedAt: ago(60),
+      finishedAt: ago(40),
+      error: 'context deadline exceeded',
+    }
+    const stale: DebugPipelineRun = {
+      run_id: 'r-stale',
+      created: ago(50),
+      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+    }
+    expect(derivePhase(sync, stale).phase).toBe('error')
+  })
+
   it('keeps error when debug row is outside the 30-min grace window', () => {
     const sync: SyncJobStatus = {
       name: 'bunk_requests',

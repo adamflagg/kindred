@@ -14,6 +14,25 @@ export default function CsvPipelineIndicator() {
     localStorage.getItem(DISMISSED_KEY)
   )
   const lastSeenRef = useRef<string | null>(localStorage.getItem(LAST_SEEN_KEY))
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!popoverOpen) return
+    const handleMouseDown = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setPopoverOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPopoverOpen(false)
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [popoverOpen])
 
   useEffect(() => {
     if (data?.phase === 'done' && data.runId !== lastSeenRef.current) {
@@ -39,7 +58,7 @@ export default function CsvPipelineIndicator() {
   }
 
   return (
-    <div className="relative flex items-center">
+    <div ref={wrapperRef} className="relative flex items-center">
       <button
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}

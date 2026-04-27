@@ -5,6 +5,7 @@ import { syncService, type UploadError } from '../services/sync'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useCurrentYear } from '../hooks/useCurrentYear'
+import { queryKeys } from '../utils/queryKeys'
 
 interface BunkRequestsUploadProps {
   compact?: boolean
@@ -31,8 +32,8 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
         fileInputRef.current.value = ''
       }
       // Invalidate sync status and csv pipeline status
-      void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
-      void queryClient.invalidateQueries({ queryKey: ['csv-pipeline-status'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.csvPipelineStatus() })
     },
     onError: (error: UploadError) => {
       if (error.missing_columns) {
