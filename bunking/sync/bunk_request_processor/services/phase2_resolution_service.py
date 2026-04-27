@@ -11,7 +11,7 @@ from ..core.models import ParsedRequest, ParseResult, Person, RequestType
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..shared.constants import NOTES_FIELDS
-from ..shared.name_utils import normalize_name
+from ..shared.name_utils import normalize_name, parse_name
 from ..shared.nickname_groups import find_nickname_variations, names_match_via_nicknames
 
 logger = get_logger(__name__)
@@ -422,8 +422,13 @@ class Phase2ResolutionService:
                                 seen_cm_ids.add(p.cm_id)
                                 candidates.append(p)
                 else:
-                    # Pattern 1 (single word) or 2 (multi-word, no family markers)
-                    first_name = target.split()[0] if " " in target else target
+                    # Pattern 1 (single word) or 2 (multi-word, no family markers).
+                    # Use parse_name() so leading enumeration tokens (`1.`, `2)`,
+                    # `*`, `-`) are stripped — otherwise a parent-numbered list
+                    # like "1. Liam Garcia" would compute first_name="1." here
+                    # and silently produce zero candidates.
+                    parsed_target = parse_name(target)
+                    first_name = parsed_target.first if " " in target else target
                     strategy = "multi_word" if " " in target else "single_word"
 
                     # Direct first-name lookup

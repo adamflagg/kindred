@@ -14,11 +14,29 @@ class ParsedName(NamedTuple):
     is_complete: bool
 
 
+# Leading enumeration tokens that parents and the AI sometimes leave on names.
+# Stripped before parsing so a numbered list ("1. Emma Wilson") resolves the
+# same as a bare name.
+#
+# Matched forms:
+#   - digit/letter + terminator + whitespace: `1.`, `2)`, `10.`, `a.`, `b)`
+#   - bracketed enumeration: `(1)`, `[3]`, also half-bracket forms like `1]`
+#   - bullet markers: `* `, `- `
+#
+# Known limitation: also matches single-letter+dot initials like `J. Smith`,
+# stripping them to just "Smith". A 2026-04-27 scan of production target_name
+# data found zero such inputs (out of 2633 bunk_requests), so this is theoretical
+# only. If parents start submitting initial-style names, tighten the digit/letter
+# branch to digits-only.
+_ENUMERATION_PREFIX_RE = re.compile(r"^\s*(?:[\(\[]?[\dA-Za-z]+[\.\)\]]|[-*])\s+")
+
+
 def parse_name(name: str) -> ParsedName:
     """Parse name into (first, last, is_complete). Handles middle names."""
     if not name:
         return ParsedName("", "", False)
-    parts = name.strip().split()
+    cleaned = _ENUMERATION_PREFIX_RE.sub("", name.strip())
+    parts = cleaned.split()
     if len(parts) < 2:
         return ParsedName(parts[0] if parts else "", "", False)
     return ParsedName(parts[0], parts[-1], True)

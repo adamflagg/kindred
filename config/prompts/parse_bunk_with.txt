@@ -72,7 +72,9 @@ Output: 1 bunk_with request for "Liam Patel", parse_notes: "Direct bunk request"
 
 Example 2 - Multiple names with priority:
 Input: "1. Sophia Martinez (Cousin). 2. Olivia Rose Thompson"
-Output: 2 bunk_with requests, list_position 0 and 1, "Cousin" in parse_notes for first
+Output: 2 bunk_with requests with target_name "Sophia Martinez" and "Olivia Rose Thompson"
+  (NOT "1. Sophia Martinez" — strip the enumeration prefix), list_position 0 and 1,
+  "Cousin" in parse_notes for first.
 
 Example 3 - Embedded negative:
 Input: "Wants to be with Mia. PLEASE DO NOT put with Jake - he bullied Lucas last year"
@@ -127,5 +129,11 @@ For each valid request, provide:
 - target_name: Person's name or age value ("older", "younger", "unclear")
 - confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
 - keywords_found: Priority words like "must", "important", "critical", "first choice"
+
+CRITICAL — target_name MUST be ONLY the person's name. Strip leading enumeration
+tokens (`1.`, `2)`, `10.`, `a.`, `(1)`, `[3]`, `*`, `-`) before emitting target_name.
+The order goes into list_position, not into the name string. Names like
+"1. Emma Wilson" will fail to resolve in the database and will land as unmatched.
+This rule is illustrated in Example 2 and applies to any input you receive.
 
 {output_field_rules}
