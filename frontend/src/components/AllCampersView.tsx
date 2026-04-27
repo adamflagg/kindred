@@ -108,7 +108,7 @@ export default function AllCampersView() {
   const currentYear = useYear()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterSession, setFilterSession] = useState<string>('all')
+  const [filterSession, setFilterSession] = useState<string>(FILTER_ALL)
   const [filterSex, setFilterSex] = useState<'all' | 'M' | 'F'>('all')
   const [filterBunk, setFilterBunk] = useState<string>('all')
   const [isTableVisible, setIsTableVisible] = useState(false)
@@ -251,30 +251,28 @@ export default function AllCampersView() {
       })
     }
 
+    const camperHasSessionMatching = (
+      camper: MergedCamper,
+      pred: (s: Session | undefined) => boolean
+    ) => {
+      const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
+      if (pred(primary)) return true
+      return (
+        camper.additionalSessions?.some((as) => {
+          const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
+          return pred(session)
+        }) ?? false
+      )
+    }
+
     if (filterSession === FILTER_AT_CAMP) {
       const isAtCamp = (s: Session | undefined) =>
         s?.session_type === 'main' || s?.session_type === 'embedded' || s?.session_type === 'ag'
-      filtered = filtered.filter((camper) => {
-        const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
-        if (isAtCamp(primary)) return true
-        return (
-          camper.additionalSessions?.some((as) => {
-            const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
-            return isAtCamp(session)
-          }) ?? false
-        )
-      })
+      filtered = filtered.filter((camper) => camperHasSessionMatching(camper, isAtCamp))
     } else if (filterSession === FILTER_QUESTS) {
-      filtered = filtered.filter((camper) => {
-        const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
-        if (primary?.session_type === 'quest') return true
-        return (
-          camper.additionalSessions?.some((as) => {
-            const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
-            return session?.session_type === 'quest'
-          }) ?? false
-        )
-      })
+      filtered = filtered.filter((camper) =>
+        camperHasSessionMatching(camper, (s) => s?.session_type === 'quest')
+      )
     } else if (filterSession !== FILTER_ALL) {
       const relatedSessionIds = sessionRelationships.get(filterSession) ?? [filterSession]
       filtered = filtered.filter((camper) => {
@@ -319,7 +317,8 @@ export default function AllCampersView() {
   ])
 
   // Check if any filters are active
-  const hasActiveFilters = filterSession !== 'all' || filterSex !== 'all' || filterBunk !== 'all'
+  const hasActiveFilters =
+    filterSession !== FILTER_ALL || filterSex !== 'all' || filterBunk !== 'all'
 
   // Virtual scrolling
   const { parentRef, rowVirtualizer } = useVirtualTable({
@@ -335,7 +334,7 @@ export default function AllCampersView() {
   }, [])
 
   const clearAllFilters = () => {
-    setFilterSession('all')
+    setFilterSession(FILTER_ALL)
     setFilterSex('all')
     setFilterBunk('all')
     setSearchTerm('')
