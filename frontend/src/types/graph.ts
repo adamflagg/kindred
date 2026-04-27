@@ -10,7 +10,8 @@ export interface GraphNode {
   centrality: number
   clustering: number
   community: number | null
-  satisfaction_status?: 'satisfied' | 'partial' | 'isolated'
+  // Backend may still emit 'partial' for older cached graphs; frontend treats it as 'satisfied'.
+  satisfaction_status?: 'satisfied' | 'partial' | 'isolated' | 'no_requests'
   // Legacy fields that may still be referenced
   age?: number
   sex?: string

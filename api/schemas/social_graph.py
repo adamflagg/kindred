@@ -19,7 +19,7 @@ class SocialGraphNode(BaseModel):
     centrality: float = 0.0
     clustering: float = 0.0
     community: int | None = None
-    satisfaction_status: str | None = None  # 'satisfied', 'partial', 'isolated'
+    satisfaction_status: str | None = None  # 'satisfied' | 'isolated' | 'no_requests'
     first_year: bool = False  # True if camper has no historical attendance
     last_year_session: str | None = None  # Previous year's session name
     last_year_bunk: str | None = None  # Previous year's bunk name
