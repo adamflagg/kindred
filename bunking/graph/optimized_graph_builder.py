@@ -283,18 +283,6 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
         return sibling_edges
 
-    def _calculate_node_metrics(self) -> None:
-        """Calculate centrality and clustering coefficients with rounding."""
-        # Calculate degree centrality
-        centrality = nx.degree_centrality(self.graph)
-        for node in self.graph.nodes():
-            self.graph.nodes[node]["centrality"] = round(centrality.get(node, 0.0), 2)
-
-        # Calculate clustering coefficient
-        clustering = nx.clustering(self.graph.to_undirected())
-        for node in self.graph.nodes():
-            self.graph.nodes[node]["clustering"] = round(clustering.get(node, 0.0), 2)
-
     def update_node_position(
         self, person_cm_id: int, new_bunk_cm_id: int, session_cm_id: int, year: int
     ) -> dict[str, Any]:

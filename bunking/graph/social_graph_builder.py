@@ -816,8 +816,15 @@ class SocialGraphBuilder:
         clustering = nx.clustering(self.graph)
         nx.set_node_attributes(self.graph, clustering, "clustering")
 
-        # Connected component size
-        components = list(nx.connected_components(self.graph))
+        # Connected component size — use weakly_connected_components for directed graphs
+        # (OptimizedSocialGraphBuilder uses nx.DiGraph; the parent path uses nx.Graph).
+        # Without this branch, nx.connected_components raises NetworkXNotImplemented on
+        # DiGraph inputs and the satisfaction_status loop below never runs — leaving every
+        # node's status null and every frontend border falling back to the default color.
+        if self.graph.is_directed():
+            components = list(nx.weakly_connected_components(self.graph))
+        else:
+            components = list(nx.connected_components(self.graph))
         component_map = {}
         for _i, component in enumerate(components):
             for node in component:
