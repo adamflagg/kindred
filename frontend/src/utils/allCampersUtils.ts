@@ -15,8 +15,10 @@ export type SessionWithType = Session
 // Session types that are valid for summer camp views
 const SUMMER_CAMP_SESSION_TYPES = ['main', 'ag', 'embedded', 'quest'] as const
 
-// Session types that should appear in the dropdown
-// (AG is excluded because it's grouped with parent main session)
+// Session types that should appear in the /campers picker dropdown.
+// AG is excluded because it's grouped with parent main session.
+// tli and teen are excluded because teen programs (TLI / SCIT) are not
+// relevant to the cabin-assignment workflow on the /campers page.
 const DROPDOWN_SESSION_TYPES = ['main', 'embedded', 'quest'] as const
 
 /**
@@ -117,4 +119,95 @@ export function getSessionRelationshipsForCamperView(
   })
 
   return relationships
+}
+
+// Filter values for the /campers page session scope picker.
+//
+// 'all'      → every dropdown session
+// 'at-camp'  → main + embedded (matches dropdown contents; AG sessions are
+//              grouped with their parent main session via
+//              getSessionRelationshipsForCamperView, so AG campers are
+//              included in the camper-filter even though AG never appears in
+//              dropdownSessions itself)
+// 'quests'   → quest only
+//
+// resolveScopedSessions returns the dropdown-level scope list for the headline
+// noun. Camper-level filtering in AllCampersView walks sessionRelationships
+// for AT_CAMP / QUESTS so AG inclusion comes from a single source of truth.
+export const FILTER_ALL = 'all'
+export const FILTER_AT_CAMP = 'at-camp'
+export const FILTER_QUESTS = 'quests'
+
+/**
+ * Split an already-filtered dropdown session list into camp sessions
+ * (main + embedded) and quest sessions, each sorted by date.
+ *
+ * Caller is responsible for passing the output of `getDropdownSessions`
+ * (i.e. AG and teen sessions are already excluded).
+ */
+export function splitDropdownSessionsByType(sessions: Session[]): {
+  campSessions: Session[]
+  questSessions: Session[]
+} {
+  const campSessions = sortSessionsByDate(
+    sessions.filter((s) => s.session_type === 'main' || s.session_type === 'embedded')
+  )
+  const questSessions = sortSessionsByDate(sessions.filter((s) => s.session_type === 'quest'))
+  return { campSessions, questSessions }
+}
+
+/**
+ * Resolve a picker filter value to a concrete list of sessions.
+ *
+ * - `'all'`      → `dropdownSessions` as-is.
+ * - `'at-camp'`  → only main + embedded sessions (input order preserved).
+ * - `'quests'`   → only quest sessions (input order preserved).
+ * - any other string → treated as a session `id`; returns `[match]` or `[]`.
+ */
+export function resolveScopedSessions(filterValue: string, dropdownSessions: Session[]): Session[] {
+  if (filterValue === FILTER_ALL) {
+    return dropdownSessions
+  }
+  if (filterValue === FILTER_AT_CAMP) {
+    return dropdownSessions.filter(
+      (s) => s.session_type === 'main' || s.session_type === 'embedded'
+    )
+  }
+  if (filterValue === FILTER_QUESTS) {
+    return dropdownSessions.filter((s) => s.session_type === 'quest')
+  }
+  // Specific session ID
+  const match = dropdownSessions.find((s) => s.id === filterValue)
+  return match ? [match] : []
+}
+
+/**
+ * Return the collective noun for the /campers page header based on which
+ * session types are represented in `sessions`.
+ *
+ * Rules (spec #5):
+ *   - At-camp only (main / embedded / ag)  → "camper" / "campers"
+ *   - Quest only                            → "quester" / "questers"
+ *   - Mixed at-camp + quest                 → "camper and quester" / "campers and questers"
+ *
+ * `count` controls singular vs plural.
+ * Only collective count nouns are affected; individual-referring copy
+ * ("this camper's…") is NOT changed by this function.
+ */
+export function getCampersHeadlineNoun(sessions: Session[], count: number): string {
+  const plural = count !== 1
+
+  const hasAtCamp = sessions.some(
+    (s) => s.session_type === 'main' || s.session_type === 'embedded' || s.session_type === 'ag'
+  )
+  const hasQuest = sessions.some((s) => s.session_type === 'quest')
+
+  if (hasAtCamp && hasQuest) {
+    return plural ? 'campers and questers' : 'camper and quester'
+  }
+  if (hasQuest) {
+    return plural ? 'questers' : 'quester'
+  }
+  // Default: at-camp only (or empty list — fall back to "campers")
+  return plural ? 'campers' : 'camper'
 }

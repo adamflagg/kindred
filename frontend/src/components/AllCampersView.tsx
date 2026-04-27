@@ -27,6 +27,12 @@ import {
   filterSummerCampBunks,
   getDropdownSessions,
   getSessionRelationshipsForCamperView,
+  getCampersHeadlineNoun,
+  splitDropdownSessionsByType,
+  resolveScopedSessions,
+  FILTER_ALL,
+  FILTER_AT_CAMP,
+  FILTER_QUESTS,
 } from '../utils/allCampersUtils'
 import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
 import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
@@ -102,7 +108,7 @@ export default function AllCampersView() {
   const currentYear = useYear()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterSession, setFilterSession] = useState<string>('all')
+  const [filterSession, setFilterSession] = useState<string>(FILTER_ALL)
   const [filterSex, setFilterSex] = useState<'all' | 'M' | 'F'>('all')
   const [filterBunk, setFilterBunk] = useState<string>('all')
   const [isTableVisible, setIsTableVisible] = useState(false)
@@ -219,6 +225,16 @@ export default function AllCampersView() {
     [allSessions]
   )
 
+  const { campSessions, questSessions } = useMemo(
+    () => splitDropdownSessionsByType(dropdownSessions),
+    [dropdownSessions]
+  )
+
+  const scopedSessions = useMemo(
+    () => resolveScopedSessions(filterSession, dropdownSessions),
+    [filterSession, dropdownSessions]
+  )
+
   // Filter and sort campers
   const filteredCampers = useMemo(() => {
     let filtered: MergedCamper[] = mergedCampers
@@ -235,20 +251,31 @@ export default function AllCampersView() {
       })
     }
 
-    if (filterSession !== 'all') {
-      const relatedSessionIds = sessionRelationships.get(filterSession) ?? [filterSession]
-      filtered = filtered.filter((camper) => {
-        // Check primary session
-        const session = allSessions.find((s) => s.cm_id === camper.session_cm_id)
-        if (session && relatedSessionIds.includes(session.id)) return true
-        // Check additional sessions
-        if (camper.additionalSessions) {
-          return camper.additionalSessions.some((as) => {
-            const addSession = allSessions.find((s) => s.cm_id === as.session_cm_id)
-            return addSession && relatedSessionIds.includes(addSession.id)
-          })
+    if (filterSession !== FILTER_ALL) {
+      const relatedSessionIds = new Set<string>()
+      if (filterSession === FILTER_AT_CAMP) {
+        for (const session of campSessions) {
+          const ids = sessionRelationships.get(session.id) ?? [session.id]
+          ids.forEach((id) => relatedSessionIds.add(id))
         }
-        return false
+      } else if (filterSession === FILTER_QUESTS) {
+        for (const session of questSessions) {
+          const ids = sessionRelationships.get(session.id) ?? [session.id]
+          ids.forEach((id) => relatedSessionIds.add(id))
+        }
+      } else {
+        const ids = sessionRelationships.get(filterSession) ?? [filterSession]
+        ids.forEach((id) => relatedSessionIds.add(id))
+      }
+      filtered = filtered.filter((camper) => {
+        const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
+        if (primary && relatedSessionIds.has(primary.id)) return true
+        return (
+          camper.additionalSessions?.some((as) => {
+            const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
+            return session ? relatedSessionIds.has(session.id) : false
+          }) ?? false
+        )
       })
     }
 
@@ -276,10 +303,13 @@ export default function AllCampersView() {
     filterBunk,
     sessionRelationships,
     allSessions,
+    campSessions,
+    questSessions,
   ])
 
   // Check if any filters are active
-  const hasActiveFilters = filterSession !== 'all' || filterSex !== 'all' || filterBunk !== 'all'
+  const hasActiveFilters =
+    filterSession !== FILTER_ALL || filterSex !== 'all' || filterBunk !== 'all'
 
   // Virtual scrolling
   const { parentRef, rowVirtualizer } = useVirtualTable({
@@ -295,7 +325,7 @@ export default function AllCampersView() {
   }, [])
 
   const clearAllFilters = () => {
-    setFilterSession('all')
+    setFilterSession(FILTER_ALL)
     setFilterSex('all')
     setFilterBunk('all')
     setSearchTerm('')
@@ -337,30 +367,76 @@ export default function AllCampersView() {
               <div className="relative">
                 <ListboxButton className="listbox-button-compact">
                   <span className="truncate">
-                    {filterSession === 'all'
-                      ? 'All Sessions'
-                      : (() => {
-                          const session = dropdownSessions.find((s) => s.id === filterSession)
-                          return session
-                            ? getSessionDisplayName(session, allSessions)
-                            : 'Unknown Session'
-                        })()}
+                    {filterSession === FILTER_ALL
+                      ? 'All Summer'
+                      : filterSession === FILTER_AT_CAMP
+                        ? 'At Camp'
+                        : filterSession === FILTER_QUESTS
+                          ? 'Quests'
+                          : (() => {
+                              const session = dropdownSessions.find((s) => s.id === filterSession)
+                              return session
+                                ? getSessionDisplayName(session, allSessions)
+                                : 'Unknown Session'
+                            })()}
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[140px]">
-                  <ListboxOption value="all" className="listbox-option py-1.5">
-                    All Sessions
+                <ListboxOptions className="listbox-options w-auto min-w-[180px]">
+                  {/* Type groupings */}
+                  <ListboxOption value={FILTER_ALL} className="listbox-option py-1.5">
+                    All Summer
                   </ListboxOption>
-                  {dropdownSessions.map((session) => (
-                    <ListboxOption
-                      key={session.id}
-                      value={session.id}
-                      className="listbox-option py-1.5"
-                    >
-                      {getSessionDisplayName(session, allSessions)}
-                    </ListboxOption>
-                  ))}
+                  <ListboxOption value={FILTER_AT_CAMP} className="listbox-option py-1.5">
+                    At Camp
+                  </ListboxOption>
+                  <ListboxOption value={FILTER_QUESTS} className="listbox-option py-1.5">
+                    Quests
+                  </ListboxOption>
+
+                  {/* Camp sessions */}
+                  {campSessions.length > 0 && (
+                    <div role="group" aria-labelledby="campers-camp-sessions-group-label">
+                      <div className="border-border my-1 border-t" />
+                      <div
+                        id="campers-camp-sessions-group-label"
+                        className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                      >
+                        Camp Sessions
+                      </div>
+                      {campSessions.map((session) => (
+                        <ListboxOption
+                          key={session.id}
+                          value={session.id}
+                          className="listbox-option py-1.5"
+                        >
+                          {getSessionDisplayName(session, allSessions)}
+                        </ListboxOption>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quests */}
+                  {questSessions.length > 0 && (
+                    <div role="group" aria-labelledby="campers-quests-group-label">
+                      <div className="border-border my-1 border-t" />
+                      <div
+                        id="campers-quests-group-label"
+                        className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                      >
+                        Quests
+                      </div>
+                      {questSessions.map((session) => (
+                        <ListboxOption
+                          key={session.id}
+                          value={session.id}
+                          className="listbox-option py-1.5"
+                        >
+                          {getSessionDisplayName(session, allSessions)}
+                        </ListboxOption>
+                      ))}
+                    </div>
+                  )}
                 </ListboxOptions>
               </div>
             </Listbox>
@@ -443,7 +519,7 @@ export default function AllCampersView() {
               {filteredCampers.length}
             </span>
             <span className="text-stone-500 dark:text-stone-400">
-              {filteredCampers.length === 1 ? 'camper' : 'campers'}
+              {getCampersHeadlineNoun(scopedSessions, filteredCampers.length)}
               {filteredCampers.length !== mergedCampers.length && (
                 <span className="text-stone-400 dark:text-stone-500">
                   {' '}
