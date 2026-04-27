@@ -5,6 +5,7 @@ import { syncService, type UploadError } from '../services/sync'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useCurrentYear } from '../hooks/useCurrentYear'
+import { queryKeys } from '../utils/queryKeys'
 
 interface BunkRequestsUploadProps {
   compact?: boolean
@@ -20,20 +21,19 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => syncService.uploadBunkRequestsCSV(file, fetchWithAuth, currentYear),
-    onSuccess: (data) => {
-      const message = data.process_requests_started
-        ? `CSV uploaded - syncing and processing requests...`
-        : `CSV uploaded successfully: ${data.filename}`
-      toast.success(message, {
-        duration: 4000,
-      })
+    onSuccess: () => {
+      toast.success(
+        "Importing CSV — this may take a few minutes. The icon next to the Upload Requests button will update when it's done.",
+        { duration: 6000 }
+      )
       setShowModal(false)
       setSelectedFile(null)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
-      // Invalidate sync status
-      void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+      // Invalidate sync status and csv pipeline status
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.csvPipelineStatus() })
     },
     onError: (error: UploadError) => {
       if (error.missing_columns) {

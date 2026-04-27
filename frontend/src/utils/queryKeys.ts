@@ -63,6 +63,7 @@ export const queryKeys = {
   // Sync Status (Tier 2 - frequently updated)
   syncStatus: () => ['sync-status'] as const,
   syncStatusForService: (service: string) => ['sync-status', service] as const,
+  csvPipelineStatus: () => ['csv-pipeline-status'] as const,
 
   // Users (Tier 2 - user data)
   users: () => ['users'] as const,
