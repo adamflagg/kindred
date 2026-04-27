@@ -34,8 +34,7 @@ dependencies = [
     "requests>=2.33.1",
     # AI/ML
     "openai>=2.0.0",
-    # TODO: Switch back to "ortools>=9.15" once PyPI wheels are published
-    "ortools @ https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "ortools>=9.15",
     # Data processing
     "pandas>=3.0.2",
     "tzdata>=2026.1",
