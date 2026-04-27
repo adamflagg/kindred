@@ -143,10 +143,6 @@ export async function fetchLatestDebugRun(
   return {
     run_id: first.run_id,
     created: first.created,
-    status_breakdown: {
-      status_resolved: first.status_breakdown.status_resolved,
-      status_pending: first.status_breakdown.status_pending,
-      status_declined: first.status_breakdown.status_declined,
-    },
+    status_breakdown: first.status_breakdown,
   }
 }

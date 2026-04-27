@@ -1,8 +1,7 @@
 export function formatTimestamp(iso: string, now: Date = new Date()): string {
   const then = new Date(iso)
   const deltaMs = now.getTime() - then.getTime()
-  const minutesFloor = Math.floor(deltaMs / 60_000)
-  if (minutesFloor < 1) return 'just now'
+  if (deltaMs < 60_000) return 'just now'
   const minutes = Math.round(deltaMs / 60_000)
   if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
   const hoursFloor = Math.floor(deltaMs / (60 * 60_000))

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, CheckCircle, AlertCircle, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCsvPipelineStatus } from '../hooks/useCsvPipelineStatus'
+import { useClickOutside } from '../hooks/useClickOutside'
 import { formatTimestamp } from '../utils/formatTimestamp'
 
 const DISMISSED_KEY = 'csvProgressDismissedRunId'
@@ -16,22 +17,15 @@ export default function CsvPipelineIndicator() {
   const lastSeenRef = useRef<string | null>(localStorage.getItem(LAST_SEEN_KEY))
   const wrapperRef = useRef<HTMLDivElement | null>(null)
 
+  useClickOutside(wrapperRef, () => setPopoverOpen(false), popoverOpen)
+
   useEffect(() => {
     if (!popoverOpen) return
-    const handleMouseDown = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setPopoverOpen(false)
-      }
-    }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setPopoverOpen(false)
     }
-    document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [popoverOpen])
 
   useEffect(() => {
