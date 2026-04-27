@@ -46,10 +46,8 @@ import {
   compareCamperByName,
   sortCampersByName,
   getAvailableBunkAreas,
-  diffGroups,
   type BunkArea,
   type LockGroupSummary,
-  type GroupDiffResult,
 } from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
@@ -122,11 +120,6 @@ async function fetchGroupMap(
   }
 
   return personToGroup
-}
-
-/** Deduplicate LockGroupSummary values from a Map by group id. */
-function uniqueById(map: Map<number, LockGroupSummary>): LockGroupSummary[] {
-  return Array.from(new Map(Array.from(map.values()).map((g) => [g.id, g])).values())
 }
 
 // Types for comparison
@@ -611,13 +604,6 @@ export default function ScenarioComparisonPage() {
     })
   }, [filteredBunks, leftAssignments, rightAssignments])
 
-  // Build group-diff summary for the header chip.
-  // Collect unique LockGroupSummary objects from each side's group map.
-  const groupDiff = useMemo(
-    () => diffGroups(uniqueById(leftGroupMap), uniqueById(rightGroupMap)),
-    [leftGroupMap, rightGroupMap]
-  )
-
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
     switch (changeFilter) {
@@ -861,11 +847,6 @@ export default function ScenarioComparisonPage() {
                   />
                 </div>
               </div>
-            )}
-
-            {/* Friend Group Diff Summary — only shown when at least one side has groups */}
-            {(groupDiff.leftCount > 0 || groupDiff.rightCount > 0) && (
-              <FriendGroupDiffChip diff={groupDiff} />
             )}
 
             {/* Metrics Summary */}
@@ -1269,58 +1250,6 @@ function MetricCard({ label, value, sublabel, icon: Icon, color, trend }: Metric
       <div className="stat-card-value text-2xl">{value}</div>
       <div className="text-muted-foreground mt-1 text-xs">{label}</div>
       {sublabel && <div className="text-muted-foreground/70 mt-0.5 text-xs">{sublabel}</div>}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// FriendGroupDiffChip — summary bar showing group counts across scenarios
-// ---------------------------------------------------------------------------
-
-interface FriendGroupDiffChipProps {
-  diff: GroupDiffResult
-}
-
-function FriendGroupDiffChip({ diff }: FriendGroupDiffChipProps) {
-  const parts = [
-    { label: `Left: ${diff.leftCount}` },
-    { label: `Right: ${diff.rightCount}` },
-    { label: `Identical: ${diff.identical.length}`, accent: diff.identical.length > 0 },
-    {
-      label: `Unique to L: ${diff.uniqueL.length}`,
-      warn: diff.uniqueL.length > 0,
-    },
-    {
-      label: `Unique to R: ${diff.uniqueR.length}`,
-      warn: diff.uniqueR.length > 0,
-    },
-    {
-      label: `Modified: ${diff.modified.length}`,
-      modified: diff.modified.length > 0,
-    },
-  ]
-
-  return (
-    <div className="card-lodge mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-      <span className="text-muted-foreground mr-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
-        <Users className="h-3.5 w-3.5" />
-        Friend Groups
-      </span>
-      {parts.map((p, i) => (
-        <span
-          key={i}
-          className={clsx(
-            'text-sm font-medium',
-            p.accent && 'text-forest-600 dark:text-forest-400',
-            p.warn && 'text-amber-600 dark:text-amber-400',
-            p.modified && 'text-bark-600 dark:text-bark-400',
-            !p.accent && !p.warn && !p.modified && 'text-muted-foreground'
-          )}
-        >
-          {i > 0 && <span className="text-muted-foreground/40 mr-3">·</span>}
-          {p.label}
-        </span>
-      ))}
     </div>
   )
 }
