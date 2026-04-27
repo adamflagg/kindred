@@ -17,11 +17,16 @@ from unittest.mock import MagicMock
 
 import networkx as nx
 
+from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.social_graph_builder import SocialGraphBuilder
 
 
 def _make_builder() -> SocialGraphBuilder:
     return SocialGraphBuilder(pb=MagicMock())
+
+
+def _make_optimized_builder() -> OptimizedSocialGraphBuilder:
+    return OptimizedSocialGraphBuilder(pb=MagicMock())
 
 
 def _populate(
@@ -87,25 +92,27 @@ def test_no_request_edges_and_fully_isolated_node_marks_no_requests() -> None:
     assert builder.graph.nodes[1]["satisfaction_status"] == "no_requests"
 
 
-def test_calculate_node_metrics_on_digraph_sets_satisfaction_status() -> None:
-    """Regression: OptimizedSocialGraphBuilder uses nx.DiGraph; satisfaction_status must
-    still be populated on every node. Prior bug: nx.connected_components raised
-    NetworkXNotImplemented on DiGraph, aborting before the satisfaction loop and leaving
-    satisfaction_status=None on every node — causing all graph node borders to fall back
-    to the same color in the frontend."""
-    builder = _make_builder()
+def test_optimized_builder_sets_satisfaction_status() -> None:
+    """Regression: OptimizedSocialGraphBuilder is the GUI path (3 of 4 production
+    callers in api/routers/social_graph.py — the friends page hits it). Prior bug:
+    OptimizedSocialGraphBuilder._calculate_node_metrics overrode the parent and
+    silently dropped the satisfaction loop, leaving satisfaction_status absent on
+    every node and forcing every frontend border to fall back to a default color."""
+    builder = _make_optimized_builder()
     _populate(builder, nodes={1: 100, 2: 100, 3: 200}, request_edges=[(1, 2), (1, 3)], graph_type=nx.DiGraph)
     builder._calculate_node_metrics()
     for node_id in (1, 2, 3):
         assert "satisfaction_status" in builder.graph.nodes[node_id], (
-            f"node {node_id} missing satisfaction_status — _calculate_node_metrics bailed early"
+            f"node {node_id} missing satisfaction_status — OptimizedSocialGraphBuilder "
+            f"override is dropping the satisfaction loop"
         )
         assert builder.graph.nodes[node_id]["satisfaction_status"] is not None
 
 
-def test_calculate_node_metrics_on_digraph_classifies_correctly() -> None:
-    """Same node membership semantics on DiGraph as on Graph."""
-    builder = _make_builder()
+def test_optimized_builder_classifies_correctly() -> None:
+    """OptimizedSocialGraphBuilder must produce the same satisfaction labels as the
+    parent on the same logical graph (just expressed as a DiGraph)."""
+    builder = _make_optimized_builder()
     # 1 → 2 (same bunk, satisfied), 3 → 4 (different bunks, isolated), 5 alone (no_requests)
     _populate(
         builder,
@@ -117,3 +124,18 @@ def test_calculate_node_metrics_on_digraph_classifies_correctly() -> None:
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
     assert builder.graph.nodes[3]["satisfaction_status"] == "isolated"
     assert builder.graph.nodes[5]["satisfaction_status"] == "no_requests"
+
+
+def test_parent_builder_on_digraph_still_works() -> None:
+    """Defensive: even though parent SocialGraphBuilder always builds nx.Graph in
+    practice, _calculate_node_metrics must remain DiGraph-safe so nothing regresses
+    if the parent is ever invoked on a directed graph."""
+    builder = _make_builder()
+    _populate(
+        builder,
+        nodes={1: 100, 2: 100, 3: 200},
+        request_edges=[(1, 2), (1, 3)],
+        graph_type=nx.DiGraph,
+    )
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
