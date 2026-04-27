@@ -13,7 +13,6 @@ export type DebugPipelineRun = {
     status_resolved: number
     status_pending: number
     status_declined: number
-    [k: string]: number
   }
 }
 

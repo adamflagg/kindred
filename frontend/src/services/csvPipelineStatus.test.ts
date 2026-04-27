@@ -101,6 +101,40 @@ describe('derivePhase', () => {
     expect(derivePhase(sync, tooLate).phase).toBe('error')
   })
 
+  it('treats exactly 30-min delta as done (inclusive boundary)', () => {
+    // finishedAt 60 min ago, debug created 30 min ago → delta = 30 min
+    const sync: SyncJobStatus = {
+      name: 'bunk_requests',
+      status: 'failed',
+      startedAt: ago(90),
+      finishedAt: ago(60),
+      error: 'context deadline exceeded',
+    }
+    const debug: DebugPipelineRun = {
+      run_id: 'r-boundary',
+      created: ago(30),
+      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+    }
+    expect(derivePhase(sync, debug).phase).toBe('done')
+  })
+
+  it('treats just past 30-min delta as error (exclusive past boundary)', () => {
+    // finishedAt 60 min ago, debug created 29.99 min ago → delta = 30.01 min
+    const sync: SyncJobStatus = {
+      name: 'bunk_requests',
+      status: 'failed',
+      startedAt: ago(90),
+      finishedAt: ago(60),
+      error: 'context deadline exceeded',
+    }
+    const debug: DebugPipelineRun = {
+      run_id: 'r-just-past',
+      created: new Date(Date.now() - 29.99 * 60_000).toISOString(),
+      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+    }
+    expect(derivePhase(sync, debug).phase).toBe('error')
+  })
+
   it('handles all-zeros (csv-history dedup re-upload) as done', () => {
     const sync: SyncJobStatus = {
       name: 'bunk_requests',
