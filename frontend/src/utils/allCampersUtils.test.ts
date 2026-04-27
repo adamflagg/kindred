@@ -4,6 +4,11 @@ import {
   getDropdownSessions,
   getSessionRelationshipsForCamperView,
   getCampersHeadlineNoun,
+  splitDropdownSessionsByType,
+  resolveScopedSessions,
+  FILTER_ALL,
+  FILTER_AT_CAMP,
+  FILTER_QUESTS,
   type SessionWithType,
 } from './allCampersUtils'
 import type { BunksResponse, BunkPlansResponse } from '../types/pocketbase-types'
@@ -497,6 +502,132 @@ describe('allCampersUtils', () => {
       expect(result.map((s: Session) => s.name)).not.toContain('TLI: Rising 11th')
       expect(result.map((s: Session) => s.name)).not.toContain('SCIT: Rising 12th')
     })
+  })
+
+  // ── splitDropdownSessionsByType ────────────────────────────────────────────
+  describe('splitDropdownSessionsByType', () => {
+    it('main and embedded sessions go to campSessions; quest to questSessions', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main', start_date: '2025-06-01' }),
+        createMockSession({
+          name: 'Session 2a',
+          session_type: 'embedded',
+          start_date: '2025-06-01',
+        }),
+        createMockSession({
+          name: 'Quest: Pacific Crest',
+          session_type: 'quest',
+          start_date: '2025-07-01',
+        }),
+      ]
+      const { campSessions, questSessions } = splitDropdownSessionsByType(sessions)
+      expect(campSessions).toHaveLength(2)
+      expect(campSessions.map((s) => s.name)).toContain('Session 2')
+      expect(campSessions.map((s) => s.name)).toContain('Session 2a')
+      expect(questSessions).toHaveLength(1)
+      expect(questSessions[0]?.name).toBe('Quest: Pacific Crest')
+    })
+
+    it('campSessions are sorted by start_date', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 3', session_type: 'main', start_date: '2025-07-15' }),
+        createMockSession({ name: 'Session 2', session_type: 'main', start_date: '2025-06-01' }),
+        createMockSession({
+          name: 'Session 2a',
+          session_type: 'embedded',
+          start_date: '2025-06-01',
+        }),
+      ]
+      const { campSessions } = splitDropdownSessionsByType(sessions)
+      expect(campSessions[0]?.start_date).toBe('2025-06-01')
+      expect(campSessions[campSessions.length - 1]?.start_date).toBe('2025-07-15')
+    })
+
+    it('questSessions are sorted by start_date', () => {
+      const sessions = [
+        createMockSession({
+          name: 'Quest: Adirondacks',
+          session_type: 'quest',
+          start_date: '2025-08-01',
+        }),
+        createMockSession({
+          name: 'Quest: Pacific Crest',
+          session_type: 'quest',
+          start_date: '2025-07-01',
+        }),
+      ]
+      const { questSessions } = splitDropdownSessionsByType(sessions)
+      expect(questSessions[0]?.name).toBe('Quest: Pacific Crest')
+      expect(questSessions[1]?.name).toBe('Quest: Adirondacks')
+    })
+
+    it('empty input returns empty arrays', () => {
+      const { campSessions, questSessions } = splitDropdownSessionsByType([])
+      expect(campSessions).toEqual([])
+      expect(questSessions).toEqual([])
+    })
+  })
+
+  // ── resolveScopedSessions ─────────────────────────────────────────────────
+  describe('resolveScopedSessions', () => {
+    const mainSession = createMockSession({ name: 'Session 2', session_type: 'main', id: 'main-2' })
+    const embeddedSession = createMockSession({
+      name: 'Session 2a',
+      session_type: 'embedded',
+      id: 'emb-2a',
+    })
+    const questSession = createMockSession({
+      name: 'Quest: Pacific Crest',
+      session_type: 'quest',
+      id: 'quest-1',
+    })
+    const allSessions = [mainSession, embeddedSession, questSession]
+
+    it(`'${FILTER_ALL}' returns the full input list`, () => {
+      expect(resolveScopedSessions(FILTER_ALL, allSessions)).toEqual(allSessions)
+    })
+
+    it(`'${FILTER_AT_CAMP}' returns only main + embedded sessions`, () => {
+      const result = resolveScopedSessions(FILTER_AT_CAMP, allSessions)
+      expect(result).toHaveLength(2)
+      expect(result.map((s) => s.session_type)).not.toContain('quest')
+    })
+
+    it(`'${FILTER_QUESTS}' returns only quest sessions`, () => {
+      const result = resolveScopedSessions(FILTER_QUESTS, allSessions)
+      expect(result).toHaveLength(1)
+      expect(result[0]?.id).toBe('quest-1')
+    })
+
+    it('specific session ID returns array with just that session', () => {
+      const result = resolveScopedSessions('emb-2a', allSessions)
+      expect(result).toHaveLength(1)
+      expect(result[0]?.id).toBe('emb-2a')
+    })
+
+    it('unknown session ID returns empty array', () => {
+      const result = resolveScopedSessions('nonexistent-id', allSessions)
+      expect(result).toEqual([])
+    })
+  })
+
+  // ── Composition: resolveScopedSessions → getCampersHeadlineNoun ───────────
+  it('resolveScopedSessions pipes into getCampersHeadlineNoun correctly', () => {
+    const mainSession = createMockSession({ name: 'Session 2', session_type: 'main', id: 'main-2' })
+    const questSession = createMockSession({
+      name: 'Quest: Pacific Crest',
+      session_type: 'quest',
+      id: 'quest-1',
+    })
+    const sessions = [mainSession, questSession]
+
+    const atCamp = resolveScopedSessions(FILTER_AT_CAMP, sessions)
+    expect(getCampersHeadlineNoun(atCamp, 1)).toBe('camper')
+    expect(getCampersHeadlineNoun(atCamp, 5)).toBe('campers')
+
+    const quests = resolveScopedSessions(FILTER_QUESTS, sessions)
+    expect(getCampersHeadlineNoun(quests, 1)).toBe('quester')
+    expect(getCampersHeadlineNoun(quests, 5)).toBe('questers')
   })
 
   // ── #5: Headline noun swap ────────────────────────────────────────────────
