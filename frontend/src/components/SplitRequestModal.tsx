@@ -209,6 +209,7 @@ export default function SplitRequestModal({
       // Invalidate all related queries to refresh data
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       void queryClient.invalidateQueries({ queryKey: ['source-links'] })
       void queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] })
       onSplitComplete()

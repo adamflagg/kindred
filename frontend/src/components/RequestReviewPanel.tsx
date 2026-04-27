@@ -511,6 +511,7 @@ export default function RequestReviewPanel({
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       if (!variables.suppressToast) {
         toast.success('Request updated')
       }
@@ -532,6 +533,7 @@ export default function RequestReviewPanel({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       toast.success('Requests updated')
       setSelectedRequests(new Set())
     },
@@ -572,6 +574,9 @@ export default function RequestReviewPanel({
                   .collection('bunk_requests')
                   .update(id, { status: priorStatus, request_locked: priorLocked })
                 void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+                void queryClient.invalidateQueries({
+                  queryKey: ['cohort-request-relations'],
+                })
               },
             })
           },
@@ -625,6 +630,9 @@ export default function RequestReviewPanel({
                   )
                 )
                 void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+                void queryClient.invalidateQueries({
+                  queryKey: ['cohort-request-relations'],
+                })
               },
             })
           },
