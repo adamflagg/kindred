@@ -65,4 +65,16 @@ describe('GraphLegend rendering', () => {
     expect(screen.queryByText(/Medium \(50-90%\)/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Low \(<50%\)/)).not.toBeInTheDocument()
   })
+
+  it('labels the green status as "Requests satisfied (1+)" not bare "Satisfied"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('Requests satisfied (1+)')).toBeInTheDocument()
+    expect(screen.queryByText(/^Satisfied$/)).not.toBeInTheDocument()
+  })
+
+  it('labels the red status as "None" to contrast with "Requests satisfied (1+)"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('None')).toBeInTheDocument()
+    expect(screen.queryByText(/^Isolated$/)).not.toBeInTheDocument()
+  })
 })

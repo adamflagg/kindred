@@ -43,7 +43,7 @@ export default function GraphLegend({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full border-2 border-green-600 bg-gray-400" />
-            <span>Satisfied</span>
+            <span>Requests satisfied (1+)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full border-2 border-yellow-600 bg-gray-400" />
@@ -51,7 +51,7 @@ export default function GraphLegend({
           </div>
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full border-2 border-red-600 bg-gray-400" />
-            <span>Isolated</span>
+            <span>None</span>
           </div>
         </div>
       </div>
