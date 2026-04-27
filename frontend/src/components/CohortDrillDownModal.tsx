@@ -25,6 +25,8 @@ interface CohortDrillDownModalProps {
   attendees: CohortMatchedAttendee[]
   /** Display name of the source camper (whose detail panel is open). */
   selfDisplayName: string
+  /** Session type from useCamperCohorts — controls the subtitle's gender qualifier. */
+  sessionType?: string
   /** Confirmed incoming bunk_with / not_bunk_with requests targeting the source camper. */
   requestRelations?: CohortRelationsMap
   onClose: () => void
@@ -86,12 +88,18 @@ export function CohortDrillDownModal({
   label,
   attendees,
   selfDisplayName,
+  sessionType,
   requestRelations,
   onClose,
 }: CohortDrillDownModalProps) {
   if (!open) return null
 
   const count = attendees.length
+  const camperWord = count === 1 ? 'camper' : 'campers'
+  // AG sessions show all genders; non-AG (and unspecified) show same-gender
+  // matches only — surface the distinction so a staffer reading the count
+  // knows whether opposite-gender candidates were filtered out.
+  const genderQualifier = sessionType === 'ag' ? 'all genders' : 'same gender'
 
   const header = (
     <div className="border-border border-b px-6 py-4">
@@ -99,7 +107,7 @@ export function CohortDrillDownModal({
         {KIND_TITLE[kind]}: {label}
       </h2>
       <p className="text-muted-foreground mt-0.5 text-sm">
-        {count} campers · same session · potential bunkmates only
+        {count} {camperWord} · same session · {genderQualifier} · potential bunkmates only
       </p>
     </div>
   )
@@ -120,16 +128,19 @@ export function CohortDrillDownModal({
         <ul className="divide-border divide-y">
           {attendees.map((a) => {
             const relation = requestRelations?.get(a.personCmId)
-            const badgeText =
+            const relationBadge =
               relation?.type === 'bunk_with'
-                ? `Requested to bunk with ${selfDisplayName}`
+                ? {
+                    text: `Requested to bunk with ${selfDisplayName}`,
+                    classes:
+                      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                  }
                 : relation?.type === 'not_bunk_with'
-                  ? `Not to bunk with ${selfDisplayName}`
+                  ? {
+                      text: `Not to bunk with ${selfDisplayName}`,
+                      classes: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+                    }
                   : null
-            const badgeClasses =
-              relation?.type === 'bunk_with'
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
             return (
               <li
                 key={a.attendeeId}
@@ -150,13 +161,13 @@ export function CohortDrillDownModal({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {badgeText && (
+                  {relationBadge && (
                     <span
-                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${badgeClasses}`}
+                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${relationBadge.classes}`}
                       data-testid="cohort-modal-relation"
                       data-relation={relation?.type}
                     >
-                      {badgeText}
+                      {relationBadge.text}
                     </span>
                   )}
                   {relation?.mutual && (

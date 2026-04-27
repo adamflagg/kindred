@@ -9,10 +9,14 @@
  * the primary attendee after enrolled-first sort).
  *
  * Filtering:
- *  - status_id = 2 (enrolled only). Excludes the current camper.
- *  - When session_type !== 'ag', restricts cohort matches to same gender as self
- *    (non-AG bunks are gender-segregated, so opposite-gender campers are not
- *    valid bunkmates and would mislead anyone resolving "bunk with X from Y").
+ *  - status = "enrolled" (matches useSessionCamperPersons / SessionList /
+ *    ManualResolutionModal / pocketbaseDataFetchers — predominant frontend
+ *    convention). Excludes the current camper.
+ *  - When session_type !== 'ag' AND self has a known gender, restricts cohort
+ *    matches to same gender as self (non-AG bunks are gender-segregated, so
+ *    opposite-gender campers are not valid bunkmates). When self has no
+ *    gender on file, the gender filter is skipped — we cannot determine
+ *    bunkability so surface all candidates and let the staffer judge.
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
@@ -49,7 +53,7 @@ export interface UseCamperCohortsResult {
 interface AttendeeWithExpands {
   id: string
   person_id: number
-  status_id: number
+  status?: string
   expand?: {
     person?: {
       cm_id?: number
@@ -88,7 +92,7 @@ export function useCamperCohorts(
       if (!personCmId || sessionCmId <= 0) return null
 
       const attendees = await pb.collection('attendees').getFullList<AttendeeWithExpands>({
-        filter: `session.cm_id = ${sessionCmId} && year = ${year} && status_id = 2`,
+        filter: `session.cm_id = ${sessionCmId} && year = ${year} && status = "enrolled"`,
         expand: 'person,session',
       })
 
@@ -101,15 +105,17 @@ export function useCamperCohorts(
       const sessionType = selfAttendee?.expand?.session?.session_type ?? 'main'
       const isAG = sessionType === 'ag'
       const selfGender = selfPerson.gender ?? null
+      // When self has no gender on file we cannot judge bunkability — fall back
+      // to AG behavior (no gender filter) rather than silently matching only
+      // other null-gender campers via the `null !== null` quirk.
+      const skipGenderFilter = isAG || selfGender === null
 
-      // Other enrolled attendees, excluding self. For non-AG sessions, also
-      // restrict to same gender as self — opposite-gender campers are not
-      // valid bunkmates in gender-segregated cabins.
       const others = attendees.filter((a) => {
-        if (a.status_id !== 2) return false
+        // Defense in depth — server filter already restricts to enrolled.
+        if (a.status && a.status !== 'enrolled') return false
         const p = a.expand?.person
         if (!p || p.cm_id === personCmId) return false
-        if (!isAG && p.gender !== selfGender) return false
+        if (!skipGenderFilter && p.gender !== selfGender) return false
         return true
       })
 

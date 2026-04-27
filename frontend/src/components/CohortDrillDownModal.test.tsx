@@ -81,7 +81,7 @@ describe('CohortDrillDownModal', () => {
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })
 
-  it('header copy uses "potential bunkmates only" (not "valid")', () => {
+  it('header copy says "same gender" for non-AG sessions', () => {
     render(
       <CohortDrillDownModal
         selfDisplayName="Emma"
@@ -89,11 +89,29 @@ describe('CohortDrillDownModal', () => {
         kind="school"
         label="Riverside Elementary"
         attendees={[makeMatch()]}
+        sessionType="main"
         onClose={() => {}}
       />
     )
-    expect(screen.getByText(/potential bunkmates only/i)).toBeInTheDocument()
+    expect(screen.getByText(/same gender/i)).toBeInTheDocument()
+    expect(screen.queryByText(/all genders/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/valid bunkmates only/i)).not.toBeInTheDocument()
+  })
+
+  it('header copy says "all genders" for AG sessions', () => {
+    render(
+      <CohortDrillDownModal
+        selfDisplayName="Emma"
+        open
+        kind="school"
+        label="Riverside Elementary"
+        attendees={[makeMatch()]}
+        sessionType="ag"
+        onClose={() => {}}
+      />
+    )
+    expect(screen.getByText(/all genders/i)).toBeInTheDocument()
+    expect(screen.queryByText(/same gender/i)).not.toBeInTheDocument()
   })
 
   it('shows grade and gender icon for each camper', () => {

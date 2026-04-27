@@ -59,6 +59,10 @@ export function useCohortRequestRelations(
       if (!personCmId || sessionCmId <= 0) return EMPTY
       const selfCmId: number = personCmId
 
+      // bunk_requests.session_id is the CampMinder session ID column (number),
+      // not a PocketBase relation — distinct from useCamperCohorts which queries
+      // attendees via the `session.cm_id` relation expansion. Same value, different
+      // column shape.
       const filter =
         `session_id = ${sessionCmId} && year = ${year} && status = "resolved" ` +
         `&& (requester_id = ${selfCmId} || requestee_id = ${selfCmId}) ` +

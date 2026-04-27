@@ -27,6 +27,7 @@ function makeAttendee(overrides: {
   id: string
   person_id: number
   status_id: number
+  status?: string
   normalizedSchool?: string | null
   normalizedCongregation?: string | null
   normalizedCity?: string | null
@@ -41,6 +42,8 @@ function makeAttendee(overrides: {
     id: overrides.id,
     person_id: overrides.person_id,
     status_id: overrides.status_id,
+    // Mirror server enum: status_id 2 → 'enrolled' (other values → other strings)
+    status: overrides.status ?? (overrides.status_id === 2 ? 'enrolled' : 'cancelled'),
     expand: {
       person: {
         cm_id: overrides.person_id,
@@ -319,6 +322,47 @@ describe('useCamperCohorts', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     // Both same-gender (a2) and opposite-gender (a3) counted in AG session
+    expect(result.current.cohorts?.school?.count).toBe(2)
+  })
+
+  it('non-AG session, self has null gender: skips gender filter (treats as AG)', async () => {
+    // When self has no gender on file, we cannot determine bunkability — fall
+    // back to showing all matches (let the staffer judge) rather than silently
+    // matching only other null-gender campers.
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: null,
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+      makeAttendee({
+        id: 'a3',
+        person_id: 1000003,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Both genders surfaced — caller can see all candidates
     expect(result.current.cohorts?.school?.count).toBe(2)
   })
 

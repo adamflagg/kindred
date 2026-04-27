@@ -45,6 +45,37 @@ vi.mock('../hooks/useCohortRequestRelations', () => ({
   useCohortRequestRelations: (...args: unknown[]) => mockUseCohortRequestRelations(...args),
 }))
 
+describe('CamperCohortsSection accessibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseCohortRequestRelations.mockReturnValue({ relations: new Map(), isLoading: false })
+  })
+
+  it('section has an accessible name', async () => {
+    mockUseCamperCohorts.mockReturnValue({
+      cohorts: cohorts({ school: entry('Riverside Elementary', 4) }),
+      isLoading: false,
+    })
+
+    render(
+      <CamperCohortsSection
+        personCmId={1000001}
+        sessionCmId={201}
+        year={2025}
+        selfDisplayName="Emma"
+      />
+    )
+
+    await waitFor(() => {
+      const section = screen.getByTestId('camper-cohorts-section')
+      // WCAG 2.1 SC 4.1.2 — section must have aria-label or aria-labelledby
+      expect(
+        section.getAttribute('aria-label') || section.getAttribute('aria-labelledby')
+      ).toBeTruthy()
+    })
+  })
+})
+
 describe('CamperCohortsSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -112,8 +143,20 @@ describe('CamperCohortsSection', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/Also from Hillcrest High: 3 campers/)).toBeInTheDocument()
-        expect(screen.getByText(/Also from Temple Shalom: 1 campers/)).toBeInTheDocument()
+        // Singular form — count of 1 reads "1 camper" not "1 campers"
+        expect(screen.getByText(/Also from Temple Shalom: 1 camper$/)).toBeInTheDocument()
         expect(screen.getByText(/Also from Riverside: 12 campers/)).toBeInTheDocument()
+      })
+    })
+
+    it('uses singular "camper" when count is 1', async () => {
+      mockUseCamperCohorts.mockReturnValue({
+        cohorts: cohorts({ school: entry('Riverside Elementary', 1) }),
+        isLoading: false,
+      })
+      render(<CamperCohortsSection {...defaultProps} />)
+      await waitFor(() => {
+        expect(screen.getByText(/Also from Riverside Elementary: 1 camper$/)).toBeInTheDocument()
       })
     })
 
