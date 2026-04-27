@@ -28,6 +28,11 @@ import {
   getDropdownSessions,
   getSessionRelationshipsForCamperView,
   getCampersHeadlineNoun,
+  splitDropdownSessionsByType,
+  resolveScopedSessions,
+  FILTER_ALL,
+  FILTER_AT_CAMP,
+  FILTER_QUESTS,
 } from '../utils/allCampersUtils'
 import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
 import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
@@ -220,15 +225,15 @@ export default function AllCampersView() {
     [allSessions]
   )
 
-  // Determine which sessions are currently "in scope" for the headline noun.
-  // When filterSession === 'all', all dropdown sessions are in scope.
-  // When a specific session is selected, only that session is in scope.
-  const scopedSessions = useMemo(() => {
-    if (filterSession === 'all') return dropdownSessions
-    const session = dropdownSessions.find((s) => s.id === filterSession)
-    // Unknown filter ID → empty scope (produces default "campers" headline)
-    return session ? [session] : []
-  }, [filterSession, dropdownSessions])
+  const { campSessions, questSessions } = useMemo(
+    () => splitDropdownSessionsByType(dropdownSessions),
+    [dropdownSessions]
+  )
+
+  const scopedSessions = useMemo(
+    () => resolveScopedSessions(filterSession, dropdownSessions),
+    [filterSession, dropdownSessions]
+  )
 
   // Filter and sort campers
   const filteredCampers = useMemo(() => {
@@ -246,7 +251,31 @@ export default function AllCampersView() {
       })
     }
 
-    if (filterSession !== 'all') {
+    if (filterSession === FILTER_AT_CAMP) {
+      const isAtCamp = (s: Session | undefined) =>
+        s?.session_type === 'main' || s?.session_type === 'embedded' || s?.session_type === 'ag'
+      filtered = filtered.filter((camper) => {
+        const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
+        if (isAtCamp(primary)) return true
+        return (
+          camper.additionalSessions?.some((as) => {
+            const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
+            return isAtCamp(session)
+          }) ?? false
+        )
+      })
+    } else if (filterSession === FILTER_QUESTS) {
+      filtered = filtered.filter((camper) => {
+        const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
+        if (primary?.session_type === 'quest') return true
+        return (
+          camper.additionalSessions?.some((as) => {
+            const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
+            return session?.session_type === 'quest'
+          }) ?? false
+        )
+      })
+    } else if (filterSession !== FILTER_ALL) {
       const relatedSessionIds = sessionRelationships.get(filterSession) ?? [filterSession]
       filtered = filtered.filter((camper) => {
         // Check primary session
@@ -348,30 +377,76 @@ export default function AllCampersView() {
               <div className="relative">
                 <ListboxButton className="listbox-button-compact">
                   <span className="truncate">
-                    {filterSession === 'all'
-                      ? 'All Sessions'
-                      : (() => {
-                          const session = dropdownSessions.find((s) => s.id === filterSession)
-                          return session
-                            ? getSessionDisplayName(session, allSessions)
-                            : 'Unknown Session'
-                        })()}
+                    {filterSession === FILTER_ALL
+                      ? 'All Summer'
+                      : filterSession === FILTER_AT_CAMP
+                        ? 'At Camp'
+                        : filterSession === FILTER_QUESTS
+                          ? 'Quests'
+                          : (() => {
+                              const session = dropdownSessions.find((s) => s.id === filterSession)
+                              return session
+                                ? getSessionDisplayName(session, allSessions)
+                                : 'Unknown Session'
+                            })()}
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[140px]">
-                  <ListboxOption value="all" className="listbox-option py-1.5">
-                    All Sessions
+                <ListboxOptions className="listbox-options w-auto min-w-[180px]">
+                  {/* Type groupings */}
+                  <ListboxOption value={FILTER_ALL} className="listbox-option py-1.5">
+                    All Summer
                   </ListboxOption>
-                  {dropdownSessions.map((session) => (
-                    <ListboxOption
-                      key={session.id}
-                      value={session.id}
-                      className="listbox-option py-1.5"
-                    >
-                      {getSessionDisplayName(session, allSessions)}
-                    </ListboxOption>
-                  ))}
+                  <ListboxOption value={FILTER_AT_CAMP} className="listbox-option py-1.5">
+                    At Camp
+                  </ListboxOption>
+                  <ListboxOption value={FILTER_QUESTS} className="listbox-option py-1.5">
+                    Quests
+                  </ListboxOption>
+
+                  {/* Camp sessions */}
+                  {campSessions.length > 0 && (
+                    <div role="group" aria-labelledby="campers-camp-sessions-group-label">
+                      <div className="border-border my-1 border-t" />
+                      <div
+                        id="campers-camp-sessions-group-label"
+                        className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                      >
+                        Camp Sessions
+                      </div>
+                      {campSessions.map((session) => (
+                        <ListboxOption
+                          key={session.id}
+                          value={session.id}
+                          className="listbox-option py-1.5"
+                        >
+                          {getSessionDisplayName(session, allSessions)}
+                        </ListboxOption>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quests */}
+                  {questSessions.length > 0 && (
+                    <div role="group" aria-labelledby="campers-quests-group-label">
+                      <div className="border-border my-1 border-t" />
+                      <div
+                        id="campers-quests-group-label"
+                        className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                      >
+                        Quests
+                      </div>
+                      {questSessions.map((session) => (
+                        <ListboxOption
+                          key={session.id}
+                          value={session.id}
+                          className="listbox-option py-1.5"
+                        >
+                          {getSessionDisplayName(session, allSessions)}
+                        </ListboxOption>
+                      ))}
+                    </div>
+                  )}
                 </ListboxOptions>
               </div>
             </Listbox>
