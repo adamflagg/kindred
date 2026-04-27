@@ -29,9 +29,14 @@ def _populate(
     nodes: dict[int, int | None],
     request_edges: list[tuple[int, int]],
     other_edges: list[tuple[int, int]] | None = None,
+    graph_type: type = nx.Graph,
 ) -> None:
-    """Populate builder.graph with nodes (id → bunk_cm_id) and edges."""
-    builder.graph = nx.Graph()
+    """Populate builder.graph with nodes (id → bunk_cm_id) and edges.
+
+    graph_type defaults to nx.Graph; pass nx.DiGraph to mirror what
+    OptimizedSocialGraphBuilder uses.
+    """
+    builder.graph = graph_type()
     for node_id, bunk_cm_id in nodes.items():
         builder.graph.add_node(node_id, bunk_cm_id=bunk_cm_id)
     for u, v in request_edges:
@@ -82,19 +87,6 @@ def test_no_request_edges_and_fully_isolated_node_marks_no_requests() -> None:
     assert builder.graph.nodes[1]["satisfaction_status"] == "no_requests"
 
 
-def _populate_digraph(
-    builder: SocialGraphBuilder,
-    nodes: dict[int, int | None],
-    request_edges: list[tuple[int, int]],
-) -> None:
-    """Same as _populate but uses nx.DiGraph — what the OptimizedSocialGraphBuilder uses."""
-    builder.graph = nx.DiGraph()
-    for node_id, bunk_cm_id in nodes.items():
-        builder.graph.add_node(node_id, bunk_cm_id=bunk_cm_id)
-    for u, v in request_edges:
-        builder.graph.add_edge(u, v, edge_type="request")
-
-
 def test_calculate_node_metrics_on_digraph_sets_satisfaction_status() -> None:
     """Regression: OptimizedSocialGraphBuilder uses nx.DiGraph; satisfaction_status must
     still be populated on every node. Prior bug: nx.connected_components raised
@@ -102,7 +94,7 @@ def test_calculate_node_metrics_on_digraph_sets_satisfaction_status() -> None:
     satisfaction_status=None on every node — causing all graph node borders to fall back
     to the same color in the frontend."""
     builder = _make_builder()
-    _populate_digraph(builder, nodes={1: 100, 2: 100, 3: 200}, request_edges=[(1, 2), (1, 3)])
+    _populate(builder, nodes={1: 100, 2: 100, 3: 200}, request_edges=[(1, 2), (1, 3)], graph_type=nx.DiGraph)
     builder._calculate_node_metrics()
     for node_id in (1, 2, 3):
         assert "satisfaction_status" in builder.graph.nodes[node_id], (
@@ -115,10 +107,11 @@ def test_calculate_node_metrics_on_digraph_classifies_correctly() -> None:
     """Same node membership semantics on DiGraph as on Graph."""
     builder = _make_builder()
     # 1 → 2 (same bunk, satisfied), 3 → 4 (different bunks, isolated), 5 alone (no_requests)
-    _populate_digraph(
+    _populate(
         builder,
         nodes={1: 100, 2: 100, 3: 200, 4: 300, 5: 400},
         request_edges=[(1, 2), (3, 4)],
+        graph_type=nx.DiGraph,
     )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
