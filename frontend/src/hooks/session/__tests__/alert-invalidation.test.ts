@@ -1,12 +1,13 @@
 /**
- * TDD tests for camper-card alert invalidation after mutations.
+ * TDD tests for camper-card alert invalidation after assignment mutations.
  *
- * The "none satisfied" yellow-triangle alert on camper cards is derived
- * client-side from the ['all-bunk-requests', sessionCmId, year] query.
- * When assignments or request statuses change, that query must be
- * invalidated so the alert clears without a page refresh.
- *
- * Tests written FIRST — verify red before implementing.
+ * The "none satisfied" yellow-triangle alert is derived client-side from
+ * `['all-bunk-requests', sessionCmId, year]`, but its satisfaction filter
+ * checks bunk membership (`personSet.has(req.requestee_id)`) — it does NOT
+ * read request status. So the staleness fix only needs to invalidate on
+ * assignment-changing paths: drag-drop and solver-apply. Pure status
+ * mutations (single/bulk approve/decline) do not affect the alert and
+ * are intentionally not invalidated here.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -100,54 +101,9 @@ describe('useSolverOperations — apply path must invalidate all-bunk-requests',
 })
 
 // ---------------------------------------------------------------------------
-// Path 3: single approve/decline in RequestReviewPanel
-// ---------------------------------------------------------------------------
-describe('RequestReviewPanel — updateRequestMutation.onSuccess must invalidate all-bunk-requests', () => {
-  let queryClient: QueryClient
-
-  beforeEach(() => {
-    queryClient = buildQueryClient()
-  })
-
-  it('invalidates all-bunk-requests after a single request is approved/declined', () => {
-    // Simulate what updateRequestMutation.onSuccess does after the fix
-    const onSuccess = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-    }
-
-    onSuccess(queryClient)
-
-    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Path 4: bulk approve/decline in RequestReviewPanel
-// ---------------------------------------------------------------------------
-describe('RequestReviewPanel — bulkUpdateMutation.onSuccess must invalidate all-bunk-requests', () => {
-  let queryClient: QueryClient
-
-  beforeEach(() => {
-    queryClient = buildQueryClient()
-  })
-
-  it('invalidates all-bunk-requests after bulk request updates', () => {
-    // Simulate what bulkUpdateMutation.onSuccess does after the fix
-    const onSuccess = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-    }
-
-    onSuccess(queryClient)
-
-    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Regression: MergeRequestsModal and SplitRequestModal already do it
-// (document the correct pattern so no regression slips in)
+// (those mutations DO change request count / merged_into, so the alert
+// genuinely depends on their refresh — keep them as a regression guard)
 // ---------------------------------------------------------------------------
 describe('Already-correct paths — regression guard', () => {
   let queryClient: QueryClient
