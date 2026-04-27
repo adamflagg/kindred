@@ -628,6 +628,9 @@ describe('allCampersUtils', () => {
     const quests = resolveScopedSessions(FILTER_QUESTS, sessions)
     expect(getCampersHeadlineNoun(quests, 1)).toBe('quester')
     expect(getCampersHeadlineNoun(quests, 5)).toBe('questers')
+
+    const all = resolveScopedSessions(FILTER_ALL, sessions)
+    expect(getCampersHeadlineNoun(all, 5)).toBe('campers and questers')
   })
 
   // ── #5: Headline noun swap ────────────────────────────────────────────────

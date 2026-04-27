@@ -148,7 +148,7 @@ export function splitDropdownSessionsByType(sessions: Session[]): {
 /**
  * Resolve a picker filter value to a concrete list of sessions.
  *
- * - `'all'`      → `dropdownSessions` as-is (no copy, same reference).
+ * - `'all'`      → `dropdownSessions` as-is.
  * - `'at-camp'`  → only main + embedded sessions (input order preserved).
  * - `'quests'`   → only quest sessions (input order preserved).
  * - any other string → treated as a session `id`; returns `[match]` or `[]`.
