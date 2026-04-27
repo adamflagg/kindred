@@ -204,6 +204,10 @@ function useGroupMap(
     queryFn: () => fetchGroupMap(scenarioId, sessionPbId, currentYear),
     ...userDataOptions,
     enabled: !!user && scenarioId !== 'production' && scenarioId !== '' && !!sessionPbId,
+    // Disable React Query's default structural sharing — it deep-walks results
+    // assuming plain objects/arrays, which mangles `Map` instances on refetch
+    // (the returned value loses its prototype, so `.get` is undefined).
+    structuralSharing: false,
   })
   return groupMap
 }
@@ -606,7 +610,7 @@ export default function ScenarioComparisonPage() {
         movedOut,
       }
     })
-  }, [filteredBunks, leftByPerson, rightByPerson])
+  }, [filteredBunks, leftAssignments, rightAssignments, leftByPerson, rightByPerson])
 
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
