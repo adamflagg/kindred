@@ -29,7 +29,12 @@ export interface RequestRelation {
   mutual: boolean
 }
 
-export type CohortRelationsMap = Map<number, RequestRelation>
+/**
+ * Read-only view exposed to consumers — prevents accidental mutation of the
+ * shared module-level `EMPTY` default that React Query returns while the
+ * query is disabled or pending.
+ */
+export type CohortRelationsMap = ReadonlyMap<number, RequestRelation>
 
 interface BunkRequestSlim {
   id: string
@@ -89,7 +94,8 @@ export function useCohortRequestRelations(
       }
 
       // Pass 2: only INCOMING requests (other → self) populate the map.
-      const map: CohortRelationsMap = new Map()
+      // Local mutable Map; widened to the read-only CohortRelationsMap on return.
+      const map = new Map<number, RequestRelation>()
       for (const r of requests) {
         if (r.status !== 'resolved') continue
         if (!r.requestee_id || r.requestee_id <= 0) continue

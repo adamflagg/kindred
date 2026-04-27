@@ -43,6 +43,12 @@ export interface CamperCohorts {
   congregation: CohortEntry | null
   city: CohortEntry | null
   sessionType: string
+  /**
+   * True when the gender filter was skipped (AG session, or self has no
+   * gender on file). Drives the modal subtitle so it honestly reflects what
+   * was actually filtered rather than inferring from session type alone.
+   */
+  allGenders: boolean
 }
 
 export interface UseCamperCohortsResult {
@@ -145,6 +151,7 @@ export function useCamperCohorts(
         congregation: buildEntry(selfPerson.normalized_congregation, 'normalized_congregation'),
         city: buildEntry(selfPerson.normalized_city, 'normalized_city'),
         sessionType,
+        allGenders: skipGenderFilter,
       }
     },
     enabled,

@@ -25,8 +25,12 @@ interface CohortDrillDownModalProps {
   attendees: CohortMatchedAttendee[]
   /** Display name of the source camper (whose detail panel is open). */
   selfDisplayName: string
-  /** Session type from useCamperCohorts — controls the subtitle's gender qualifier. */
-  sessionType?: string
+  /**
+   * True when the cohort list spans all genders (AG session, or self has no
+   * gender on file and the hook skipped the gender filter). Controls the
+   * subtitle's gender qualifier so it reflects what was actually filtered.
+   */
+  allGenders?: boolean
   /** Confirmed incoming bunk_with / not_bunk_with requests targeting the source camper. */
   requestRelations?: CohortRelationsMap
   onClose: () => void
@@ -88,7 +92,7 @@ export function CohortDrillDownModal({
   label,
   attendees,
   selfDisplayName,
-  sessionType,
+  allGenders,
   requestRelations,
   onClose,
 }: CohortDrillDownModalProps) {
@@ -96,10 +100,11 @@ export function CohortDrillDownModal({
 
   const count = attendees.length
   const camperWord = count === 1 ? 'camper' : 'campers'
-  // AG sessions show all genders; non-AG (and unspecified) show same-gender
-  // matches only — surface the distinction so a staffer reading the count
-  // knows whether opposite-gender candidates were filtered out.
-  const genderQualifier = sessionType === 'ag' ? 'all genders' : 'same gender'
+  // The hook decides whether the gender filter was applied (skipped for AG
+  // sessions and for null-gender selves); the subtitle simply mirrors that
+  // decision so a staffer reading the count knows whether opposite-gender
+  // candidates were filtered out.
+  const genderQualifier = allGenders ? 'all genders' : 'same gender'
 
   const header = (
     <div className="border-border border-b px-6 py-4">
@@ -156,9 +161,11 @@ export function CohortDrillDownModal({
                   >
                     {displayName(a)}
                   </Link>
-                  <div className="text-muted-foreground text-xs">
-                    {formatGradeOrdinal(a.grade)} grade
-                  </div>
+                  {a.grade != null && (
+                    <div className="text-muted-foreground text-xs">
+                      {formatGradeOrdinal(a.grade)} grade
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {relationBadge && (

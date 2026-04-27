@@ -17,18 +17,20 @@ function entry(label: string, count: number): CohortEntry {
   return { label, count, attendees: [] }
 }
 
-// Helper: build a CamperCohorts fixture with default sessionType.
+// Helper: build a CamperCohorts fixture with default sessionType / allGenders.
 function cohorts(parts: {
   school?: CohortEntry | null
   congregation?: CohortEntry | null
   city?: CohortEntry | null
   sessionType?: string
+  allGenders?: boolean
 }): CamperCohorts {
   return {
     school: parts.school ?? null,
     congregation: parts.congregation ?? null,
     city: parts.city ?? null,
     sessionType: parts.sessionType ?? 'main',
+    allGenders: parts.allGenders ?? false,
   }
 }
 

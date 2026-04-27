@@ -81,7 +81,7 @@ describe('CohortDrillDownModal', () => {
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })
 
-  it('header copy says "same gender" for non-AG sessions', () => {
+  it('header copy says "same gender" when gender filter was applied (allGenders=false)', () => {
     render(
       <CohortDrillDownModal
         selfDisplayName="Emma"
@@ -89,7 +89,7 @@ describe('CohortDrillDownModal', () => {
         kind="school"
         label="Riverside Elementary"
         attendees={[makeMatch()]}
-        sessionType="main"
+        allGenders={false}
         onClose={() => {}}
       />
     )
@@ -98,7 +98,7 @@ describe('CohortDrillDownModal', () => {
     expect(screen.queryByText(/valid bunkmates only/i)).not.toBeInTheDocument()
   })
 
-  it('header copy says "all genders" for AG sessions', () => {
+  it('header copy says "all genders" when gender filter was skipped (allGenders=true)', () => {
     render(
       <CohortDrillDownModal
         selfDisplayName="Emma"
@@ -106,7 +106,7 @@ describe('CohortDrillDownModal', () => {
         kind="school"
         label="Riverside Elementary"
         attendees={[makeMatch()]}
-        sessionType="ag"
+        allGenders={true}
         onClose={() => {}}
       />
     )
@@ -129,6 +129,21 @@ describe('CohortDrillDownModal', () => {
     const genderIcon = screen.getByTestId('cohort-modal-gender')
     expect(genderIcon).toHaveAttribute('data-gender', 'M')
     expect(genderIcon).toHaveAttribute('aria-label', 'Boy')
+  })
+
+  it('omits grade line when grade is null (no "? grade" placeholder)', () => {
+    render(
+      <CohortDrillDownModal
+        selfDisplayName="Emma"
+        open
+        kind="city"
+        label="Springfield"
+        attendees={[makeMatch({ grade: null })]}
+        onClose={() => {}}
+      />
+    )
+    expect(screen.queryByText(/\? grade/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^th grade/i)).not.toBeInTheDocument()
   })
 
   it('shows an empty-state message when no campers match', () => {

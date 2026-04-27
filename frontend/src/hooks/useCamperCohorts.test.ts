@@ -364,6 +364,66 @@ describe('useCamperCohorts', () => {
 
     // Both genders surfaced — caller can see all candidates
     expect(result.current.cohorts?.school?.count).toBe(2)
+    // Modal subtitle should reflect that the gender filter was skipped
+    expect(result.current.cohorts?.allGenders).toBe(true)
+  })
+
+  it('non-AG session, self has known gender: allGenders=false (subtitle says "same gender")', async () => {
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.cohorts?.allGenders).toBe(false)
+  })
+
+  it('AG session: allGenders=true (subtitle says "all genders")', async () => {
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Oak Valley Middle',
+        sessionType: 'ag',
+      }),
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Oak Valley Middle',
+        sessionType: 'ag',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.cohorts?.allGenders).toBe(true)
   })
 
   it('embedded session: applies same-gender filter (non-AG)', async () => {

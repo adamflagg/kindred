@@ -73,7 +73,7 @@ export function CamperCohortsSection({
           kind={openKind}
           label={openEntry.label}
           selfDisplayName={selfDisplayName}
-          sessionType={cohorts.sessionType}
+          allGenders={cohorts.allGenders}
           attendees={openEntry.attendees}
           requestRelations={relations}
           onClose={() => setOpenKind(null)}
