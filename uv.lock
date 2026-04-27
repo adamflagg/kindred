@@ -705,7 +705,7 @@ requires-dist = [
     { name = "croniter", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "jellyfish", specifier = ">=1.1.0" },
+    { name = "jellyfish", specifier = ">=1.2.1" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "nicknames", specifier = ">=1.0.1" },
     { name = "numpy", specifier = ">=1.26.0" },

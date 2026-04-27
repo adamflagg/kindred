@@ -62,7 +62,7 @@ dependencies = [
     "psutil>=5.9.0",
     "rapidfuzz>=3.14.3",
     # Phonetic & fuzzy matching
-    "jellyfish>=1.1.0",
+    "jellyfish>=1.2.1",
     "nicknames>=1.0.1",
 ]
 
