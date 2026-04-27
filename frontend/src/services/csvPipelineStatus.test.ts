@@ -152,3 +152,126 @@ describe('derivePhase', () => {
     expect(result).toMatchObject({ counts: { total: 0, autoMatched: 0, needReview: 0 } })
   })
 })
+
+import { vi } from 'vitest'
+import { fetchSyncStatus, fetchLatestDebugRun } from './csvPipelineStatus'
+
+describe('fetchSyncStatus', () => {
+  it('returns the bunk_requests entry mapped to camelCase', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        bunk_requests: {
+          type: 'bunk_requests',
+          status: 'completed',
+          start_time: '2026-04-27T19:00:00Z',
+          end_time: '2026-04-27T19:02:00Z',
+        },
+        process_requests: { status: 'idle' },
+        _daily_sync_running: false,
+      }),
+    } as Response)
+    const res = await fetchSyncStatus(mock)
+    expect(res).toEqual({
+      name: 'bunk_requests',
+      status: 'completed',
+      startedAt: '2026-04-27T19:00:00Z',
+      finishedAt: '2026-04-27T19:02:00Z',
+    })
+  })
+
+  it('treats "success" status as equivalent to "completed"', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        bunk_requests: {
+          type: 'bunk_requests',
+          status: 'success',
+          start_time: '2026-04-27T19:00:00Z',
+          end_time: '2026-04-27T19:02:00Z',
+        },
+      }),
+    } as Response)
+    const res = await fetchSyncStatus(mock)
+    expect(res?.status).toBe('completed')
+  })
+
+  it('preserves error message on failed status', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        bunk_requests: {
+          type: 'bunk_requests',
+          status: 'failed',
+          start_time: '2026-04-27T19:00:00Z',
+          end_time: '2026-04-27T19:02:00Z',
+          error: 'context deadline exceeded',
+        },
+      }),
+    } as Response)
+    const res = await fetchSyncStatus(mock)
+    expect(res?.status).toBe('failed')
+    expect(res?.error).toBe('context deadline exceeded')
+  })
+
+  it('returns null when bunk_requests entry is idle', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ bunk_requests: { status: 'idle' } }),
+    } as Response)
+    expect(await fetchSyncStatus(mock)).toBeNull()
+  })
+
+  it('returns null when bunk_requests entry is missing entirely', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ _daily_sync_running: false }),
+    } as Response)
+    expect(await fetchSyncStatus(mock)).toBeNull()
+  })
+
+  it('throws on non-ok response', async () => {
+    const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    await expect(fetchSyncStatus(mock)).rejects.toThrow()
+  })
+})
+
+describe('fetchLatestDebugRun', () => {
+  it('extracts run_id, created, status_breakdown from items[0]', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'pb-id',
+            run_id: 'run-abc',
+            created: '2026-04-27T19:05:00Z',
+            status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
+            year: 2026,
+            trace_count: 6,
+          },
+        ],
+        totalItems: 1,
+      }),
+    } as Response)
+    const res = await fetchLatestDebugRun(mock)
+    expect(res).toEqual({
+      run_id: 'run-abc',
+      created: '2026-04-27T19:05:00Z',
+      status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
+    })
+  })
+
+  it('returns null when items array is empty', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [] }),
+    } as Response)
+    expect(await fetchLatestDebugRun(mock)).toBeNull()
+  })
+
+  it('throws on non-ok response', async () => {
+    const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    await expect(fetchLatestDebugRun(mock)).rejects.toThrow()
+  })
+})
