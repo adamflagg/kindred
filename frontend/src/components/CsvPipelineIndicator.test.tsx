@@ -93,6 +93,35 @@ describe('CsvPipelineIndicator', () => {
     ).toBeInTheDocument()
   })
 
+  it('omits "need review" from button label when needReview is zero', () => {
+    setData({
+      phase: 'done',
+      runId: 'r-zero',
+      finishedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      counts: { total: 22, autoMatched: 22, needReview: 0 },
+    })
+    render(<CsvPipelineIndicator />)
+    expect(
+      screen.getByText(/Done .*: 22 new or updated requests, 22 auto-matched$/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/need review/i)).not.toBeInTheDocument()
+  })
+
+  it('omits "need review" from completion toast when needReview is zero', () => {
+    setData({
+      phase: 'done',
+      runId: 'r-zero-toast',
+      finishedAt: new Date().toISOString(),
+      counts: { total: 22, autoMatched: 22, needReview: 0 },
+    })
+    render(<CsvPipelineIndicator />)
+    expect(mockToast.success).toHaveBeenCalledTimes(1)
+    expect(mockToast.success).toHaveBeenCalledWith(
+      'Import complete: 22 new or updated requests, 22 auto-matched.',
+      expect.any(Object)
+    )
+  })
+
   it('renders error state with click-for-details copy', () => {
     setData({
       phase: 'error',
@@ -100,7 +129,7 @@ describe('CsvPipelineIndicator', () => {
       message: 'context deadline exceeded',
     })
     render(<CsvPipelineIndicator />)
-    expect(screen.getByText(/Import failed/i)).toBeInTheDocument()
+    expect(screen.getByText(/Import failed\. Click for details\./i)).toBeInTheDocument()
   })
 
   it('fires completion toast exactly once per runId', () => {

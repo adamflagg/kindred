@@ -18,7 +18,7 @@ export default function CsvPipelineIndicator() {
   useEffect(() => {
     if (data?.phase === 'done' && data.runId !== lastSeenRef.current) {
       const review = data.counts.needReview
-      const reviewLabel = `, ${review} need review`
+      const reviewLabel = review > 0 ? `, ${review} need review` : ''
       toast.success(
         `Import complete: ${data.counts.total} new or updated requests, ${data.counts.autoMatched} auto-matched${reviewLabel}.`,
         { duration: 6000 }
@@ -63,7 +63,8 @@ export default function CsvPipelineIndicator() {
             <CheckCircle className="h-4 w-4 text-green-600" aria-hidden="true" />
             <span>
               Done {formatTimestamp(data.finishedAt)}: {data.counts.total} new or updated requests,{' '}
-              {data.counts.autoMatched} auto-matched, {data.counts.needReview} need review
+              {data.counts.autoMatched} auto-matched
+              {data.counts.needReview > 0 ? `, ${data.counts.needReview} need review` : ''}
             </span>
           </>
         )}
@@ -104,7 +105,7 @@ export default function CsvPipelineIndicator() {
               <ul className="list-disc pl-5">
                 <li>{data.counts.total} new or updated requests</li>
                 <li>{data.counts.autoMatched} auto-matched</li>
-                <li>{data.counts.needReview} need review</li>
+                {data.counts.needReview > 0 && <li>{data.counts.needReview} need review</li>}
               </ul>
               <p className="text-xs text-gray-600">{formatTimestamp(data.finishedAt)}</p>
             </div>
