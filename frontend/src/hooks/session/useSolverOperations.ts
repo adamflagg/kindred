@@ -141,6 +141,7 @@ export function useSolverOperations({
                     queryKey: ['bunk-request-status'],
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
+                  queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
@@ -176,6 +177,7 @@ export function useSolverOperations({
                     queryKey: ['bunk-request-status'],
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
+                  queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
