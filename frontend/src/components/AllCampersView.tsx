@@ -251,28 +251,23 @@ export default function AllCampersView() {
       })
     }
 
-    const camperHasSessionMatching = (
-      camper: MergedCamper,
-      pred: (s: Session | undefined) => boolean
-    ) => {
-      const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
-      if (pred(primary)) return true
-      return (
-        camper.additionalSessions?.some((as) => {
-          const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
-          return pred(session)
-        }) ?? false
-      )
-    }
-
-    if (filterSession === FILTER_AT_CAMP) {
-      const isAtCamp = (s: Session | undefined) =>
-        s?.session_type === 'main' || s?.session_type === 'embedded' || s?.session_type === 'ag'
-      filtered = filtered.filter((camper) => camperHasSessionMatching(camper, isAtCamp))
-    } else if (filterSession === FILTER_QUESTS) {
-      filtered = filtered.filter((camper) =>
-        camperHasSessionMatching(camper, (s) => s?.session_type === 'quest')
-      )
+    if (filterSession === FILTER_AT_CAMP || filterSession === FILTER_QUESTS) {
+      const scopeSessions = filterSession === FILTER_AT_CAMP ? campSessions : questSessions
+      const relatedSessionIds = new Set<string>()
+      for (const session of scopeSessions) {
+        const ids = sessionRelationships.get(session.id) ?? [session.id]
+        ids.forEach((id) => relatedSessionIds.add(id))
+      }
+      filtered = filtered.filter((camper) => {
+        const primary = allSessions.find((s) => s.cm_id === camper.session_cm_id)
+        if (primary && relatedSessionIds.has(primary.id)) return true
+        return (
+          camper.additionalSessions?.some((as) => {
+            const session = allSessions.find((s) => s.cm_id === as.session_cm_id)
+            return session ? relatedSessionIds.has(session.id) : false
+          }) ?? false
+        )
+      })
     } else if (filterSession !== FILTER_ALL) {
       const relatedSessionIds = sessionRelationships.get(filterSession) ?? [filterSession]
       filtered = filtered.filter((camper) => {
@@ -314,6 +309,8 @@ export default function AllCampersView() {
     filterBunk,
     sessionRelationships,
     allSessions,
+    campSessions,
+    questSessions,
   ])
 
   // Check if any filters are active

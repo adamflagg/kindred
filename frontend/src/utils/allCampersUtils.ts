@@ -122,7 +122,18 @@ export function getSessionRelationshipsForCamperView(
 }
 
 // Filter values for the /campers page session scope picker.
-// 'all' = every dropdown session; 'at-camp' = main + embedded; 'quests' = quest only.
+//
+// 'all'      → every dropdown session
+// 'at-camp'  → main + embedded (matches dropdown contents; AG sessions are
+//              grouped with their parent main session via
+//              getSessionRelationshipsForCamperView, so AG campers are
+//              included in the camper-filter even though AG never appears in
+//              dropdownSessions itself)
+// 'quests'   → quest only
+//
+// resolveScopedSessions returns the dropdown-level scope list for the headline
+// noun. Camper-level filtering in AllCampersView walks sessionRelationships
+// for AT_CAMP / QUESTS so AG inclusion comes from a single source of truth.
 export const FILTER_ALL = 'all'
 export const FILTER_AT_CAMP = 'at-camp'
 export const FILTER_QUESTS = 'quests'
