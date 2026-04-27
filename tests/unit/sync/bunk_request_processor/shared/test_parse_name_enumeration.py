@@ -80,3 +80,44 @@ class TestParseNameStripsEnumerationPrefixes:
         p = parse_name("10. Liam Garcia")
         assert p.first == "Liam"
         assert p.last == "Garcia"
+
+    def test_multiline_target_name(self):
+        """Inner newlines split into tokens normally — `1.\nLiam Garcia` parses correctly."""
+        p = parse_name("1.\nLiam Garcia")
+        assert p.first == "Liam"
+        assert p.last == "Garcia"
+        assert p.is_complete is True
+
+    def test_half_bracket_enumeration(self):
+        """`1] Liam Garcia` (malformed but plausible parent input) is also stripped."""
+        p = parse_name("1] Liam Garcia")
+        assert p.first == "Liam"
+        assert p.last == "Garcia"
+
+
+class TestParseNameKnownLimitations:
+    """Document known edge cases where the enumeration-stripping regex over-matches.
+
+    These are intentional limitations, NOT bugs. A 2026-04-27 scan of production
+    bunk_requests data found zero target_name inputs in any of these forms, so
+    the regex is tuned for the common case (numbered/bulleted lists) at the cost
+    of mishandling the rare cases below. If parents start submitting these forms,
+    tighten the digit/letter branch of `_ENUMERATION_PREFIX_RE` to digits-only.
+    """
+
+    def test_initial_first_name_with_dot_is_stripped(self):
+        """`J. Smith` (single-letter initial + last name) is treated as enumeration.
+
+        After stripping `J.` the name becomes just `Smith`, which is_complete=False.
+        """
+        p = parse_name("J. Smith")
+        assert p.first == "Smith"
+        assert p.last == ""
+        assert p.is_complete is False
+
+    def test_initial_first_name_with_paren_is_stripped(self):
+        """`A) Jones` is treated as enumeration."""
+        p = parse_name("A) Jones")
+        assert p.first == "Jones"
+        assert p.last == ""
+        assert p.is_complete is False
