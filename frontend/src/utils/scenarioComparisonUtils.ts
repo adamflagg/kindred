@@ -5,6 +5,21 @@
  * mocking PocketBase, React Query, auth, or the router.
  */
 
+// ---------------------------------------------------------------------------
+// Locked-group types
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape of a locked group needed for diffing across scenarios.
+ * `memberCmIds` is the set of CampMinder person IDs that belong to this group.
+ */
+export interface LockGroupSummary {
+  id: string
+  name: string
+  color: string
+  memberCmIds: number[]
+}
+
 /** Minimal shape needed to sort campers by name. */
 export interface SortableCamper {
   firstName: string

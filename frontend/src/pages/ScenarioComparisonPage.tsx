@@ -32,6 +32,9 @@ import type {
   BunksResponse,
   BunkPlansResponse,
   CampSessionsResponse,
+  LockedGroupsResponse,
+  LockedGroupMembersResponse,
+  AttendeesResponse,
 } from '../types/pocketbase-types'
 import { useYear } from '../hooks/useCurrentYear'
 import { useAuth } from '../contexts/AuthContext'
@@ -44,11 +47,83 @@ import {
   sortCampersByName,
   getAvailableBunkAreas,
   type BunkArea,
+  type LockGroupSummary,
 } from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
 import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
+
+// Expanded member type for locked_group_members with attendee.person (double-expanded).
+type ExpandedGroupMember = LockedGroupMembersResponse & {
+  expand?: {
+    attendee?: AttendeesResponse & {
+      expand?: {
+        person?: { id: string; cm_id: number }
+      }
+    }
+  }
+}
+
+/**
+ * Fetch locked groups and their members for a given scenario+session, then
+ * return a Map of personCmId → LockGroupSummary.
+ */
+// Returns serializable entries (Array<[cmId, summary]>) — NOT a Map.
+// React Query's default structural sharing strips the Map prototype on
+// refetch, so we keep the cache value as a plain array and rebuild the
+// Map at the hook boundary.
+async function fetchGroupEntries(
+  scenarioId: string,
+  sessionPbId: string,
+  year: number
+): Promise<Array<[number, LockGroupSummary]>> {
+  const groups = await pb.collection('locked_groups').getFullList<LockedGroupsResponse>({
+    filter: pb.filter('scenario = {:scenario} && session = {:session} && year = {:year}', {
+      scenario: scenarioId,
+      session: sessionPbId,
+      year,
+    }),
+    sort: 'created',
+  })
+
+  if (groups.length === 0) return []
+
+  const groupIds = groups.map((g) => g.id)
+  const filterParts = groupIds.map((_, i) => `group = {:g${i}}`)
+  const filterParams = groupIds.reduce((acc, id, i) => ({ ...acc, [`g${i}`]: id }), {})
+  const filter = pb.filter(filterParts.join(' || '), filterParams)
+
+  const members = await pb.collection('locked_group_members').getFullList<ExpandedGroupMember>({
+    filter,
+    expand: 'attendee,attendee.person',
+  })
+
+  // Build group id → summary
+  const summaryById = new Map<string, LockGroupSummary>()
+  for (const g of groups) {
+    summaryById.set(g.id, { id: g.id, name: g.name, color: g.color, memberCmIds: [] })
+  }
+  for (const m of members) {
+    // Use the double-expanded person.cm_id — the expand key is 'attendee,attendee.person',
+    // so cm_id is guaranteed present on the typed expand (unlike person_id which is a
+    // top-level field whose PocketBase serialization is version-specific).
+    const personCmId = m.expand?.attendee?.expand?.person?.cm_id
+    const groupSummary = summaryById.get(m.group)
+    if (personCmId && groupSummary) {
+      groupSummary.memberCmIds.push(personCmId)
+    }
+  }
+
+  // Flatten to entries — one entry per (cm_id, group) pair.
+  const entries: Array<[number, LockGroupSummary]> = []
+  for (const summary of summaryById.values()) {
+    for (const cmId of summary.memberCmIds) {
+      entries.push([cmId, summary])
+    }
+  }
+  return entries
+}
 
 // Types for comparison
 interface CamperAssignment {
@@ -120,6 +195,23 @@ interface ValidationResult {
 
 type ViewMode = 'split' | 'changes'
 type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
+
+function useGroupMap(
+  scenarioId: string,
+  sessionPbId: string,
+  currentYear: number,
+  user: ReturnType<typeof useAuth>['user']
+) {
+  const { data: groupEntries = [] } = useQuery({
+    queryKey: queryKeys.lockedGroups(scenarioId, sessionPbId, currentYear),
+    queryFn: () => fetchGroupEntries(scenarioId, sessionPbId, currentYear),
+    ...userDataOptions,
+    enabled: !!user && scenarioId !== 'production' && scenarioId !== '' && !!sessionPbId,
+  })
+  // Rebuild Map at hook boundary so the page can use `.get`. Entries are
+  // serializable; the Map is a render-time derived value.
+  return useMemo(() => new Map(groupEntries), [groupEntries])
+}
 
 export default function ScenarioComparisonPage() {
   const { sessionId: sessionUrlSegment } = useParams<{ sessionId: string }>()
@@ -193,7 +285,10 @@ export default function ScenarioComparisonPage() {
           bunk_plan: BunkPlansResponse
         }>
       >({
-        filter: `session.cm_id = ${sessionCmId} && year = ${currentYear}`,
+        filter: pb.filter('session.cm_id = {:sessionCmId} && year = {:year}', {
+          sessionCmId,
+          year: currentYear,
+        }),
         expand: 'person,bunk,bunk_plan',
       })
       return result
@@ -214,7 +309,10 @@ export default function ScenarioComparisonPage() {
           bunk_plan: BunkPlansResponse
         }>
       >({
-        filter: `scenario = "${leftScenarioId}" && year = ${currentYear}`,
+        filter: pb.filter('scenario = {:scenario} && year = {:year}', {
+          scenario: leftScenarioId,
+          year: currentYear,
+        }),
         expand: 'person,bunk,bunk_plan',
       })
       return result
@@ -234,7 +332,10 @@ export default function ScenarioComparisonPage() {
           bunk_plan: BunkPlansResponse
         }>
       >({
-        filter: `scenario = "${rightScenarioId}" && year = ${currentYear}`,
+        filter: pb.filter('scenario = {:scenario} && year = {:year}', {
+          scenario: rightScenarioId,
+          year: currentYear,
+        }),
         expand: 'person,bunk,bunk_plan',
       })
       return result
@@ -242,6 +343,14 @@ export default function ScenarioComparisonPage() {
     ...userDataOptions,
     enabled: !!user && rightScenarioId !== 'production' && rightScenarioId !== '',
   })
+
+  // PocketBase session ID (needed for locked-group queries)
+  const sessionPbId = session?.id ?? ''
+
+  // Fetch locked-group → member maps for each scenario.
+  // Production has no locked groups (they are scenario-specific draft data).
+  const leftGroupMap = useGroupMap(leftScenarioId, sessionPbId, currentYear, user)
+  const rightGroupMap = useGroupMap(rightScenarioId, sessionPbId, currentYear, user)
 
   // Fetch validation scores for both scenarios
   const isReady =
@@ -343,11 +452,19 @@ export default function ScenarioComparisonPage() {
     return normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
   }, [rightScenarioId, productionAssignments, rightDraftAssignments, normalizeAssignments])
 
+  // Lookup Maps used by both `comparison` below and by FriendGroupPopover
+  // to resolve friend-group members. Keyed by personCmId.
+  const leftByPerson = useMemo(
+    () => new Map(leftAssignments.map((a) => [a.personCmId, a])),
+    [leftAssignments]
+  )
+  const rightByPerson = useMemo(
+    () => new Map(rightAssignments.map((a) => [a.personCmId, a])),
+    [rightAssignments]
+  )
+
   // Compute comparison result
   const comparison = useMemo((): ComparisonResult => {
-    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]))
-    const rightByPerson = new Map(rightAssignments.map((a) => [a.personCmId, a]))
-
     const moved: ComparisonResult['moved'] = []
     const newlyAssigned: ComparisonResult['newlyAssigned'] = []
     const newlyUnassigned: ComparisonResult['newlyUnassigned'] = []
@@ -387,7 +504,7 @@ export default function ScenarioComparisonPage() {
     }
 
     const totalChanges = moved.length + newlyAssigned.length + newlyUnassigned.length
-    const totalInvolved = Math.max(leftAssignments.length, rightAssignments.length)
+    const totalInvolved = Math.max(leftByPerson.size, rightByPerson.size)
 
     // Sort change lists alphabetically by camper name (last, then first) so both
     // sides of the comparison present a stable, scannable order.
@@ -401,8 +518,8 @@ export default function ScenarioComparisonPage() {
       unchanged: sortCampersByName(unchanged),
       metrics: {
         totalCampers: {
-          left: leftAssignments.length,
-          right: rightAssignments.length,
+          left: leftByPerson.size,
+          right: rightByPerson.size,
         },
         movedCount: moved.length,
         newlyAssignedCount: newlyAssigned.length,
@@ -411,7 +528,7 @@ export default function ScenarioComparisonPage() {
         changePercentage: totalInvolved > 0 ? Math.round((totalChanges / totalInvolved) * 100) : 0,
       },
     }
-  }, [leftAssignments, rightAssignments])
+  }, [leftByPerson, rightByPerson])
 
   // Get all unique bunks for split view
   const allBunks = useMemo(() => {
@@ -456,13 +573,9 @@ export default function ScenarioComparisonPage() {
 
   // Create bunk comparison data with movement tracking
   const bunkComparisons = useMemo((): BunkComparison[] => {
-    // Build lookup maps for movement tracking
-    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]))
-    const rightByPerson = new Map(rightAssignments.map((a) => [a.personCmId, a]))
-
     return filteredBunks.map((bunk) => {
-      const leftCampers = leftAssignments.filter((a) => a.bunkId === bunk.id)
-      const rightCampers = rightAssignments.filter((a) => a.bunkId === bunk.id)
+      const leftCampers = Array.from(leftByPerson.values()).filter((a) => a.bunkId === bunk.id)
+      const rightCampers = Array.from(rightByPerson.values()).filter((a) => a.bunkId === bunk.id)
 
       const leftPersonIds = new Set(leftCampers.map((c) => c.personCmId))
       const rightPersonIds = new Set(rightCampers.map((c) => c.personCmId))
@@ -498,7 +611,7 @@ export default function ScenarioComparisonPage() {
         movedOut,
       }
     })
-  }, [filteredBunks, leftAssignments, rightAssignments])
+  }, [filteredBunks, leftByPerson, rightByPerson])
 
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
@@ -887,6 +1000,10 @@ export default function ScenarioComparisonPage() {
                     comparison={bunkComp}
                     leftLabel={leftScenarioName}
                     rightLabel={rightScenarioName}
+                    leftGroupMap={leftGroupMap}
+                    rightGroupMap={rightGroupMap}
+                    leftCamperById={leftByPerson}
+                    rightCamperById={rightByPerson}
                   />
                 ))}
               </div>
@@ -1156,9 +1273,21 @@ interface BunkComparisonCardProps {
   comparison: BunkComparison
   leftLabel: string
   rightLabel: string
+  leftGroupMap: Map<number, LockGroupSummary>
+  rightGroupMap: Map<number, LockGroupSummary>
+  leftCamperById: Map<number, CamperAssignment>
+  rightCamperById: Map<number, CamperAssignment>
 }
 
-function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkComparisonCardProps) {
+function BunkComparisonCard({
+  comparison,
+  leftLabel,
+  rightLabel,
+  leftGroupMap,
+  rightGroupMap,
+  leftCamperById,
+  rightCamperById,
+}: BunkComparisonCardProps) {
   const hasChanges = comparison.movedIn.length > 0 || comparison.movedOut.length > 0
   const movedInIds = new Set(comparison.movedIn.map((c) => c.camper.personCmId))
   const movedOutIds = new Set(comparison.movedOut.map((c) => c.camper.personCmId))
@@ -1214,6 +1343,8 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
                   camper={camper}
                   status={movedOutIds.has(camper.personCmId) ? 'moved-out' : 'unchanged'}
                   destination={movedOutDestinations.get(camper.personCmId)}
+                  group={leftGroupMap.get(camper.personCmId)}
+                  camperById={leftCamperById}
                 />
               ))
             )}
@@ -1235,6 +1366,8 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
                   camper={camper}
                   status={movedInIds.has(camper.personCmId) ? 'moved-in' : 'unchanged'}
                   origin={movedInOrigins.get(camper.personCmId)}
+                  group={rightGroupMap.get(camper.personCmId)}
+                  camperById={rightCamperById}
                 />
               ))
             )}
@@ -1245,26 +1378,93 @@ function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkCompariso
   )
 }
 
-// Camper Pill Component with origin/destination info
-interface CamperPillProps {
+// FriendGroupPopover — same-side member list shown on CamperPill hover
+export interface FriendGroupPopoverProps {
+  group: LockGroupSummary
+  camperById: Map<number, CamperAssignment>
+}
+
+export function FriendGroupPopover({ group, camperById }: FriendGroupPopoverProps) {
+  const rows = group.memberCmIds
+    .map((cmId) => ({ cmId, camper: camperById.get(cmId) }))
+    .sort((a, b) => {
+      const an = a.camper?.name ?? '￿'
+      const bn = b.camper?.name ?? '￿'
+      return an.localeCompare(bn)
+    })
+
+  return (
+    <div
+      data-testid="friend-group-popover"
+      role="tooltip"
+      aria-label={`Friend group: ${group.name}`}
+      className="border-border/60 bg-popover absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-lg border p-3 shadow-lg"
+    >
+      <div className="border-border/40 mb-2 flex items-center gap-2 border-b pb-2">
+        <span
+          className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+          style={{ backgroundColor: group.color }}
+          aria-hidden
+        />
+        <span className="text-sm font-semibold">{group.name}</span>
+      </div>
+      <ul className="space-y-1">
+        {rows.map(({ cmId, camper }) => (
+          <li
+            key={cmId}
+            data-testid="friend-group-member"
+            className={clsx('text-sm', !camper && 'text-muted-foreground italic')}
+          >
+            {camper?.name ?? '<unknown camper>'}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// Camper Pill Component with origin/destination info and optional friend-group dot
+export interface CamperPillProps {
   camper: CamperAssignment
   status: 'unchanged' | 'moved-in' | 'moved-out'
   origin?: string | undefined // Where they came from (for moved-in)
   destination?: string | undefined // Where they went (for moved-out)
+  group?: LockGroupSummary | undefined
+  camperById: Map<number, CamperAssignment>
 }
 
-function CamperPill({ camper, status, origin, destination }: CamperPillProps) {
+export function CamperPill({
+  camper,
+  status,
+  origin,
+  destination,
+  group,
+  camperById,
+}: CamperPillProps) {
+  const [hovered, setHovered] = useState(false)
+  const showPopover = hovered && group !== undefined
+
   return (
     <div
+      data-testid="camper-pill"
       className={clsx(
-        'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
+        'relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
         status === 'unchanged' && 'bg-muted/50',
         status === 'moved-in' &&
           'bg-forest-100 dark:bg-forest-900/30 ring-forest-300 dark:ring-forest-700 ring-1',
         status === 'moved-out' &&
           'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {group?.color && (
+        <span
+          className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+          style={{ backgroundColor: group.color }}
+          aria-label={group.name ? `Friend group: ${group.name}` : 'Friend group'}
+        />
+      )}
       <span className={clsx('font-medium', status === 'moved-out' && 'line-through')}>
         {camper.name}
       </span>
@@ -1283,6 +1483,7 @@ function CamperPill({ camper, status, origin, destination }: CamperPillProps) {
           <span className="opacity-80">{destination}</span>
         </span>
       )}
+      {showPopover && <FriendGroupPopover group={group} camperById={camperById} />}
     </div>
   )
 }
