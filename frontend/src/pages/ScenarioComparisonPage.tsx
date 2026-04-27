@@ -994,6 +994,8 @@ export default function ScenarioComparisonPage() {
                     rightLabel={rightScenarioName}
                     leftGroupMap={leftGroupMap}
                     rightGroupMap={rightGroupMap}
+                    leftCamperById={leftByPerson}
+                    rightCamperById={rightByPerson}
                   />
                 ))}
               </div>
@@ -1265,6 +1267,8 @@ interface BunkComparisonCardProps {
   rightLabel: string
   leftGroupMap: Map<number, LockGroupSummary>
   rightGroupMap: Map<number, LockGroupSummary>
+  leftCamperById: Map<number, CamperAssignment>
+  rightCamperById: Map<number, CamperAssignment>
 }
 
 function BunkComparisonCard({
@@ -1273,6 +1277,8 @@ function BunkComparisonCard({
   rightLabel,
   leftGroupMap,
   rightGroupMap,
+  leftCamperById,
+  rightCamperById,
 }: BunkComparisonCardProps) {
   const hasChanges = comparison.movedIn.length > 0 || comparison.movedOut.length > 0
   const movedInIds = new Set(comparison.movedIn.map((c) => c.camper.personCmId))
@@ -1330,6 +1336,7 @@ function BunkComparisonCard({
                   status={movedOutIds.has(camper.personCmId) ? 'moved-out' : 'unchanged'}
                   destination={movedOutDestinations.get(camper.personCmId)}
                   group={leftGroupMap.get(camper.personCmId)}
+                  camperById={leftCamperById}
                 />
               ))
             )}
@@ -1352,6 +1359,7 @@ function BunkComparisonCard({
                   status={movedInIds.has(camper.personCmId) ? 'moved-in' : 'unchanged'}
                   origin={movedInOrigins.get(camper.personCmId)}
                   group={rightGroupMap.get(camper.personCmId)}
+                  camperById={rightCamperById}
                 />
               ))
             )}
@@ -1362,32 +1370,89 @@ function BunkComparisonCard({
   )
 }
 
+// FriendGroupPopover — same-side member list shown on CamperPill hover
+export interface FriendGroupPopoverProps {
+  group: LockGroupSummary
+  camperById: Map<number, CamperAssignment>
+}
+
+export function FriendGroupPopover({ group, camperById }: FriendGroupPopoverProps) {
+  const rows = group.memberCmIds
+    .map((cmId) => ({ cmId, camper: camperById.get(cmId) }))
+    .sort((a, b) => {
+      const an = a.camper?.name ?? '￿'
+      const bn = b.camper?.name ?? '￿'
+      return an.localeCompare(bn)
+    })
+
+  return (
+    <div
+      data-testid="friend-group-popover"
+      role="dialog"
+      aria-label={`Friend group: ${group.name}`}
+      className="border-border/60 bg-popover absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-lg border p-3 shadow-lg"
+    >
+      <div className="border-border/40 mb-2 flex items-center gap-2 border-b pb-2">
+        <span
+          className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+          style={{ backgroundColor: group.color }}
+          aria-hidden
+        />
+        <span className="text-sm font-semibold">{group.name}</span>
+      </div>
+      <ul className="space-y-1">
+        {rows.map(({ cmId, camper }) => (
+          <li
+            key={cmId}
+            data-testid="friend-group-member"
+            className={clsx('text-sm', !camper && 'text-muted-foreground italic')}
+          >
+            {camper?.name ?? '<unknown camper>'}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 // Camper Pill Component with origin/destination info and optional friend-group dot
-interface CamperPillProps {
+export interface CamperPillProps {
   camper: CamperAssignment
   status: 'unchanged' | 'moved-in' | 'moved-out'
   origin?: string | undefined // Where they came from (for moved-in)
   destination?: string | undefined // Where they went (for moved-out)
-  group?: Pick<LockGroupSummary, 'color' | 'name'> | undefined
+  group?: LockGroupSummary | undefined
+  camperById: Map<number, CamperAssignment>
 }
 
-function CamperPill({ camper, status, origin, destination, group }: CamperPillProps) {
+export function CamperPill({
+  camper,
+  status,
+  origin,
+  destination,
+  group,
+  camperById,
+}: CamperPillProps) {
+  const [hovered, setHovered] = useState(false)
+  const showPopover = hovered && group !== undefined
+
   return (
     <div
       className={clsx(
-        'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
+        'relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
         status === 'unchanged' && 'bg-muted/50',
         status === 'moved-in' &&
           'bg-forest-100 dark:bg-forest-900/30 ring-forest-300 dark:ring-forest-700 ring-1',
         status === 'moved-out' &&
           'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {group?.color && (
         <span
           className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
           style={{ backgroundColor: group.color }}
-          title={group.name ? `Friend group: ${group.name}` : 'Friend group'}
           aria-label={group.name ? `Friend group: ${group.name}` : 'Friend group'}
         />
       )}
@@ -1409,6 +1474,7 @@ function CamperPill({ camper, status, origin, destination, group }: CamperPillPr
           <span className="opacity-80">{destination}</span>
         </span>
       )}
+      {showPopover && <FriendGroupPopover group={group} camperById={camperById} />}
     </div>
   )
 }
