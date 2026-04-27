@@ -16,6 +16,8 @@ import type { Session } from '../types/app-types'
 import { expectDefined } from '../test/testUtils'
 
 // Mock data helper — cast partial session objects as Session
+let mockSessionCounter = 1000
+
 function createMockSession(overrides: {
   name: string
   session_type: string
@@ -27,7 +29,7 @@ function createMockSession(overrides: {
       : `session-${overrides.name.replace(/\s/g, '-').toLowerCase()}`
   return {
     id,
-    cm_id: Math.floor(Math.random() * 10000),
+    cm_id: ++mockSessionCounter,
     year: 2025,
     start_date: '2025-06-01',
     end_date: '2025-06-14',

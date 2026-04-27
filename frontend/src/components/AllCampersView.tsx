@@ -251,11 +251,20 @@ export default function AllCampersView() {
       })
     }
 
-    if (filterSession === FILTER_AT_CAMP || filterSession === FILTER_QUESTS) {
-      const scopeSessions = filterSession === FILTER_AT_CAMP ? campSessions : questSessions
+    if (filterSession !== FILTER_ALL) {
       const relatedSessionIds = new Set<string>()
-      for (const session of scopeSessions) {
-        const ids = sessionRelationships.get(session.id) ?? [session.id]
+      if (filterSession === FILTER_AT_CAMP) {
+        for (const session of campSessions) {
+          const ids = sessionRelationships.get(session.id) ?? [session.id]
+          ids.forEach((id) => relatedSessionIds.add(id))
+        }
+      } else if (filterSession === FILTER_QUESTS) {
+        for (const session of questSessions) {
+          const ids = sessionRelationships.get(session.id) ?? [session.id]
+          ids.forEach((id) => relatedSessionIds.add(id))
+        }
+      } else {
+        const ids = sessionRelationships.get(filterSession) ?? [filterSession]
         ids.forEach((id) => relatedSessionIds.add(id))
       }
       filtered = filtered.filter((camper) => {
@@ -267,21 +276,6 @@ export default function AllCampersView() {
             return session ? relatedSessionIds.has(session.id) : false
           }) ?? false
         )
-      })
-    } else if (filterSession !== FILTER_ALL) {
-      const relatedSessionIds = sessionRelationships.get(filterSession) ?? [filterSession]
-      filtered = filtered.filter((camper) => {
-        // Check primary session
-        const session = allSessions.find((s) => s.cm_id === camper.session_cm_id)
-        if (session && relatedSessionIds.includes(session.id)) return true
-        // Check additional sessions
-        if (camper.additionalSessions) {
-          return camper.additionalSessions.some((as) => {
-            const addSession = allSessions.find((s) => s.cm_id === as.session_cm_id)
-            return addSession && relatedSessionIds.includes(addSession.id)
-          })
-        }
-        return false
       })
     }
 
