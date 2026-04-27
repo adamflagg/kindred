@@ -63,7 +63,7 @@ dependencies = [
     "rapidfuzz>=3.14.3",
     # Phonetic & fuzzy matching
     "jellyfish>=1.1.0",
-    "nicknames>=1.0.0",
+    "nicknames>=1.0.1",
 ]
 
 [dependency-groups]
