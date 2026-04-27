@@ -20,7 +20,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
-import { queryKeys } from '../utils/queryKeys'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 
 export interface CohortMatchedAttendee {
   attendeeId: string
@@ -155,7 +155,7 @@ export function useCamperCohorts(
       }
     },
     enabled,
-    staleTime: 5 * 60 * 1000,
+    ...syncDataOptions,
   })
 
   return { cohorts, isLoading: enabled ? isLoading : false }

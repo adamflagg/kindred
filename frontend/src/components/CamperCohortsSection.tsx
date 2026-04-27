@@ -14,6 +14,8 @@ import { useCamperCohorts } from '../hooks/useCamperCohorts'
 import { useCohortRequestRelations } from '../hooks/useCohortRequestRelations'
 import { CohortDrillDownModal, type CohortKind } from './CohortDrillDownModal'
 
+const KINDS: CohortKind[] = ['school', 'congregation', 'city']
+
 interface CamperCohortsSectionProps {
   personCmId: number
   sessionCmId: number
@@ -34,7 +36,6 @@ export function CamperCohortsSection({
 
   if (isLoading || !cohorts) return null
 
-  const KINDS: CohortKind[] = ['school', 'congregation', 'city']
   const rows = KINDS.flatMap((kind) => {
     const entry = cohorts[kind]
     return entry && entry.count > 0 ? [{ kind, ...entry }] : []
@@ -51,7 +52,7 @@ export function CamperCohortsSection({
           const camperWord = row.count === 1 ? 'camper' : 'campers'
           return (
             <button
-              key={`${row.kind}-${row.label}`}
+              key={row.kind}
               type="button"
               onClick={() => setOpenKind(row.kind)}
               className="text-muted-foreground hover:bg-muted/50 hover:text-foreground flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors"

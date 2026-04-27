@@ -47,6 +47,25 @@ function displayName(a: CohortMatchedAttendee): string {
   return `${first} ${a.lastName}`.trim()
 }
 
+function getRelationBadge(
+  relationType: 'bunk_with' | 'not_bunk_with' | undefined,
+  selfDisplayName: string
+): { text: string; classes: string } | null {
+  if (relationType === 'bunk_with') {
+    return {
+      text: `Requested to bunk with ${selfDisplayName}`,
+      classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    }
+  }
+  if (relationType === 'not_bunk_with') {
+    return {
+      text: `Not to bunk with ${selfDisplayName}`,
+      classes: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+    }
+  }
+  return null
+}
+
 /**
  * Tiny boy/girl silhouettes — same SVGs the session-list page uses for the
  * sexDistribution counts (frontend/src/components/SessionList.tsx). Kept inline
@@ -96,8 +115,6 @@ export function CohortDrillDownModal({
   requestRelations,
   onClose,
 }: CohortDrillDownModalProps) {
-  if (!open) return null
-
   const count = attendees.length
   const camperWord = count === 1 ? 'camper' : 'campers'
   // The hook decides whether the gender filter was applied (skipped for AG
@@ -133,19 +150,7 @@ export function CohortDrillDownModal({
         <ul className="divide-border divide-y">
           {attendees.map((a) => {
             const relation = requestRelations?.get(a.personCmId)
-            const relationBadge =
-              relation?.type === 'bunk_with'
-                ? {
-                    text: `Requested to bunk with ${selfDisplayName}`,
-                    classes:
-                      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-                  }
-                : relation?.type === 'not_bunk_with'
-                  ? {
-                      text: `Not to bunk with ${selfDisplayName}`,
-                      classes: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-                    }
-                  : null
+            const relationBadge = getRelationBadge(relation?.type, selfDisplayName)
             return (
               <li
                 key={a.attendeeId}

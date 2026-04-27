@@ -19,7 +19,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
-import { queryKeys } from '../utils/queryKeys'
+import { queryKeys, userDataOptions } from '../utils/queryKeys'
 
 export type RequestRelationType = 'bunk_with' | 'not_bunk_with'
 
@@ -114,7 +114,7 @@ export function useCohortRequestRelations(
       return map
     },
     enabled,
-    staleTime: 30 * 1000,
+    ...userDataOptions,
   })
 
   return { relations, isLoading: enabled ? isLoading : false }
