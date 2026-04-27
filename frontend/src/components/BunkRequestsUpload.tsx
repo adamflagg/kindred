@@ -20,20 +20,19 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => syncService.uploadBunkRequestsCSV(file, fetchWithAuth, currentYear),
-    onSuccess: (data) => {
-      const message = data.process_requests_started
-        ? `CSV uploaded - syncing and processing requests...`
-        : `CSV uploaded successfully: ${data.filename}`
-      toast.success(message, {
-        duration: 4000,
-      })
+    onSuccess: () => {
+      toast.success(
+        "Importing CSV — this may take a few minutes. The icon next to the Upload Requests button will update when it's done.",
+        { duration: 6000 }
+      )
       setShowModal(false)
       setSelectedFile(null)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
-      // Invalidate sync status
+      // Invalidate sync status and csv pipeline status
       void queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['csv-pipeline-status'] })
     },
     onError: (error: UploadError) => {
       if (error.missing_columns) {
