@@ -824,33 +824,28 @@ class SocialGraphBuilder:
                 component_map[node] = len(component)
         nx.set_node_attributes(self.graph, component_map, "component_size")
 
-        # Calculate request satisfaction based on actual bunk assignments
+        # Calculate request satisfaction based on actual bunk assignments.
+        # Three buckets, scoreboard #43:
+        #   "satisfied"   — has request edges, ≥1 satisfied (green border)
+        #   "isolated"    — has request edges, 0 satisfied (red border)
+        #   "no_requests" — has no request edges at all (gray border, neutral)
         satisfaction_map = {}
         for node in self.graph.nodes():
-            node_data = self.graph.nodes[node]
-            node_bunk = node_data.get("bunk_cm_id")
-
-            # Get all request edges for this node
+            node_bunk = self.graph.nodes[node].get("bunk_cm_id")
             request_edges = [(n, data) for n, data in self.graph[node].items() if data.get("edge_type") == "request"]
 
             if not request_edges:
-                # No requests - check if isolated
-                satisfaction_map[node] = "isolated" if self.graph.degree(node) == 0 else "satisfied"
-            else:
-                # Check how many requests are satisfied
-                satisfied_count = 0
-                for requested_person, _edge_data in request_edges:
-                    requested_bunk = self.graph.nodes[requested_person].get("bunk_cm_id")
-                    if node_bunk and requested_bunk and node_bunk == requested_bunk:
-                        satisfied_count += 1
+                satisfaction_map[node] = "no_requests"
+                continue
 
-                # Determine satisfaction status
-                if satisfied_count == len(request_edges):
-                    satisfaction_map[node] = "satisfied"
-                elif satisfied_count > 0:
-                    satisfaction_map[node] = "partial"
-                else:
-                    satisfaction_map[node] = "isolated"
+            satisfied_count = sum(
+                1
+                for requested_person, _ in request_edges
+                if node_bunk
+                and (requested_bunk := self.graph.nodes[requested_person].get("bunk_cm_id"))
+                and node_bunk == requested_bunk
+            )
+            satisfaction_map[node] = "satisfied" if satisfied_count > 0 else "isolated"
 
         nx.set_node_attributes(self.graph, satisfaction_map, "satisfaction_status")
 
