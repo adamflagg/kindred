@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest'
-import { derivePhase, type SyncJobStatus, type DebugPipelineRun } from './csvPipelineStatus'
+import { describe, it, expect, vi } from 'vitest'
+import {
+  derivePhase,
+  fetchSyncStatus,
+  fetchLatestDebugRun,
+  type SyncJobStatus,
+  type DebugPipelineRun,
+} from './csvPipelineStatus'
 
 const ago = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString()
 
@@ -153,9 +159,6 @@ describe('derivePhase', () => {
   })
 })
 
-import { vi } from 'vitest'
-import { fetchSyncStatus, fetchLatestDebugRun } from './csvPipelineStatus'
-
 describe('fetchSyncStatus', () => {
   it('returns the bunk_requests entry mapped to camelCase', async () => {
     const mock = vi.fn().mockResolvedValue({
@@ -233,6 +236,36 @@ describe('fetchSyncStatus', () => {
   it('throws on non-ok response', async () => {
     const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
     await expect(fetchSyncStatus(mock)).rejects.toThrow()
+  })
+
+  it('warns when bunk_requests status is unrecognized but still returns null gracefully', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        bunk_requests: {
+          type: 'bunk_requests',
+          status: 'cancelled',
+          start_time: '2026-04-27T19:00:00Z',
+        },
+      }),
+    } as Response)
+    expect(await fetchSyncStatus(mock)).toBeNull()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unknown sync status: cancelled'))
+    warnSpy.mockRestore()
+  })
+
+  it('returns null silently when status is queued and start_time is absent', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        bunk_requests: { type: 'bunk_requests', status: 'pending' },
+      }),
+    } as Response)
+    expect(await fetchSyncStatus(mock)).toBeNull()
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
   })
 })
 

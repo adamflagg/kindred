@@ -91,6 +91,8 @@ function normalizeStatus(raw: string | undefined): SyncJobStatus['status'] | nul
   if (raw === 'completed' || raw === 'success') return 'completed'
   if (raw === 'failed') return 'failed'
   if (raw === 'pending') return 'queued'
+  if (raw === 'idle' || raw === undefined) return null
+  console.warn(`[csvPipelineStatus] unknown sync status: ${raw}`)
   return null
 }
 
@@ -103,7 +105,12 @@ export async function fetchSyncStatus(fetchWithAuth: FetchWithAuth): Promise<Syn
   const sync = entry as RawSyncEntry
   const normalized = normalizeStatus(sync.status)
   if (normalized === null) return null
-  if (!sync.start_time) return null
+  if (!sync.start_time) {
+    if (normalized !== 'queued') {
+      console.warn(`[csvPipelineStatus] sync entry has status "${normalized}" but no start_time`)
+    }
+    return null
+  }
   const result: SyncJobStatus = {
     name: 'bunk_requests',
     status: normalized,
