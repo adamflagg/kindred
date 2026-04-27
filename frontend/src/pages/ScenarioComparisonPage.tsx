@@ -447,11 +447,19 @@ export default function ScenarioComparisonPage() {
     return normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
   }, [rightScenarioId, productionAssignments, rightDraftAssignments, normalizeAssignments])
 
+  // Lookup Maps used by both `comparison` below and by FriendGroupPopover
+  // to resolve friend-group members. Keyed by personCmId.
+  const leftByPerson = useMemo(
+    () => new Map(leftAssignments.map((a) => [a.personCmId, a])),
+    [leftAssignments]
+  )
+  const rightByPerson = useMemo(
+    () => new Map(rightAssignments.map((a) => [a.personCmId, a])),
+    [rightAssignments]
+  )
+
   // Compute comparison result
   const comparison = useMemo((): ComparisonResult => {
-    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]))
-    const rightByPerson = new Map(rightAssignments.map((a) => [a.personCmId, a]))
-
     const moved: ComparisonResult['moved'] = []
     const newlyAssigned: ComparisonResult['newlyAssigned'] = []
     const newlyUnassigned: ComparisonResult['newlyUnassigned'] = []
@@ -491,7 +499,7 @@ export default function ScenarioComparisonPage() {
     }
 
     const totalChanges = moved.length + newlyAssigned.length + newlyUnassigned.length
-    const totalInvolved = Math.max(leftAssignments.length, rightAssignments.length)
+    const totalInvolved = Math.max(leftByPerson.size, rightByPerson.size)
 
     // Sort change lists alphabetically by camper name (last, then first) so both
     // sides of the comparison present a stable, scannable order.
@@ -505,8 +513,8 @@ export default function ScenarioComparisonPage() {
       unchanged: sortCampersByName(unchanged),
       metrics: {
         totalCampers: {
-          left: leftAssignments.length,
-          right: rightAssignments.length,
+          left: leftByPerson.size,
+          right: rightByPerson.size,
         },
         movedCount: moved.length,
         newlyAssignedCount: newlyAssigned.length,
@@ -515,7 +523,7 @@ export default function ScenarioComparisonPage() {
         changePercentage: totalInvolved > 0 ? Math.round((totalChanges / totalInvolved) * 100) : 0,
       },
     }
-  }, [leftAssignments, rightAssignments])
+  }, [leftByPerson, rightByPerson])
 
   // Get all unique bunks for split view
   const allBunks = useMemo(() => {
@@ -560,10 +568,6 @@ export default function ScenarioComparisonPage() {
 
   // Create bunk comparison data with movement tracking
   const bunkComparisons = useMemo((): BunkComparison[] => {
-    // Build lookup maps for movement tracking
-    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]))
-    const rightByPerson = new Map(rightAssignments.map((a) => [a.personCmId, a]))
-
     return filteredBunks.map((bunk) => {
       const leftCampers = leftAssignments.filter((a) => a.bunkId === bunk.id)
       const rightCampers = rightAssignments.filter((a) => a.bunkId === bunk.id)
@@ -602,7 +606,7 @@ export default function ScenarioComparisonPage() {
         movedOut,
       }
     })
-  }, [filteredBunks, leftAssignments, rightAssignments])
+  }, [filteredBunks, leftByPerson, rightByPerson])
 
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
