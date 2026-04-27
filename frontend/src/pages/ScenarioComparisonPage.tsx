@@ -69,11 +69,15 @@ type ExpandedGroupMember = LockedGroupMembersResponse & {
  * Fetch locked groups and their members for a given scenario+session, then
  * return a Map of personCmId → LockGroupSummary.
  */
-async function fetchGroupMap(
+// Returns serializable entries (Array<[cmId, summary]>) — NOT a Map.
+// React Query's default structural sharing strips the Map prototype on
+// refetch, so we keep the cache value as a plain array and rebuild the
+// Map at the hook boundary.
+async function fetchGroupEntries(
   scenarioId: string,
   sessionPbId: string,
   year: number
-): Promise<Map<number, LockGroupSummary>> {
+): Promise<Array<[number, LockGroupSummary]>> {
   const groups = await pb.collection('locked_groups').getFullList<LockedGroupsResponse>({
     filter: pb.filter('scenario = {:scenario} && session = {:session} && year = {:year}', {
       scenario: scenarioId,
@@ -83,7 +87,7 @@ async function fetchGroupMap(
     sort: 'created',
   })
 
-  if (groups.length === 0) return new Map()
+  if (groups.length === 0) return []
 
   const groupIds = groups.map((g) => g.id)
   const filterParts = groupIds.map((_, i) => `group = {:g${i}}`)
@@ -111,15 +115,14 @@ async function fetchGroupMap(
     }
   }
 
-  // Build personCmId → group summary map
-  const personToGroup = new Map<number, LockGroupSummary>()
+  // Flatten to entries — one entry per (cm_id, group) pair.
+  const entries: Array<[number, LockGroupSummary]> = []
   for (const summary of summaryById.values()) {
     for (const cmId of summary.memberCmIds) {
-      personToGroup.set(cmId, summary)
+      entries.push([cmId, summary])
     }
   }
-
-  return personToGroup
+  return entries
 }
 
 // Types for comparison
@@ -199,17 +202,15 @@ function useGroupMap(
   currentYear: number,
   user: ReturnType<typeof useAuth>['user']
 ) {
-  const { data: groupMap = new Map<number, LockGroupSummary>() } = useQuery({
+  const { data: groupEntries = [] } = useQuery({
     queryKey: queryKeys.lockedGroups(scenarioId, sessionPbId, currentYear),
-    queryFn: () => fetchGroupMap(scenarioId, sessionPbId, currentYear),
+    queryFn: () => fetchGroupEntries(scenarioId, sessionPbId, currentYear),
     ...userDataOptions,
     enabled: !!user && scenarioId !== 'production' && scenarioId !== '' && !!sessionPbId,
-    // Disable React Query's default structural sharing — it deep-walks results
-    // assuming plain objects/arrays, which mangles `Map` instances on refetch
-    // (the returned value loses its prototype, so `.get` is undefined).
-    structuralSharing: false,
   })
-  return groupMap
+  // Rebuild Map at hook boundary so the page can use `.get`. Entries are
+  // serializable; the Map is a render-time derived value.
+  return useMemo(() => new Map(groupEntries), [groupEntries])
 }
 
 export default function ScenarioComparisonPage() {
