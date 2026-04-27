@@ -66,27 +66,26 @@ describe('GraphLegend rendering', () => {
     expect(screen.queryByText(/Low \(<50%\)/)).not.toBeInTheDocument()
   })
 
-  it('labels the green status as "Requests satisfied (1+)" not bare "Satisfied"', () => {
+  it('labels the green status as "1+ satisfied requests"', () => {
     render(<GraphLegend />)
-    expect(screen.getByText('Requests satisfied (1+)')).toBeInTheDocument()
+    expect(screen.getByText('1+ satisfied requests')).toBeInTheDocument()
     expect(screen.queryByText(/^Satisfied$/)).not.toBeInTheDocument()
   })
 
-  it('labels the red status as "None" to contrast with "Requests satisfied (1+)"', () => {
+  it('labels the red status as "0 satisfied requests"', () => {
     render(<GraphLegend />)
-    expect(screen.getByText('None')).toBeInTheDocument()
+    expect(screen.getByText('0 satisfied requests')).toBeInTheDocument()
     expect(screen.queryByText(/^Isolated$/)).not.toBeInTheDocument()
   })
 
-  it('does not render a "Partial" row — collapsed into the binary 1+ vs none', () => {
+  it('does not render a "Partial" row — collapsed into 1+ satisfied requests', () => {
     render(<GraphLegend />)
     expect(screen.queryByText(/^Partial$/)).not.toBeInTheDocument()
   })
 
-  it('renders a neutral "No requests" row distinct from "None"', () => {
+  it('renders a neutral "No requests" row distinct from "0 satisfied requests"', () => {
     render(<GraphLegend />)
     expect(screen.getByText('No requests')).toBeInTheDocument()
-    // "None" (red) and "No requests" (gray) are different statuses
-    expect(screen.getByText('None')).toBeInTheDocument()
+    expect(screen.getByText('0 satisfied requests')).toBeInTheDocument()
   })
 })
