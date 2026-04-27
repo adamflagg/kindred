@@ -1,30 +1,44 @@
 /**
  * Hook for computing school/congregation/city cohort counts
- * for the camper detail panel (#15).
+ * for the camper detail panel (#15, #15b).
  *
  * Query strategy: fetch all enrolled attendees for the same session with
- * person expand, then count matches client-side. This avoids complex
- * cross-table PocketBase filter syntax and keeps the query simple.
+ * person + session expand, then count and collect matches client-side.
  *
  * Session convention: uses the primary enrolled session (session_cm_id from
- * the primary attendee after enrolled-first sort). For multi-session campers,
- * the first enrolled session is used.
+ * the primary attendee after enrolled-first sort).
  *
- * Filtering: status_id = 2 (enrolled only). Excludes the current camper.
+ * Filtering:
+ *  - status_id = 2 (enrolled only). Excludes the current camper.
+ *  - When session_type !== 'ag', restricts cohort matches to same gender as self
+ *    (non-AG bunks are gender-segregated, so opposite-gender campers are not
+ *    valid bunkmates and would mislead anyone resolving "bunk with X from Y").
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 
+export interface CohortMatchedAttendee {
+  attendeeId: string
+  personCmId: number
+  firstName: string
+  lastName: string
+  preferredName: string | null
+  grade: number | null
+  gender: string | null
+}
+
 export interface CohortEntry {
   label: string
   count: number
+  attendees: CohortMatchedAttendee[]
 }
 
 export interface CamperCohorts {
   school: CohortEntry | null
   congregation: CohortEntry | null
   city: CohortEntry | null
+  sessionType: string
 }
 
 export interface UseCamperCohortsResult {
@@ -32,22 +46,30 @@ export interface UseCamperCohortsResult {
   isLoading: boolean
 }
 
-interface AttendeeWithPerson {
+interface AttendeeWithExpands {
   id: string
   person_id: number
   status_id: number
   expand?: {
     person?: {
       cm_id?: number
+      first_name?: string
+      last_name?: string
+      preferred_name?: string | null
+      grade?: number | null
+      gender?: string | null
       normalized_school?: string | null
       normalized_congregation?: string | null
       normalized_city?: string | null
+    }
+    session?: {
+      session_type?: string
     }
   }
 }
 
 /**
- * Returns cohort counts for a camper within their session.
+ * Returns cohort counts and matched attendees for a camper within their session.
  *
  * @param personCmId - CampMinder ID of the current camper (used for exclusion)
  * @param sessionCmId - CampMinder ID of the session to scope counts to
@@ -65,43 +87,62 @@ export function useCamperCohorts(
     queryFn: async (): Promise<CamperCohorts | null> => {
       if (!personCmId || sessionCmId <= 0) return null
 
-      // Fetch all enrolled attendees for this session with person data expanded
-      const attendees = await pb.collection('attendees').getFullList<AttendeeWithPerson>({
+      const attendees = await pb.collection('attendees').getFullList<AttendeeWithExpands>({
         filter: `session.cm_id = ${sessionCmId} && year = ${year} && status_id = 2`,
-        expand: 'person',
+        expand: 'person,session',
       })
 
       if (attendees.length === 0) return null
 
-      // Find the current camper's person record to get their normalized fields
       const selfAttendee = attendees.find((a) => a.expand?.person?.cm_id === personCmId)
       const selfPerson = selfAttendee?.expand?.person
-
       if (!selfPerson) return null
 
-      // Other enrolled attendees (exclude self, enforce status_id = 2 client-side
-      // for defensive correctness even though the server query already filters)
-      const others = attendees.filter(
-        (a) => a.expand?.person?.cm_id !== personCmId && a.status_id === 2
-      )
+      const sessionType = selfAttendee?.expand?.session?.session_type ?? 'main'
+      const isAG = sessionType === 'ag'
+      const selfGender = selfPerson.gender ?? null
 
-      function countMatches(
+      // Other enrolled attendees, excluding self. For non-AG sessions, also
+      // restrict to same gender as self — opposite-gender campers are not
+      // valid bunkmates in gender-segregated cabins.
+      const others = attendees.filter((a) => {
+        if (a.status_id !== 2) return false
+        const p = a.expand?.person
+        if (!p || p.cm_id === personCmId) return false
+        if (!isAG && p.gender !== selfGender) return false
+        return true
+      })
+
+      function buildEntry(
         selfValue: string | null | undefined,
         field: 'normalized_school' | 'normalized_congregation' | 'normalized_city'
       ): CohortEntry | null {
         if (!selfValue) return null
-        const count = others.filter((a) => a.expand?.person?.[field] === selfValue).length
-        return { label: selfValue, count }
+        const matches = others.filter((a) => a.expand?.person?.[field] === selfValue)
+        const attendees: CohortMatchedAttendee[] = matches.map((a) => {
+          const p = a.expand!.person!
+          return {
+            attendeeId: a.id,
+            personCmId: p.cm_id ?? 0,
+            firstName: p.first_name ?? '',
+            lastName: p.last_name ?? '',
+            preferredName: p.preferred_name ?? null,
+            grade: p.grade ?? null,
+            gender: p.gender ?? null,
+          }
+        })
+        return { label: selfValue, count: attendees.length, attendees }
       }
 
       return {
-        school: countMatches(selfPerson.normalized_school, 'normalized_school'),
-        congregation: countMatches(selfPerson.normalized_congregation, 'normalized_congregation'),
-        city: countMatches(selfPerson.normalized_city, 'normalized_city'),
+        school: buildEntry(selfPerson.normalized_school, 'normalized_school'),
+        congregation: buildEntry(selfPerson.normalized_congregation, 'normalized_congregation'),
+        city: buildEntry(selfPerson.normalized_city, 'normalized_city'),
+        sessionType,
       }
     },
     enabled,
-    staleTime: 5 * 60 * 1000, // 5 min — sync data, doesn't change often
+    staleTime: 5 * 60 * 1000,
   })
 
   return { cohorts, isLoading: enabled ? isLoading : false }

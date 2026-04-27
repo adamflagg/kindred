@@ -30,6 +30,12 @@ function makeAttendee(overrides: {
   normalizedSchool?: string | null
   normalizedCongregation?: string | null
   normalizedCity?: string | null
+  gender?: string | null
+  firstName?: string
+  lastName?: string
+  preferredName?: string | null
+  grade?: number | null
+  sessionType?: string
 }) {
   return {
     id: overrides.id,
@@ -38,9 +44,17 @@ function makeAttendee(overrides: {
     expand: {
       person: {
         cm_id: overrides.person_id,
+        first_name: overrides.firstName ?? 'First',
+        last_name: overrides.lastName ?? 'Last',
+        preferred_name: overrides.preferredName ?? null,
+        grade: overrides.grade ?? null,
+        gender: overrides.gender ?? null,
         normalized_school: overrides.normalizedSchool ?? null,
         normalized_congregation: overrides.normalizedCongregation ?? null,
         normalized_city: overrides.normalizedCity ?? null,
+      },
+      session: {
+        session_type: overrides.sessionType ?? 'main',
       },
     },
   }
@@ -117,7 +131,7 @@ describe('useCamperCohorts', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(result.current.cohorts?.school).toEqual({
+    expect(result.current.cohorts?.school).toMatchObject({
       label: 'Riverside Elementary',
       count: 4, // 5 total with same school - 1 (current camper) = 4
     })
@@ -219,6 +233,179 @@ describe('useCamperCohorts', () => {
     expect(result.current.cohorts?.school).toBeNull()
   })
 
+  it('non-AG session: excludes opposite-gender campers from school count', async () => {
+    // Self is M in a 'main' (non-AG) session. F campers from same school must NOT count.
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+      // same gender, same school — counts
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+      // opposite gender, same school — must NOT count
+      makeAttendee({
+        id: 'a3',
+        person_id: 1000003,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+      makeAttendee({
+        id: 'a4',
+        person_id: 1000004,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'main',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Only 1 valid bunkmate (a2) — a3/a4 filtered out
+    expect(result.current.cohorts?.school?.count).toBe(1)
+    expect(result.current.cohorts?.school?.attendees).toHaveLength(1)
+    expect(result.current.cohorts?.school?.attendees?.[0]?.personCmId).toBe(1000002)
+  })
+
+  it('AG session: includes all genders in cohort counts', async () => {
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'ag',
+      }),
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'ag',
+      }),
+      makeAttendee({
+        id: 'a3',
+        person_id: 1000003,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Riverside Elementary',
+        sessionType: 'ag',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Both same-gender (a2) and opposite-gender (a3) counted in AG session
+    expect(result.current.cohorts?.school?.count).toBe(2)
+  })
+
+  it('embedded session: applies same-gender filter (non-AG)', async () => {
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Hillcrest High',
+        sessionType: 'embedded',
+      }),
+      // same gender — counts
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'F',
+        normalizedSchool: 'Hillcrest High',
+        sessionType: 'embedded',
+      }),
+      // opposite gender — must NOT count
+      makeAttendee({
+        id: 'a3',
+        person_id: 1000003,
+        status_id: 2,
+        gender: 'M',
+        normalizedSchool: 'Hillcrest High',
+        sessionType: 'embedded',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.cohorts?.school?.count).toBe(1)
+  })
+
+  it('returns matched attendee details (name, grade, gender) per cohort', async () => {
+    mockGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'a1',
+        person_id: 1000001,
+        status_id: 2,
+        gender: 'M',
+        firstName: 'Liam',
+        lastName: 'Garcia',
+        grade: 7,
+        normalizedSchool: 'Oak Valley Middle',
+        sessionType: 'main',
+      }),
+      makeAttendee({
+        id: 'a2',
+        person_id: 1000002,
+        status_id: 2,
+        gender: 'M',
+        firstName: 'Samuel',
+        lastName: 'Johnson',
+        preferredName: 'Sam',
+        grade: 7,
+        normalizedSchool: 'Oak Valley Middle',
+        sessionType: 'main',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const matched = result.current.cohorts?.school?.attendees ?? []
+    expect(matched).toHaveLength(1)
+    expect(matched[0]).toMatchObject({
+      personCmId: 1000002,
+      firstName: 'Samuel',
+      lastName: 'Johnson',
+      preferredName: 'Sam',
+      grade: 7,
+      gender: 'M',
+    })
+  })
+
   it('counts congregation and city cohorts independently', async () => {
     mockGetFullList.mockResolvedValue([
       makeAttendee({
@@ -254,10 +441,13 @@ describe('useCamperCohorts', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     // school: a2 matches, a3 doesn't → count 1
-    expect(result.current.cohorts?.school).toEqual({ label: 'Riverside Elementary', count: 1 })
+    expect(result.current.cohorts?.school).toMatchObject({
+      label: 'Riverside Elementary',
+      count: 1,
+    })
     // congregation: a2 and a3 both match Beth Shalom → count 2
-    expect(result.current.cohorts?.congregation).toEqual({ label: 'Beth Shalom', count: 2 })
+    expect(result.current.cohorts?.congregation).toMatchObject({ label: 'Beth Shalom', count: 2 })
     // city: only a2 matches Springfield → count 1
-    expect(result.current.cohorts?.city).toEqual({ label: 'Springfield', count: 1 })
+    expect(result.current.cohorts?.city).toMatchObject({ label: 'Springfield', count: 1 })
   })
 })

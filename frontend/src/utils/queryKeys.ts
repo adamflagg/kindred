@@ -228,6 +228,9 @@ export const queryKeys = {
   // Camper Cohorts (Tier 1 - sync data, per-session school/congregation/city counts)
   camperCohorts: (personCmId: number | null, sessionCmId: number, year: number) =>
     ['camper-cohorts', personCmId, sessionCmId, year] as const,
+  // Cohort Request Relations (Tier 2 - user-editable, drives modal badges)
+  cohortRequestRelations: (personCmId: number | null, sessionCmId: number, year: number) =>
+    ['cohort-request-relations', personCmId, sessionCmId, year] as const,
 
   // Camper Request Summary (Tier 2 - user data, used in expanded row)
   camperRequestSummary: (requesterCmId: number, year: number) =>

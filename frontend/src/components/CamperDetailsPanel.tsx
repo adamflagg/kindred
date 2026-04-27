@@ -887,6 +887,7 @@ export default function CamperDetailsPanel({
             personCmId={camper.person_cm_id}
             sessionCmId={camper.session_cm_id}
             year={currentYear}
+            selfDisplayName={camper.preferred_name?.trim() || camper.first_name || 'this camper'}
           />
         )}
 
