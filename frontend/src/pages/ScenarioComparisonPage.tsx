@@ -574,8 +574,8 @@ export default function ScenarioComparisonPage() {
   // Create bunk comparison data with movement tracking
   const bunkComparisons = useMemo((): BunkComparison[] => {
     return filteredBunks.map((bunk) => {
-      const leftCampers = leftAssignments.filter((a) => a.bunkId === bunk.id)
-      const rightCampers = rightAssignments.filter((a) => a.bunkId === bunk.id)
+      const leftCampers = Array.from(leftByPerson.values()).filter((a) => a.bunkId === bunk.id)
+      const rightCampers = Array.from(rightByPerson.values()).filter((a) => a.bunkId === bunk.id)
 
       const leftPersonIds = new Set(leftCampers.map((c) => c.personCmId))
       const rightPersonIds = new Set(rightCampers.map((c) => c.personCmId))
@@ -611,7 +611,7 @@ export default function ScenarioComparisonPage() {
         movedOut,
       }
     })
-  }, [filteredBunks, leftAssignments, rightAssignments, leftByPerson, rightByPerson])
+  }, [filteredBunks, leftByPerson, rightByPerson])
 
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
@@ -1393,7 +1393,7 @@ export function FriendGroupPopover({ group, camperById }: FriendGroupPopoverProp
   return (
     <div
       data-testid="friend-group-popover"
-      role="dialog"
+      role="tooltip"
       aria-label={`Friend group: ${group.name}`}
       className="border-border/60 bg-popover absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-lg border p-3 shadow-lg"
     >
@@ -1443,6 +1443,7 @@ export function CamperPill({
 
   return (
     <div
+      data-testid="camper-pill"
       className={clsx(
         'relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
         status === 'unchanged' && 'bg-muted/50',

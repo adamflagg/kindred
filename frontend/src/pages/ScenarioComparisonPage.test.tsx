@@ -52,11 +52,8 @@ const palsGroup: LockGroupSummary = {
   memberCmIds: [1001, 1002, 1003],
 }
 
-function getPillRoot(displayName: string): HTMLElement {
-  const span = screen.getByText(displayName)
-  const root = span.closest('div')
-  if (!root) throw new Error(`pill root not found for ${displayName}`)
-  return root
+function getPillRoot(): HTMLElement {
+  return screen.getByTestId('camper-pill')
 }
 
 describe('FriendGroupPopover (CamperPill hover)', () => {
@@ -64,7 +61,7 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     render(
       <CamperPill camper={liam} status="unchanged" group={undefined} camperById={camperById} />
     )
-    fireEvent.mouseEnter(getPillRoot('Liam Garcia'))
+    fireEvent.mouseEnter(getPillRoot())
     expect(screen.queryByTestId('friend-group-popover')).toBeNull()
   })
 
@@ -72,7 +69,7 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     render(
       <CamperPill camper={liam} status="unchanged" group={palsGroup} camperById={camperById} />
     )
-    fireEvent.mouseEnter(getPillRoot('Liam Garcia'))
+    fireEvent.mouseEnter(getPillRoot())
 
     const popover = screen.getByTestId('friend-group-popover')
     expect(popover).toHaveTextContent('Pals')
@@ -86,10 +83,11 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     render(
       <CamperPill camper={liam} status="unchanged" group={palsGroup} camperById={camperById} />
     )
-    const root = getPillRoot('Liam Garcia')
+    const root = getPillRoot()
     fireEvent.mouseEnter(root)
     expect(screen.getByTestId('friend-group-popover')).toBeInTheDocument()
     fireEvent.mouseLeave(root)
+
     expect(screen.queryByTestId('friend-group-popover')).toBeNull()
   })
 
@@ -101,7 +99,7 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     render(
       <CamperPill camper={liam} status="unchanged" group={groupWithGhost} camperById={camperById} />
     )
-    fireEvent.mouseEnter(getPillRoot('Liam Garcia'))
+    fireEvent.mouseEnter(getPillRoot())
     const popover = screen.getByTestId('friend-group-popover')
     expect(popover).toHaveTextContent('<unknown camper>')
     expect(popover).toHaveTextContent('Liam Garcia')
@@ -112,7 +110,7 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     render(
       <CamperPill camper={liam} status="unchanged" group={singleGroup} camperById={camperById} />
     )
-    fireEvent.mouseEnter(getPillRoot('Liam Garcia'))
+    fireEvent.mouseEnter(getPillRoot())
     const popover = screen.getByTestId('friend-group-popover')
     expect(popover).toHaveTextContent('Pals')
     const memberRows = popover.querySelectorAll('[data-testid="friend-group-member"]')
