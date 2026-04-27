@@ -74,7 +74,7 @@ function doneFromDebug(d: DebugPipelineRun): PipelinePhase {
   }
 }
 
-export type FetchWithAuth = (input: RequestInfo, init?: RequestInit) => Promise<Response>
+export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
 
 type RawSyncEntry = {
   type?: string
