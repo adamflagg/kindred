@@ -19,7 +19,7 @@ class ParsedName(NamedTuple):
 # same as a bare name.
 #
 # Matched forms:
-#   - digit/letter + terminator + space: `1.`, `2)`, `10.`, `a.`, `b)`
+#   - digit/letter + terminator + whitespace: `1.`, `2)`, `10.`, `a.`, `b)`
 #   - bracketed enumeration: `(1)`, `[3]`, also half-bracket forms like `1]`
 #   - bullet markers: `* `, `- `
 #

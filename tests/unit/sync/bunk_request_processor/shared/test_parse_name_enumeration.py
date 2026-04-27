@@ -12,7 +12,7 @@ exact_match strategy then called parse_name(), which treats "1." as
 the first name and "Garcia" as the last name. find_by_name("1.", "Garcia")
 returns no candidates, fuzzy and phonetic strategies also fail (no first
 name in the DB looks like "1."), and the secondary candidate-generation
-in phase2_resolution_service.py:426 (`first_name = target.split()[0]`)
+in phase2_resolution_service.py (`first_name = target.split()[0]`)
 also gets "1." and bails silently — leaving the request at status=pending,
 confidence_score=0, resolution_method='unknown' for an otherwise
 unambiguous same-session name.
