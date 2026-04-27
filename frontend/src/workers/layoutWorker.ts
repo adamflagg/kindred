@@ -32,6 +32,9 @@ export interface LayoutWorkerInput {
     componentSpacing?: number
     hasCompoundNodes?: boolean
   }
+  /** Instance token issued by the main thread; echoed back in the response so
+   *  stale results from a previous cy instance can be discarded. */
+  token?: number
 }
 
 export interface LayoutWorkerOutput {
@@ -39,11 +42,15 @@ export interface LayoutWorkerOutput {
   positions?: Record<string, { x: number; y: number }>
   error?: string
   progress?: number
+  /** Echoed from the input token so the main thread can detect stale results. */
+  token?: number
 }
 
 // Handle messages from main thread
 self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
   const startTime = performance.now()
+  // Hoist token so the catch block can echo it back too
+  const token: number | undefined = event.data.token
 
   try {
     const { nodes, edges, options = {} } = event.data
@@ -109,10 +116,12 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       `[LayoutWorker] Computed ${Object.keys(positions).length} positions in ${duration.toFixed(0)}ms`
     )
 
-    // Send positions back to main thread
+    // Send positions back to main thread, echoing the token so the main thread
+    // can detect and discard stale results from superseded cy instances.
     const response: LayoutWorkerOutput = {
       type: 'positions',
       positions,
+      ...(token !== undefined && { token }),
     }
     self.postMessage(response)
 
@@ -122,6 +131,7 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
     const response: LayoutWorkerOutput = {
       type: 'error',
       error: error instanceof Error ? error.message : 'Unknown layout error',
+      ...(token !== undefined && { token }),
     }
     self.postMessage(response)
   }
