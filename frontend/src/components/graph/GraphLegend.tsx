@@ -49,6 +49,10 @@ export default function GraphLegend({
             <div className="h-3 w-3 rounded-full border-2 border-red-600 bg-gray-400" />
             <span>None</span>
           </div>
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full border-2 border-slate-400 bg-gray-400" />
+            <span>No requests</span>
+          </div>
         </div>
       </div>
 

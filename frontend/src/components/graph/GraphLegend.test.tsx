@@ -82,4 +82,11 @@ describe('GraphLegend rendering', () => {
     render(<GraphLegend />)
     expect(screen.queryByText(/^Partial$/)).not.toBeInTheDocument()
   })
+
+  it('renders a neutral "No requests" row distinct from "None"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('No requests')).toBeInTheDocument()
+    // "None" (red) and "No requests" (gray) are different statuses
+    expect(screen.getByText('None')).toBeInTheDocument()
+  })
 })

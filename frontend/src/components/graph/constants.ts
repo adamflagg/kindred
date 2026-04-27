@@ -29,13 +29,16 @@ export const EDGE_COLORS: Record<string, string> = {
 }
 
 // Node satisfaction status colors (for borders).
-// Binary: green = ≥1 request satisfied; red = has requests, none satisfied.
+// - green: ≥1 request satisfied
+// - red:   has requests, 0 satisfied
+// - gray:  no requests at all (nothing to satisfy — neutral)
 // `partial` from the backend is collapsed into `satisfied` (any satisfied request → green).
 export const STATUS_COLORS: Record<string, string> = {
   satisfied: '#27ae60', // Green
   partial: '#27ae60', // Green (collapsed: any satisfied → green)
   isolated: '#e74c3c', // Red
-  default: '#2c3e50', // Gray
+  no_requests: '#94a3b8', // Gray (slate-400) — nothing to satisfy
+  default: '#2c3e50', // Gray (fallback for unknown values)
 }
 
 // Edge type display labels
