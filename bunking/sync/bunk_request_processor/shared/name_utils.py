@@ -14,11 +14,18 @@ class ParsedName(NamedTuple):
     is_complete: bool
 
 
+# Leading enumeration tokens that parents and the AI sometimes leave on names:
+# `1.`, `2)`, `10.`, `a.`, `(1)`, `[3]`, `*`, `-`. Stripped before parsing so a
+# numbered list ("1. Eloise Kemp") resolves the same as a bare name.
+_ENUMERATION_PREFIX_RE = re.compile(r"^\s*(?:[\(\[]?[\dA-Za-z]+[\.\)\]]|[-*])\s+")
+
+
 def parse_name(name: str) -> ParsedName:
     """Parse name into (first, last, is_complete). Handles middle names."""
     if not name:
         return ParsedName("", "", False)
-    parts = name.strip().split()
+    cleaned = _ENUMERATION_PREFIX_RE.sub("", name.strip())
+    parts = cleaned.split()
     if len(parts) < 2:
         return ParsedName(parts[0] if parts else "", "", False)
     return ParsedName(parts[0], parts[-1], True)
