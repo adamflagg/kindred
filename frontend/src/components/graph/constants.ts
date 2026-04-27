@@ -28,10 +28,12 @@ export const EDGE_COLORS: Record<string, string> = {
   bundled: '#9b59b6', // Purple for bundled edges
 }
 
-// Node satisfaction status colors (for borders)
+// Node satisfaction status colors (for borders).
+// Binary: green = ≥1 request satisfied; red = has requests, none satisfied.
+// `partial` from the backend is collapsed into `satisfied` (any satisfied request → green).
 export const STATUS_COLORS: Record<string, string> = {
   satisfied: '#27ae60', // Green
-  partial: '#f39c12', // Yellow
+  partial: '#27ae60', // Green (collapsed: any satisfied → green)
   isolated: '#e74c3c', // Red
   default: '#2c3e50', // Gray
 }

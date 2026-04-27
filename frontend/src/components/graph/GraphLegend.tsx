@@ -46,10 +46,6 @@ export default function GraphLegend({
             <span>Requests satisfied (1+)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full border-2 border-yellow-600 bg-gray-400" />
-            <span>Partial</span>
-          </div>
-          <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full border-2 border-red-600 bg-gray-400" />
             <span>None</span>
           </div>

@@ -77,4 +77,9 @@ describe('GraphLegend rendering', () => {
     expect(screen.getByText('None')).toBeInTheDocument()
     expect(screen.queryByText(/^Isolated$/)).not.toBeInTheDocument()
   })
+
+  it('does not render a "Partial" row — collapsed into the binary 1+ vs none', () => {
+    render(<GraphLegend />)
+    expect(screen.queryByText(/^Partial$/)).not.toBeInTheDocument()
+  })
 })
