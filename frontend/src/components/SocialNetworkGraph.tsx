@@ -247,18 +247,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
           // Don't overwrite the newer state; the newer handler will clear the
           // spinner.
           if (isStaleLayoutMessage(myToken, layoutTokenRef.current)) {
-            console.log(
-              `[SocialNetworkGraph] our reply (token=${myToken}) superseded, current=${layoutTokenRef.current}`
-            )
             return
           }
           if (cy.destroyed()) {
             // Spinner safety net: cy was torn down between postMessage and reply
             // (StrictMode double-invoke or rapid effect re-runs). Clear the overlay
             // so the user isn't stuck on "Computing layout..." forever.
-            console.log(
-              `[SocialNetworkGraph] worker response arrived for destroyed cy (token=${messageToken}); clearing spinner`
-            )
             setIsComputingLayout(false)
             return
           }

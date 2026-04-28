@@ -32,7 +32,6 @@ export const EDGE_COLORS: Record<string, string> = {
   not_bunk_with: '#e74c3c',
   historical: '#95a5a6',
   sibling: '#2ecc71',
-  school: '#2ecc71',
   bundled: '#9b59b6',
 }
 
@@ -54,7 +53,6 @@ export const EDGE_LABELS: Record<string, string> = {
   request: 'Requests',
   historical: 'Historical',
   sibling: 'Siblings',
-  school: 'Classmates',
 }
 
 /**
