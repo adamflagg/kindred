@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
+from bunking.sync.bunk_request_processor.core.models import RequestSource
 from bunking.sync.bunk_request_processor.shared.constants import (
     SOURCE_FIELD_TO_CONFIG_KEY,
     SourceField,
@@ -127,6 +128,22 @@ class ValidationStatistics(BaseModel):
     satisfied_explicit_csv_requests: int = 0
     explicit_csv_request_satisfaction_rate: float = 0.0
     campers_with_unsatisfied_explicit_requests: int = 0
+
+    # Parent-source request tracking (bunk_with + socialize_with, per RequestSource.FAMILY).
+    # Stage 1 emits these alongside explicit_csv_* for future UI consumption; no UI consumer yet.
+    parent_requests: int = 0
+    satisfied_parent_requests: int = 0
+    parent_request_satisfaction_rate: float = 0.0
+    campers_with_unsatisfied_parent_requests: int = 0
+
+    # Staff-source request tracking, per RequestSource.STAFF. Source fields:
+    # SourceField.NOT_BUNK_WITH (stats key "do_not_share_with"), BUNKING_NOTES,
+    # INTERNAL_NOTES. Tracked separately because they don't satisfy the
+    # "every camper gets one parent request" rule that Stage 4 will enforce.
+    staff_requests: int = 0
+    satisfied_staff_requests: int = 0
+    staff_request_satisfaction_rate: float = 0.0
+    campers_with_unsatisfied_staff_requests: int = 0
 
     # Level progression stats (comparing to prior year)
     level_progression: dict[str, int] = Field(
@@ -357,6 +374,10 @@ class BunkingValidator:
         satisfied_requests_by_person = defaultdict(list)
         explicit_requests_by_person = defaultdict(list)
         satisfied_explicit_by_person = defaultdict(list)
+        parent_requests_by_person = defaultdict(list)
+        satisfied_parent_by_person = defaultdict(list)
+        staff_requests_by_person = defaultdict(list)
+        satisfied_staff_by_person = defaultdict(list)
 
         def normalize_source_field(raw_field: str) -> str | None:
             """Normalize database source_field values to consistent snake_case keys.
@@ -492,6 +513,19 @@ class BunkingValidator:
                 if is_explicit:
                     explicit_requests_by_person[requester_id].append(request)
 
+                # Bin by request.source (RequestSource enum value) for Stage 1
+                # breakdown stats. Production stores `source` as the enum's str
+                # value ("family" / "staff"); requests with source=None or any
+                # unrecognized value (notably the legacy "notes" enum value still
+                # permitted by the bunk_requests schema) fall through both branches
+                # and are counted only in the aggregate total/satisfied stats.
+                is_family = request.source == RequestSource.FAMILY.value
+                is_staff = request.source == RequestSource.STAFF.value
+                if is_family:
+                    parent_requests_by_person[requester_id].append(request)
+                elif is_staff:
+                    staff_requests_by_person[requester_id].append(request)
+
                 # Update field stats (only for known fields)
                 for field in source_fields:
                     if field in stats.field_stats:
@@ -503,6 +537,10 @@ class BunkingValidator:
                     satisfied_requests_by_person[requester_id].append(request)
                     if is_explicit:
                         satisfied_explicit_by_person[requester_id].append(request)
+                    if is_family:
+                        satisfied_parent_by_person[requester_id].append(request)
+                    elif is_staff:
+                        satisfied_staff_by_person[requester_id].append(request)
 
                     # Update satisfied field stats (only for known fields)
                     for field in source_fields:
@@ -605,6 +643,24 @@ class BunkingValidator:
                 stats.satisfied_explicit_csv_requests / stats.explicit_csv_requests
             )
         stats.campers_with_unsatisfied_explicit_requests = len(campers_with_unsatisfied_explicit_requests)
+
+        # Stage 1 parent/staff breakdown stats (RequestSource-driven).
+        stats.parent_requests = sum(len(reqs) for reqs in parent_requests_by_person.values())
+        stats.satisfied_parent_requests = sum(len(reqs) for reqs in satisfied_parent_by_person.values())
+        if stats.parent_requests > 0:
+            stats.parent_request_satisfaction_rate = stats.satisfied_parent_requests / stats.parent_requests
+
+        stats.staff_requests = sum(len(reqs) for reqs in staff_requests_by_person.values())
+        stats.satisfied_staff_requests = sum(len(reqs) for reqs in satisfied_staff_by_person.values())
+        if stats.staff_requests > 0:
+            stats.staff_request_satisfaction_rate = stats.satisfied_staff_requests / stats.staff_requests
+
+        stats.campers_with_unsatisfied_parent_requests = sum(
+            1 for requester_id in parent_requests_by_person if not satisfied_parent_by_person.get(requester_id)
+        )
+        stats.campers_with_unsatisfied_staff_requests = sum(
+            1 for requester_id in staff_requests_by_person if not satisfied_staff_by_person.get(requester_id)
+        )
 
         # Add summary issue if there are campers with unsatisfied valid requests
         if campers_with_unsatisfied_valid_requests:
