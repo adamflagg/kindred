@@ -283,6 +283,43 @@ describe('Modal', () => {
     })
   })
 
+  describe('backdropInsetRight option', () => {
+    it('insets the backdrop from the right when set', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} backdropInsetRight="28rem">
+          <p>Content</p>
+        </Modal>
+      )
+
+      const backdrop = screen.getByTestId('modal-backdrop')
+      expect(backdrop).toHaveStyle({ right: '28rem' })
+    })
+
+    it('does not inset by default', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+
+      const backdrop = screen.getByTestId('modal-backdrop')
+      // No explicit right offset → backdrop spans the full viewport.
+      expect(backdrop.style.right).toBe('')
+    })
+
+    it('shifts the modal centering wrapper by the same offset', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} backdropInsetRight="28rem">
+          <p>Content</p>
+        </Modal>
+      )
+
+      // The modal centers within the unblurred space, not the full viewport.
+      const dialog = screen.getByRole('dialog')
+      expect(dialog).toHaveStyle({ right: '28rem' })
+    })
+  })
+
   describe('scrollable option', () => {
     it('applies overflow-y-auto when scrollable is true', () => {
       render(

@@ -8,9 +8,10 @@
  * Each row is a button that opens CohortDrillDownModal listing the matched
  * campers (already gender-scoped + same-session by useCamperCohorts).
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Users } from 'lucide-react'
 import { useCamperCohorts } from '../hooks/useCamperCohorts'
+import { useCohortBunkAssignments } from '../hooks/useCohortBunkAssignments'
 import { useCohortRequestRelations } from '../hooks/useCohortRequestRelations'
 import { CohortDrillDownModal, type CohortKind } from './CohortDrillDownModal'
 
@@ -33,6 +34,19 @@ export function CamperCohortsSection({
   const { cohorts, isLoading } = useCamperCohorts(personCmId, sessionCmId, year)
   const { relations } = useCohortRequestRelations(personCmId, sessionCmId, year)
   const [openKind, setOpenKind] = useState<CohortKind | null>(null)
+
+  // Union of every cohort's matched person ids — feeds the bunk lookup so
+  // switching between school/congregation/city tabs reuses the same query.
+  const allCohortPersonIds = useMemo(() => {
+    if (!cohorts) return [] as number[]
+    const ids = new Set<number>()
+    for (const kind of KINDS) {
+      for (const a of cohorts[kind]?.attendees ?? []) ids.add(a.personCmId)
+    }
+    return [...ids]
+  }, [cohorts])
+
+  const { bunkByPerson } = useCohortBunkAssignments(allCohortPersonIds, sessionCmId, year)
 
   if (isLoading || !cohorts) return null
 
@@ -77,6 +91,7 @@ export function CamperCohortsSection({
           allGenders={cohorts.allGenders}
           attendees={openEntry.attendees}
           requestRelations={relations}
+          bunkByPerson={bunkByPerson}
           onClose={() => setOpenKind(null)}
         />
       )}

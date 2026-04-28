@@ -232,6 +232,15 @@ export const queryKeys = {
   // Cohort Request Relations (Tier 2 - user-editable, drives modal badges)
   cohortRequestRelations: (personCmId: number | null, sessionCmId: number, year: number) =>
     ['cohort-request-relations', personCmId, sessionCmId, year] as const,
+  // Cohort Bunk Assignments (Tier 2 — scenario or production assignments
+  // shown inline next to each row). Keyed by scenarioId so production view
+  // (null) and each scenario gets its own cache entry.
+  cohortBunkAssignments: (
+    scenarioId: string | null,
+    sessionCmId: number,
+    year: number,
+    personCmIds: number[]
+  ) => ['cohort-bunk-assignments', scenarioId, sessionCmId, year, [...personCmIds].sort()] as const,
 
   // Camper Request Summary (Tier 2 - user data, used in expanded row)
   camperRequestSummary: (requesterCmId: number, year: number) =>

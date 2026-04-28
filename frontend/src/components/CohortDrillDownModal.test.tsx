@@ -272,4 +272,76 @@ describe('CohortDrillDownModal', () => {
     )
     expect(container.firstChild).toBeNull()
   })
+
+  describe('current bunk display', () => {
+    it('renders the bunk inline with grade when assignment is provided', () => {
+      const bunkByPerson = new Map<number, string | null>([[1000002, 'Bunk 4']])
+      render(
+        <CohortDrillDownModal
+          selfDisplayName="Emma"
+          open
+          kind="school"
+          label="Riverside Elementary"
+          attendees={[makeMatch({ personCmId: 1000002, grade: 5 })]}
+          bunkByPerson={bunkByPerson}
+          onClose={() => {}}
+        />
+      )
+      // "5th grade · Bunk 4" rendered as a single inline line.
+      const row = screen.getByTestId('cohort-modal-row')
+      expect(row.textContent).toContain('5th grade')
+      expect(row.textContent).toContain('Bunk 4')
+    })
+
+    it('renders "Unassigned" when the lookup returns null', () => {
+      const bunkByPerson = new Map<number, string | null>([[1000002, null]])
+      render(
+        <CohortDrillDownModal
+          selfDisplayName="Emma"
+          open
+          kind="school"
+          label="Riverside Elementary"
+          attendees={[makeMatch({ personCmId: 1000002, grade: 5 })]}
+          bunkByPerson={bunkByPerson}
+          onClose={() => {}}
+        />
+      )
+      const row = screen.getByTestId('cohort-modal-row')
+      expect(row.textContent).toContain('Unassigned')
+    })
+
+    it('renders just the bunk (no separator) when grade is null', () => {
+      const bunkByPerson = new Map<number, string | null>([[1000002, 'Bunk 9']])
+      render(
+        <CohortDrillDownModal
+          selfDisplayName="Emma"
+          open
+          kind="school"
+          label="Riverside Elementary"
+          attendees={[makeMatch({ personCmId: 1000002, grade: null })]}
+          bunkByPerson={bunkByPerson}
+          onClose={() => {}}
+        />
+      )
+      const row = screen.getByTestId('cohort-modal-row')
+      expect(row.textContent).toContain('Bunk 9')
+      // No grade line and no orphan separator before "Bunk 9".
+      expect(row.textContent).not.toMatch(/·\s*Bunk 9/)
+    })
+
+    it('omits the bunk line entirely when bunkByPerson prop is absent', () => {
+      render(
+        <CohortDrillDownModal
+          selfDisplayName="Emma"
+          open
+          kind="school"
+          label="Riverside Elementary"
+          attendees={[makeMatch({ personCmId: 1000002, grade: 5 })]}
+          onClose={() => {}}
+        />
+      )
+      // Without the prop the modal must not invent an "Unassigned" line.
+      expect(screen.queryByText(/Unassigned/)).not.toBeInTheDocument()
+    })
+  })
 })
