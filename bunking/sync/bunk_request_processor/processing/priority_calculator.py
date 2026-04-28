@@ -66,6 +66,7 @@ class PriorityCalculator:
         # and each iteration passes the same list. A weak key would be nicer, but
         # id() suffices while the calculator is short-lived per batch.
         self._family_priority_cache: dict[int, bool] = {}
+        self._parent_bunk_with_cache: dict[int, bool] = {}
 
     def _load_keywords(self) -> list[str]:
         """Load priority keywords from config or use defaults"""
@@ -129,10 +130,8 @@ class PriorityCalculator:
         # count as "other requests" for this purpose since they're not parent input.
         # Gate explicitly on RequestSource.FAMILY so a future misclassified staff
         # record on the bunk_with source_field can't suppress the promotion.
-        has_parent_bunk_with = any(
-            r.source == RequestSource.FAMILY and r.source_field == SourceField.BUNK_WITH
-            for r in all_requests_for_person
-        )
+        # Memoized via the same id(list) pattern as _any_family_request_has_priority (#923).
+        has_parent_bunk_with = self._has_parent_bunk_with(all_requests_for_person)
 
         # Memoize the per-list family_bunk_requests scan to avoid O(N^2) work
         # when this method is invoked once per request for the same list (#923).
@@ -188,6 +187,24 @@ class PriorityCalculator:
             return False
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in self._keywords)
+
+    def _has_parent_bunk_with(self, all_requests_for_person: list[ParsedRequest]) -> bool:
+        """Return True if the parent submitted any bunk_with text for this person.
+
+        Memoized by id(list) so the per-request inner loop scans this list only
+        once per person (matches the #923 pattern for _any_family_request_has_priority).
+        """
+        cache_key = id(all_requests_for_person)
+        cached = self._parent_bunk_with_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = any(
+            r.source == RequestSource.FAMILY and r.source_field == SourceField.BUNK_WITH
+            for r in all_requests_for_person
+        )
+        self._parent_bunk_with_cache[cache_key] = result
+        return result
 
     def _any_family_request_has_priority(self, all_requests_for_person: list[ParsedRequest]) -> bool:
         """Return True if any bunk_with family request has a priority keyword.

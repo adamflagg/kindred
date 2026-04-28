@@ -519,9 +519,11 @@ class BunkingValidator:
                 # unrecognized value (notably the legacy "notes" enum value still
                 # permitted by the bunk_requests schema) fall through both branches
                 # and are counted only in the aggregate total/satisfied stats.
-                if request.source == RequestSource.FAMILY.value:
+                is_family = request.source == RequestSource.FAMILY.value
+                is_staff = request.source == RequestSource.STAFF.value
+                if is_family:
                     parent_requests_by_person[requester_id].append(request)
-                elif request.source == RequestSource.STAFF.value:
+                elif is_staff:
                     staff_requests_by_person[requester_id].append(request)
 
                 # Update field stats (only for known fields)
@@ -535,9 +537,9 @@ class BunkingValidator:
                     satisfied_requests_by_person[requester_id].append(request)
                     if is_explicit:
                         satisfied_explicit_by_person[requester_id].append(request)
-                    if request.source == RequestSource.FAMILY.value:
+                    if is_family:
                         satisfied_parent_by_person[requester_id].append(request)
-                    elif request.source == RequestSource.STAFF.value:
+                    elif is_staff:
                         satisfied_staff_by_person[requester_id].append(request)
 
                     # Update satisfied field stats (only for known fields)

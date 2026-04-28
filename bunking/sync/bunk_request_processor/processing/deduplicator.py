@@ -128,11 +128,15 @@ class Deduplicator:
                 # SOURCE_PRIORITY dominates first, so the bunk_with bias only changes
                 # outcomes within same-source ties — most commonly parent-vs-parent
                 # age_pref (where bunk_with prose beats the socialize_with checkbox).
-                def _sort_key(r: BunkRequest) -> tuple[int, int, float]:
-                    is_bunk_with = 1 if r.source_field == SourceField.BUNK_WITH else 0
-                    return (SOURCE_PRIORITY.get(r.source, 0), is_bunk_with, r.confidence_score)
-
-                sorted_requests = sorted(group_requests, key=_sort_key, reverse=True)
+                sorted_requests = sorted(
+                    group_requests,
+                    key=lambda r: (
+                        SOURCE_PRIORITY.get(r.source, 0),
+                        1 if r.source_field == SourceField.BUNK_WITH else 0,
+                        r.confidence_score,
+                    ),
+                    reverse=True,
+                )
 
                 primary = sorted_requests[0]
                 duplicates = sorted_requests[1:]
