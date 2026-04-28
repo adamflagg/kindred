@@ -139,7 +139,7 @@ function BunkCard({
     return true // Unknown gender = allow anywhere
   }
 
-  const dropDisabled = !isValidDropTarget()
+  const dropDisabled = isProductionMode || !isValidDropTarget()
 
   const { setNodeRef, isOver } = useDroppable({
     id: `bunk-${bunk.id}`,
