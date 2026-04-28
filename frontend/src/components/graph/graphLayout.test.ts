@@ -69,6 +69,8 @@ describe('prepareWorkerInput', () => {
         centrality: 0.5,
         clustering: 0,
         satisfaction_status: 'satisfied',
+        parent_satisfaction_status: undefined,
+        staff_satisfaction_status: undefined,
         bunk_cm_id: 1,
         community: 1,
         parent: 'bunk-1',
