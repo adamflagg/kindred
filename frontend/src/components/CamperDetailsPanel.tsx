@@ -35,8 +35,11 @@ import type {
 } from '../types/pocketbase-types'
 import { Collections } from '../types/pocketbase-types'
 import { toAppCamper } from '../utils/transforms'
-import { isAgePreferenceSatisfied } from '../utils/agePreferenceSatisfaction'
 import { isConfirmedRequest } from '../utils/bunkRequest'
+import { useSatisfactionData } from '../hooks/camper/useSatisfactionData'
+import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
+import type { SatisfactionMap } from '../hooks/camper/types'
+import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
@@ -57,13 +60,23 @@ import { buildCamperAlerts } from '../utils/camperAlertUtils'
 import { useBunkRequestContext } from '../hooks'
 import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 
-// Satisfaction check types
-type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
-interface SatisfactionResult {
-  status: SatisfactionStatus
-  detail?: string
+// Panel-augmented bunk request: extends the PB `BunkRequestsResponse` (the
+// shape `BunkRequestRow` consumes) with the same `requestedPersonName`
+// enrichment as the canonical `EnhancedBunkRequest`, plus `targetPerson` so
+// the row can render the avatar/name without re-querying. The `pbToEnhanced`
+// helper below converts between the PB shape and the app-types
+// `EnhancedBunkRequest` shape that `useSatisfactionData` /
+// `computeRequestSatisfaction` accept — fields the satisfaction code reads
+// (`request_type`, `requestee_id`, `age_preference_target`, `id`, `status`)
+// are identical between the two shapes, so the conversion is structural.
+type PanelBunkRequest = BunkRequestsResponse & {
+  requestedPersonName?: string | undefined
+  targetPerson: PersonsResponse | null
 }
-type SatisfactionMap = Record<string, SatisfactionResult>
+
+function pbToEnhanced(req: PanelBunkRequest): EnhancedBunkRequest {
+  return req as unknown as EnhancedBunkRequest
+}
 
 // Type for expanded records with relations
 interface ExpandedSession {
@@ -115,6 +128,16 @@ interface CamperDetailsPanelProps {
    * to fall back to the live PB assignment.
    */
   assignedBunkCmId?: number | null
+  /**
+   * Active-view roster lookup. When provided alongside `assignedBunkCmId`,
+   * the modal computes per-request satisfaction client-side from the active
+   * view (live or scenario) instead of issuing the PB-backed
+   * `useSatisfactionData` query. Callback returns the bunk cm_id for `cmId`
+   * in the active view, or null if unassigned. Omit from session-agnostic
+   * callers (graph modals, full-page camper view) to fall back to the live
+   * PB query.
+   */
+  getBunkForPerson?: (cmId: number) => number | null
 }
 
 // Interface for historical records
@@ -142,6 +165,7 @@ export default function CamperDetailsPanel({
   requestClose = false,
   bunkCampers,
   assignedBunkCmId,
+  getBunkForPerson,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -334,9 +358,9 @@ export default function CamperDetailsPanel({
   })
 
   // Fetch bunk requests
-  const { data: bunkRequests = [] } = useQuery({
+  const { data: bunkRequests = [] } = useQuery<PanelBunkRequest[]>({
     queryKey: ['person-bunk-requests', camper?.person_cm_id, currentYear],
-    queryFn: async () => {
+    queryFn: async (): Promise<PanelBunkRequest[]> => {
       if (!camper?.person_cm_id) throw new Error('No camper person ID')
 
       const filter = `requester_id = ${camper.person_cm_id} && year = ${currentYear}`
@@ -363,7 +387,7 @@ export default function CamperDetailsPanel({
         persons.forEach((p) => personMap.set(p.cm_id, p))
       }
 
-      return requests.map((req) => {
+      return requests.map((req): PanelBunkRequest => {
         const person =
           req.requestee_id && req.requestee_id > 0 ? personMap.get(req.requestee_id) : undefined
         return {
@@ -375,7 +399,7 @@ export default function CamperDetailsPanel({
               ? `${req.requested_person_name} (unresolved)`
               : undefined,
           targetPerson: person ?? null,
-          metadata: req.metadata ?? ({} as Record<string, unknown>),
+          metadata: (req.metadata as Record<string, unknown> | undefined) ?? {},
         }
       })
     },
@@ -561,166 +585,23 @@ export default function CamperDetailsPanel({
   // State for the manage-all-requests modal (opened from alert row click)
   const [isAllRequestsModalOpen, setIsAllRequestsModalOpen] = useState(false)
 
-  // Lazy-load satisfaction checks - cached per camper for efficient switching
-  const { data: satisfactionData = {}, isLoading: satisfactionLoading } = useQuery<SatisfactionMap>(
-    {
-      queryKey: [
-        'panel-satisfaction',
-        camper?.person_cm_id,
-        camper?.assigned_bunk_cm_id,
-        camper?.session_cm_id,
-        camper?.grade,
-        currentYear,
-        bunkRequests.map((r) => r.id).join(','),
-      ],
-      queryFn: async () => {
-        const results: SatisfactionMap = {}
+  // ── Satisfaction data ────────────────────────────────────────────────────
+  // Two paths:
+  //   1. Scenario-aware caller (BunkingBoardByArea) passes `getBunkForPerson`
+  //      and `assignedBunkCmId` — we compute synchronously from the active
+  //      view, so the pill matches whatever's on screen (live or draft).
+  //   2. Session-agnostic callers (graph modals, full-page view) — fall back
+  //      to `useSatisfactionData`, which fetches live assignments from PB.
+  // Defined ABOVE the early-return paths to keep hook order stable.
+  const hasClientView = getBunkForPerson != null && assignedBunkCmId != null
 
-        if (!camper?.assigned_bunk_cm_id || !camper.session_cm_id) {
-          return results // Requester not assigned - can't check
-        }
-
-        // Get resolved person-based requests
-        const resolvedPersonRequests = bunkRequests.filter(
-          (r) =>
-            r.status === 'resolved' &&
-            r.requestee_id &&
-            r.requestee_id > 0 &&
-            (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with')
-        )
-
-        // Get age preference requests
-        const agePrefs = bunkRequests.filter(
-          (r) => r.request_type === 'age_preference' && r.age_preference_target
-        )
-
-        if (resolvedPersonRequests.length === 0 && agePrefs.length === 0) {
-          return results
-        }
-
-        try {
-          const allAssignments = await pb
-            .collection<BunkAssignmentsResponse>('bunk_assignments')
-            .getFullList({
-              filter: `year = ${currentYear}`,
-              expand: 'person,bunk,session',
-            })
-
-          // Filter to same session
-          const sessionAssignments = allAssignments.filter((a) => {
-            const expanded = a.expand as ExpandedAssignment | undefined
-            const sessionCmId = expanded?.session?.cm_id
-            return sessionCmId === camper.session_cm_id
-          })
-
-          // Build lookup maps
-          const personToBunk = new Map<number, number>()
-          const bunkToPersons = new Map<number, Array<{ cmId: number; grade: number }>>()
-
-          sessionAssignments.forEach((a) => {
-            const expanded = a.expand as ExpandedAssignment | undefined
-            const person = expanded?.person
-            const bunk = expanded?.bunk
-            const personCmId = person?.cm_id
-            const bunkCmId = bunk?.cm_id
-            const grade = person?.grade
-
-            if (personCmId && bunkCmId) {
-              personToBunk.set(personCmId, bunkCmId)
-              if (!bunkToPersons.has(bunkCmId)) bunkToPersons.set(bunkCmId, [])
-              if (grade !== undefined) {
-                const bunkPersons = bunkToPersons.get(bunkCmId)
-                if (bunkPersons) {
-                  bunkPersons.push({ cmId: personCmId, grade })
-                }
-              }
-            }
-          })
-
-          // Check person-based requests
-          for (const req of resolvedPersonRequests) {
-            if (!req.requestee_id) continue
-            const targetBunk = personToBunk.get(req.requestee_id)
-            if (!targetBunk) {
-              results[req.id] = {
-                status: 'unknown',
-                detail: 'Target not assigned',
-              }
-              continue
-            }
-            const sameBunk = camper.assigned_bunk_cm_id === targetBunk
-
-            if (req.request_type === 'bunk_with') {
-              results[req.id] = {
-                status: sameBunk ? 'satisfied' : 'not_satisfied',
-                detail: sameBunk ? 'Same bunk' : 'Different bunks',
-              }
-            } else {
-              results[req.id] = {
-                status: !sameBunk ? 'satisfied' : 'not_satisfied',
-                detail: !sameBunk ? 'Different bunks' : 'Same bunk!',
-              }
-            }
-          }
-
-          // Check age preference requests
-          for (const req of agePrefs) {
-            const allInBunk = bunkToPersons.get(camper.assigned_bunk_cm_id) ?? []
-            // Filter out the camper to get only bunkmates
-            const bunkmates = allInBunk.filter((b) => b.cmId !== camper.person_cm_id)
-
-            if (bunkmates.length === 0) {
-              results[req.id] = {
-                status: 'unknown',
-                detail: 'No bunkmates yet',
-              }
-              continue
-            }
-
-            const camperGrade = camper.grade
-            const bunkmateGrades = bunkmates.map((b) => b.grade)
-
-            if (bunkmateGrades.length === 0) {
-              results[req.id] = {
-                status: 'unknown',
-                detail: 'No bunkmate grades available',
-              }
-              continue
-            }
-
-            // Use shared utility for consistent satisfaction logic
-            const preference = req.age_preference_target as 'older' | 'younger'
-            const { satisfied, detail } = isAgePreferenceSatisfied(
-              camperGrade,
-              bunkmateGrades,
-              preference
-            )
-
-            // Create grade breakdown for rich UI display
-            const gradeCounts = new Map<number, number>()
-            bunkmates.forEach((b) => {
-              gradeCounts.set(b.grade, (gradeCounts.get(b.grade) ?? 0) + 1)
-            })
-            const gradeBreakdown = Array.from(gradeCounts.entries())
-              .sort((a, b) => a[0] - b[0])
-              .map(([g, c]) => `${formatGradeOrdinal(g)}: ${c}`)
-              .join(' | ')
-
-            results[req.id] = {
-              status: satisfied ? 'satisfied' : 'not_satisfied',
-              detail: `${gradeBreakdown} — ${detail}`,
-            }
-          }
-
-          return results
-        } catch (error) {
-          console.error('Satisfaction check error:', error)
-          return results
-        }
-      },
-      enabled: !!camper?.person_cm_id && bunkRequests.length > 0,
-      staleTime: 60000, // Cache 1 min - fast switching between campers
-    }
+  const { satisfactionData: pbSatisfaction, isLoading: pbLoading } = useSatisfactionData(
+    hasClientView ? undefined : camper?.person_cm_id, // disables the query
+    camper?.assigned_bunk_cm_id,
+    camper?.session_cm_id,
+    camper?.grade,
+    currentYear,
+    bunkRequests.map(pbToEnhanced)
   )
 
   // Derived request lists — declared here so renderContent() (defined below)
@@ -728,9 +609,6 @@ export default function CamperDetailsPanel({
   // after the embedded-mode return, causing a TDZ ReferenceError in that path.
   const nonAgeRequests = bunkRequests.filter((r) => r.request_type !== 'age_preference')
   const hasOtherRequests = nonAgeRequests.length > 0
-  const ageSatisfaction = agePreferenceRequest
-    ? satisfactionData[agePreferenceRequest.id]
-    : undefined
 
   // ── Build alert catalog from the SAME source CamperCard uses ───────────────
   // Placed before early returns so useMemo is called unconditionally (Rules of Hooks).
@@ -751,6 +629,41 @@ export default function CamperDetailsPanel({
         ? [{ cmId: camper.person_cm_id, grade: camper.grade }]
         : []
   const bunkCampersKey = effectiveBunkCampers.map((c) => `${c.cmId}:${c.grade ?? ''}`).join(',')
+
+  const clientSatisfactionData = useMemo<SatisfactionMap | null>(() => {
+    if (!hasClientView || !camper || assignedBunkCmId == null) return null
+    const requesterBunkmates = effectiveBunkCampers.filter((c) => c.cmId !== camper.person_cm_id)
+    const out: SatisfactionMap = {}
+    for (const req of bunkRequests) {
+      const targetBunkCmId =
+        req.requestee_id && req.requestee_id > 0
+          ? (getBunkForPerson?.(req.requestee_id) ?? null)
+          : null
+      out[req.id] = computeRequestSatisfaction({
+        request: pbToEnhanced(req),
+        requesterBunkCmId: assignedBunkCmId,
+        requesterBunkmates,
+        targetBunkCmId,
+        requesterGrade: camper.grade,
+      })
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hasClientView,
+    assignedBunkCmId,
+    bunkCampersKey,
+    bunkRequests,
+    camper?.person_cm_id,
+    camper?.grade,
+    getBunkForPerson,
+  ])
+
+  const satisfactionData: SatisfactionMap = clientSatisfactionData ?? pbSatisfaction
+  const satisfactionLoading: boolean = clientSatisfactionData ? false : pbLoading
+  const ageSatisfaction = agePreferenceRequest
+    ? satisfactionData[agePreferenceRequest.id]
+    : undefined
 
   // Prefer scenario-aware assignment from the parent (e.g. BunkingBoardByArea
   // passes the active scenario's bunk). Falls back to the live PB assignment
