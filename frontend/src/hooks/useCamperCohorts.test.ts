@@ -554,4 +554,161 @@ describe('useCamperCohorts', () => {
     // city: only a2 matches Springfield → count 1
     expect(result.current.cohorts?.city).toMatchObject({ label: 'Springfield', count: 1 })
   })
+
+  describe('attendee sort order', () => {
+    it('sorts matched attendees by grade ascending, then first name ascending', async () => {
+      // Self camper (1000001) is graded 5 at Riverside Elementary; matched
+      // cohort spans grades 4–7 with two graders sharing grade 5 to verify
+      // the first-name tiebreaker.
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({
+          id: 'self',
+          person_id: 1000001,
+          status_id: 2,
+          firstName: 'Self',
+          grade: 5,
+          normalizedSchool: 'Riverside Elementary',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a1',
+          person_id: 2000001,
+          status_id: 2,
+          firstName: 'Olivia',
+          grade: 7,
+          normalizedSchool: 'Riverside Elementary',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a2',
+          person_id: 2000002,
+          status_id: 2,
+          firstName: 'Emma',
+          grade: 5,
+          normalizedSchool: 'Riverside Elementary',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a3',
+          person_id: 2000003,
+          status_id: 2,
+          firstName: 'Liam',
+          grade: 4,
+          normalizedSchool: 'Riverside Elementary',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a4',
+          person_id: 2000004,
+          status_id: 2,
+          firstName: 'Aiden',
+          grade: 5,
+          normalizedSchool: 'Riverside Elementary',
+          sessionType: 'ag',
+        }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      const ids = (result.current.cohorts?.school?.attendees ?? []).map((a) => a.personCmId)
+      // grade 4 (Liam) → grade 5 (Aiden, Emma — alphabetical) → grade 7 (Olivia)
+      expect(ids).toEqual([2000003, 2000004, 2000002, 2000001])
+    })
+
+    it('places ungraded campers at the bottom regardless of name', async () => {
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({
+          id: 'self',
+          person_id: 1000001,
+          status_id: 2,
+          firstName: 'Self',
+          grade: 6,
+          normalizedSchool: 'Hillcrest High',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a1',
+          person_id: 2000001,
+          status_id: 2,
+          firstName: 'Aaron', // alphabetically first BUT ungraded
+          grade: null,
+          normalizedSchool: 'Hillcrest High',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a2',
+          person_id: 2000002,
+          status_id: 2,
+          firstName: 'Riley',
+          grade: 8,
+          normalizedSchool: 'Hillcrest High',
+          sessionType: 'ag',
+        }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      const ids = (result.current.cohorts?.school?.attendees ?? []).map((a) => a.personCmId)
+      // Riley (grade 8) before Aaron (ungraded) — ungraded sinks despite name.
+      expect(ids).toEqual([2000002, 2000001])
+    })
+
+    it('tiebreaks by first name when grades are equal (case-insensitive)', async () => {
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({
+          id: 'self',
+          person_id: 1000001,
+          status_id: 2,
+          firstName: 'Self',
+          grade: 3,
+          normalizedSchool: 'Oak Valley Middle',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a1',
+          person_id: 2000001,
+          status_id: 2,
+          firstName: 'beatrice', // lowercase — should still sort before 'Charlie'
+          grade: 3,
+          normalizedSchool: 'Oak Valley Middle',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a2',
+          person_id: 2000002,
+          status_id: 2,
+          firstName: 'Charlie',
+          grade: 3,
+          normalizedSchool: 'Oak Valley Middle',
+          sessionType: 'ag',
+        }),
+        makeAttendee({
+          id: 'a3',
+          person_id: 2000003,
+          status_id: 2,
+          firstName: 'Anna',
+          grade: 3,
+          normalizedSchool: 'Oak Valley Middle',
+          sessionType: 'ag',
+        }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      const ids = (result.current.cohorts?.school?.attendees ?? []).map((a) => a.personCmId)
+      expect(ids).toEqual([2000003, 2000001, 2000002]) // Anna, beatrice, Charlie
+    })
+  })
 })
