@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import CamperDetail from './CamperDetail'
 
+let mockSessionYear = 2026
+let mockAttendeeYear = 2026
+
 // Mock the camper data hooks to return a minimal fixture.
 vi.mock('../hooks/camper', () => ({
   useCamperEnrollment: () => ({
@@ -11,11 +14,12 @@ vi.mock('../hooks/camper', () => ({
       {
         id: 'att1',
         person_cm_id: 1000001,
+        session_cm_id: 2,
         attendee_status: 'enrolled',
-        year: 2026,
+        year: mockAttendeeYear,
         first_name: 'Emma',
         last_name: 'Johnson',
-        expand: { session: { cm_id: 2, name: 'Session 2', year: 2026 } },
+        expand: { session: { cm_id: 2, name: 'Session 2', year: mockSessionYear } },
       },
     ],
     allAttendees: [],
@@ -36,6 +40,31 @@ vi.mock('../hooks/camper', () => ({
   }),
   useAllBunkRequests: () => ({ allBunkRequests: [], isLoading: false, error: null }),
   useSatisfactionData: () => ({ satisfactionData: {}, satisfactionLoading: false }),
+}))
+
+vi.mock('../hooks/useCamperCohorts', () => ({
+  useCamperCohorts: () => ({
+    cohorts: {
+      school: {
+        label: 'Riverside Elementary',
+        count: 3,
+        attendees: [],
+      },
+      congregation: null,
+      city: null,
+      sessionType: 'standard',
+      allGenders: false,
+    },
+    isLoading: false,
+  }),
+}))
+
+vi.mock('../hooks/useCohortRequestRelations', () => ({
+  useCohortRequestRelations: () => ({ relations: {} }),
+}))
+
+vi.mock('../hooks/useCohortBunkAssignments', () => ({
+  useCohortBunkAssignments: () => ({ bunkByPerson: {} }),
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({
@@ -90,6 +119,8 @@ function renderDetail() {
 
 beforeEach(() => {
   mockAuthValue = { user: null, isLoading: false }
+  mockSessionYear = 2026
+  mockAttendeeYear = 2026
 })
 
 describe('CamperDetail permission gates', () => {
@@ -120,5 +151,28 @@ describe('CamperDetail permission gates', () => {
     }
     renderDetail()
     expect(await screen.findByText(/Raw Bunking Data/i)).toBeTruthy()
+  })
+})
+
+describe('CamperDetail cohort rows', () => {
+  it('shows the cohort section for an enrolled current-year camper', async () => {
+    mockAuthValue = {
+      user: { is_admin: true, cached_permissions: [] },
+      isLoading: false,
+    }
+    renderDetail()
+    expect(await screen.findByTestId('camper-cohorts-section')).toBeTruthy()
+  })
+
+  it('hides the cohort section when viewing historical year data', async () => {
+    mockAuthValue = {
+      user: { is_admin: true, cached_permissions: [] },
+      isLoading: false,
+    }
+    mockSessionYear = 2025
+    mockAttendeeYear = 2025
+    renderDetail()
+    await screen.findByText(/Emma/i).catch(() => null)
+    expect(screen.queryByTestId('camper-cohorts-section')).toBeNull()
   })
 })

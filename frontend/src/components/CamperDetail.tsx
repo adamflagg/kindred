@@ -34,6 +34,7 @@ import {
   CampJourneyTimeline,
   SiblingsPanel,
 } from './camper'
+import { CamperCohortsSection } from './CamperCohortsSection'
 
 /**
  * Format pronouns display - use actual pronouns fields from V2 schema
@@ -285,6 +286,20 @@ export default function CamperDetail() {
                 satisfactionData={satisfactionData}
                 satisfactionLoading={satisfactionLoading}
               />
+
+              {/* Session cohort rows — current year only (this is a bunking aid) */}
+              {camper.expand?.session?.year === currentYear &&
+                camper.person_cm_id &&
+                camper.session_cm_id > 0 && (
+                  <CamperCohortsSection
+                    personCmId={camper.person_cm_id}
+                    sessionCmId={camper.session_cm_id}
+                    year={currentYear}
+                    selfDisplayName={
+                      camper.preferred_name?.trim() || camper.first_name || 'this camper'
+                    }
+                  />
+                )}
 
               {/* Raw Bunking Data (admin only) */}
               {canManageBunking && originalBunkData && (
