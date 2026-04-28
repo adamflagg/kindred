@@ -1052,5 +1052,110 @@ class TestAgePreferenceDeduplication:
         assert result.kept_requests[0].source == RequestSource.STAFF
 
 
+class TestParentAgePreferenceDeduplication:
+    """Test Stage 1 parent-paramount fix: bunk_with source wins parent-vs-parent age_pref dedupe.
+
+    When a parent submits an age preference both via bunk_with prose AND the
+    socialize_with checkbox, both become RequestSource.FAMILY with the same dedupe key.
+    The old sort was (SOURCE_PRIORITY, confidence_score) — the socialize_with dropdown
+    gets a deterministic confidence=1.0 which beat the AI-parsed bunk_with at 0.85-0.95,
+    so the wrong request was kept as primary.
+
+    Stage 1 fix: insert bunk_with-source preference between SOURCE_PRIORITY and
+    confidence_score so the prose-derived request wins.
+    """
+
+    @pytest.fixture
+    def deduplicator(self):
+        """Create a Deduplicator without repository (batch-only dedup)"""
+        return Deduplicator()
+
+    def _age_pref(
+        self,
+        source_field: str,
+        confidence: float,
+        source: RequestSource = RequestSource.FAMILY,
+        requester_cm_id: int = 1001,
+        year: int = 2025,
+        session_cm_id: int = 1000001,
+    ) -> BunkRequest:
+        return BunkRequest(
+            requester_cm_id=requester_cm_id,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=session_cm_id,
+            priority=1,
+            confidence_score=confidence,
+            source=source,
+            source_field=source_field,
+            csv_position=0,
+            year=year,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={},
+        )
+
+    def test_dedupe_prefers_bunk_with_over_socialize_with_on_parent_age_pref_tie(self, deduplicator):
+        """When a parent submits an age preference both via bunk_with prose AND the
+        socialize_with checkbox, dedupe must keep the bunk_with-derived request as
+        primary — the prose carries richer signal than a binary checkbox tick.
+
+        Without this fix, confidence_score tiebreaks (checkbox=1.0 > AI parse=0.92)
+        pick the wrong winner.
+        """
+        bunk_with_req = self._age_pref(SourceField.BUNK_WITH, confidence=0.92)
+        socialize_req = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=1.0)
+
+        result = deduplicator.deduplicate_batch([socialize_req, bunk_with_req])
+
+        assert len(result.kept_requests) == 1
+        primary = result.kept_requests[0]
+        assert primary.source_field == SourceField.BUNK_WITH, (
+            f"Expected bunk_with to win parent-vs-parent age_pref dedupe; got {primary.source_field}"
+        )
+        assert len(result.duplicate_groups) == 1
+        assert result.duplicate_groups[0].duplicates[0].source_field == SourceField.SOCIALIZE_WITH
+
+    def test_bunk_with_wins_even_when_listed_second(self, deduplicator):
+        """Input order must not affect outcome — bunk_with wins regardless of position."""
+        bunk_with_req = self._age_pref(SourceField.BUNK_WITH, confidence=0.88)
+        socialize_req = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=1.0)
+
+        # bunk_with listed second
+        result = deduplicator.deduplicate_batch([socialize_req, bunk_with_req])
+        assert result.kept_requests[0].source_field == SourceField.BUNK_WITH
+
+        # bunk_with listed first
+        result2 = deduplicator.deduplicate_batch([bunk_with_req, socialize_req])
+        assert result2.kept_requests[0].source_field == SourceField.BUNK_WITH
+
+    def test_staff_over_family_still_wins_before_bunk_with_bias(self, deduplicator):
+        """SOURCE_PRIORITY (staff > family) must dominate the bunk_with tiebreaker.
+
+        A FAMILY bunk_with request must NOT beat a STAFF socialize_with request —
+        the bunk_with bias only fires for same-source (parent-vs-parent) ties.
+        """
+        family_bunk_with = self._age_pref(SourceField.BUNK_WITH, confidence=0.92, source=RequestSource.FAMILY)
+        staff_socialize = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=0.80, source=RequestSource.STAFF)
+
+        result = deduplicator.deduplicate_batch([family_bunk_with, staff_socialize])
+
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].source == RequestSource.STAFF, (
+            "Staff source must still win over family bunk_with; bunk_with bias must not override SOURCE_PRIORITY"
+        )
+
+    def test_confidence_still_tiebreaks_when_both_non_bunk_with(self, deduplicator):
+        """When neither request is from bunk_with, confidence remains the final tiebreaker."""
+        high_conf = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=1.0)
+        low_conf = self._age_pref(SourceField.BUNKING_NOTES, confidence=0.75)
+
+        result = deduplicator.deduplicate_batch([low_conf, high_conf])
+
+        assert len(result.kept_requests) == 1
+        # Neither is bunk_with → confidence decides (1.0 beats 0.75)
+        assert result.kept_requests[0].source_field == SourceField.SOCIALIZE_WITH
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from ..core.models import BunkRequest, RequestSource, RequestType
 from ..data.repositories.request_repository import RequestRepository
+from ..shared.constants import SourceField
 
 # Source priority order (higher number = higher priority)
 # Used for deduplication tiebreaker only - staff validates family input
@@ -122,10 +123,15 @@ class Deduplicator:
                 # No duplicates in batch
                 kept_requests.append(group_requests[0])
             else:
-                # Sort by source priority (descending) then confidence (descending)
-                sorted_requests = sorted(
-                    group_requests, key=lambda r: (SOURCE_PRIORITY.get(r.source, 0), r.confidence_score), reverse=True
-                )
+                # Tiebreak order (descending): SOURCE_PRIORITY, then bunk_with-source
+                # preference for parent age_pref dedupe (Stage 1 fix), then confidence.
+                # The bunk_with bias only fires for parent-vs-parent age_pref ties; for
+                # any other source pairing, SOURCE_PRIORITY decides first.
+                def _sort_key(r: BunkRequest) -> tuple[int, int, float]:
+                    is_bunk_with = 1 if r.source_field == SourceField.BUNK_WITH else 0
+                    return (SOURCE_PRIORITY.get(r.source, 0), is_bunk_with, r.confidence_score)
+
+                sorted_requests = sorted(group_requests, key=_sort_key, reverse=True)
 
                 primary = sorted_requests[0]
                 duplicates = sorted_requests[1:]
