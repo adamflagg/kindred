@@ -98,14 +98,12 @@ export function Modal({
       aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
       style={backdropInsetRight ? { right: backdropInsetRight } : undefined}
     >
-      {/* Backdrop */}
+      {/* Backdrop — fills the (already-inset) dialog wrapper via inset-0,
+          so the wrapper's right offset is the single source of truth. */}
       <div
         data-testid="modal-backdrop"
         className="absolute inset-0 backdrop-blur"
-        style={{
-          backgroundColor: 'rgba(17, 26, 22, 0.42)',
-          ...(backdropInsetRight ? { right: backdropInsetRight } : {}),
-        }}
+        style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
         onClick={onClose}
         aria-hidden="true"
       />

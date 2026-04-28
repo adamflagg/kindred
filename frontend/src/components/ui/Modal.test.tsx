@@ -284,7 +284,24 @@ describe('Modal', () => {
   })
 
   describe('backdropInsetRight option', () => {
-    it('insets the backdrop from the right when set', () => {
+    it('shifts the dialog wrapper by the offset (single source of truth)', () => {
+      // The backdrop and the centered modal are both children of the dialog
+      // wrapper with `absolute inset-0`, so insetting the wrapper alone
+      // shrinks both — applying the offset to the backdrop too would
+      // double-inset it relative to the already-shrunk wrapper.
+      render(
+        <Modal isOpen={true} onClose={() => {}} backdropInsetRight="28rem">
+          <p>Content</p>
+        </Modal>
+      )
+
+      const dialog = screen.getByRole('dialog')
+      expect(dialog).toHaveStyle({ right: '28rem' })
+    })
+
+    it('leaves the backdrop without its own right offset', () => {
+      // Regression guard for the double-inset bug: the backdrop must rely on
+      // its parent's positioning, not duplicate the inset.
       render(
         <Modal isOpen={true} onClose={() => {}} backdropInsetRight="28rem">
           <p>Content</p>
@@ -292,31 +309,18 @@ describe('Modal', () => {
       )
 
       const backdrop = screen.getByTestId('modal-backdrop')
-      expect(backdrop).toHaveStyle({ right: '28rem' })
+      expect(backdrop.style.right).toBe('')
     })
 
-    it('does not inset by default', () => {
+    it('does not inset the wrapper by default', () => {
       render(
         <Modal isOpen={true} onClose={() => {}}>
           <p>Content</p>
         </Modal>
       )
 
-      const backdrop = screen.getByTestId('modal-backdrop')
-      // No explicit right offset → backdrop spans the full viewport.
-      expect(backdrop.style.right).toBe('')
-    })
-
-    it('shifts the modal centering wrapper by the same offset', () => {
-      render(
-        <Modal isOpen={true} onClose={() => {}} backdropInsetRight="28rem">
-          <p>Content</p>
-        </Modal>
-      )
-
-      // The modal centers within the unblurred space, not the full viewport.
       const dialog = screen.getByRole('dialog')
-      expect(dialog).toHaveStyle({ right: '28rem' })
+      expect(dialog.style.right).toBe('')
     })
   })
 
