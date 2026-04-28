@@ -12,15 +12,18 @@ interface UnassignedCampersProps {
   campers: Camper[]
   onCamperClick?: (camper: Camper) => void
   embedded?: boolean // When true, hide header and adjust for sidebar
+  isProductionMode?: boolean
 }
 
 export default function UnassignedCampers({
   campers,
   onCamperClick,
   embedded = false,
+  isProductionMode = false,
 }: UnassignedCampersProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'unassigned',
+    disabled: isProductionMode,
   })
   const viewingYear = useYear()
 
@@ -65,6 +68,8 @@ export default function UnassignedCampers({
                 <CamperCard
                   key={camper.id}
                   camper={camper}
+                  isDraggable={!isProductionMode}
+                  isProductionMode={isProductionMode}
                   {...(onCamperClick && { onClick: onCamperClick })}
                   hasRequests={requestStatus[camper.person_cm_id] ?? true}
                   bunkCampers={[]} // Unassigned campers have no bunk mates
