@@ -40,6 +40,13 @@ interface CohortDrillDownModalProps {
    * keeps tests and standalone usage from inventing an "Unassigned" label.
    */
   bunkByPerson?: Map<number, string | null>
+  /**
+   * When true (default), the modal reserves 28rem of right-edge space so the
+   * source CamperDetailsPanel slide-out remains visible and unblurred — staff
+   * referenced the source camper while the cohort opens. Set to false when
+   * opened from the full-page CamperDetail view, which has no side panel.
+   */
+  reserveSidePanel?: boolean
   onClose: () => void
 }
 
@@ -121,6 +128,7 @@ export function CohortDrillDownModal({
   allGenders,
   requestRelations,
   bunkByPerson,
+  reserveSidePanel = true,
   onClose,
 }: CohortDrillDownModalProps) {
   const count = attendees.length
@@ -151,9 +159,10 @@ export function CohortDrillDownModal({
       size="lg"
       noPadding
       scrollable
-      // Match CamperDetailsPanel width so the panel stays unblurred — staff
-      // want to keep referencing the source camper while the cohort opens.
-      backdropInsetRight="28rem"
+      // When opened from the slide-out panel, match its width so it stays
+      // unblurred (staff reference the source camper while the cohort opens).
+      // From the full page there's no side panel — center normally.
+      {...(reserveSidePanel ? { backdropInsetRight: '28rem' } : {})}
     >
       {count === 0 ? (
         <p className="text-muted-foreground p-6 text-sm">No other campers in this session match.</p>

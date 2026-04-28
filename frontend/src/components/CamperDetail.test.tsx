@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import CamperDetail from './CamperDetail'
+
+let mockSessionYear = 2026
+let mockAttendeeYear = 2026
 
 // Mock the camper data hooks to return a minimal fixture.
 vi.mock('../hooks/camper', () => ({
@@ -11,11 +14,12 @@ vi.mock('../hooks/camper', () => ({
       {
         id: 'att1',
         person_cm_id: 1000001,
+        session_cm_id: 2,
         attendee_status: 'enrolled',
-        year: 2026,
+        year: mockAttendeeYear,
         first_name: 'Emma',
         last_name: 'Johnson',
-        expand: { session: { cm_id: 2, name: 'Session 2', year: 2026 } },
+        expand: { session: { cm_id: 2, name: 'Session 2', year: mockSessionYear } },
       },
     ],
     allAttendees: [],
@@ -36,6 +40,39 @@ vi.mock('../hooks/camper', () => ({
   }),
   useAllBunkRequests: () => ({ allBunkRequests: [], isLoading: false, error: null }),
   useSatisfactionData: () => ({ satisfactionData: {}, satisfactionLoading: false }),
+}))
+
+vi.mock('../hooks/useCamperCohorts', () => ({
+  useCamperCohorts: () => ({
+    cohorts: {
+      school: {
+        label: 'Riverside Elementary',
+        count: 3,
+        attendees: [],
+      },
+      congregation: {
+        label: 'Temple Beth Shalom',
+        count: 2,
+        attendees: [],
+      },
+      city: {
+        label: 'Berkeley',
+        count: 5,
+        attendees: [],
+      },
+      sessionType: 'standard',
+      allGenders: false,
+    },
+    isLoading: false,
+  }),
+}))
+
+vi.mock('../hooks/useCohortRequestRelations', () => ({
+  useCohortRequestRelations: () => ({ relations: new Map() }),
+}))
+
+vi.mock('../hooks/useCohortBunkAssignments', () => ({
+  useCohortBunkAssignments: () => ({ bunkByPerson: new Map() }),
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({
@@ -60,6 +97,10 @@ vi.mock('../lib/pocketbase', () => ({
               first_name: 'Emma',
               last_name: 'Johnson',
               year: 2026,
+              normalized_school: 'Riverside Elementary',
+              normalized_city: 'Berkeley',
+              normalized_congregation: 'Temple Beth Shalom',
+              congregation: 'Temple Beth Shalom',
             },
           ],
         }),
@@ -90,6 +131,8 @@ function renderDetail() {
 
 beforeEach(() => {
   mockAuthValue = { user: null, isLoading: false }
+  mockSessionYear = 2026
+  mockAttendeeYear = 2026
 })
 
 describe('CamperDetail permission gates', () => {
@@ -120,5 +163,56 @@ describe('CamperDetail permission gates', () => {
     }
     renderDetail()
     expect(await screen.findByText(/Raw Bunking Data/i)).toBeTruthy()
+  })
+})
+
+describe('CamperDetail cohort badges', () => {
+  beforeEach(() => {
+    mockAuthValue = {
+      user: { is_admin: true, cached_permissions: [] },
+      isLoading: false,
+    }
+  })
+
+  it('renders a cohort badge for school in the IdentityPanel', async () => {
+    renderDetail()
+    expect(await screen.findByTestId('cohort-badge-school')).toBeTruthy()
+  })
+
+  it('renders a cohort badge for city in the IdentityPanel', async () => {
+    renderDetail()
+    expect(await screen.findByTestId('cohort-badge-city')).toBeTruthy()
+  })
+
+  it('renders a cohort badge for congregation in the IdentityPanel', async () => {
+    renderDetail()
+    expect(await screen.findByTestId('cohort-badge-congregation')).toBeTruthy()
+  })
+
+  it('does not render the standalone cohort section on the full page', async () => {
+    renderDetail()
+    await screen.findByText(/Emma/i).catch(() => null)
+    expect(screen.queryByTestId('camper-cohorts-section')).toBeNull()
+  })
+
+  it('opens the cohort drill-down modal centered (no side-panel reservation) when clicked from the full page', async () => {
+    renderDetail()
+    const badge = await screen.findByTestId('cohort-badge-school')
+    fireEvent.click(badge)
+    const dialog = await screen.findByRole('dialog')
+    // The dialog wrapper should NOT have right-edge inset reserved for a
+    // slide-out panel when the modal is opened from the full-page view.
+    const inset = (dialog as HTMLElement).style.right
+    expect(inset === '' || inset === '0px').toBe(true)
+  })
+
+  it('hides cohort badges when viewing historical year data', async () => {
+    mockSessionYear = 2025
+    mockAttendeeYear = 2025
+    renderDetail()
+    await screen.findByText(/Emma/i).catch(() => null)
+    expect(screen.queryByTestId('cohort-badge-school')).toBeNull()
+    expect(screen.queryByTestId('cohort-badge-city')).toBeNull()
+    expect(screen.queryByTestId('cohort-badge-congregation')).toBeNull()
   })
 })
