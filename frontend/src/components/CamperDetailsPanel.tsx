@@ -54,6 +54,8 @@ import { CamperAlertSection } from './CamperAlertSection'
 import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { buildCamperAlerts } from '../utils/camperAlertUtils'
+import { useBunkRequestContext } from '../hooks'
+import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
@@ -95,6 +97,14 @@ interface CamperDetailsPanelProps {
   onClose: () => void
   embedded?: boolean
   requestClose?: boolean // When true, triggers animated close
+  /**
+   * Roster of campers in the selected camper's currently-assigned bunk.
+   * Required for accurate unsatisfied-requests alert parity with CamperCard.
+   * Omit (or pass empty) when the panel is rendered outside a bunk-aware
+   * context (graph modals, embedded right-panel) — alert will then mirror
+   * the conservative "self-only" view.
+   */
+  bunkCampers?: BunkmateInfo[]
 }
 
 // Interface for historical records
@@ -120,6 +130,7 @@ export default function CamperDetailsPanel({
   onClose,
   embedded = false,
   requestClose = false,
+  bunkCampers,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -710,33 +721,54 @@ export default function CamperDetailsPanel({
     ? satisfactionData[agePreferenceRequest.id]
     : undefined
 
-  // ── Build alert catalog from card-mirrored data ────────────────────────────
+  // ── Build alert catalog from the SAME source CamperCard uses ───────────────
   // Placed before early returns so useMemo is called unconditionally (Rules of Hooks).
-  // Memoized so the alert list reference is stable across renders when inputs
-  // have not changed.  The dependency list mirrors every value consumed by
-  // buildCamperAlerts: bunk assignment, resolved requests, satisfaction results,
-  // and lock-group membership.
+  // We pull `getSatisfiedRequestInfo` from BunkRequestProvider — the same fn
+  // CamperCard calls — so the orange-triangle trigger on the board and the
+  // yellow row in this sidebar are computed by one shared code path. Do NOT
+  // reintroduce a parallel calculation here.
+  const { getSatisfiedRequestInfo } = useBunkRequestContext()
   const lockState = getCamperLockState(camper?.person_cm_id ?? 0)
   const lockGroup = getCamperLockGroup(camper?.person_cm_id ?? 0)
   const lockGroupSize = lockGroup ? getGroupMembers(lockGroup.id).length : 0
-  // Stable string keys to avoid referential inequality on derived arrays/objects
-  const bunkRequestsKey = bunkRequests.map((r) => `${r.id}:${r.status}`).join(',')
-  const satisfactionKey = Object.entries(satisfactionData)
-    .map(([k, v]) => `${k}:${v.status}`)
-    .join(',')
+  // Default to self-only when caller doesn't pass a roster (graph modals,
+  // embedded right-panel) — matches CamperCard's same fallback.
+  const effectiveBunkCampers: BunkmateInfo[] =
+    bunkCampers && bunkCampers.length > 0
+      ? bunkCampers
+      : camper
+        ? [{ cmId: camper.person_cm_id, grade: camper.grade }]
+        : []
+  const bunkCampersKey = effectiveBunkCampers.map((c) => `${c.cmId}:${c.grade ?? ''}`).join(',')
 
-  const camperAlerts = useMemo(
-    () =>
-      buildCamperAlerts({
-        assignedBunkCmId: camper?.assigned_bunk_cm_id ?? null,
-        bunkRequests,
-        satisfactionData,
-        lockState,
-        lockGroupSize,
-      }),
+  const camperAlerts = useMemo(() => {
+    const requestInfo = camper?.assigned_bunk_cm_id
+      ? getSatisfiedRequestInfo(
+          camper.person_cm_id,
+          camper.assigned_bunk_cm_id,
+          effectiveBunkCampers,
+          camper.grade
+        )
+      : { totalRequests: 0, satisfiedCount: 0 }
+    return buildCamperAlerts({
+      assignedBunkCmId: camper?.assigned_bunk_cm_id ?? null,
+      requestInfo: {
+        totalRequests: requestInfo.totalRequests,
+        satisfiedCount: requestInfo.satisfiedCount,
+      },
+      lockState,
+      lockGroupSize,
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [camper?.assigned_bunk_cm_id, bunkRequestsKey, satisfactionKey, lockState, lockGroupSize]
-  )
+  }, [
+    camper?.assigned_bunk_cm_id,
+    camper?.person_cm_id,
+    camper?.grade,
+    bunkCampersKey,
+    lockState,
+    lockGroupSize,
+    getSatisfiedRequestInfo,
+  ])
 
   // Loading state
   if (camperLoading) {
@@ -946,7 +978,6 @@ export default function CamperDetailsPanel({
             selfDisplayName={camper.preferred_name?.trim() || camper.first_name || 'this camper'}
           />
         )}
-
 
         {/* Bunking Preferences - Compact view */}
         {bunkRequests.length > 0 && (

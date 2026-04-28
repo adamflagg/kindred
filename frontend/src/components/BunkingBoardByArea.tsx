@@ -657,13 +657,27 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       </DndContext>
 
       {/* Camper Details Panel - Slides in from right */}
-      {selectedCamperId && (
-        <CamperDetailsPanel
-          camperId={selectedCamperId}
-          onClose={handleCloseDetails}
-          requestClose={requestCloseDetails}
-        />
-      )}
+      {selectedCamperId &&
+        (() => {
+          // Pre-compute the bunk roster for the selected camper so the sidebar's
+          // unsatisfied-requests alert uses the same satisfaction calculation
+          // as the bunking-board card (parity by construction).
+          const selected = campers.find((c) => String(c.person_cm_id) === selectedCamperId)
+          const bunkmates =
+            selected?.assigned_bunk_cm_id != null
+              ? campers
+                  .filter((c) => c.assigned_bunk_cm_id === selected.assigned_bunk_cm_id)
+                  .map((c) => ({ cmId: c.person_cm_id, grade: c.grade }))
+              : []
+          return (
+            <CamperDetailsPanel
+              camperId={selectedCamperId}
+              onClose={handleCloseDetails}
+              requestClose={requestCloseDetails}
+              bunkCampers={bunkmates}
+            />
+          )
+        })()}
 
       {/* Bunk Social Graph Modal - lazy loaded */}
       {selectedBunkForGraph && (

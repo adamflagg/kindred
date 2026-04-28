@@ -224,6 +224,29 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))
 
+// Provide a no-op BunkRequestContext so CamperDetailsPanel can derive the
+// unsatisfied-requests alert without a live BunkRequestProvider in tests.
+vi.mock('../hooks', async () => {
+  const actual = await vi.importActual<typeof import('../hooks')>('../hooks')
+  return {
+    ...actual,
+    useBunkRequestContext: () => ({
+      allRequests: [],
+      hasRequests: () => false,
+      getRequestsForCamper: () => [],
+      getSatisfiedRequestInfo: () => ({
+        totalRequests: 0,
+        satisfiedCount: 0,
+        topPrioritySatisfied: false,
+        priorityLevels: [] as number[],
+        hasLockedPriority: false,
+      }),
+      isLoading: false,
+      error: null,
+    }),
+  }
+})
+
 // Provide a no-op LockGroupContext so CamperDetailsPanel renders in tests
 vi.mock('../contexts/LockGroupContext', () => ({
   useLockGroupContext: () => ({

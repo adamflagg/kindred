@@ -71,6 +71,31 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }))
 
+// Mock useBunkRequestContext — CamperDetailsPanel uses getSatisfiedRequestInfo
+// from BunkRequestProvider to derive the unsatisfied-requests alert in parity
+// with CamperCard. Default to "no requests / nothing satisfied" so existing
+// tests don't have to think about request data.
+vi.mock('../hooks', async () => {
+  const actual = await vi.importActual<typeof import('../hooks')>('../hooks')
+  return {
+    ...actual,
+    useBunkRequestContext: () => ({
+      allRequests: [],
+      hasRequests: () => false,
+      getRequestsForCamper: () => [],
+      getSatisfiedRequestInfo: () => ({
+        totalRequests: 0,
+        satisfiedCount: 0,
+        topPrioritySatisfied: false,
+        priorityLevels: [] as number[],
+        hasLockedPriority: false,
+      }),
+      isLoading: false,
+      error: null,
+    }),
+  }
+})
+
 // Mock LockGroupContext — CamperDetailsPanel uses it for alert derivation
 vi.mock('../contexts/LockGroupContext', () => ({
   useLockGroupContext: () => ({
