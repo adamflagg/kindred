@@ -583,6 +583,52 @@ class TestSocializeWithParentParamountStage1:
             "socialize_with should stay at parent_age_preference priority (1) when any bunk_with parent input exists"
         )
 
+    def test_socialize_with_low_priority_when_multiple_bunk_with_exist(self, calculator):
+        """Regression guard: the suppression rule is `any` (at least one bunk_with),
+        not `all` or `exactly one`. Multiple bunk_with siblings still suppress
+        socialize_with to priority 1."""
+        socialize_req = ParsedRequest(
+            raw_text="younger",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.YOUNGER,
+            source_field=SourceField.SOCIALIZE_WITH,
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=0,
+            metadata={},
+        )
+        bunk_with_one = ParsedRequest(
+            raw_text="wants to bunk with Liam",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Liam Garcia",
+            age_preference=None,
+            source_field=SourceField.BUNK_WITH,
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=1,
+            metadata={},
+        )
+        bunk_with_two = ParsedRequest(
+            raw_text="also Olivia",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Olivia Chen",
+            age_preference=None,
+            source_field=SourceField.BUNK_WITH,
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=2,
+            metadata={},
+        )
+        all_for_person = [socialize_req, bunk_with_one, bunk_with_two]
+
+        priority = calculator.calculate_priority(socialize_req, all_for_person)
+
+        assert priority == 1, (
+            "Two or more bunk_with requests must still suppress socialize_with — "
+            "guards against accidental any→all rewrite"
+        )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
