@@ -675,6 +675,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               onClose={handleCloseDetails}
               requestClose={requestCloseDetails}
               bunkCampers={bunkmates}
+              assignedBunkCmId={selected?.assigned_bunk_cm_id ?? null}
             />
           )
         })()}

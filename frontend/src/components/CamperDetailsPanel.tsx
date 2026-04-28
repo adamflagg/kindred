@@ -105,6 +105,16 @@ interface CamperDetailsPanelProps {
    * the conservative "self-only" view.
    */
   bunkCampers?: BunkmateInfo[]
+  /**
+   * Scenario-aware bunk assignment from the parent (e.g. BunkingBoardByArea
+   * holds active-scenario state in `selected.assigned_bunk_cm_id`). When
+   * provided, it overrides the PB-fetched live assignment for alert
+   * computation — so a kid placed in a scenario but unassigned in prod still
+   * shows the unsatisfied-requests row that fires on the bunking board.
+   * Omit from session-agnostic callers (graph modals, full-page camper view)
+   * to fall back to the live PB assignment.
+   */
+  assignedBunkCmId?: number | null
 }
 
 // Interface for historical records
@@ -131,6 +141,7 @@ export default function CamperDetailsPanel({
   embedded = false,
   requestClose = false,
   bunkCampers,
+  assignedBunkCmId,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -741,17 +752,22 @@ export default function CamperDetailsPanel({
         : []
   const bunkCampersKey = effectiveBunkCampers.map((c) => `${c.cmId}:${c.grade ?? ''}`).join(',')
 
+  // Prefer scenario-aware assignment from the parent (e.g. BunkingBoardByArea
+  // passes the active scenario's bunk). Falls back to the live PB assignment
+  // for session-agnostic callers (graph modals, full-page camper view).
+  const effectiveAssignedBunkCmId = assignedBunkCmId ?? camper?.assigned_bunk_cm_id ?? null
+
   const camperAlerts = useMemo(() => {
-    const requestInfo = camper?.assigned_bunk_cm_id
+    const requestInfo = effectiveAssignedBunkCmId
       ? getSatisfiedRequestInfo(
-          camper.person_cm_id,
-          camper.assigned_bunk_cm_id,
+          camper?.person_cm_id ?? 0,
+          effectiveAssignedBunkCmId,
           effectiveBunkCampers,
-          camper.grade
+          camper?.grade ?? null
         )
       : { totalRequests: 0, satisfiedCount: 0 }
     return buildCamperAlerts({
-      assignedBunkCmId: camper?.assigned_bunk_cm_id ?? null,
+      assignedBunkCmId: effectiveAssignedBunkCmId,
       requestInfo: {
         totalRequests: requestInfo.totalRequests,
         satisfiedCount: requestInfo.satisfiedCount,
@@ -761,7 +777,7 @@ export default function CamperDetailsPanel({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    camper?.assigned_bunk_cm_id,
+    effectiveAssignedBunkCmId,
     camper?.person_cm_id,
     camper?.grade,
     bunkCampersKey,

@@ -278,4 +278,41 @@ describe('CamperDetailsPanel — alert section integration', () => {
       expect(queryByTestId('panel-backdrop')).toBeInTheDocument()
     })
   })
+
+  // Scenario-aware assignment: CamperDetailsPanel re-fetches `camper` from PB,
+  // which only sees LIVE/prod assignments. When opened from a board that holds
+  // an active scenario in client state, the parent passes `assignedBunkCmId`
+  // so the alert path computes against the scenario, not the empty live state.
+  it('passes assignedBunkCmId prop into getSatisfiedRequestInfo (scenario override)', async () => {
+    const { waitFor, render: rtlRender } = await import('../test/testUtils')
+    const hooks = await import('../hooks')
+
+    const spy = vi.fn(
+      (_personCmId: number, _bunkCmId: number, _campers: unknown, _grade: number | null) => ({
+        totalRequests: 2,
+        satisfiedCount: 0,
+        topPrioritySatisfied: false,
+        priorityLevels: [] as number[],
+        hasLockedPriority: false,
+      })
+    )
+    vi.spyOn(hooks, 'useBunkRequestContext').mockReturnValue({
+      allRequests: [],
+      hasRequests: () => false,
+      getRequestsForCamper: () => [],
+      getSatisfiedRequestInfo: spy,
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof hooks.useBunkRequestContext>)
+
+    rtlRender(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} assignedBunkCmId={777} />)
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalled()
+    })
+    // Second arg is bunkCmId — must be the scenario value from the prop
+    const firstCall = spy.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    expect(firstCall?.[1]).toBe(777)
+  })
 })
