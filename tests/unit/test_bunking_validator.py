@@ -58,6 +58,7 @@ class MockBunkRequest:
     status: str = "resolved"
     priority: int = 5
     source_field: str | None = None
+    source: str | None = None  # "family" or "staff" (RequestSource enum value)
     ai_p1_reasoning: dict[str, Any] | None = None
     age_preference_target: str | None = None
 
@@ -746,3 +747,110 @@ def test_validation_statistics_has_parent_staff_breakdown_fields():
     assert stats.satisfied_staff_requests == 0
     assert stats.staff_request_satisfaction_rate == 0.0
     assert stats.campers_with_unsatisfied_staff_requests == 0
+
+
+# Helpers for RequestSource binning tests
+# Use numeric string IDs per existing fixture convention
+
+
+def _mock_person(cm_id: str, grade: int = 5) -> MockPerson:
+    return MockPerson(campminder_id=cm_id, name=f"Camper{cm_id}", grade=grade)
+
+
+def _mock_bunk(cm_id: str, max_size: int = 8) -> MockBunk:
+    return MockBunk(campminder_id=cm_id, name=f"Bunk-{cm_id}", max_size=max_size)
+
+
+def _mock_assignment(person_cm_id: str, bunk_cm_id: str) -> MockBunkAssignment:
+    return MockBunkAssignment(person_cm_id=person_cm_id, bunk_cm_id=bunk_cm_id)
+
+
+def _mock_request(
+    requester: str,
+    target: str | None,
+    source_field: str,
+    source: str,  # "family" or "staff" — the RequestSource enum value
+    request_type: str = "bunk_with",
+    status: str = "resolved",
+) -> MockBunkRequest:
+    return MockBunkRequest(
+        requester_person_cm_id=requester,
+        requested_person_cm_id=target,
+        request_type=request_type,
+        status=status,
+        source_field=source_field,
+        source=source,
+    )
+
+
+def test_validator_bins_parent_requests_separately_from_staff():
+    """Parent-source requests count in parent_* stats; staff-source in staff_*. No overlap."""
+    session = MockSession(campminder_id="10000001", name="Test Session")
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+    ]
+    requests = [
+        # Parent: 20001 wants to bunk with 20002 — satisfied (both in 30001)
+        _mock_request("20001", "20002", "bunk_with", "family"),
+        # Staff: 20002 has an internal note not_bunk_with 20003 (20003 not present)
+        _mock_request("20002", "20003", "not_bunk_with", "staff", request_type="not_bunk_with"),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    assert stats.parent_requests == 1
+    assert stats.satisfied_parent_requests == 1
+    assert stats.parent_request_satisfaction_rate == 1.0
+    assert stats.staff_requests == 1
+    assert stats.satisfied_staff_requests == 1
+    assert stats.staff_request_satisfaction_rate == 1.0
+    assert stats.campers_with_unsatisfied_parent_requests == 0
+    assert stats.campers_with_unsatisfied_staff_requests == 0
+
+
+def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
+    """A camper with a parent request unsatisfied but staff requests satisfied
+    should appear in campers_with_unsatisfied_parent_requests but NOT in the
+    staff equivalent. Stage 4 uses this binning for the solver minimum-one rule."""
+    session = MockSession(campminder_id="10000001", name="Test Session")
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30002"),  # NOT in 20001's bunk
+        _mock_assignment("20003", "30002"),
+    ]
+    requests = [
+        # Parent: 20001 wants to bunk with 20002 — UNSATISFIED (20002 is in 30002)
+        _mock_request("20001", "20002", "bunk_with", "family"),
+        # Staff: 20001 should not bunk with 20003 — SATISFIED (20003 in 30002, 20001 in 30001)
+        _mock_request("20001", "20003", "internal_notes", "staff", request_type="not_bunk_with"),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    assert stats.parent_requests == 1
+    assert stats.satisfied_parent_requests == 0
+    assert stats.staff_requests == 1
+    assert stats.satisfied_staff_requests == 1
+    assert stats.campers_with_unsatisfied_parent_requests == 1  # 20001
+    assert stats.campers_with_unsatisfied_staff_requests == 0  # 20001's staff is satisfied

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
+from bunking.sync.bunk_request_processor.core.models import RequestSource
 from bunking.sync.bunk_request_processor.shared.constants import (
     SOURCE_FIELD_TO_CONFIG_KEY,
     SourceField,
@@ -373,6 +374,10 @@ class BunkingValidator:
         satisfied_requests_by_person = defaultdict(list)
         explicit_requests_by_person = defaultdict(list)
         satisfied_explicit_by_person = defaultdict(list)
+        parent_requests_by_person = defaultdict(list)
+        satisfied_parent_by_person = defaultdict(list)
+        staff_requests_by_person = defaultdict(list)
+        satisfied_staff_by_person = defaultdict(list)
 
         def normalize_source_field(raw_field: str) -> str | None:
             """Normalize database source_field values to consistent snake_case keys.
@@ -508,6 +513,15 @@ class BunkingValidator:
                 if is_explicit:
                     explicit_requests_by_person[requester_id].append(request)
 
+                # Bin by RequestSource (parent vs staff) for Stage 1 breakdown stats.
+                # Parent: bunk_with + socialize_with (RequestSource.FAMILY / "family").
+                # Staff: not_bunk_with + bunking_notes + internal_notes (RequestSource.STAFF / "staff").
+                request_source = getattr(request, "source", None)
+                if request_source == RequestSource.FAMILY or request_source == RequestSource.FAMILY.value:
+                    parent_requests_by_person[requester_id].append(request)
+                elif request_source == RequestSource.STAFF or request_source == RequestSource.STAFF.value:
+                    staff_requests_by_person[requester_id].append(request)
+
                 # Update field stats (only for known fields)
                 for field in source_fields:
                     if field in stats.field_stats:
@@ -519,6 +533,10 @@ class BunkingValidator:
                     satisfied_requests_by_person[requester_id].append(request)
                     if is_explicit:
                         satisfied_explicit_by_person[requester_id].append(request)
+                    if request_source == RequestSource.FAMILY or request_source == RequestSource.FAMILY.value:
+                        satisfied_parent_by_person[requester_id].append(request)
+                    elif request_source == RequestSource.STAFF or request_source == RequestSource.STAFF.value:
+                        satisfied_staff_by_person[requester_id].append(request)
 
                     # Update satisfied field stats (only for known fields)
                     for field in source_fields:
@@ -621,6 +639,28 @@ class BunkingValidator:
                 stats.satisfied_explicit_csv_requests / stats.explicit_csv_requests
             )
         stats.campers_with_unsatisfied_explicit_requests = len(campers_with_unsatisfied_explicit_requests)
+
+        # Stage 1 parent/staff breakdown stats (RequestSource-driven).
+        stats.parent_requests = sum(len(reqs) for reqs in parent_requests_by_person.values())
+        stats.satisfied_parent_requests = sum(len(reqs) for reqs in satisfied_parent_by_person.values())
+        if stats.parent_requests > 0:
+            stats.parent_request_satisfaction_rate = stats.satisfied_parent_requests / stats.parent_requests
+
+        stats.staff_requests = sum(len(reqs) for reqs in staff_requests_by_person.values())
+        stats.satisfied_staff_requests = sum(len(reqs) for reqs in satisfied_staff_by_person.values())
+        if stats.staff_requests > 0:
+            stats.staff_request_satisfaction_rate = stats.satisfied_staff_requests / stats.staff_requests
+
+        stats.campers_with_unsatisfied_parent_requests = sum(
+            1
+            for requester_id, reqs in parent_requests_by_person.items()
+            if reqs and not satisfied_parent_by_person.get(requester_id)
+        )
+        stats.campers_with_unsatisfied_staff_requests = sum(
+            1
+            for requester_id, reqs in staff_requests_by_person.items()
+            if reqs and not satisfied_staff_by_person.get(requester_id)
+        )
 
         # Add summary issue if there are campers with unsatisfied valid requests
         if campers_with_unsatisfied_valid_requests:
