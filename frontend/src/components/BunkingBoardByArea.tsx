@@ -257,6 +257,17 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     })
   }
 
+  // Scenario-aware bunk lookup for the modal: returns the active view's bunk
+  // for a given person, or null if unassigned. CamperDetailsPanel re-fetches
+  // the requester's `assigned_bunk_cm_id` from PB (live state only), so this
+  // callback is what lets the modal's per-request satisfaction pills reflect
+  // the draft scenario rather than only prod assignments.
+  const getBunkForPerson = useCallback(
+    (cmId: number): number | null =>
+      campers.find((c) => c.person_cm_id === cmId)?.assigned_bunk_cm_id ?? null,
+    [campers]
+  )
+
   const handleCamperUnassign = async (camper: Camper) => {
     // Only allow in draft mode
     if (!isDraftMode) return
@@ -676,6 +687,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               requestClose={requestCloseDetails}
               bunkCampers={bunkmates}
               assignedBunkCmId={selected?.assigned_bunk_cm_id ?? null}
+              getBunkForPerson={getBunkForPerson}
             />
           )
         })()}
