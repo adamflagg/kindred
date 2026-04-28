@@ -32,7 +32,7 @@ def _make_optimized_builder() -> OptimizedSocialGraphBuilder:
 def _populate(
     builder: SocialGraphBuilder,
     nodes: dict[int, int | None],
-    request_edges: list[tuple[int, int]],
+    request_edges: list[tuple[int, int]] | list[tuple[int, int, str]],
     other_edges: list[tuple[int, int]] | None = None,
     graph_type: type = nx.Graph,
 ) -> None:
@@ -40,12 +40,20 @@ def _populate(
 
     graph_type defaults to nx.Graph; pass nx.DiGraph to mirror what
     OptimizedSocialGraphBuilder uses.
+
+    request_edges accepts 2-tuples (u, v) for legacy tests or 3-tuples
+    (u, v, source) for parent/staff-split tests.
     """
     builder.graph = graph_type()
     for node_id, bunk_cm_id in nodes.items():
         builder.graph.add_node(node_id, bunk_cm_id=bunk_cm_id)
-    for u, v in request_edges:
-        builder.graph.add_edge(u, v, edge_type="request")
+    for edge in request_edges:
+        if len(edge) == 3:
+            u, v, source = edge  # type: ignore[misc]
+            builder.graph.add_edge(u, v, edge_type="request", source=source)
+        else:
+            u, v = edge  # type: ignore[misc]
+            builder.graph.add_edge(u, v, edge_type="request")
     for u, v in other_edges or []:
         builder.graph.add_edge(u, v, edge_type="sibling")
 
@@ -165,6 +173,54 @@ def _fake_request(requester_id: int, requestee_id: int, source: str | None = "fa
     for key, value in attrs.items():
         setattr(request, key, value)
     return request
+
+
+def test_node_emits_parent_satisfaction_status_isolated_when_only_parent_unsat() -> None:
+    builder = _make_builder()
+    _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "family")])
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "no_requests"
+
+
+def test_node_emits_staff_satisfaction_status_isolated_when_only_staff_unsat() -> None:
+    builder = _make_builder()
+    _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "staff")])
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "isolated"
+
+
+def test_node_with_both_sources_evaluates_independently() -> None:
+    """Parent request satisfied (same bunk); staff request unsatisfied (different bunk).
+    Each split is computed from its own edges, not from the aggregate."""
+    builder = _make_builder()
+    _populate(
+        builder,
+        nodes={1: 100, 2: 100, 3: 200},
+        request_edges=[(1, 2, "family"), (1, 3, "staff")],
+    )
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "satisfied"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "isolated"
+
+
+def test_node_with_no_requests_at_all_emits_no_requests_for_both_splits() -> None:
+    builder = _make_builder()
+    _populate(builder, nodes={1: 100}, request_edges=[])
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "no_requests"
+
+
+def test_legacy_satisfaction_status_still_emitted_for_backwards_compat() -> None:
+    """Stage 2 keeps the aggregate satisfaction_status populated so any consumer not
+    yet migrated to parent_satisfaction_status keeps working until a future stage."""
+    builder = _make_builder()
+    _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "family")])
+    builder._calculate_node_metrics()
+    assert "satisfaction_status" in builder.graph.nodes[1]
+    assert builder.graph.nodes[1]["satisfaction_status"] == "isolated"
 
 
 def test_request_edges_carry_source_attribute() -> None:
