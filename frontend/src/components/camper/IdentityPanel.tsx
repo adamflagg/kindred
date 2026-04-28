@@ -194,6 +194,7 @@ export function IdentityPanel({
           attendees={openEntry.attendees}
           requestRelations={relations}
           bunkByPerson={bunkByPerson}
+          reserveSidePanel={false}
           onClose={() => setOpenKind(null)}
         />
       )}

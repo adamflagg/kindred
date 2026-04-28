@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import CamperDetail from './CamperDetail'
@@ -193,6 +193,17 @@ describe('CamperDetail cohort badges', () => {
     renderDetail()
     await screen.findByText(/Emma/i).catch(() => null)
     expect(screen.queryByTestId('camper-cohorts-section')).toBeNull()
+  })
+
+  it('opens the cohort drill-down modal centered (no side-panel reservation) when clicked from the full page', async () => {
+    renderDetail()
+    const badge = await screen.findByTestId('cohort-badge-school')
+    fireEvent.click(badge)
+    const dialog = await screen.findByRole('dialog')
+    // The dialog wrapper should NOT have right-edge inset reserved for a
+    // slide-out panel when the modal is opened from the full-page view.
+    const inset = (dialog as HTMLElement).style.right
+    expect(inset === '' || inset === '0px').toBe(true)
   })
 
   it('hides cohort badges when viewing historical year data', async () => {
