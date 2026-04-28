@@ -46,7 +46,9 @@ export interface GraphData {
   nodes: GraphNode[]
   edges: GraphEdge[]
   metrics: GraphMetrics
-  communities: Record<number, number[]>
+  // Session-level only. The bunk-graph endpoint (BunkGraphResponse) does not
+  // emit this field, and the same GraphCacheService stores both shapes.
+  communities?: Record<number, number[]>
   warnings?: string[]
   layout_positions?: Record<number, [number, number]>
   edge_type_counts?: Record<string, number>
