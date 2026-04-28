@@ -315,18 +315,6 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         setDraggedGroupMembers([])
       }
 
-      // Show warning if in production mode
-      if (isProductionMode) {
-        toast('⚠️ Production Mode: Changes will be overwritten by sync', {
-          duration: 5000,
-          style: {
-            background: '#FEF3C7',
-            color: '#92400E',
-            border: '2px solid #FCD34D',
-          },
-        })
-      }
-
       setActiveDragItem({
         id: active.id as string,
         type: 'camper',
@@ -610,6 +598,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           onToggle={() => setIsUnassignedExpanded(!isUnassignedExpanded)}
           onClose={() => setIsUnassignedExpanded(false)}
           isPanelOpen={!!selectedCamperId}
+          isProductionMode={isProductionMode}
         />
 
         {/* Drag Overlay - Shows group members when dragging locked groups */}
