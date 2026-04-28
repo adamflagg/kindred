@@ -25,7 +25,6 @@ import CampersView from './CampersView'
 import FriendGroupsView from './FriendGroupsView'
 import NewScenarioModal from './NewScenarioModal'
 import ScenarioManagementModal from './ScenarioManagementModal'
-import ProductionSaveConfirmDialog from './ProductionSaveConfirmDialog'
 import {
   SessionHeader,
   AreaFilterBar,
@@ -76,11 +75,6 @@ export default function SessionView() {
   // UI state
   const [showNewScenarioModal, setShowNewScenarioModal] = useState(false)
   const [showScenarioManagementModal, setShowScenarioManagementModal] = useState(false)
-  const [showProductionSaveDialog, setShowProductionSaveDialog] = useState(false)
-  const [pendingMove, setPendingMove] = useState<{
-    camperId: string
-    bunkId: string | null
-  } | null>(null)
   const [showClearDialog, setShowClearDialog] = useState(false)
   const [selectedBunkArea, setSelectedBunkArea] = useState<BunkArea>('all')
 
@@ -202,7 +196,6 @@ export default function SessionView() {
     currentYear,
     currentScenario,
     fetchWithAuth,
-    onPendingMoveCleared: () => setPendingMove(null),
   })
 
   // Pre-warm graph cache on session load (only if session has bunk requests)
@@ -327,12 +320,7 @@ export default function SessionView() {
                 selectedArea={selectedBunkArea}
                 onAreaChange={setSelectedBunkArea}
                 onCamperMove={async (camperId, bunkId) => {
-                  if (isProductionMode) {
-                    setPendingMove({ camperId, bunkId })
-                    setShowProductionSaveDialog(true)
-                  } else {
-                    await moveCamper(camperId, bunkId)
-                  }
+                  await moveCamper(camperId, bunkId)
                 }}
                 isProductionMode={isProductionMode}
                 defaultCapacity={defaultBunkCapacity}
@@ -402,24 +390,6 @@ export default function SessionView() {
           onClose={() => setShowScenarioManagementModal(false)}
         />
       )}
-
-      {/* Production Save Confirmation Dialog */}
-      <ProductionSaveConfirmDialog
-        isOpen={showProductionSaveDialog}
-        onClose={() => {
-          setShowProductionSaveDialog(false)
-          setPendingMove(null)
-        }}
-        onConfirm={async () => {
-          if (pendingMove) {
-            await moveCamper(pendingMove.camperId, pendingMove.bunkId)
-          }
-          setShowProductionSaveDialog(false)
-        }}
-        onCreateScenario={() => {
-          setShowNewScenarioModal(true)
-        }}
-      />
 
       {/* Clear Assignments Confirmation Dialog */}
       <ClearAssignmentsDialog

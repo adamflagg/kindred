@@ -139,7 +139,7 @@ function BunkCard({
     return true // Unknown gender = allow anywhere
   }
 
-  const dropDisabled = !isValidDropTarget()
+  const dropDisabled = isProductionMode || !isValidDropTarget()
 
   const { setNodeRef, isOver } = useDroppable({
     id: `bunk-${bunk.id}`,
@@ -299,8 +299,6 @@ function BunkCard({
         'hover:shadow-lodge-lg',
         (ageGapWarning || gradeRatioWarning || tooManyGradesWarning || isOverCapacity) &&
           'border-destructive/50 border-2',
-        // Production mode warning during drag
-        isDragging && isProductionMode && 'border-accent bg-accent/5 border-2',
         // Disabled drop target styling - grey out invalid gender matches
         dropDisabled && activeDragCamper && 'pointer-events-none opacity-40'
       )}
@@ -433,33 +431,34 @@ function BunkCard({
           items={sortedCampers.map((c) => c.id)}
           strategy={verticalListSortingStrategy}
         >
-          {sortedCampers.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-center">Drop campers here</p>
-          ) : (
-            sortedCampers.map((camper) => (
-              <CamperCard
-                key={camper.id}
-                camper={camper}
-                isDraggable={!isProductionMode}
-                {...(onCamperClick && { onClick: onCamperClick })}
-                hasRequests={
-                  camper.person_cm_id in requestStatus
-                    ? (requestStatus[camper.person_cm_id] ?? true)
-                    : true
-                }
-                {...(onCamperLockToggle && {
-                  onLockToggle: onCamperLockToggle,
-                })}
-                {...(onCamperUnassign && { onUnassign: onCamperUnassign })}
-                bunkCampers={bunkCampersWithGrades}
-                lockState={isDraftMode ? getCamperLockState(camper.person_cm_id) : 'none'}
-                lockGroupColor={
-                  isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined
-                }
-                isDraftMode={isDraftMode}
-              />
-            ))
-          )}
+          {sortedCampers.length === 0
+            ? !isProductionMode && (
+                <p className="text-muted-foreground py-8 text-center">Drop campers here</p>
+              )
+            : sortedCampers.map((camper) => (
+                <CamperCard
+                  key={camper.id}
+                  camper={camper}
+                  isDraggable={!isProductionMode}
+                  isProductionMode={isProductionMode}
+                  {...(onCamperClick && { onClick: onCamperClick })}
+                  hasRequests={
+                    camper.person_cm_id in requestStatus
+                      ? (requestStatus[camper.person_cm_id] ?? true)
+                      : true
+                  }
+                  {...(onCamperLockToggle && {
+                    onLockToggle: onCamperLockToggle,
+                  })}
+                  {...(onCamperUnassign && { onUnassign: onCamperUnassign })}
+                  bunkCampers={bunkCampersWithGrades}
+                  lockState={isDraftMode ? getCamperLockState(camper.person_cm_id) : 'none'}
+                  lockGroupColor={
+                    isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined
+                  }
+                  isDraftMode={isDraftMode}
+                />
+              ))}
         </SortableContext>
       </div>
 

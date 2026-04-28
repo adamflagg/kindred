@@ -15,6 +15,7 @@ interface FloatingUnassignedBadgeProps {
   onToggle: () => void
   onClose: () => void
   isPanelOpen?: boolean
+  isProductionMode?: boolean
 }
 
 export default function FloatingUnassignedBadge({
@@ -24,6 +25,7 @@ export default function FloatingUnassignedBadge({
   onToggle,
   onClose,
   isPanelOpen = false,
+  isProductionMode = false,
 }: FloatingUnassignedBadgeProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -32,6 +34,7 @@ export default function FloatingUnassignedBadge({
   // Set up droppable for the unassigned area
   const { setNodeRef, isOver } = useDroppable({
     id: 'unassigned',
+    disabled: isProductionMode,
   })
 
   // Sort campers by lastname (alpha), then firstname, then filter by search term
@@ -239,6 +242,8 @@ export default function FloatingUnassignedBadge({
                     <CamperCard
                       key={camper.id}
                       camper={camper}
+                      isDraggable={!isProductionMode}
+                      isProductionMode={isProductionMode}
                       onClick={handleCamperClick}
                       hasRequests={requestStatus[camper.person_cm_id] ?? true}
                       bunkCampers={[]}

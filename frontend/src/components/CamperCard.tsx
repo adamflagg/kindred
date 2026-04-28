@@ -30,6 +30,7 @@ interface CamperCardProps {
   lockState?: 'none' | 'pending' | 'locked' // Lock state
   lockGroupColor?: string | undefined // Color of the lock group
   isDraftMode?: boolean // True when viewing a draft scenario (enables lock features)
+  isProductionMode?: boolean // True when no scenario is selected (read-only)
 }
 
 function CamperCard({
@@ -44,6 +45,7 @@ function CamperCard({
   lockState = 'none',
   lockGroupColor,
   isDraftMode = false,
+  isProductionMode = false,
 }: CamperCardProps) {
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [contextMenuPosition, setContextMenuPosition] = useState({
@@ -210,6 +212,7 @@ function CamperCard({
       <div
         data-camper-card
         ref={setNodeRef}
+        title={isProductionMode ? 'Switch to a scenario to edit' : undefined}
         style={
           {
             ...style,
