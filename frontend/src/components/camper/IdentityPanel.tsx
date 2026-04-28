@@ -57,16 +57,12 @@ export function IdentityPanel({
   const viewingYear = useYear()
   const [openKind, setOpenKind] = useState<CohortKind | null>(null)
 
-  const { cohorts } = useCamperCohorts(
-    cohortContext?.personCmId ?? null,
-    cohortContext?.sessionCmId ?? 0,
-    cohortContext?.year ?? 0
-  )
-  const { relations } = useCohortRequestRelations(
-    cohortContext?.personCmId ?? null,
-    cohortContext?.sessionCmId ?? 0,
-    cohortContext?.year ?? 0
-  )
+  const personCmId = cohortContext?.personCmId ?? null
+  const sessionCmId = cohortContext?.sessionCmId ?? 0
+  const cohortYear = cohortContext?.year ?? 0
+
+  const { cohorts } = useCamperCohorts(personCmId, sessionCmId, cohortYear)
+  const { relations } = useCohortRequestRelations(personCmId, sessionCmId, cohortYear)
   const allCohortPersonIds = useMemo(() => {
     if (!cohorts) return [] as number[]
     const ids = new Set<number>()
@@ -75,11 +71,7 @@ export function IdentityPanel({
     }
     return [...ids]
   }, [cohorts])
-  const { bunkByPerson } = useCohortBunkAssignments(
-    allCohortPersonIds,
-    cohortContext?.sessionCmId ?? 0,
-    cohortContext?.year ?? 0
-  )
+  const { bunkByPerson } = useCohortBunkAssignments(allCohortPersonIds, sessionCmId, cohortYear)
 
   const openEntry = openKind && cohorts ? cohorts[openKind] : null
 
