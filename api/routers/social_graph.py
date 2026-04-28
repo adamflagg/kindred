@@ -163,6 +163,8 @@ async def get_session_social_graph(
                     clustering=node_data.get("clustering", 0.0),
                     community=node_data.get("community"),
                     satisfaction_status=node_data.get("satisfaction_status"),
+                    parent_satisfaction_status=node_data.get("parent_satisfaction_status"),
+                    staff_satisfaction_status=node_data.get("staff_satisfaction_status"),
                 )
             )
 
@@ -699,6 +701,8 @@ async def get_person_ego_network(
                     clustering=node_data.get("clustering", 0.0),
                     community=node_data.get("community"),
                     satisfaction_status=node_data.get("satisfaction_status"),
+                    parent_satisfaction_status=node_data.get("parent_satisfaction_status"),
+                    staff_satisfaction_status=node_data.get("staff_satisfaction_status"),
                 )
             )
 

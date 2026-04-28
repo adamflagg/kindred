@@ -14,6 +14,8 @@ export interface GraphNodeData {
   centrality: number
   clustering: number
   satisfaction_status: string
+  parent_satisfaction_status?: string
+  staff_satisfaction_status?: string
   bunk_cm_id: number | undefined
   community: number
 }
@@ -90,7 +92,12 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'text-wrap': 'wrap',
         'border-width': 3,
         'border-color': (ele: NodeSingular) => {
-          const status = ele.data('satisfaction_status')
+          // Parent-paramount: parent requests drive the primary border color.
+          // Falls back to legacy satisfaction_status for any consumer (e.g. older
+          // cached scenarios) that hasn't been migrated to the per-source split.
+          // Staff state is intentionally NOT rendered on the graph at this stage
+          // (Stage 2 scope decision); the field still flows through for future use.
+          const status = ele.data('parent_satisfaction_status') ?? ele.data('satisfaction_status')
           return STATUS_COLORS[status] ?? STATUS_COLORS['default'] ?? '#2c3e50'
         },
         'overlay-padding': '6px',
@@ -227,6 +234,8 @@ export interface CamperNodeElement {
     centrality: number
     clustering: number
     satisfaction_status: string
+    parent_satisfaction_status: string | undefined
+    staff_satisfaction_status: string | undefined
     bunk_cm_id: number | undefined
     community: number
     parent: string | undefined
@@ -306,6 +315,8 @@ export function createGraphElements(
       centrality: node.centrality,
       clustering: node.clustering,
       satisfaction_status: node.satisfaction_status,
+      parent_satisfaction_status: node.parent_satisfaction_status,
+      staff_satisfaction_status: node.staff_satisfaction_status,
       bunk_cm_id: node.bunk_cm_id,
       community: node.community,
       parent: node.bunk_cm_id ? `bunk-${node.bunk_cm_id}` : undefined,
