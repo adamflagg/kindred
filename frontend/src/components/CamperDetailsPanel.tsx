@@ -593,7 +593,12 @@ export default function CamperDetailsPanel({
   //   2. Session-agnostic callers (graph modals, full-page view) — fall back
   //      to `useSatisfactionData`, which fetches live assignments from PB.
   // Defined ABOVE the early-return paths to keep hook order stable.
-  const hasClientView = getBunkForPerson != null && assignedBunkCmId != null
+  // When the parent provides a scenario closure, route through it for both
+  // assigned and unassigned campers. This avoids firing a wasted PB
+  // `bunk_assignments` fetch for every unassigned-camper sidebar open from the
+  // board — `clientSatisfactionData` already early-returns `null` when
+  // `assignedBunkCmId == null`, falling back to an empty satisfaction map.
+  const hasClientView = getBunkForPerson != null
 
   const { satisfactionData: pbSatisfaction, isLoading: pbLoading } = useSatisfactionData(
     hasClientView ? undefined : camper?.person_cm_id, // disables the query

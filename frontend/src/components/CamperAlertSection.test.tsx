@@ -9,7 +9,7 @@
  *      Severity: blue (info)     | Request-related: NO  → non-clickable
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '../test/testUtils'
+import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import { CamperAlertSection } from './CamperAlertSection'
 import type { CamperAlert } from './CamperAlertSection'
 
@@ -269,9 +269,7 @@ vi.mock('../contexts/LockGroupContext', () => ({
 
 describe('CamperDetailsPanel — alert section integration', () => {
   it('regression: existing panel sections still render after alert section added', async () => {
-    const { waitFor, render: rtlRender } = await import('../test/testUtils')
-
-    const { queryByTestId } = rtlRender(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+    const { queryByTestId } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
 
     // Backdrop still present (non-embedded mode)
     await waitFor(() => {
@@ -284,7 +282,6 @@ describe('CamperDetailsPanel — alert section integration', () => {
   // an active scenario in client state, the parent passes `assignedBunkCmId`
   // so the alert path computes against the scenario, not the empty live state.
   it('passes assignedBunkCmId prop into getSatisfiedRequestInfo (scenario override)', async () => {
-    const { waitFor, render: rtlRender } = await import('../test/testUtils')
     const hooks = await import('../hooks')
 
     const spy = vi.fn(
@@ -305,7 +302,7 @@ describe('CamperDetailsPanel — alert section integration', () => {
       error: null,
     } as unknown as ReturnType<typeof hooks.useBunkRequestContext>)
 
-    rtlRender(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} assignedBunkCmId={777} />)
+    render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} assignedBunkCmId={777} />)
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalled()
@@ -322,9 +319,7 @@ describe('CamperDetailsPanel — alert section integration', () => {
   // of the satisfaction calculation is covered exhaustively in
   // requestSatisfaction.test.ts; this test only guards the prop wiring.
   it('mounts cleanly with getBunkForPerson + assignedBunkCmId + bunkCampers (scenario path)', async () => {
-    const { waitFor, render: rtlRender } = await import('../test/testUtils')
-
-    const { queryByTestId } = rtlRender(
+    const { queryByTestId } = render(
       <CamperDetailsPanel
         camperId="12345"
         onClose={vi.fn()}

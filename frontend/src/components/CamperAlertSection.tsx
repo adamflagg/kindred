@@ -87,7 +87,7 @@ export function CamperAlertSection({ alerts, onRequestAlertClick }: CamperAlertS
 
           if (alert.requestRelated) {
             return (
-              <li key={alert.id} role="listitem">
+              <li key={alert.id}>
                 <button
                   type="button"
                   aria-label={alert.label}
@@ -102,7 +102,7 @@ export function CamperAlertSection({ alerts, onRequestAlertClick }: CamperAlertS
           }
 
           return (
-            <li key={alert.id} role="listitem">
+            <li key={alert.id}>
               <div className={baseClasses}>
                 {icon}
                 <span>{alert.label}</span>

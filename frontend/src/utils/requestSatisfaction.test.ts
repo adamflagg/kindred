@@ -201,4 +201,15 @@ describe('computeRequestSatisfaction — fallback', () => {
     })
     expect(result.status).toBe('unknown')
   })
+
+  it('returns unknown for not_bunk_with with no requestee (symmetric with bunk_with)', () => {
+    const result = computeRequestSatisfaction({
+      request: req({ request_type: 'not_bunk_with', requestee_id: 0 }),
+      requesterBunkCmId: 42,
+      requesterBunkmates: [],
+      targetBunkCmId: null,
+      requesterGrade: REQUESTER_GRADE,
+    })
+    expect(result.status).toBe('unknown')
+  })
 })
