@@ -1,8 +1,8 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
-import { UserRoundSearch, Users, X, CircleCheck } from 'lucide-react'
+import { UserRoundSearch, Users, X, CircleCheck, Search } from 'lucide-react'
 import type { Camper } from '../types/app-types'
 import CamperCard from './CamperCard'
 import { useBunkRequestsFromContext } from '../hooks'
@@ -26,23 +26,37 @@ export default function FloatingUnassignedBadge({
   isPanelOpen = false,
 }: FloatingUnassignedBadgeProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [searchTerm, setSearchTerm] = useState('')
 
   // Set up droppable for the unassigned area
   const { setNodeRef, isOver } = useDroppable({
     id: 'unassigned',
   })
 
-  // Sort campers by lastname (alpha), then firstname
-  const sortedCampers = [...campers].sort((a, b) => {
-    const lastNameA = a.last_name ?? a.name.split(' ').pop() ?? ''
-    const lastNameB = b.last_name ?? b.name.split(' ').pop() ?? ''
-    const lastNameCompare = lastNameA.localeCompare(lastNameB)
-    if (lastNameCompare !== 0) return lastNameCompare
+  // Sort campers by lastname (alpha), then firstname, then filter by search term
+  const sortedCampers = useMemo(() => {
+    const sorted = [...campers].sort((a, b) => {
+      const lastNameA = a.last_name ?? a.name.split(' ').pop() ?? ''
+      const lastNameB = b.last_name ?? b.name.split(' ').pop() ?? ''
+      const lastNameCompare = lastNameA.localeCompare(lastNameB)
+      if (lastNameCompare !== 0) return lastNameCompare
 
-    const firstNameA = a.first_name ?? a.name.split(' ')[0] ?? ''
-    const firstNameB = b.first_name ?? b.name.split(' ')[0] ?? ''
-    return firstNameA.localeCompare(firstNameB)
-  })
+      const firstNameA = a.first_name ?? a.name.split(' ')[0] ?? ''
+      const firstNameB = b.first_name ?? b.name.split(' ')[0] ?? ''
+      return firstNameA.localeCompare(firstNameB)
+    })
+
+    if (!searchTerm) return sorted
+    const term = searchTerm.toLowerCase()
+    return sorted.filter(
+      (c) =>
+        c.name.toLowerCase().includes(term) ||
+        (c.first_name?.toLowerCase().includes(term) ?? false) ||
+        (c.last_name?.toLowerCase().includes(term) ?? false) ||
+        (c.preferred_name?.toLowerCase().includes(term) ?? false)
+    )
+  }, [campers, searchTerm])
 
   // Get bunk request status for all unassigned campers
   const camperPersonIds = campers.map((c) => c.person_cm_id)
@@ -73,20 +87,29 @@ export default function FloatingUnassignedBadge({
     [isExpanded, isPanelOpen, onClose]
   )
 
-  // Handle ESC key to close
+  // Handle ESC key: clear search if active, otherwise close
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isExpanded) {
-        onClose()
+        if (searchTerm) {
+          setSearchTerm('')
+        } else {
+          onClose()
+        }
       }
     },
-    [isExpanded, onClose]
+    [isExpanded, onClose, searchTerm]
   )
 
   useEffect(() => {
     if (isExpanded) {
       document.addEventListener('mousedown', handleClickOutside)
       document.addEventListener('keydown', handleKeyDown)
+      // Auto-focus search on open
+      requestAnimationFrame(() => searchInputRef.current?.focus())
+    } else {
+      // Clear search when popover closes
+      setSearchTerm('')
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
@@ -147,7 +170,7 @@ export default function FloatingUnassignedBadge({
               <span className="font-semibold">
                 Unassigned
                 <span className="text-muted-foreground ml-1.5 text-sm font-normal">
-                  ({campers.length})
+                  ({searchTerm ? `${sortedCampers.length}/${campers.length}` : campers.length})
                 </span>
               </span>
             </div>
@@ -159,6 +182,35 @@ export default function FloatingUnassignedBadge({
               <X className="text-muted-foreground h-4 w-4" />
             </button>
           </div>
+
+          {/* Search */}
+          {campers.length > 0 && (
+            <div className="border-border flex-shrink-0 border-b px-3 py-2">
+              <div className="relative">
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Filter by name..."
+                  className="bg-background border-border focus:ring-primary/40 focus:border-primary w-full rounded-lg border py-1.5 pr-7 pl-8 text-sm focus:ring-2 focus:outline-none"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => {
+                      setSearchTerm('')
+                      searchInputRef.current?.focus()
+                    }}
+                    className="hover:bg-muted absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5"
+                    title="Clear"
+                  >
+                    <X className="text-muted-foreground h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Camper List - Droppable area */}
           <div
@@ -172,6 +224,10 @@ export default function FloatingUnassignedBadge({
                 </div>
                 <p className="text-foreground font-medium">All campers assigned!</p>
                 <p className="text-muted-foreground mt-1 text-sm">Drag campers here to unassign</p>
+              </div>
+            ) : sortedCampers.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center py-8 text-center">
+                <p className="text-muted-foreground text-sm">No campers match "{searchTerm}"</p>
               </div>
             ) : (
               <div className="space-y-2">
