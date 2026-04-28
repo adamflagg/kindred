@@ -8,6 +8,7 @@ import {
   type GraphNodeData,
   type GraphEdgeData,
 } from './cytoscapeStyles'
+import { EDGE_COLORS } from './constants'
 import { expectDefined } from '../../test/testUtils'
 
 describe('getCytoscapeStyles', () => {
@@ -219,5 +220,174 @@ describe('createGraphElements', () => {
     expect(requestEdge.data.target).toBe('2')
     expect(requestEdge.data.confidence).toBe(0.9)
     expect(requestEdge.data.is_reciprocal).toBe(true)
+  })
+
+  it('flags edges as multi when the unordered pair has 2+ relationships', () => {
+    const edges: GraphEdgeData[] = [
+      // pair (1,2): one bunk_with each direction → 2 edges → multi
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: true,
+        request_type: 'bunk_with',
+      },
+      {
+        source: 2,
+        target: 1,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: true,
+        request_type: 'bunk_with',
+      },
+      // pair (2,3): single sibling edge → 1 edge → not multi
+      { source: 2, target: 3, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+      historical: true,
+      sibling: true,
+      school: true,
+    })
+    const between12 = out.filter(
+      (e) =>
+        (e.data.source === '1' && e.data.target === '2') ||
+        (e.data.source === '2' && e.data.target === '1')
+    )
+    expect(between12).toHaveLength(2)
+    expect(between12.every((e) => e.data.multi === true)).toBe(true)
+
+    const between23 = expectDefined(
+      out.find((e) => e.data.source === '2' && e.data.target === '3'),
+      '2-3 edge'
+    )
+    expect(between23.data.multi).toBeUndefined()
+  })
+
+  it('treats sibling+request between the same pair as multi (different types still counts)', () => {
+    const edges: GraphEdgeData[] = [
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'bunk_with',
+      },
+      { source: 1, target: 2, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+      historical: true,
+      sibling: true,
+      school: true,
+    })
+    expect(out).toHaveLength(2)
+    expect(out.every((e) => e.data.multi === true)).toBe(true)
+  })
+
+  it('passes request_type from edge data to EdgeElement so styles can color negative requests differently', () => {
+    const edges: GraphEdgeData[] = [
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'not_bunk_with',
+      },
+      {
+        source: 2,
+        target: 3,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: true,
+        request_type: 'bunk_with',
+      },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+      historical: true,
+      sibling: true,
+      school: true,
+    })
+    expect(out).toHaveLength(2)
+    const negative = expectDefined(
+      out.find((e) => e.data.source === '1' && e.data.target === '2'),
+      'negative edge'
+    )
+    expect(negative.data.request_type).toBe('not_bunk_with')
+    const positive = expectDefined(
+      out.find((e) => e.data.source === '2' && e.data.target === '3'),
+      'positive edge'
+    )
+    expect(positive.data.request_type).toBe('bunk_with')
+  })
+})
+
+describe('EDGE_COLORS constant', () => {
+  it('keeps bunk_with (positive) requests blue', () => {
+    expect(EDGE_COLORS['request']).toBe('#3498db')
+  })
+
+  it('uses red for not_bunk_with (negative) requests', () => {
+    expect(EDGE_COLORS['not_bunk_with']).toBe('#e74c3c')
+  })
+
+  it('uses green for sibling edges (was previously red)', () => {
+    expect(EDGE_COLORS['sibling']).toBe('#2ecc71')
+  })
+})
+
+describe('edge curve rendering', () => {
+  it('renders single relationships as straight lines (not curved)', () => {
+    // A pair with only one edge between them gets a plain directional
+    // arrow — easier to read than a slight curve. Curving is reserved for
+    // pairs with 2+ relationships.
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const edgeStyle = styles.find((s) => s.selector === 'edge')
+    expect(edgeStyle).toBeDefined()
+    const styleObj = edgeStyle?.style as unknown as Record<string, unknown>
+    expect(styleObj['curve-style']).toBe('straight')
+    // No double-headed arrowing — each edge owns its own one-way arrow.
+    expect(styleObj['source-arrow-shape']).toBeUndefined()
+  })
+
+  it('overrides curve-style to unbundled-bezier on edges flagged with multi', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const multiStyle = styles.find((s) => s.selector === 'edge[?multi]')
+    expect(multiStyle).toBeDefined()
+    const styleObj = multiStyle?.style as unknown as Record<string, unknown>
+    expect(styleObj['curve-style']).toBe('unbundled-bezier')
+  })
+
+  it('does not register a legacy edge[?is_reciprocal] override (per-edge rendering, not per-pair)', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    expect(styles.find((s) => s.selector === 'edge[?is_reciprocal]')).toBeUndefined()
+  })
+
+  it('colors not_bunk_with request edges using EDGE_COLORS["not_bunk_with"]', () => {
+    // The base edge selector uses a function for line-color that consults
+    // request_type — verified by checking that edges with request_type
+    // 'not_bunk_with' resolve to the negative color, not the positive one.
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const edgeStyle = styles.find((s) => s.selector === 'edge')
+    expect(edgeStyle).toBeDefined()
+    const styleObj = edgeStyle?.style as unknown as Record<string, unknown>
+    const lineColor = styleObj['line-color']
+    expect(typeof lineColor).toBe('function')
+
+    const fakeEdge = {
+      data: (key: string) =>
+        key === 'edge_type' ? 'request' : key === 'request_type' ? 'not_bunk_with' : null,
+    }
+    const color = (lineColor as (e: unknown) => string)(fakeEdge)
+    expect(color).toBe('#e74c3c')
   })
 })

@@ -8,10 +8,16 @@ import { createPopper } from '@popperjs/core'
 import { getUnitSideForBunk, type UnitSide } from '../../utils/unitMapping'
 import { getUnitColorForBunk, getUnitColorByName } from '../../utils/graphColorUtils'
 
-/** Display marker shown next to the unit name on the visual bubble label. */
-const SIDE_MARKER: Record<Exclude<UnitSide, null>, string> = {
-  B: '♂', // ♂
-  G: '♀', // ♀
+/** Lucide-derived path data for the gender side markers. Keeping the SVG
+ *  inline (rather than rendering React lucide-react components) avoids
+ *  spinning up a React tree just to extract markup for these DOM-based
+ *  popper labels. The unicode glyphs (♂ / ♀) we used previously rendered
+ *  too thin against the unit color stroke. */
+const SIDE_MARKER_PATHS: Record<Exclude<UnitSide, null>, string> = {
+  // Mars (♂): circle + diagonal arrow up-right
+  B: '<path d="M16 3h5v5"/><path d="M21 3l-6.75 6.75"/><circle cx="10" cy="14" r="6"/>',
+  // Venus (♀): circle + cross below
+  G: '<path d="M12 16v6"/><path d="M9 19h6"/><circle cx="12" cy="9" r="6"/>',
 }
 
 /** Shared config for bubbleset path rendering (unit and bunk bubbles) */
@@ -96,6 +102,65 @@ const UNIT_LABEL_FONT = {
 } as const
 
 /**
+ * Build the DOM for a unit label ("Galil" + ♂/♀ icon). Extracted as a
+ * pure helper so the SVG-icon swap can be unit-tested without spinning
+ * up a Cytoscape instance.
+ */
+export function buildUnitLabel(
+  unit: string,
+  side: Exclude<UnitSide, null>,
+  unitColor: string
+): HTMLElement {
+  const labelEl = document.createElement('div')
+  labelEl.className = 'unit-label-popper'
+  labelEl.style.position = 'absolute'
+
+  Object.assign(labelEl.style, {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    padding: '2px 10px',
+    borderRadius: '10px',
+    whiteSpace: 'nowrap',
+    border: `2px solid ${unitColor}`,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  })
+
+  const innerDiv = document.createElement('div')
+  Object.assign(innerDiv.style, UNIT_LABEL_FONT)
+  innerDiv.style.color = unitColor
+  innerDiv.textContent = unit
+  labelEl.appendChild(innerDiv)
+
+  // Inline SVG so the marker paints with the same stroke color as the
+  // unit border — no font-rendering anti-aliasing thinning the glyph.
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', unitColor)
+  svg.setAttribute('stroke-width', '2.5')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.innerHTML = SIDE_MARKER_PATHS[side]
+  labelEl.appendChild(svg)
+
+  return labelEl
+}
+
+/**
+ * Pick the DOM parent for popper labels. Appending into the graph
+ * container (instead of document.body) lets overflow:hidden clip labels
+ * cleanly under the card header — and keeps them visible inside the
+ * fixed-positioned card in fullscreen mode, where body-level labels
+ * would be hidden behind the modal.
+ */
+export function getLabelParent(containerRef: { current: HTMLElement | null }): HTMLElement {
+  return containerRef.current ?? document.body
+}
+
+/**
  * Returns the bubbleset path style for a unit boundary bubble.
  * The fill is intentionally 'none' — the boundary is shown by stroke only
  * (#32: fillOpacity: 0 makes any fill color invisible; 'none' is explicit).
@@ -157,7 +222,11 @@ function createPopperLabel(
     }
   })
 
-  document.body.appendChild(labelEl)
+  // Append into the graph container when one is available so the label
+  // is clipped by overflow:hidden (slides cleanly under the card header)
+  // and stays visible inside the fixed-positioned card in fullscreen
+  // mode. Falls back to document.body only if the container isn't ready.
+  getLabelParent(containerRef as { current: HTMLElement | null }).appendChild(labelEl)
 
   // Create virtual element for Popper that tracks the node position
   const virtualElement = {
@@ -186,11 +255,19 @@ function createPopperLabel(
     },
   }
 
+  const boundary = containerRef.current ?? 'viewport'
   const popperInstance = createPopper(virtualElement as unknown as Element, labelEl, {
     placement: 'top',
     modifiers: [
       { name: 'offset', options: { offset: [0, offsetY] } },
-      { name: 'preventOverflow', options: { boundary: containerRef.current ?? 'viewport' } },
+      // Both flip and preventOverflow default to viewport boundary. In
+      // fullscreen the card fills nearly the whole viewport, so viewport-
+      // bound flipping would only trigger once the label crossed the
+      // viewport edge — long past the header divider. Pinning both to the
+      // graph container makes the label flip to below-the-node as soon as
+      // there's no room above, matching the non-fullscreen behavior.
+      { name: 'flip', options: { boundary, fallbackPlacements: ['bottom'] } },
+      { name: 'preventOverflow', options: { boundary, altAxis: true } },
       {
         name: 'hideOutsideContainer',
         enabled: true,
@@ -200,11 +277,16 @@ function createPopperLabel(
           if (!container) return
           const containerRect = container.getBoundingClientRect()
           const popperRect = state.elements.popper.getBoundingClientRect()
+          // Hide the moment the popper crosses any container edge — not
+          // only when fully outside. With overflow:hidden on the container
+          // a partially-outside label is already visually clipped at the
+          // boundary; making it disappear cleanly avoids the half-cut
+          // remnant peeking past the header divider in fullscreen.
           const isOutside =
-            popperRect.bottom < containerRect.top ||
-            popperRect.top > containerRect.bottom ||
-            popperRect.right < containerRect.left ||
-            popperRect.left > containerRect.right
+            popperRect.top < containerRect.top ||
+            popperRect.bottom > containerRect.bottom ||
+            popperRect.left < containerRect.left ||
+            popperRect.right > containerRect.right
           state.elements.popper.style.visibility = isOutside ? 'hidden' : 'visible'
         },
       },
@@ -417,27 +499,7 @@ export function drawBunkBubbles(
       if (nodes.length === 0) return
 
       const unitColor = getUnitColorByName(unit)
-
-      const labelEl = document.createElement('div')
-      labelEl.className = 'unit-label-popper'
-      labelEl.style.position = 'absolute'
-      labelEl.style.zIndex = '1'
-      const innerDiv = document.createElement('div')
-
-      Object.assign(labelEl.style, {
-        backgroundColor: 'rgba(255,255,255,0.85)',
-        padding: '2px 10px',
-        borderRadius: '10px',
-        whiteSpace: 'nowrap',
-        border: `2px solid ${unitColor}`,
-      })
-
-      Object.assign(innerDiv.style, UNIT_LABEL_FONT)
-      innerDiv.style.color = unitColor
-
-      innerDiv.textContent = `${unit} ${SIDE_MARKER[side]}`
-      labelEl.appendChild(innerDiv)
-
+      const labelEl = buildUnitLabel(unit, side, unitColor)
       createPopperLabel(nodes, labelEl, containerRef, poppersRef, 30)
     })
   }

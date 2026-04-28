@@ -26,6 +26,7 @@ export interface GraphEdge {
   weight: number
   type: string
   reciprocal: boolean
+  request_type?: string // 'bunk_with' | 'not_bunk_with' for type='request' edges
   confidence?: number // AI confidence score for request edges
   priority?: number // Priority level for request edges
   metadata?: Record<string, unknown> // Additional edge metadata (e.g., location for classmate edges)

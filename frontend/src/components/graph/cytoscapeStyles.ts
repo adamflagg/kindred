@@ -26,6 +26,8 @@ export interface GraphEdgeData {
   priority: number
   confidence: number
   reciprocal: boolean
+  /** For type='request' edges: 'bunk_with' or 'not_bunk_with'. */
+  request_type?: string
 }
 
 /** Edge visibility settings */
@@ -38,6 +40,21 @@ export interface ShowEdgesSettings {
 /** Options for getCytoscapeStyles */
 export interface CytoscapeStyleOptions {
   showLabels: boolean
+}
+
+/**
+ * Map a Cytoscape edge to its color. The negative bunk request
+ * ('not_bunk_with') ships from the API with edge_type='request' — same as
+ * the positive 'bunk_with' — so we have to consult request_type to pick
+ * the right hue.
+ */
+function resolveEdgeColor(ele: { data: (key: string) => unknown }): string {
+  const edgeType = ele.data('edge_type') as string
+  if (edgeType === 'request') {
+    const requestType = ele.data('request_type') as string | null | undefined
+    if (requestType === 'not_bunk_with') return EDGE_COLORS['not_bunk_with'] ?? '#e74c3c'
+  }
+  return EDGE_COLORS[edgeType] ?? '#95a5a6'
 }
 
 /**
@@ -92,17 +109,27 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       selector: 'edge',
       style: {
         width: 2,
-        'line-color': (ele: EdgeSingular) => {
-          const edgeType = ele.data('edge_type')
-          return EDGE_COLORS[edgeType] ?? '#95a5a6'
-        },
+        'line-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
         'target-arrow-shape': 'triangle',
-        'target-arrow-color': (ele: EdgeSingular) => {
-          const edgeType = ele.data('edge_type')
-          return EDGE_COLORS[edgeType] ?? '#95a5a6'
-        },
-        'curve-style': 'bezier',
+        'target-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+        // Default: a single relationship between two campers renders as a
+        // plain straight directional arrow. Pairs with 2+ relationships
+        // (mutual same-type, asymmetric, or sibling+request combinations)
+        // pick up the `multi` data flag in createGraphElements and switch
+        // to unbundled-bezier below so each direction is its own curve.
+        'curve-style': 'straight',
         'overlay-padding': '2px',
+      },
+    },
+    {
+      selector: 'edge[?multi]',
+      style: {
+        // Splay each edge of a multi-relationship pair onto its own curve.
+        // Distance/weight are intentionally moderate so two curves don't
+        // overlap each other yet stay close enough to read as a related pair.
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': [40],
+        'control-point-weights': [0.5],
       },
     },
     {
@@ -216,6 +243,10 @@ export interface EdgeElement {
     priority: number
     confidence: number
     is_reciprocal: boolean
+    request_type?: string
+    /** True when this pair of campers has 2+ relationships (any combination
+     *  of bunk_with, not_bunk_with, sibling). Drives the curved-bezier style. */
+    multi?: boolean
   }
 }
 
@@ -282,22 +313,35 @@ export function createGraphElements(
   }))
 
   // Filter and create edges based on visibility settings
-  const edges: EdgeElement[] = edgeData
-    .filter((edge) => {
-      const edgeType = edge.type as keyof ShowEdgesSettings
-      return showEdges[edgeType] !== false
-    })
-    .map((edge, index) => ({
-      data: {
-        id: `edge-${index}`,
-        source: edge.source.toString(),
-        target: edge.target.toString(),
-        edge_type: edge.type,
-        priority: edge.priority,
-        confidence: edge.confidence,
-        is_reciprocal: edge.reciprocal,
-      },
-    }))
+  const visibleEdges = edgeData.filter((edge) => {
+    const edgeType = edge.type as keyof ShowEdgesSettings
+    return showEdges[edgeType] !== false
+  })
+
+  // Count relationships per unordered pair so the renderer can curve only
+  // when there are 2+ edges between the same two campers (mutuals, mixed
+  // bunk_with/not_bunk_with, sibling-and-request combinations). Single-
+  // edge pairs stay straight, which the user finds easier to read.
+  const pairCounts = new Map<string, number>()
+  const pairKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`)
+  visibleEdges.forEach((e) => {
+    const k = pairKey(e.source, e.target)
+    pairCounts.set(k, (pairCounts.get(k) ?? 0) + 1)
+  })
+
+  const edges: EdgeElement[] = visibleEdges.map((edge, index) => ({
+    data: {
+      id: `edge-${index}`,
+      source: edge.source.toString(),
+      target: edge.target.toString(),
+      edge_type: edge.type,
+      priority: edge.priority,
+      confidence: edge.confidence,
+      is_reciprocal: edge.reciprocal,
+      ...(edge.request_type ? { request_type: edge.request_type } : {}),
+      ...((pairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2 ? { multi: true } : {}),
+    },
+  }))
 
   return { parentNodes, nodes, edges }
 }

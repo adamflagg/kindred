@@ -390,30 +390,75 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     })
   }, [bunksData])
 
-  // Handle resize when expanding/collapsing - container stays the same, just resizes
+  // Resize+fit the graph whenever the user toggles fullscreen. The init
+  // effect's worker handler already does the initial resize+fit on first
+  // load, so we skip the very first run of THIS effect (which fires on
+  // mount alongside the init effect) — but every subsequent isExpanded
+  // change runs a fresh resize+fit chained across three animation frames
+  // so React's commit, the browser's CSS layout pass, and the paint all
+  // settle before cytoscape reads the new container dimensions. Without
+  // the multi-frame chain, toggling fullscreen immediately after initial
+  // load could measure the still-transitioning container and leave the
+  // graph laid out for the pre-fullscreen size (small, upper-left).
   useEffect(() => {
-    const cy = cyRef.current
-    if (!cy || cy.destroyed()) return
-
-    // Skip first run on initial mount — the init effect's worker handler
-    // already does cy.resize() + cy.fit(). Without this guard, we re-fit
-    // 200ms later against a possibly-different container size and the graph
-    // visibly "settles" into a new spot after labels render.
     if (!hasMountedExpandRef.current) {
       hasMountedExpandRef.current = true
       return
     }
 
-    // Longer delay to allow CSS layout to stabilize in expanded mode
-    const timeoutId = setTimeout(() => {
-      if (!cy.destroyed()) {
+    let cancelled = false
+    const fitNow = () => {
+      if (cancelled) return
+      const cy = cyRef.current
+      if (!cy || cy.destroyed()) return
+      cy.resize()
+      cy.fit(undefined, 50)
+    }
+    const r1 = requestAnimationFrame(() => {
+      const r2 = requestAnimationFrame(() => {
+        const r3 = requestAnimationFrame(fitNow)
+        rafIds.push(r3)
+      })
+      rafIds.push(r2)
+    })
+    const rafIds: number[] = [r1]
+
+    return () => {
+      cancelled = true
+      rafIds.forEach(cancelAnimationFrame)
+    }
+  }, [isExpanded])
+
+  // Separately, observe the container for non-toggle reflows (window
+  // resize, sidebar open/close, devtools panel) so the graph stays fitted
+  // even when isExpanded hasn't changed. Reads cyRef inline so a graph
+  // rebuild swap doesn't leave a stale closure.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    let rafId = 0
+    let isInitialObservation = true
+    const observer = new ResizeObserver(() => {
+      if (isInitialObservation) {
+        // Drop the initial observation (it fires synchronously when we
+        // attach with the current size — that's not a "change").
+        isInitialObservation = false
+        return
+      }
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        const cy = cyRef.current
+        if (!cy || cy.destroyed()) return
         cy.resize()
         cy.fit(undefined, 50)
-      }
-    }, 200)
-
-    return () => clearTimeout(timeoutId)
-  }, [isExpanded])
+      })
+    })
+    observer.observe(container)
+    return () => {
+      cancelAnimationFrame(rafId)
+      observer.disconnect()
+    }
+  }, [])
 
   // Bubble draw/clear when toggling Bunks/Units checkboxes OR when bunksData
   // first arrives. The init effect's onLayoutComplete only draws bubbles if
@@ -470,7 +515,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   }
 
   const handleFit = () => {
-    cyRef.current?.fit()
+    // Match the 50px padding the auto-fit (initial load + fullscreen
+    // toggle) uses. Calling cy.fit() with no padding lets nodes hug the
+    // container edges, where labels and bubbles get clipped under the
+    // header divider, and the legend / controls overlap the corners of
+    // the graph area.
+    cyRef.current?.fit(undefined, 50)
   }
 
   const handleExpandToggle = () => {

@@ -21,7 +21,7 @@ export default function GraphLegend({
   existingGrades,
 }: GraphLegendProps) {
   return (
-    <div className="bg-card/95 border-border shadow-lodge-sm absolute right-4 bottom-4 space-y-2 rounded-xl border p-3 text-xs backdrop-blur-sm">
+    <div className="bg-card/95 border-border shadow-lodge-sm absolute right-4 bottom-4 z-10 space-y-2 rounded-xl border p-3 text-xs backdrop-blur-sm">
       {/* Edge Types */}
       <div>
         <div className="mb-1 font-medium">Edge Types</div>
@@ -29,6 +29,10 @@ export default function GraphLegend({
           <div className="flex items-center gap-2">
             <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['request'] }} />
             <span>Bunk Request</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['not_bunk_with'] }} />
+            <span>Don't Bunk With</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['sibling'] }} />
