@@ -30,7 +30,6 @@ export const GRADE_COLORS: Record<number, string> = {
 export const EDGE_COLORS: Record<string, string> = {
   request: '#3498db',
   not_bunk_with: '#e74c3c',
-  historical: '#95a5a6',
   sibling: '#2ecc71',
   bundled: '#9b59b6',
 }
@@ -51,7 +50,6 @@ export const STATUS_COLORS: Record<string, string> = {
 // Edge type display labels
 export const EDGE_LABELS: Record<string, string> = {
   request: 'Requests',
-  historical: 'Historical',
   sibling: 'Siblings',
 }
 
