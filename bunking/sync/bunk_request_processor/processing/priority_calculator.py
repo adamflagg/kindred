@@ -124,6 +124,11 @@ class PriorityCalculator:
         """
         has_other_requests = len(all_requests_for_person) > 1
 
+        # Stage 1 fix (#18c foundation): socialize_with should be sole-promoted
+        # when the parent submitted no bunk_with text — staff requests don't
+        # count as "other requests" for this purpose since they're not parent input.
+        has_parent_bunk_with = any(r.source_field == SourceField.BUNK_WITH for r in all_requests_for_person)
+
         # Memoize the per-list family_bunk_requests scan to avoid O(N^2) work
         # when this method is invoked once per request for the same list (#923).
         any_family_request_has_priority = self._any_family_request_has_priority(all_requests_for_person)
@@ -160,7 +165,7 @@ class PriorityCalculator:
         # Parent age preference from socialize_with
         if parsed.source_field == SourceField.SOCIALIZE_WITH:
             if parsed.request_type == RequestType.AGE_PREFERENCE:
-                if not has_other_requests:
+                if not has_parent_bunk_with:
                     return self._get_rule_priority("age_preference_sole")  # priority 4
                 return self._get_rule_priority("parent_age_preference")  # priority 1
 

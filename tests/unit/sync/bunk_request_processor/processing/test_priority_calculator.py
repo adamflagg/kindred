@@ -210,14 +210,23 @@ class TestPriorityCalculator:
         assert priority == 4, "Sole age_preference from socialize_with should get priority 4"
 
     def test_age_preference_from_socialize_with_with_other_requests(self, calculator):
-        """age_preference from socialize_with with other requests gets priority 1"""
+        """age_preference from socialize_with with other non-bunk_with requests still
+        gets promoted to priority 4.
+
+        Updated per Stage 1 fix: staff requests (and other non-bunk_with source_field
+        requests) no longer suppress socialize_with sole-promote. Only a request with
+        source_field=BUNK_WITH (parent bunk_with text) suppresses the promotion.
+
+        The 'other' request here is a BUNK_WITH type but from source_field=SOCIALIZE_WITH,
+        meaning it's not a parent bunk_with field submission — so promotion still applies.
+        """
         requests = [
             ParsedRequest(
                 raw_text="Emma Johnson",
                 request_type=RequestType.BUNK_WITH,
                 target_name="Emma Johnson",
                 age_preference=None,
-                source_field=SourceField.SOCIALIZE_WITH,
+                source_field=SourceField.SOCIALIZE_WITH,  # NOT source_field BUNK_WITH
                 source=RequestSource.FAMILY,
                 confidence=0.95,
                 csv_position=1,
@@ -237,7 +246,12 @@ class TestPriorityCalculator:
         ]
 
         priority = calculator.calculate_priority(requests[1], requests)
-        assert priority == 1, "age_preference from socialize_with with other requests should stay priority 1"
+        # Updated per Stage 1 fix: no bunk_with source_field request exists,
+        # so socialize_with is still the "sole" parent input — priority 4.
+        assert priority == 4, (
+            "age_preference from socialize_with should be priority 4 when no "
+            "source_field=BUNK_WITH request exists (only non-bunk_with source requests)"
+        )
 
     def test_staff_notes_request(self, calculator):
         """Any request from staff notes gets priority 2"""
@@ -487,6 +501,87 @@ class TestConfigDrivenPriorityCalculator:
 
         priority = calculator.calculate_priority(request, [request])
         assert priority == 4, "Default keywords should work when config only overrides rules"
+
+
+class TestSocializeWithParentParamountStage1:
+    """Stage 1 fix: staff requests don't suppress socialize_with sole-promote.
+
+    Per the parent-paramount taxonomy: socialize_with is sole parent input when
+    no bunk_with request exists. Staff requests (internal_notes, bunking_notes,
+    not_bunk_with) are not parent input and must not suppress the promotion.
+    """
+
+    @pytest.fixture
+    def calculator(self):
+        return PriorityCalculator()
+
+    def test_socialize_with_sole_promoted_when_bunk_with_empty_even_with_staff_notes(self, calculator):
+        """Per parent-paramount rule: socialize_with is the sole parent input when
+        no bunk_with request exists, and gets priority 4. Staff notes don't suppress
+        this — they're not parent input."""
+        socialize_req = ParsedRequest(
+            raw_text="younger",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.YOUNGER,
+            source_field=SourceField.SOCIALIZE_WITH,
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=0,
+            metadata={},
+        )
+        staff_note_req = ParsedRequest(
+            raw_text="keep away from Liam",
+            request_type=RequestType.NOT_BUNK_WITH,
+            target_name="Liam Garcia",
+            age_preference=None,
+            source_field=SourceField.INTERNAL_NOTES,
+            source=RequestSource.STAFF,
+            confidence=0.9,
+            csv_position=0,
+            metadata={},
+        )
+        all_for_person = [socialize_req, staff_note_req]
+
+        priority = calculator.calculate_priority(socialize_req, all_for_person)
+
+        assert priority == 4, (
+            "socialize_with should be sole-promoted to priority 4 when no bunk_with "
+            "exists for the camper, regardless of staff requests"
+        )
+
+    def test_socialize_with_low_priority_when_bunk_with_exists(self, calculator):
+        """Counterpart: when a parent submitted bunk_with text, socialize_with stays
+        at priority 1 because the parent has a higher-priority input."""
+        socialize_req = ParsedRequest(
+            raw_text="younger",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.YOUNGER,
+            source_field=SourceField.SOCIALIZE_WITH,
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=0,
+            metadata={},
+        )
+        bunk_with_req = ParsedRequest(
+            raw_text="wants to bunk with Liam",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Liam Garcia",
+            age_preference=None,
+            source_field=SourceField.BUNK_WITH,
+            source=RequestSource.FAMILY,
+            confidence=0.95,
+            csv_position=1,
+            metadata={},
+        )
+        all_for_person = [socialize_req, bunk_with_req]
+
+        priority = calculator.calculate_priority(socialize_req, all_for_person)
+
+        assert priority == 1, (
+            "socialize_with should stay at parent_age_preference priority (1) when any bunk_with parent input exists"
+        )
 
 
 if __name__ == "__main__":
