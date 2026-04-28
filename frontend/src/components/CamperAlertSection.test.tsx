@@ -315,4 +315,30 @@ describe('CamperDetailsPanel — alert section integration', () => {
     expect(firstCall).toBeDefined()
     expect(firstCall?.[1]).toBe(777)
   })
+
+  // Regression guard: CamperDetailsPanel must mount without error when the
+  // bunking-board passes the full scenario-aware satisfaction trio
+  // (assignedBunkCmId + bunkCampers + getBunkForPerson). Per-branch behavior
+  // of the satisfaction calculation is covered exhaustively in
+  // requestSatisfaction.test.ts; this test only guards the prop wiring.
+  it('mounts cleanly with getBunkForPerson + assignedBunkCmId + bunkCampers (scenario path)', async () => {
+    const { waitFor, render: rtlRender } = await import('../test/testUtils')
+
+    const { queryByTestId } = rtlRender(
+      <CamperDetailsPanel
+        camperId="12345"
+        onClose={vi.fn()}
+        assignedBunkCmId={777}
+        getBunkForPerson={() => 777}
+        bunkCampers={[
+          { cmId: 12345, grade: 7 },
+          { cmId: 200, grade: 7 },
+        ]}
+      />
+    )
+
+    await waitFor(() => {
+      expect(queryByTestId('panel-backdrop')).toBeInTheDocument()
+    })
+  })
 })
