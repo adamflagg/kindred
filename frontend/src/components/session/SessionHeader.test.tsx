@@ -21,7 +21,7 @@ vi.mock('../BunkingLegend', () => ({
 }))
 vi.mock('../ModeBadge', () => ({
   default: ({ isProductionMode }: { isProductionMode: boolean }) => (
-    <span>{isProductionMode ? 'Live' : 'Draft'}</span>
+    <span>{isProductionMode ? 'CM' : 'Draft'}</span>
   ),
 }))
 vi.mock('../OptimizeBunksButton', () => ({
@@ -326,14 +326,14 @@ describe('SessionHeader', () => {
     describe('mode indicator badge', () => {
       it('should use compact badge text for production mode', () => {
         const isProductionMode = true
-        const getCompactModeText = (isProd: boolean) => (isProd ? 'Live' : 'Draft')
+        const getCompactModeText = (isProd: boolean) => (isProd ? 'CM' : 'Draft')
 
-        expect(getCompactModeText(isProductionMode)).toBe('Live')
+        expect(getCompactModeText(isProductionMode)).toBe('CM')
       })
 
       it('should use compact badge text for scenario mode', () => {
         const isProductionMode = false
-        const getCompactModeText = (isProd: boolean) => (isProd ? 'Live' : 'Draft')
+        const getCompactModeText = (isProd: boolean) => (isProd ? 'CM' : 'Draft')
 
         expect(getCompactModeText(isProductionMode)).toBe('Draft')
       })
