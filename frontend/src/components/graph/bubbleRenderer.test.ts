@@ -2,7 +2,7 @@
  * Tests for bubbleRenderer — unit/bunk label DOM construction.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { buildUnitLabel, getLabelParent } from './bubbleRenderer'
+import { buildUnitLabel, buildBunkLabel, getLabelParent } from './bubbleRenderer'
 
 describe('buildUnitLabel', () => {
   it('renders the unit name as text', () => {
@@ -35,6 +35,24 @@ describe('buildUnitLabel', () => {
     expect(svg?.getAttribute('stroke')).toBe('#aabbcc')
     // The label inner text wrapper should also color-match.
     expect((el.querySelector('div') as HTMLElement | null)?.style.color).toBe('rgb(170, 187, 204)')
+  })
+})
+
+describe('buildBunkLabel', () => {
+  it('renders the bunk name as text', () => {
+    const el = buildBunkLabel('B-5', '#aabbcc')
+    expect(el.textContent).toContain('B-5')
+  })
+
+  it('uses the bunk color as the background of the inner pill', () => {
+    const el = buildBunkLabel('B-5', '#aabbcc')
+    const inner = el.querySelector('div') as HTMLElement | null
+    expect(inner?.style.backgroundColor).toBe('rgb(170, 187, 204)')
+  })
+
+  it('applies the .bunk-label-popper class to the outer wrapper', () => {
+    const el = buildBunkLabel('B-5', '#aabbcc')
+    expect(el.classList.contains('bunk-label-popper')).toBe(true)
   })
 })
 

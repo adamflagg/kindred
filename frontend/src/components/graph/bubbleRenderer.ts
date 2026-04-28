@@ -161,6 +161,31 @@ export function getLabelParent(containerRef: { current: HTMLElement | null }): H
 }
 
 /**
+ * Build the DOM for a bunk label (pill with bunk name, colored by unit).
+ * Extracted for parity with buildUnitLabel and to enable unit testing.
+ */
+export function buildBunkLabel(bunkName: string, bunkColor: string): HTMLElement {
+  const labelEl = document.createElement('div')
+  labelEl.className = 'bunk-label-popper'
+  labelEl.style.position = 'absolute'
+  labelEl.style.zIndex = '1'
+  const innerDiv = document.createElement('div')
+  Object.assign(innerDiv.style, {
+    backgroundColor: bunkColor,
+    color: 'white',
+    padding: '4px 12px',
+    borderRadius: '16px',
+    fontSize: '12px',
+    fontWeight: '600',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    whiteSpace: 'nowrap',
+  })
+  innerDiv.textContent = bunkName
+  labelEl.appendChild(innerDiv)
+  return labelEl
+}
+
+/**
  * Returns the bubbleset path style for a unit boundary bubble.
  * The fill is intentionally 'none' — the boundary is shown by stroke only
  * (#32: fillOpacity: 0 makes any fill color invisible; 'none' is explicit).
@@ -197,6 +222,10 @@ export interface BubbleRenderRefs {
   pathsRef: { current: SVGElement[] }
   poppersRef: { current: PopperRef[] }
   containerRef: { current: HTMLDivElement | null }
+  /** Tracks the cy `pan zoom resize` listener installed by drawBunkBubbles
+   *  so a redraw can detach the previous one before attaching a new one.
+   *  Without this, every checkbox toggle stacks another listener on cy. */
+  poppersListenerRef: { current: ((evt?: unknown) => void) | null }
 }
 
 /**
@@ -307,12 +336,23 @@ export function drawBunkBubbles(
   showUnits: boolean = false,
   showBunks: boolean = true
 ): void {
-  const { bubblesetsRef, pathsRef, poppersRef, containerRef } = refs
+  const { bubblesetsRef, pathsRef, poppersRef, containerRef, poppersListenerRef } = refs
 
   // Check if cy is valid before doing anything
   if (cy.destroyed()) {
     console.error('Cytoscape instance is not valid, cannot create bubbles')
     return
+  }
+
+  // Detach previous pan/zoom/resize listener before re-attaching below.
+  // Each call creates a new updatePoppers closure; without an off() the
+  // listeners stack on every checkbox toggle and bunksData arrival.
+  if (poppersListenerRef.current) {
+    ;(cy as unknown as { off: (events: string, handler: (evt?: unknown) => void) => void }).off(
+      'pan zoom resize',
+      poppersListenerRef.current
+    )
+    poppersListenerRef.current = null
   }
 
   // Clear any existing bubblesets
@@ -420,9 +460,7 @@ export function drawBunkBubbles(
         failed: 0,
       })
     }
-  }
-
-  if (showBunks) {
+  } else {
     Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
       if (!nodes || nodes.length === 0) return // Skip empty bunks
 
@@ -469,16 +507,12 @@ export function drawBunkBubbles(
     })
   }
 
-  // Force bubbleset to recompute paths
+  // Force bubbleset to recompute paths. updateBubbles(true) triggers its
+  // own redraw of the bubble overlay; no separate cy.forceRender() needed.
   try {
     updateBubbles(true)
   } catch (updateError) {
     console.error('Error calling bb.update(true):', updateError)
-  }
-
-  // Force Cytoscape repaint
-  if (!cy.destroyed()) {
-    cy.forceRender()
   }
 
   // Clean up existing popper instances
@@ -513,24 +547,7 @@ export function drawBunkBubbles(
       // #31/#33: bunk label uses the same deterministic unit color as its bubble
       const bunkColor = getUnitColorForBunk(bunkName, allBunkNames)
 
-      const labelEl = document.createElement('div')
-      labelEl.className = 'bunk-label-popper'
-      labelEl.style.position = 'absolute'
-      labelEl.style.zIndex = '1'
-      const innerDiv = document.createElement('div')
-      Object.assign(innerDiv.style, {
-        backgroundColor: bunkColor,
-        color: 'white',
-        padding: '4px 12px',
-        borderRadius: '16px',
-        fontSize: '12px',
-        fontWeight: '600',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        whiteSpace: 'nowrap',
-      })
-      innerDiv.textContent = bunkName
-      labelEl.appendChild(innerDiv)
-
+      const labelEl = buildBunkLabel(bunkName, bunkColor)
       createPopperLabel(nodes, labelEl, containerRef, poppersRef, 10)
     })
   }
@@ -543,6 +560,7 @@ export function drawBunkBubbles(
   }
 
   cy.on('pan zoom resize', updatePoppers)
+  poppersListenerRef.current = updatePoppers
 
   // Initial visibility prime: Popper.js positions elements asynchronously
   // (its first layout runs on the next animation frame), so the visibility
@@ -560,7 +578,7 @@ export function drawBunkBubbles(
  * Clear all bubble-related resources
  */
 export function clearBubbles(refs: BubbleRenderRefs): void {
-  const { bubblesetsRef, pathsRef, poppersRef } = refs
+  const { bubblesetsRef, pathsRef, poppersRef, poppersListenerRef } = refs
 
   if (bubblesetsRef.current) {
     ;(bubblesetsRef.current as { destroy: () => void }).destroy()
@@ -575,4 +593,8 @@ export function clearBubbles(refs: BubbleRenderRefs): void {
     })
     poppersRef.current = []
   }
+
+  // Null the listener ref. The next drawBunkBubbles call won't attempt to
+  // off() a stale function reference against a (possibly-fresh) cy instance.
+  poppersListenerRef.current = null
 }

@@ -62,6 +62,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const bubblesetsRef = useRef<unknown | null>(null)
   const pathsRef = useRef<SVGElement[]>([])
   const poppersRef = useRef<PopperRef[]>([])
+  const poppersListenerRef = useRef<((evt?: unknown) => void) | null>(null)
   const layoutWorkerRef = useRef<Worker | null>(null)
   // First-run guard for the resize-on-expand effect: the init effect's
   // onLayoutComplete already calls cy.resize() + cy.fit(), so the
@@ -75,7 +76,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   useYear() // Ensure year context is available
 
   // Create refs object for bubble rendering - memoized to avoid recreation on every render
-  const bubbleRefs = useMemo(() => ({ bubblesetsRef, pathsRef, poppersRef, containerRef }), [])
+  const bubbleRefs = useMemo(
+    () => ({ bubblesetsRef, pathsRef, poppersRef, containerRef, poppersListenerRef }),
+    []
+  )
 
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [showLabels, setShowLabels] = useState(true)
@@ -333,10 +337,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       | ((event: MessageEvent<LayoutWorkerOutput & { token?: number }>) => void)
       | null = null
 
-    // Start staged addition
     void addAllElements().then(() => {
       if (cancelled || !cyRef.current || cyRef.current !== cy || cy.destroyed()) return
-      // Run layout after all elements are added
       runLayout()
     })
 
@@ -408,14 +410,16 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       cy.resize()
       cy.fit(undefined, 50)
     }
-    const r1 = requestAnimationFrame(() => {
-      const r2 = requestAnimationFrame(() => {
-        const r3 = requestAnimationFrame(fitNow)
-        rafIds.push(r3)
+    const rafIds: number[] = []
+    rafIds.push(
+      requestAnimationFrame(() => {
+        rafIds.push(
+          requestAnimationFrame(() => {
+            rafIds.push(requestAnimationFrame(fitNow))
+          })
+        )
       })
-      rafIds.push(r2)
-    })
-    const rafIds: number[] = [r1]
+    )
 
     return () => {
       cancelled = true
@@ -490,16 +494,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }
   }, [showLabels])
 
-  // Cleanup worker on unmount
-  useEffect(() => {
-    return () => {
-      if (layoutWorkerRef.current) {
-        layoutWorkerRef.current.terminate()
-        layoutWorkerRef.current = null
-      }
-    }
-  }, [])
-
   const handleZoomIn = () => {
     cyRef.current?.zoom(cyRef.current.zoom() * ZOOM_SETTINGS.inMultiplier)
   }
@@ -523,13 +517,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
   const toggleLabels = () => {
     setShowLabels(!showLabels)
-    if (cyRef.current) {
-      cyRef.current
-        .style()
-        .selector('node')
-        .style('label', !showLabels ? 'data(label)' : '')
-        .update()
-    }
+    // The useEffect on [showLabels] handles the cy.style update.
   }
 
   return (

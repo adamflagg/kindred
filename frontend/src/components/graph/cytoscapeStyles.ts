@@ -52,7 +52,7 @@ function resolveEdgeColor(ele: { data: (key: string) => unknown }): string {
   const edgeType = ele.data('edge_type') as string
   if (edgeType === 'request') {
     const requestType = ele.data('request_type') as string | null | undefined
-    if (requestType === 'not_bunk_with') return EDGE_COLORS['not_bunk_with'] ?? '#e74c3c'
+    if (requestType === 'not_bunk_with') return EDGE_COLORS['not_bunk_with'] ?? '#95a5a6'
   }
   return EDGE_COLORS[edgeType] ?? '#95a5a6'
 }
