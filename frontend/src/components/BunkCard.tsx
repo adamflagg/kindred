@@ -434,7 +434,9 @@ function BunkCard({
           strategy={verticalListSortingStrategy}
         >
           {sortedCampers.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-center">Drop campers here</p>
+            isProductionMode ? null : (
+              <p className="text-muted-foreground py-8 text-center">Drop campers here</p>
+            )
           ) : (
             sortedCampers.map((camper) => (
               <CamperCard
