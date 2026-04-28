@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
 import type { BunkRequest } from '../types/app-types'
 import { BunkRequestContext, type BunkmateInfo } from '../contexts/BunkRequestContext'
-import { isAgePreferenceSatisfied } from '../utils/agePreferenceSatisfaction'
+import { computeSatisfiedRequestInfo } from '../utils/computeSatisfiedRequestInfo'
 
 interface BunkRequestProviderProps {
   sessionCmId: number
@@ -104,6 +104,10 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
         topPrioritySatisfied: false,
         priorityLevels: [],
         hasLockedPriority: false,
+        parentTotal: 0,
+        parentSatisfied: 0,
+        staffTotal: 0,
+        staffSatisfied: 0,
       }
     }
 
@@ -120,38 +124,13 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
       }
     }
 
-    // Check which requests are satisfied
-    const satisfiedRequests = personRequests.filter((req) => {
-      if (req.request_type === 'bunk_with' && req.requestee_id) {
-        return personSet.has(req.requestee_id)
-      } else if (req.request_type === 'not_bunk_with' && req.requestee_id) {
-        return !personSet.has(req.requestee_id)
-      } else if (req.request_type === 'age_preference' && req.age_preference_target) {
-        if (requesterGrade === null || bunkmateGrades.length === 0) {
-          return false
-        }
-        const preference = req.age_preference_target as 'older' | 'younger'
-        return isAgePreferenceSatisfied(requesterGrade, bunkmateGrades, preference).satisfied
-      }
-      return false
-    })
-
-    // Sort by priority to find top priority
-    const sortedSatisfied = satisfiedRequests.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
-    const topPriority = personRequests.reduce((max, req) => Math.max(max, req.priority ?? 0), 0)
-    const topPrioritySatisfied = sortedSatisfied.some((req) => (req.priority ?? 0) === topPriority)
-    const priorityLevels = [...new Set(sortedSatisfied.map((r) => r.priority ?? 0))].sort(
-      (a, b) => b - a
+    return computeSatisfiedRequestInfo(
+      personRequests,
+      personCmId,
+      personSet,
+      bunkmateGrades,
+      requesterGrade
     )
-    const hasLockedPriority = satisfiedRequests.some((req) => req.priority_locked)
-
-    return {
-      totalRequests: personRequests.length,
-      satisfiedCount: satisfiedRequests.length,
-      topPrioritySatisfied,
-      priorityLevels,
-      hasLockedPriority,
-    }
   }
 
   const value = {
