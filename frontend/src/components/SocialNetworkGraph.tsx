@@ -24,10 +24,10 @@ import {
   createGraphElements,
   prepareWorkerInput,
   setupGraphEventHandlers,
-  getLayoutOptions,
+  getFcoseOptions,
   type PopperRef,
 } from './graph'
-import { batchElements, cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
+import { cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
@@ -63,12 +63,11 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const pathsRef = useRef<SVGElement[]>([])
   const poppersRef = useRef<PopperRef[]>([])
   const layoutWorkerRef = useRef<Worker | null>(null)
-  // First-run guards: the init effect handles initial fit + bubble draw, so
-  // the resize-on-expand and bubble-toggle effects must skip their first run
-  // to avoid duplicating that work (which causes the graph to visibly settle
-  // into a new position shortly after labels appear).
+  // First-run guard for the resize-on-expand effect: the init effect's
+  // onLayoutComplete already calls cy.resize() + cy.fit(), so the
+  // expand/collapse effect must skip its first run to avoid re-fitting
+  // 200ms later against a possibly-different container size.
   const hasMountedExpandRef = useRef(false)
-  const hasMountedBubblesRef = useRef(false)
   /** Monotonically-increasing token issued per layout job.
    *  The worker echoes it back; stale responses (old token ≠ current) are dropped
    *  before they can call cy.batch() on a destroyed instance. */
@@ -122,10 +121,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     const targetContainer = containerRef.current
     if (!targetContainer || !graphData) return
 
-    // Wait for bunk names to load before rendering
-    if (!bunksData && graphData.nodes.some((n) => n.bunk_cm_id)) {
-      return
-    }
+    // Note: we no longer wait for bunksData here. Parent (bunk) compound nodes
+    // are created with placeholder labels (`Bunk {id}`) and patched in a
+    // separate effect once bunksData arrives. This avoids a full graph
+    // rebuild + worker re-run when bunk names finish loading after the
+    // graph data — a major source of stale-token spinner stalls under
+    // StrictMode (where each effect already double-invokes).
 
     // Destroy existing instance when switching views
     if (cyRef.current) {
@@ -159,35 +160,22 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       SHOW_EDGES
     )
 
-    // Staged rendering for smoother loading
-    const stageElements = async (
-      elements: cytoscape.ElementDefinition[],
-      batchSize: number = 50
-    ) => {
-      const batches = batchElements(elements, batchSize)
-      for (const batch of batches) {
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            cy.add(batch)
-            resolve()
-          })
-        })
-      }
-    }
-
-    // Add elements in stages
-    const addElementsStaged = async () => {
-      // Add parent (bunk) nodes - required for compound layout grouping
-      await stageElements(parentNodes as cytoscape.ElementDefinition[], 20)
-
-      // Add child (camper) nodes
-      await stageElements(nodes as cytoscape.ElementDefinition[], 30)
-
-      // Apply edge visibility before adding edges
-      updateEdgeVisibility(cy, SHOW_EDGES)
-
-      // Add edges last in larger batches
-      await stageElements(edges as cytoscape.ElementDefinition[], 50)
+    // Single-shot batched add. The previous RAF-chunked staging approach added
+    // ~500-800ms of pre-layout overhead (one RAF per 20-50 elements × N batches)
+    // and forced cytoscape to re-run style application on every cy.add() call.
+    // cy.batch() suppresses notifications/restyle until the end so a bulk add
+    // is dramatically faster than incremental adds.
+    const addAllElements = async () => {
+      cy.batch(() => {
+        // Order matters: parent compound nodes before children, edges last.
+        cy.add(parentNodes as cytoscape.ElementDefinition[])
+        cy.add(nodes as cytoscape.ElementDefinition[])
+        updateEdgeVisibility(cy, SHOW_EDGES)
+        cy.add(edges as cytoscape.ElementDefinition[])
+      })
+      // Yield once so React can paint a "Computing layout..." state before
+      // the worker blocks the worker thread.
+      await new Promise<void>((r) => requestAnimationFrame(() => r()))
     }
 
     const runLayout = () => {
@@ -236,21 +224,42 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         // message arrives, the stale token prevents cy.batch() from running
         // against a destroyed instance (avoiding the endBatch → null.notify crash).
         layoutTokenRef.current = makeLayoutToken()
+        // Capture our token in closure so we react only to OUR reply. The
+        // worker is shared/long-lived across effect runs and fires every
+        // response to ALL attached listeners; without this, an older listener
+        // would inspect a newer listener's response (or vice versa), see the
+        // wrong token, and detach itself — leaving no handler when the right
+        // response finally arrives, which is what was stranding the spinner.
+        const myToken = layoutTokenRef.current
 
         // Handle worker response
         const handleMessage = (event: MessageEvent<LayoutWorkerOutput & { token?: number }>) => {
           const { type, positions, error } = event.data
           const messageToken = event.data.token
 
-          // Stale-guard: drop responses for a cy that has been replaced. Without
-          // this, late worker messages call cy.batch() on a destroyed instance
-          // (endBatch → null.notify crash) — see layoutWorkerGuards.ts.
-          if (isStaleLayoutMessage(messageToken, layoutTokenRef.current)) {
-            worker.removeEventListener('message', handleMessage)
+          // Not our reply — another listener will handle it. Do NOT detach.
+          if (messageToken !== myToken) return
+
+          // It's our reply — detach now whatever happens next.
+          worker.removeEventListener('message', handleMessage)
+
+          // Our reply, but a newer layout job was issued before we came back.
+          // Don't overwrite the newer state; the newer handler will clear the
+          // spinner.
+          if (isStaleLayoutMessage(myToken, layoutTokenRef.current)) {
+            console.log(
+              `[SocialNetworkGraph] our reply (token=${myToken}) superseded, current=${layoutTokenRef.current}`
+            )
             return
           }
           if (cy.destroyed()) {
-            worker.removeEventListener('message', handleMessage)
+            // Spinner safety net: cy was torn down between postMessage and reply
+            // (StrictMode double-invoke or rapid effect re-runs). Clear the overlay
+            // so the user isn't stuck on "Computing layout..." forever.
+            console.log(
+              `[SocialNetworkGraph] worker response arrived for destroyed cy (token=${messageToken}); clearing spinner`
+            )
+            setIsComputingLayout(false)
             return
           }
 
@@ -270,49 +279,70 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             // the resize effect later fires (e.g. on first checkbox toggle).
             cy.resize()
             cy.fit(undefined, 50)
-            // Adjust node-label positions synchronously after fit so labels are
-            // at their final positions on first paint (no visible settle).
-            adjustLabelPositions(cy)
+            // Adjust node-label positions synchronously after fit. Wrapped in a
+            // batch so per-node text-margin-y mutations don't each trigger an
+            // individual style recompute.
+            cy.batch(() => {
+              adjustLabelPositions(cy)
+            })
+            // Install graph event handlers AFTER the initial fit. The zoom
+            // handler iterates every node and walks neighborhoods on each
+            // event; if installed earlier, fit()'s zoom emission triggers it
+            // mid-load and stacks on top of the post-layout work.
+            setupGraphEventHandlers(cy, {
+              onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
+              onClearSelection: () => setSelectedNodeId(null),
+            })
             onLayoutComplete()
           } else if (type === 'error') {
             console.error('[SocialNetworkGraph] Worker error:', error)
             runFallbackLayout()
           }
-
-          // Remove listener after handling
-          worker.removeEventListener('message', handleMessage)
         }
 
         worker.addEventListener('message', handleMessage)
+        // Stash the listener so the effect cleanup can detach it if the
+        // component unmounts (or the effect re-runs) before our reply arrives.
+        // Otherwise the shared worker keeps a closure ref to a dead cy.
+        pendingWorkerListener = handleMessage
         worker.postMessage({ ...workerInput, token: layoutTokenRef.current })
       } catch (error) {
         console.warn('[SocialNetworkGraph] WebWorker failed, using main thread:', error)
         runFallbackLayout()
       }
 
-      // Fallback layout on main thread (if worker fails)
+      // Fallback layout on main thread (if worker fails). Uses the same
+      // single-source-of-truth options as the worker path so layouts match.
       function runFallbackLayout() {
         const hasCompound = parentNodes.length > 0
-        const layoutOpts = getLayoutOptions({ hasCompoundNodes: hasCompound })
+        const layoutOpts = getFcoseOptions({ hasCompoundNodes: hasCompound })
         const layout = cy.layout(layoutOpts as cytoscape.LayoutOptions)
         layoutRef.current = layout
-        layout.on('layoutstop', onLayoutComplete)
+        layout.on('layoutstop', () => {
+          // Match the worker path: install handlers after layout completes
+          // so the heavy zoom listener doesn't fire mid-fit.
+          setupGraphEventHandlers(cy, {
+            onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
+            onClearSelection: () => setSelectedNodeId(null),
+          })
+          onLayoutComplete()
+        })
         layout.run()
       }
-
-      // Setup event handlers using extracted utility
-      setupGraphEventHandlers(cy, {
-        onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
-        onClearSelection: () => setSelectedNodeId(null),
-      })
     } // End of runLayout function
 
     // Cancellation guard: prevent stale async work from applying to a newer graph
     // instance after this effect is cleaned up (e.g., deps change mid-build).
     let cancelled = false
+    // Tracks the worker message listener for THIS effect's pending layout job.
+    // Detached on cleanup so the long-lived shared worker doesn't keep a
+    // closure reference to a destroyed cy.
+    let pendingWorkerListener:
+      | ((event: MessageEvent<LayoutWorkerOutput & { token?: number }>) => void)
+      | null = null
 
     // Start staged addition
-    void addElementsStaged().then(() => {
+    void addAllElements().then(() => {
       if (cancelled || !cyRef.current || cyRef.current !== cy || cy.destroyed()) return
       // Run layout after all elements are added
       runLayout()
@@ -320,14 +350,41 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     return () => {
       cancelled = true
+      if (pendingWorkerListener && layoutWorkerRef.current) {
+        layoutWorkerRef.current.removeEventListener('message', pendingWorkerListener)
+        pendingWorkerListener = null
+      }
       cleanupCytoscape(cyRef, layoutRef, bubblesetsRef, poppersRef)
     }
     // showBubbles intentionally excluded: toggling bubbles is handled by the
     // resize/bubble effect below, avoiding a full graph rebuild + worker restart.
     // The closure reads showBubbles at effect-creation time to restore bubbles
     // after graph rebuilds triggered by other deps.
+    //
+    // bunksData intentionally excluded: it only supplies display names for
+    // parent (bunk) compound nodes. A separate effect patches those labels
+    // in place once bunksData arrives, avoiding a full graph rebuild +
+    // worker re-run that previously caused stale-token spinner stalls.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, bunksData, showLabels, bubbleRefs])
+  }, [graphData, showLabels, bubbleRefs])
+
+  // Patch parent (bunk) compound node labels when bunksData arrives, without
+  // tearing down the cytoscape instance or restarting the layout. Parent nodes
+  // are initially created with `Bunk {id}` placeholders in createGraphElements;
+  // here we replace those with real bunk names.
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy || cy.destroyed() || !bunksData) return
+    cy.batch(() => {
+      cy.nodes()
+        .filter((n) => n.data('isBunkParent'))
+        .forEach((node) => {
+          const bunkId = node.data('bunk_cm_id')
+          const name = bunksData[bunkId]
+          if (name) node.data('label', name)
+        })
+    })
+  }, [bunksData])
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
@@ -354,19 +411,18 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     return () => clearTimeout(timeoutId)
   }, [isExpanded])
 
-  // Bubble draw/clear when toggling Bunks/Units checkboxes.
-  // Skip first run on initial mount — the init effect's onLayoutComplete
-  // (500ms after the worker returns) handles the initial draw. Without this
-  // guard, bubbles get drawn at t=200ms then cleared+redrawn at t=550ms,
-  // which is visible as labels jumping during initial render.
+  // Bubble draw/clear when toggling Bunks/Units checkboxes OR when bunksData
+  // first arrives. The init effect's onLayoutComplete only draws bubbles if
+  // bunksData was already present at layout time; when bunksData arrives
+  // after layout (the common case now that the init effect no longer waits
+  // on it), this effect is the authority for drawing the initial bubbles.
+  // drawBunkBubbles is idempotent (clearBubbles runs first), so even if init
+  // already drew, the worst case is one redraw 200ms later — preferable to
+  // the previous regression where bubbles silently never appeared until a
+  // checkbox toggle.
   useEffect(() => {
     const cy = cyRef.current
     if (!cy || cy.destroyed() || !bunksData) return
-
-    if (!hasMountedBubblesRef.current) {
-      hasMountedBubblesRef.current = true
-      return
-    }
 
     const timeoutId = setTimeout(() => {
       if (!cy.destroyed()) {
