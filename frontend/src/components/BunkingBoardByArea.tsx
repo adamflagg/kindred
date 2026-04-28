@@ -331,6 +331,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     setIsDragging(false)
     setDraggedGroupMembers([])
 
+    if (!canManage || isProductionMode) return
+
     if (!over || active.id === over.id) {
       return
     }

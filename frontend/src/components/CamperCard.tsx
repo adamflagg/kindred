@@ -212,7 +212,7 @@ function CamperCard({
       <div
         data-camper-card
         ref={setNodeRef}
-        {...(isProductionMode ? { title: 'Switch to a scenario to edit' } : {})}
+        title={isProductionMode ? 'Switch to a scenario to edit' : undefined}
         style={
           {
             ...style,
