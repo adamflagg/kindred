@@ -683,12 +683,23 @@ export default function CamperDetailsPanel({
           effectiveBunkCampers,
           camper?.grade ?? null
         )
-      : { totalRequests: 0, satisfiedCount: 0 }
+      : {
+          totalRequests: 0,
+          satisfiedCount: 0,
+          parentTotal: 0,
+          parentSatisfied: 0,
+          staffTotal: 0,
+          staffSatisfied: 0,
+        }
     return buildCamperAlerts({
       assignedBunkCmId: effectiveAssignedBunkCmId,
       requestInfo: {
         totalRequests: requestInfo.totalRequests,
         satisfiedCount: requestInfo.satisfiedCount,
+        parentTotal: requestInfo.parentTotal,
+        parentSatisfied: requestInfo.parentSatisfied,
+        staffTotal: requestInfo.staffTotal,
+        staffSatisfied: requestInfo.staffSatisfied,
       },
       lockState,
       lockGroupSize,

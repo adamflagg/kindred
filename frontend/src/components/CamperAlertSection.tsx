@@ -13,7 +13,10 @@
  */
 import { AlertTriangle, Lock, AlertCircle } from 'lucide-react'
 
-export type AlertSeverity = 'red' | 'yellow' | 'blue'
+// Stage 2 parent-paramount: 'orange' for parent-unsatisfied (was 'yellow'),
+// 'amber' for staff-unsatisfied. 'yellow' kept for backwards compat with any
+// callers not yet migrated.
+export type AlertSeverity = 'red' | 'yellow' | 'blue' | 'orange' | 'amber'
 
 export interface CamperAlert {
   id: string
@@ -29,14 +32,28 @@ interface CamperAlertSectionProps {
   onRequestAlertClick: () => void
 }
 
-const SEVERITY_ORDER: Record<AlertSeverity, number> = { red: 0, yellow: 1, blue: 2 }
+const SEVERITY_ORDER: Record<AlertSeverity, number> = {
+  red: 0,
+  orange: 1,
+  yellow: 2,
+  amber: 3,
+  blue: 4,
+}
 
 function alertIcon(alert: CamperAlert) {
   switch (alert.id) {
     case 'unsatisfied-requests':
+    case 'unsatisfied-parent-requests':
       return (
         <AlertTriangle
           className="h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400"
+          aria-hidden="true"
+        />
+      )
+    case 'unsatisfied-staff-requests':
+      return (
+        <AlertCircle
+          className="h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400"
           aria-hidden="true"
         />
       )
@@ -51,9 +68,11 @@ function alertIcon(alert: CamperAlert) {
           className={`h-4 w-4 flex-shrink-0 ${
             alert.severity === 'red'
               ? 'text-red-500 dark:text-red-400'
-              : alert.severity === 'yellow'
+              : alert.severity === 'orange' || alert.severity === 'yellow'
                 ? 'text-orange-500 dark:text-orange-400'
-                : 'text-sky-500 dark:text-sky-400'
+                : alert.severity === 'amber'
+                  ? 'text-amber-500 dark:text-amber-400'
+                  : 'text-sky-500 dark:text-sky-400'
           }`}
           aria-hidden="true"
         />
@@ -65,8 +84,12 @@ function rowColorClasses(severity: AlertSeverity): string {
   switch (severity) {
     case 'red':
       return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+    case 'orange':
+      return 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300'
     case 'yellow':
       return 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300'
+    case 'amber':
+      return 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
     case 'blue':
       return 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300'
   }
