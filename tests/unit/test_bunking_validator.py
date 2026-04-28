@@ -753,26 +753,35 @@ def test_validation_statistics_has_parent_staff_breakdown_fields():
 # Use numeric string IDs per existing fixture convention
 
 
-def _mock_person(cm_id: str, grade: int = 5) -> MockPerson:
+# Return types omitted intentionally — these helpers feed into validate_bunking()
+# which expects the real Session/Bunk/Person/BunkAssignment/BunkRequest Pydantic
+# models. The pre-existing class-level fixtures (basic_session, basic_bunks, etc.)
+# also omit annotations for the same reason; mypy can't narrow the return and
+# treats it as Any-ish at the call site, mirroring the existing test convention.
+def _mock_session(cm_id="1", name="Test"):
+    return MockSession(campminder_id=cm_id, name=name)
+
+
+def _mock_person(cm_id, grade=5):
     return MockPerson(campminder_id=cm_id, name=f"Camper{cm_id}", grade=grade)
 
 
-def _mock_bunk(cm_id: str, max_size: int = 8) -> MockBunk:
+def _mock_bunk(cm_id, max_size=8):
     return MockBunk(campminder_id=cm_id, name=f"Bunk-{cm_id}", max_size=max_size)
 
 
-def _mock_assignment(person_cm_id: str, bunk_cm_id: str) -> MockBunkAssignment:
+def _mock_assignment(person_cm_id, bunk_cm_id):
     return MockBunkAssignment(person_cm_id=person_cm_id, bunk_cm_id=bunk_cm_id)
 
 
 def _mock_request(
-    requester: str,
-    target: str | None,
-    source_field: str,
-    source: str | None,  # "family", "staff", or None — RequestSource enum value
-    request_type: str = "bunk_with",
-    status: str = "resolved",
-) -> MockBunkRequest:
+    requester,
+    target,
+    source_field,
+    source,  # "family", "staff", or None — RequestSource enum value
+    request_type="bunk_with",
+    status="resolved",
+):
     return MockBunkRequest(
         requester_person_cm_id=requester,
         requested_person_cm_id=target,
@@ -785,7 +794,7 @@ def _mock_request(
 
 def test_validator_bins_parent_requests_separately_from_staff():
     """Parent-source requests count in parent_* stats; staff-source in staff_*. No overlap."""
-    session = MockSession(campminder_id="10000001", name="Test Session")
+    session = _mock_session(cm_id="10000001", name="Test Session")
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
     assignments = [
@@ -823,7 +832,7 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
     """A camper with a parent request unsatisfied but staff requests satisfied
     should appear in campers_with_unsatisfied_parent_requests but NOT in the
     staff equivalent. Stage 4 uses this binning for the solver minimum-one rule."""
-    session = MockSession(campminder_id="10000001", name="Test Session")
+    session = _mock_session(cm_id="10000001", name="Test Session")
     persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
     bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
     assignments = [
@@ -860,7 +869,7 @@ def test_validator_skips_binning_for_requests_with_null_source():
     """Requests with source=None (legacy records or unset) count toward
     total_requests but fall through both parent and staff bins. Stage 1 silently
     excludes them from breakdown stats."""
-    session = MockSession(campminder_id="1", name="Test")
+    session = _mock_session()
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
     assignments = [
