@@ -49,10 +49,10 @@ def _populate(
         builder.graph.add_node(node_id, bunk_cm_id=bunk_cm_id)
     for edge in request_edges:
         if len(edge) == 3:
-            u, v, source = edge  # type: ignore[misc]
+            u, v, source = edge
             builder.graph.add_edge(u, v, edge_type="request", source=source)
         else:
-            u, v = edge  # type: ignore[misc]
+            u, v = edge
             builder.graph.add_edge(u, v, edge_type="request")
     for u, v in other_edges or []:
         builder.graph.add_edge(u, v, edge_type="sibling")
@@ -240,5 +240,7 @@ def test_request_edges_carry_source_attribute() -> None:
     builder._add_request_edges(year=2026, session_cm_id=999)
     edge_1_2 = builder.graph[1].get(2) or builder.graph[2].get(1)
     edge_2_3 = builder.graph[2].get(3) or builder.graph[3].get(2)
-    assert edge_1_2 is not None and edge_1_2.get("source") == "family"
-    assert edge_2_3 is not None and edge_2_3.get("source") == "staff"
+    assert edge_1_2 is not None
+    assert edge_1_2.get("source") == "family"
+    assert edge_2_3 is not None
+    assert edge_2_3.get("source") == "staff"
