@@ -513,13 +513,14 @@ class BunkingValidator:
                 if is_explicit:
                     explicit_requests_by_person[requester_id].append(request)
 
-                # Bin by RequestSource (parent vs staff) for Stage 1 breakdown stats.
-                # Parent: bunk_with + socialize_with (RequestSource.FAMILY / "family").
-                # Staff: not_bunk_with + bunking_notes + internal_notes (RequestSource.STAFF / "staff").
-                request_source = getattr(request, "source", None)
-                if request_source == RequestSource.FAMILY or request_source == RequestSource.FAMILY.value:
+                # Bin by request.source (RequestSource enum value) for Stage 1
+                # breakdown stats. Production stores `source` as the enum's str
+                # value ("family" / "staff"); requests with source=None or any
+                # unrecognized value fall through both branches and are counted
+                # only in the aggregate total/satisfied stats.
+                if request.source == RequestSource.FAMILY.value:
                     parent_requests_by_person[requester_id].append(request)
-                elif request_source == RequestSource.STAFF or request_source == RequestSource.STAFF.value:
+                elif request.source == RequestSource.STAFF.value:
                     staff_requests_by_person[requester_id].append(request)
 
                 # Update field stats (only for known fields)
@@ -533,9 +534,9 @@ class BunkingValidator:
                     satisfied_requests_by_person[requester_id].append(request)
                     if is_explicit:
                         satisfied_explicit_by_person[requester_id].append(request)
-                    if request_source == RequestSource.FAMILY or request_source == RequestSource.FAMILY.value:
+                    if request.source == RequestSource.FAMILY.value:
                         satisfied_parent_by_person[requester_id].append(request)
-                    elif request_source == RequestSource.STAFF or request_source == RequestSource.STAFF.value:
+                    elif request.source == RequestSource.STAFF.value:
                         satisfied_staff_by_person[requester_id].append(request)
 
                     # Update satisfied field stats (only for known fields)

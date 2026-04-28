@@ -769,7 +769,7 @@ def _mock_request(
     requester: str,
     target: str | None,
     source_field: str,
-    source: str,  # "family" or "staff" — the RequestSource enum value
+    source: str | None,  # "family", "staff", or None — RequestSource enum value
     request_type: str = "bunk_with",
     status: str = "resolved",
 ) -> MockBunkRequest:
@@ -854,3 +854,37 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
     assert stats.satisfied_staff_requests == 1
     assert stats.campers_with_unsatisfied_parent_requests == 1  # 20001
     assert stats.campers_with_unsatisfied_staff_requests == 0  # 20001's staff is satisfied
+
+
+def test_validator_skips_binning_for_requests_with_null_source():
+    """Requests with source=None (legacy records or unset) count toward
+    total_requests but fall through both parent and staff bins. Stage 1 silently
+    excludes them from breakdown stats."""
+    session = MockSession(campminder_id="1", name="Test")
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+    ]
+    requests = [
+        # Source-less request — satisfied (both in 30001) but binned nowhere
+        _mock_request("20001", "20002", "bunk_with", None),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    assert stats.total_requests == 1
+    assert stats.satisfied_requests == 1
+    assert stats.parent_requests == 0
+    assert stats.staff_requests == 0
+    assert stats.campers_with_unsatisfied_parent_requests == 0
+    assert stats.campers_with_unsatisfied_staff_requests == 0
