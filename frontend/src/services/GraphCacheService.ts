@@ -261,20 +261,14 @@ export class GraphCacheService {
   }
 
   private estimateSize(data: GraphData): number {
-    // Rough estimation of object size in memory
     let size = 0
 
-    // Nodes
-    size += data.nodes.length * 200 // Estimate ~200 bytes per node
-
-    // Edges
-    size += data.edges.length * 100 // Estimate ~100 bytes per edge
-
-    // Metrics
+    size += data.nodes.length * 200
+    size += data.edges.length * 100
     size += Object.keys(data.metrics).length * 50
 
-    // Communities
-    const communityEntries = Object.entries(data.communities)
+    // `communities` is session-only; the bunk endpoint omits it.
+    const communityEntries = Object.entries(data.communities ?? {})
     size += communityEntries.reduce((acc, [_, members]) => acc + members.length * 8, 0)
 
     return size

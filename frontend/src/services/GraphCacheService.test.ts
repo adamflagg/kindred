@@ -222,6 +222,37 @@ describe('GraphCacheService bunk graph (scenario-aware)', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
+  it('tolerates bunk graph responses that omit `communities` (the live bunk endpoint shape)', async () => {
+    // The /api/bunks/{id}/social-graph endpoint returns BunkGraphResponse,
+    // which does NOT include a `communities` field — only the session-level
+    // endpoint does. estimateSize must not throw when storing such a response.
+    const bunkShape = {
+      nodes: [
+        {
+          id: 1,
+          name: 'A',
+          grade: null,
+          bunk_cm_id: null,
+          centrality: 0,
+          clustering: 0,
+          community: null,
+        },
+      ],
+      edges: [],
+      metrics: {
+        density: 0,
+        average_clustering: 0,
+        number_of_components: 0,
+        average_degree: 0,
+      },
+      // no `communities` — matches BunkGraphResponse
+    } as unknown as GraphData
+
+    const fetcher = vi.fn().mockResolvedValue(bunkShape)
+
+    await expect(service.getBunkGraph(202, 42, fetcher, 2026, 'scn_x')).resolves.toBe(bunkShape)
+  })
+
   it('invalidate(sessionCmId) wipes prod and scenario bunk caches for that session', async () => {
     const prod = makeGraph('bunk-prod')
     const scenario = makeGraph('bunk-scn')
