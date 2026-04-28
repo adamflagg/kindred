@@ -26,9 +26,14 @@ def _age_to_months(age: float) -> int:
 def add_age_spread_constraints(ctx: SolverContext) -> None:
     """Add aggregated soft constraints for age spread within bunks.
 
+    Two-tier age spread system:
+    - Soft penalty (violation-based): when spread > max_age_spread_months, a violation flag is set
+      and penalised in the objective (preserves existing 24mo behaviour).
+    - Preferred threshold (soft-bonus): when spread <= preferred_age_spread_months, a bonus
+      flag is set and added to the objective, encouraging tighter age grouping.
+      Disabled when preferred_age_spread_months == 0 or == max_age_spread_months.
+
     Uses TRUE min/max aggregation to reduce constraint count from O(n²) to O(bunks).
-    For each bunk, tracks the minimum and maximum age in months and penalizes
-    when the spread exceeds the configured limit.
     """
     if ctx.is_constraint_disabled("age_spread"):
         logger.info("Age spread constraints DISABLED via debug settings")
@@ -39,11 +44,27 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
     # Get weight for age spread violations - high weight to prioritize
     age_spread_weight = ctx.config.get_soft_constraint_weight("age_spread", default=4000)
 
-    logger.debug(
-        f"Adding TRUE min/max age spread constraints (max {max_age_spread_months} months, weight {age_spread_weight})"
+    # New: preferred (soft-bonus) threshold
+    preferred_age_spread_months = ctx.config.get_constraint("age_spread", "preferred_months", default=0)
+    preferred_age_spread_bonus = ctx.config.get_constraint("age_spread", "preferred_bonus", default=0)
+
+    # Preferred threshold is only active when it is strictly less than the max limit
+    # and both values are non-zero.
+    preferred_active = (
+        preferred_age_spread_months > 0
+        and preferred_age_spread_months < max_age_spread_months
+        and preferred_age_spread_bonus > 0
     )
 
-    constraints_added = 0
+    logger.debug(
+        f"Adding TRUE min/max age spread constraints (max {max_age_spread_months} months, weight {age_spread_weight},"
+        f" preferred {preferred_age_spread_months} months, bonus {preferred_age_spread_bonus},"
+        f" preferred_active={preferred_active})"
+    )
+
+    violation_count = 0
+    bonus_count = 0
+    bunk_count = 0
 
     # For each bunk, track min and max age
     for bunk_idx, bunk in enumerate(ctx.bunks):
@@ -56,6 +77,8 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
 
         if len(eligible_campers) < 2:
             continue
+
+        bunk_count += 1
 
         # Convert ages to months for all eligible campers
         age_months_data = []
@@ -109,6 +132,26 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
         if age_spread_weight > 0:
             ctx.soft_constraint_violations[f"age_spread_b{bunk_idx}"] = (has_violation, age_spread_weight)
 
-            constraints_added += 1
+            violation_count += 1
 
-    logger.debug(f"Age spread: Using TRUE min/max aggregation for {constraints_added} bunks")
+        # New: preferred bonus — cabins with spread <= preferred_age_spread_months earn a bonus
+        if preferred_active:
+            # within_preferred = 1 when spread <= preferred_age_spread_months
+            within_preferred = ctx.model.NewBoolVar(f"age_spread_preferred_b{bunk_idx}")
+
+            # spread <= preferred ↔ within_preferred == 1
+            # Using big-M style enforced constraints:
+            ctx.model.Add(spread <= preferred_age_spread_months).OnlyEnforceIf(within_preferred)
+            ctx.model.Add(spread > preferred_age_spread_months).OnlyEnforceIf(within_preferred.Not())
+
+            ctx.soft_constraint_bonuses[f"age_spread_preferred_b{bunk_idx}"] = (
+                within_preferred,
+                preferred_age_spread_bonus,
+            )
+
+            bonus_count += 1
+
+    logger.debug(
+        f"Age spread: applied {violation_count} violation entries + {bonus_count} bonus entries"
+        f" across {bunk_count} bunks"
+    )

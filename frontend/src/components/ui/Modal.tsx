@@ -17,6 +17,11 @@ interface ModalProps {
   // screen readers have a name for the dialog.
   ariaLabelledBy?: string
   ariaLabel?: string
+  // CSS length (e.g. "28rem") that insets BOTH the blurred backdrop and the
+  // modal-centering wrapper from the viewport's right edge. Used when the
+  // modal opens on top of a right-side slide-out panel — the panel area
+  // stays unblurred and the modal centers in the remaining space.
+  backdropInsetRight?: string
 }
 
 const sizeClasses = {
@@ -62,6 +67,7 @@ export function Modal({
   scrollable = false,
   ariaLabelledBy,
   ariaLabel,
+  backdropInsetRight,
 }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
@@ -90,8 +96,10 @@ export function Modal({
       aria-modal="true"
       aria-labelledby={resolvedLabelledBy}
       aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
+      style={backdropInsetRight ? { right: backdropInsetRight } : undefined}
     >
-      {/* Backdrop */}
+      {/* Backdrop — fills the (already-inset) dialog wrapper via inset-0,
+          so the wrapper's right offset is the single source of truth. */}
       <div
         data-testid="modal-backdrop"
         className="absolute inset-0 backdrop-blur"

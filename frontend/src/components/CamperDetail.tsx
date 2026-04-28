@@ -227,6 +227,7 @@ export default function CamperDetail() {
     person?.normalized_city ?? person?.address_city,
     person?.address_state
   )
+  const congregation = person?.normalized_congregation ?? null
   const pronouns = formatPronouns(camper)
   const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined)
   const allSessionNames =
@@ -268,8 +269,23 @@ export default function CamperDetail() {
           <IdentityPanel
             camper={camper}
             location={location}
+            congregation={congregation}
             pronouns={pronouns}
             defaultExpanded={true}
+            cohortContext={
+              camper.attendee_status === 'enrolled' &&
+              camper.expand?.session?.year === currentYear &&
+              camper.person_cm_id &&
+              camper.session_cm_id > 0
+                ? {
+                    personCmId: camper.person_cm_id,
+                    sessionCmId: camper.session_cm_id,
+                    year: currentYear,
+                    selfDisplayName:
+                      camper.preferred_name?.trim() || camper.first_name || 'this camper',
+                  }
+                : undefined
+            }
           />
 
           {/* Bunking panels - only shown for enrolled campers */}

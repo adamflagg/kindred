@@ -143,6 +143,23 @@ export function useCamperCohorts(
             gender: p.gender ?? null,
           }
         })
+        // Sort youngest-first with first-name tiebreaker — same convention the
+        // requests-tab uses by default. Ungraded campers (null/0) sink to the
+        // bottom regardless of name so the graded group reads cleanly.
+        attendees.sort((a, b) => {
+          const aGrade = a.grade && a.grade > 0 ? a.grade : null
+          const bGrade = b.grade && b.grade > 0 ? b.grade : null
+          if (aGrade !== bGrade) {
+            if (aGrade === null) return 1
+            if (bGrade === null) return -1
+            return aGrade - bGrade
+          }
+          const aFirst = a.firstName.toLowerCase()
+          const bFirst = b.firstName.toLowerCase()
+          if (aFirst < bFirst) return -1
+          if (aFirst > bFirst) return 1
+          return 0
+        })
         return { label: selfValue, count: attendees.length, attendees }
       }
 

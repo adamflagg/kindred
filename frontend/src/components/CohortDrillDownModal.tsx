@@ -33,6 +33,20 @@ interface CohortDrillDownModalProps {
   allGenders?: boolean
   /** Confirmed incoming bunk_with / not_bunk_with requests targeting the source camper. */
   requestRelations?: CohortRelationsMap
+  /**
+   * Map of personCmId → current bunk name (or null when unassigned). Sourced
+   * from the active scenario's drafts or production assignments by the
+   * parent. When omitted entirely, the modal hides the bunk line — that
+   * keeps tests and standalone usage from inventing an "Unassigned" label.
+   */
+  bunkByPerson?: Map<number, string | null>
+  /**
+   * When true (default), the modal reserves 28rem of right-edge space so the
+   * source CamperDetailsPanel slide-out remains visible and unblurred — staff
+   * referenced the source camper while the cohort opens. Set to false when
+   * opened from the full-page CamperDetail view, which has no side panel.
+   */
+  reserveSidePanel?: boolean
   onClose: () => void
 }
 
@@ -113,6 +127,8 @@ export function CohortDrillDownModal({
   selfDisplayName,
   allGenders,
   requestRelations,
+  bunkByPerson,
+  reserveSidePanel = true,
   onClose,
 }: CohortDrillDownModalProps) {
   const count = attendees.length
@@ -143,6 +159,10 @@ export function CohortDrillDownModal({
       size="lg"
       noPadding
       scrollable
+      // When opened from the slide-out panel, match its width so it stays
+      // unblurred (staff reference the source camper while the cohort opens).
+      // From the full page there's no side panel — center normally.
+      {...(reserveSidePanel ? { backdropInsetRight: '28rem' } : {})}
     >
       {count === 0 ? (
         <p className="text-muted-foreground p-6 text-sm">No other campers in this session match.</p>
@@ -151,6 +171,17 @@ export function CohortDrillDownModal({
           {attendees.map((a) => {
             const relation = requestRelations?.get(a.personCmId)
             const relationBadge = getRelationBadge(relation?.type, selfDisplayName)
+            // The hook returns the key with `null` for unassigned campers,
+            // and is omitted entirely from the prop when callers don't
+            // want the bunk line. Distinguish the two:
+            //  - prop absent → no metadata line at all when grade is also null
+            //  - prop present, value null → render "Unassigned"
+            const hasBunkLookup = bunkByPerson?.has(a.personCmId) ?? false
+            const bunkName = hasBunkLookup ? (bunkByPerson?.get(a.personCmId) ?? null) : null
+            const gradeText = a.grade != null ? `${formatGradeOrdinal(a.grade)} grade` : null
+            const bunkText = hasBunkLookup ? (bunkName ?? 'Unassigned') : null
+            const metaText =
+              gradeText && bunkText ? `${gradeText} · ${bunkText}` : (gradeText ?? bunkText)
             return (
               <li
                 key={a.attendeeId}
@@ -166,11 +197,7 @@ export function CohortDrillDownModal({
                   >
                     {displayName(a)}
                   </Link>
-                  {a.grade != null && (
-                    <div className="text-muted-foreground text-xs">
-                      {formatGradeOrdinal(a.grade)} grade
-                    </div>
-                  )}
+                  {metaText && <div className="text-muted-foreground text-xs">{metaText}</div>}
                 </div>
                 <div className="flex items-center gap-2">
                   {relationBadge && (

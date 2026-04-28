@@ -62,7 +62,10 @@ class MinimalConfigLoader:
             "constraint.grade_ratio.max_percentage": 67,
             "constraint.grade_ratio.penalty": 1000,
             "constraint.age_spread.max_months": 24,
+            "constraint.age_spread.months": 24,
             "constraint.age_spread.penalty": 1500,
+            "constraint.age_spread.preferred_months": 0,
+            "constraint.age_spread.preferred_bonus": 0,
         }
         if overrides:
             self._defaults.update(overrides)
@@ -102,6 +105,18 @@ class MinimalConfigLoader:
         """Get constraint parameter value."""
         key = f"constraint.{constraint_type}.{param}"
         return self.get_int(key, default)
+
+    def get_soft_constraint_weight(self, constraint_name: str, default: int | None = None) -> int:
+        """Get soft constraint weight value for the given constraint."""
+        weight_mappings = {
+            "age_spread": "constraint.age_spread.penalty",
+            "grade_spread": "constraint.grade_spread.penalty",
+        }
+        key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
+        result = self.get_int(key, default=0)
+        if result == 0 and default is not None:
+            return default
+        return result
 
 
 def create_person(
