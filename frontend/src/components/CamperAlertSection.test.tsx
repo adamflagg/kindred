@@ -1,0 +1,339 @@
+/**
+ * Tests for CamperAlertSection — the alerts panel mirrored from the bunking-board
+ * camper card, rendered above the requests section in CamperDetailsPanel.
+ *
+ * Alert catalog (from CamperCard.tsx):
+ *   1. Orange triangle — "Has N requests, none satisfied"
+ *      Severity: yellow (warning) | Request-related: YES → clickable
+ *   2. Lock icon — "In friend group (N members)"
+ *      Severity: blue (info)     | Request-related: NO  → non-clickable
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '../test/testUtils'
+import { CamperAlertSection } from './CamperAlertSection'
+import type { CamperAlert } from './CamperAlertSection'
+
+describe('CamperAlertSection', () => {
+  const mockOnRequestAlertClick = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // ─── 1. Camper with unsatisfied requests → yellow warning row ────────────────
+
+  describe('unsatisfied-requests alert', () => {
+    it('renders a yellow warning row with correct label when camper has unsatisfied requests', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'unsatisfied-requests',
+          severity: 'yellow',
+          label: 'Has 3 requests, none satisfied',
+          requestRelated: true,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      expect(screen.getByText('Has 3 requests, none satisfied')).toBeInTheDocument()
+      // Row should exist in the section
+      expect(screen.getByRole('region', { name: /alerts/i })).toBeInTheDocument()
+    })
+
+    it('request-related alert row is a button (clickable)', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'unsatisfied-requests',
+          severity: 'yellow',
+          label: 'Has 2 requests, none satisfied',
+          requestRelated: true,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      const row = screen.getByRole('button', { name: /has 2 requests/i })
+      expect(row).toBeInTheDocument()
+    })
+
+    it('clicking a request-related alert calls onRequestAlertClick', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'unsatisfied-requests',
+          severity: 'yellow',
+          label: 'Has 1 request, none satisfied',
+          requestRelated: true,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      const row = screen.getByRole('button', { name: /has 1 request/i })
+      fireEvent.click(row)
+      expect(mockOnRequestAlertClick).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ─── 2. Non-request alert → plain row, no clickable affordance ───────────────
+
+  describe('non-request alert (lock group)', () => {
+    it('renders a blue info row for friend-group lock alert', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'friend-group',
+          severity: 'blue',
+          label: 'In friend group (4 members)',
+          requestRelated: false,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      expect(screen.getByText('In friend group (4 members)')).toBeInTheDocument()
+    })
+
+    it('non-request alert row is NOT a button (no clickable affordance)', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'friend-group',
+          severity: 'blue',
+          label: 'In friend group (2 members)',
+          requestRelated: false,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      // Should not be a button
+      const buttons = screen.queryAllByRole('button')
+      // None of the buttons should say "In friend group"
+      const lockButton = buttons.find((b) => String(b.textContent).includes('In friend group'))
+      expect(lockButton).toBeUndefined()
+    })
+
+    it('clicking non-request alert row does NOT call onRequestAlertClick', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'friend-group',
+          severity: 'blue',
+          label: 'In friend group (3 members)',
+          requestRelated: false,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      const row = screen.getByText('In friend group (3 members)')
+      fireEvent.click(row)
+      expect(mockOnRequestAlertClick).not.toHaveBeenCalled()
+    })
+  })
+
+  // ─── 3. Severity ordering: red → yellow → blue ───────────────────────────────
+
+  describe('severity ordering', () => {
+    it('orders alerts red → yellow → blue regardless of input order', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'friend-group',
+          severity: 'blue',
+          label: 'In friend group (2 members)',
+          requestRelated: false,
+        },
+        {
+          id: 'unsatisfied-requests',
+          severity: 'yellow',
+          label: 'Has 2 requests, none satisfied',
+          requestRelated: true,
+        },
+        {
+          id: 'critical-test',
+          severity: 'red',
+          label: 'Critical alert example',
+          requestRelated: false,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      const items = screen.getAllByRole('listitem')
+      expect(items[0]).toHaveTextContent('Critical alert example')
+      expect(items[1]).toHaveTextContent('Has 2 requests, none satisfied')
+      expect(items[2]).toHaveTextContent('In friend group (2 members)')
+    })
+  })
+
+  // ─── 4. No alerts → section does not render ──────────────────────────────────
+
+  describe('empty alerts list', () => {
+    it('does not render the section when alerts array is empty', () => {
+      render(<CamperAlertSection alerts={[]} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      expect(screen.queryByRole('region', { name: /alerts/i })).not.toBeInTheDocument()
+    })
+  })
+
+  // ─── 5. Multiple alerts mix of severities ────────────────────────────────────
+
+  describe('mixed alerts', () => {
+    it('renders all alerts when multiple are present', () => {
+      const alerts: CamperAlert[] = [
+        {
+          id: 'unsatisfied-requests',
+          severity: 'yellow',
+          label: 'Has 5 requests, none satisfied',
+          requestRelated: true,
+        },
+        {
+          id: 'friend-group',
+          severity: 'blue',
+          label: 'In friend group (3 members)',
+          requestRelated: false,
+        },
+      ]
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      expect(screen.getByText('Has 5 requests, none satisfied')).toBeInTheDocument()
+      expect(screen.getByText('In friend group (3 members)')).toBeInTheDocument()
+    })
+  })
+})
+
+// ─── Integration: CamperDetailsPanel renders alert section ────────────────────
+// These tests verify the alert section is integrated into CamperDetailsPanel above
+// the requests section, and that the existing sections still render.
+
+import CamperDetailsPanel from './CamperDetailsPanel'
+
+vi.mock('../lib/pocketbase', () => ({
+  pb: {
+    collection: vi.fn(() => ({
+      getFullList: vi.fn().mockResolvedValue([]),
+      getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+    })),
+    authStore: {
+      isValid: true,
+      token: 'mock-token',
+      model: { id: 'admin' },
+    },
+  },
+}))
+
+vi.mock('../hooks/useCurrentYear', () => ({
+  useYear: () => 2025,
+}))
+
+// Provide a no-op BunkRequestContext so CamperDetailsPanel can derive the
+// unsatisfied-requests alert without a live BunkRequestProvider in tests.
+vi.mock('../hooks', async () => {
+  const actual = await vi.importActual<typeof import('../hooks')>('../hooks')
+  return {
+    ...actual,
+    useBunkRequestContext: () => ({
+      allRequests: [],
+      hasRequests: () => false,
+      getRequestsForCamper: () => [],
+      getSatisfiedRequestInfo: () => ({
+        totalRequests: 0,
+        satisfiedCount: 0,
+        topPrioritySatisfied: false,
+        priorityLevels: [] as number[],
+        hasLockedPriority: false,
+      }),
+      isLoading: false,
+      error: null,
+    }),
+  }
+})
+
+// Provide a no-op LockGroupContext so CamperDetailsPanel renders in tests
+vi.mock('../contexts/LockGroupContext', () => ({
+  useLockGroupContext: () => ({
+    isDraftMode: false,
+    groups: [],
+    pendingCampers: [],
+    addPendingCamper: vi.fn(),
+    removePendingCamper: vi.fn(),
+    getPendingAnimationDelay: () => 0,
+    addCamperToGroup: vi.fn(),
+    getCamperLockGroup: () => null,
+    getCamperLockState: () => 'none',
+    getCamperLockGroupColor: () => undefined,
+    getGroupMembers: () => [],
+    createLockGroup: vi.fn(),
+    deleteLockGroup: vi.fn(),
+    isLoading: false,
+  }),
+}))
+
+describe('CamperDetailsPanel — alert section integration', () => {
+  it('regression: existing panel sections still render after alert section added', async () => {
+    const { queryByTestId } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+
+    // Backdrop still present (non-embedded mode)
+    await waitFor(() => {
+      expect(queryByTestId('panel-backdrop')).toBeInTheDocument()
+    })
+  })
+
+  // Scenario-aware assignment: CamperDetailsPanel re-fetches `camper` from PB,
+  // which only sees LIVE/prod assignments. When opened from a board that holds
+  // an active scenario in client state, the parent passes `assignedBunkCmId`
+  // so the alert path computes against the scenario, not the empty live state.
+  it('passes assignedBunkCmId prop into getSatisfiedRequestInfo (scenario override)', async () => {
+    const hooks = await import('../hooks')
+
+    const spy = vi.fn(
+      (_personCmId: number, _bunkCmId: number, _campers: unknown, _grade: number | null) => ({
+        totalRequests: 2,
+        satisfiedCount: 0,
+        topPrioritySatisfied: false,
+        priorityLevels: [] as number[],
+        hasLockedPriority: false,
+      })
+    )
+    vi.spyOn(hooks, 'useBunkRequestContext').mockReturnValue({
+      allRequests: [],
+      hasRequests: () => false,
+      getRequestsForCamper: () => [],
+      getSatisfiedRequestInfo: spy,
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof hooks.useBunkRequestContext>)
+
+    render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} assignedBunkCmId={777} />)
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalled()
+    })
+    // Second arg is bunkCmId — must be the scenario value from the prop
+    const firstCall = spy.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    expect(firstCall?.[1]).toBe(777)
+  })
+
+  // Regression guard: CamperDetailsPanel must mount without error when the
+  // bunking-board passes the full scenario-aware satisfaction trio
+  // (assignedBunkCmId + bunkCampers + getBunkForPerson). Per-branch behavior
+  // of the satisfaction calculation is covered exhaustively in
+  // requestSatisfaction.test.ts; this test only guards the prop wiring.
+  it('mounts cleanly with getBunkForPerson + assignedBunkCmId + bunkCampers (scenario path)', async () => {
+    const { queryByTestId } = render(
+      <CamperDetailsPanel
+        camperId="12345"
+        onClose={vi.fn()}
+        assignedBunkCmId={777}
+        getBunkForPerson={() => 777}
+        bunkCampers={[
+          { cmId: 12345, grade: 7 },
+          { cmId: 200, grade: 7 },
+        ]}
+      />
+    )
+
+    await waitFor(() => {
+      expect(queryByTestId('panel-backdrop')).toBeInTheDocument()
+    })
+  })
+})
