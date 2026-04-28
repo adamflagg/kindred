@@ -12,6 +12,7 @@ from bunking.bunking_validator import (
     HistoricalBunkingRecord,
     ValidationResult,
     ValidationSeverity,
+    ValidationStatistics,
 )
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
@@ -730,11 +731,8 @@ class TestNormalizeSourceField:
             assert field_data["total"] == 0
 
 
-from bunking.bunking_validator import ValidationStatistics
-
-
 def test_validation_statistics_has_parent_staff_breakdown_fields():
-    """ValidationStatistics must expose parent/staff breakdown fields with safe defaults."""
+    """ValidationStatistics declares parent/staff breakdown fields defaulting to 0/0.0."""
     stats = ValidationStatistics()
 
     # Parent breakdown — campers with parent-source requests (bunk_with or socialize_with)

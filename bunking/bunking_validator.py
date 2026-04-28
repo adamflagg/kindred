@@ -135,8 +135,9 @@ class ValidationStatistics(BaseModel):
     parent_request_satisfaction_rate: float = 0.0
     campers_with_unsatisfied_parent_requests: int = 0
 
-    # Staff-source request tracking (not_bunk_with + bunking_notes + internal_notes,
-    # per RequestSource.STAFF). Tracked separately because they don't satisfy the
+    # Staff-source request tracking, per RequestSource.STAFF. Source fields:
+    # SourceField.NOT_BUNK_WITH (stats key "do_not_share_with"), BUNKING_NOTES,
+    # INTERNAL_NOTES. Tracked separately because they don't satisfy the
     # "every camper gets one parent request" rule that Stage 4 will enforce.
     staff_requests: int = 0
     satisfied_staff_requests: int = 0
