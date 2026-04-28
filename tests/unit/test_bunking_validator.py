@@ -897,3 +897,36 @@ def test_validator_skips_binning_for_requests_with_null_source():
     assert stats.staff_requests == 0
     assert stats.campers_with_unsatisfied_parent_requests == 0
     assert stats.campers_with_unsatisfied_staff_requests == 0
+
+
+def test_validator_skips_binning_for_legacy_notes_source_value():
+    """The bunk_requests schema permits a legacy source="notes" value not present
+    in the RequestSource enum. Such rows count toward total_requests but fall
+    through both parent and staff bins. Pins the documented behavior."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+    ]
+    requests = [
+        _mock_request("20001", "20002", "bunk_with", "notes"),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    assert stats.total_requests == 1
+    assert stats.satisfied_requests == 1
+    assert stats.parent_requests == 0
+    assert stats.staff_requests == 0
+    assert stats.campers_with_unsatisfied_parent_requests == 0
+    assert stats.campers_with_unsatisfied_staff_requests == 0

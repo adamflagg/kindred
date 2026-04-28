@@ -124,9 +124,10 @@ class Deduplicator:
                 kept_requests.append(group_requests[0])
             else:
                 # Tiebreak order (descending): SOURCE_PRIORITY, then bunk_with-source
-                # preference for parent age_pref dedupe (Stage 1 fix), then confidence.
-                # The bunk_with bias only fires for parent-vs-parent age_pref ties; for
-                # any other source pairing, SOURCE_PRIORITY decides first.
+                # preference (Stage 1 fix for parent age_pref dedupe), then confidence.
+                # SOURCE_PRIORITY dominates first, so the bunk_with bias only changes
+                # outcomes within same-source ties — most commonly parent-vs-parent
+                # age_pref (where bunk_with prose beats the socialize_with checkbox).
                 def _sort_key(r: BunkRequest) -> tuple[int, int, float]:
                     is_bunk_with = 1 if r.source_field == SourceField.BUNK_WITH else 0
                     return (SOURCE_PRIORITY.get(r.source, 0), is_bunk_with, r.confidence_score)

@@ -10,7 +10,7 @@ from typing import Any
 from bunking.logging_config import get_logger
 
 from ..core.constants import PRIORITY_KEYWORDS
-from ..core.models import ParsedRequest, RequestType
+from ..core.models import ParsedRequest, RequestSource, RequestType
 from ..shared.constants import SourceField
 
 logger = get_logger(__name__)
@@ -127,7 +127,12 @@ class PriorityCalculator:
         # Stage 1 fix (#18c foundation): socialize_with should be sole-promoted
         # when the parent submitted no bunk_with text — staff requests don't
         # count as "other requests" for this purpose since they're not parent input.
-        has_parent_bunk_with = any(r.source_field == SourceField.BUNK_WITH for r in all_requests_for_person)
+        # Gate explicitly on RequestSource.FAMILY so a future misclassified staff
+        # record on the bunk_with source_field can't suppress the promotion.
+        has_parent_bunk_with = any(
+            r.source == RequestSource.FAMILY and r.source_field == SourceField.BUNK_WITH
+            for r in all_requests_for_person
+        )
 
         # Memoize the per-list family_bunk_requests scan to avoid O(N^2) work
         # when this method is invoked once per request for the same list (#923).

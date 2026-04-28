@@ -629,6 +629,41 @@ class TestSocializeWithParentParamountStage1:
             "guards against accidental any→all rewrite"
         )
 
+    def test_socialize_with_sole_promoted_with_only_other_family_socialize_with(self, calculator):
+        """Two FAMILY socialize_with siblings (no bunk_with text anywhere) should
+        still sole-promote to priority 4. Regression guard against a future
+        misread of 'has_parent_bunk_with' that might count any FAMILY entry."""
+        socialize_a = ParsedRequest(
+            raw_text="younger",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.YOUNGER,
+            source_field=SourceField.SOCIALIZE_WITH,
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=0,
+            metadata={},
+        )
+        socialize_b = ParsedRequest(
+            raw_text="older",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.OLDER,
+            source_field=SourceField.SOCIALIZE_WITH,
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=1,
+            metadata={},
+        )
+        all_for_person = [socialize_a, socialize_b]
+
+        priority = calculator.calculate_priority(socialize_a, all_for_person)
+
+        assert priority == 4, (
+            "socialize_with should sole-promote to priority 4 even with another "
+            "FAMILY socialize_with sibling, since no bunk_with text exists"
+        )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

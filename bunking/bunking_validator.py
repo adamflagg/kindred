@@ -516,8 +516,9 @@ class BunkingValidator:
                 # Bin by request.source (RequestSource enum value) for Stage 1
                 # breakdown stats. Production stores `source` as the enum's str
                 # value ("family" / "staff"); requests with source=None or any
-                # unrecognized value fall through both branches and are counted
-                # only in the aggregate total/satisfied stats.
+                # unrecognized value (notably the legacy "notes" enum value still
+                # permitted by the bunk_requests schema) fall through both branches
+                # and are counted only in the aggregate total/satisfied stats.
                 if request.source == RequestSource.FAMILY.value:
                     parent_requests_by_person[requester_id].append(request)
                 elif request.source == RequestSource.STAFF.value:
@@ -653,14 +654,10 @@ class BunkingValidator:
             stats.staff_request_satisfaction_rate = stats.satisfied_staff_requests / stats.staff_requests
 
         stats.campers_with_unsatisfied_parent_requests = sum(
-            1
-            for requester_id, reqs in parent_requests_by_person.items()
-            if reqs and not satisfied_parent_by_person.get(requester_id)
+            1 for requester_id in parent_requests_by_person if not satisfied_parent_by_person.get(requester_id)
         )
         stats.campers_with_unsatisfied_staff_requests = sum(
-            1
-            for requester_id, reqs in staff_requests_by_person.items()
-            if reqs and not satisfied_staff_by_person.get(requester_id)
+            1 for requester_id in staff_requests_by_person if not satisfied_staff_by_person.get(requester_id)
         )
 
         # Add summary issue if there are campers with unsatisfied valid requests
