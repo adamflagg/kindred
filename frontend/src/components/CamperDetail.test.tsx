@@ -50,8 +50,16 @@ vi.mock('../hooks/useCamperCohorts', () => ({
         count: 3,
         attendees: [],
       },
-      congregation: null,
-      city: null,
+      congregation: {
+        label: 'Temple Beth Shalom',
+        count: 2,
+        attendees: [],
+      },
+      city: {
+        label: 'Berkeley',
+        count: 5,
+        attendees: [],
+      },
       sessionType: 'standard',
       allGenders: false,
     },
@@ -89,6 +97,10 @@ vi.mock('../lib/pocketbase', () => ({
               first_name: 'Emma',
               last_name: 'Johnson',
               year: 2026,
+              normalized_school: 'Riverside Elementary',
+              normalized_city: 'Berkeley',
+              normalized_congregation: 'Temple Beth Shalom',
+              congregation: 'Temple Beth Shalom',
             },
           ],
         }),
@@ -154,25 +166,42 @@ describe('CamperDetail permission gates', () => {
   })
 })
 
-describe('CamperDetail cohort rows', () => {
-  it('shows the cohort section for an enrolled current-year camper', async () => {
+describe('CamperDetail cohort badges', () => {
+  beforeEach(() => {
     mockAuthValue = {
       user: { is_admin: true, cached_permissions: [] },
       isLoading: false,
     }
-    renderDetail()
-    expect(await screen.findByTestId('camper-cohorts-section')).toBeTruthy()
   })
 
-  it('hides the cohort section when viewing historical year data', async () => {
-    mockAuthValue = {
-      user: { is_admin: true, cached_permissions: [] },
-      isLoading: false,
-    }
+  it('renders a cohort badge for school in the IdentityPanel', async () => {
+    renderDetail()
+    expect(await screen.findByTestId('cohort-badge-school')).toBeTruthy()
+  })
+
+  it('renders a cohort badge for city in the IdentityPanel', async () => {
+    renderDetail()
+    expect(await screen.findByTestId('cohort-badge-city')).toBeTruthy()
+  })
+
+  it('renders a cohort badge for congregation in the IdentityPanel', async () => {
+    renderDetail()
+    expect(await screen.findByTestId('cohort-badge-congregation')).toBeTruthy()
+  })
+
+  it('does not render the standalone cohort section on the full page', async () => {
+    renderDetail()
+    await screen.findByText(/Emma/i).catch(() => null)
+    expect(screen.queryByTestId('camper-cohorts-section')).toBeNull()
+  })
+
+  it('hides cohort badges when viewing historical year data', async () => {
     mockSessionYear = 2025
     mockAttendeeYear = 2025
     renderDetail()
     await screen.findByText(/Emma/i).catch(() => null)
-    expect(screen.queryByTestId('camper-cohorts-section')).toBeNull()
+    expect(screen.queryByTestId('cohort-badge-school')).toBeNull()
+    expect(screen.queryByTestId('cohort-badge-city')).toBeNull()
+    expect(screen.queryByTestId('cohort-badge-congregation')).toBeNull()
   })
 })
