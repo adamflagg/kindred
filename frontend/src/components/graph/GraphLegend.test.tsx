@@ -88,4 +88,15 @@ describe('GraphLegend rendering', () => {
     expect(screen.getByText('No requests')).toBeInTheDocument()
     expect(screen.getByText('0 satisfied requests')).toBeInTheDocument()
   })
+
+  it('renders a "Don\'t Bunk With" edge entry distinct from "Bunk Request"', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('Bunk Request')).toBeInTheDocument()
+    expect(screen.getByText("Don't Bunk With")).toBeInTheDocument()
+  })
+
+  it('renders a "Sibling" edge entry', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('Sibling')).toBeInTheDocument()
+  })
 })

@@ -5,8 +5,20 @@
 import type { Core, NodeSingular } from 'cytoscape'
 import type { Instance as PopperInstance } from '@popperjs/core'
 import { createPopper } from '@popperjs/core'
-import { getUnitForBunk } from '../../utils/unitMapping'
+import { getUnitSideForBunk, type UnitSide } from '../../utils/unitMapping'
 import { getUnitColorForBunk, getUnitColorByName } from '../../utils/graphColorUtils'
+
+/** Lucide-derived path data for the gender side markers. Keeping the SVG
+ *  inline (rather than rendering React lucide-react components) avoids
+ *  spinning up a React tree just to extract markup for these DOM-based
+ *  popper labels. The unicode glyphs (♂ / ♀) we used previously rendered
+ *  too thin against the unit color stroke. */
+const SIDE_MARKER_PATHS: Record<Exclude<UnitSide, null>, string> = {
+  // Mars (♂): circle + diagonal arrow up-right
+  B: '<path d="M16 3h5v5"/><path d="M21 3l-6.75 6.75"/><circle cx="10" cy="14" r="6"/>',
+  // Venus (♀): circle + cross below
+  G: '<path d="M12 16v6"/><path d="M9 19h6"/><circle cx="12" cy="9" r="6"/>',
+}
 
 /** Shared config for bubbleset path rendering (unit and bunk bubbles) */
 const BASE_BUBBLE_OPTIONS = {
@@ -90,6 +102,90 @@ const UNIT_LABEL_FONT = {
 } as const
 
 /**
+ * Build the DOM for a unit label ("Galil" + ♂/♀ icon). Extracted as a
+ * pure helper so the SVG-icon swap can be unit-tested without spinning
+ * up a Cytoscape instance.
+ */
+export function buildUnitLabel(
+  unit: string,
+  side: Exclude<UnitSide, null>,
+  unitColor: string
+): HTMLElement {
+  const labelEl = document.createElement('div')
+  labelEl.className = 'unit-label-popper'
+  labelEl.style.position = 'absolute'
+
+  Object.assign(labelEl.style, {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    padding: '2px 10px',
+    borderRadius: '10px',
+    whiteSpace: 'nowrap',
+    border: `2px solid ${unitColor}`,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  })
+
+  const innerDiv = document.createElement('div')
+  Object.assign(innerDiv.style, UNIT_LABEL_FONT)
+  innerDiv.style.color = unitColor
+  innerDiv.textContent = unit
+  labelEl.appendChild(innerDiv)
+
+  // Inline SVG so the marker paints with the same stroke color as the
+  // unit border — no font-rendering anti-aliasing thinning the glyph.
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', unitColor)
+  svg.setAttribute('stroke-width', '2.5')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.innerHTML = SIDE_MARKER_PATHS[side]
+  labelEl.appendChild(svg)
+
+  return labelEl
+}
+
+/**
+ * Pick the DOM parent for popper labels. Appending into the graph
+ * container (instead of document.body) lets overflow:hidden clip labels
+ * cleanly under the card header — and keeps them visible inside the
+ * fixed-positioned card in fullscreen mode, where body-level labels
+ * would be hidden behind the modal.
+ */
+export function getLabelParent(containerRef: { current: HTMLElement | null }): HTMLElement {
+  return containerRef.current ?? document.body
+}
+
+/**
+ * Build the DOM for a bunk label (pill with bunk name, colored by unit).
+ * Extracted for parity with buildUnitLabel and to enable unit testing.
+ */
+export function buildBunkLabel(bunkName: string, bunkColor: string): HTMLElement {
+  const labelEl = document.createElement('div')
+  labelEl.className = 'bunk-label-popper'
+  labelEl.style.position = 'absolute'
+  labelEl.style.zIndex = '1'
+  const innerDiv = document.createElement('div')
+  Object.assign(innerDiv.style, {
+    backgroundColor: bunkColor,
+    color: 'white',
+    padding: '4px 12px',
+    borderRadius: '16px',
+    fontSize: '12px',
+    fontWeight: '600',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    whiteSpace: 'nowrap',
+  })
+  innerDiv.textContent = bunkName
+  labelEl.appendChild(innerDiv)
+  return labelEl
+}
+
+/**
  * Returns the bubbleset path style for a unit boundary bubble.
  * The fill is intentionally 'none' — the boundary is shown by stroke only
  * (#32: fillOpacity: 0 makes any fill color invisible; 'none' is explicit).
@@ -126,6 +222,10 @@ export interface BubbleRenderRefs {
   pathsRef: { current: SVGElement[] }
   poppersRef: { current: PopperRef[] }
   containerRef: { current: HTMLDivElement | null }
+  /** Tracks the cy `pan zoom resize` listener installed by drawBunkBubbles
+   *  so a redraw can detach the previous one before attaching a new one.
+   *  Without this, every checkbox toggle stacks another listener on cy. */
+  poppersListenerRef: { current: ((evt?: unknown) => void) | null }
 }
 
 /**
@@ -151,7 +251,11 @@ function createPopperLabel(
     }
   })
 
-  document.body.appendChild(labelEl)
+  // Append into the graph container when one is available so the label
+  // is clipped by overflow:hidden (slides cleanly under the card header)
+  // and stays visible inside the fixed-positioned card in fullscreen
+  // mode. Falls back to document.body only if the container isn't ready.
+  getLabelParent(containerRef as { current: HTMLElement | null }).appendChild(labelEl)
 
   // Create virtual element for Popper that tracks the node position
   const virtualElement = {
@@ -180,11 +284,19 @@ function createPopperLabel(
     },
   }
 
+  const boundary = containerRef.current ?? 'viewport'
   const popperInstance = createPopper(virtualElement as unknown as Element, labelEl, {
     placement: 'top',
     modifiers: [
       { name: 'offset', options: { offset: [0, offsetY] } },
-      { name: 'preventOverflow', options: { boundary: containerRef.current ?? 'viewport' } },
+      // Both flip and preventOverflow default to viewport boundary. In
+      // fullscreen the card fills nearly the whole viewport, so viewport-
+      // bound flipping would only trigger once the label crossed the
+      // viewport edge — long past the header divider. Pinning both to the
+      // graph container makes the label flip to below-the-node as soon as
+      // there's no room above, matching the non-fullscreen behavior.
+      { name: 'flip', options: { boundary, fallbackPlacements: ['bottom'] } },
+      { name: 'preventOverflow', options: { boundary, altAxis: true } },
       {
         name: 'hideOutsideContainer',
         enabled: true,
@@ -194,11 +306,16 @@ function createPopperLabel(
           if (!container) return
           const containerRect = container.getBoundingClientRect()
           const popperRect = state.elements.popper.getBoundingClientRect()
+          // Hide the moment the popper crosses any container edge — not
+          // only when fully outside. With overflow:hidden on the container
+          // a partially-outside label is already visually clipped at the
+          // boundary; making it disappear cleanly avoids the half-cut
+          // remnant peeking past the header divider in fullscreen.
           const isOutside =
-            popperRect.bottom < containerRect.top ||
-            popperRect.top > containerRect.bottom ||
-            popperRect.right < containerRect.left ||
-            popperRect.left > containerRect.right
+            popperRect.top < containerRect.top ||
+            popperRect.bottom > containerRect.bottom ||
+            popperRect.left < containerRect.left ||
+            popperRect.right > containerRect.right
           state.elements.popper.style.visibility = isOutside ? 'hidden' : 'visible'
         },
       },
@@ -219,12 +336,23 @@ export function drawBunkBubbles(
   showUnits: boolean = false,
   showBunks: boolean = true
 ): void {
-  const { bubblesetsRef, pathsRef, poppersRef, containerRef } = refs
+  const { bubblesetsRef, pathsRef, poppersRef, containerRef, poppersListenerRef } = refs
 
   // Check if cy is valid before doing anything
   if (cy.destroyed()) {
     console.error('Cytoscape instance is not valid, cannot create bubbles')
     return
+  }
+
+  // Detach previous pan/zoom/resize listener before re-attaching below.
+  // Each call creates a new updatePoppers closure; without an off() the
+  // listeners stack on every checkbox toggle and bunksData arrival.
+  if (poppersListenerRef.current) {
+    ;(cy as unknown as { off: (events: string, handler: (evt?: unknown) => void) => void }).off(
+      'pan zoom resize',
+      poppersListenerRef.current
+    )
+    poppersListenerRef.current = null
   }
 
   // Clear any existing bubblesets
@@ -240,7 +368,7 @@ export function drawBunkBubbles(
   // Group nodes by bunk (excluding label nodes and parent compound nodes)
   const bunkGroups: Record<number, NodeSingular[] | undefined> = {}
   cy.nodes()
-    .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent'))
+    .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent') && !n.data('isUnitParent'))
     .forEach((node) => {
       const bunkId = node.data('bunk_cm_id')
       if (bunkId) {
@@ -265,8 +393,16 @@ export function drawBunkBubbles(
   // deterministic color assignment (#31, #33): same bunk set → same colors.
   const allBunkNames: string[] = bunksData ? Object.values(bunksData) : []
 
-  // Collect unit grouping data (needed for both bubble paths and labels)
-  const unitGroups: Record<string, NodeSingular[]> = {}
+  // Collect unit grouping data (needed for both bubble paths and labels).
+  // Keyed by `${unit}-${side}` so each unit gets two visual bubbles — boys
+  // and girls — matching the layout split. AG and unprefixed Aleph/Bet have
+  // side=null and don't appear in any unit bubble (free-floating).
+  interface UnitSideEntry {
+    unit: string
+    side: 'B' | 'G'
+    nodes: NodeSingular[]
+  }
+  const unitGroups: Record<string, UnitSideEntry> = {}
 
   if (showUnits && bunksData) {
     cy.nodes()
@@ -276,26 +412,24 @@ export function drawBunkBubbles(
         if (!bunkId) return
         const bunkName = bunksData[bunkId]
         if (!bunkName) return
-        const unit = getUnitForBunk(bunkName)
-        if (!unit) return
-        const group = (unitGroups[unit] ??= [])
-        group.push(node)
+        const unitSide = getUnitSideForBunk(bunkName)
+        if (!unitSide?.side) return
+        const key = `${unitSide.unit}-${unitSide.side}`
+        const entry = (unitGroups[key] ??= { unit: unitSide.unit, side: unitSide.side, nodes: [] })
+        entry.nodes.push(node)
       })
   }
 
   // --- Draw order: unit bubbles FIRST (behind), then bunk bubbles ON TOP ---
 
-  // Build sorted unit list from present groups for deterministic palette (#33)
-  // Hoisted: shared by both unit-bubble drawing (step 1) and unit-label drawing (step 3)
-  const presentUnits = Object.keys(unitGroups)
-
   // 1. Add unit bubble paths first so they render behind bunk bubbles
   if (showUnits && bunksData) {
-    Object.entries(unitGroups).forEach(([unitName, nodes]) => {
+    Object.entries(unitGroups).forEach(([key, { unit, nodes }]) => {
       if (nodes.length === 0) return
 
-      // #31/#33: deterministic unit color — same unit always gets the same hue
-      const unitColor = getUnitColorByName(unitName, presentUnits)
+      // #31/#33: color depends ONLY on unit name, so Galil-B and Galil-G
+      // share Galil's hue — the side split is for layout/labeling only.
+      const unitColor = getUnitColorByName(unit)
 
       try {
         const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
@@ -307,7 +441,7 @@ export function drawBunkBubbles(
         })
         pathsRef.current.push(path)
       } catch (error) {
-        console.error(`Error creating unit bubble for ${unitName}:`, error)
+        console.error(`Error creating unit bubble for ${key}:`, error)
       }
     })
   }
@@ -326,9 +460,7 @@ export function drawBunkBubbles(
         failed: 0,
       })
     }
-  }
-
-  if (showBunks) {
+  } else {
     Object.entries(bunkGroups).forEach(([bunkId, nodes]) => {
       if (!nodes || nodes.length === 0) return // Skip empty bunks
 
@@ -375,16 +507,12 @@ export function drawBunkBubbles(
     })
   }
 
-  // Force bubbleset to recompute paths
+  // Force bubbleset to recompute paths. updateBubbles(true) triggers its
+  // own redraw of the bubble overlay; no separate cy.forceRender() needed.
   try {
     updateBubbles(true)
   } catch (updateError) {
     console.error('Error calling bb.update(true):', updateError)
-  }
-
-  // Force Cytoscape repaint
-  if (!cy.destroyed()) {
-    cy.forceRender()
   }
 
   // Clean up existing popper instances
@@ -399,35 +527,13 @@ export function drawBunkBubbles(
   // --- Labels: unit labels first (higher offset), then bunk labels ---
 
   // 3. Add unit labels — solid color matching the unit bubble (#40: no gradient)
+  // One label per (unit, side): "Galil ♂" / "Galil ♀".
   if (showUnits && bunksData) {
-    Object.entries(unitGroups).forEach(([unitName, nodes]) => {
+    Object.values(unitGroups).forEach(({ unit, side, nodes }) => {
       if (nodes.length === 0) return
 
-      // #40: use the same deterministic solid color as the unit bubble, no gradient
-      const unitColor = getUnitColorByName(unitName, presentUnits)
-
-      const labelEl = document.createElement('div')
-      labelEl.className = 'unit-label-popper'
-      labelEl.style.position = 'absolute'
-      labelEl.style.zIndex = '1'
-      const innerDiv = document.createElement('div')
-
-      // Pill styling with solid unit color border
-      Object.assign(labelEl.style, {
-        backgroundColor: 'rgba(255,255,255,0.85)',
-        padding: '2px 10px',
-        borderRadius: '10px',
-        whiteSpace: 'nowrap',
-        border: `2px solid ${unitColor}`,
-      })
-
-      // Font + color — solid, no gradient
-      Object.assign(innerDiv.style, UNIT_LABEL_FONT)
-      innerDiv.style.color = unitColor
-
-      innerDiv.textContent = unitName
-      labelEl.appendChild(innerDiv)
-
+      const unitColor = getUnitColorByName(unit)
+      const labelEl = buildUnitLabel(unit, side, unitColor)
       createPopperLabel(nodes, labelEl, containerRef, poppersRef, 30)
     })
   }
@@ -441,24 +547,7 @@ export function drawBunkBubbles(
       // #31/#33: bunk label uses the same deterministic unit color as its bubble
       const bunkColor = getUnitColorForBunk(bunkName, allBunkNames)
 
-      const labelEl = document.createElement('div')
-      labelEl.className = 'bunk-label-popper'
-      labelEl.style.position = 'absolute'
-      labelEl.style.zIndex = '1'
-      const innerDiv = document.createElement('div')
-      Object.assign(innerDiv.style, {
-        backgroundColor: bunkColor,
-        color: 'white',
-        padding: '4px 12px',
-        borderRadius: '16px',
-        fontSize: '12px',
-        fontWeight: '600',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        whiteSpace: 'nowrap',
-      })
-      innerDiv.textContent = bunkName
-      labelEl.appendChild(innerDiv)
-
+      const labelEl = buildBunkLabel(bunkName, bunkColor)
       createPopperLabel(nodes, labelEl, containerRef, poppersRef, 10)
     })
   }
@@ -471,6 +560,7 @@ export function drawBunkBubbles(
   }
 
   cy.on('pan zoom resize', updatePoppers)
+  poppersListenerRef.current = updatePoppers
 
   // Initial visibility prime: Popper.js positions elements asynchronously
   // (its first layout runs on the next animation frame), so the visibility
@@ -488,7 +578,7 @@ export function drawBunkBubbles(
  * Clear all bubble-related resources
  */
 export function clearBubbles(refs: BubbleRenderRefs): void {
-  const { bubblesetsRef, pathsRef, poppersRef } = refs
+  const { bubblesetsRef, pathsRef, poppersRef, poppersListenerRef } = refs
 
   if (bubblesetsRef.current) {
     ;(bubblesetsRef.current as { destroy: () => void }).destroy()
@@ -503,4 +593,8 @@ export function clearBubbles(refs: BubbleRenderRefs): void {
     })
     poppersRef.current = []
   }
+
+  // Null the listener ref. The next drawBunkBubbles call won't attempt to
+  // off() a stale function reference against a (possibly-fresh) cy instance.
+  poppersListenerRef.current = null
 }

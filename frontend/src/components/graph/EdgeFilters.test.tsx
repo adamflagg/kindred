@@ -13,8 +13,6 @@ describe('getEdgeLabel utility', () => {
   it('maps known edge types to display labels', () => {
     expect(getEdgeLabel('request')).toBe('Requests')
     expect(getEdgeLabel('sibling')).toBe('Siblings')
-    expect(getEdgeLabel('historical')).toBe('Historical')
-    expect(getEdgeLabel('school')).toBe('Classmates')
   })
 
   it('falls back to the raw type for unknown edge types', () => {

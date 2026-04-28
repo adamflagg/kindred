@@ -3,7 +3,7 @@
  * Maps bunk names (e.g. "B-1", "G-12", "Aleph") to unit names
  */
 import { describe, it, expect } from 'vitest'
-import { getUnitForBunk, UNIT_COLORS } from './unitMapping'
+import { getUnitForBunk, getUnitSideForBunk, UNIT_COLORS } from './unitMapping'
 
 describe('getUnitForBunk', () => {
   describe('Nitzanim unit (Aleph, Bet)', () => {
@@ -157,6 +157,52 @@ describe('getUnitForBunk', () => {
       expect(getUnitForBunk('b-aleph')).toBe('Nitzanim')
       expect(getUnitForBunk('g-bet')).toBe('Nitzanim')
     })
+  })
+})
+
+describe('getUnitSideForBunk', () => {
+  it('returns boys side for B- prefix', () => {
+    expect(getUnitSideForBunk('B-5')).toEqual({ unit: 'Eilat', side: 'B' })
+  })
+
+  it('returns girls side for G- prefix', () => {
+    expect(getUnitSideForBunk('G-5')).toEqual({ unit: 'Eilat', side: 'G' })
+  })
+
+  it('returns null side for AG- prefix (free-floating)', () => {
+    expect(getUnitSideForBunk('AG-5')).toEqual({ unit: 'Eilat', side: null })
+  })
+
+  it('returns boys side for B-Aleph', () => {
+    expect(getUnitSideForBunk('B-Aleph')).toEqual({ unit: 'Nitzanim', side: 'B' })
+  })
+
+  it('returns girls side for G-Bet', () => {
+    expect(getUnitSideForBunk('G-Bet')).toEqual({ unit: 'Nitzanim', side: 'G' })
+  })
+
+  it('returns null side for unprefixed Aleph (ambiguous → float)', () => {
+    expect(getUnitSideForBunk('Aleph')).toEqual({ unit: 'Nitzanim', side: null })
+  })
+
+  it('returns null side for unprefixed Bet (ambiguous → float)', () => {
+    expect(getUnitSideForBunk('Bet')).toEqual({ unit: 'Nitzanim', side: null })
+  })
+
+  it('handles trailing letter sub-bunk variants', () => {
+    expect(getUnitSideForBunk('B-3A')).toEqual({ unit: 'Galil', side: 'B' })
+    expect(getUnitSideForBunk('G-12b')).toEqual({ unit: 'Chalutzim 2', side: 'G' })
+  })
+
+  it('is case-insensitive on prefix', () => {
+    expect(getUnitSideForBunk('b-5')).toEqual({ unit: 'Eilat', side: 'B' })
+    expect(getUnitSideForBunk('g-Bet')).toEqual({ unit: 'Nitzanim', side: 'G' })
+  })
+
+  it('returns null for unrecognized names', () => {
+    expect(getUnitSideForBunk('Unknown')).toBeNull()
+    expect(getUnitSideForBunk('')).toBeNull()
+    expect(getUnitSideForBunk('Bunk 12345')).toBeNull()
   })
 })
 

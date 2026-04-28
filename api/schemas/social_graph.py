@@ -35,6 +35,7 @@ class SocialGraphEdge(BaseModel):
     reciprocal: bool = False
     confidence: float | None = None  # AI confidence score for request edges
     priority: int | None = None  # Priority level for request edges
+    request_type: str | None = None  # 'bunk_with' | 'not_bunk_with' for type='request' edges
     metadata: dict[str, Any] = {}  # Additional edge metadata (e.g., location for classmate edges)
 
 

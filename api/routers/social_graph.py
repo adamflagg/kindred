@@ -214,6 +214,7 @@ async def get_session_social_graph(
                         reciprocal=graph.has_edge(target, source),
                         confidence=data.get("confidence"),
                         priority=data.get("priority"),
+                        request_type=data.get("request_type"),
                         metadata=data.get("metadata", {}),
                     )
                 )
@@ -487,6 +488,7 @@ async def get_bunk_social_graph(
                         reciprocal=is_reciprocal,
                         confidence=data.get("confidence") if primary_type == "request" else None,
                         priority=data.get("priority") if primary_type == "request" else None,
+                        request_type=data.get("request_type") if primary_type == "request" else None,
                     )
                 )
 
@@ -533,6 +535,7 @@ async def get_bunk_social_graph(
                         reciprocal=is_reciprocal,
                         confidence=data.get("confidence"),
                         priority=data.get("priority"),
+                        request_type=data.get("request_type"),
                     )
                 )
 
@@ -711,6 +714,7 @@ async def get_person_ego_network(
                     reciprocal=ego_graph.has_edge(target, source),
                     confidence=data.get("confidence"),
                     priority=data.get("priority"),
+                    request_type=data.get("request_type"),
                 )
             )
 

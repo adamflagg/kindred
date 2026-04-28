@@ -364,7 +364,9 @@ export default function SessionView() {
         {/* Friends Tab - preserves group selection state */}
         <Activity mode={activeTab === 'friends' ? 'visible' : 'hidden'}>
           {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-            <FriendGroupsView sessionCmId={parseInt(selectedSession, 10)} />
+            <BunkRequestProvider sessionCmId={parseInt(selectedSession, 10)}>
+              <FriendGroupsView sessionCmId={parseInt(selectedSession, 10)} />
+            </BunkRequestProvider>
           ) : (
             <div className="text-muted-foreground text-center">Loading session data...</div>
           )}

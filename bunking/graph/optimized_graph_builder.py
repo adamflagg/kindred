@@ -148,9 +148,16 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         self.graph.add_nodes_from(node_data)
         logger.debug(f"Added {len(node_data)} nodes to graph")
 
-        # Prepare batch edge data
+        # Prepare batch edge data.
+        #
+        # We intentionally do NOT collapse same-type mutuals into a single
+        # edge with reciprocal=True. Cytoscape renders two opposite-direction
+        # edges as two separate curves (one per direction), which makes per-
+        # direction state visually obvious — e.g. when A requests B but B
+        # requests _not_ with A, the asymmetry shows as two distinct curves.
+        # Collapsing would force a double-headed arrow on a single line that
+        # can't represent that asymmetry.
         edge_data = []
-        processed_pairs = set()  # Track processed pairs to avoid duplicates
 
         # Process all requests (using requestee_id field for target person)
         for person_id, person_requests in requests_by_person.items():
@@ -163,16 +170,9 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                 if requestee not in self.graph:
                     continue
 
-                # Create edge key for deduplication
-                edge_key = (min(person_id, requestee), max(person_id, requestee))
-
-                # Skip if we've already processed this pair
-                if edge_key in processed_pairs and request.request_type != "not_bunk_with":
-                    continue
-
-                processed_pairs.add(edge_key)
-
-                # Check for reciprocal request
+                # Reciprocal stays as metadata (not used to dedup any more).
+                # Treated as same-type mutual: A → B exists with the same
+                # request_type as the reverse B → A.
                 reciprocal = any(
                     getattr(r, "requester_id", None) == requestee
                     and getattr(r, "requestee_id", None) == person_id
