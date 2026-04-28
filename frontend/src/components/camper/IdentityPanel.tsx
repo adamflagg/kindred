@@ -26,7 +26,6 @@ import { useCohortRequestRelations } from '../../hooks/useCohortRequestRelations
 import { useCohortBunkAssignments } from '../../hooks/useCohortBunkAssignments'
 import { CohortDrillDownModal, type CohortKind } from '../CohortDrillDownModal'
 import type { Camper } from '../../types/app-types'
-import type { PersonsResponse } from '../../types/pocketbase-types'
 
 interface CohortContext {
   personCmId: number
@@ -37,8 +36,8 @@ interface CohortContext {
 
 interface IdentityPanelProps {
   camper: Camper
-  person?: PersonsResponse | undefined
   location: string | null
+  congregation: string | null
   pronouns: string
   defaultExpanded?: boolean
   cohortContext?: CohortContext | undefined
@@ -48,8 +47,8 @@ const KINDS: CohortKind[] = ['school', 'congregation', 'city']
 
 export function IdentityPanel({
   camper,
-  person,
   location,
+  congregation,
   pronouns,
   defaultExpanded = false,
   cohortContext,
@@ -82,7 +81,6 @@ export function IdentityPanel({
     cohortContext?.year ?? 0
   )
 
-  const congregation = person?.normalized_congregation ?? null
   const openEntry = openKind && cohorts ? cohorts[openKind] : null
 
   return (

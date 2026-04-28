@@ -68,11 +68,11 @@ vi.mock('../hooks/useCamperCohorts', () => ({
 }))
 
 vi.mock('../hooks/useCohortRequestRelations', () => ({
-  useCohortRequestRelations: () => ({ relations: {} }),
+  useCohortRequestRelations: () => ({ relations: new Map() }),
 }))
 
 vi.mock('../hooks/useCohortBunkAssignments', () => ({
-  useCohortBunkAssignments: () => ({ bunkByPerson: {} }),
+  useCohortBunkAssignments: () => ({ bunkByPerson: new Map() }),
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({

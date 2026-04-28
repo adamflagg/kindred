@@ -227,6 +227,7 @@ export default function CamperDetail() {
     person?.normalized_city ?? person?.address_city,
     person?.address_state
   )
+  const congregation = person?.normalized_congregation ?? null
   const pronouns = formatPronouns(camper)
   const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined)
   const allSessionNames =
@@ -267,8 +268,8 @@ export default function CamperDetail() {
           {/* Identity & Details */}
           <IdentityPanel
             camper={camper}
-            person={person}
             location={location}
+            congregation={congregation}
             pronouns={pronouns}
             defaultExpanded={true}
             cohortContext={
