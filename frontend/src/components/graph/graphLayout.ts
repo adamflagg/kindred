@@ -6,56 +6,71 @@ import type { Core, NodeSingular } from 'cytoscape'
 import type { LayoutWorkerInput } from '../../workers/layoutWorker'
 import type { ParentNodeElement, CamperNodeElement, EdgeElement } from './cytoscapeStyles'
 
-/**
- * FCOSE layout options for force-directed graph layout
- */
-export const FCOSE_LAYOUT_OPTIONS = {
-  name: 'fcose',
-  numIter: 1000,
-  packComponents: true,
-  componentSpacing: 200,
-  nodeSeparation: 200,
-  uniformNodeDimensions: false,
-  nodeOverlap: 120,
-  fit: true,
-  padding: 80,
-  gravityCompound: 1.0,
-  gravityRangeCompound: 1.5,
-  nestingFactor: 0.1,
-  tilingPaddingVertical: 30,
-  tilingPaddingHorizontal: 30,
-} as const
-
-/** Expanded spacing for graphs without compound (bunk) parent nodes */
-const NO_COMPOUND_OVERRIDES = {
-  nodeSeparation: 400,
-  componentSpacing: 400,
-} as const
-
-export interface LayoutOptionsParams {
+export interface FcoseOptionsParams {
   hasCompoundNodes: boolean
 }
 
 /**
- * Get layout options with spacing adjusted for compound vs non-compound graphs.
- * When no bunk parent nodes exist, nodes clump too tightly with default spacing.
+ * Single source of truth for fcose layout configuration. Both the worker
+ * and the main-thread fallback path use this so layouts are identical.
+ *
+ * Returned object is fully serializable (no functions) so it can cross the
+ * postMessage boundary into the layout worker. Non-serializable extras like
+ * `idealEdgeLength` (a function) are added at the cy.layout() call site.
  */
-/** Widened type so overrides don't clash with `as const` literal types */
-type FcoseLayoutConfig = {
-  [K in keyof typeof FCOSE_LAYOUT_OPTIONS]: K extends 'nodeSeparation' | 'componentSpacing'
-    ? number
-    : (typeof FCOSE_LAYOUT_OPTIONS)[K]
-}
-
-export function getLayoutOptions(params: LayoutOptionsParams): FcoseLayoutConfig {
-  if (params.hasCompoundNodes) {
-    return FCOSE_LAYOUT_OPTIONS
+export function getFcoseOptions(params: FcoseOptionsParams) {
+  // Tightened from the previous 200 → less whitespace between bunks and
+  // between unit halves so the whole graph fits without constant zooming.
+  // Without compound (bunk) parents, fcose packs nodes too tightly — keep
+  // expanded spacing for unparented camper-only graphs.
+  const compound = {
+    nodeSeparation: 130,
+    componentSpacing: 130,
   }
-  return { ...FCOSE_LAYOUT_OPTIONS, ...NO_COMPOUND_OVERRIDES }
+  const noCompound = {
+    nodeSeparation: 400,
+    componentSpacing: 400,
+  }
+  const spacing = params.hasCompoundNodes ? compound : noCompound
+
+  return {
+    name: 'fcose',
+    animate: false,
+    // 300 iters: empirically converges on this graph size; fcose default is
+    // 2500 (way overkill for our N). Quality-neutral perf knob.
+    numIter: 300,
+    // Keep at default — disabling triggers fcose internals that are less
+    // battle-tested and can throw on graphs with mixed unparented/parented
+    // compound structures (e.g. AG bunks with no unit parent alongside
+    // unit-side compounds).
+    packComponents: true,
+    nodeSeparation: spacing.nodeSeparation,
+    componentSpacing: spacing.componentSpacing,
+    uniformNodeDimensions: false,
+    nodeOverlap: 120,
+    fit: true,
+    padding: 80,
+    // Higher gravityCompound pulls children toward their compound centroid;
+    // bumped from 1.0 so unit clusters stay tight when request edges
+    // would otherwise scatter cross-unit bunks.
+    gravityCompound: 2.0,
+    gravityRangeCompound: 1.5,
+    nestingFactor: 0.1,
+    tilingPaddingVertical: 30,
+    tilingPaddingHorizontal: 30,
+    // 'default' runs fcose's spectral pre-layout for good initial spread;
+    // 'draft' collapsed the graph to a line on this dataset (paired with
+    // strong gravityCompound, the force phase alone could not recover
+    // from a random seed).
+    quality: 'default' as const,
+    randomize: true,
+  }
 }
 
 /**
- * Prepare graph elements for the layout worker
+ * Prepare graph elements for the layout worker.
+ * Ships full fcose options derived from getFcoseOptions so the worker is
+ * a passthrough and both paths produce identical layouts.
  */
 export function prepareWorkerInput(
   parentNodes: ParentNodeElement[],
@@ -84,17 +99,13 @@ export function prepareWorkerInput(
       target: e.data.target,
       edge_type: e.data.edge_type,
       priority: e.data.priority,
-    } as Record<string, unknown>,
+    },
   }))
 
   return {
     nodes: workerNodes as LayoutWorkerInput['nodes'],
-    edges: workerEdges as LayoutWorkerInput['edges'],
-    options: {
-      numIter: 1000,
-      componentSpacing: 200,
-      nodeSeparation: 200,
-    },
+    edges: workerEdges,
+    options: getFcoseOptions({ hasCompoundNodes: parentNodes.length > 0 }),
   }
 }
 

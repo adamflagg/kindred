@@ -5,8 +5,14 @@
 import type { Core, NodeSingular } from 'cytoscape'
 import type { Instance as PopperInstance } from '@popperjs/core'
 import { createPopper } from '@popperjs/core'
-import { getUnitForBunk } from '../../utils/unitMapping'
+import { getUnitSideForBunk, type UnitSide } from '../../utils/unitMapping'
 import { getUnitColorForBunk, getUnitColorByName } from '../../utils/graphColorUtils'
+
+/** Display marker shown next to the unit name on the visual bubble label. */
+const SIDE_MARKER: Record<Exclude<UnitSide, null>, string> = {
+  B: '♂', // ♂
+  G: '♀', // ♀
+}
 
 /** Shared config for bubbleset path rendering (unit and bunk bubbles) */
 const BASE_BUBBLE_OPTIONS = {
@@ -240,7 +246,7 @@ export function drawBunkBubbles(
   // Group nodes by bunk (excluding label nodes and parent compound nodes)
   const bunkGroups: Record<number, NodeSingular[] | undefined> = {}
   cy.nodes()
-    .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent'))
+    .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent') && !n.data('isUnitParent'))
     .forEach((node) => {
       const bunkId = node.data('bunk_cm_id')
       if (bunkId) {
@@ -265,8 +271,16 @@ export function drawBunkBubbles(
   // deterministic color assignment (#31, #33): same bunk set → same colors.
   const allBunkNames: string[] = bunksData ? Object.values(bunksData) : []
 
-  // Collect unit grouping data (needed for both bubble paths and labels)
-  const unitGroups: Record<string, NodeSingular[]> = {}
+  // Collect unit grouping data (needed for both bubble paths and labels).
+  // Keyed by `${unit}-${side}` so each unit gets two visual bubbles — boys
+  // and girls — matching the layout split. AG and unprefixed Aleph/Bet have
+  // side=null and don't appear in any unit bubble (free-floating).
+  interface UnitSideEntry {
+    unit: string
+    side: 'B' | 'G'
+    nodes: NodeSingular[]
+  }
+  const unitGroups: Record<string, UnitSideEntry> = {}
 
   if (showUnits && bunksData) {
     cy.nodes()
@@ -276,26 +290,24 @@ export function drawBunkBubbles(
         if (!bunkId) return
         const bunkName = bunksData[bunkId]
         if (!bunkName) return
-        const unit = getUnitForBunk(bunkName)
-        if (!unit) return
-        const group = (unitGroups[unit] ??= [])
-        group.push(node)
+        const unitSide = getUnitSideForBunk(bunkName)
+        if (!unitSide?.side) return
+        const key = `${unitSide.unit}-${unitSide.side}`
+        const entry = (unitGroups[key] ??= { unit: unitSide.unit, side: unitSide.side, nodes: [] })
+        entry.nodes.push(node)
       })
   }
 
   // --- Draw order: unit bubbles FIRST (behind), then bunk bubbles ON TOP ---
 
-  // Build sorted unit list from present groups for deterministic palette (#33)
-  // Hoisted: shared by both unit-bubble drawing (step 1) and unit-label drawing (step 3)
-  const presentUnits = Object.keys(unitGroups)
-
   // 1. Add unit bubble paths first so they render behind bunk bubbles
   if (showUnits && bunksData) {
-    Object.entries(unitGroups).forEach(([unitName, nodes]) => {
+    Object.entries(unitGroups).forEach(([key, { unit, nodes }]) => {
       if (nodes.length === 0) return
 
-      // #31/#33: deterministic unit color — same unit always gets the same hue
-      const unitColor = getUnitColorByName(unitName, presentUnits)
+      // #31/#33: color depends ONLY on unit name, so Galil-B and Galil-G
+      // share Galil's hue — the side split is for layout/labeling only.
+      const unitColor = getUnitColorByName(unit)
 
       try {
         const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ')
@@ -307,7 +319,7 @@ export function drawBunkBubbles(
         })
         pathsRef.current.push(path)
       } catch (error) {
-        console.error(`Error creating unit bubble for ${unitName}:`, error)
+        console.error(`Error creating unit bubble for ${key}:`, error)
       }
     })
   }
@@ -399,12 +411,12 @@ export function drawBunkBubbles(
   // --- Labels: unit labels first (higher offset), then bunk labels ---
 
   // 3. Add unit labels — solid color matching the unit bubble (#40: no gradient)
+  // One label per (unit, side): "Galil ♂" / "Galil ♀".
   if (showUnits && bunksData) {
-    Object.entries(unitGroups).forEach(([unitName, nodes]) => {
+    Object.values(unitGroups).forEach(({ unit, side, nodes }) => {
       if (nodes.length === 0) return
 
-      // #40: use the same deterministic solid color as the unit bubble, no gradient
-      const unitColor = getUnitColorByName(unitName, presentUnits)
+      const unitColor = getUnitColorByName(unit)
 
       const labelEl = document.createElement('div')
       labelEl.className = 'unit-label-popper'
@@ -412,7 +424,6 @@ export function drawBunkBubbles(
       labelEl.style.zIndex = '1'
       const innerDiv = document.createElement('div')
 
-      // Pill styling with solid unit color border
       Object.assign(labelEl.style, {
         backgroundColor: 'rgba(255,255,255,0.85)',
         padding: '2px 10px',
@@ -421,11 +432,10 @@ export function drawBunkBubbles(
         border: `2px solid ${unitColor}`,
       })
 
-      // Font + color — solid, no gradient
       Object.assign(innerDiv.style, UNIT_LABEL_FONT)
       innerDiv.style.color = unitColor
 
-      innerDiv.textContent = unitName
+      innerDiv.textContent = `${unit} ${SIDE_MARKER[side]}`
       labelEl.appendChild(innerDiv)
 
       createPopperLabel(nodes, labelEl, containerRef, poppersRef, 30)

@@ -14,6 +14,25 @@ describe('SocialNetworkGraph safety guards', () => {
     expect(source).toContain('cancelled = true')
   })
 
+  it('terminates the layout worker in the init-effect cleanup so each rebuild gets a fresh PRNG', () => {
+    // fcose with `randomize: true` is sensitive to the JS engine's Math.random
+    // state. The worker is long-lived (`layoutWorkerRef.current ??= new Worker(...)`)
+    // so back-to-back layouts (e.g. switching scenarios after a prod load) reuse
+    // a worker whose PRNG has already been advanced by the prior fcose run. On
+    // some seeds this collapses the second layout to a near-line — fixed only
+    // by a page refresh, which spins up a fresh worker.
+    //
+    // The init effect's cleanup must therefore terminate the worker and null
+    // the ref, so the next runLayout creates a brand-new worker (and a fresh
+    // PRNG state) for each graphData change.
+    const cleanupBlock = source.match(
+      /return\s*\(\s*\)\s*=>\s*\{[\s\S]*?cleanupCytoscape\([\s\S]*?\}/
+    )
+    expect(cleanupBlock).not.toBeNull()
+    expect(cleanupBlock?.[0]).toMatch(/layoutWorkerRef\.current\?\.\s*terminate\(\)/)
+    expect(cleanupBlock?.[0]).toMatch(/layoutWorkerRef\.current\s*=\s*null/)
+  })
+
   it('restores bubbles after layout completes when showBubbles is enabled', () => {
     // When the graph rebuilds (data/viewMode change) and showBubbles is on,
     // onLayoutComplete must redraw bubbles on the new Cytoscape instance.

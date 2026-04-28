@@ -319,8 +319,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         const layout = cy.layout(layoutOpts as cytoscape.LayoutOptions)
         layoutRef.current = layout
         layout.on('layoutstop', () => {
-          // Match the worker path: install handlers after layout completes
-          // so the heavy zoom listener doesn't fire mid-fit.
           setupGraphEventHandlers(cy, {
             onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
             onClearSelection: () => setSelectedNodeId(null),
@@ -354,6 +352,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         layoutWorkerRef.current.removeEventListener('message', pendingWorkerListener)
         pendingWorkerListener = null
       }
+      // Tear down the worker between layout jobs so each rebuild starts with
+      // fresh fcose state. The worker module persists otherwise, and on this
+      // codebase that has historically caused the second layout to crash
+      // ("Cannot read properties of undefined") in fcose internals.
+      layoutWorkerRef.current?.terminate()
+      layoutWorkerRef.current = null
       cleanupCytoscape(cyRef, layoutRef, bubblesetsRef, poppersRef)
     }
     // showBubbles intentionally excluded: toggling bubbles is handled by the

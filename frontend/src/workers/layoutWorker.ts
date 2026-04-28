@@ -26,12 +26,9 @@ export interface LayoutWorkerInput {
       [key: string]: unknown
     }
   }>
-  options?: {
-    numIter?: number
-    nodeSeparation?: number
-    componentSpacing?: number
-    hasCompoundNodes?: boolean
-  }
+  /** Full serializable fcose options from getFcoseOptions(). Worker is a
+   *  passthrough — non-serializable extras (idealEdgeLength fn) added below. */
+  options: Record<string, unknown>
   /** Instance token issued by the main thread; echoed back in the response so
    *  stale results from a previous cy instance can be discarded. */
   token?: number
@@ -53,7 +50,7 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
   const token: number | undefined = event.data.token
 
   try {
-    const { nodes, edges, options = {} } = event.data
+    const { nodes, edges, options } = event.data
 
     // Create headless Cytoscape instance
     const cy = cytoscape({
@@ -65,41 +62,9 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       },
     })
 
-    // Detect compound nodes if not explicitly passed
-    const hasCompound = options.hasCompoundNodes ?? nodes.some((n) => n.data.parent !== undefined)
-
-    // Use expanded spacing when no compound nodes exist
-    const defaultNodeSep = hasCompound ? 200 : 400
-    const defaultCompSpacing = hasCompound ? 200 : 400
-
-    // Run fcose layout with compound node support
-    const layout = cy.layout({
-      name: 'fcose',
-      animate: false,
-      // Performance tuning - can be adjusted via options
-      numIter: options.numIter ?? 1000,
-      packComponents: true,
-      componentSpacing: options.componentSpacing ?? defaultCompSpacing,
-      nodeSeparation: options.nodeSeparation ?? defaultNodeSep,
-      uniformNodeDimensions: false,
-      nodeOverlap: 120,
-      fit: true,
-      padding: 80,
-      // Compound node options - keeps bunk members grouped
-      gravityCompound: 1.0,
-      gravityRangeCompound: 1.5,
-      nestingFactor: 0.1,
-      tilingPaddingVertical: 30,
-      tilingPaddingHorizontal: 30,
-      // Quality settings
-      quality: 'default',
-      randomize: true,
-      // Edge length based on weight for better clustering
-      idealEdgeLength: (edge: cytoscape.EdgeSingular) => {
-        const weight = edge.data('weight') ?? 1
-        return 100 / Math.sqrt(weight)
-      },
-    } as cytoscape.LayoutOptions)
+    // Worker is a pure passthrough — main thread owns the full fcose config
+    // via getFcoseOptions(). All options are serializable; no extras injected.
+    const layout = cy.layout(options as unknown as cytoscape.LayoutOptions)
 
     // Run layout synchronously (we're in a worker, blocking is fine)
     layout.run()

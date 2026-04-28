@@ -180,13 +180,13 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
   ]
 }
 
-/** Cytoscape element for parent (bunk) node */
+/** Cytoscape element for parent (bunk) compound node */
 export interface ParentNodeElement {
   data: {
     id: string
     label: string
-    isBunkParent: boolean
-    bunk_cm_id: number
+    isBunkParent?: boolean
+    bunk_cm_id?: number
   }
 }
 
@@ -246,13 +246,19 @@ export function createGraphElements(
     }
   })
 
-  // Create parent nodes for each bunk (compound layout grouping only)
+  // Create a flat compound parent for each bunk. We do NOT nest bunks inside
+  // unit-side compounds at the layout level: fcose crashes
+  // (`addNodeToGrid → Cannot read properties of undefined`) on doubly-nested
+  // compound graphs with this dataset. The visual unit bubble is drawn by
+  // bubbleRenderer keyed off bunk names, so unit grouping is still visible
+  // even though it's not a layout constraint.
   const parentNodes: ParentNodeElement[] = Object.keys(bunkGroups).map((bunkIdStr) => {
     const bunkId = parseInt(bunkIdStr, 10)
+    const bunkName = bunksData?.[bunkId] ?? `Bunk ${bunkId}`
     return {
       data: {
         id: `bunk-${bunkId}`,
-        label: bunksData?.[bunkId] ?? `Bunk ${bunkId}`,
+        label: bunkName,
         isBunkParent: true,
         bunk_cm_id: bunkId,
       },

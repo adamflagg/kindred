@@ -106,10 +106,38 @@ describe('createGraphElements', () => {
       sibling: true,
       school: true,
     })
-    expect(parentNodes).toHaveLength(1)
-    const parent = expectDefined(parentNodes[0], 'parent node')
-    expect(parent.data.id).toBe('bunk-100')
-    expect(parent.data.label).toBe('Cabin A')
+    const bunkParent = expectDefined(
+      parentNodes.find((p) => p.data.id === 'bunk-100'),
+      'bunk parent'
+    )
+    expect(bunkParent.data.label).toBe('Cabin A')
+  })
+
+  // Layout-level unit-side compounds were tried (parent: unit-{name}-{side}
+  // on each bunk) but fcose crashes — `addNodeToGrid → Cannot read properties
+  // of undefined` — on the doubly-nested compound topology this produces with
+  // a real session's mix of unit-parented bunks, AG bunks, and orphan
+  // campers. Visual unit boundaries are still drawn by bubbleRenderer keyed
+  // off bunk names, so unit grouping remains visible without breaking layout.
+  it('does not emit unit-side compound parents (fcose-incompatible)', () => {
+    const camper = (id: number, bunkId: number): GraphNodeData => ({
+      id,
+      name: `c${id}`,
+      grade: 5,
+      centrality: 0.5,
+      clustering: 0,
+      satisfaction_status: 'satisfied',
+      bunk_cm_id: bunkId,
+      community: 1,
+    })
+    const { parentNodes } = createGraphElements(
+      [camper(1, 100), camper(2, 101), camper(3, 102), camper(4, 103)],
+      [],
+      { 100: 'B-1', 101: 'B-2', 102: 'G-1', 103: 'G-2' },
+      { request: true, historical: true, sibling: true, school: true }
+    )
+    expect(parentNodes.every((p) => p.data.isBunkParent)).toBe(true)
+    expect(parentNodes.every((p) => p.data.id.startsWith('bunk-'))).toBe(true)
   })
 
   it('creates camper nodes with correct data', () => {
