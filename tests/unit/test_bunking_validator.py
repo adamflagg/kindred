@@ -728,3 +728,23 @@ class TestNormalizeSourceField:
 
         for field_data in result.statistics.field_stats.values():
             assert field_data["total"] == 0
+
+
+from bunking.bunking_validator import ValidationStatistics
+
+
+def test_validation_statistics_has_parent_staff_breakdown_fields():
+    """ValidationStatistics must expose parent/staff breakdown fields with safe defaults."""
+    stats = ValidationStatistics()
+
+    # Parent breakdown — campers with parent-source requests (bunk_with or socialize_with)
+    assert stats.parent_requests == 0
+    assert stats.satisfied_parent_requests == 0
+    assert stats.parent_request_satisfaction_rate == 0.0
+    assert stats.campers_with_unsatisfied_parent_requests == 0
+
+    # Staff breakdown — campers with staff-source requests (not_bunk_with, bunking_notes, internal_notes)
+    assert stats.staff_requests == 0
+    assert stats.satisfied_staff_requests == 0
+    assert stats.staff_request_satisfaction_rate == 0.0
+    assert stats.campers_with_unsatisfied_staff_requests == 0

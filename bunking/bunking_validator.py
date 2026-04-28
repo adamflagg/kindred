@@ -128,6 +128,21 @@ class ValidationStatistics(BaseModel):
     explicit_csv_request_satisfaction_rate: float = 0.0
     campers_with_unsatisfied_explicit_requests: int = 0
 
+    # Parent-source request tracking (bunk_with + socialize_with, per RequestSource.FAMILY).
+    # Stage 1 emits these alongside explicit_csv_* for future UI consumption; no UI consumer yet.
+    parent_requests: int = 0
+    satisfied_parent_requests: int = 0
+    parent_request_satisfaction_rate: float = 0.0
+    campers_with_unsatisfied_parent_requests: int = 0
+
+    # Staff-source request tracking (not_bunk_with + bunking_notes + internal_notes,
+    # per RequestSource.STAFF). Tracked separately because they don't satisfy the
+    # "every camper gets one parent request" rule that Stage 4 will enforce.
+    staff_requests: int = 0
+    satisfied_staff_requests: int = 0
+    staff_request_satisfaction_rate: float = 0.0
+    campers_with_unsatisfied_staff_requests: int = 0
+
     # Level progression stats (comparing to prior year)
     level_progression: dict[str, int] = Field(
         default_factory=lambda: {
