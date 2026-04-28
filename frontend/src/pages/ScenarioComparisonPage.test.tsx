@@ -117,4 +117,14 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     expect(memberRows.length).toBe(1)
     expect(memberRows[0]?.textContent).toBe('Liam Garcia')
   })
+
+  it('renders the popover via a portal (attached to document.body) so it escapes overflow-hidden bunk cards', () => {
+    render(
+      <CamperPill camper={liam} status="unchanged" group={palsGroup} camperById={camperById} />
+    )
+    fireEvent.mouseEnter(getPillRoot())
+    const popover = screen.getByTestId('friend-group-popover')
+    expect(popover.parentElement).toBe(document.body)
+    expect(popover.closest('[data-testid="camper-pill"]')).toBeNull()
+  })
 })

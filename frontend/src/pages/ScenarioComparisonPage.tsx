@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -1378,13 +1379,16 @@ function BunkComparisonCard({
   )
 }
 
-// FriendGroupPopover — same-side member list shown on CamperPill hover
+// FriendGroupPopover — same-side member list shown on CamperPill hover.
+// Rendered via createPortal to document.body so it isn't clipped by the bunk
+// card's overflow-hidden wrapper when the pill is near the bottom of the list.
 export interface FriendGroupPopoverProps {
   group: LockGroupSummary
   camperById: Map<number, CamperAssignment>
+  anchorRect: { top: number; left: number; bottom: number } | null
 }
 
-export function FriendGroupPopover({ group, camperById }: FriendGroupPopoverProps) {
+export function FriendGroupPopover({ group, camperById, anchorRect }: FriendGroupPopoverProps) {
   const rows = group.memberCmIds
     .map((cmId) => ({ cmId, camper: camperById.get(cmId) }))
     .sort((a, b) => {
@@ -1393,12 +1397,17 @@ export function FriendGroupPopover({ group, camperById }: FriendGroupPopoverProp
       return an.localeCompare(bn)
     })
 
-  return (
+  const style: React.CSSProperties = anchorRect
+    ? { top: `${anchorRect.bottom + 4}px`, left: `${anchorRect.left}px` }
+    : {}
+
+  return createPortal(
     <div
       data-testid="friend-group-popover"
       role="tooltip"
       aria-label={`Friend group: ${group.name}`}
-      className="border-border/60 bg-popover absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-lg border p-3 shadow-lg"
+      className="border-border/60 bg-popover pointer-events-none fixed z-[100] min-w-[200px] rounded-lg border p-3 shadow-lg"
+      style={style}
     >
       <div className="border-border/40 mb-2 flex items-center gap-2 border-b pb-2">
         <span
@@ -1419,7 +1428,8 @@ export function FriendGroupPopover({ group, camperById }: FriendGroupPopoverProp
           </li>
         ))}
       </ul>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1441,11 +1451,26 @@ export function CamperPill({
   group,
   camperById,
 }: CamperPillProps) {
-  const [hovered, setHovered] = useState(false)
-  const showPopover = hovered && group !== undefined
+  const pillRef = useRef<HTMLDivElement | null>(null)
+  const [anchorRect, setAnchorRect] = useState<{
+    top: number
+    left: number
+    bottom: number
+  } | null>(null)
+  const showPopover = anchorRect !== null && group !== undefined
+
+  const handleMouseEnter = () => {
+    const rect = pillRef.current?.getBoundingClientRect()
+    if (rect) {
+      setAnchorRect({ top: rect.top, left: rect.left, bottom: rect.bottom })
+    } else {
+      setAnchorRect({ top: 0, left: 0, bottom: 0 })
+    }
+  }
 
   return (
     <div
+      ref={pillRef}
       data-testid="camper-pill"
       className={clsx(
         'relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
@@ -1455,8 +1480,8 @@ export function CamperPill({
         status === 'moved-out' &&
           'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setAnchorRect(null)}
     >
       {group?.color && (
         <span
@@ -1483,7 +1508,9 @@ export function CamperPill({
           <span className="opacity-80">{destination}</span>
         </span>
       )}
-      {showPopover && <FriendGroupPopover group={group} camperById={camperById} />}
+      {showPopover && (
+        <FriendGroupPopover group={group} camperById={camperById} anchorRect={anchorRect} />
+      )}
     </div>
   )
 }
