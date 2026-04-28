@@ -335,6 +335,7 @@ class SocialGraphBuilder:
                             edge_data["has_request"] = True
                             edge_data["request_priority"] = priority
                             edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
+                            edge_data["source"] = getattr(request, "source", None)
                             edge_data["weight"] = max(edge_data["weight"], weight)
                             logger.info(
                                 f"Added reciprocal request as secondary type to sibling edge: {person1} <-> {person2}"
@@ -350,6 +351,7 @@ class SocialGraphBuilder:
                             priority=priority,
                             confidence=getattr(request, "confidence_score", 1.0),
                             reciprocal=True,
+                            source=getattr(request, "source", None),
                         )
                         request_count += 1
                         logger.info(f"Added reciprocal request edge #{request_count}: {person1} <-> {person2}")
@@ -370,6 +372,7 @@ class SocialGraphBuilder:
                                 edge_data["has_request"] = True
                                 edge_data["request_priority"] = req_priority
                                 edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
+                                edge_data["source"] = getattr(request, "source", None)
                                 edge_data["weight"] = max(edge_data["weight"], weight)
                                 logger.info(
                                     f"Added request as secondary type to sibling edge: {requester} -> {requestee}"
@@ -385,6 +388,7 @@ class SocialGraphBuilder:
                                 priority=req_priority,
                                 confidence=getattr(request, "confidence_score", 1.0),
                                 reciprocal=False,
+                                source=getattr(request, "source", None),
                             )
                             request_count += 1
                             logger.info(f"Added request edge #{request_count}: {requester} -> {requestee}")
@@ -626,6 +630,7 @@ class SocialGraphBuilder:
                     priority=priority,
                     confidence=confidence_score,
                     is_reciprocal=getattr(request, "is_reciprocal", False),
+                    source=getattr(request, "source", None),
                 )
 
     def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:

@@ -139,3 +139,50 @@ def test_parent_builder_on_digraph_still_works() -> None:
     )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
+
+
+# ---------------------------------------------------------------------------
+# Stage 2: parent-paramount edge tagging + per-source satisfaction status
+# ---------------------------------------------------------------------------
+
+
+def _fake_request(requester_id: int, requestee_id: int, source: str | None = "family", **overrides: object) -> object:
+    """Build a minimal duck-typed ParsedRequest that _add_request_edges can read."""
+    attrs: dict[str, object] = {
+        "id": f"r-{requester_id}-{requestee_id}",
+        "requester_id": requester_id,
+        "requestee_id": requestee_id,
+        "request_type": "bunk_with",
+        "priority": 4,
+        "confidence_score": 0.95,
+        "is_reciprocal": False,
+        "status": "resolved",
+        "year": 2026,
+        "source": source,
+    }
+    attrs.update(overrides)
+    request = MagicMock()
+    for key, value in attrs.items():
+        setattr(request, key, value)
+    return request
+
+
+def test_request_edges_carry_source_attribute() -> None:
+    """Each request edge should expose the source-of-record (family/staff) so
+    satisfaction can be computed per source. Required by Stage 2 to drive
+    parent_satisfaction_status vs staff_satisfaction_status."""
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = [
+        _fake_request(1, 2, source="family"),
+        _fake_request(2, 3, source="staff"),
+    ]
+    builder = SocialGraphBuilder(pb=pb)
+    builder.graph = nx.Graph()
+    builder.graph.add_node(1, bunk_cm_id=100)
+    builder.graph.add_node(2, bunk_cm_id=100)
+    builder.graph.add_node(3, bunk_cm_id=200)
+    builder._add_request_edges(year=2026, session_cm_id=999)
+    edge_1_2 = builder.graph[1].get(2) or builder.graph[2].get(1)
+    edge_2_3 = builder.graph[2].get(3) or builder.graph[3].get(2)
+    assert edge_1_2 is not None and edge_1_2.get("source") == "family"
+    assert edge_2_3 is not None and edge_2_3.get("source") == "staff"
