@@ -74,6 +74,61 @@ func TestBaseSyncService_TrackProcessedCompositeKey(t *testing.T) {
 	}
 }
 
+func TestBaseSyncService_ClearProcessedKeys(t *testing.T) {
+	service := BaseSyncService{
+		ProcessedKeys: make(map[string]bool),
+	}
+
+	service.TrackProcessedKey(12345, 2025)
+	service.TrackProcessedKey("abc", 2024)
+	if len(service.ProcessedKeys) != 2 {
+		t.Fatalf("setup: expected 2 tracked keys, got %d", len(service.ProcessedKeys))
+	}
+
+	service.ClearProcessedKeys()
+
+	if len(service.ProcessedKeys) != 0 {
+		t.Errorf("after Clear: expected 0 keys, got %d", len(service.ProcessedKeys))
+	}
+	if service.ProcessedKeys == nil {
+		t.Error("after Clear: map must not be nil (must remain reusable)")
+	}
+
+	// Map must remain reusable after clear (re-track + re-lookup must work)
+	service.TrackProcessedKey(99999, 2026)
+	if !service.IsKeyProcessed(99999, 2026) {
+		t.Error("after Clear: tracking a new key after clear must still work")
+	}
+
+	// Clearing an already-empty map must be a no-op (no panic)
+	service.ClearProcessedKeys()
+	service.ClearProcessedKeys()
+	if len(service.ProcessedKeys) != 0 {
+		t.Errorf("repeat Clear: expected 0 keys, got %d", len(service.ProcessedKeys))
+	}
+}
+
+func TestBaseSyncService_ClearFieldDiffStats(t *testing.T) {
+	service := BaseSyncService{
+		FieldDiffStats: map[string]int{"name": 3, "email": 5},
+	}
+
+	service.ClearFieldDiffStats()
+
+	if len(service.FieldDiffStats) != 0 {
+		t.Errorf("after Clear: expected 0 entries, got %d", len(service.FieldDiffStats))
+	}
+	if service.FieldDiffStats == nil {
+		t.Error("after Clear: map must not be nil (must remain reusable)")
+	}
+
+	// Map must remain reusable after clear
+	service.FieldDiffStats["new_field"] = 1
+	if service.FieldDiffStats["new_field"] != 1 {
+		t.Error("after Clear: writing to map after clear must still work")
+	}
+}
+
 func TestBaseSyncService_FindOrphansFromPreloaded(t *testing.T) {
 	tests := []struct {
 		name           string

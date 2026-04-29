@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -29,7 +29,7 @@ func SortGlobalsWorkbookTabs(tabs []string) []string {
 	}
 
 	// Sort other tabs alphabetically
-	sort.Strings(otherTabs)
+	slices.Sort(otherTabs)
 
 	// Build result: Index first, then alphabetized
 	result := make([]string, 0, len(tabs))
@@ -46,7 +46,7 @@ func SortGlobalsWorkbookTabs(tabs []string) []string {
 func SortYearWorkbookTabs(tabs []string) []string {
 	sorted := make([]string, len(tabs))
 	copy(sorted, tabs)
-	sort.Strings(sorted)
+	slices.Sort(sorted)
 	return sorted
 }
 

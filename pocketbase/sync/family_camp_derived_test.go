@@ -2,7 +2,7 @@ package sync
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -160,7 +160,7 @@ func TestMultipleAdultsPerHousehold(t *testing.T) {
 	for i, a := range adults {
 		adultNums[i] = a.AdultNumber
 	}
-	sort.Ints(adultNums)
+	slices.Sort(adultNums)
 	expected := []int{1, 2, 3, 5}
 	if len(adultNums) != len(expected) {
 		t.Errorf("expected adult numbers %v, got %v", expected, adultNums)
