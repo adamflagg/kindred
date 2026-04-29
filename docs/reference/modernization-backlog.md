@@ -132,9 +132,10 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | Rank | Status | Item | Where | Count | Bundle |
 |---|---|---|---|---|---|
 | 1 | ✓ shipped #1066 | manual map-clear → `clear()` builtin | `sync/base_sync.go:121, 1416` | 2 | — |
-| 2 | next | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `multi_workbook_ordering.go` (2×), `table_exporter.go` | 6 | may bundle w/ #3 |
-| 3 | | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `workbook_manager.go`, `multi_workbook_ordering.go` (2×) | 3 | may bundle w/ #2 |
-| 4 | | `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `persons.go:1429`, `campminder/client.go:1020` | 3 | — |
+| 2 | ✓ shipped #1066 | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `camper_history_test.go`, `multi_workbook_ordering.go` (2×), `table_exporter.go` (2×) | 8 | bundled w/ #3; drift +`camper_history_test.go:546` (audit miss) |
+| 3 | ✓ shipped #1066 | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `base_sync.go:1402`, `workbook_manager.go` | 3 | bundled w/ #2 |
+| — | ✓ shipped #1066 | `sort.Ints` → `slices.Sort` (drift, audit miss) | `sync/family_camp_derived_test.go:163` | 1 | included in #2/#3 bundle to drop `"sort"` import package-wide |
+| 4 | next | `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `persons.go:1429`, `campminder/client.go:1020` | 3 | — |
 | 5 | | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | may bundle w/ #6 |
 | 6 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | may bundle w/ #5 |
 | 7 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #8 (single codemod) |

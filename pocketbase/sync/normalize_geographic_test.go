@@ -1,11 +1,12 @@
 package sync
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1841,8 +1842,8 @@ func TestBuildContextValuesFromMap(t *testing.T) {
 	}
 
 	// Sort for deterministic comparison
-	sort.Slice(contextValues, func(i, j int) bool {
-		return contextValues[i].Value < contextValues[j].Value
+	slices.SortFunc(contextValues, func(a, b valueWithContext) int {
+		return cmp.Compare(a.Value, b.Value)
 	})
 
 	// London should be first (alphabetical)

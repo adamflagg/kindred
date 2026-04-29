@@ -2,7 +2,7 @@ package sync
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -543,7 +543,7 @@ func joinSorted(strs []string) string {
 	}
 	sorted := make([]string, len(strs))
 	copy(sorted, strs)
-	sort.Strings(sorted)
+	slices.Sort(sorted)
 	result := sorted[0]
 	for i := 1; i < len(sorted); i++ {
 		result += ", " + sorted[i]

@@ -3,7 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -361,7 +361,7 @@ func (r *FieldResolver) resolveMultiRelation(value interface{}, col *ColumnConfi
 	}
 
 	// Sort for consistent output
-	sort.Strings(values)
+	slices.Sort(values)
 	return strings.Join(values, ", ")
 }
 
@@ -389,7 +389,7 @@ func (r *FieldResolver) resolveMultiSelect(value interface{}) string {
 		return ""
 	}
 
-	sort.Strings(values)
+	slices.Sort(values)
 	return strings.Join(values, ", ")
 }
 

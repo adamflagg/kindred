@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -1060,8 +1060,8 @@ func (b *BaseSyncService) FieldEquals(existingValue, newValue interface{}) bool 
 			newSlice := normalizeToStringSlice(newValue)
 			if existingSlice != nil && newSlice != nil {
 				// Sort both slices for order-independent comparison
-				sort.Strings(existingSlice)
-				sort.Strings(newSlice)
+				slices.Sort(existingSlice)
+				slices.Sort(newSlice)
 				return reflect.DeepEqual(existingSlice, newSlice)
 			}
 			// Fall back to direct comparison if normalization failed
@@ -1399,8 +1399,8 @@ func (b *BaseSyncService) LogFieldDiffSummary() {
 	for field, count := range b.FieldDiffStats {
 		counts = append(counts, fieldCount{field, count})
 	}
-	sort.Slice(counts, func(i, j int) bool {
-		return counts[i].count > counts[j].count
+	slices.SortFunc(counts, func(a, b fieldCount) int {
+		return b.count - a.count
 	})
 
 	slog.Debug("Field diff summary (fields causing updates)",

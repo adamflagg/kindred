@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/camp/kindred/pocketbase/google"
@@ -417,16 +417,18 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 	// Sort workbooks: globals first, then years descending
 	sorted := make([]WorkbookRecord, len(workbooks))
 	copy(sorted, workbooks)
-	sort.Slice(sorted, func(i, j int) bool {
+	slices.SortFunc(sorted, func(a, b WorkbookRecord) int {
 		// Globals always first
-		if sorted[i].WorkbookType == workbookTypeGlobals {
-			return true
+		aGlobal := a.WorkbookType == workbookTypeGlobals
+		bGlobal := b.WorkbookType == workbookTypeGlobals
+		if aGlobal && !bGlobal {
+			return -1
 		}
-		if sorted[j].WorkbookType == workbookTypeGlobals {
-			return false
+		if !aGlobal && bGlobal {
+			return 1
 		}
 		// Years in descending order
-		return sorted[i].Year > sorted[j].Year
+		return b.Year - a.Year
 	})
 
 	// Preallocate data with header row + one row per workbook

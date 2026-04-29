@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sort"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -27,7 +26,7 @@ func flattenPermissions(rolePermissions [][]string) []string {
 	for p := range seen {
 		result = append(result, p)
 	}
-	sort.Strings(result)
+	slices.Sort(result)
 	return result
 }
 
