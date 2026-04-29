@@ -1,13 +1,13 @@
 /**
- * TDD tests for camper-card alert invalidation after assignment mutations.
+ * TDD tests for camper-card alert invalidation after request mutations.
  *
- * The "none satisfied" yellow-triangle alert is derived client-side from
- * `['all-bunk-requests', sessionCmId, year]`, but its satisfaction filter
- * checks bunk membership (`personSet.has(req.requestee_id)`) — it does NOT
- * read request status. So the staleness fix only needs to invalidate on
- * assignment-changing paths: drag-drop and solver-apply. Pure status
- * mutations (single/bulk approve/decline) do not affect the alert and
- * are intentionally not invalidated here.
+ * The "none satisfied" alert is derived client-side from
+ * `['all-bunk-requests', sessionCmId, year]`. As of Stage 3a the satisfaction
+ * filter ALSO honors `status === 'resolved'` (spec §2.1), so pure status
+ * mutations (approve/decline/delete-via-status) DO change the alert and must
+ * invalidate the cache. Mutations that mutate the row set (create/merge/split)
+ * also need to invalidate. Drag-drop and solver-apply still need to invalidate
+ * because they change bunk membership.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -105,6 +105,56 @@ describe('useSolverOperations — apply path must invalidate all-bunk-requests',
 // (those mutations DO change request count / merged_into, so the alert
 // genuinely depends on their refresh — keep them as a regression guard)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Stage 3a Bug B: status-only mutations must also invalidate
+// (RequestReviewPanel approve/decline, AllCamperRequestsModal status flip,
+//  CreateRequestModal create) — previously only invalidated ['bunk-requests']
+// which is the wrong key for the alert cache.
+// ---------------------------------------------------------------------------
+describe('Stage 3a status mutations — must invalidate all-bunk-requests', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = buildQueryClient()
+  })
+
+  it('RequestReviewPanel single approve/decline invalidates all-bunk-requests', () => {
+    // After Stage 3a Bug A fix, the alert filters by status === 'resolved',
+    // so flipping a row pending → resolved (or resolved → declined) WILL
+    // change the satisfaction count and the alert must refresh.
+    const onSuccessAfterFix = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+    }
+
+    onSuccessAfterFix(queryClient)
+
+    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+  })
+
+  it('AllCamperRequestsModal status update invalidates all-bunk-requests', () => {
+    const onSuccessAfterFix = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+    }
+
+    onSuccessAfterFix(queryClient)
+
+    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+  })
+
+  it('CreateRequestModal create invalidates all-bunk-requests', () => {
+    const onSuccessAfterFix = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+    }
+
+    onSuccessAfterFix(queryClient)
+
+    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+  })
+})
+
 describe('Already-correct paths — regression guard', () => {
   let queryClient: QueryClient
 
