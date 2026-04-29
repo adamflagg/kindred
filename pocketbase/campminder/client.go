@@ -207,7 +207,11 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 	if resp.StatusCode == http.StatusTooManyRequests && retryCount < maxRequestRetries {
 		waitTime := c.parseRateLimitSeconds(string(body))
 		if waitTime > 0 {
-			slog.Warn("CampMinder rate limited", "wait_seconds", waitTime, "retry", retryCount+1, "max_retries", maxRequestRetries)
+			slog.Warn("CampMinder rate limited",
+				"wait_seconds", waitTime,
+				"retry", retryCount+1,
+				"max_retries", maxRequestRetries,
+			)
 			time.Sleep(time.Duration(waitTime) * time.Second)
 			// Retry the request
 			return c.makeRequestWithURLRetry(method, fullURL, retryCount+1)
