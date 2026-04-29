@@ -366,7 +366,7 @@ func TestConcurrentAccess(_ *testing.T) {
 
 	// Writer goroutine
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			o.mu.Lock()
 			o.runningJobs["test"] = &Status{Type: "test", Status: "running"}
 			o.mu.Unlock()
@@ -376,7 +376,7 @@ func TestConcurrentAccess(_ *testing.T) {
 
 	// Reader goroutine
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			_ = o.IsRunning("test")
 		}
 		done <- true
@@ -1541,7 +1541,7 @@ func TestQueueConcurrentAccess(t *testing.T) {
 
 	// Writer goroutine - enqueue items
 	go func() {
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			_, err := o.EnqueueUnifiedSync(2020+i%10, "all", false, false, "writer")
 			if err != nil && !strings.Contains(err.Error(), "full") && !strings.Contains(err.Error(), "duplicate") {
 				errChan <- err
@@ -1552,7 +1552,7 @@ func TestQueueConcurrentAccess(t *testing.T) {
 
 	// Reader goroutine - read queue
 	go func() {
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			_ = o.GetQueuedSyncs()
 		}
 		done <- true
@@ -1560,7 +1560,7 @@ func TestQueueConcurrentAccess(t *testing.T) {
 
 	// Cancel goroutine - try to cancel items
 	go func() {
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			o.CancelQueuedSync("random-id")
 		}
 		done <- true
@@ -3236,7 +3236,7 @@ func TestGenerateQueueID(t *testing.T) {
 
 	t.Run("returns unique values on successive calls", func(t *testing.T) {
 		seen := make(map[string]bool)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			id := generateQueueID()
 			if seen[id] {
 				t.Errorf("duplicate queue ID on iteration %d: %s", i, id)
@@ -3277,7 +3277,7 @@ func TestGenerateRunToken(t *testing.T) {
 
 	t.Run("returns unique values on successive calls", func(t *testing.T) {
 		seen := make(map[string]bool)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			token := generateRunToken()
 			if seen[token] {
 				t.Errorf("duplicate token on iteration %d: %s", i, token)

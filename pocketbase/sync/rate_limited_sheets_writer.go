@@ -173,7 +173,7 @@ func (w *RateLimitedSheetsWriter) executeWithRetry(
 
 	// Retry loop with exponential backoff
 	backoff := w.config.InitialBackoff
-	for attempt := 0; attempt < w.config.MaxRetries; attempt++ {
+	for attempt := range w.config.MaxRetries {
 		slog.Warn("Google Sheets 429 rate limit, retrying",
 			"operation", opName,
 			"attempt", attempt+1,

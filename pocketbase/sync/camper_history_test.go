@@ -2171,7 +2171,7 @@ func TestCamperHistoryCompositeKeyFormat(t *testing.T) {
 func TestCamperHistoryCompositeKeyDeterministic(t *testing.T) {
 	// Generate key multiple times
 	keys := make([]string, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		keys[i] = fmt.Sprintf("%d:%d|%d", 1001, 100, 2025)
 	}
 

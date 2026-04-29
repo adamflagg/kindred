@@ -536,7 +536,7 @@ func (s *SessionsSync) calculateDurationDays(startDate, endDate string) int {
 
 // sortSessionsByPriority sorts sessions by duration (desc), then by name (asc)
 func sortSessionsByPriority(sessions []*sessionOverlapInfo) {
-	for i := 0; i < len(sessions)-1; i++ {
+	for i := range len(sessions) - 1 {
 		for j := i + 1; j < len(sessions); j++ {
 			// Sort by duration descending
 			if sessions[j].duration > sessions[i].duration {
