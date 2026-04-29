@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"sort"
@@ -255,11 +256,8 @@ func (r *FieldResolver) ResolveValue(value interface{}, col *ColumnConfig) inter
 		if pbID == "" {
 			return ""
 		}
-		resolved := r.LookupValue(col.RelatedCol, pbID)
-		if resolved != "" {
-			return resolved
-		}
-		return pbID // Fallback to raw ID
+		// Fallback to raw ID if no display value resolves
+		return cmp.Or(r.LookupValue(col.RelatedCol, pbID), pbID)
 
 	case FieldTypeMultiRelation:
 		// Multi-relation - lookup all values and join with comma
