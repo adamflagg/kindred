@@ -7,20 +7,27 @@ export interface BunkmateInfo {
   grade: number | null
 }
 
-// Stage 2 parent-paramount split. Parent = source==='family' (bunk_with +
-// socialize_with). Staff = source==='staff' (not_bunk_with + bunking_notes +
-// internal_notes). Requests with source==='notes' or unset fall through both
-// splits but still count in the aggregate totalRequests/satisfiedCount.
+// Stage 3a parent-paramount Shape A. Three independent slices:
+//   - materialParent  → source_field === 'bunk_with'      (parent must-have)
+//   - bestEffortParent → source_field === 'socialize_with' (parent nice-to-have)
+//   - staff            → source === 'staff'                (staff request)
+// Plus derived violation flags surfaced for badges/alerts:
+//   - parentMinOneViolation: material parent has >=1 unsatisfied request
+//   - staffUnsatisfiedAlert: staff has >=1 request and zero satisfied
+export interface RequestSlice {
+  total: number
+  satisfied: number
+  satisfactionRate: number
+}
+
 export interface SatisfiedRequestInfo {
-  totalRequests: number
-  satisfiedCount: number
+  materialParent: RequestSlice
+  bestEffortParent: RequestSlice
+  staff: RequestSlice
+  parentMinOneViolation: boolean
+  staffUnsatisfiedAlert: boolean
   topPrioritySatisfied: boolean
   priorityLevels: number[]
-  hasLockedPriority: boolean
-  parentTotal: number
-  parentSatisfied: number
-  staffTotal: number
-  staffSatisfied: number
 }
 
 interface BunkRequestContextValue {

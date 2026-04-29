@@ -1,31 +1,42 @@
 /**
  * Pure helper used by BunkRequestProvider.getSatisfiedRequestInfo to compute
- * per-camper request satisfaction with parent/staff splits (Stage 2
+ * per-camper request satisfaction with Shape A three-slice split (Stage 3a
  * parent-paramount). Lives outside the provider so the binning + filtering
  * logic can be unit-tested without React Query / context setup.
  *
- * Source taxonomy (matches backend RequestSource enum):
- *   - Parent (FAMILY): bunk_with, socialize_with — drive parentTotal/parentSatisfied
- *   - Staff (STAFF):   not_bunk_with, bunking_notes, internal_notes — drive staffTotal/staffSatisfied
- *   - Anything else (source==='notes' or unset): counted only in totalRequests/satisfiedCount
+ * Shape A binning (mutually exclusive — each request goes to at most one slice):
+ *   - materialParent   ← source_field === 'bunk_with'      (must-have)
+ *   - bestEffortParent ← source_field === 'socialize_with' (nice-to-have)
+ *   - staff            ← source === 'staff'                (staff request)
+ *
+ * Derived flags:
+ *   - parentMinOneViolation: materialParent.total >= 1 && satisfied === 0
+ *   - staffUnsatisfiedAlert: staff.total >= 1 && satisfied === 0
  */
 import type { BunkRequest } from '../types/app-types'
-import type { BunkmateInfo } from '../contexts/BunkRequestContext'
-import type { SatisfiedRequestInfo } from '../contexts/BunkRequestContext'
+import type {
+  BunkmateInfo,
+  RequestSlice,
+  SatisfiedRequestInfo,
+} from '../contexts/BunkRequestContext'
 import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
+
+const EMPTY_SLICE: RequestSlice = Object.freeze({
+  total: 0,
+  satisfied: 0,
+  satisfactionRate: 0,
+}) as RequestSlice
 
 // Frozen so the shared reference can't be mutated by any caller — the
 // `priorityLevels` array would otherwise alias across every empty return.
 export const EMPTY_SATISFIED_INFO: SatisfiedRequestInfo = Object.freeze({
-  totalRequests: 0,
-  satisfiedCount: 0,
+  materialParent: EMPTY_SLICE,
+  bestEffortParent: EMPTY_SLICE,
+  staff: EMPTY_SLICE,
+  parentMinOneViolation: false,
+  staffUnsatisfiedAlert: false,
   topPrioritySatisfied: false,
   priorityLevels: Object.freeze([]) as readonly number[] as number[],
-  hasLockedPriority: false,
-  parentTotal: 0,
-  parentSatisfied: 0,
-  staffTotal: 0,
-  staffSatisfied: 0,
 }) as SatisfiedRequestInfo
 
 export function computeSatisfiedRequestInfo(
@@ -54,23 +65,34 @@ export function computeSatisfiedRequestInfo(
     return false
   }
 
-  let parentTotal = 0
-  let parentSatisfied = 0
+  let materialTotal = 0
+  let materialSat = 0
+  let bestTotal = 0
+  let bestSat = 0
   let staffTotal = 0
-  let staffSatisfied = 0
+  let staffSat = 0
   const satisfiedRequests: BunkRequest[] = []
 
   for (const req of personRequests) {
     const sat = isSatisfied(req)
     if (sat) satisfiedRequests.push(req)
-    if (req.source === 'family') {
-      parentTotal += 1
-      if (sat) parentSatisfied += 1
+    if (req.source_field === 'bunk_with') {
+      materialTotal += 1
+      if (sat) materialSat += 1
+    } else if (req.source_field === 'socialize_with') {
+      bestTotal += 1
+      if (sat) bestSat += 1
     } else if (req.source === 'staff') {
       staffTotal += 1
-      if (sat) staffSatisfied += 1
+      if (sat) staffSat += 1
     }
   }
+
+  const slice = (total: number, satisfied: number): RequestSlice => ({
+    total,
+    satisfied,
+    satisfactionRate: total === 0 ? 0 : satisfied / total,
+  })
 
   const sortedSatisfied = [...satisfiedRequests].sort(
     (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
@@ -80,7 +102,6 @@ export function computeSatisfiedRequestInfo(
   const priorityLevels = [...new Set(sortedSatisfied.map((r) => r.priority ?? 0))].sort(
     (a, b) => b - a
   )
-  const hasLockedPriority = satisfiedRequests.some((req) => req.priority_locked)
 
   // Surface personCmId so future tests can confirm wiring without breaking
   // existing callers (param is otherwise unused — kept so the call shape mirrors
@@ -88,15 +109,13 @@ export function computeSatisfiedRequestInfo(
   void personCmId
 
   return {
-    totalRequests: personRequests.length,
-    satisfiedCount: satisfiedRequests.length,
+    materialParent: slice(materialTotal, materialSat),
+    bestEffortParent: slice(bestTotal, bestSat),
+    staff: slice(staffTotal, staffSat),
+    parentMinOneViolation: materialTotal >= 1 && materialSat === 0,
+    staffUnsatisfiedAlert: staffTotal >= 1 && staffSat === 0,
     topPrioritySatisfied,
     priorityLevels,
-    hasLockedPriority,
-    parentTotal,
-    parentSatisfied,
-    staffTotal,
-    staffSatisfied,
   }
 }
 
