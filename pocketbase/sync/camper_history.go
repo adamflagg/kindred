@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -529,10 +530,7 @@ func (c *CamperHistorySync) loadPersonDemographics(
 ) (map[int]personDemographics, error) {
 	result := make(map[int]personDemographics)
 
-	// Split into batches
-	batches := c.splitIntoBatches(personCMIDs, personBatchSize)
-
-	for _, batch := range batches {
+	for batch := range slices.Chunk(personCMIDs, personBatchSize) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -718,13 +716,11 @@ func (c *CamperHistorySync) loadHistoricalEnrollments(
 		result[cmID] = []historicalEnrollment{}
 	}
 
-	// Query historical attendees in batches
-	batches := c.splitIntoBatches(personCMIDs, personBatchSize)
-
 	// Cache session type lookups
 	sessionTypeCache := make(map[string]string)
 
-	for _, batch := range batches {
+	// Query historical attendees in batches
+	for batch := range slices.Chunk(personCMIDs, personBatchSize) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -1035,19 +1031,6 @@ func (c *CamperHistorySync) isFamilySessionType(sessionType string) bool {
 // ============================================================================
 // Utility functions
 // ============================================================================
-
-// splitIntoBatches splits a slice into batches
-func (c *CamperHistorySync) splitIntoBatches(ids []int, batchSize int) [][]int {
-	var batches [][]int
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		batches = append(batches, ids[i:end])
-	}
-	return batches
-}
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint
 func (c *CamperHistorySync) forceWALCheckpoint() error {

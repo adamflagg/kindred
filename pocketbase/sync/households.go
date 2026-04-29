@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -100,8 +101,9 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	allHouseholds := make(map[int]map[string]any)
 
 	// Process persons in batches to extract households
-	batchSize := 500
-	for i := 0; i < len(personIDs); i += batchSize {
+	const batchSize = 500
+	processed := 0
+	for batch := range slices.Chunk(personIDs, batchSize) {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -109,14 +111,11 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 		default:
 		}
 
-		// Get batch
-		end := i + batchSize
-		if end > len(personIDs) {
-			end = len(personIDs)
-		}
-		batch := personIDs[i:end]
-
-		slog.Debug("Fetching persons batch for household extraction", "start", i+1, "end", end, "total", len(personIDs))
+		slog.Debug("Fetching persons batch for household extraction",
+			"start", processed+1,
+			"end", processed+len(batch),
+			"total", len(personIDs),
+		)
 
 		// Fetch persons for this batch (includes household data via includehouseholddetails=true)
 		persons, err := s.Client.GetPersons(batch)
@@ -125,7 +124,7 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 		}
 
 		// Mark sync as successful once we've successfully fetched data
-		if i == 0 && len(persons) > 0 {
+		if processed == 0 && len(persons) > 0 {
 			s.SyncSuccessful = true
 		}
 
@@ -136,6 +135,7 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 				allHouseholds[int(id)] = household
 			}
 		}
+		processed += len(batch)
 	}
 
 	slog.Info("Extracted unique households from persons", "count", len(allHouseholds))

@@ -3,6 +3,7 @@ package sync
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -184,14 +185,8 @@ func (r *SessionResolver) GetHouseholdIDsForSession(session string, year int) ([
 	// Query persons to get their household IDs
 	householdIDSet := make(map[int]bool)
 	// Process in batches to avoid long queries
-	batchSize := 50
-	for i := 0; i < len(personPBIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(personPBIDs) {
-			end = len(personPBIDs)
-		}
-		batch := personPBIDs[i:end]
-
+	const batchSize = 50
+	for batch := range slices.Chunk(personPBIDs, batchSize) {
 		// Build ID filter
 		idConditions := make([]string, len(batch))
 		for j, id := range batch {

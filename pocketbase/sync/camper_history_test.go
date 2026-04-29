@@ -324,43 +324,6 @@ func TestCamperHistoryStatusPriority(t *testing.T) {
 	}
 }
 
-// TestCamperHistoryBatchedPersonLookup tests that person lookups work in batches
-func TestCamperHistoryBatchedPersonLookup(t *testing.T) {
-	// Simulate a large number of person IDs that need batching
-	personIDs := make([]int, 1200) // More than typical batch size
-	for i := range personIDs {
-		personIDs[i] = 1000 + i
-	}
-
-	// Calculate expected batches
-	batchSize := 100
-	expectedBatches := (len(personIDs) + batchSize - 1) / batchSize
-
-	batches := splitIntoBatches(personIDs, batchSize)
-
-	if len(batches) != expectedBatches {
-		t.Errorf("expected %d batches, got %d", expectedBatches, len(batches))
-	}
-
-	// Verify all IDs are included
-	totalIDs := 0
-	for _, batch := range batches {
-		totalIDs += len(batch)
-	}
-	if totalIDs != len(personIDs) {
-		t.Errorf("expected %d total IDs across batches, got %d", len(personIDs), totalIDs)
-	}
-
-	// Verify last batch has correct size
-	lastBatchExpectedSize := len(personIDs) % batchSize
-	if lastBatchExpectedSize == 0 {
-		lastBatchExpectedSize = batchSize
-	}
-	if len(batches[len(batches)-1]) != lastBatchExpectedSize {
-		t.Errorf("last batch size = %d, want %d", len(batches[len(batches)-1]), lastBatchExpectedSize)
-	}
-}
-
 // ============================================================================
 // Test helper types and functions (these match the production implementation)
 // ============================================================================
@@ -521,19 +484,6 @@ func getBestStatus(statuses []string) string {
 	}
 	// Otherwise return first status
 	return statuses[0]
-}
-
-// splitIntoBatches splits a slice into batches of specified size
-func splitIntoBatches(ids []int, batchSize int) [][]int {
-	var batches [][]int
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		batches = append(batches, ids[i:end])
-	}
-	return batches
 }
 
 // joinSorted sorts strings and joins with ", "
