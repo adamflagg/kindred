@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -97,7 +96,7 @@ func (c *Client) authenticate() error {
 		if resp.StatusCode == http.StatusTooManyRequests {
 			waitTime := c.parseRateLimitSeconds(string(body))
 			if waitTime > 0 {
-				log.Printf("CampMinder: Rate limited during auth. Waiting %d seconds...", waitTime)
+				slog.Warn("CampMinder rate limited during auth", "wait_seconds", waitTime)
 				time.Sleep(time.Duration(waitTime) * time.Second)
 				// Retry authentication
 				return c.authenticate()
@@ -204,7 +203,7 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 	if resp.StatusCode == http.StatusTooManyRequests && retryCount < 10 {
 		waitTime := c.parseRateLimitSeconds(string(body))
 		if waitTime > 0 {
-			log.Printf("CampMinder: Rate limited. Waiting %d seconds before retry %d/10...", waitTime, retryCount+1)
+			slog.Warn("CampMinder rate limited", "wait_seconds", waitTime, "retry", retryCount+1, "max_retries", 10)
 			time.Sleep(time.Duration(waitTime) * time.Second)
 			// Retry the request
 			return c.makeRequestWithURLRetry(method, fullURL, retryCount+1)
