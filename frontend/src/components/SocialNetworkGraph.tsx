@@ -105,6 +105,18 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
   // selectedNodeId drives the camper detail panel (#35)
 
+  // Derive the bunk roster for the selected camper so CamperDetailsPanel can
+  // compute accurate unsatisfied-requests alerts (Issue #1061). Filter all
+  // graph nodes to those sharing the selected camper's bunk_cm_id.
+  const bunkCampers = useMemo(() => {
+    if (!graphData || selectedNodeId == null) return undefined
+    const selectedNode = graphData.nodes.find((n) => n.id === selectedNodeId)
+    if (!selectedNode?.bunk_cm_id) return undefined
+    return graphData.nodes
+      .filter((n) => n.bunk_cm_id === selectedNode.bunk_cm_id)
+      .map((n) => ({ cmId: n.id, grade: n.grade }))
+  }, [graphData, selectedNodeId])
+
   // Handle escape key for expanded mode
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -630,6 +642,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             <CamperDetailsPanel
               camperId={selectedNodeId.toString()}
               onClose={() => setSelectedNodeId(null)}
+              {...(bunkCampers != null && { bunkCampers })}
             />
           )}
         </>

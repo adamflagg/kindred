@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, Activity } from 'react'
+import { useEffect, useMemo, useRef, useState, Activity } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import cytoscape from 'cytoscape'
@@ -146,6 +146,14 @@ export default function BunkSocialGraphModal({
     },
     enabled: isOpen,
   })
+
+  // Derive bunk roster for CamperDetailsPanel so it can compute accurate
+  // unsatisfied-requests alerts (Issue #1061). Since this modal is scoped to
+  // a single bunk, every node in graphData IS a bunkmate.
+  const bunkCampers = useMemo(
+    () => graphData?.nodes.map((n) => ({ cmId: n.id, grade: n.grade })) ?? undefined,
+    [graphData]
+  )
 
   // Fetch session bunks for navigation
   const { data: allBunks } = useQuery({
@@ -1003,6 +1011,7 @@ export default function BunkSocialGraphModal({
           <CamperDetailsPanel
             camperId={selectedCamperId}
             onClose={() => setSelectedCamperId(null)}
+            {...(bunkCampers != null && { bunkCampers })}
           />
         )}
       </Activity>
