@@ -8,24 +8,26 @@
  * uses the EXACT same source of truth as the bunking-board CamperCard — no
  * parallel/divergent satisfaction logic lives here.
  *
- * Stage 2 parent-paramount: legacy 'unsatisfied-requests' was split into
- * 'unsatisfied-parent-requests' (orange) and 'unsatisfied-staff-requests'
- * (amber). Both can fire simultaneously; staff alert is independent of
- * parent state (resolved Q #4 + Q #6 in the Stage 2 spec).
+ * Stage 3a parent-paramount: requestInfo now carries Shape A flags
+ * (parentMinOneViolation / staffUnsatisfiedAlert) instead of legacy flat
+ * counts. The alert gates delegate entirely to those pre-computed booleans.
  */
 import { describe, it, expect } from 'vitest'
 import { buildCamperAlerts } from './camperAlertUtils'
 import type { CamperAlertInputs } from './camperAlertUtils'
 
+const EMPTY_SLICE = { total: 0, satisfied: 0, satisfactionRate: 0 }
+
 const BASE_INPUTS: CamperAlertInputs = {
   assignedBunkCmId: 42,
   requestInfo: {
-    totalRequests: 0,
-    satisfiedCount: 0,
-    parentTotal: 0,
-    parentSatisfied: 0,
-    staffTotal: 0,
-    staffSatisfied: 0,
+    materialParent: EMPTY_SLICE,
+    bestEffortParent: EMPTY_SLICE,
+    staff: EMPTY_SLICE,
+    parentMinOneViolation: false,
+    staffUnsatisfiedAlert: false,
+    topPrioritySatisfied: false,
+    priorityLevels: [],
   },
   lockState: 'none',
   lockGroupSize: 0,
@@ -34,16 +36,13 @@ const BASE_INPUTS: CamperAlertInputs = {
 // ─── unsatisfied-parent-requests alert (parity with CamperCard parent triangle) ───
 
 describe('buildCamperAlerts — unsatisfied-parent-requests alert', () => {
-  it('fires when parentTotal > 0 && parentSatisfied === 0', () => {
+  it('fires when parentMinOneViolation is true', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 2,
-        satisfiedCount: 0,
-        parentTotal: 2,
-        parentSatisfied: 0,
-        staffTotal: 0,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 2, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
       },
     })
     const alert = alerts.find((a) => a.id === 'unsatisfied-parent-requests')
@@ -53,16 +52,13 @@ describe('buildCamperAlerts — unsatisfied-parent-requests alert', () => {
     expect(alert?.requestRelated).toBe(true)
   })
 
-  it('uses singular "request" when parentTotal === 1', () => {
+  it('uses singular "request" when materialParent.total === 1', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 1,
-        satisfiedCount: 0,
-        parentTotal: 1,
-        parentSatisfied: 0,
-        staffTotal: 0,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')?.label).toBe(
@@ -70,31 +66,26 @@ describe('buildCamperAlerts — unsatisfied-parent-requests alert', () => {
     )
   })
 
-  it('does NOT fire when at least one parent request is satisfied', () => {
+  it('does NOT fire when parentMinOneViolation is false (at least one satisfied)', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 3,
-        satisfiedCount: 1,
-        parentTotal: 3,
-        parentSatisfied: 1,
-        staffTotal: 0,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 3, satisfied: 1, satisfactionRate: 0.33 },
+        parentMinOneViolation: false,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')).toBeUndefined()
   })
 
-  it('does NOT fire when parentTotal is 0 (only staff requests exist)', () => {
+  it('does NOT fire when parentMinOneViolation is false (no parent requests at all)', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 1,
-        satisfiedCount: 0,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 1,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        staffUnsatisfiedAlert: true,
+        parentMinOneViolation: false,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')).toBeUndefined()
@@ -105,12 +96,28 @@ describe('buildCamperAlerts — unsatisfied-parent-requests alert', () => {
       ...BASE_INPUTS,
       assignedBunkCmId: null,
       requestInfo: {
-        totalRequests: 5,
-        satisfiedCount: 0,
-        parentTotal: 5,
-        parentSatisfied: 0,
-        staffTotal: 0,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 5, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
+      },
+    })
+    expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')).toBeUndefined()
+  })
+
+  // ── Materiality rule: best-effort-only campers must NOT trip parent alert ──
+  it('socialize_with-only camper with unsatisfied best-effort does NOT trigger unsatisfied-parent-requests alert', () => {
+    // parentMinOneViolation is false because only bestEffortParent has requests.
+    // The alert gate must delegate to the flag, not re-derive from slice totals.
+    const alerts = buildCamperAlerts({
+      ...BASE_INPUTS,
+      requestInfo: {
+        materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        bestEffortParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: false,
+        staffUnsatisfiedAlert: false,
+        topPrioritySatisfied: false,
+        priorityLevels: [],
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')).toBeUndefined()
@@ -120,16 +127,13 @@ describe('buildCamperAlerts — unsatisfied-parent-requests alert', () => {
 // ─── unsatisfied-staff-requests alert (parity with CamperCard staff dot) ───
 
 describe('buildCamperAlerts — unsatisfied-staff-requests alert', () => {
-  it('fires when staffTotal > 0 && staffSatisfied === 0', () => {
+  it('fires when staffUnsatisfiedAlert is true', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 1,
-        satisfiedCount: 0,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 1,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        staffUnsatisfiedAlert: true,
       },
     })
     const alert = alerts.find((a) => a.id === 'unsatisfied-staff-requests')
@@ -139,16 +143,13 @@ describe('buildCamperAlerts — unsatisfied-staff-requests alert', () => {
     expect(alert?.requestRelated).toBe(true)
   })
 
-  it('uses plural "requests" when staffTotal > 1', () => {
+  it('uses plural "requests" when staff.total > 1', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 3,
-        satisfiedCount: 0,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 3,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        staff: { total: 3, satisfied: 0, satisfactionRate: 0 },
+        staffUnsatisfiedAlert: true,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-staff-requests')?.label).toBe(
@@ -163,28 +164,24 @@ describe('buildCamperAlerts — unsatisfied-staff-requests alert', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 2,
-        satisfiedCount: 1,
-        parentTotal: 1,
-        parentSatisfied: 1,
-        staffTotal: 1,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 1, satisfied: 1, satisfactionRate: 1 },
+        staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: false,
+        staffUnsatisfiedAlert: true,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')).toBeUndefined()
     expect(alerts.find((a) => a.id === 'unsatisfied-staff-requests')).toBeDefined()
   })
 
-  it('does NOT fire when at least one staff request is satisfied', () => {
+  it('does NOT fire when staffUnsatisfiedAlert is false (at least one satisfied)', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 2,
-        satisfiedCount: 1,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 2,
-        staffSatisfied: 1,
+        ...BASE_INPUTS.requestInfo,
+        staff: { total: 2, satisfied: 1, satisfactionRate: 0.5 },
+        staffUnsatisfiedAlert: false,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-staff-requests')).toBeUndefined()
@@ -195,12 +192,9 @@ describe('buildCamperAlerts — unsatisfied-staff-requests alert', () => {
       ...BASE_INPUTS,
       assignedBunkCmId: null,
       requestInfo: {
-        totalRequests: 3,
-        satisfiedCount: 0,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 3,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        staff: { total: 3, satisfied: 0, satisfactionRate: 0 },
+        staffUnsatisfiedAlert: true,
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-staff-requests')).toBeUndefined()
@@ -214,12 +208,11 @@ describe('buildCamperAlerts — combined parent + staff matrix', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 2,
-        satisfiedCount: 0,
-        parentTotal: 1,
-        parentSatisfied: 0,
-        staffTotal: 1,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
+        staffUnsatisfiedAlert: true,
       },
     })
     const ids = alerts.map((a) => a.id)
@@ -231,12 +224,11 @@ describe('buildCamperAlerts — combined parent + staff matrix', () => {
     const alerts = buildCamperAlerts({
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 2,
-        satisfiedCount: 2,
-        parentTotal: 1,
-        parentSatisfied: 1,
-        staffTotal: 1,
-        staffSatisfied: 1,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 1, satisfied: 1, satisfactionRate: 1 },
+        staff: { total: 1, satisfied: 1, satisfactionRate: 1 },
+        parentMinOneViolation: false,
+        staffUnsatisfiedAlert: false,
       },
     })
     const ids = alerts.map((a) => a.id)
@@ -274,12 +266,9 @@ describe('buildCamperAlerts — output stability', () => {
     const inputs: CamperAlertInputs = {
       ...BASE_INPUTS,
       requestInfo: {
-        totalRequests: 1,
-        satisfiedCount: 0,
-        parentTotal: 1,
-        parentSatisfied: 0,
-        staffTotal: 0,
-        staffSatisfied: 0,
+        ...BASE_INPUTS.requestInfo,
+        materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
       },
     }
     const result1 = buildCamperAlerts(inputs)

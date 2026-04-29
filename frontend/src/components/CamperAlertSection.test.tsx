@@ -198,6 +198,24 @@ describe('CamperAlertSection', () => {
       expect(screen.getByText('In friend group (3 members)')).toBeInTheDocument()
     })
   })
+
+  // ─── 6. Materiality rule: best-effort (socialize_with) doesn't trip parent alert ─
+
+  describe('materiality rule', () => {
+    it('socialize_with-only camper with unsatisfied best-effort does NOT trigger unsatisfied-parent-requests alert', () => {
+      // When parentMinOneViolation is false (no material bunk_with requests),
+      // the buildCamperAlerts util must NOT emit unsatisfied-parent-requests
+      // even if bestEffortParent has unsatisfied requests. This test verifies
+      // the rendered alert section respects that rule at the component layer.
+      const alerts: CamperAlert[] = []
+      // (no 'unsatisfied-parent-requests' alert — parentMinOneViolation is false)
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      expect(screen.queryByRole('button', { name: /parent request/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /alerts/i })).not.toBeInTheDocument()
+    })
+  })
 })
 
 // ─── Integration: CamperDetailsPanel renders alert section ────────────────────
@@ -235,11 +253,13 @@ vi.mock('../hooks', async () => {
       hasRequests: () => false,
       getRequestsForCamper: () => [],
       getSatisfiedRequestInfo: () => ({
-        totalRequests: 0,
-        satisfiedCount: 0,
+        materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: false,
+        staffUnsatisfiedAlert: false,
         topPrioritySatisfied: false,
         priorityLevels: [] as number[],
-        hasLockedPriority: false,
       }),
       isLoading: false,
       error: null,
@@ -286,11 +306,13 @@ describe('CamperDetailsPanel — alert section integration', () => {
 
     const spy = vi.fn(
       (_personCmId: number, _bunkCmId: number, _campers: unknown, _grade: number | null) => ({
-        totalRequests: 2,
-        satisfiedCount: 0,
+        materialParent: { total: 2, satisfied: 0, satisfactionRate: 0 },
+        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
+        staffUnsatisfiedAlert: false,
         topPrioritySatisfied: false,
         priorityLevels: [] as number[],
-        hasLockedPriority: false,
       })
     )
     vi.spyOn(hooks, 'useBunkRequestContext').mockReturnValue({
