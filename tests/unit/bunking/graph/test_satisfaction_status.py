@@ -304,3 +304,132 @@ def test_satisfaction_status_uses_unsatisfied_not_isolated() -> None:
         for attr in ("parent_satisfaction_status", "staff_satisfaction_status", "satisfaction_status"):
             val = builder.graph.nodes[node_id].get(attr)
             assert val != "isolated", f"node {node_id} {attr}='isolated' — Stage 3a requires 'unsatisfied'"
+
+
+# ---------------------------------------------------------------------------
+# Stage 3a Task 9: build_bunk_graph must call _calculate_node_metrics (#1063 Layer 2)
+# ---------------------------------------------------------------------------
+
+
+def _make_person(cm_id: int, first_name: str, last_name: str, bunk_cm_id: int) -> object:
+    """Minimal duck-typed person object for build_bunk_graph node creation."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        cm_id=cm_id,
+        first_name=first_name,
+        last_name=last_name,
+        grade=7,
+        gender="F",
+        age=12,
+        family_id=None,
+    )
+
+
+def _make_assignment_with_expand(person_cm_id: int) -> object:
+    """Minimal assignment record with expand.person so get_person_from_expand works."""
+    from types import SimpleNamespace
+
+    person = SimpleNamespace(cm_id=person_cm_id)
+    expand = SimpleNamespace(person=person)
+    return SimpleNamespace(expand=expand)
+
+
+def _make_request_record(requester_id: int, requestee_id: int, source: str) -> object:
+    """Minimal bunk_request record for build_bunk_graph edge creation."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=f"r-{requester_id}-{requestee_id}",
+        requester_id=requester_id,
+        requestee_id=requestee_id,
+        request_type="bunk_with",
+        priority=4,
+        confidence_score=0.95,
+        is_reciprocal=False,
+        status="resolved",
+        year=2026,
+        source=source,
+    )
+
+
+def test_build_bunk_graph_emits_satisfaction_fields() -> None:
+    """#1063 Layer 2: build_bunk_graph node attrs must include parent_satisfaction_status,
+    staff_satisfaction_status, and legacy satisfaction_status.
+
+    Prior bug: build_bunk_graph never called _calculate_node_metrics, so those three
+    attrs were always absent from the returned graph's nodes.
+
+    Fixture: two campers in bunk 555 with a resolved parent (family) request between
+    them.  Because they share the bunk both should be "satisfied".  The important
+    check is that the attrs exist at all — if _calculate_node_metrics is not called
+    the dict lookup returns None and the assertions below fail.
+    """
+    pb = MagicMock()
+
+    # Person cm_ids and bunk
+    person_a_id = 1001
+    person_b_id = 1002
+    bunk_cm_id = 555
+    session_cm_id = 999
+    year = 2026
+
+    # Build expand-aware assignment stubs
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+
+    # Build person stubs for get_first_list_item lookups
+    person_a = _make_person(person_a_id, "Emma", "Johnson", bunk_cm_id)
+    person_b = _make_person(person_b_id, "Liam", "Garcia", bunk_cm_id)
+
+    # A resolved family request: person_a requests person_b (same bunk → satisfied)
+    request_ab = _make_request_record(person_a_id, person_b_id, source="family")
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = [request_ab]
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    # Graph must have both nodes
+    assert bunk_graph.number_of_nodes() == 2, f"Expected 2 nodes, got {bunk_graph.number_of_nodes()}"
+
+    # All three satisfaction attrs must be present on every node (#1063 Layer 2)
+    for node_id in (person_a_id, person_b_id):
+        node_attrs = bunk_graph.nodes[node_id]
+        assert "parent_satisfaction_status" in node_attrs, (
+            f"node {node_id} missing parent_satisfaction_status — build_bunk_graph must call _calculate_node_metrics()"
+        )
+        assert "staff_satisfaction_status" in node_attrs, (
+            f"node {node_id} missing staff_satisfaction_status — build_bunk_graph must call _calculate_node_metrics()"
+        )
+        assert "satisfaction_status" in node_attrs, (
+            f"node {node_id} missing satisfaction_status — build_bunk_graph must call _calculate_node_metrics()"
+        )
+
+    # Correctness check: same-bunk parent request → satisfied
+    assert bunk_graph.nodes[person_a_id]["parent_satisfaction_status"] == "satisfied", (
+        f"person_a parent_satisfaction_status="
+        f"{bunk_graph.nodes[person_a_id].get('parent_satisfaction_status')!r}, expected 'satisfied'"
+    )
+    assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "no_requests"

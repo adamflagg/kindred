@@ -471,6 +471,17 @@ class SocialGraphBuilder:
             f"sibling={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'sibling'])}"
         )
 
+        # Populate satisfaction node attrs (parent_satisfaction_status,
+        # staff_satisfaction_status, satisfaction_status).  _calculate_node_metrics
+        # operates on self.graph, so we temporarily point it at bunk_graph.
+        # (#1063 Layer 2 fix)
+        saved_graph = self.graph
+        self.graph = bunk_graph
+        try:
+            self._calculate_node_metrics()
+        finally:
+            self.graph = saved_graph
+
         return bunk_graph
 
     def detect_friend_groups(
