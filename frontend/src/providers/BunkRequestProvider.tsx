@@ -5,7 +5,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
 import type { BunkRequest } from '../types/app-types'
 import { BunkRequestContext, type BunkmateInfo } from '../contexts/BunkRequestContext'
-import { computeSatisfiedRequestInfo } from '../utils/computeSatisfiedRequestInfo'
+import {
+  computeSatisfiedRequestInfo,
+  EMPTY_SATISFIED_INFO,
+} from '../utils/computeSatisfiedRequestInfo'
 
 interface BunkRequestProviderProps {
   sessionCmId: number
@@ -98,17 +101,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     const personRequests = requestsByPerson.get(personCmId) ?? []
 
     if (personRequests.length === 0 || !bunkCmId) {
-      return {
-        totalRequests: 0,
-        satisfiedCount: 0,
-        topPrioritySatisfied: false,
-        priorityLevels: [],
-        hasLockedPriority: false,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 0,
-        staffSatisfied: 0,
-      }
+      return EMPTY_SATISFIED_INFO
     }
 
     // Get cached bunk person set - O(1) after first call for this bunk
@@ -139,7 +132,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     getRequestsForCamper,
     getSatisfiedRequestInfo,
     isLoading,
-    error: error,
+    error,
   }
 
   return <BunkRequestContext.Provider value={value}>{children}</BunkRequestContext.Provider>

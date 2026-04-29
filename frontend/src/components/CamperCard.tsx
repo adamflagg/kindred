@@ -15,6 +15,7 @@ import { getDisplayAgeForYear } from '../utils/displayAge'
 import { useYear } from '../hooks/useCurrentYear'
 import type { Camper } from '../types/app-types'
 import type { BunkmateInfo } from '../contexts/BunkRequestContext'
+import { EMPTY_SATISFIED_INFO } from '../utils/computeSatisfiedRequestInfo'
 import { useBunkRequestContext, useCamperHistoryContext } from '../hooks'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 
@@ -75,17 +76,7 @@ function CamperCard({
   // React Compiler will optimize this computation
   const getSatisfiedInfo = () => {
     if (isDragging || !camper.assigned_bunk_cm_id) {
-      return {
-        totalRequests: 0,
-        satisfiedCount: 0,
-        topPrioritySatisfied: false,
-        priorityLevels: [] as number[],
-        hasLockedPriority: false,
-        parentTotal: 0,
-        parentSatisfied: 0,
-        staffTotal: 0,
-        staffSatisfied: 0,
-      }
+      return EMPTY_SATISFIED_INFO
     }
 
     // Use passed bunk campers or default to just the current camper

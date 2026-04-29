@@ -57,6 +57,7 @@ import { CamperAlertSection } from './CamperAlertSection'
 import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { buildCamperAlerts } from '../utils/camperAlertUtils'
+import { EMPTY_SATISFIED_INFO } from '../utils/computeSatisfiedRequestInfo'
 import { useBunkRequestContext } from '../hooks'
 import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 
@@ -683,24 +684,10 @@ export default function CamperDetailsPanel({
           effectiveBunkCampers,
           camper?.grade ?? null
         )
-      : {
-          totalRequests: 0,
-          satisfiedCount: 0,
-          parentTotal: 0,
-          parentSatisfied: 0,
-          staffTotal: 0,
-          staffSatisfied: 0,
-        }
+      : EMPTY_SATISFIED_INFO
     return buildCamperAlerts({
       assignedBunkCmId: effectiveAssignedBunkCmId,
-      requestInfo: {
-        totalRequests: requestInfo.totalRequests,
-        satisfiedCount: requestInfo.satisfiedCount,
-        parentTotal: requestInfo.parentTotal,
-        parentSatisfied: requestInfo.parentSatisfied,
-        staffTotal: requestInfo.staffTotal,
-        staffSatisfied: requestInfo.staffSatisfied,
-      },
+      requestInfo,
       lockState,
       lockGroupSize,
     })

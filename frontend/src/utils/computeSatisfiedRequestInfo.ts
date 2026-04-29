@@ -14,17 +14,19 @@ import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 import type { SatisfiedRequestInfo } from '../contexts/BunkRequestContext'
 import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 
-const EMPTY_INFO: SatisfiedRequestInfo = {
+// Frozen so the shared reference can't be mutated by any caller — the
+// `priorityLevels` array would otherwise alias across every empty return.
+export const EMPTY_SATISFIED_INFO: SatisfiedRequestInfo = Object.freeze({
   totalRequests: 0,
   satisfiedCount: 0,
   topPrioritySatisfied: false,
-  priorityLevels: [],
+  priorityLevels: Object.freeze([]) as readonly number[] as number[],
   hasLockedPriority: false,
   parentTotal: 0,
   parentSatisfied: 0,
   staffTotal: 0,
   staffSatisfied: 0,
-}
+}) as SatisfiedRequestInfo
 
 export function computeSatisfiedRequestInfo(
   personRequests: BunkRequest[],
@@ -34,7 +36,7 @@ export function computeSatisfiedRequestInfo(
   requesterGrade: number | null
 ): SatisfiedRequestInfo {
   if (personRequests.length === 0) {
-    return EMPTY_INFO
+    return EMPTY_SATISFIED_INFO
   }
 
   const isSatisfied = (req: BunkRequest): boolean => {
