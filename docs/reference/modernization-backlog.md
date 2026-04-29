@@ -138,9 +138,9 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | — | ✓ shipped #1066 | `sort.Ints` → `slices.Sort` (drift, audit miss) | `sync/family_camp_derived_test.go:163` | 1 | included in #2/#3 bundle to drop `"sort"` import package-wide |
 | 4 | ✓ shipped #1070 | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `persons.go:637`, `ratelimit/ratelimit.go:78` | 4 | bundled w/ #5; ~7 audit entries retired as false positives (early-return validators in `sheets_scheduling.go:60,63` & `persons.go:1029`, side-effecting if in `ratelimit.go:85`, error-size check in `feedback/handler.go:104`) |
 | 5 | ✓ shipped #1070 | `cmp.Or` (first non-zero) | `sync/table_exporter.go:262` | 1 | bundled w/ #4; ~4 audit entries retired as false positives (`normalize_geographic.go:487`, `table_exporter.go:358` — "if non-empty, do X" patterns rather than first-non-zero fallbacks) |
-| 6 | next | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #7 (single codemod) |
-| 7 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | may bundle w/ #6 |
-| 8 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
+| 6 | ✓ shipped #1071 | `map[string]interface{}` → `map[string]any` | hotspots | 603 | bundled w/ #7 as single `gofmt -r` codemod; surfaced pre-existing dead branch in `normalizeToStringSlice` (issue #1072) |
+| 7 | ✓ shipped #1071 | `interface{}` → `any` | `sync/api.go` (122), `base_sync.go` (29), `households.go`, widespread | 141 (744 incl. #6) | bundled w/ #6 |
+| 8 | next | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
 | 9 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #10 |
 | 10 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #9 subset) | after #9 |
 | 11 | | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
