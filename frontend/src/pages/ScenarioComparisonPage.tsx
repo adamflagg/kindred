@@ -180,17 +180,20 @@ export interface ValidationStatistics {
   total_requests: number
   satisfied_requests: number
   request_satisfaction_rate: number
-  // Legacy aggregate fields, kept until Stage 4 retires them. Stage 1 left
-  // these intact so any consumer not yet migrated keeps working.
+  // Legacy aggregate fields, kept until Stage 4 retires them.
   explicit_csv_requests: number
   satisfied_explicit_csv_requests: number
   explicit_csv_request_satisfaction_rate: number
-  // Stage 1 parent-paramount fields. Frontend reads these now.
-  parent_requests: number
-  satisfied_parent_requests: number
-  parent_request_satisfaction_rate: number
-  campers_with_unsatisfied_parent_requests: number
-  // Stage 1 staff fields, distinct from parent.
+  // Stage 3a material (hard) parent requests — tiles read these.
+  material_parent_requests: number
+  satisfied_material_parent_requests: number
+  material_parent_request_satisfaction_rate: number
+  campers_with_unsatisfied_material_parent_requests: number
+  // Stage 3a best-effort (soft) parent requests — de-emphasized tile.
+  best_effort_parent_requests: number
+  satisfied_best_effort_parent_requests: number
+  best_effort_parent_request_satisfaction_rate: number
+  // Staff fields, distinct from parent.
   staff_requests: number
   satisfied_staff_requests: number
   staff_request_satisfaction_rate: number
@@ -1118,8 +1121,7 @@ export default function ScenarioComparisonPage() {
   )
 }
 
-// One percentage stat tile inside ValidationScoreCard. Three of these render
-// per scoreboard column (All / Parent / Staff Requests).
+// One percentage stat tile inside ValidationScoreCard.
 function StatBlock({
   label,
   pct,
@@ -1151,6 +1153,32 @@ function StatBlock({
   )
 }
 
+// De-emphasized variant for best-effort (soft) requests — smaller text,
+// neutral color so it doesn't compete with the material parent tile.
+function StatBlockMuted({
+  label,
+  pct,
+  satisfied,
+  total,
+}: {
+  label: string
+  pct: number
+  satisfied: number
+  total: number
+}) {
+  return (
+    <div className="opacity-70">
+      <div className="text-muted-foreground text-xs tracking-wider uppercase">{label}</div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-muted-foreground text-base font-semibold">{pct}%</span>
+        <span className="text-muted-foreground text-xs">
+          ({satisfied}/{total})
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // Validation Score Card Component - detailed validation stats
 export interface ValidationScoreCardProps {
   label: string
@@ -1174,8 +1202,15 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
   }
 
   const stats = validation.statistics
-  const satisfactionPct = Math.round((stats.request_satisfaction_rate ?? 0) * 100)
-  const parentPct = Math.round((stats.parent_request_satisfaction_rate ?? 0) * 100)
+
+  // "All Requests" = material parent + staff only; best-effort excluded.
+  const allTotal = (stats.material_parent_requests ?? 0) + (stats.staff_requests ?? 0)
+  const allSatisfied =
+    (stats.satisfied_material_parent_requests ?? 0) + (stats.satisfied_staff_requests ?? 0)
+  const allPct = allTotal > 0 ? Math.round((allSatisfied / allTotal) * 100) : 0
+
+  const materialParentPct = Math.round((stats.material_parent_request_satisfaction_rate ?? 0) * 100)
+  const bestEffortPct = Math.round((stats.best_effort_parent_request_satisfaction_rate ?? 0) * 100)
   const staffPct = Math.round((stats.staff_request_satisfaction_rate ?? 0) * 100)
 
   return (
@@ -1189,23 +1224,24 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
     >
       <div className="mb-3 truncate text-sm font-semibold">{label}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">
+        <StatBlock label="All Requests" pct={allPct} satisfied={allSatisfied} total={allTotal} />
         <StatBlock
-          label="All Requests"
-          pct={satisfactionPct}
-          satisfied={stats.satisfied_requests}
-          total={stats.total_requests}
-        />
-        <StatBlock
-          label="Parent Requests"
-          pct={parentPct}
-          satisfied={stats.satisfied_parent_requests}
-          total={stats.parent_requests}
+          label="Material Parent"
+          pct={materialParentPct}
+          satisfied={stats.satisfied_material_parent_requests ?? 0}
+          total={stats.material_parent_requests ?? 0}
         />
         <StatBlock
           label="Staff Requests"
           pct={staffPct}
           satisfied={stats.satisfied_staff_requests}
           total={stats.staff_requests}
+        />
+        <StatBlockMuted
+          label="Best-Effort Parent"
+          pct={bestEffortPct}
+          satisfied={stats.satisfied_best_effort_parent_requests ?? 0}
+          total={stats.best_effort_parent_requests ?? 0}
         />
         {/* Violations & Risks */}
         <div>
