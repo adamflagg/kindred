@@ -215,13 +215,13 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 	// We test the pattern, not the full method (which needs PocketBase app).
 	tests := []struct {
 		name           string
-		enrollment     map[string]interface{}
+		enrollment     map[string]any
 		wantEffective  string
 		wantLastUpdate string
 	}{
 		{
 			name: "enrolled record has EffectiveDate = registration date",
-			enrollment: map[string]interface{}{
+			enrollment: map[string]any{
 				"PostDate":       "2024-11-18T00:00:00Z",
 				"EffectiveDate":  "2024-11-18T00:00:00Z",
 				"LastUpdatedUTC": "2024-11-18T12:30:00Z",
@@ -232,7 +232,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 		},
 		{
 			name: "cancelled record: EffectiveDate = original reg, PostDate = cancel date",
-			enrollment: map[string]interface{}{
+			enrollment: map[string]any{
 				"PostDate":       "2025-07-06T00:00:00Z",
 				"EffectiveDate":  "2024-11-18T00:00:00Z",
 				"LastUpdatedUTC": "2025-07-06T09:15:00Z",
@@ -243,7 +243,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 		},
 		{
 			name: "missing EffectiveDate results in empty string",
-			enrollment: map[string]interface{}{
+			enrollment: map[string]any{
 				"PostDate":       "2024-11-18T00:00:00Z",
 				"LastUpdatedUTC": "2024-11-18T12:30:00Z",
 				"StatusID":       float64(2),
@@ -253,7 +253,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 		},
 		{
 			name: "missing LastUpdatedUTC results in empty string",
-			enrollment: map[string]interface{}{
+			enrollment: map[string]any{
 				"PostDate":      "2024-11-18T00:00:00Z",
 				"EffectiveDate": "2024-11-18T00:00:00Z",
 				"StatusID":      float64(2),
@@ -284,7 +284,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 			}
 
 			// Verify that the recordData map would include these fields
-			recordData := map[string]interface{}{
+			recordData := map[string]any{
 				"effective_date":   effectiveDate,
 				"last_updated_utc": lastUpdatedUTC,
 			}
@@ -303,7 +303,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 // TestAttendeesSync_RecordDataContainsEffectiveDate verifies the full recordData map
 // built in processEnrollment would contain effective_date and last_updated_utc fields.
 func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
-	enrollment := map[string]interface{}{
+	enrollment := map[string]any{
 		"SessionID":      float64(1001),
 		"StatusID":       float64(32), // cancelled
 		"PostDate":       "2025-07-06T00:00:00Z",
@@ -325,7 +325,7 @@ func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
 		lastUpdatedUTC = ParseDate(lu)
 	}
 
-	recordData := map[string]interface{}{
+	recordData := map[string]any{
 		"enrollment_date":  enrollmentDate,
 		"effective_date":   effectiveDate,
 		"last_updated_utc": lastUpdatedUTC,

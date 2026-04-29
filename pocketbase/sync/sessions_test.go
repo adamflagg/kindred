@@ -29,7 +29,7 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 
 	// Mock CampMinder API response with all fields
 	// Note: CampMinder API has typo "IsForChilden" (missing 'r')
-	sessionData := map[string]interface{}{
+	sessionData := map[string]any{
 		"ID":            float64(12345),
 		"Name":          testSessionName,
 		"StartDate":     "2025-06-15T00:00:00Z",
@@ -114,7 +114,7 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 	s := &SessionsSync{}
 
 	// Minimal session data with only required fields
-	sessionData := map[string]interface{}{
+	sessionData := map[string]any{
 		"ID":       float64(12345),
 		"Name":     testSessionName,
 		"SeasonID": float64(2025),
@@ -162,7 +162,7 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 	s := &SessionsSync{}
 
 	// Session data with explicit nil values (as might come from JSON null)
-	sessionData := map[string]interface{}{
+	sessionData := map[string]any{
 		"ID":            float64(12345),
 		"Name":          testSessionName,
 		"StartDate":     "2025-06-15T00:00:00Z",
@@ -208,7 +208,7 @@ func TestReclassifyOverlappingSessions_SharedStartDate(t *testing.T) {
 
 	// Session 2 (June 15 - July 13) and Taste of Camp 2 (June 15 - June 20)
 	// Both share start date June 15, Session 2 is longer
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(1001),
 			"Name":      "Session 2",
@@ -259,7 +259,7 @@ func TestReclassifyOverlappingSessions_SharedEndDate(t *testing.T) {
 
 	// Session 3 (July 14 - Aug 10) and Session 3a (Aug 1 - Aug 10)
 	// Both share end date Aug 10, Session 3 is longer
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(2001),
 			"Name":      "Session 3",
@@ -303,7 +303,7 @@ func TestReclassifyOverlappingSessions_AGSessionsExempt(t *testing.T) {
 	s := &SessionsSync{}
 
 	// AG session with same dates as main session
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(3001),
 			"Name":      "Session 2",
@@ -348,7 +348,7 @@ func TestReclassifyOverlappingSessions_EqualDurationAlphabetical(t *testing.T) {
 	s := &SessionsSync{}
 
 	// "Session A" and "Session B" with identical dates
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(4002),
 			"Name":      "Session B",
@@ -392,7 +392,7 @@ func TestReclassifyOverlappingSessions_MultipleOverlaps(t *testing.T) {
 	s := &SessionsSync{}
 
 	// Session 2, ToC2, and Session 2b all share June 15 start
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(5001),
 			"Name":      "Session 2",
@@ -450,7 +450,7 @@ func TestReclassifyOverlappingSessions_MultipleOverlaps(t *testing.T) {
 func TestReclassifyOverlappingSessions_NoOverlap(t *testing.T) {
 	s := &SessionsSync{}
 
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(6001),
 			"Name":      "Session 2",
@@ -492,7 +492,7 @@ func TestReclassifyOverlappingSessions_NonMainUnchanged(t *testing.T) {
 	s := &SessionsSync{}
 
 	// Family camp with same dates as a main session
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(7001),
 			"Name":      "Session 2",
@@ -535,7 +535,7 @@ func TestReclassifyOverlappingSessions_NonMainUnchanged(t *testing.T) {
 func TestReclassifyOverlappingSessions_MissingDates(t *testing.T) {
 	s := &SessionsSync{}
 
-	sessions := []map[string]interface{}{
+	sessions := []map[string]any{
 		{
 			"ID":        float64(8001),
 			"Name":      "Session 2",

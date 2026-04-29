@@ -36,7 +36,7 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 	// Pre-load all existing records (no year filter - definitions are global)
 	// Note: TagDef uses Name as identifier (no CM ID), so we key by name
 	// Use PreloadRecordsGlobal since this table has no year field
-	existingRecords, err := s.PreloadRecordsGlobal("person_tag_defs", "", func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecordsGlobal("person_tag_defs", "", func(record *core.Record) (any, bool) {
 		if name, ok := record.Get("name").(string); ok && name != "" {
 			return name, true
 		}
@@ -134,9 +134,9 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 
 // transformPersonTagDefinitionToPB transforms CampMinder tag definition data to PocketBase format
 func (s *PersonTagDefinitionsSync) transformPersonTagDefinitionToPB(
-	data map[string]interface{},
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+	data map[string]any,
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract name (required - this is the identifier)
 	name, ok := data["Name"].(string)

@@ -10,7 +10,7 @@ func TestTransformPersonCustomFieldValue_CapturesLastUpdated(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
 	// Mock CampMinder API response with lastUpdated
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":          float64(100),
 		"value":       "Vegetarian",
 		"lastUpdated": "2025-01-15T10:30:00Z",
@@ -32,7 +32,7 @@ func TestTransformPersonCustomFieldValue_MissingLastUpdated(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
 	// Mock CampMinder API response WITHOUT lastUpdated
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":    float64(100),
 		"value": "Vegetarian",
 		// lastUpdated is missing
@@ -52,7 +52,7 @@ func TestTransformPersonCustomFieldValue_MissingLastUpdated(t *testing.T) {
 func TestTransformPersonCustomFieldValue_EmptyLastUpdated(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":          float64(100),
 		"value":       "Vegetarian",
 		"lastUpdated": "",
@@ -71,7 +71,7 @@ func TestTransformPersonCustomFieldValue_EmptyLastUpdated(t *testing.T) {
 func TestTransformHouseholdCustomFieldValue_CapturesLastUpdated(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":          float64(200),
 		"value":       "Has dietary restrictions",
 		"lastUpdated": "2025-01-20T14:45:00Z",
@@ -92,7 +92,7 @@ func TestTransformHouseholdCustomFieldValue_CapturesLastUpdated(t *testing.T) {
 func TestTransformHouseholdCustomFieldValue_MissingLastUpdated(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":    float64(200),
 		"value": "Has dietary restrictions",
 		// lastUpdated is missing

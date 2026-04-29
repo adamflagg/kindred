@@ -127,7 +127,7 @@ func TestBaseSyncService_FindOrphansFromPreloaded(t *testing.T) {
 			}
 
 			// Build preloaded map with string keys (simulating composite keys)
-			preloaded := make(map[interface{}]any)
+			preloaded := make(map[any]any)
 			for _, key := range tt.preloadedKeys {
 				preloaded[key] = "pb-id-" + key // PB record ID (or *core.Record in real usage)
 			}

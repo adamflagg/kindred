@@ -221,12 +221,12 @@ type MockCustomFieldFetcher struct {
 	callCount    int
 	failUntil    int    // Return 429 until this many calls
 	errorMessage string // Error message to return on failure
-	values       []map[string]interface{}
+	values       []map[string]any
 }
 
 func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(
 	_, _, _ int,
-) (results []map[string]interface{}, hasMore bool, err error) {
+) (results []map[string]any, hasMore bool, err error) {
 	m.callCount++
 	if m.callCount <= m.failUntil {
 		if m.errorMessage != "" {
@@ -252,13 +252,13 @@ func TestSyncWithRateLimiter_Integration(t *testing.T) {
 
 	mock := &MockCustomFieldFetcher{
 		failUntil: 2, // Fail first 2 calls with 429
-		values: []map[string]interface{}{
+		values: []map[string]any{
 			{"id": float64(100), "value": "test-value"},
 		},
 	}
 
 	// Simulate the wrapped API call pattern we'll implement
-	var result []map[string]interface{}
+	var result []map[string]any
 	var hasMore bool
 
 	err := rl.ExecuteWithRetry(ctx, func() error {
@@ -300,7 +300,7 @@ func TestSyncWithRateLimiter_PersistentFailure(t *testing.T) {
 		failUntil: 100, // Always fail
 	}
 
-	var result []map[string]interface{}
+	var result []map[string]any
 	var hasMore bool
 
 	err := rl.ExecuteWithRetry(ctx, func() error {
@@ -344,12 +344,12 @@ type MockHouseholdCustomFieldFetcher struct {
 	callCount    int
 	failUntil    int
 	errorMessage string
-	values       []map[string]interface{}
+	values       []map[string]any
 }
 
 func (m *MockHouseholdCustomFieldFetcher) GetHouseholdCustomFieldValuesPage(
 	_, _, _ int,
-) (results []map[string]interface{}, hasMore bool, err error) {
+) (results []map[string]any, hasMore bool, err error) {
 	m.callCount++
 	if m.callCount <= m.failUntil {
 		if m.errorMessage != "" {
@@ -374,12 +374,12 @@ func TestHouseholdSyncWithRateLimiter_Integration(t *testing.T) {
 
 	mock := &MockHouseholdCustomFieldFetcher{
 		failUntil: 2,
-		values: []map[string]interface{}{
+		values: []map[string]any{
 			{"id": float64(200), "value": "household-value"},
 		},
 	}
 
-	var result []map[string]interface{}
+	var result []map[string]any
 	var hasMore bool
 
 	err := rl.ExecuteWithRetry(ctx, func() error {

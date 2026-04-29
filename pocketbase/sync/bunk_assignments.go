@@ -172,7 +172,7 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 			bunkPlanID := int(bunkPlanIDFloat)
 
 			// Get the assignments array from this result
-			assignmentsArray, ok := result["Assignments"].([]interface{})
+			assignmentsArray, ok := result["Assignments"].([]any)
 			if !ok {
 				slog.Warn("No Assignments array in result")
 				continue
@@ -187,7 +187,7 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 
 			// Process each assignment in the array
 			for _, assignment := range assignmentsArray {
-				assignmentData, ok := assignment.(map[string]interface{})
+				assignmentData, ok := assignment.(map[string]any)
 				if !ok {
 					slog.Warn("Invalid assignment data type")
 					continue
@@ -409,7 +409,7 @@ func (s *BunkAssignmentsSync) findMatchingSession(personSessions, bunkPlanSessio
 
 // processAssignment processes a single bunk assignment using pre-loaded existing assignments
 func (s *BunkAssignmentsSync) processAssignment(
-	assignmentData map[string]interface{},
+	assignmentData map[string]any,
 	existingAssignments map[string]*core.Record,
 ) error {
 	// Extract required fields
@@ -476,7 +476,7 @@ func (s *BunkAssignmentsSync) processAssignment(
 	key := fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, year)
 
 	// Prepare record data with CM ID and is_deleted
-	recordData := map[string]interface{}{
+	recordData := map[string]any{
 		"year":       year,
 		"cm_id":      assignmentCMID, // The assignment's own CampMinder ID
 		"is_deleted": isDeleted,

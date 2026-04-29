@@ -65,7 +65,7 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 	filter := fmt.Sprintf("year = %d", year)
 
 	// Pre-load existing records for this year
-	existingRecords, err := s.PreloadRecords("camp_sessions", filter, func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecords("camp_sessions", filter, func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok {
 			return int(cmID), true
 		}
@@ -77,7 +77,7 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 
 	// Pre-load session_groups to resolve group_id -> PocketBase record ID
 	s.groupIDMap = make(map[int]string)
-	groupRecords, err := s.PreloadRecords("session_groups", filter, func(record *core.Record) (interface{}, bool) {
+	groupRecords, err := s.PreloadRecords("session_groups", filter, func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok {
 			// Store the PocketBase ID for this group's CampMinder ID
 			s.groupIDMap[int(cmID)] = record.Id
@@ -299,12 +299,12 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 // overrideParents for the parent_id (for embedded sessions from date overlap detection).
 // AG sessions still use mainSessions for parent lookup (exact date matching).
 func (s *SessionsSync) transformSessionToPBWithParent(
-	data map[string]interface{},
+	data map[string]any,
 	mainSessions map[string]int,
 	overrideTypes map[int]string,
 	overrideParents map[int]int,
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract session ID
 	sessionIDFloat, ok := data["ID"].(float64)
@@ -412,7 +412,7 @@ type sessionOverlapInfo struct {
 // 2. If durations are equal, alphabetically first name wins
 // 3. All others become "embedded" with parent_id set to the primary's cm_id
 func (s *SessionsSync) reclassifyOverlappingSessions(
-	sessions []map[string]interface{},
+	sessions []map[string]any,
 	initialTypes map[int]string,
 ) (correctedTypes map[int]string, parentIDs map[int]int) {
 	// Initialize output maps with input values

@@ -35,7 +35,7 @@ func (s *DivisionsSync) Name() string {
 func (s *DivisionsSync) Sync(ctx context.Context) error {
 	// Pre-load all existing records (no year filter - divisions are global)
 	// Use cm_id as the key since divisions have CampMinder IDs
-	existingRecords, err := s.PreloadRecordsGlobal("divisions", "", func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecordsGlobal("divisions", "", func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -209,8 +209,8 @@ func (s *DivisionsSync) resolveParentDivisionRelations(parentDivisionIDs map[int
 }
 
 // transformDivisionToPB transforms CampMinder division data to PocketBase format
-func (s *DivisionsSync) transformDivisionToPB(data map[string]interface{}) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func (s *DivisionsSync) transformDivisionToPB(data map[string]any) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract ID (required)
 	idFloat, ok := data["ID"].(float64)

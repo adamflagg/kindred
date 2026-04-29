@@ -36,7 +36,7 @@ func (s *CustomFieldDefinitionsSync) Name() string {
 func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 	// Pre-load all existing records (no year filter - definitions are global)
 	// Use PreloadRecordsGlobal since this table has no year field
-	existingRecords, err := s.PreloadRecordsGlobal("custom_field_defs", "", func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecordsGlobal("custom_field_defs", "", func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -153,9 +153,9 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 // transformCustomFieldDefinitionToPB transforms CampMinder custom field definition data to PocketBase format
 // Note: CampMinder /persons/custom-fields endpoint uses camelCase field names
 func (s *CustomFieldDefinitionsSync) transformCustomFieldDefinitionToPB(
-	data map[string]interface{},
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+	data map[string]any,
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract ID (required) - API uses "id" (camelCase)
 	idFloat, ok := data["id"].(float64)

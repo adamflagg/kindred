@@ -25,7 +25,7 @@ func TestTransformPersonCustomFieldValueToPB(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
 	// Mock CampMinder API response for a custom field value
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":    float64(100), // Custom field definition ID (used by caller to resolve PB ID)
 		"value": "Vegetarian",
 	}
@@ -71,7 +71,7 @@ func TestTransformPersonCustomFieldValueEmptyValue(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
 	// Empty value is valid (field might be cleared)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":    float64(100),
 		"value": "",
 	}
@@ -88,7 +88,7 @@ func TestTransformPersonCustomFieldValueNilValue(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
 	// Nil value (field has no value set)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id": float64(100),
 		// Value is missing/nil
 	}

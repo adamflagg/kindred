@@ -23,7 +23,7 @@ func TestTransformFinancialCategoryToPB(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
 	// Mock CampMinder API response (lowercase field names per OpenAPI spec)
-	categoryData := map[string]interface{}{
+	categoryData := map[string]any{
 		"id":         float64(22650),
 		"name":       "Fees - Summer Camp",
 		"isArchived": false,
@@ -49,7 +49,7 @@ func TestTransformFinancialCategoryToPB(t *testing.T) {
 func TestTransformFinancialCategoryToPB_Archived(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
-	categoryData := map[string]interface{}{
+	categoryData := map[string]any{
 		"id":         float64(100),
 		"name":       "Archived Category",
 		"isArchived": true,
@@ -69,7 +69,7 @@ func TestTransformFinancialCategoryToPB_NullName(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
 	// API allows nullable name
-	categoryData := map[string]interface{}{
+	categoryData := map[string]any{
 		"id":         float64(100),
 		"name":       nil,
 		"isArchived": false,
@@ -90,7 +90,7 @@ func TestTransformFinancialCategoryToPB_MissingName(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
 	// No name key at all
-	categoryData := map[string]interface{}{
+	categoryData := map[string]any{
 		"id":         float64(100),
 		"isArchived": false,
 	}
@@ -109,7 +109,7 @@ func TestTransformFinancialCategoryToPB_MissingName(t *testing.T) {
 func TestTransformFinancialCategoryToPB_MissingID(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"name":       "Test Category",
 		"isArchived": false,
 	}
@@ -123,7 +123,7 @@ func TestTransformFinancialCategoryToPB_MissingID(t *testing.T) {
 func TestTransformFinancialCategoryToPB_ZeroID(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":         float64(0),
 		"name":       "Test Category",
 		"isArchived": false,
@@ -143,7 +143,7 @@ func TestTransformPaymentMethodToPB(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
 	// Mock CampMinder API response (lowercase field names per OpenAPI spec)
-	methodData := map[string]interface{}{
+	methodData := map[string]any{
 		"id":   float64(1),
 		"name": "Credit Card",
 	}
@@ -171,7 +171,7 @@ func TestTransformPaymentMethodToPB_NullName(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
 	// API allows nullable name
-	methodData := map[string]interface{}{
+	methodData := map[string]any{
 		"id":   float64(1),
 		"name": nil,
 	}
@@ -191,7 +191,7 @@ func TestTransformPaymentMethodToPB_MissingName(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
 	// No name key at all
-	methodData := map[string]interface{}{
+	methodData := map[string]any{
 		"id": float64(1),
 	}
 
@@ -209,7 +209,7 @@ func TestTransformPaymentMethodToPB_MissingName(t *testing.T) {
 func TestTransformPaymentMethodToPB_MissingID(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"name": "Credit Card",
 	}
 
@@ -222,7 +222,7 @@ func TestTransformPaymentMethodToPB_MissingID(t *testing.T) {
 func TestTransformPaymentMethodToPB_ZeroID(t *testing.T) {
 	s := &FinancialLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":   float64(0),
 		"name": "Credit Card",
 	}

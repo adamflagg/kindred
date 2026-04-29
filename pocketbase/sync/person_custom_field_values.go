@@ -278,7 +278,7 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 		}
 
 		// Fetch page of custom field values with rate limiting and retry
-		var values []map[string]interface{}
+		var values []map[string]any
 		var hasMore bool
 
 		err := s.rateLimiter.ExecuteWithRetry(ctx, func() error {
@@ -435,12 +435,12 @@ func (s *PersonCustomFieldValuesSync) deleteOrphans(year int) error {
 // transformPersonCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
 // Schema: person, field_definition, value, year, last_updated (optional)
 func (s *PersonCustomFieldValuesSync) transformPersonCustomFieldValueToPB(
-	data map[string]interface{},
+	data map[string]any,
 	personPBId string,
 	fieldDefPBId string,
 	year int,
-) map[string]interface{} {
-	pbData := make(map[string]interface{})
+) map[string]any {
+	pbData := make(map[string]any)
 
 	// Set relations
 	pbData["person"] = personPBId

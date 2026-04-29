@@ -205,15 +205,15 @@ type Status struct {
 
 // QueuedSync represents a sync request waiting in the queue
 type QueuedSync struct {
-	ID                  string                 `json:"id"`
-	Year                int                    `json:"year"`
-	Type                string                 `json:"type"`    // "unified", "phase", "individual"
-	Service             string                 `json:"service"` // unified: "all"; phase: phase name; individual: job name
-	IncludeCustomValues bool                   `json:"include_custom_values"`
-	Debug               bool                   `json:"debug"`
-	Options             map[string]interface{} `json:"options,omitempty"`
-	QueuedAt            time.Time              `json:"queued_at"`
-	RequestedBy         string                 `json:"requested_by"`
+	ID                  string         `json:"id"`
+	Year                int            `json:"year"`
+	Type                string         `json:"type"`    // "unified", "phase", "individual"
+	Service             string         `json:"service"` // unified: "all"; phase: phase name; individual: job name
+	IncludeCustomValues bool           `json:"include_custom_values"`
+	Debug               bool           `json:"debug"`
+	Options             map[string]any `json:"options,omitempty"`
+	QueuedAt            time.Time      `json:"queued_at"`
+	RequestedBy         string         `json:"requested_by"`
 }
 
 // MaxQueueSize is the maximum number of syncs that can be queued (0 = unlimited)
@@ -1503,7 +1503,7 @@ func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, debug bool, reque
 // EnqueueIndividualSync adds an individual job sync request to the queue.
 // If a sync with the same year+job is already queued, returns the existing item.
 func (o *Orchestrator) EnqueueIndividualSync(
-	year int, jobID string, options map[string]interface{}, debug bool, requestedBy string,
+	year int, jobID string, options map[string]any, debug bool, requestedBy string,
 ) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()

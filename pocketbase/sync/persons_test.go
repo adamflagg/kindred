@@ -26,17 +26,17 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 
 	// Mock CampMinder API response with full CamperDetails
 	// Note: We don't set Age to avoid needing a Client for age calculation
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0), // Female
 		// No "Age" field - triggers default age behavior without needing client
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First":     testFirstName,
 			"Last":      "Johnson",
 			"Preferred": "Emmy",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"PartitionID":      float64(2),   // Grade grouping
 			"DivisionID":       float64(5),   // Division assignment
 			"LeadDate":         "2020-01-15", // Lead/inquiry date
@@ -49,8 +49,8 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 			"YearsAtCamp":      float64(3),
 			"LastYearAttended": float64(2024),
 		},
-		"FamilyPersons": []interface{}{
-			map[string]interface{}{
+		"FamilyPersons": []any{
+			map[string]any{
 				"FamilyID": float64(99999),
 			},
 		},
@@ -97,16 +97,16 @@ func TestTransformPersonToPB_MissingCamperDetailsFields(t *testing.T) {
 
 	// Minimal CamperDetails without optional fields
 	// Note: We don't set Age to avoid needing a Client for age calculation
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(1), // Male
 		// No "Age" field - triggers default age behavior without needing client
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": "Liam",
 			"Last":  "Garcia",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(6),
 		},
 	}
@@ -140,21 +140,21 @@ func TestExtractHouseholdsFromPersonData(t *testing.T) {
 	}
 
 	// Mock person data with households
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Households": map[string]interface{}{
-			"PrincipalHousehold": map[string]interface{}{
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
 				"ID":       float64(100),
 				"Greeting": "The Johnson Family",
 			},
-			"PrimaryChildhoodHousehold": map[string]interface{}{
+			"PrimaryChildhoodHousehold": map[string]any{
 				"ID":       float64(100), // Same household
 				"Greeting": "The Johnson Family",
 			},
 		},
 	}
 
-	households := s.extractUniqueHouseholds([]map[string]interface{}{personData})
+	households := s.extractUniqueHouseholds([]map[string]any{personData})
 
 	if len(households) != 1 {
 		t.Errorf("expected 1 unique household, got %d", len(households))
@@ -173,11 +173,11 @@ func TestExtractHouseholdsFromPersonData_NoHouseholds(t *testing.T) {
 	}
 
 	// Person without Households
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
 	}
 
-	households := s.extractUniqueHouseholds([]map[string]interface{}{personData})
+	households := s.extractUniqueHouseholds([]map[string]any{personData})
 
 	if len(households) != 0 {
 		t.Errorf("expected 0 households for person without Households, got %d", len(households))
@@ -190,7 +190,7 @@ func TestPersonsSync_TransformHouseholdToPB(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID":                    float64(123456),
 		"Greeting":              "Hunter and Ashley",
 		"MailingTitle":          "Mr. and Mrs Hunter Doe",
@@ -198,7 +198,7 @@ func TestPersonsSync_TransformHouseholdToPB(t *testing.T) {
 		"BillingMailingTitle":   "Mr. and Mrs Hunter Doe",
 		"HouseholdPhone":        "212-523-5555",
 		"LastUpdatedUTC":        "2025-01-15T10:30:00.000Z",
-		"BillingAddress": map[string]interface{}{
+		"BillingAddress": map[string]any{
 			"Address1": "123 Main St",
 			"City":     "Boulder",
 		},
@@ -268,18 +268,18 @@ func TestPersonsCompareFields(t *testing.T) {
 func TestExtractHouseholdIDsFromPerson(t *testing.T) {
 	s := &PersonsSync{}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Households": map[string]interface{}{
-			"PrincipalHousehold": map[string]interface{}{
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
 				"ID":       float64(100),
 				"Greeting": "The Smiths",
 			},
-			"PrimaryChildhoodHousehold": map[string]interface{}{
+			"PrimaryChildhoodHousehold": map[string]any{
 				"ID":       float64(200),
 				"Greeting": "Primary Home",
 			},
-			"AlternateChildhoodHousehold": map[string]interface{}{
+			"AlternateChildhoodHousehold": map[string]any{
 				"ID":       float64(300),
 				"Greeting": "Alternate Home",
 			},
@@ -304,10 +304,10 @@ func TestExtractHouseholdIDsFromPerson_Partial(t *testing.T) {
 	s := &PersonsSync{}
 
 	// Child with only primary childhood household
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Households": map[string]interface{}{
-			"PrimaryChildhoodHousehold": map[string]interface{}{
+		"Households": map[string]any{
+			"PrimaryChildhoodHousehold": map[string]any{
 				"ID":       float64(200),
 				"Greeting": "Primary Home",
 			},
@@ -494,14 +494,14 @@ func TestExtractTagIDs(t *testing.T) {
 		"Sibling":    "rec_sibling_003",
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Tags": []interface{}{
-			map[string]interface{}{
+		"Tags": []any{
+			map[string]any{
 				"Name":           "Alumni",
 				"LastUpdatedUTC": "2025-01-15T10:30:00.000Z",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"Name":           "Leadership",
 				"LastUpdatedUTC": "2025-01-16T11:00:00.000Z",
 			},
@@ -542,7 +542,7 @@ func TestExtractTagIDs_NoTags(t *testing.T) {
 		"Alumni": testAlumniTagID,
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
 	}
 
@@ -561,9 +561,9 @@ func TestExtractTagIDs_EmptyTags(t *testing.T) {
 		"Alumni": testAlumniTagID,
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":   float64(12345),
-		"Tags": []interface{}{},
+		"Tags": []any{},
 	}
 
 	tagIDs := s.extractTagIDs(personData, tagDefsByName)
@@ -581,7 +581,7 @@ func TestExtractTagIDs_NilTags(t *testing.T) {
 		"Alumni": testAlumniTagID,
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":   float64(12345),
 		"Tags": nil,
 	}
@@ -601,13 +601,13 @@ func TestExtractTagIDs_UnknownTag(t *testing.T) {
 		"Alumni": testAlumniTagID,
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Tags": []interface{}{
-			map[string]interface{}{
+		"Tags": []any{
+			map[string]any{
 				"Name": "UnknownTag", // Not in tag definitions
 			},
-			map[string]interface{}{
+			map[string]any{
 				"Name": "Alumni", // In tag definitions
 			},
 		},
@@ -632,13 +632,13 @@ func TestExtractTagIDs_EmptyTagName(t *testing.T) {
 		"Alumni": testAlumniTagID,
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Tags": []interface{}{
-			map[string]interface{}{
+		"Tags": []any{
+			map[string]any{
 				"Name": "", // Empty name
 			},
-			map[string]interface{}{
+			map[string]any{
 				"Name": "Alumni",
 			},
 		},
@@ -663,7 +663,7 @@ func TestExtractTagIDs_EmptyTagName(t *testing.T) {
 func TestExtractPersonIDsFromStaffRecords(t *testing.T) {
 	s := &PersonsSync{}
 
-	staffRecords := []map[string]interface{}{
+	staffRecords := []map[string]any{
 		{"PersonID": float64(1001), "StatusID": float64(1), "Position1ID": float64(10)},
 		{"PersonID": float64(1002), "StatusID": float64(1), "Position1ID": float64(20)},
 		{"PersonID": float64(1003), "StatusID": float64(2), "Position1ID": float64(30)},
@@ -693,7 +693,7 @@ func TestExtractPersonIDsFromStaffRecords(t *testing.T) {
 func TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs(t *testing.T) {
 	s := &PersonsSync{}
 
-	staffRecords := []map[string]interface{}{
+	staffRecords := []map[string]any{
 		{"PersonID": float64(1001), "StatusID": float64(1)},
 		{"PersonID": float64(0), "StatusID": float64(1)},     // Invalid: zero ID
 		{"PersonID": float64(-5), "StatusID": float64(1)},    // Invalid: negative ID
@@ -728,7 +728,7 @@ func TestExtractPersonIDsFromStaffRecords_EmptyInput(t *testing.T) {
 		t.Errorf("expected 0 person IDs for nil input, got %d", len(personIDs))
 	}
 
-	personIDs = s.extractPersonIDsFromStaffRecords([]map[string]interface{}{})
+	personIDs = s.extractPersonIDsFromStaffRecords([]map[string]any{})
 	if len(personIDs) != 0 {
 		t.Errorf("expected 0 person IDs for empty input, got %d", len(personIDs))
 	}
@@ -739,7 +739,7 @@ func TestExtractPersonIDsFromStaffRecords_Deduplicates(t *testing.T) {
 	s := &PersonsSync{}
 
 	// Staff member appears in multiple records (e.g., different status pages)
-	staffRecords := []map[string]interface{}{
+	staffRecords := []map[string]any{
 		{"PersonID": float64(1001), "StatusID": float64(1)},
 		{"PersonID": float64(1001), "StatusID": float64(2)}, // Duplicate
 		{"PersonID": float64(1002), "StatusID": float64(1)},
@@ -922,13 +922,13 @@ func TestExtractTagIDs_FiltersFutureTags(t *testing.T) {
 		"Leadership":              "rec_leadership_002",
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"Tags": []interface{}{
-			map[string]interface{}{"Name": "Alumni"},
-			map[string]interface{}{"Name": "2025 Registration"},
-			map[string]interface{}{"Name": "2026 Early Registration"}, // Should be filtered
-			map[string]interface{}{"Name": "Leadership"},
+		"Tags": []any{
+			map[string]any{"Name": "Alumni"},
+			map[string]any{"Name": "2025 Registration"},
+			map[string]any{"Name": "2026 Early Registration"}, // Should be filtered
+			map[string]any{"Name": "Leadership"},
 		},
 	}
 
@@ -974,15 +974,15 @@ func TestTransformPersonToPB_CMLeadDateExtracted(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"YearsAtCamp":      float64(5),
 			"LastYearAttended": float64(2024),
 			"LeadDate":         "2019-02-15",
@@ -1020,15 +1020,15 @@ func TestTransformPersonToPB_CMLeadDateMissing(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(1),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": "Liam",
 			"Last":  "Garcia",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(6), // Only grade, no cm_lead_date
 		},
 	}
@@ -1074,10 +1074,10 @@ func TestUpdatePersonHouseholdRelations_UsesHouseholdID(t *testing.T) {
 	s := &PersonsSync{}
 
 	// Person with only FamilyPersons household_id, no Households object
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID": float64(12345),
-		"FamilyPersons": []interface{}{
-			map[string]interface{}{
+		"FamilyPersons": []any{
+			map[string]any{
 				"FamilyID": float64(99999), // This becomes household_id
 			},
 		},
@@ -1107,15 +1107,15 @@ func TestTransformPersonToPB_IsCamperFlag(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
 	}
@@ -1194,21 +1194,21 @@ func TestExtractAddressCity(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
-		"Households": map[string]interface{}{
-			"PrimaryChildhoodHousehold": map[string]interface{}{
+		"Households": map[string]any{
+			"PrimaryChildhoodHousehold": map[string]any{
 				"ID": float64(100),
-				"BillingAddress": map[string]interface{}{
+				"BillingAddress": map[string]any{
 					"Street1":       "123 Main St",
 					"City":          "San Francisco",
 					"StateProvince": "CA",
@@ -1242,21 +1242,21 @@ func TestExtractAddressCity_StateField(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
-		"Households": map[string]interface{}{
-			"PrimaryChildhoodHousehold": map[string]interface{}{
+		"Households": map[string]any{
+			"PrimaryChildhoodHousehold": map[string]any{
 				"ID": float64(100),
-				"BillingAddress": map[string]interface{}{
+				"BillingAddress": map[string]any{
 					"City":  "Oakland",
 					"State": "California",
 				},
@@ -1288,15 +1288,15 @@ func TestExtractAddressCity_NoHouseholds(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
 		// No Households object
@@ -1330,24 +1330,24 @@ func TestExtractPrimaryEmail(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
-		"ContactDetails": map[string]interface{}{
-			"Emails": []interface{}{
-				map[string]interface{}{
+		"ContactDetails": map[string]any{
+			"Emails": []any{
+				map[string]any{
 					"Address": "secondary@example.com",
 					"IsLogin": false,
 				},
-				map[string]interface{}{
+				map[string]any{
 					"Address": "primary@example.com",
 					"IsLogin": true,
 				},
@@ -1379,23 +1379,23 @@ func TestExtractPrimaryEmail_FirstEntryFallback(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
-		"ContactDetails": map[string]interface{}{
-			"Emails": []interface{}{
-				map[string]interface{}{
+		"ContactDetails": map[string]any{
+			"Emails": []any{
+				map[string]any{
 					"Address": "first@example.com",
 				},
-				map[string]interface{}{
+				map[string]any{
 					"Address": "second@example.com",
 				},
 			},
@@ -1426,20 +1426,20 @@ func TestExtractPrimaryEmail_SingleEmail(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
-		"ContactDetails": map[string]interface{}{
-			"Emails": []interface{}{
-				map[string]interface{}{
+		"ContactDetails": map[string]any{
+			"Emails": []any{
+				map[string]any{
 					"Address": "only@example.com",
 				},
 			},
@@ -1470,15 +1470,15 @@ func TestExtractPrimaryEmail_NoEmails(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
 		// No ContactDetails
@@ -1512,20 +1512,20 @@ func TestPhoneNumbersRemoved(t *testing.T) {
 		missingDataStats: make(map[string]int),
 	}
 
-	personData := map[string]interface{}{
+	personData := map[string]any{
 		"ID":          float64(12345),
 		"DateOfBirth": "2010-03-15",
 		"GenderID":    float64(0),
-		"Name": map[string]interface{}{
+		"Name": map[string]any{
 			"First": testFirstName,
 			"Last":  "Johnson",
 		},
-		"CamperDetails": map[string]interface{}{
+		"CamperDetails": map[string]any{
 			"CampGradeID": float64(8),
 		},
-		"ContactDetails": map[string]interface{}{
-			"PhoneNumbers": []interface{}{
-				map[string]interface{}{
+		"ContactDetails": map[string]any{
+			"PhoneNumbers": []any{
+				map[string]any{
 					"Number": "555-123-4567",
 					"Type":   "Mobile",
 				},

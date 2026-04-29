@@ -125,13 +125,13 @@ func (b *BaseSyncService) ClearProcessedKeys() {
 }
 
 // TrackProcessedKey adds a composite key to the processed keys map
-func (b *BaseSyncService) TrackProcessedKey(id interface{}, year int) {
+func (b *BaseSyncService) TrackProcessedKey(id any, year int) {
 	compKey := CompositeKey(id, year)
 	b.ProcessedKeys[compKey] = true
 }
 
 // IsKeyProcessed checks if a key has already been processed in the current sync run
-func (b *BaseSyncService) IsKeyProcessed(id interface{}, year int) bool {
+func (b *BaseSyncService) IsKeyProcessed(id any, year int) bool {
 	compKey := CompositeKey(id, year)
 	return b.ProcessedKeys[compKey]
 }
@@ -223,7 +223,7 @@ func (b *BaseSyncService) DeleteOrphans(
 // Returns composite keys of records that exist in preloaded but weren't processed.
 // This is a pure function suitable for unit testing.
 // The preloaded map values can be any type (typically *core.Record or string PB IDs).
-func (b *BaseSyncService) FindOrphansFromPreloaded(preloaded map[interface{}]any) []string {
+func (b *BaseSyncService) FindOrphansFromPreloaded(preloaded map[any]any) []string {
 	if !b.SyncSuccessful {
 		return []string{}
 	}
@@ -247,7 +247,7 @@ func (b *BaseSyncService) FindOrphansFromPreloaded(preloaded map[interface{}]any
 //   - preloadedRecords: Map from PreloadRecords (composite key -> *core.Record)
 //   - entityName: Human-readable name for logging
 func (b *BaseSyncService) DeleteOrphansFromPreloaded(
-	preloadedRecords map[interface{}]*core.Record,
+	preloadedRecords map[any]*core.Record,
 	entityName string,
 ) error {
 	if !b.SyncSuccessful {
@@ -344,9 +344,9 @@ func (b *BaseSyncService) PaginateRecords(
 func (b *BaseSyncService) PreloadRecords(
 	collection string,
 	filter string,
-	keyExtractor func(*core.Record) (interface{}, bool),
-) (map[interface{}]*core.Record, error) {
-	existingRecords := make(map[interface{}]*core.Record)
+	keyExtractor func(*core.Record) (any, bool),
+) (map[any]*core.Record, error) {
+	existingRecords := make(map[any]*core.Record)
 
 	allRecords, err := b.App.FindRecordsByFilter(collection, filter, "", 0, 0)
 	if err != nil {
@@ -389,9 +389,9 @@ func (b *BaseSyncService) PreloadRecords(
 func (b *BaseSyncService) PreloadRecordsGlobal(
 	collection string,
 	filter string,
-	keyExtractor func(*core.Record) (interface{}, bool),
-) (map[interface{}]*core.Record, error) {
-	existingRecords := make(map[interface{}]*core.Record)
+	keyExtractor func(*core.Record) (any, bool),
+) (map[any]*core.Record, error) {
+	existingRecords := make(map[any]*core.Record)
 
 	allRecords, err := b.App.FindRecordsByFilter(collection, filter, "", 0, 0)
 	if err != nil {
@@ -414,9 +414,9 @@ func (b *BaseSyncService) PreloadRecordsGlobal(
 // ProcessSimpleRecord handles standard create/update logic for a single record
 func (b *BaseSyncService) ProcessSimpleRecord(
 	collection string,
-	key interface{},
-	recordData map[string]interface{},
-	existingRecords map[interface{}]*core.Record,
+	key any,
+	recordData map[string]any,
+	existingRecords map[any]*core.Record,
 	compareFields []string, // Optional: specific fields to check for updates
 ) error {
 	// Extract year from recordData - required for year isolation
@@ -443,7 +443,7 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 		// Check if update is needed
 		needsUpdate := false
 		var triggeringField string
-		var existingVal, newVal interface{}
+		var existingVal, newVal any
 
 		if len(compareFields) > 0 {
 			// Only compare specified fields
@@ -525,9 +525,9 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 // Unlike ProcessSimpleRecord, this does NOT require 'year' in recordData.
 func (b *BaseSyncService) ProcessSimpleRecordGlobal(
 	collection string,
-	key interface{},
-	recordData map[string]interface{},
-	existingRecords map[interface{}]*core.Record,
+	key any,
+	recordData map[string]any,
+	existingRecords map[any]*core.Record,
 	compareFields []string, // Optional: specific fields to check for updates
 ) error {
 	// Use key directly - no year component for global entities
@@ -639,7 +639,7 @@ func (b *BaseSyncService) PreloadCompositeRecords(
 func (b *BaseSyncService) ProcessCompositeRecord(
 	collection string,
 	compositeKey string,
-	recordData map[string]interface{},
+	recordData map[string]any,
 	existingRecords map[string]*core.Record,
 	skipFields []string, // Fields to skip during comparison (like "year" for idempotency)
 ) error {
@@ -809,7 +809,7 @@ func compareRecordNeedsUpdate(existing *core.Record, newData map[string]any, com
 
 // CompositeKey creates a year-scoped key for record lookups
 // This ensures year isolation by making the year part of the record's identity
-func CompositeKey(id interface{}, year int) string {
+func CompositeKey(id any, year int) string {
 	return fmt.Sprintf("%v|%d", id, year)
 }
 
@@ -841,7 +841,7 @@ func (b *BaseSyncService) ForceWALCheckpoint() error {
 // FieldEquals compares two field values for equality, handling type conversions and special cases
 //
 //nolint:gocyclo // complex type comparison logic requires many branches
-func (b *BaseSyncService) FieldEquals(existingValue, newValue interface{}) bool {
+func (b *BaseSyncService) FieldEquals(existingValue, newValue any) bool {
 	// Handle nil vs empty string equivalence
 	if (existingValue == nil && newValue == "") || (existingValue == "" && newValue == nil) {
 		return true
@@ -939,7 +939,7 @@ func (b *BaseSyncService) FieldEquals(existingValue, newValue interface{}) bool 
 
 	// If both look like JSON, compare them semantically
 	if existingIsJSON && newIsJSON {
-		var existingJSON, newJSON interface{}
+		var existingJSON, newJSON any
 		if err := json.Unmarshal([]byte(existingStr), &existingJSON); err == nil {
 			if err := json.Unmarshal([]byte(newStr), &newJSON); err == nil {
 				// Both parsed successfully, compare the parsed values
@@ -1135,7 +1135,7 @@ func normalizeToStringSlice(value any) []string {
 	}
 
 	// []interface{} (common from JSON unmarshaling)
-	if ifaceSlice, ok := value.([]interface{}); ok {
+	if ifaceSlice, ok := value.([]any); ok {
 		result := make([]string, 0, len(ifaceSlice))
 		for _, v := range ifaceSlice {
 			if s, ok := v.(string); ok {
@@ -1296,7 +1296,7 @@ func (b *BaseSyncService) BuildRecordCMIDMappings(
 }
 
 // PopulateRelations populates multiple relation fields in recordData
-func (b *BaseSyncService) PopulateRelations(recordData map[string]interface{}, relations []RelationConfig) error {
+func (b *BaseSyncService) PopulateRelations(recordData map[string]any, relations []RelationConfig) error {
 	for _, rel := range relations {
 		pbID, found := b.LookupRelation(rel.Collection, rel.CMID, rel.FieldName)
 		if !found {
@@ -1420,7 +1420,7 @@ func (b *BaseSyncService) ClearFieldDiffStats() {
 }
 
 // formatFieldValue formats a field value for logging, truncating long values
-func formatFieldValue(v interface{}) string {
+func formatFieldValue(v any) string {
 	if v == nil {
 		return "<nil>"
 	}

@@ -131,7 +131,7 @@ func (c *Client) authenticate() error {
 		}
 
 		if decoded, err := base64.StdEncoding.DecodeString(payload); err == nil {
-			var claims map[string]interface{}
+			var claims map[string]any
 			if err := json.Unmarshal(decoded, &claims); err == nil {
 				if exp, ok := claims["exp"].(float64); ok {
 					c.tokenExpiry = time.Unix(int64(exp), 0)
@@ -282,7 +282,7 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 // GetSessions retrieves all sessions for the configured season
 //
 //nolint:dupl // Similar pattern to GetSessionGroups, intentional for different endpoints
-func (c *Client) GetSessions() ([]map[string]interface{}, error) {
+func (c *Client) GetSessions() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"seasonid":   strconv.Itoa(c.seasonID),
@@ -296,8 +296,8 @@ func (c *Client) GetSessions() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -308,7 +308,7 @@ func (c *Client) GetSessions() ([]map[string]interface{}, error) {
 }
 
 // GetAttendeesPage retrieves attendees with pagination
-func (c *Client) GetAttendeesPage(page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
+func (c *Client) GetAttendeesPage(page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"seasonid":   strconv.Itoa(c.seasonID),
@@ -322,9 +322,9 @@ func (c *Client) GetAttendeesPage(page, pageSize int) (results []map[string]inte
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Next       *string                  `json:"Next"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Next       *string          `json:"Next"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -336,7 +336,7 @@ func (c *Client) GetAttendeesPage(page, pageSize int) (results []map[string]inte
 }
 
 // GetPersons retrieves person records by IDs
-func (c *Client) GetPersons(personIDs []int) ([]map[string]interface{}, error) {
+func (c *Client) GetPersons(personIDs []int) ([]map[string]any, error) {
 	if len(personIDs) == 0 {
 		return nil, nil
 	}
@@ -383,8 +383,8 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -395,7 +395,7 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]interface{}, error) {
 }
 
 // GetPersonsPage retrieves all persons with pagination (no seasonid for latest data)
-func (c *Client) GetPersonsPage(page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
+func (c *Client) GetPersonsPage(page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":                c.clientID,
 		"pagenumber":              strconv.Itoa(page),
@@ -415,9 +415,9 @@ func (c *Client) GetPersonsPage(page, pageSize int) (results []map[string]interf
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Next       *string                  `json:"Next"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Next       *string          `json:"Next"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -439,7 +439,7 @@ func (c *Client) GetClientID() string {
 }
 
 // GetBunks retrieves all bunks for the configured season
-func (c *Client) GetBunks() ([]map[string]interface{}, error) {
+func (c *Client) GetBunks() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":       c.clientID,
 		"seasonid":       strconv.Itoa(c.seasonID),
@@ -455,8 +455,8 @@ func (c *Client) GetBunks() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		Results []map[string]interface{} `json:"Results"`
-		Count   int                      `json:"count"`
+		Results []map[string]any `json:"Results"`
+		Count   int              `json:"count"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -467,7 +467,7 @@ func (c *Client) GetBunks() ([]map[string]interface{}, error) {
 }
 
 // GetBunkPlansPage retrieves a page of bunk plans
-func (c *Client) GetBunkPlansPage(page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
+func (c *Client) GetBunkPlansPage(page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":       c.clientID,
 		"seasonid":       strconv.Itoa(c.seasonID),
@@ -482,9 +482,9 @@ func (c *Client) GetBunkPlansPage(page, pageSize int) (results []map[string]inte
 	}
 
 	var response struct {
-		Results []map[string]interface{} `json:"Results"`
-		Count   int                      `json:"count"`
-		Next    *string                  `json:"next"`
+		Results []map[string]any `json:"Results"`
+		Count   int              `json:"count"`
+		Next    *string          `json:"next"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -496,7 +496,7 @@ func (c *Client) GetBunkPlansPage(page, pageSize int) (results []map[string]inte
 }
 
 // GetBunkAssignments retrieves bunk assignments for specified bunk plans and bunks
-func (c *Client) GetBunkAssignments(bunkPlanIDs, bunkIDs []int, page, pageSize int) ([]map[string]interface{}, error) {
+func (c *Client) GetBunkAssignments(bunkPlanIDs, bunkIDs []int, page, pageSize int) ([]map[string]any, error) {
 	// Build URL with multiple ID parameters
 	assignURL := fmt.Sprintf("%s/bunks/assignments", baseURL)
 
@@ -526,8 +526,8 @@ func (c *Client) GetBunkAssignments(bunkPlanIDs, bunkIDs []int, page, pageSize i
 	}
 
 	var response struct {
-		Results []map[string]interface{} `json:"Results"`
-		Count   int                      `json:"count"`
+		Results []map[string]any `json:"Results"`
+		Count   int              `json:"count"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -578,7 +578,7 @@ func (c *Client) parseRateLimitSeconds(body string) int {
 // GetSessionGroups retrieves session groupings for the configured season
 //
 //nolint:dupl // Similar pattern to GetSessions, intentional for different endpoints
-func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
+func (c *Client) GetSessionGroups() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"seasonid":   strconv.Itoa(c.seasonID),
@@ -592,8 +592,8 @@ func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -607,7 +607,7 @@ func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
 // Endpoint: /persons/tags
 // Returns: array of tag definitions with Name, IsSeasonal, IsHidden, LastUpdatedUTC
 // Note: This endpoint returns a raw array, not a paginated response
-func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
+func (c *Client) GetPersonTagDefinitions() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid": c.clientID,
 	}
@@ -618,7 +618,7 @@ func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
 	}
 
 	// This endpoint returns a raw array, not a paginated response
-	var results []map[string]interface{}
+	var results []map[string]any
 	if err := json.Unmarshal(body, &results); err != nil {
 		return nil, fmt.Errorf("decode person tag definitions response: %w", err)
 	}
@@ -631,7 +631,7 @@ func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
 // Returns: array of custom field definitions with Id, Name, DataType, Partition, IsSeasonal, IsArray, IsActive
 func (c *Client) GetCustomFieldDefinitionsPage(
 	page, pageSize int,
-) (results []map[string]interface{}, hasMore bool, err error) {
+) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"pagenumber": strconv.Itoa(page),
@@ -646,9 +646,9 @@ func (c *Client) GetCustomFieldDefinitionsPage(
 	// CampMinder uses inconsistent casing across endpoints
 	// /persons/custom-fields uses camelCase: totalCount, next, result
 	var response struct {
-		TotalCount int                      `json:"totalCount"`
-		Next       *string                  `json:"next"`
-		Result     []map[string]interface{} `json:"result"`
+		TotalCount int              `json:"totalCount"`
+		Next       *string          `json:"next"`
+		Result     []map[string]any `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -667,7 +667,7 @@ func (c *Client) GetCustomFieldDefinitionsPage(
 //nolint:dupl // Similar pattern to GetHouseholdCustomFieldValuesPage, intentional for person variant
 func (c *Client) GetPersonCustomFieldValuesPage(
 	personID, page, pageSize int,
-) (results []map[string]interface{}, hasMore bool, err error) {
+) (results []map[string]any, hasMore bool, err error) {
 	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
 	params := map[string]string{
 		"clientid":   c.clientID,
@@ -683,9 +683,9 @@ func (c *Client) GetPersonCustomFieldValuesPage(
 
 	// CampMinder uses camelCase for custom field endpoints
 	var response struct {
-		TotalCount int                      `json:"totalCount"`
-		Next       *string                  `json:"next"`
-		Result     []map[string]interface{} `json:"result"`
+		TotalCount int              `json:"totalCount"`
+		Next       *string          `json:"next"`
+		Result     []map[string]any `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -704,7 +704,7 @@ func (c *Client) GetPersonCustomFieldValuesPage(
 //nolint:dupl // Similar pattern to GetPersonCustomFieldValuesPage, intentional for household variant
 func (c *Client) GetHouseholdCustomFieldValuesPage(
 	householdID, page, pageSize int,
-) (results []map[string]interface{}, hasMore bool, err error) {
+) (results []map[string]any, hasMore bool, err error) {
 	// Verified via API testing: custom-fields (with hyphen) is the correct format
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
 	params := map[string]string{
@@ -721,9 +721,9 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(
 
 	// CampMinder uses camelCase for custom field endpoints
 	var response struct {
-		TotalCount int                      `json:"totalCount"`
-		Next       *string                  `json:"next"`
-		Result     []map[string]interface{} `json:"result"`
+		TotalCount int              `json:"totalCount"`
+		Next       *string          `json:"next"`
+		Result     []map[string]any `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -738,7 +738,7 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(
 // Endpoint: GET /divisions
 // Returns: array of divisions with ID, Name, Description, GradeRange, GenderID, Capacity, etc.
 // Note: Divisions are global (not year-specific) - they define age/gender groups
-func (c *Client) GetDivisions() ([]map[string]interface{}, error) {
+func (c *Client) GetDivisions() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"pagenumber": "1",
@@ -751,8 +751,8 @@ func (c *Client) GetDivisions() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -766,7 +766,7 @@ func (c *Client) GetDivisions() ([]map[string]interface{}, error) {
 // Endpoint: GET /staff/programareas
 // Returns: array of program areas with ID, Name
 // Note: Global lookup table (not year-specific)
-func (c *Client) GetStaffProgramAreas() ([]map[string]interface{}, error) {
+func (c *Client) GetStaffProgramAreas() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"pagenumber": "1",
@@ -779,8 +779,8 @@ func (c *Client) GetStaffProgramAreas() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -794,7 +794,7 @@ func (c *Client) GetStaffProgramAreas() ([]map[string]interface{}, error) {
 // Endpoint: GET /staff/organizationalcategories
 // Returns: array of org categories with ID, Name
 // Note: Global lookup table (not year-specific)
-func (c *Client) GetStaffOrgCategories() ([]map[string]interface{}, error) {
+func (c *Client) GetStaffOrgCategories() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"pagenumber": "1",
@@ -807,8 +807,8 @@ func (c *Client) GetStaffOrgCategories() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -822,7 +822,7 @@ func (c *Client) GetStaffOrgCategories() ([]map[string]interface{}, error) {
 // Endpoint: GET /staff/positions
 // Returns: array of positions with ID, Name, ProgramAreaID, ProgramAreaName
 // Note: Global lookup table (not year-specific)
-func (c *Client) GetStaffPositions() ([]map[string]interface{}, error) {
+func (c *Client) GetStaffPositions() ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"pagenumber": "1",
@@ -835,8 +835,8 @@ func (c *Client) GetStaffPositions() ([]map[string]interface{}, error) {
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -850,7 +850,7 @@ func (c *Client) GetStaffPositions() ([]map[string]interface{}, error) {
 // Endpoint: GET /staff
 // Parameters: seasonid (year), status (1=Active, 2=Resigned, 3=Dismissed, 4=Canceled)
 // Returns: array of staff with PersonID, StatusID, Position1ID, Position2ID, BunkAssignments, etc.
-func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
+func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"seasonid":   strconv.Itoa(c.seasonID),
@@ -865,9 +865,9 @@ func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]
 	}
 
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Next       *string                  `json:"Next"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Next       *string          `json:"Next"`
+		Results    []map[string]any `json:"Results"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -882,7 +882,7 @@ func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]
 // Endpoint: GET /financials/financialcategories
 // Returns: array of categories with id, name, isArchived
 // Note: Global lookup table (not year-specific)
-func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]interface{}, error) {
+func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]any, error) {
 	params := map[string]string{
 		"clientid":        c.clientID,
 		"includeArchived": strconv.FormatBool(includeArchived),
@@ -898,8 +898,8 @@ func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]inte
 	// CampMinder uses inconsistent casing across endpoints
 	// Try PascalCase paginated response first (TotalCount, Results)
 	var pascalResponse struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
 		return pascalResponse.Results, nil
@@ -907,8 +907,8 @@ func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]inte
 
 	// Try camelCase paginated response (totalCount, result - singular like custom fields)
 	var camelResponse struct {
-		TotalCount int                      `json:"totalCount"`
-		Result     []map[string]interface{} `json:"result"`
+		TotalCount int              `json:"totalCount"`
+		Result     []map[string]any `json:"result"`
 	}
 	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
 		return camelResponse.Result, nil
@@ -916,15 +916,15 @@ func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]inte
 
 	// Try camelCase with plural results
 	var camelPluralResponse struct {
-		TotalCount int                      `json:"totalCount"`
-		Results    []map[string]interface{} `json:"results"`
+		TotalCount int              `json:"totalCount"`
+		Results    []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
 		return camelPluralResponse.Results, nil
 	}
 
 	// Fall back to raw array response (API may return either)
-	var results []map[string]interface{}
+	var results []map[string]any
 	if err := json.Unmarshal(body, &results); err != nil {
 		return nil, fmt.Errorf("decode financial categories response: %w", err)
 	}
@@ -936,7 +936,7 @@ func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]inte
 // Endpoint: GET /financials/paymentmethods
 // Returns: array of methods with id, name
 // Note: Global lookup table (not year-specific)
-func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
+func (c *Client) GetPaymentMethods() ([]map[string]any, error) {
 	// This endpoint doesn't take any parameters per the OpenAPI spec
 	body, err := c.makeRequest("GET", "financials/paymentmethods", nil)
 	if err != nil {
@@ -946,8 +946,8 @@ func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
 	// CampMinder uses inconsistent casing - try paginated responses first
 	// Try PascalCase
 	var pascalResponse struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
 		return pascalResponse.Results, nil
@@ -955,8 +955,8 @@ func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
 
 	// Try camelCase with singular result
 	var camelResponse struct {
-		TotalCount int                      `json:"totalCount"`
-		Result     []map[string]interface{} `json:"result"`
+		TotalCount int              `json:"totalCount"`
+		Result     []map[string]any `json:"result"`
 	}
 	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
 		return camelResponse.Result, nil
@@ -964,15 +964,15 @@ func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
 
 	// Try camelCase with plural results
 	var camelPluralResponse struct {
-		TotalCount int                      `json:"totalCount"`
-		Results    []map[string]interface{} `json:"results"`
+		TotalCount int              `json:"totalCount"`
+		Results    []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
 		return camelPluralResponse.Results, nil
 	}
 
 	// Fall back to raw array response
-	var results []map[string]interface{}
+	var results []map[string]any
 	if err := json.Unmarshal(body, &results); err != nil {
 		return nil, fmt.Errorf("decode payment methods response: %w", err)
 	}
@@ -987,8 +987,8 @@ func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
 // Note: Year-scoped data - uses seasonID
 // Note: This endpoint doesn't support pagination, so we fetch by month chunks
 // to avoid timeouts on large datasets (10,000+ transactions)
-func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map[string]interface{}, error) {
-	var allResults []map[string]interface{}
+func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map[string]any, error) {
+	var allResults []map[string]any
 
 	// Fetch transactions month by month to avoid timeout on large datasets
 	// Camp season typically runs Jan-Dec, so we cover the full year
@@ -1029,11 +1029,11 @@ func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map
 
 // parseTransactionResponse parses the transaction details API response
 // CampMinder uses inconsistent casing across endpoints
-func (c *Client) parseTransactionResponse(body []byte) ([]map[string]interface{}, error) {
+func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error) {
 	// Try PascalCase paginated response
 	var pascalResponse struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int              `json:"TotalCount"`
+		Results    []map[string]any `json:"Results"`
 	}
 	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
 		return pascalResponse.Results, nil
@@ -1041,8 +1041,8 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]interface{}
 
 	// Try camelCase with singular result
 	var camelResponse struct {
-		TotalCount int                      `json:"totalCount"`
-		Result     []map[string]interface{} `json:"result"`
+		TotalCount int              `json:"totalCount"`
+		Result     []map[string]any `json:"result"`
 	}
 	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
 		return camelResponse.Result, nil
@@ -1050,15 +1050,15 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]interface{}
 
 	// Try camelCase with plural results
 	var camelPluralResponse struct {
-		TotalCount int                      `json:"totalCount"`
-		Results    []map[string]interface{} `json:"results"`
+		TotalCount int              `json:"totalCount"`
+		Results    []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
 		return camelPluralResponse.Results, nil
 	}
 
 	// Fall back to raw array response
-	var results []map[string]interface{}
+	var results []map[string]any
 	if err := json.Unmarshal(body, &results); err != nil {
 		return nil, fmt.Errorf("decode transaction details response: %w", err)
 	}

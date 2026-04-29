@@ -20,7 +20,7 @@ func TestTransformSessionGroupToPB(t *testing.T) {
 	s := &SessionGroupsSync{}
 
 	// Mock CampMinder API response
-	groupData := map[string]interface{}{
+	groupData := map[string]any{
 		"ID":          float64(100),
 		"Name":        "Main Sessions",
 		"Description": "Standard summer camp sessions",
@@ -61,7 +61,7 @@ func TestTransformSessionGroupHandlesMissingFields(t *testing.T) {
 	s := &SessionGroupsSync{}
 
 	// Minimal data with only required fields
-	groupData := map[string]interface{}{
+	groupData := map[string]any{
 		"ID":   float64(100),
 		"Name": "Main Sessions",
 	}
@@ -95,7 +95,7 @@ func TestTransformSessionGroupRequiredIDError(t *testing.T) {
 	s := &SessionGroupsSync{}
 
 	// Missing ID field
-	groupData := map[string]interface{}{
+	groupData := map[string]any{
 		"Name": "Main Sessions",
 	}
 

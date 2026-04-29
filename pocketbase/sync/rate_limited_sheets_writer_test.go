@@ -50,7 +50,7 @@ func newTrackingMock() *trackingMock {
 	}
 }
 
-func (t *trackingMock) WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error {
+func (t *trackingMock) WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]any) error {
 	t.writeCalls.Add(1)
 	if t.writeErrFn != nil {
 		if err := t.writeErrFn(); err != nil {
@@ -155,7 +155,7 @@ func TestRateLimitedWriter_DelegatesAllMethods(t *testing.T) {
 	ctx := context.Background()
 
 	// WriteToSheet
-	data := [][]interface{}{{"a", "b"}}
+	data := [][]any{{"a", "b"}}
 	if err := writer.WriteToSheet(ctx, "s1", "tab", data); err != nil {
 		t.Fatalf("WriteToSheet: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestRateLimitedWriter_RetriesWriteOn429(t *testing.T) {
 	mock.writeErrFn = failNTimes(2) // fail twice then succeed
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
 
-	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
+	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]any{{"x"}})
 	if err != nil {
 		t.Fatalf("WriteToSheet should succeed after retries, got: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestRateLimitedWriter_GivesUpAfterMaxRetries(t *testing.T) {
 	mock.writeErrFn = failNTimes(10)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
 
-	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
+	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]any{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return error after max retries")
 		return
@@ -336,7 +336,7 @@ func TestRateLimitedWriter_DoesNotRetryNon429Errors(t *testing.T) {
 	mock.writeErrFn = func() error { return permErr }
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
 
-	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
+	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]any{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return non-429 error immediately")
 		return
@@ -358,7 +358,7 @@ func TestRateLimitedWriter_DoesNotRetryGoogleAPINon429(t *testing.T) {
 	}
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
 
-	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
+	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]any{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return 403 error immediately")
 		return
@@ -388,7 +388,7 @@ func TestRateLimitedWriter_RespectsContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	err := writer.WriteToSheet(ctx, "s1", "tab", [][]interface{}{{"x"}})
+	err := writer.WriteToSheet(ctx, "s1", "tab", [][]any{{"x"}})
 	if err == nil {
 		t.Fatal("WriteToSheet should return error when context is canceled")
 		return
@@ -494,7 +494,7 @@ func TestRateLimitedWriter_Retries429WrappedInFmtErrorf(t *testing.T) {
 	}
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
 
-	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]interface{}{{"x"}})
+	err := writer.WriteToSheet(context.Background(), "s1", "tab", [][]any{{"x"}})
 	if err != nil {
 		t.Fatalf("WriteToSheet should succeed after retrying wrapped 429, got: %v", err)
 	}

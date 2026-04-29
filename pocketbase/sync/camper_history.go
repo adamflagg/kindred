@@ -289,7 +289,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		}
 
 		// Build record data map for upsert comparison
-		recordData := map[string]interface{}{
+		recordData := map[string]any{
 			"person_id":           attendee.personCMID,
 			"session_cm_id":       attendee.sessionCMID,
 			"year":                year,
@@ -1120,7 +1120,7 @@ func (c *CamperHistorySync) preloadExistingRecords(year int) (map[string]*core.R
 // Uses compareFields (inclusion list): only the listed fields are checked for changes.
 // Delegates to the shared compareRecordNeedsUpdate in base_sync.go.
 func (c *CamperHistorySync) recordNeedsUpdate(
-	existing *core.Record, newData map[string]interface{}, compareFields []string,
+	existing *core.Record, newData map[string]any, compareFields []string,
 ) bool {
 	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }

@@ -35,7 +35,7 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 	filter := fmt.Sprintf("year = %d", year)
 
 	// Pre-load existing records for this year
-	existingRecords, err := s.PreloadRecords("bunks", filter, func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecords("bunks", filter, func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok {
 			return int(cmID), true
 		}
@@ -143,8 +143,8 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 }
 
 // transformBunkToPB transforms CampMinder bunk data to PocketBase format
-func (s *BunksSync) transformBunkToPB(cmBunk map[string]interface{}) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func (s *BunksSync) transformBunkToPB(cmBunk map[string]any) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract base fields
 	if id, ok := cmBunk["ID"].(float64); ok {

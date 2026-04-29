@@ -67,7 +67,7 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 	filter := fmt.Sprintf("year = %d", year)
 
 	// Pre-load existing records for this year using person relation field as key
-	existingRecords, err := s.PreloadRecords("staff", filter, func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecords("staff", filter, func(record *core.Record) (any, bool) {
 		if personRel := record.GetString("person"); personRel != "" {
 			return personRel, true // Use PocketBase person record ID as key
 		}
@@ -254,11 +254,11 @@ func (s *StaffSync) buildPersonMap(year int) map[int]string {
 }
 
 func (s *StaffSync) transformStaffToPB(
-	data map[string]interface{},
+	data map[string]any,
 	year int,
 	orgCategoryMap, positionMap, divisionMap, bunkMap, personMap map[int]string,
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// PersonID from CampMinder (required for resolving person relation)
 	personIDFloat, ok := data["PersonID"].(float64)
@@ -316,7 +316,7 @@ func (s *StaffSync) transformStaffToPB(
 }
 
 // setStatusFields extracts StatusID and StatusName from data.
-func (s *StaffSync) setStatusFields(pbData, data map[string]interface{}) {
+func (s *StaffSync) setStatusFields(pbData, data map[string]any) {
 	if statusID, ok := data["StatusID"].(float64); ok {
 		pbData["status_id"] = int(statusID)
 	}
@@ -327,7 +327,7 @@ func (s *StaffSync) setStatusFields(pbData, data map[string]interface{}) {
 
 // setStaffRelation maps a CampMinder ID field to a PocketBase relation.
 func (s *StaffSync) setStaffRelation(
-	pbData, data map[string]interface{},
+	pbData, data map[string]any,
 	srcKey, dstKey string,
 	lookupMap map[int]string,
 ) {
@@ -340,16 +340,16 @@ func (s *StaffSync) setStaffRelation(
 
 // setBunkAssignments extracts bunk assignments array and maps to PB IDs.
 func (s *StaffSync) setBunkAssignments(
-	pbData, data map[string]interface{},
+	pbData, data map[string]any,
 	bunkMap map[int]string,
 ) {
-	bunkAssignments, ok := data["BunkAssignments"].([]interface{})
+	bunkAssignments, ok := data["BunkAssignments"].([]any)
 	if !ok || len(bunkAssignments) == 0 {
 		return
 	}
 	var bunkIDs []string
 	for _, ba := range bunkAssignments {
-		if baMap, ok := ba.(map[string]interface{}); ok {
+		if baMap, ok := ba.(map[string]any); ok {
 			if bunkID, ok := baMap["ID"].(float64); ok && bunkID > 0 {
 				if pbID, found := bunkMap[int(bunkID)]; found {
 					bunkIDs = append(bunkIDs, pbID)
@@ -363,21 +363,21 @@ func (s *StaffSync) setBunkAssignments(
 }
 
 // setDateField extracts a date string and parses it.
-func (s *StaffSync) setDateField(pbData, data map[string]interface{}, srcKey, dstKey string) {
+func (s *StaffSync) setDateField(pbData, data map[string]any, srcKey, dstKey string) {
 	if dateStr, ok := data[srcKey].(string); ok && dateStr != "" {
 		pbData[dstKey] = ParseDate(dateStr)
 	}
 }
 
 // setStaffIntField extracts a float64 and sets as int.
-func (s *StaffSync) setStaffIntField(pbData, data map[string]interface{}, srcKey, dstKey string) {
+func (s *StaffSync) setStaffIntField(pbData, data map[string]any, srcKey, dstKey string) {
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = int(val)
 	}
 }
 
 // setStaffFloatField extracts and sets a float64.
-func (s *StaffSync) setStaffFloatField(pbData, data map[string]interface{}, srcKey, dstKey string) {
+func (s *StaffSync) setStaffFloatField(pbData, data map[string]any, srcKey, dstKey string) {
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = val
 	}

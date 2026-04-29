@@ -278,7 +278,7 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 		}
 
 		// Fetch page of custom field values with rate limiting and retry
-		var values []map[string]interface{}
+		var values []map[string]any
 		var hasMore bool
 
 		err := s.rateLimiter.ExecuteWithRetry(ctx, func() error {
@@ -432,12 +432,12 @@ func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int) error {
 // transformHouseholdCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
 // Schema: household, field_definition, value, year, last_updated (optional)
 func (s *HouseholdCustomFieldValuesSync) transformHouseholdCustomFieldValueToPB(
-	data map[string]interface{},
+	data map[string]any,
 	householdPBId string,
 	fieldDefPBId string,
 	year int,
-) map[string]interface{} {
-	pbData := make(map[string]interface{})
+) map[string]any {
+	pbData := make(map[string]any)
 
 	// Set relations
 	pbData["household"] = householdPBId

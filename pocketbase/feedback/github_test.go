@@ -135,7 +135,7 @@ func TestBuildIssueBodyWithScreenshot(t *testing.T) {
 }
 
 func TestCreateIssue(t *testing.T) {
-	var receivedBody map[string]interface{}
+	var receivedBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/repos/org/feedback/issues" {
 			t.Errorf("expected issues endpoint, got %s", got)
@@ -186,7 +186,7 @@ func TestCreateIssue(t *testing.T) {
 		t.Errorf("title = %q, want %q", title, "[Bug] Test issue")
 	}
 
-	labels, _ := receivedBody["labels"].([]interface{})
+	labels, _ := receivedBody["labels"].([]any)
 	if len(labels) != 1 || labels[0] != "bug" {
 		t.Errorf("labels = %v, want [bug]", labels)
 	}
@@ -226,7 +226,7 @@ func TestUploadScreenshot(t *testing.T) {
 			t.Errorf("expected PUT, got %s", r.Method)
 		}
 
-		var body map[string]interface{}
+		var body map[string]any
 		bodyBytes, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(bodyBytes, &body)
 

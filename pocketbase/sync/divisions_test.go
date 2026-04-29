@@ -20,7 +20,7 @@ func TestTransformDivisionToPB(t *testing.T) {
 	s := &DivisionsSync{}
 
 	// Mock CampMinder API response based on divisions endpoint schema
-	divisionData := map[string]interface{}{
+	divisionData := map[string]any{
 		"ID":                           float64(12345),
 		"Name":                         "Boys 3rd-4th Grade",
 		"Description":                  "Division for boys in 3rd-4th grade",
@@ -83,7 +83,7 @@ func TestTransformDivisionToPB_MinimalData(t *testing.T) {
 	s := &DivisionsSync{}
 
 	// Minimal data with only required fields
-	divisionData := map[string]interface{}{
+	divisionData := map[string]any{
 		"ID":   float64(12345),
 		"Name": "Test Division",
 	}
@@ -111,7 +111,7 @@ func TestTransformDivisionToPB_MinimalData(t *testing.T) {
 func TestTransformDivisionToPB_MissingID(t *testing.T) {
 	s := &DivisionsSync{}
 
-	divisionData := map[string]interface{}{
+	divisionData := map[string]any{
 		"Name": "Test Division",
 	}
 
@@ -125,7 +125,7 @@ func TestTransformDivisionToPB_MissingID(t *testing.T) {
 func TestTransformDivisionToPB_MissingName(t *testing.T) {
 	s := &DivisionsSync{}
 
-	divisionData := map[string]interface{}{
+	divisionData := map[string]any{
 		"ID": float64(12345),
 	}
 
@@ -139,7 +139,7 @@ func TestTransformDivisionToPB_MissingName(t *testing.T) {
 func TestTransformDivisionToPB_ZeroID(t *testing.T) {
 	s := &DivisionsSync{}
 
-	divisionData := map[string]interface{}{
+	divisionData := map[string]any{
 		"ID":   float64(0),
 		"Name": "Test Division",
 	}
@@ -154,7 +154,7 @@ func TestTransformDivisionToPB_ZeroID(t *testing.T) {
 func TestTransformDivisionToPB_EmptyName(t *testing.T) {
 	s := &DivisionsSync{}
 
-	divisionData := map[string]interface{}{
+	divisionData := map[string]any{
 		"ID":   float64(12345),
 		"Name": "",
 	}

@@ -161,7 +161,7 @@ func (s *AttendeesSync) loadSessionIDs() error {
 
 // processAttendee processes a single attendee using pre-loaded existing attendees
 func (s *AttendeesSync) processAttendee(
-	attendeeData map[string]interface{},
+	attendeeData map[string]any,
 	existingAttendees map[string]*core.Record,
 ) error {
 	// Extract person ID
@@ -172,7 +172,7 @@ func (s *AttendeesSync) processAttendee(
 	personCMID := int(personID)
 
 	// Get session enrollments
-	sessionStatuses, ok := attendeeData["SessionProgramStatus"].([]interface{})
+	sessionStatuses, ok := attendeeData["SessionProgramStatus"].([]any)
 	if !ok || len(sessionStatuses) == 0 {
 		// No enrollments for this person
 		s.DebugLog("Skipping attendee: no session enrollments", "person_cm_id", personCMID)
@@ -182,7 +182,7 @@ func (s *AttendeesSync) processAttendee(
 
 	// Process each enrollment
 	for _, enrollmentData := range sessionStatuses {
-		enrollment, ok := enrollmentData.(map[string]interface{})
+		enrollment, ok := enrollmentData.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -199,7 +199,7 @@ func (s *AttendeesSync) processAttendee(
 // processEnrollment processes a single enrollment using pre-loaded existing attendees
 func (s *AttendeesSync) processEnrollment(
 	personCMID int,
-	enrollment map[string]interface{},
+	enrollment map[string]any,
 	existingAttendees map[string]*core.Record,
 ) error {
 	// Extract session ID
@@ -269,7 +269,7 @@ func (s *AttendeesSync) processEnrollment(
 	// Note: CampMinder attendee ID exists in enrollment["ID"] but we don't need it in PocketBase
 
 	// Prepare record data
-	recordData := map[string]interface{}{
+	recordData := map[string]any{
 		"person_id":        personCMID,
 		"status":           status,
 		"status_id":        statusID,
@@ -312,7 +312,7 @@ func (s *AttendeesSync) processEnrollment(
 // logStatusChange creates a record in attendee_status_history when a status transition is detected.
 // This is a non-critical operation - errors are logged but do not fail the sync.
 func (s *AttendeesSync) logStatusChange(
-	personCMID, sessionCMID int, oldStatus, newStatus string, recordData map[string]interface{},
+	personCMID, sessionCMID int, oldStatus, newStatus string, recordData map[string]any,
 ) error {
 	collection, err := s.App.FindCollectionByNameOrId("attendee_status_history")
 	if err != nil {

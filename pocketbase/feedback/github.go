@@ -63,7 +63,7 @@ func (c *GitHubClient) apiURL(path string) string {
 // httpClient is used for all GitHub API requests with an explicit timeout.
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
-func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Response, error) {
+func (c *GitHubClient) doRequest(method, url string, body any) (*http.Response, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -93,7 +93,7 @@ func (c *GitHubClient) doRequest(method, url string, body interface{}) (*http.Re
 func (c *GitHubClient) CreateIssue(params *IssueParams) error {
 	url := c.apiURL(fmt.Sprintf("/repos/%s/issues", c.Repo))
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"title":  buildIssueTitle(params.Category, params.Description),
 		"body":   buildIssueBody(params),
 		"labels": []string{params.Category},

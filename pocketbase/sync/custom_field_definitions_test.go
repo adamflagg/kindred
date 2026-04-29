@@ -22,7 +22,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Mock CampMinder API response (camelCase field names)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":         float64(12345),
 		"name":       "Dietary Restrictions",
 		"dataType":   "String",
@@ -106,7 +106,7 @@ func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Minimal data with only required fields (camelCase)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":   float64(12345),
 		"name": "Test Field",
 	}
@@ -157,7 +157,7 @@ func TestTransformCustomFieldDefinitionRequiredIDError(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Missing ID field
-	data := map[string]interface{}{
+	data := map[string]any{
 		"name": "Test Field",
 	}
 
@@ -172,7 +172,7 @@ func TestTransformCustomFieldDefinitionRequiredNameError(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Missing Name field
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id": float64(12345),
 	}
 
@@ -187,7 +187,7 @@ func TestTransformCustomFieldDefinitionZeroIDError(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// ID=0 (invalid)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":   float64(0),
 		"name": "Test Field",
 	}
@@ -203,7 +203,7 @@ func TestTransformCustomFieldDefinitionEmptyNameError(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Empty Name
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":   float64(12345),
 		"name": "",
 	}
@@ -221,7 +221,7 @@ func TestTransformCustomFieldDefinitionValidDataTypes(t *testing.T) {
 	validDataTypes := []string{"None", "String", "Integer", "Decimal", "Date", "Time", "DateTime", "Boolean"}
 
 	for _, dt := range validDataTypes {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":       float64(12345),
 			"name":     "Test Field",
 			"dataType": dt,
@@ -251,7 +251,7 @@ func TestTransformCustomFieldDefinitionValidPartitions(t *testing.T) {
 	validPartitions := []string{"None", "Family", "Alumnus", "Staff", "Camper", "Parent", "Adult"}
 
 	for _, p := range validPartitions {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":        float64(12345),
 			"name":      "Test Field",
 			"partition": p,
@@ -281,7 +281,7 @@ func TestTransformCustomFieldDefinitionMultiValuePartition(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Test multi-value partition (as returned by CampMinder API)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":        float64(12345),
 		"name":      "Multi-Partition Field",
 		"partition": "Camper, Adult",
@@ -304,7 +304,7 @@ func TestTransformCustomFieldDefinitionTripleValuePartition(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	// Test three-value partition
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":        float64(12345),
 		"name":      "Triple-Partition Field",
 		"partition": "Staff, Camper, Parent",

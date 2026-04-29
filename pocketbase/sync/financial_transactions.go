@@ -60,7 +60,7 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 	// Pre-load existing records for this year
 	// Key by cm_id + amount since CampMinder returns original+reversal with same transactionId
 	filter := fmt.Sprintf("year = %d", year)
-	preloadFn := func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (any, bool) {
 		cmID, ok1 := record.Get("cm_id").(float64)
 		amount, ok2 := record.Get("amount").(float64)
 		if ok1 && cmID > 0 && ok2 {
@@ -279,11 +279,11 @@ func (s *FinancialTransactionsSync) buildLookupMaps(year int) (TransactionLookup
 
 // transformTransactionToPB transforms CampMinder API data to PocketBase format
 func (s *FinancialTransactionsSync) transformTransactionToPB(
-	data map[string]interface{},
+	data map[string]any,
 	year int,
 	maps TransactionLookupMaps,
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// transactionId (required)
 	txnID, ok := data["transactionId"].(float64)
@@ -335,7 +335,7 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 }
 
 // getStringOrEmpty safely extracts a string from the data map
-func getStringOrEmpty(data map[string]interface{}, key string) string {
+func getStringOrEmpty(data map[string]any, key string) string {
 	if val, ok := data[key]; ok {
 		if str, ok := val.(string); ok {
 			return strings.TrimSpace(str)
@@ -347,7 +347,7 @@ func getStringOrEmpty(data map[string]interface{}, key string) string {
 // setRelation maps a CampMinder ID field to a PocketBase relation.
 // It extracts the float64 ID from data[srcKey], looks it up in lookupMap,
 // and sets pbData[dstKey] if found.
-func setRelation(pbData, data map[string]interface{}, srcKey, dstKey string, lookupMap map[int]string) {
+func setRelation(pbData, data map[string]any, srcKey, dstKey string, lookupMap map[int]string) {
 	if id, ok := data[srcKey].(float64); ok && id > 0 {
 		if pbID, found := lookupMap[int(id)]; found {
 			pbData[dstKey] = pbID
@@ -356,14 +356,14 @@ func setRelation(pbData, data map[string]interface{}, srcKey, dstKey string, loo
 }
 
 // setIntFromFloat extracts a float64 from data and sets it as int in pbData.
-func setIntFromFloat(pbData, data map[string]interface{}, srcKey, dstKey string) {
+func setIntFromFloat(pbData, data map[string]any, srcKey, dstKey string) {
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = int(val)
 	}
 }
 
 // setFloatFromFloat extracts a float64 from data and sets it in pbData.
-func setFloatFromFloat(pbData, data map[string]interface{}, srcKey, dstKey string) {
+func setFloatFromFloat(pbData, data map[string]any, srcKey, dstKey string) {
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = val
 	}
@@ -379,10 +379,10 @@ func (s *FinancialTransactionsSync) transactionKey(cmID int, amount float64) str
 // deduplicateTransactions removes exact duplicate transactions from CampMinder
 // This handles a CampMinder bug where some $0 transactions are returned twice
 func (s *FinancialTransactionsSync) deduplicateTransactions(
-	transactions []map[string]interface{},
-) []map[string]interface{} {
+	transactions []map[string]any,
+) []map[string]any {
 	seen := make(map[string]bool)
-	result := make([]map[string]interface{}, 0, len(transactions))
+	result := make([]map[string]any, 0, len(transactions))
 	duplicates := 0
 
 	for _, txn := range transactions {

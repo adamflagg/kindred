@@ -286,7 +286,7 @@ func TestMultiWorkbookExport_GlobalsToGlobalsWorkbook(t *testing.T) {
 	}
 
 	// Write to a global sheet
-	data := [][]interface{}{{"Header1", "Header2"}, {"Value1", "Value2"}}
+	data := [][]any{{"Header1", "Header2"}, {"Value1", "Value2"}}
 	err = mockWriter.WriteToSheet(ctx, globalsID, "Tag Definitions", data)
 	if err != nil {
 		t.Fatalf("WriteToSheet() error = %v", err)
@@ -318,7 +318,7 @@ func TestMultiWorkbookExport_YearDataToYearWorkbook(t *testing.T) {
 	}
 
 	// Write to a year sheet (with readable name, no year prefix)
-	data := [][]interface{}{{"ID", "Name"}, {1, "Test Camper"}}
+	data := [][]any{{"ID", "Name"}, {1, "Test Camper"}}
 	err = mockWriter.WriteToSheet(ctx, yearID, "Attendees", data)
 	if err != nil {
 		t.Fatalf("WriteToSheet() error = %v", err)
