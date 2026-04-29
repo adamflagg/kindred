@@ -4,7 +4,11 @@ Reference audit of modern language/tooling features available to Kindred but not
 
 **Status legend:** HIGH = real behavioral/robustness benefit, MEDIUM = readability/consistency win, LOW = polish / defer.
 
-**Execution model:** Work this backlog one layer at a time (one PR per language/concept) rather than a single mega-PR. Each section below is a candidate PR.
+**Execution model:** Work this backlog one layer at a time (one PR per language/concept) rather than a single mega-PR. Each section governs its own execution order; there is no global cross-section ordering — pick which language to work on based on real-world signals (active PRs, blast radius, idle slot).
+
+**Section format:** §2 (Go) was rewritten to a §a/§b/§c structure (concrete rewrites with two version columns, honest survey-status table, ranked execution order). §1 (Python), §3 (Frontend), and §4 (Infrastructure) are still in the older single-table format and will be migrated when each section is next picked up — see `modernization-prompts.md` Part A. **§4 is a hardening checklist, not a language-version audit; the §a/§b/§c structure does not apply.**
+
+**Companion docs:** Ship rows by following `modernization-prompts.md` (Part B for execution, Part A for re-running an audit). The prompt doc names the false-positive lesson explicitly — every grep hit must be inspected with surrounding context before it lands in §2a.
 
 ---
 
@@ -24,6 +28,8 @@ Reference audit of modern language/tooling features available to Kindred but not
 ---
 
 ## 1. Python (project is on 3.14)
+
+> **Format note:** This section predates the §2 redo (toolchain/idiom-floor preamble + §a/§b/§c). Migrate to the new format on the next pickup — re-run `modernization-prompts.md` Part A in upgrade-in-place mode.
 
 Baseline is strong: Pydantic v2 everywhere, `datetime.UTC` adopted, modern generics (`dict[str, X]`), f-strings clean, mypy `strict = true`. The real gaps are concurrency idioms and version-specific polish.
 
@@ -107,37 +113,46 @@ The original audit was scoped to "features the existing code visibly avoids," so
 | Range-over-func iterators (`for x := range fn`) | 1.23 | surveyed | No callback-iteration patterns (`func(...) bool` only appears as `sort.Slice` less-funcs, which are migrating to `slices.SortFunc` anyway) | No candidates. ✓ |
 | Generic type aliases (`type Set[T] = map[T]struct{}`) | 1.24 | surveyed | No generic functions in the codebase (`func Foo[T ...]` returned 0 hits) | N/A — no generics to alias. ✓ |
 | `os.Root` (rooted FS, anti-traversal) | 1.24 | surveyed | All `os.ReadFile`/`os.WriteFile` use trusted internal paths (`s.App.DataDir()`, env-driven config paths, all already nolint'd as G304). No untrusted-input file ops. | Not security-relevant here. **LOW** value. |
-| `testing/synctest` (virtualized time in tests) | 1.24 (experiment) / 1.25 (GA) | surveyed | Real candidates: `sync/orchestrator_test.go` (~10 `time.Sleep`s, total real-time ~1.5s+), `sync/scheduler_test.go` (300ms+200ms sleeps), `sync/rate_limited_sheets_writer_test.go:387`, `rbac/config_hooks_test.go:74,84` | **MEDIUM** — would speed up test suite and remove flake risk. |
-| `encoding/json/v2` | 1.25 | surveyed | `campminder/client.go` is the hot path (33 callsites); `sync/base_sync.go` (8), `sync/normalize_geographic_test.go` (10) | Opt-in; v2 is a real API change, not a drop-in. Defer until 1.25 ships and v2 is GA. **DEFER**. |
+| `testing/synctest` (virtualized time in tests) | 1.24 (experiment) / 1.25 (GA) | **ungated** | Real candidates: `sync/orchestrator_test.go` (~10 `time.Sleep`s, total real-time ~1.5s+), `sync/scheduler_test.go` (300ms+200ms sleeps), `sync/rate_limited_sheets_writer_test.go:387`, `rbac/config_hooks_test.go:74,84` | **MEDIUM**. 1.25 GA shipped, toolchain is 1.26 — no longer gated. Would speed up test suite and remove flake risk. |
+| `encoding/json/v2` | 1.25 | surveyed | `campminder/client.go` is the hot path (33 callsites); `sync/base_sync.go` (8), `sync/normalize_geographic_test.go` (10) | Opt-in; v2 is a real API change, not a drop-in. **DEFER until ecosystem signal** — i.e. until logging/observability libs in our dep graph (or other packages we marshal *to*/from) accept v2 marshalers, so we don't have to wrap every boundary. The Go-stdlib gate is no longer the blocker (1.25 has shipped). |
 | `context.WithoutCancel` / `context.AfterFunc` | 1.21 / 1.21 | surveyed | Only `WithCancel` in tests; no production patterns where a derived context needs to outlive its parent | No candidates. ✓ |
 
 ### 2c. Execution order (easiest → hardest)
 
-This is the operational ranking driving the row-by-row PR loop in `modernization-execution-prompt.md`. Items 1–5 of the original ranking (already-done / N/A survey rows) have been removed. Renumbered 1–17. **Item #1 was retired as a false positive after verification** (see annotation in §2a) — the loop picks up at #2.
+Operational ranking driving the row-by-row PR loop in `modernization-prompts.md` Part B.
+
+#### Retired
+
+| Item | Where | Reason |
+|---|---|---|
+| `strings.Index() != -1` → `strings.Contains(...)` | `sync/base_sync.go:1084` | **FALSE POSITIVE** — `idx` is used as a slice boundary (`result[:idx] + result[endIdx:]`), not just as a presence check; `strings.Contains` would discard the offset. See §2a annotation. *Lesson: always inspect surrounding code before adding to §2a.* |
+
+#### Live (renumbered after retired and already-done/N/A items removed)
 
 | Rank | Status | Item | Where | Count | Bundle |
 |---|---|---|---|---|---|
-| ~~1~~ | ~~`strings.Index() != -1` → `Contains`~~ | **FALSE POSITIVE** — `idx` used as slice boundary; see §2a annotation | `sync/base_sync.go:1084` | ~~1~~ | — |
-| 2 | next | manual map-clear → `clear()` builtin | `sync/base_sync.go:122–125, 130–133` | 2 | — |
-| 3 | | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `multi_workbook_ordering.go` (2×), `table_exporter.go` | 6 | bundle w/ #4 |
-| 4 | | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `workbook_manager.go`, `multi_workbook_ordering.go` (2×) | 3 | bundle w/ #3 |
-| 5 | | `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `persons.go:1429`, `campminder/client.go:1020` | 3 | — |
-| 6 | | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | bundle w/ #7 |
-| 7 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | bundle w/ #6 |
-| 8 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | bundle w/ #9 (single codemod) |
-| 9 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | bundle w/ #8 |
-| 10 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
-| 11 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | should land before #12 |
-| 12 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #11 subset) | after #11 |
-| 13 | | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
-| 14 | | `time.After` in retry loop | `sync/rate_limited_sheets_writer.go:194` | 1 | — |
-| 15 | | string error matching → sentinels | `sync/rate_limited_sheets_writer.go` (Google 429), `scheduler_test.go`, `workbook_manager_test.go`, `orchestrator_test.go` | 4 | behavioral |
-| 16 | gated | `testing/synctest` for time-based tests | `orchestrator_test.go`, `scheduler_test.go`, `rate_limited_sheets_writer_test.go`, `rbac/config_hooks_test.go` | 10+ sleeps | gated on Go 1.25 GA in toolchain |
-| 17 | deferred | `encoding/json/v2` | `campminder/client.go` (33), `sync/base_sync.go` (8) | hot path | defer until v2 GA + ecosystem signal |
+| 1 | ✓ shipped #1066 | manual map-clear → `clear()` builtin | `sync/base_sync.go:121, 1416` | 2 | — |
+| 2 | next | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `multi_workbook_ordering.go` (2×), `table_exporter.go` | 6 | bundle w/ #3 |
+| 3 | | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `workbook_manager.go`, `multi_workbook_ordering.go` (2×) | 3 | bundle w/ #2 |
+| 4 | | `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `persons.go:1429`, `campminder/client.go:1020` | 3 | — |
+| 5 | | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | bundle w/ #6 |
+| 6 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | bundle w/ #5 |
+| 7 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | bundle w/ #8 (single codemod) |
+| 8 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | bundle w/ #7 |
+| 9 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
+| 10 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #11 |
+| 11 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #10 subset) | after #10 |
+| 12 | | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
+| 13 | | `time.After` in retry loop | `sync/rate_limited_sheets_writer.go:194` | 1 | — |
+| 14 | | string error matching → sentinels | `sync/rate_limited_sheets_writer.go` (Google 429), `scheduler_test.go`, `workbook_manager_test.go`, `orchestrator_test.go` | 4 | behavioral |
+| 15 | | `testing/synctest` for time-based tests | `orchestrator_test.go`, `scheduler_test.go`, `rate_limited_sheets_writer_test.go`, `rbac/config_hooks_test.go` | 10+ sleeps | 1.25 GA shipped, toolchain is 1.26 — no longer gated |
+| 16 | deferred | `encoding/json/v2` | `campminder/client.go` (33), `sync/base_sync.go` (8) | hot path | defer until ecosystem signal (deps accept v2 marshalers) |
 
 ---
 
 ## 3. Frontend — React 19, TypeScript 5.8, Node 22
+
+> **Format note:** This section predates the §2 redo (toolchain/idiom-floor preamble + §a/§b/§c). Migrate to the new format on the next pickup — re-run `modernization-prompts.md` Part A in upgrade-in-place mode.
 
 `tsconfig.json` is already modern (ES2022, bundler resolution, `verbatimModuleSyntax`, `noImplicitOverride`, `erasableSyntaxOnly`). The misses are idiomatic — code predating React 19 and ES2023 adoption.
 
@@ -169,6 +184,8 @@ This is the operational ranking driving the row-by-row PR loop in `modernization
 ---
 
 ## 4. Infrastructure + Caddy production hardening
+
+> **Different artifact:** §4 is a hardening / CI gap checklist, not a language-version audit. The §a/§b/§c framing (idiom-floor, two-version columns, survey-status) does not apply — there is no compiler version, no idiom regression, no past-vs-modern axis to score against. Treat each item as a standalone task.
 
 Exceptional baseline: Chainguard/Wolfi + distroless final images, `COPY --link` + numeric `--chown`, healthchecks in every Dockerfile, concurrency groups in CI/CD, path-filtered rebuilds, Trivy scanning, `uv` with `[dependency-groups]` (PEP 735), commitlint, git-cliff.
 
@@ -270,31 +287,6 @@ Exceptional baseline: Chainguard/Wolfi + distroless final images, `COPY --link` 
 4. `perf(ci): enable pytest-xdist`
 5. `ci: add CodeQL + dependency-review workflows`
 6. Optional: ARM64 multi-arch, SBOM/cosign — only if there's a concrete driver
-
----
-
-## Suggested overall PR order
-
-One PR per row, roughly in this sequence:
-
-1. **This PR** — `chore(docs): comprehensive modernization backlog + README overhaul` (ships with `CLAUDE.md` pin fixes)
-2. `chore(ci): ruff target-version py314 + autofix UP037/UP043 cascade`
-3. `chore(py): drop redundant __future__ annotations import`
-4. `refactor(pb): interface{} → any codemod`
-4. `refactor(api): adopt asyncio.TaskGroup in metrics services`
-5. `fix(sync): replace string-based error matching with sentinel errors`
-6. `refactor(frontend): Array.toSorted + Object.groupBy`
-7. `refactor(frontend): error cause chaining`
-8. `fix(ci): rebuild caddy on every CD run + pin base image`
-9. `build(caddy): minimum hardened production config`
-10. `refactor(api): itertools.batched for chunking`
-11. `refactor(pb): slices package helpers + clear() builtin`
-12. `refactor(frontend): adopt React 19 use() for contexts`
-13. `refactor(frontend): React Query queryOptions + skipToken`
-14. `perf(frontend): lazy-load large modals`
-15. `perf(ci): enable pytest-xdist`
-16. `ci: add CodeQL + dependency-review`
-17. Remaining LOW items opportunistically
 
 ---
 
