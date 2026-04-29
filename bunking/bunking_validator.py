@@ -491,6 +491,12 @@ class BunkingValidator:
 
             # Only consider valid requests (resolved status)
             if request.status in valid_statuses:
+                # Skip requests from campers who have no bunk assignment.
+                # An unassigned requester cannot be evaluated for satisfaction,
+                # so the request is excluded from all totals entirely.
+                if requester_id not in assignments_by_person:
+                    continue
+
                 valid_requests_by_person[requester_id].append(request)
 
                 # Get source fields (only known fields, unknown fields filtered out)

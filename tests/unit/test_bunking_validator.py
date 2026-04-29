@@ -1090,3 +1090,53 @@ def test_camper_with_only_best_effort_does_not_appear_in_min_one_violators():
     assert stats.best_effort_parent_requests == 1
     assert stats.satisfied_best_effort_parent_requests == 0
     assert stats.campers_with_unsatisfied_material_parent_requests == 0
+
+
+def test_unassigned_requester_excluded_from_all_buckets():
+    """A camper without a bunk assignment whose requests are resolved should
+    contribute 0 to material_parent, best_effort_parent, and staff totals.
+    The request is excluded entirely — not counted as unsatisfied."""
+    # Emma exists in persons but has NO BunkAssignment.
+    # Liam is bunked in bunk 9001.
+    # Emma has a resolved bunk_with request for Liam.
+    # Validator output should show all bucket totals are 0 and Emma is NOT a violator.
+    session = _mock_session(cm_id="10000004", name="Test Session 4")
+    persons = [
+        MockPerson(campminder_id="2001", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="2002", name="Liam Garcia", grade=5),
+    ]
+    bunks = [_mock_bunk("9001")]
+    assignments = [
+        # Liam is assigned; Emma is NOT assigned
+        _mock_assignment("2002", "9001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="2001",  # Emma — no bunk assignment
+            requested_person_cm_id="2002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_WITH,
+            source="family",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    # Emma's request is excluded entirely — not counted in any bucket
+    assert stats.material_parent_requests == 0
+    assert stats.satisfied_material_parent_requests == 0
+    assert stats.best_effort_parent_requests == 0
+    assert stats.staff_requests == 0
+    # Emma does NOT appear as a violator (request was skipped, not marked unsatisfied)
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
+    assert stats.total_requests == 0  # excluded from valid totals, not just buckets
+    assert stats.satisfied_requests == 0
