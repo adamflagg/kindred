@@ -42,7 +42,7 @@ export const EDGE_COLORS: Record<string, string> = {
 export const STATUS_COLORS: Record<string, string> = {
   satisfied: '#27ae60', // Green
   partial: '#27ae60', // Green (collapsed: any satisfied → green)
-  isolated: '#e74c3c', // Red
+  unsatisfied: '#e74c3c', // Red
   no_requests: '#94a3b8', // Gray (slate-400) — nothing to satisfy
   default: '#2c3e50', // Gray (fallback for unknown values)
 }
