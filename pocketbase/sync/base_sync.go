@@ -119,9 +119,7 @@ func (b *BaseSyncService) DebugLog(msg string, args ...any) {
 
 // ClearProcessedKeys resets the processed keys tracker
 func (b *BaseSyncService) ClearProcessedKeys() {
-	for k := range b.ProcessedKeys {
-		delete(b.ProcessedKeys, k)
-	}
+	clear(b.ProcessedKeys)
 }
 
 // TrackProcessedKey adds a composite key to the processed keys map
@@ -1414,9 +1412,7 @@ func (b *BaseSyncService) LogFieldDiffSummary() {
 
 // ClearFieldDiffStats resets the field diff statistics
 func (b *BaseSyncService) ClearFieldDiffStats() {
-	for k := range b.FieldDiffStats {
-		delete(b.FieldDiffStats, k)
-	}
+	clear(b.FieldDiffStats)
 }
 
 // formatFieldValue formats a field value for logging, truncating long values
