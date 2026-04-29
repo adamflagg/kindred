@@ -1140,3 +1140,81 @@ def test_unassigned_requester_excluded_from_all_buckets():
     assert stats.campers_with_unsatisfied_material_parent_requests == 0
     assert stats.total_requests == 0  # excluded from valid totals, not just buckets
     assert stats.satisfied_requests == 0
+
+
+def test_three_grade_bunk_age_preference_evaluation():
+    """End-to-end: validator's is_request_satisfied uses the real-grades logic
+    on three-grade bunks. Tied second-place → satisfied.
+
+    Bunk 9001 contains:
+    - 8 sixth-graders (cm_ids 3001-3008)
+    - 2 fifth-graders (3010-3011)
+    - 2 seventh-graders (3020-3021)
+
+    Camper Liam Garcia (cm_id=3001, grade 6) has a resolved age_preference
+    request with target=older. Distribution 8/2/2 with tied second place
+    → satisfied per Task 1 real-grades rule.
+
+    Expected: stats.best_effort_parent_requests == 1,
+    satisfied_best_effort_parent_requests == 1, satisfaction_rate == 1.0.
+    """
+    session = _mock_session(cm_id="10000005", name="Test Session 5")
+    persons = [
+        # 8 sixth-graders (most common)
+        MockPerson(campminder_id="3001", name="Liam Garcia", grade=6),
+        MockPerson(campminder_id="3002", name="Sixth Grader 2", grade=6),
+        MockPerson(campminder_id="3003", name="Sixth Grader 3", grade=6),
+        MockPerson(campminder_id="3004", name="Sixth Grader 4", grade=6),
+        MockPerson(campminder_id="3005", name="Sixth Grader 5", grade=6),
+        MockPerson(campminder_id="3006", name="Sixth Grader 6", grade=6),
+        MockPerson(campminder_id="3007", name="Sixth Grader 7", grade=6),
+        MockPerson(campminder_id="3008", name="Sixth Grader 8", grade=6),
+        # 2 fifth-graders (tied for second)
+        MockPerson(campminder_id="3010", name="Fifth Grader 1", grade=5),
+        MockPerson(campminder_id="3011", name="Fifth Grader 2", grade=5),
+        # 2 seventh-graders (tied for second)
+        MockPerson(campminder_id="3020", name="Seventh Grader 1", grade=7),
+        MockPerson(campminder_id="3021", name="Seventh Grader 2", grade=7),
+    ]
+    bunks = [_mock_bunk("9001", max_size=12)]
+    assignments = [
+        _mock_assignment("3001", "9001"),
+        _mock_assignment("3002", "9001"),
+        _mock_assignment("3003", "9001"),
+        _mock_assignment("3004", "9001"),
+        _mock_assignment("3005", "9001"),
+        _mock_assignment("3006", "9001"),
+        _mock_assignment("3007", "9001"),
+        _mock_assignment("3008", "9001"),
+        _mock_assignment("3010", "9001"),
+        _mock_assignment("3011", "9001"),
+        _mock_assignment("3020", "9001"),
+        _mock_assignment("3021", "9001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="3001",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.SOCIALIZE_WITH,
+            source="family",
+            age_preference_target="older",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    # Distribution 8/2/2 with tied second place → satisfied
+    assert stats.best_effort_parent_requests == 1
+    assert stats.satisfied_best_effort_parent_requests == 1
+    assert stats.request_satisfaction_rate == 1.0
+    assert stats.material_parent_requests == 0
