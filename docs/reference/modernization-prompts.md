@@ -75,7 +75,7 @@ Commands per language:
 
 | Language | Toolchain pin | Installed | Latest stable check |
 |---|---|---|---|
-| Go | `grep -E '^(go\|toolchain) ' go.mod` | `go version` | go.dev/doc/devel/release |
+| Go | `grep -E '^(go|toolchain) ' go.mod` | `go version` | go.dev/doc/devel/release |
 | Python | `grep requires-python pyproject.toml` + `cat .python-version` | `python --version` | python.org/downloads |
 | Node | `jq .engines package.json` + `cat .nvmrc` | `node -v` | nodejs.org |
 | TypeScript | `cd frontend && jq .compilerOptions.target tsconfig.json` | `cd frontend && npx tsc -v` | typescriptlang.org |
