@@ -168,6 +168,7 @@ export function AllCamperRequestsModal({
       })
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       toast.success('Request updated')
       setConfirmPopover(null)

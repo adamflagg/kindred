@@ -26,12 +26,23 @@ function buildQueryClient(sessionCmId = 1001, year = 2025) {
     ['all-bunk-requests', sessionCmId, year],
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
+  // Seed the per-camper key used by CamperDetailsPanel so we can verify it
+  // also gets invalidated by status mutations.
+  qc.setQueryData(
+    ['person-bunk-requests', 1001, year],
+    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
+  )
   return qc
 }
 
 function isAllBunkRequestsStale(qc: QueryClient, sessionCmId = 1001, year = 2025) {
   const state = qc.getQueryState(['all-bunk-requests', sessionCmId, year])
   // After invalidateQueries the query is marked invalid (isInvalidated = true)
+  return state?.isInvalidated === true
+}
+
+function isPersonBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 2025) {
+  const state = qc.getQueryState(['person-bunk-requests', personCmId, year])
   return state?.isInvalidated === true
 }
 
@@ -125,33 +136,39 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     const onSuccessAfterFix = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
     }
 
     onSuccessAfterFix(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
   })
 
   it('AllCamperRequestsModal status update invalidates all-bunk-requests', () => {
     const onSuccessAfterFix = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
     }
 
     onSuccessAfterFix(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
   })
 
   it('CreateRequestModal create invalidates all-bunk-requests', () => {
     const onSuccessAfterFix = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
     }
 
     onSuccessAfterFix(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
   })
 })
 

@@ -944,7 +944,10 @@ export default function CamperDetailsPanel({
                   <div className={hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}>
                     <BunkRequestRow
                       request={agePreferenceRequest}
-                      showSatisfaction={true}
+                      // Spec §2.1: only resolved rows evaluate to satisfaction.
+                      // Pending (e.g. SAME_AGE staff-review) or declined age
+                      // preferences must not render a "fulfilled" indicator.
+                      showSatisfaction={agePreferenceRequest.status === 'resolved'}
                       satisfaction={ageSatisfaction?.status ?? null}
                       satisfactionLoading={satisfactionLoading}
                       satisfactionDetail={ageSatisfaction?.detail}

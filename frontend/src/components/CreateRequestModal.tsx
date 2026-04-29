@@ -94,6 +94,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessionCampers(sessionId, year) })
       toast.success('Request created successfully')
