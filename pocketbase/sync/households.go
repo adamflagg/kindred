@@ -111,7 +111,11 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 		default:
 		}
 
-		slog.Debug("Fetching persons batch for household extraction", "start", processed+1, "end", processed+len(batch), "total", len(personIDs))
+		slog.Debug("Fetching persons batch for household extraction",
+			"start", processed+1,
+			"end", processed+len(batch),
+			"total", len(personIDs),
+		)
 
 		// Fetch persons for this batch (includes household data via includehouseholddetails=true)
 		persons, err := s.Client.GetPersons(batch)
